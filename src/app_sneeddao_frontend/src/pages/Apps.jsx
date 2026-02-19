@@ -12,8 +12,7 @@ import { createActor as createBackendActor, canisterId as BACKEND_CANISTER_ID } 
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, getCanisterTypeIcon, isSnsCanisterType, SnsPill } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
-import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown, FaLock, FaStar, FaArrowRight, FaWallet, FaQuestionCircle, FaBox, FaExclamationTriangle, FaBolt, FaChartLine } from 'react-icons/fa';
-import BotIcon from '../components/BotIcon';
+import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown, FaLock, FaStar, FaArrowRight, FaWallet, FaQuestionCircle, FaBox, FaExclamationTriangle, FaBolt, FaChartLine, FaStore, FaRobot } from 'react-icons/fa';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { useNavigate } from 'react-router-dom';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
@@ -3568,7 +3567,7 @@ export default function AppsPage() {
             >
                 <div style={styles.managerInfo}>
                     <div style={{ ...styles.managerIcon, position: 'relative' }}>
-                        {isStakingBot ? <BotIcon type="staking" size={18} /> : isTradingBot ? <BotIcon type="trading" size={18} color="#10b981" /> : <FaBox size={18} />}
+                        {isStakingBot ? <FaRobot size={18} /> : isTradingBot ? <FaRobot size={18} style={{ color: '#10b981' }} /> : <FaBox size={18} />}
                         {isController && (
                             <FaCrown 
                                 size={10} 
@@ -3580,6 +3579,11 @@ export default function AppsPage() {
                                 }} 
                                 title="You are a controller"
                             />
+                        )}
+                        {(isStakingBot || isTradingBot) && (
+                            <span style={{ position: 'absolute', top: -4, right: -4, color: isStakingBot ? '#a78bfa' : '#2dd4bf', filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.4))' }}>
+                                {isStakingBot ? <FaBrain size={10} /> : <FaChartLine size={10} />}
+                            </span>
                         )}
                         {/* Cycle status lamp - bottom left */}
                         <span
@@ -3688,7 +3692,7 @@ export default function AppsPage() {
                         }}
                         title={isStakingBot ? 'Manage neurons' : 'Manage'}
                     >
-                        {isStakingBot ? <BotIcon type="staking" size={12} /> : isTradingBot ? <BotIcon type="trading" size={12} /> : <FaBox size={12} />}
+                        <FaRobot size={12} />
                     </Link>
                     <Link
                         to={`/canister?id=${canisterId}`}
@@ -4248,7 +4252,7 @@ export default function AppsPage() {
                             <span><strong style={{ color: theme.colors.success }}>{trackedCanisters.length}</strong> wallet</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
-                            <BotIcon type="staking" size={14} color="#9b59b6" />
+                            <FaStore size={14} style={{ color: '#9b59b6' }} />
                             <span><strong style={{ color: '#9b59b6' }}>{neuronManagers.length}</strong> Sneedapp</span>
                         </div>
                         <Link 
@@ -5349,7 +5353,7 @@ export default function AppsPage() {
                                                 />
                                             );
                                         })()}
-                                        <BotIcon type="staking" size={16} color="#8b5cf6" />
+                                        <FaStore size={16} style={{ color: '#8b5cf6' }} />
                                         Sneedapp
                                         {neuronManagers.length > 0 && (
                                             <span style={{ ...styles.sectionCount, fontSize: '11px' }}>{neuronManagers.length}</span>
@@ -5530,7 +5534,7 @@ export default function AppsPage() {
                                                     >
                                                         <div style={styles.canisterInfo}>
                                                         <div style={{ ...styles.canisterIcon, position: 'relative' }}>
-                                                            {isTradingBot ? <BotIcon type="trading" size={18} color="#10b981" /> : getCanisterTypeIcon(displayInfo?.canisterTypes, 18, theme.colors.accent)}
+                                                            {isTradingBot ? <FaRobot size={18} style={{ color: '#10b981' }} /> : getCanisterTypeIcon(displayInfo?.canisterTypes, 18, theme.colors.accent)}
                                                             {manager.isController && (
                                                                 <FaCrown 
                                                                     size={10} 
@@ -5542,6 +5546,11 @@ export default function AppsPage() {
                                                                     }} 
                                                                     title="You are a controller"
                                                                 />
+                                                            )}
+                                                            {isTradingBot && (
+                                                                <span style={{ position: 'absolute', top: -4, right: -4, color: '#2dd4bf', filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.4))' }}>
+                                                                    <FaChartLine size={10} />
+                                                                </span>
                                                             )}
                                                             {/* Cycle status lamp - bottom left */}
                                                             <span
@@ -5697,7 +5706,7 @@ export default function AppsPage() {
                                                 >
                                                     <div style={styles.managerInfo}>
                                                         <div style={{ ...styles.managerIcon, position: 'relative' }}>
-                                                            {isStakingBot ? <BotIcon type="staking" size={18} /> : isTradingBot ? <BotIcon type="trading" size={18} color="#10b981" /> : <FaBox size={18} />}
+                                                            {isStakingBot ? <FaRobot size={18} /> : isTradingBot ? <FaRobot size={18} style={{ color: '#10b981' }} /> : <FaBox size={18} />}
                                                             {manager.isController && (
                                                                 <FaCrown 
                                                                     size={10} 
@@ -5709,6 +5718,11 @@ export default function AppsPage() {
                                                                     }} 
                                                                     title="You are a controller"
                                                                 />
+                                                            )}
+                                                            {(isStakingBot || isTradingBot) && (
+                                                                <span style={{ position: 'absolute', top: -4, right: -4, color: isStakingBot ? '#a78bfa' : '#2dd4bf', filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.4))' }}>
+                                                                    {isStakingBot ? <FaBrain size={10} /> : <FaChartLine size={10} />}
+                                                                </span>
                                                             )}
                                                             {/* Cycle status lamp - bottom left */}
                                                             <span
@@ -5806,7 +5820,7 @@ export default function AppsPage() {
                                                             }}
                                                             title={isStakingBot ? 'Manage neurons' : 'Manage'}
                                                         >
-                                                            {isStakingBot ? <BotIcon type="staking" size={12} /> : isTradingBot ? <BotIcon type="trading" size={12} /> : <FaBox size={12} />}
+                                                            <FaRobot size={12} />
                                                         </Link>
                                                         <Link
                                                             to={`/canister?id=${canisterId}`}

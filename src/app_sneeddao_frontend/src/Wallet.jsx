@@ -72,7 +72,7 @@ import UpgradeBotsDialog from './components/UpgradeBotsDialog';
 import TopUpCyclesDialog from './components/TopUpCyclesDialog';
 import { PERM } from './utils/NeuronPermissionUtils.jsx';
 import { IDL } from '@dfinity/candid';
-import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt, FaSearch, FaArrowUp, FaBolt, FaSpinner, FaChartLine } from 'react-icons/fa';
+import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt, FaSearch, FaArrowUp, FaBolt, FaSpinner, FaChartLine, FaStore } from 'react-icons/fa';
 import BotIcon from './components/BotIcon';
 
 // Custom CSS for Wallet page animations
@@ -6820,7 +6820,7 @@ function Wallet() {
                                     gap: '0.5rem'
                                 }}>
                                     {neuronManagersExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
-                                    <BotIcon type="staking" size={16} color="#8b5cf6" />
+                                    <FaStore size={16} style={{ color: '#8b5cf6' }} />
                                     Sneedapp
                                     {neuronManagers.length > 0 && (
                                         <span style={{ color: '#8b5cf6', fontWeight: '500' }}>

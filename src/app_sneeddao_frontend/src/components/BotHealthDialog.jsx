@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaTimes, FaRobot, FaExclamationTriangle, FaExclamationCircle, FaCheckDouble, FaSpinner } from 'react-icons/fa';
+import { FaTimes, FaRobot, FaExclamationTriangle, FaExclamationCircle, FaCheckDouble, FaSpinner, FaChevronDown, FaChevronRight, FaExternalLinkAlt } from 'react-icons/fa';
+import BotIcon from './BotIcon';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import { useWalletOptional } from '../contexts/WalletContext';
@@ -11,21 +12,18 @@ import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
 import { botLogIdlFactory } from '../utils/botLogIdl';
 
-// Hardcoded fallback labels for known app types
 const HARDCODED_LABELS = {
     'sneed-trading-bot': 'Trading Bot',
     'sneed-icp-staking-bot': 'ICP Staking Bot',
     'icp-staking-bot': 'ICP Staking Bot',
 };
 
-// Hardcoded fallback URL patterns for known app types (with tab parameter support)
 const HARDCODED_URLS = {
     'sneed-trading-bot': { manage: '/trading_bot/CANISTER_ID', view: '/trading_bot/CANISTER_ID' },
     'sneed-icp-staking-bot': { manage: '/icp_neuron_manager/CANISTER_ID', view: '/icp_neuron_manager/CANISTER_ID' },
     'icp-staking-bot': { manage: '/icp_neuron_manager/CANISTER_ID', view: '/icp_neuron_manager/CANISTER_ID' },
 };
 
-// Map of known bot types to useful tab query parameters
 const HARDCODED_TAB_PARAMS = {
     'sneed-trading-bot': { chores: '?tab=chores', log: '?tab=log', default: '' },
     'sneed-icp-staking-bot': { chores: '?tab=chores', log: '?tab=log', default: '' },
@@ -34,24 +32,17 @@ const HARDCODED_TAB_PARAMS = {
 
 const LOG_LEVEL_COLORS = { Error: '#ef4444', Warning: '#f59e0b', Info: '#3b82f6', Debug: '#8b5cf6', Trace: '#6b7280' };
 
-/**
- * Build the URL for navigating to a bot's page.
- * Priority: sneedapp AppInfo.manageUrl > hardcoded URL > /canister?id= fallback
- */
 function buildBotUrl(canisterId, appId, tab, appInfoMap) {
     const cid = typeof canisterId === 'string' ? canisterId : canisterId.toString();
     
-    // 1. Try sneedapp AppInfo manageUrl (has CANISTER_ID placeholder)
     const appInfo = appInfoMap?.[appId];
     if (appInfo?.manageUrl?.[0]) {
         let url = appInfo.manageUrl[0].replace(/CANISTER_ID/g, cid);
-        // Add tab param if we have hardcoded knowledge for this app type
         const tabParams = HARDCODED_TAB_PARAMS[appId];
         if (tabParams && tab && tabParams[tab]) url += tabParams[tab];
         return url;
     }
 
-    // 2. Hardcoded URL for known bot types
     const hardcoded = HARDCODED_URLS[appId];
     if (hardcoded) {
         let url = hardcoded.manage.replace(/CANISTER_ID/g, cid);
@@ -60,17 +51,19 @@ function buildBotUrl(canisterId, appId, tab, appInfoMap) {
         return url;
     }
 
-    // 3. Generic fallback
     return `/canister?id=${cid}`;
 }
 
-/**
- * Get display label for a bot app type.
- */
 function getBotLabel(appId, appInfoMap) {
     const appInfo = appInfoMap?.[appId];
     if (appInfo?.name) return appInfo.name;
     return HARDCODED_LABELS[appId] || 'Bot';
+}
+
+function getBotType(appId) {
+    if (appId === 'sneed-icp-staking-bot' || appId === 'icp-staking-bot') return 'staking';
+    if (appId === 'sneed-trading-bot') return 'trading';
+    return null;
 }
 
 /**
@@ -84,13 +77,27 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
     const walletContext = useWalletOptional();
     const refreshBotLogAlerts = walletContext?.refreshBotLogAlerts;
     const appInfoMap = walletContext?.appInfoMap || {};
+    const allBotEntries = walletContext?.allBotEntries || [];
 
-    // Fetched log entries per bot: { canisterId -> LogEntry[] }
     const [botLogEntries, setBotLogEntries] = useState({});
     const [loadingLogs, setLoadingLogs] = useState(false);
     const fetchedRef = useRef(false);
+    const [collapsedBots, setCollapsedBots] = useState({});
 
-    // Fetch actual log entries for bots with alerts when dialog opens
+    const toggleCollapse = useCallback((canisterId) => {
+        setCollapsedBots(prev => ({ ...prev, [canisterId]: !prev[canisterId] }));
+    }, []);
+
+    // Build a canisterId -> resolvedAppId lookup from allBotEntries as fallback
+    const appIdFallback = React.useMemo(() => {
+        const map = {};
+        for (const entry of allBotEntries) {
+            const cid = entry.canisterId.toString();
+            if (entry.resolvedAppId) map[cid] = entry.resolvedAppId;
+        }
+        return map;
+    }, [allBotEntries]);
+
     useEffect(() => {
         if (!isOpen || !identity || botsWithAlerts.length === 0 || fetchedRef.current) return;
         fetchedRef.current = true;
@@ -129,15 +136,14 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
         })();
     }, [isOpen, identity, botsWithAlerts]);
 
-    // Reset when dialog closes
     useEffect(() => {
         if (!isOpen) {
             fetchedRef.current = false;
             setBotLogEntries({});
+            setCollapsedBots({});
         }
     }, [isOpen]);
 
-    // --- Mark log alerts as seen (stored in backend canister, not on the bot) ---
     const markSeenForBot = useCallback(async (canisterId, highestId) => {
         const key = `lastSeenLogId:${canisterId}`;
         const current = parseInt(localStorage.getItem(key) || '0', 10);
@@ -167,19 +173,19 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
 
     if (!isOpen) return null;
 
-    // --- Merge bots from both sources ---
+    // --- Merge bots from both sources, with appId fallback ---
     const botMap = new Map();
     for (const m of unhealthyManagers) {
         const cid = m.canisterId;
-        const existing = botMap.get(cid) || { appId: m.appId || '' };
+        const existing = botMap.get(cid) || { appId: m.appId || appIdFallback[cid] || '' };
         existing.choreIssue = m;
         botMap.set(cid, existing);
     }
     for (const a of botsWithAlerts) {
         const cid = a.canisterId;
-        const existing = botMap.get(cid) || { appId: a.appId || '' };
+        const existing = botMap.get(cid) || { appId: a.appId || appIdFallback[cid] || '' };
         existing.logAlert = a;
-        if (!existing.appId && a.appId) existing.appId = a.appId;
+        if (!existing.appId) existing.appId = a.appId || appIdFallback[cid] || '';
         botMap.set(cid, existing);
     }
     const mergedBots = [...botMap.entries()].map(([canisterId, data]) => ({ canisterId, ...data }));
@@ -275,24 +281,35 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
                                 const rowColor = rowHasError ? '#ef4444' : '#f59e0b';
                                 const displayInfo = getPrincipalDisplayName ? getPrincipalDisplayName(canisterId) : null;
                                 const botTypeLabel = getBotLabel(appId, appInfoMap);
+                                const botType = getBotType(appId);
                                 const choreLabel = choreIssue ? (LAMP_LABELS[choreIssue.lamp] || 'Issue') : null;
                                 const choreLampColor = choreIssue ? (LAMP_COLORS[choreIssue.lamp] || LAMP_COLORS.warn) : null;
                                 const logHighestId = logAlert
                                     ? Math.max(logAlert.highestErrorId || 0, logAlert.highestWarningId || 0, (logAlert.nextId || 1) - 1)
                                     : 0;
                                 const entries = botLogEntries[canisterId] || [];
+                                const isCollapsed = !!collapsedBots[canisterId];
 
                                 return (
                                     <div
                                         key={canisterId}
                                         style={{
-                                            padding: '12px', borderRadius: '10px', marginBottom: '8px',
+                                            borderRadius: '10px', marginBottom: '8px',
                                             background: rowHasError ? '#ef444408' : '#f59e0b08',
                                             border: `1px solid ${rowColor}25`,
                                         }}
                                     >
-                                        {/* Bot identity row */}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                                        {/* Bot identity row — clickable to collapse/expand */}
+                                        <div
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '10px',
+                                                padding: '12px', cursor: 'pointer', userSelect: 'none',
+                                            }}
+                                            onClick={() => toggleCollapse(canisterId)}
+                                        >
+                                            <span style={{ color: theme.colors.mutedText, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                                                {isCollapsed ? <FaChevronRight size={10} /> : <FaChevronDown size={10} />}
+                                            </span>
                                             <span style={{
                                                 display: 'inline-block', width: '10px', height: '10px',
                                                 borderRadius: '50%', backgroundColor: rowColor,
@@ -300,7 +317,11 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
                                             }} />
                                             <div style={{ flex: 1, minWidth: 0 }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                    <FaRobot size={12} style={{ color: rowColor, flexShrink: 0 }} />
+                                                    {botType ? (
+                                                        <BotIcon type={botType} size={12} color={rowColor} />
+                                                    ) : (
+                                                        <FaRobot size={12} style={{ color: rowColor, flexShrink: 0 }} />
+                                                    )}
                                                     <PrincipalDisplay
                                                         principal={canisterId}
                                                         displayInfo={displayInfo}
@@ -313,7 +334,19 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
                                                 </div>
                                             </div>
                                             {/* Actions */}
-                                            <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                                            <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                                                <button
+                                                    onClick={() => navigateToBot(canisterId, appId, 'log')}
+                                                    title="View bot log"
+                                                    style={{
+                                                        background: 'none', border: `1px solid ${theme.colors.border}`,
+                                                        borderRadius: '5px', padding: '2px 8px', cursor: 'pointer',
+                                                        color: theme.colors.secondaryText, fontSize: '10px',
+                                                        display: 'flex', alignItems: 'center', gap: '3px',
+                                                    }}
+                                                >
+                                                    <FaExternalLinkAlt size={7} /> Log
+                                                </button>
                                                 {logAlert && (
                                                     <button
                                                         onClick={() => markSeenForBot(canisterId, logHighestId)}
@@ -331,117 +364,118 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
                                             </div>
                                         </div>
 
-                                        {/* Chore issue */}
-                                        {choreIssue && (
-                                            <div
-                                                style={{
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                    padding: '6px 10px', borderRadius: '6px', marginBottom: '4px',
-                                                    background: `${choreLampColor}12`, cursor: 'pointer',
-                                                    border: `1px solid ${choreLampColor}15`,
-                                                }}
-                                                onClick={() => navigateToBot(canisterId, appId, 'chores')}
-                                                onMouseEnter={(e) => { e.currentTarget.style.background = `${choreLampColor}22`; }}
-                                                onMouseLeave={(e) => { e.currentTarget.style.background = `${choreLampColor}12`; }}
-                                            >
-                                                <span style={{ fontSize: '11px', color: choreLampColor, fontWeight: '600', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                    {hasChoreError ? <FaExclamationCircle size={9} /> : <FaExclamationTriangle size={9} />}
-                                                    Chore: {choreLabel}
-                                                </span>
-                                                <span style={{ color: theme.colors.mutedText, fontSize: '11px' }}>View chores ›</span>
-                                            </div>
-                                        )}
-
-                                        {/* Log entries */}
-                                        {logAlert && (
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                                {loadingLogs && entries.length === 0 && (
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 10px', fontSize: '11px', color: theme.colors.mutedText }}>
-                                                        <FaSpinner size={10} className="fa-spin" style={{ animation: 'spin 1s linear infinite' }} />
-                                                        Loading log entries...
-                                                    </div>
-                                                )}
-                                                {entries.slice().reverse().map(entry => {
-                                                    const levelKey = Object.keys(entry.level)[0];
-                                                    const levelColor = LOG_LEVEL_COLORS[levelKey] || '#6b7280';
-                                                    const ts = new Date(Number(entry.timestamp) / 1_000_000);
-                                                    const timeStr = ts.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-                                                    const tagMap = {};
-                                                    for (const [k, v] of entry.tags) tagMap[k] = v;
-
-                                                    // Build readable tags
-                                                    const tagPills = entry.tags
-                                                        .filter(([k]) => k !== 'source' && k !== 'level')
-                                                        .map(([k, v], i) => (
-                                                            <span key={i} style={{
-                                                                padding: '1px 5px', borderRadius: '3px', fontSize: '0.65rem',
-                                                                background: `${theme.colors.border}60`, color: theme.colors.secondaryText,
-                                                                whiteSpace: 'nowrap',
-                                                            }}>
-                                                                <span style={{ opacity: 0.6 }}>{k}:</span> {v}
-                                                            </span>
-                                                        ));
-
-                                                    return (
-                                                        <div
-                                                            key={Number(entry.id)}
-                                                            style={{
-                                                                padding: '6px 10px', borderRadius: '6px',
-                                                                borderLeft: `3px solid ${levelColor}`,
-                                                                background: `${levelColor}08`,
-                                                                cursor: 'pointer',
-                                                            }}
-                                                            onClick={() => navigateToBot(canisterId, appId, 'log')}
-                                                            onMouseEnter={(e) => { e.currentTarget.style.background = `${levelColor}14`; }}
-                                                            onMouseLeave={(e) => { e.currentTarget.style.background = `${levelColor}08`; }}
-                                                        >
-                                                            {/* Entry header line */}
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                                                <span style={{
-                                                                    padding: '0px 5px', borderRadius: '3px', fontSize: '0.65rem',
-                                                                    fontWeight: '700', background: `${levelColor}22`, color: levelColor,
-                                                                    minWidth: '38px', textAlign: 'center',
-                                                                }}>
-                                                                    {levelKey.toUpperCase()}
-                                                                </span>
-                                                                <span style={{
-                                                                    padding: '0px 5px', borderRadius: '3px', fontSize: '0.65rem',
-                                                                    background: `${theme.colors.border}40`, color: theme.colors.secondaryText,
-                                                                }}>
-                                                                    {entry.source}
-                                                                </span>
-                                                                <span style={{ fontSize: '0.75rem', color: theme.colors.primaryText, flex: 1, lineHeight: '1.3' }}>
-                                                                    {entry.message}
-                                                                </span>
-                                                                <span style={{ fontSize: '0.6rem', color: theme.colors.mutedText, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                                                                    {timeStr}
-                                                                </span>
-                                                                <span style={{ fontSize: '0.55rem', color: theme.colors.mutedText, opacity: 0.5 }}>
-                                                                    #{Number(entry.id)}
-                                                                </span>
-                                                            </div>
-                                                            {/* Tags */}
-                                                            {tagPills.length > 0 && (
-                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '3px', marginLeft: '44px' }}>
-                                                                    {tagPills}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })}
-                                                {!loadingLogs && entries.length === 0 && (logAlert.unseenErrorCount > 0 || logAlert.unseenWarningCount > 0) && (
+                                        {/* Collapsible content */}
+                                        {!isCollapsed && (
+                                            <div style={{ padding: '0 12px 12px' }}>
+                                                {/* Chore issue */}
+                                                {choreIssue && (
                                                     <div
                                                         style={{
-                                                            padding: '6px 10px', borderRadius: '6px', fontSize: '11px',
-                                                            color: theme.colors.mutedText, cursor: 'pointer',
-                                                            background: `${rowColor}08`,
+                                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                            padding: '6px 10px', borderRadius: '6px', marginBottom: '4px',
+                                                            background: `${choreLampColor}12`, cursor: 'pointer',
+                                                            border: `1px solid ${choreLampColor}15`,
                                                         }}
-                                                        onClick={() => navigateToBot(canisterId, appId, 'log')}
+                                                        onClick={() => navigateToBot(canisterId, appId, 'chores')}
+                                                        onMouseEnter={(e) => { e.currentTarget.style.background = `${choreLampColor}22`; }}
+                                                        onMouseLeave={(e) => { e.currentTarget.style.background = `${choreLampColor}12`; }}
                                                     >
-                                                        {(logAlert.unseenErrorCount || 0) > 0 && <span style={{ color: '#ef4444', fontWeight: '500' }}>{logAlert.unseenErrorCount} unseen error{logAlert.unseenErrorCount !== 1 ? 's' : ''} </span>}
-                                                        {(logAlert.unseenWarningCount || 0) > 0 && <span style={{ color: '#f59e0b', fontWeight: '500' }}>{logAlert.unseenWarningCount} unseen warning{logAlert.unseenWarningCount !== 1 ? 's' : ''} </span>}
-                                                        — <span style={{ textDecoration: 'underline' }}>view in log</span>
+                                                        <span style={{ fontSize: '11px', color: choreLampColor, fontWeight: '600', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                            {hasChoreError ? <FaExclamationCircle size={9} /> : <FaExclamationTriangle size={9} />}
+                                                            Chore: {choreLabel}
+                                                        </span>
+                                                        <span style={{ color: theme.colors.mutedText, fontSize: '11px' }}>View chores ›</span>
+                                                    </div>
+                                                )}
+
+                                                {/* Log entries */}
+                                                {logAlert && (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                                        {loadingLogs && entries.length === 0 && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 10px', fontSize: '11px', color: theme.colors.mutedText }}>
+                                                                <FaSpinner size={10} className="fa-spin" style={{ animation: 'spin 1s linear infinite' }} />
+                                                                Loading log entries...
+                                                            </div>
+                                                        )}
+                                                        {entries.slice().reverse().map(entry => {
+                                                            const levelKey = Object.keys(entry.level)[0];
+                                                            const levelColor = LOG_LEVEL_COLORS[levelKey] || '#6b7280';
+                                                            const ts = new Date(Number(entry.timestamp) / 1_000_000);
+                                                            const timeStr = ts.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+                                                            const tagPills = entry.tags
+                                                                .filter(([k]) => k !== 'source' && k !== 'level')
+                                                                .map(([k, v], i) => (
+                                                                    <span key={i} style={{
+                                                                        padding: '1px 5px', borderRadius: '3px', fontSize: '0.65rem',
+                                                                        background: `${theme.colors.border}60`, color: theme.colors.secondaryText,
+                                                                        whiteSpace: 'nowrap',
+                                                                    }}>
+                                                                        <span style={{ opacity: 0.6 }}>{k}:</span> {v}
+                                                                    </span>
+                                                                ));
+
+                                                            return (
+                                                                <div
+                                                                    key={Number(entry.id)}
+                                                                    style={{
+                                                                        padding: '6px 10px', borderRadius: '6px',
+                                                                        borderLeft: `3px solid ${levelColor}`,
+                                                                        background: `${levelColor}08`,
+                                                                        cursor: 'pointer',
+                                                                    }}
+                                                                    onClick={() => navigateToBot(canisterId, appId, 'log')}
+                                                                    onMouseEnter={(e) => { e.currentTarget.style.background = `${levelColor}14`; }}
+                                                                    onMouseLeave={(e) => { e.currentTarget.style.background = `${levelColor}08`; }}
+                                                                >
+                                                                    {/* Entry header line */}
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                                        <span style={{
+                                                                            padding: '0px 5px', borderRadius: '3px', fontSize: '0.65rem',
+                                                                            fontWeight: '700', background: `${levelColor}22`, color: levelColor,
+                                                                            minWidth: '38px', textAlign: 'center',
+                                                                        }}>
+                                                                            {levelKey.toUpperCase()}
+                                                                        </span>
+                                                                        <span style={{
+                                                                            padding: '0px 5px', borderRadius: '3px', fontSize: '0.65rem',
+                                                                            background: `${theme.colors.border}40`, color: theme.colors.secondaryText,
+                                                                        }}>
+                                                                            {entry.source}
+                                                                        </span>
+                                                                        <span style={{ fontSize: '0.75rem', color: theme.colors.primaryText, flex: 1, lineHeight: '1.3' }}>
+                                                                            {entry.message}
+                                                                        </span>
+                                                                        <span style={{ fontSize: '0.6rem', color: theme.colors.mutedText, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                                                            {timeStr}
+                                                                        </span>
+                                                                        <span style={{ fontSize: '0.55rem', color: theme.colors.mutedText, opacity: 0.5 }}>
+                                                                            #{Number(entry.id)}
+                                                                        </span>
+                                                                    </div>
+                                                                    {/* Tags */}
+                                                                    {tagPills.length > 0 && (
+                                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '3px', marginLeft: '44px' }}>
+                                                                            {tagPills}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        {!loadingLogs && entries.length === 0 && (logAlert.unseenErrorCount > 0 || logAlert.unseenWarningCount > 0) && (
+                                                            <div
+                                                                style={{
+                                                                    padding: '6px 10px', borderRadius: '6px', fontSize: '11px',
+                                                                    color: theme.colors.mutedText, cursor: 'pointer',
+                                                                    background: `${rowColor}08`,
+                                                                }}
+                                                                onClick={() => navigateToBot(canisterId, appId, 'log')}
+                                                            >
+                                                                {(logAlert.unseenErrorCount || 0) > 0 && <span style={{ color: '#ef4444', fontWeight: '500' }}>{logAlert.unseenErrorCount} unseen error{logAlert.unseenErrorCount !== 1 ? 's' : ''} </span>}
+                                                                {(logAlert.unseenWarningCount || 0) > 0 && <span style={{ color: '#f59e0b', fontWeight: '500' }}>{logAlert.unseenWarningCount} unseen warning{logAlert.unseenWarningCount !== 1 ? 's' : ''} </span>}
+                                                                — <span style={{ textDecoration: 'underline' }}>view in log</span>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>
