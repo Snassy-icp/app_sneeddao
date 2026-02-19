@@ -2597,16 +2597,21 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: isInflow ? '#22c55e' : '#f97316', fontWeight: '500' }}>
                                             <strong>{isInflow ? '+' : '-'}</strong> <TokenIcon canisterId={toStr(e.inputToken)} size={16} /> {formatTokenAmount(e.inputAmount, inputDec)} {inSym}
                                         </div>
-                                    ) : (
-                                        <>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                <strong>Sold:</strong> <TokenIcon canisterId={toStr(e.inputToken)} size={16} /> {formatTokenAmount(e.inputAmount, inputDec)} {inSym}
-                                            </div>
-                                            {e.outputToken?.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                <strong>Bought:</strong> <TokenIcon canisterId={toStr(e.outputToken[0])} size={16} /> {optVal(e.outputAmount) != null ? formatTokenAmount(optVal(e.outputAmount), outputDec) : '—'} {outSym}
-                                            </div>}
-                                        </>
-                                    )}
+                                    ) : (() => {
+                                        const at = Number(e.actionType);
+                                        const inLabel = at === ACTION_TYPE_DEPOSIT ? 'Deposited:' : at === ACTION_TYPE_WITHDRAW ? 'Withdrew:' : at === ACTION_TYPE_SEND ? 'Sent:' : 'Sold:';
+                                        const outLabel = at === ACTION_TYPE_DEPOSIT ? 'To:' : at === ACTION_TYPE_WITHDRAW ? 'To:' : at === ACTION_TYPE_SEND ? 'To:' : 'Bought:';
+                                        return (
+                                            <>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <strong>{inLabel}</strong> <TokenIcon canisterId={toStr(e.inputToken)} size={16} /> {formatTokenAmount(e.inputAmount, inputDec)} {inSym}
+                                                </div>
+                                                {e.outputToken?.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <strong>{outLabel}</strong> <TokenIcon canisterId={toStr(e.outputToken[0])} size={16} /> {optVal(e.outputAmount) != null ? formatTokenAmount(optVal(e.outputAmount), outputDec) : '—'} {outSym}
+                                                </div>}
+                                            </>
+                                        );
+                                    })()}
                                     {humanPrice != null && <div><strong>Price:</strong> {humanPrice.toLocaleString(undefined, { maximumSignificantDigits: 6 })} {inSym}/{outSym}</div>}
                                     {optVal(e.dexId) != null && <div><strong>DEX:</strong> {DEX_LABELS[Number(optVal(e.dexId))] || `DEX ${Number(optVal(e.dexId))}`}</div>}
                                     {optVal(e.priceImpactBps) != null && <div><strong>Impact:</strong> {(Number(optVal(e.priceImpactBps)) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</div>}
@@ -6267,13 +6272,13 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
         padding: '6px 16px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: '500',
         borderBottom: `2px solid ${active ? accentColor : 'transparent'}`,
         color: active ? accentColor : theme.colors.secondaryText,
-        background: 'none', border: 'none', borderRadius: 0,
+        background: 'none', border: 'none', borderRadius: 0, whiteSpace: 'nowrap',
     });
 
     return (
         <div style={{ marginTop: '16px' }}>
             {/* Tab bar */}
-            <div style={{ display: 'flex', gap: '4px', marginBottom: '12px', borderBottom: `1px solid ${theme.colors.border}`, paddingBottom: '0' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '12px', borderBottom: `1px solid ${theme.colors.border}`, paddingBottom: '0' }}>
                 <button onClick={() => setActiveTab('accounts')} style={tabStyle(activeTab === 'accounts')}>Accounts</button>
                 <button onClick={() => setActiveTab('performance')} style={tabStyle(activeTab === 'performance')}>Performance</button>
                 <button onClick={() => setActiveTab('trade')} style={tabStyle(activeTab === 'trade')}>Trade Log</button>
