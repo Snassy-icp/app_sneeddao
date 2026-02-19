@@ -409,7 +409,8 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
                                                                     <span key={i} style={{
                                                                         padding: '1px 5px', borderRadius: '3px', fontSize: '0.65rem',
                                                                         background: `${theme.colors.border}60`, color: theme.colors.secondaryText,
-                                                                        whiteSpace: 'nowrap',
+                                                                        wordBreak: 'break-word', overflowWrap: 'anywhere',
+                                                                        maxWidth: '100%',
                                                                     }}>
                                                                         <span style={{ opacity: 0.6 }}>{k}:</span> {v}
                                                                     </span>
@@ -443,7 +444,7 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
                                                                         }}>
                                                                             {entry.source}
                                                                         </span>
-                                                                        <span style={{ fontSize: '0.75rem', color: theme.colors.primaryText, flex: 1, lineHeight: '1.3' }}>
+                                                                        <span style={{ fontSize: '0.75rem', color: theme.colors.primaryText, flex: 1, lineHeight: '1.3', wordBreak: 'break-word', overflowWrap: 'anywhere', minWidth: 0 }}>
                                                                             {entry.message}
                                                                         </span>
                                                                         <span style={{ fontSize: '0.6rem', color: theme.colors.mutedText, whiteSpace: 'nowrap', flexShrink: 0 }}>
