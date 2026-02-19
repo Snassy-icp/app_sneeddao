@@ -1594,10 +1594,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             });
 
             switch (quoteResult) {
-                case (#ok(expectedOutputInt)) {
-                    // ICPSwap returns Int; convert to Nat (negative means error)
-                    if (expectedOutputInt <= 0) return null;
-                    let expectedOutput = Int.abs(expectedOutputInt);
+                case (#ok(expectedOutput)) {
+                    if (expectedOutput == 0) return null;
                     let netOutput = if (expectedOutput > outputFees) { expectedOutput - outputFees } else { 0 };
 
                     // Calculate spot price (as e8s: output per 1e(inputDecimals) input)
@@ -1783,14 +1781,13 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             });
 
             switch (swapResult) {
-                case (#ok(amountOutInt)) {
-                    // ICPSwap returns Int; convert to Nat
-                    if (amountOutInt <= 0) {
-                        return #Err("ICPSwap swap returned non-positive output: " # Int.toText(amountOutInt));
+                case (#ok(amountOut)) {
+                    if (amountOut == 0) {
+                        return #Err("ICPSwap swap returned zero output");
                     };
-                    #Ok({ amountOut = Int.abs(amountOutInt); txId = null })
+                    #Ok({ amountOut = amountOut; txId = null })
                 };
-                case (#err(e)) { #Err("ICPSwap swap failed: " # e.message) };
+                case (#err(e)) { #Err("ICPSwap swap failed: " # T.icpSwapErrorToText(e)) };
             };
         } catch (e) {
             #Err("ICPSwap swap threw: " # Error.message(e))
@@ -3185,7 +3182,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         var totalValue: Nat = 0;
 
         for (target in targets.vals()) {
-            let balance = await getBalance(target.token, null); // Main account
+            let balance = try { await getBalance(target.token, null) }
+                catch (e) {
+                    logEngine.logWarning(src, "Failed to fetch balance for " # tokenLabel(target.token) # ": " # Error.message(e) # " — using 0", null, [
+                        ("token", tokenLabel(target.token)),
+                        ("tokenId", Principal.toText(target.token)),
+                    ]);
+                    0
+                };
             reconcileBalance(target.token, null, balance, src);
 
             // Get value in denomination token.

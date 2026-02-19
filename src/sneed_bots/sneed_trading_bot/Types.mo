@@ -197,8 +197,24 @@ module {
         // Other fields exist but we don't need them
     };
 
+    public type ICPSwapError = {
+        #CommonError;
+        #InsufficientFunds;
+        #InternalError: Text;
+        #UnsupportedToken: Text;
+    };
+
+    public func icpSwapErrorToText(e: ICPSwapError): Text {
+        switch (e) {
+            case (#CommonError) "CommonError";
+            case (#InsufficientFunds) "InsufficientFunds";
+            case (#InternalError(msg)) "InternalError: " # msg;
+            case (#UnsupportedToken(msg)) "UnsupportedToken: " # msg;
+        }
+    };
+
     public type ICPSwapFactoryActor = actor {
-        getPool: shared query (ICPSwapGetPoolArgs) -> async { #ok: ICPSwapPoolData; #err: { message: Text } };
+        getPool: shared query (ICPSwapGetPoolArgs) -> async { #ok: ICPSwapPoolData; #err: ICPSwapError };
     };
 
     public type ICPSwapQuoteArgs = {
@@ -223,10 +239,10 @@ module {
     };
 
     public type ICPSwapPoolActor = actor {
-        quote: shared (ICPSwapQuoteArgs) -> async { #ok: Int; #err: { message: Text } };
-        depositAndSwap: shared (ICPSwapSwapArgs) -> async { #ok: Int; #err: { message: Text } };
-        depositFromAndSwap: shared (ICPSwapSwapArgs) -> async { #ok: Int; #err: { message: Text } };
-        metadata: shared query () -> async { #ok: ICPSwapPoolMetadata; #err: { message: Text } };
+        quote: shared (ICPSwapQuoteArgs) -> async { #ok: Nat; #err: ICPSwapError };
+        depositAndSwap: shared (ICPSwapSwapArgs) -> async { #ok: Nat; #err: ICPSwapError };
+        depositFromAndSwap: shared (ICPSwapSwapArgs) -> async { #ok: Nat; #err: ICPSwapError };
+        metadata: shared query () -> async { #ok: ICPSwapPoolMetadata; #err: ICPSwapError };
     };
 
     // ============================================
