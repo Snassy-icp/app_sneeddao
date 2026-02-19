@@ -252,6 +252,9 @@ const shortPrincipal = (p) => {
     return s.length > 20 ? s.slice(0, 8) + '...' + s.slice(-6) : s;
 };
 
+/** True when a symbol value is a placeholder that should be resolved from cache. */
+const _isPlaceholderSymbol = (s) => !s || s === '?' || s === '???' || s === '???';
+
 // ============================================
 // SHARED PRICE HELPER — two-hop denom pricing via PriceService
 // ============================================
@@ -1368,15 +1371,15 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
         if (!denomKey || targetTokenIds.length === 0) return;
         const key = `${denomKey}:${targetTokenIds.join(',')}`;
         if (key === priceFetchRef.current && Object.keys(denomPrices).length > 0) return;
-        priceFetchRef.current = key;
         setPricesLoading(true);
         try {
-            const decFor = (id) => tokenMeta[id]?.decimals ?? (getTokenMetadataSync(id)?.decimals ?? 8);
+            const decFor = (id) => getTokenMetadataSync(id)?.decimals ?? 8;
             const prices = await fetchDenomPrices(targetTokenIds, denomKey, decFor);
+            priceFetchRef.current = key;
             setDenomPrices(prices);
         } catch (e) { console.warn('Failed to fetch rebalance prices:', e); }
         finally { setPricesLoading(false); }
-    }, [denomKey, targetTokenIds, tokenMeta]);
+    }, [denomKey, targetTokenIds]);
 
     // Auto-fetch balances + prices when targets are known
     useEffect(() => { if (targetTokenIds.length > 0 && canisterId) fetchBalances(); }, [fetchBalances]);
@@ -2415,7 +2418,10 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
             if (!snap?.tokens) return;
             for (const t of snap.tokens) {
                 const tid = typeof t.token === 'string' ? t.token : t.token?.toText?.() || String(t.token);
-                if (!tokenMap.has(tid)) tokenMap.set(tid, { symbol: t.symbol, decimals: Number(t.decimals) });
+                if (!tokenMap.has(tid)) {
+                    const sym = _isPlaceholderSymbol(t.symbol) ? (getTokenMetadataSync(tid)?.symbol || t.symbol) : t.symbol;
+                    tokenMap.set(tid, { symbol: sym, decimals: Number(t.decimals) });
+                }
                 tokenMap.get(tid)[key] = t;
             }
         };
@@ -2757,7 +2763,10 @@ function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
             if (!snap?.tokens) return;
             for (const t of snap.tokens) {
                 const tid = typeof t.token === 'string' ? t.token : t.token?.toText?.() || String(t.token);
-                if (!tokenMap.has(tid)) tokenMap.set(tid, { symbol: t.symbol, decimals: Number(t.decimals) });
+                if (!tokenMap.has(tid)) {
+                    const sym = _isPlaceholderSymbol(t.symbol) ? (getTokenMetadataSync(tid)?.symbol || t.symbol) : t.symbol;
+                    tokenMap.set(tid, { symbol: sym, decimals: Number(t.decimals) });
+                }
                 tokenMap.get(tid)[phase] = t;
             }
         };
@@ -3584,22 +3593,21 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
         return () => { cancelled = true; };
     }, [canisterId, tokenRegistry, subaccounts, identity]);
 
-    // Fetch denomination prices using shared fetchDenomPrices helper (PriceService-backed)
+    // Fetch denomination prices using shared fetchDenomPrices helper (PriceService-backed).
+    // Only depends on denomToken + tokenRegistry (not tokenMeta) so that metadata-loading
+    // state updates don't cancel in-flight price fetches. The decFor helper reads the shared
+    // cache directly for decimals.
     const denomCacheKeyRef = useRef('');
     useEffect(() => {
-        if (!denomToken || tokenRegistry.length === 0) { setDenomPrices({}); return; }
+        if (!denomToken || tokenRegistry.length === 0) { setDenomPrices({}); setLoadingPrices(false); return; }
         const ids = tokenRegistry.map(t => typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId)).sort().join(',');
-        const denomDec = tokenMeta[denomToken]?.decimals;
-        const cacheKey = `${denomToken}:${ids}:d${denomDec ?? '?'}`;
+        const cacheKey = `${denomToken}:${ids}`;
         if (cacheKey === denomCacheKeyRef.current) return;
-        denomCacheKeyRef.current = cacheKey;
         let cancelled = false;
         setLoadingPrices(true);
         (async () => {
             try {
                 const decFor = (id) => {
-                    const meta = tokenMeta[id];
-                    if (meta?.decimals != null) return Number(meta.decimals);
                     const cached = getTokenMetadataSync(id);
                     if (cached?.decimals != null) return Number(cached.decimals);
                     const regEntry = tokenRegistry.find(t => {
@@ -3611,12 +3619,15 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                 };
                 const tokenIds = ids.split(',');
                 const prices = await fetchDenomPrices(tokenIds, denomToken, decFor);
-                if (!cancelled) setDenomPrices(prices);
+                if (!cancelled) {
+                    denomCacheKeyRef.current = cacheKey;
+                    setDenomPrices(prices);
+                }
             } catch (e) { console.warn('Failed to fetch denom prices:', e); }
-            finally { if (!cancelled) setLoadingPrices(false); }
+            finally { setLoadingPrices(false); }
         })();
         return () => { cancelled = true; };
-    }, [denomToken, tokenRegistry, tokenMeta]);
+    }, [denomToken, tokenRegistry]);
 
     // --- Subaccount handlers ---
     const handleCreate = async () => {
@@ -3997,7 +4008,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                                     key={tid}
                                     tid={tid}
                                     index={idx}
-                                    symbol={t.symbol || getSymbol(tid)}
+                                    symbol={_isPlaceholderSymbol(t.symbol) ? getSymbol(tid) : t.symbol}
                                     showRemove={showTokenManager}
                                     onRemove={() => handleRemoveToken(tid)}
                                     onReorder={handleReorderTokens}
@@ -4356,7 +4367,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                                         });
                                     }).map(t => {
                                         const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
-                                        return <option key={tid} value={tid}>{t.symbol || getSymbol(tid)} (0)</option>;
+                                        return <option key={tid} value={tid}>{_isPlaceholderSymbol(t.symbol) ? getSymbol(tid) : t.symbol} (0)</option>;
                                     })}
                                 </select>
                             </div>
@@ -4753,21 +4764,20 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
 
     // Build a principal→symbol map from token registry + snapshot token data
     const symbolMap = React.useMemo(() => {
-        const isPlaceholder = (s) => !s || s === '?' || s === '???' || s === '???';
         const map = {};
         const allPrincipals = new Set();
         for (const entry of tokenRegistry) {
             const key = entry.ledgerCanisterId?.toText?.() || entry.ledgerCanisterId?.toString?.() || '';
             if (!key) continue;
             allPrincipals.add(key);
-            if (!isPlaceholder(entry.symbol)) map[key] = entry.symbol;
+            if (!_isPlaceholderSymbol(entry.symbol)) map[key] = entry.symbol;
         }
         for (const snap of snapshots) {
             for (const tok of (snap.tokens || [])) {
                 const key = tok.token?.toText?.() || tok.token?.toString?.() || '';
                 if (!key) continue;
                 allPrincipals.add(key);
-                if (!isPlaceholder(tok.symbol) && !map[key]) map[key] = tok.symbol;
+                if (!_isPlaceholderSymbol(tok.symbol) && !map[key]) map[key] = tok.symbol;
             }
         }
         for (const [, cached] of lastKnownPrices) {
@@ -4779,7 +4789,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
         for (const p of allPrincipals) {
             if (!map[p]) {
                 const cached = getTokenMetadataSync(p);
-                if (cached?.symbol && !isPlaceholder(cached.symbol)) map[p] = cached.symbol;
+                if (cached?.symbol && !_isPlaceholderSymbol(cached.symbol)) map[p] = cached.symbol;
             }
         }
         return map;
