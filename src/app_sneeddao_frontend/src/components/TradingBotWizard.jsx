@@ -307,12 +307,51 @@ function AmountInput({ label, value, onChange, suffix, theme, placeholder = "0" 
     );
 }
 
+function RiskSettings({ maxSlippage, onSlippageChange, maxImpact, onImpactChange, theme, collapsed = true }) {
+    const [open, setOpen] = useState(!collapsed);
+    return (
+        <div style={{ padding: '10px 12px', background: theme.colors.primaryBg, borderRadius: '10px', border: `1px solid ${theme.colors.border}` }}>
+            <button
+                type="button"
+                onClick={() => setOpen(!open)}
+                style={{
+                    background: 'none', border: 'none', cursor: 'pointer', padding: 0, width: '100%',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    color: theme.colors.secondaryText, fontSize: '0.82rem', fontWeight: '600',
+                }}
+            >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FaShieldAlt size={12} color={ACCENT} />
+                    Risk Tolerances
+                    <span style={{ fontWeight: '400', color: theme.colors.mutedText }}>
+                        ({maxSlippage}% slippage, {maxImpact}% impact)
+                    </span>
+                </span>
+                <span style={{ fontSize: '0.7rem' }}>{open ? '▲' : '▼'}</span>
+            </button>
+            {open && (
+                <div style={{ marginTop: '10px' }}>
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                        <AmountInput label="Max slippage (%)" value={maxSlippage} onChange={onSlippageChange} theme={theme} placeholder="2" />
+                        <AmountInput label="Max price impact (%)" value={maxImpact} onChange={onImpactChange} theme={theme} placeholder="3" />
+                    </div>
+                    <p style={{ fontSize: '0.75rem', color: theme.colors.mutedText, margin: '6px 0 0', lineHeight: '1.4' }}>
+                        Slippage is the max allowed difference between quoted and executed price. Price impact is the max market move your trade can cause. Lower values protect against bad fills but may cause trades to be skipped.
+                    </p>
+                </div>
+            )}
+        </div>
+    );
+}
+
 function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, identity }) {
     const [step, setStep] = useState(1);
     const [inputToken, setInputToken] = useState('');
     const [outputToken, setOutputToken] = useState('');
     const [tradeSize, setTradeSize] = useState('');
     const [intervalMinutes, setIntervalMinutes] = useState('60');
+    const [maxSlippage, setMaxSlippage] = useState('2');
+    const [maxImpact, setMaxImpact] = useState('3');
     const [fundAmount, setFundAmount] = useState('');
     const [walletBalance, setWalletBalance] = useState(null);
     const [inputMeta, setInputMeta] = useState(null);
@@ -383,7 +422,8 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
                 destinationOwner: [], destinationSubaccount: [],
                 minBalance: [], maxBalance: [], balanceDenominationToken: [],
                 minPrice: [], maxPrice: [], priceDenominationToken: [],
-                maxPriceImpactBps: [300], maxSlippageBps: [200],
+                maxPriceImpactBps: [Math.round(Number(maxImpact) * 100)],
+                maxSlippageBps: [Math.round(Number(maxSlippage) * 100)],
                 minFrequencySeconds: [], maxFrequencySeconds: [],
                 tradeSizeDenominationToken: [],
             });
@@ -465,9 +505,10 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
                             <AmountInput label={`Amount per trade (${inputSymbol})`} value={tradeSize} onChange={setTradeSize} theme={theme} />
                             <AmountInput label="Interval (minutes)" value={intervalMinutes} onChange={setIntervalMinutes} theme={theme} placeholder="60" />
                         </div>
-                        <p style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, margin: '8px 0 0', lineHeight: '1.5' }}>
+                        <p style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, margin: '8px 0 12px', lineHeight: '1.5' }}>
                             The bot will swap <strong style={{ color: ACCENT }}>{tradeSize || '?'} {inputSymbol}</strong> for <strong style={{ color: ACCENT }}>{outputSymbol}</strong> every <strong>{intervalMinutes || '?'} minutes</strong>.
                         </p>
+                        <RiskSettings maxSlippage={maxSlippage} onSlippageChange={setMaxSlippage} maxImpact={maxImpact} onImpactChange={setMaxImpact} theme={theme} />
                         <div style={{ display: 'flex', gap: '10px', marginTop: '1.25rem', flexWrap: 'wrap' }}>
                             <button onClick={() => setStep(1)} style={btnSecondary(theme)}><FaArrowLeft size={11} /> Back</button>
                             <button onClick={() => setStep(3)} disabled={!canProceedStep2} style={btnPrimary(theme, canProceedStep2)}>
@@ -525,6 +566,8 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
     const [tradeSizeA, setTradeSizeA] = useState('');
     const [tradeSizeB, setTradeSizeB] = useState('');
     const [intervalMinutes, setIntervalMinutes] = useState('5');
+    const [maxSlippage, setMaxSlippage] = useState('2');
+    const [maxImpact, setMaxImpact] = useState('3');
     const [enableStopLoss, setEnableStopLoss] = useState(false);
     const [stopLossPrice, setStopLossPrice] = useState('');
     const [stopLossSellToken, setStopLossSellToken] = useState('A');
@@ -626,7 +669,8 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                 minBalance: [], maxBalance: [], balanceDenominationToken: [],
                 minPrice: [toRawPrice(sellAMinPrice)], maxPrice: [toRawPrice(sellAMaxPrice)],
                 priceDenominationToken: [Principal.fromText(priceDenomToken)],
-                maxPriceImpactBps: [300], maxSlippageBps: [200],
+                maxPriceImpactBps: [Math.round(Number(maxImpact) * 100)],
+                maxSlippageBps: [Math.round(Number(maxSlippage) * 100)],
                 minFrequencySeconds: [], maxFrequencySeconds: [],
                 tradeSizeDenominationToken: [],
             });
@@ -643,7 +687,8 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                 minBalance: [], maxBalance: [], balanceDenominationToken: [],
                 minPrice: [toRawPrice(sellBMinPrice)], maxPrice: [toRawPrice(sellBMaxPrice)],
                 priceDenominationToken: [Principal.fromText(priceDenomToken)],
-                maxPriceImpactBps: [300], maxSlippageBps: [200],
+                maxPriceImpactBps: [Math.round(Number(maxImpact) * 100)],
+                maxSlippageBps: [Math.round(Number(maxSlippage) * 100)],
                 minFrequencySeconds: [], maxFrequencySeconds: [],
                 tradeSizeDenominationToken: [],
             });
@@ -743,6 +788,9 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                             </div>
                             <AmountInput label="Check interval (minutes)" value={intervalMinutes} onChange={setIntervalMinutes} theme={theme} placeholder="5" />
                         </div>
+                        <div style={{ marginBottom: '12px' }}>
+                            <RiskSettings maxSlippage={maxSlippage} onSlippageChange={setMaxSlippage} maxImpact={maxImpact} onImpactChange={setMaxImpact} theme={theme} />
+                        </div>
                         <div style={{ padding: '12px', background: enableStopLoss ? '#ef444410' : theme.colors.primaryBg, borderRadius: '10px', border: `1px solid ${enableStopLoss ? '#ef444430' : theme.colors.border}`, marginBottom: '4px' }}>
                             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '600', color: theme.colors.primaryText }}>
                                 <input type="checkbox" checked={enableStopLoss} onChange={e => setEnableStopLoss(e.target.checked)} />
@@ -831,6 +879,8 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
     const [denomToken, setDenomToken] = useState(ICP_LEDGER);
     const [thresholdPct, setThresholdPct] = useState('5');
     const [intervalMinutes, setIntervalMinutes] = useState('60');
+    const [maxSlippage, setMaxSlippage] = useState('2');
+    const [maxImpact, setMaxImpact] = useState('3');
     const [fundTokenIdx, setFundTokenIdx] = useState(0);
     const [fundAmount, setFundAmount] = useState('');
     const [walletBalance, setWalletBalance] = useState(null);
@@ -907,6 +957,8 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
             setDeployStep('Configuring settings...');
             await bot.setRebalanceDenominationToken(instId, Principal.fromText(denomToken));
             await bot.setRebalanceThresholdBps(instId, Math.round(Number(thresholdPct) * 100));
+            await bot.setRebalanceMaxSlippageBps(instId, Math.round(Number(maxSlippage) * 100));
+            await bot.setRebalanceMaxPriceImpactBps(instId, Math.round(Number(maxImpact) * 100));
             await bot.setChoreInterval(instId, Number(intervalMinutes) * 60);
 
             if (fundAmount && Number(fundAmount) > 0 && fundToken) {
@@ -1012,9 +1064,10 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
                             <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '6px' }}>Denomination token (for valuation)</label>
                             <TokenSelector value={denomToken} onChange={setDenomToken} onSelectToken={cacheTokenFromSelector} placeholder="Select denomination..." />
                         </div>
-                        <p style={{ fontSize: '0.78rem', color: theme.colors.mutedText, margin: '10px 0 0', lineHeight: '1.5' }}>
+                        <p style={{ fontSize: '0.78rem', color: theme.colors.mutedText, margin: '10px 0 12px', lineHeight: '1.5' }}>
                             The rebalancer will trade when any token deviates by more than {thresholdPct || '?'}% from its target. It checks every {intervalMinutes || '?'} minutes.
                         </p>
+                        <RiskSettings maxSlippage={maxSlippage} onSlippageChange={setMaxSlippage} maxImpact={maxImpact} onImpactChange={setMaxImpact} theme={theme} />
                         <div style={{ display: 'flex', gap: '10px', marginTop: '1.25rem', flexWrap: 'wrap' }}>
                             <button onClick={() => setStep(1)} style={btnSecondary(theme)}><FaArrowLeft size={11} /> Back</button>
                             <button onClick={() => setStep(3)} style={btnPrimary(theme)}>Next <FaArrowRight size={11} /></button>
