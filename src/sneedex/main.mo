@@ -46,6 +46,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     var canisterKinds : [T.CanisterKind] = [
         { id = T.CANISTER_KIND_UNKNOWN; name = "Unknown"; description = "Generic canister"; active = true },
         { id = T.CANISTER_KIND_ICP_NEURON_MANAGER; name = "ICP Staking Bot"; description = "Sneed ICP Staking Bot canister"; active = true },
+        { id = T.CANISTER_KIND_TRADING_BOT; name = "Trading Bot"; description = "Sneed Trading Bot canister"; active = true },
     ];
     var _nextCanisterKindId : T.CanisterKindId = 2; // 0, 1 are reserved (prefixed with _ to suppress unused warning)
     
@@ -124,48 +125,66 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // PRIVATE HELPERS
     // ============================================
     
-    // Helper to deregister canister from seller's wallet (best effort, non-blocking)
-    func deregisterCanisterFromWallet(user : Principal, canisterId : Principal, isNeuronManager : Bool) : async () {
-        if (isNeuronManager) {
-            // Neuron managers: deregister from factory only (not tracked canisters)
-            switch (neuronManagerFactoryCanisterId) {
-                case (?id) {
-                    let factory : T.NeuronManagerFactoryActor = actor(Principal.toText(id));
-                    try { ignore await factory.deregisterManagerFor(user, canisterId); } catch (_) {};
+    // Helper to deregister canister from seller's wallet (best effort, non-blocking).
+    // Known Sneedapp canister kinds are deregistered from the Sneedapp factory wallet;
+    // unknown kinds fall back to the backend tracked canisters list.
+    func deregisterCanisterFromWallet(user : Principal, canisterId : Principal, canister_kind : ?T.CanisterKindId) : async () {
+        let appId : ?Text = switch (canister_kind) {
+            case (?kind) { T.canisterKindToAppId(kind) };
+            case null { null };
+        };
+        switch (appId) {
+            case (?_) {
+                // Known Sneedapp canister: deregister from factory wallet
+                switch (neuronManagerFactoryCanisterId) {
+                    case (?id) {
+                        let factory : T.SneedappFactoryActor = actor(Principal.toText(id));
+                        try { ignore await factory.deregisterCanisterFor(user, canisterId); } catch (_) {};
+                    };
+                    case null {};
                 };
-                case null {};
             };
-        } else {
-            // Regular canisters: deregister from tracked canisters
-            switch (backendCanisterId) {
-                case (?id) {
-                    let backend : T.BackendActor = actor(Principal.toText(id));
-                    try { await backend.unregister_tracked_canister_for(user, canisterId); } catch (_) {};
+            case null {
+                // Unknown canister kind: deregister from backend tracked canisters
+                switch (backendCanisterId) {
+                    case (?id) {
+                        let backend : T.BackendActor = actor(Principal.toText(id));
+                        try { await backend.unregister_tracked_canister_for(user, canisterId); } catch (_) {};
+                    };
+                    case null {};
                 };
-                case null {};
             };
         };
     };
     
-    // Helper to register canister to buyer's wallet (best effort, non-blocking)
-    func registerCanisterToWallet(user : Principal, canisterId : Principal, isNeuronManager : Bool) : async () {
-        if (isNeuronManager) {
-            // Neuron managers: register with factory only (not tracked canisters)
-            switch (neuronManagerFactoryCanisterId) {
-                case (?id) {
-                    let factory : T.NeuronManagerFactoryActor = actor(Principal.toText(id));
-                    try { ignore await factory.registerManagerFor(user, canisterId); } catch (_) {};
+    // Helper to register canister to buyer's wallet (best effort, non-blocking).
+    // Known Sneedapp canister kinds are registered to the Sneedapp factory wallet with the correct appId;
+    // unknown kinds fall back to the backend tracked canisters list.
+    func registerCanisterToWallet(user : Principal, canisterId : Principal, canister_kind : ?T.CanisterKindId) : async () {
+        let appId : ?Text = switch (canister_kind) {
+            case (?kind) { T.canisterKindToAppId(kind) };
+            case null { null };
+        };
+        switch (appId) {
+            case (?aid) {
+                // Known Sneedapp canister: register to factory wallet with appId
+                switch (neuronManagerFactoryCanisterId) {
+                    case (?id) {
+                        let factory : T.SneedappFactoryActor = actor(Principal.toText(id));
+                        try { ignore await factory.registerCanisterFor(user, canisterId, aid); } catch (_) {};
+                    };
+                    case null {};
                 };
-                case null {};
             };
-        } else {
-            // Regular canisters: register to tracked canisters
-            switch (backendCanisterId) {
-                case (?id) {
-                    let backend : T.BackendActor = actor(Principal.toText(id));
-                    try { await backend.register_tracked_canister_for(user, canisterId); } catch (_) {};
+            case null {
+                // Unknown canister kind: register to backend tracked canisters
+                switch (backendCanisterId) {
+                    case (?id) {
+                        let backend : T.BackendActor = actor(Principal.toText(id));
+                        try { await backend.register_tracked_canister_for(user, canisterId); } catch (_) {};
+                    };
+                    case null {};
                 };
-                case null {};
             };
         };
     };
@@ -721,11 +740,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 for (entry in offer.assets.vals()) {
                                     switch (entry.asset) {
                                         case (#Canister(asset)) {
-                                            let isNeuronManager = switch (asset.canister_kind) {
-                                                case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
-                                                case null { false };
-                                            };
-                                            await registerCanisterToWallet(bid.bidder, asset.canister_id, isNeuronManager);
+                                            await registerCanisterToWallet(bid.bidder, asset.canister_id, asset.canister_kind);
                                         };
                                         case (#SNSNeuron(_asset)) {
                                             // For SNS neurons, frontend handles display
@@ -944,11 +959,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     if (entry.escrowed) {
                         switch (entry.asset) {
                             case (#Canister(asset)) {
-                                let isNeuronManager = switch (asset.canister_kind) {
-                                    case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
-                                    case null { false };
-                                };
-                                await registerCanisterToWallet(offer.creator, asset.canister_id, isNeuronManager);
+                                await registerCanisterToWallet(offer.creator, asset.canister_id, asset.canister_kind);
                             };
                             case (#SNSNeuron(_asset)) {
                                 // SNS neurons are shown via SNS governance, no registration needed
@@ -1886,16 +1897,16 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         updateOffer(offerId, updatedOffer);
                                         
                                         // Deregister canister from seller's wallet (best effort, non-blocking)
-                                        let isNeuronManager = switch (canisterAsset.canister_kind) {
-                                            case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
-                                            case null { false };
-                                        };
                                         ignore Timer.setTimer<system>(#seconds 0, func () : async () {
-                                            await deregisterCanisterFromWallet(caller, canisterAsset.canister_id, isNeuronManager);
+                                            await deregisterCanisterFromWallet(caller, canisterAsset.canister_id, canisterAsset.canister_kind);
                                         });
                                         
                                         // If it's a neuron manager, snapshot and clear neuron hotkeys + botkeys (best effort, non-blocking)
-                                        if (isNeuronManager) {
+                                        let isNeuronMgr = switch (canisterAsset.canister_kind) {
+                                            case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
+                                            case null { false };
+                                        };
+                                        if (isNeuronMgr) {
                                             ignore Timer.setTimer<system>(#seconds 1, func () : async () {
                                                 await snapshotAndCleanNeuronManager(canisterAsset.canister_id);
                                             });
@@ -2683,11 +2694,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     for (entry in offer.assets.vals()) {
                                         switch (entry.asset) {
                                             case (#Canister(asset)) {
-                                                let isNeuronManager = switch (asset.canister_kind) {
-                                                    case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
-                                                    case null { false };
-                                                };
-                                                await registerCanisterToWallet(buyerPrincipal, asset.canister_id, isNeuronManager);
+                                                await registerCanisterToWallet(buyerPrincipal, asset.canister_id, asset.canister_kind);
                                             };
                                             case (#SNSNeuron(asset)) {
                                                 // For SNS neurons, register the SNS token ledger
@@ -3019,11 +3026,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         if (entry.escrowed) {
                             switch (entry.asset) {
                                 case (#Canister(asset)) {
-                                    let isNeuronManager = switch (asset.canister_kind) {
-                                        case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
-                                        case null { false };
-                                    };
-                                    await registerCanisterToWallet(creatorPrincipal, asset.canister_id, isNeuronManager);
+                                    await registerCanisterToWallet(creatorPrincipal, asset.canister_id, asset.canister_kind);
                                 };
                                 case (#SNSNeuron(_asset)) {};
                                 case (#ICRC1Token(_asset)) {};

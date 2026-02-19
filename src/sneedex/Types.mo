@@ -47,6 +47,7 @@ module {
     // Canister kind IDs (well-known)
     public let CANISTER_KIND_UNKNOWN : CanisterKindId = 0;
     public let CANISTER_KIND_ICP_NEURON_MANAGER : CanisterKindId = 1;
+    public let CANISTER_KIND_TRADING_BOT : CanisterKindId = 2;
     
     // ============================================
     // ICRC1 TYPES
@@ -612,10 +613,18 @@ module {
         unregister_user_token_for : (user: Principal, ledger_id: Principal) -> async ();
     };
     
-    // Neuron manager factory actor for manager registration
-    public type NeuronManagerFactoryActor = actor {
-        registerManagerFor : (user: Principal, canisterId: Principal) -> async { #Ok; #Err: Text };
-        deregisterManagerFor : (user: Principal, canisterId: Principal) -> async { #Ok; #Err: Text };
+    // Sneedapp factory actor for canister wallet registration
+    public type SneedappFactoryActor = actor {
+        registerCanisterFor : (user: Principal, canisterId: Principal, appId: Text) -> async { #Ok; #Err: Text };
+        deregisterCanisterFor : (user: Principal, canisterId: Principal) -> async { #Ok; #Err: Text };
+    };
+
+    // Maps canister kind to Sneedapp appId for wallet registration.
+    // Returns null for unknown kinds (those go to backend tracked canisters instead).
+    public func canisterKindToAppId(kind : CanisterKindId) : ?Text {
+        if (kind == CANISTER_KIND_ICP_NEURON_MANAGER) { ?"sneed-icp-staking-bot" }
+        else if (kind == CANISTER_KIND_TRADING_BOT) { ?"sneed-trading-bot" }
+        else { null }
     };
     
     // ============================================
