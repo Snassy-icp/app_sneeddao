@@ -7082,7 +7082,7 @@ function Wallet() {
                                                             style={{ 
                                                                 position: 'absolute', 
                                                                 top: 0, 
-                                                                right: 0,
+                                                                left: 0,
                                                                 color: theme.colors.accent
                                                             }}
                                                             title="You are a controller"
@@ -7095,7 +7095,7 @@ function Wallet() {
                                                             style={{ 
                                                                 position: 'absolute', 
                                                                 bottom: 0, 
-                                                                right: 0,
+                                                                left: 0,
                                                                 color: '#ef4444'
                                                             }}
                                                             title="WASM hash doesn't match any known app version"
@@ -8443,7 +8443,7 @@ function Wallet() {
                                                                 style={{ 
                                                                     position: 'absolute', 
                                                                     top: 0, 
-                                                                    right: 0,
+                                                                    left: 0,
                                                                     color: '#f59e0b'
                                                                 }}
                                                                 title="You are a controller"
@@ -9131,7 +9131,7 @@ function Wallet() {
                                                                 style={{ 
                                                                     position: 'absolute', 
                                                                     top: 0, 
-                                                                    right: 0,
+                                                                    left: 0,
                                                                     color: '#f59e0b'
                                                                 }}
                                                                 title="You are a controller"
@@ -9143,7 +9143,7 @@ function Wallet() {
                                                             style={{ 
                                                                 position: 'absolute', 
                                                                 bottom: 0, 
-                                                                right: 0,
+                                                                left: 0,
                                                                 color: '#ef4444'
                                                             }}
                                                             title="Canister WASM matches ICP staking bot but interface is not working"
@@ -9380,7 +9380,7 @@ function Wallet() {
                                                             style={{ 
                                                                 position: 'absolute', 
                                                                 top: 0, 
-                                                                right: 0,
+                                                                left: 0,
                                                                 color: theme.colors.accent
                                                             }}
                                                             title="You are a controller"

@@ -270,7 +270,7 @@ const DappCardModal = ({
                                     style={{ 
                                         position: 'absolute',
                                         top: '-2px',
-                                        right: '-2px',
+                                        left: '-2px',
                                         color: '#f59e0b'
                                     }} 
                                     title="You are a controller"

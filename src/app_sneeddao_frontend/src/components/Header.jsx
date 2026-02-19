@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea, FaCloudDownloadAlt, FaBolt, FaRobot, FaCubes, FaChartLine, FaArrowUp } from 'react-icons/fa';
+import BotIcon from './BotIcon';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -1591,14 +1592,14 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                                 }}
                                             >
                                                 <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', width: '24px', height: '16px' }}>
-                                                    <FaRobot size={14} style={{ color: theme.colors.mutedText }} />
+                                                    <BotIcon type="staking" size={14} color={theme.colors.mutedText} />
                                                     {snsLogo && (
                                                         <img 
                                                             src={snsLogo} 
                                                             alt="SNS" 
                                                             style={{ 
                                                                 position: 'absolute', 
-                                                                left: '8px', 
+                                                                left: '10px', 
                                                                 top: '50%', 
                                                                 transform: 'translateY(-50%)', 
                                                                 width: '14px', 

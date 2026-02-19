@@ -2822,7 +2822,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                       style={{ 
                                                           position: 'absolute',
                                                           top: '-2px',
-                                                          right: '-2px',
+                                                          left: '-2px',
                                                           color: '#f59e0b'
                                                       }} 
                                                   />
@@ -3009,7 +3009,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                       style={{ 
                                                           position: 'absolute',
                                                           top: '-2px',
-                                                          right: '-2px',
+                                                          left: '-2px',
                                                           color: '#f59e0b'
                                                       }} 
                                                   />

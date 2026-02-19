@@ -2895,17 +2895,17 @@ export default function AppsPage() {
                                 style={{ 
                                     position: 'absolute', 
                                     top: -4, 
-                                    right: -4, 
+                                    left: -4, 
                                     color: '#f59e0b',
                                 }} 
                                 title="You are a controller"
                             />
                         )}
-                        {/* Cycle status lamp - top left */}
+                        {/* Cycle status lamp - bottom left */}
                         <span
                             style={{
                                 position: 'absolute',
-                                top: -3,
+                                bottom: -3,
                                 left: -3,
                                 width: '8px',
                                 height: '8px',
@@ -3048,11 +3048,11 @@ export default function AppsPage() {
                 <div style={styles.canisterInfo}>
                     <div style={{ ...styles.canisterIcon, position: 'relative' }}>
                         {getCanisterTypeIcon(displayInfo?.canisterTypes, 18, theme.colors.accent)}
-                        {/* Cycle status lamp - top left */}
+                        {/* Cycle status lamp - bottom left */}
                         <span
                             style={{
                                 position: 'absolute',
-                                top: -3,
+                                bottom: -3,
                                 left: -3,
                                 width: '8px',
                                 height: '8px',
@@ -3575,17 +3575,17 @@ export default function AppsPage() {
                                 style={{ 
                                     position: 'absolute', 
                                     top: -4, 
-                                    right: -4, 
+                                    left: -4, 
                                     color: '#f59e0b',
                                 }} 
                                 title="You are a controller"
                             />
                         )}
-                        {/* Cycle status lamp - top left */}
+                        {/* Cycle status lamp - bottom left */}
                         <span
                             style={{
                                 position: 'absolute',
-                                top: -3,
+                                bottom: -3,
                                 left: -3,
                                 width: '8px',
                                 height: '8px',
@@ -5537,17 +5537,17 @@ export default function AppsPage() {
                                                                     style={{ 
                                                                         position: 'absolute', 
                                                                         top: -4, 
-                                                                        right: -4, 
+                                                                        left: -4, 
                                                                         color: '#f59e0b',
                                                                     }} 
                                                                     title="You are a controller"
                                                                 />
                                                             )}
-                                                            {/* Cycle status lamp - top left */}
+                                                            {/* Cycle status lamp - bottom left */}
                                                             <span
                                                                 style={{
                                                                     position: 'absolute',
-                                                                    top: -3,
+                                                                    bottom: -3,
                                                                     left: -3,
                                                                     width: '8px',
                                                                     height: '8px',
@@ -5704,17 +5704,17 @@ export default function AppsPage() {
                                                                     style={{ 
                                                                         position: 'absolute', 
                                                                         top: -4, 
-                                                                        right: -4, 
+                                                                        left: -4, 
                                                                         color: '#f59e0b',
                                                                     }} 
                                                                     title="You are a controller"
                                                                 />
                                                             )}
-                                                            {/* Cycle status lamp - top left */}
+                                                            {/* Cycle status lamp - bottom left */}
                                                             <span
                                                                 style={{
                                                                     position: 'absolute',
-                                                                    top: -3,
+                                                                    bottom: -3,
                                                                     left: -3,
                                                                     width: '8px',
                                                                     height: '8px',
@@ -6144,17 +6144,17 @@ export default function AppsPage() {
                                                                         style={{ 
                                                                             position: 'absolute', 
                                                                             top: -4, 
-                                                                            right: -4, 
+                                                                            left: -4, 
                                                                             color: '#f59e0b',
                                                                         }} 
                                                                         title="You are a controller"
                                                                     />
                                                                 )}
-                                                                {/* Cycle status lamp - top left */}
+                                                                {/* Cycle status lamp - bottom left */}
                                                                 <span
                                                                     style={{
                                                                         position: 'absolute',
-                                                                        top: -3,
+                                                                        bottom: -3,
                                                                         left: -3,
                                                                         width: '8px',
                                                                         height: '8px',

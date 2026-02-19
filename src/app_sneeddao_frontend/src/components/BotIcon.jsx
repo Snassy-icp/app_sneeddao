@@ -10,9 +10,14 @@ import { FaRobot, FaBrain, FaChartLine } from 'react-icons/fa';
  * @param {object} [style] - Additional style for the robot icon
  * @param {string} [className] - Optional className on the wrapper
  */
+const BADGE_ACCENT = {
+    staking: '#a78bfa',
+    trading: '#2dd4bf',
+};
+
 export default function BotIcon({ type, size = 16, color, style, className }) {
     const BadgeIcon = type === 'staking' ? FaBrain : type === 'trading' ? FaChartLine : null;
-    const showBadge = BadgeIcon && size >= 16;
+    const showBadge = BadgeIcon && size >= 12;
 
     if (!showBadge) {
         return <FaRobot size={size} style={{ color, ...style }} className={className} />;
@@ -21,6 +26,7 @@ export default function BotIcon({ type, size = 16, color, style, className }) {
     const badgeSize = Math.max(8, Math.round(size * 0.45));
     const offsetTop = size >= 28 ? -Math.round(size * 0.04) : -Math.round(size * 0.1);
     const offsetRight = size >= 28 ? -Math.round(size * 0.06) : -Math.round(size * 0.14);
+    const badgeColor = BADGE_ACCENT[type] || color || 'currentColor';
 
     return (
         <span
@@ -38,13 +44,12 @@ export default function BotIcon({ type, size = 16, color, style, className }) {
             <FaRobot size={size} style={{ color, ...style }} />
             <BadgeIcon
                 style={{
-                    color: color || 'currentColor',
+                    color: badgeColor,
                     fontSize: `${badgeSize}px`,
                     position: 'absolute',
                     top: `${offsetTop}px`,
                     right: `${offsetRight}px`,
-                    opacity: 0.85,
-                    filter: size >= 28 ? 'drop-shadow(0 0 1px rgba(0,0,0,0.3))' : undefined,
+                    filter: `drop-shadow(0 0 1px rgba(0,0,0,0.4))`,
                 }}
             />
         </span>
