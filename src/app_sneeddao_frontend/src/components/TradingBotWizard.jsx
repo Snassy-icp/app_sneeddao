@@ -4,7 +4,7 @@ import { FaCheck, FaArrowRight, FaArrowLeft, FaMagic, FaTimes, FaSpinner, FaWall
 import { useTheme } from '../contexts/ThemeContext';
 import TokenSelector from './TokenSelector';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
-import { getTokenMetadataSync } from '../hooks/useTokenCache';
+import { getTokenMetadataSync, setTokenMetadataManual } from '../hooks/useTokenCache';
 
 const ACCENT = '#10b981';
 const ACCENT_SECONDARY = '#34d399';
@@ -258,19 +258,28 @@ function WizardCard({ children, theme }) {
     );
 }
 
+function cacheTokenFromSelector(tokenData) {
+    if (!tokenData?.ledger_id) return;
+    setTokenMetadataManual(tokenData.ledger_id, {
+        symbol: tokenData.symbol,
+        decimals: tokenData.decimals,
+        fee: tokenData.fee,
+    });
+}
+
 function TokenPairSelector({ inputToken, outputToken, onInputChange, onOutputChange, theme, inputLabel = "From token", outputLabel = "To token" }) {
     return (
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <div style={{ flex: 1, minWidth: '180px' }}>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '6px' }}>{inputLabel}</label>
-                <TokenSelector value={inputToken} onChange={onInputChange} placeholder="Select token..." />
+                <TokenSelector value={inputToken} onChange={onInputChange} onSelectToken={cacheTokenFromSelector} placeholder="Select token..." />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', padding: '0 4px', paddingBottom: '8px' }}>
                 <FaArrowRight size={14} color={ACCENT} />
             </div>
             <div style={{ flex: 1, minWidth: '180px' }}>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '6px' }}>{outputLabel}</label>
-                <TokenSelector value={outputToken} onChange={onOutputChange} placeholder="Select token..." excludeTokens={inputToken ? [inputToken] : []} />
+                <TokenSelector value={outputToken} onChange={onOutputChange} onSelectToken={cacheTokenFromSelector} placeholder="Select token..." excludeTokens={inputToken ? [inputToken] : []} />
             </div>
         </div>
     );
@@ -954,7 +963,7 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
                             <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
                                 <div style={{ flex: 2, minWidth: '180px' }}>
                                     {i === 0 && <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '600', color: theme.colors.secondaryText, marginBottom: '4px' }}>Token</label>}
-                                    <TokenSelector value={t.token} onChange={v => updateTarget(i, 'token', v)} placeholder="Select token..." excludeTokens={usedTokens.filter(tk => tk !== t.token)} />
+                                    <TokenSelector value={t.token} onChange={v => updateTarget(i, 'token', v)} onSelectToken={cacheTokenFromSelector} placeholder="Select token..." excludeTokens={usedTokens.filter(tk => tk !== t.token)} />
                                 </div>
                                 <div style={{ flex: 1, minWidth: '90px' }}>
                                     {i === 0 && <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '600', color: theme.colors.secondaryText, marginBottom: '4px' }}>Target %</label>}
@@ -1001,7 +1010,7 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
                         </div>
                         <div style={{ flex: 1, minWidth: '180px', marginBottom: '4px' }}>
                             <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '6px' }}>Denomination token (for valuation)</label>
-                            <TokenSelector value={denomToken} onChange={setDenomToken} placeholder="Select denomination..." />
+                            <TokenSelector value={denomToken} onChange={setDenomToken} onSelectToken={cacheTokenFromSelector} placeholder="Select denomination..." />
                         </div>
                         <p style={{ fontSize: '0.78rem', color: theme.colors.mutedText, margin: '10px 0 0', lineHeight: '1.5' }}>
                             The rebalancer will trade when any token deviates by more than {thresholdPct || '?'}% from its target. It checks every {intervalMinutes || '?'} minutes.
