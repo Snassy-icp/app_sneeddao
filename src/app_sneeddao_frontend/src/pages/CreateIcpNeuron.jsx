@@ -150,8 +150,6 @@ function CreateIcpNeuron() {
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-    const [factoryInfo, setFactoryInfo] = useState(null);
-    
     // Payment state
     const [paymentConfig, setPaymentConfig] = useState(null);
     const [pricingInfo, setPricingInfo] = useState(null);
@@ -247,19 +245,10 @@ function CreateIcpNeuron() {
             const appPricePromise = identity 
                 ? factory.getAppMintPrice('sneed-icp-staking-bot', identity.getPrincipal())
                 : Promise.resolve(null);
-            const [version, cyclesBalance, managerCount, config, appPrice] = await Promise.all([
-                factory.getCurrentVersion(),
-                factory.getCyclesBalance(),
-                factory.getManagerCount(),
+            const [config, appPrice] = await Promise.all([
                 factory.getPaymentConfig(),
                 appPricePromise,
             ]);
-            
-            setFactoryInfo({
-                version: `${version.major}.${version.minor}.${version.patch}`,
-                cyclesBalance: Number(cyclesBalance),
-                managerCount: Number(managerCount),
-            });
             
             setPaymentConfig({
                 creationFeeE8s: Number(config.creationFeeE8s),
@@ -606,61 +595,6 @@ function CreateIcpNeuron() {
             {/* Main Content */}
             <main style={{ maxWidth: '900px', margin: '0 auto', padding: '1.5rem 1rem' }}>
                 
-                {/* Factory Stats */}
-                {factoryInfo && (
-                    <div className="neuron-fade-in" style={{
-                        display: 'flex',
-                        gap: '1rem',
-                        marginBottom: '1.5rem',
-                        flexWrap: 'wrap'
-                    }}>
-                        <div style={{
-                            flex: '1 1 150px',
-                            background: theme.colors.cardGradient,
-                            borderRadius: '12px',
-                            padding: '1rem 1.25rem',
-                            border: `1px solid ${theme.colors.border}`,
-                            boxShadow: theme.colors.cardShadow,
-                            textAlign: 'center'
-                        }}>
-                            <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Version</div>
-                            <div style={{ color: theme.colors.primaryText, fontSize: '1.25rem', fontWeight: '700' }}>
-                                v{factoryInfo.version}
-                            </div>
-                        </div>
-                        {isAdmin && (
-                            <div style={{
-                                flex: '1 1 150px',
-                                background: theme.colors.cardGradient,
-                                borderRadius: '12px',
-                                padding: '1rem 1.25rem',
-                                border: `1px solid ${theme.colors.border}`,
-                                boxShadow: theme.colors.cardShadow,
-                                textAlign: 'center'
-                            }}>
-                                <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Managers</div>
-                                <div style={{ color: theme.colors.primaryText, fontSize: '1.25rem', fontWeight: '700' }}>
-                                    {factoryInfo.managerCount}
-                                </div>
-                            </div>
-                        )}
-                        <div style={{
-                            flex: '1 1 150px',
-                            background: theme.colors.cardGradient,
-                            borderRadius: '12px',
-                            padding: '1rem 1.25rem',
-                            border: `1px solid ${theme.colors.border}`,
-                            boxShadow: theme.colors.cardShadow,
-                            textAlign: 'center'
-                        }}>
-                            <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Factory Cycles</div>
-                            <div style={{ color: theme.colors.primaryText, fontSize: '1.25rem', fontWeight: '700' }}>
-                                {(factoryInfo.cyclesBalance / 1_000_000_000_000).toFixed(2)}T
-                            </div>
-                        </div>
-                    </div>
-                )}
-
                 {/* Not authenticated message */}
                 {!isAuthenticated && (
                     <div className="neuron-card-animate" style={{
@@ -840,9 +774,14 @@ function CreateIcpNeuron() {
                                 }}>
                                     <FaPlus style={{ color: neuronPrimary, fontSize: '24px' }} />
                                 </div>
-                                <h3 style={{ color: theme.colors.primaryText, marginBottom: '0.75rem', fontSize: '1.2rem', fontWeight: '600' }}>
+                                <h3 style={{ color: theme.colors.primaryText, marginBottom: '0.5rem', fontSize: '1.2rem', fontWeight: '600' }}>
                                     Create New Staking Bot
                                 </h3>
+                                {latestOfficialVersion && (
+                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.75rem' }}>
+                                        Latest version: <strong style={{ color: neuronPrimary }}>v{Number(latestOfficialVersion.major)}.{Number(latestOfficialVersion.minor)}.{Number(latestOfficialVersion.patch)}</strong>
+                                    </div>
+                                )}
                                 <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '1.5rem', maxWidth: '400px', margin: '0 auto 1.5rem' }}>
                                     Create a dedicated canister to manage your ICP neurons with full control.
                                 </p>

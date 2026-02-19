@@ -249,15 +249,18 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
             
             updateLastProgress('complete');
             
-            // Step 2: Create neuron manager
+            // Step 2: Mint canister via sneedapp
             addProgress('Creating your ICP staking bot canister...', 'active');
             
-            const createResult = await factory.createNeuronManager();
+            const createResult = await factory.mintCanister('sneed-icp-staking-bot', [], [], []);
             
             if ('Err' in createResult) {
                 const err = createResult.Err;
                 if ('InsufficientPayment' in err) {
                     throw new Error(`Insufficient payment: needed ${formatIcp(Number(err.InsufficientPayment.required))} ICP`);
+                }
+                if ('TransferFailed' in err) {
+                    throw new Error(`Internal transfer failed: ${err.TransferFailed}. Your deposit is safe — try again or contact an admin.`);
                 }
                 throw new Error(`Creation failed: ${JSON.stringify(err)}`);
             }
