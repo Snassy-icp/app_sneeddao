@@ -253,55 +253,42 @@ const shortPrincipal = (p) => {
 };
 
 // ============================================
-// TOKEN METADATA CACHE — shared across panels
+// TOKEN METADATA — backed by the site-wide shared cache (IndexedDB + memory)
 // ============================================
-// Global in-memory cache: canisterId -> { symbol, name, decimals, fee }
-const _tokenMetaCache = new Map();
+import {
+    getTokenMetadataSync,
+    hasTokenMetadata,
+    fetchAndCacheTokenMetadata,
+    setTokenMetadataManual,
+} from '../hooks/useTokenCache';
 
-/** Resolve a canister principal to token metadata. Uses cache, falls back to ICRC-1 metadata call. */
-async function resolveTokenMeta(canisterId, identity) {
-    const key = typeof canisterId === 'string' ? canisterId : canisterId?.toText?.() || String(canisterId);
-    if (_tokenMetaCache.has(key)) return _tokenMetaCache.get(key);
-    try {
-        const actor = createLedgerActor(key, { agentOptions: { identity } });
-        const metadata = await actor.icrc1_metadata();
-        const info = { symbol: 'TOKEN', name: 'Unknown', decimals: 8, fee: 0n };
-        for (const [k, v] of metadata) {
-            if (k === 'icrc1:symbol' && 'Text' in v) info.symbol = v.Text;
-            else if (k === 'icrc1:name' && 'Text' in v) info.name = v.Text;
-            else if (k === 'icrc1:decimals' && 'Nat' in v) info.decimals = Number(v.Nat);
-            else if (k === 'icrc1:fee' && 'Nat' in v) info.fee = v.Nat;
-        }
-        _tokenMetaCache.set(key, info);
-        return info;
-    } catch {
-        const fallback = { symbol: key.slice(0, 5) + '...', name: key, decimals: 8, fee: 0n };
-        _tokenMetaCache.set(key, fallback);
-        return fallback;
-    }
+/** Convert shared cache shape → local shape used by getSymbol/getDecimals helpers. */
+function _toLocalMeta(cached) {
+    if (!cached) return null;
+    return { symbol: cached.symbol || '???', name: cached.symbol || '???', decimals: cached.decimals ?? 8, fee: cached.fee ?? 0 };
 }
 
-/** Store metadata from TokenSelector's onSelectToken callback into the cache. */
+/** Store metadata from TokenSelector's onSelectToken callback into the shared cache. */
 function cacheTokenMeta(tokenData) {
     if (!tokenData?.ledger_id) return;
-    _tokenMetaCache.set(tokenData.ledger_id, {
-        symbol: tokenData.symbol || 'TOKEN',
-        name: tokenData.name || 'Unknown',
-        decimals: tokenData.decimals ?? 8,
-        fee: tokenData.fee ?? 0n,
+    setTokenMetadataManual(tokenData.ledger_id, {
+        symbol: tokenData.symbol,
+        decimals: tokenData.decimals,
+        fee: tokenData.fee,
     });
 }
 
 /**
  * Hook that resolves an array of canister IDs to metadata, returning a map.
- * Updates as each token resolves.
+ * Reads from the shared persistent cache first, fetches missing tokens asynchronously.
  */
 function useTokenMetadata(canisterIds, identity) {
     const [meta, setMeta] = useState(() => {
         const m = {};
         for (const id of canisterIds) {
             const key = typeof id === 'string' ? id : id?.toText?.() || String(id);
-            if (_tokenMetaCache.has(key)) m[key] = _tokenMetaCache.get(key);
+            const cached = _toLocalMeta(getTokenMetadataSync(key));
+            if (cached) m[key] = cached;
         }
         return m;
     });
@@ -313,21 +300,29 @@ function useTokenMetadata(canisterIds, identity) {
         if (key === prevIdsRef.current) return;
         prevIdsRef.current = key;
 
-        let mounted = true;
-        const missing = ids.filter(id => !_tokenMetaCache.has(id));
-        if (missing.length === 0) {
-            // All cached
-            const m = {};
-            for (const id of ids) m[id] = _tokenMetaCache.get(id);
-            setMeta(m);
-            return;
+        // Synchronously populate from shared cache
+        const initial = {};
+        const missing = [];
+        for (const id of ids) {
+            const cached = _toLocalMeta(getTokenMetadataSync(id));
+            if (cached) {
+                initial[id] = cached;
+            } else {
+                missing.push(id);
+            }
         }
-        // Resolve missing in parallel
+        if (Object.keys(initial).length > 0) setMeta(prev => ({ ...prev, ...initial }));
+
+        if (missing.length === 0) return;
+
+        let mounted = true;
         (async () => {
-            await Promise.all(missing.map(id => resolveTokenMeta(id, identity)));
+            await Promise.all(missing.map(id => fetchAndCacheTokenMetadata(id, identity)));
             if (!mounted) return;
             const m = {};
-            for (const id of ids) m[id] = _tokenMetaCache.get(id) || { symbol: shortPrincipal(id), name: id, decimals: 8, fee: 0n };
+            for (const id of ids) {
+                m[id] = _toLocalMeta(getTokenMetadataSync(id)) || { symbol: shortPrincipal(id), name: id, decimals: 8, fee: 0 };
+            }
             setMeta(m);
         })();
         return () => { mounted = false; };
@@ -1249,7 +1244,8 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
     const getTokenLabel = (principal) => {
         const key = typeof principal === 'string' ? principal : principal?.toText?.() || String(principal);
         const m = tokenMeta[key];
-        return m ? `${m.symbol} (${m.name})` : shortPrincipal(key);
+        if (!m) return shortPrincipal(key);
+        return m.name && m.name !== m.symbol ? `${m.symbol} (${m.name})` : m.symbol;
     };
     const getSymbol = (principal) => {
         const key = typeof principal === 'string' ? principal : principal?.toText?.() || String(principal);
@@ -4805,13 +4801,17 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
         return map;
     }, [tokenRegistry, snapshots]);
 
-    // Resolve token symbol from registry or snapshot data
+    // Resolve token symbol from registry, snapshot data, or shared cache
     const tokenSymbol = (principalText) => {
-        return symbolMap[principalText] || principalText.slice(0, 10) + '...';
+        if (symbolMap[principalText]) return symbolMap[principalText];
+        const cached = getTokenMetadataSync(principalText);
+        return cached?.symbol || principalText.slice(0, 10) + '...';
     };
     const tokenDecimals = (principalText) => {
         const entry = tokenRegistry.find(t => (t.ledgerCanisterId?.toText?.() || t.ledgerCanisterId?.toString?.() || '') === principalText);
-        return entry?.decimals != null ? Number(entry.decimals) : 8;
+        if (entry?.decimals != null) return Number(entry.decimals);
+        const cached = getTokenMetadataSync(principalText);
+        return cached?.decimals ?? 8;
     };
 
     const formatNum = (val, denom) => {
@@ -5363,7 +5363,9 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
         const entry = tokenRegistry.find(t => (t.ledgerCanisterId?.toText?.() || t.ledgerCanisterId?.toString?.()) === p);
         if (entry) return entry;
         const wl = (wlTokens || []).find(t => (t.ledger_id?.toString?.() || t.ledger_id) === p);
-        return wl ? { symbol: wl.symbol, decimals: wl.decimals ?? 8 } : null;
+        if (wl) return { symbol: wl.symbol, decimals: wl.decimals ?? 8 };
+        const cached = getTokenMetadataSync(p);
+        return cached ? { symbol: cached.symbol, decimals: cached.decimals ?? 8 } : null;
     };
     const getTokenDecimals = (principal) => {
         const t = _resolveToken(principal);
@@ -5597,19 +5599,15 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
 
     // ── DSL helpers for rich IF…THEN rule summaries ──
 
-    const LOGO_PROXY = 'https://static.icpswap.com/logo';
-    const logoUrl = (pid) => pid ? `${LOGO_PROXY}/${typeof pid === 'string' ? pid : pid.toText?.() || pid}` : null;
     const _pid = (v) => typeof v === 'string' ? v : v?.toText?.() || v?.toString?.() || '';
 
     // Inline token badge: logo + symbol
     const tkn = (principal) => {
         const p = _pid(principal);
         const sym = tokenSymbol(p);
-        const url = logoUrl(p);
         return (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', verticalAlign: 'middle' }}>
-                {url && <img src={url} alt="" style={{ width: '14px', height: '14px', borderRadius: '50%', verticalAlign: 'middle' }}
-                    onError={e => { e.target.style.display = 'none'; }} />}
+                <TokenIcon canisterId={p} size={14} />
                 <span style={{ fontWeight: 600 }}>{sym}</span>
             </span>
         );

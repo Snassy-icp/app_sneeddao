@@ -277,6 +277,31 @@ export const fetchAndCacheTokenMetadata = async (canisterId, identity) => {
 };
 
 /**
+ * Manually set token metadata (e.g. from TokenSelector callbacks that already have the data).
+ * Writes to both memory and IndexedDB so all consumers see it immediately.
+ */
+export const setTokenMetadataManual = async (canisterId, { symbol, decimals, fee }) => {
+    if (!canisterId) return;
+    const key = canisterId.toString();
+    if (metadataMemoryCache.has(key)) return; // already cached
+    const metadata = {
+        canisterId: key,
+        symbol: symbol || '???',
+        decimals: decimals ?? 8,
+        fee: fee != null ? fee.toString() : '0',
+        timestamp: Date.now(),
+    };
+    metadataMemoryCache.set(key, metadata);
+    try {
+        const db = await initializeDB();
+        const transaction = db.transaction([METADATA_STORE], 'readwrite');
+        transaction.objectStore(METADATA_STORE).put(metadata);
+    } catch (e) {
+        console.warn('[TokenCache] Failed to save manual metadata:', e);
+    }
+};
+
+/**
  * Batch fetch multiple token metadata
  */
 export const fetchAndCacheMultipleMetadata = async (canisterIds, identity) => {
