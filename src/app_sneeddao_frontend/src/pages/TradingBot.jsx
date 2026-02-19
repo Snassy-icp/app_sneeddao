@@ -4753,19 +4753,37 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
 
     // Build a principal→symbol map from token registry + snapshot token data
     const symbolMap = React.useMemo(() => {
+        const isPlaceholder = (s) => !s || s === '?' || s === '???' || s === '???';
         const map = {};
+        const allPrincipals = new Set();
         for (const entry of tokenRegistry) {
             const key = entry.ledgerCanisterId?.toText?.() || entry.ledgerCanisterId?.toString?.() || '';
-            if (key && entry.symbol) map[key] = entry.symbol;
+            if (!key) continue;
+            allPrincipals.add(key);
+            if (!isPlaceholder(entry.symbol)) map[key] = entry.symbol;
         }
         for (const snap of snapshots) {
             for (const tok of (snap.tokens || [])) {
                 const key = tok.token?.toText?.() || tok.token?.toString?.() || '';
-                if (key && tok.symbol && tok.symbol !== '?' && !map[key]) map[key] = tok.symbol;
+                if (!key) continue;
+                allPrincipals.add(key);
+                if (!isPlaceholder(tok.symbol) && !map[key]) map[key] = tok.symbol;
+            }
+        }
+        for (const [, cached] of lastKnownPrices) {
+            const inp = cached.inputToken?.toText?.() || cached.inputToken?.toString?.() || '';
+            const out = cached.outputToken?.toText?.() || cached.outputToken?.toString?.() || '';
+            if (inp) allPrincipals.add(inp);
+            if (out) allPrincipals.add(out);
+        }
+        for (const p of allPrincipals) {
+            if (!map[p]) {
+                const cached = getTokenMetadataSync(p);
+                if (cached?.symbol && !isPlaceholder(cached.symbol)) map[p] = cached.symbol;
             }
         }
         return map;
-    }, [tokenRegistry, snapshots]);
+    }, [tokenRegistry, snapshots, lastKnownPrices]);
 
     // Resolve token symbol from registry, snapshot data, or shared cache
     const tokenSymbol = (principalText) => {
@@ -4984,11 +5002,12 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
 
 function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleData, tokenRegistry, symbolMap, selectedPricepair, setSelectedPricePair, theme, accentColor, cardStyle }) {
     const [priceView, setPriceView] = useState('detailed'); // 'detailed' or 'daily'
-    // Resolve token symbol from principal text using symbolMap (includes registry + snapshot data)
     const sym = (principalText) => {
         if (symbolMap && symbolMap[principalText]) return symbolMap[principalText];
         const entry = tokenRegistry.find(t => (t.ledgerCanisterId?.toText?.() || t.ledgerCanisterId?.toString?.() || '') === principalText);
-        return entry?.symbol || principalText.slice(0, 8) + '..';
+        if (entry?.symbol) return entry.symbol;
+        const cached = getTokenMetadataSync(principalText);
+        return cached?.symbol || principalText.slice(0, 8) + '..';
     };
 
     // Build pair options from lastKnownPrices
