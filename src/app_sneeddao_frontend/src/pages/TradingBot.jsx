@@ -25,6 +25,7 @@ import { decodeIcrcAccount, encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { computeAccountId } from '../utils/PrincipalUtils';
 import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay, FaArrowUp, FaArrowDown, FaPaperPlane, FaExchangeAlt, FaWallet, FaShieldAlt, FaToggleOn, FaToggleOff, FaCopy, FaDownload, FaArrowRight, FaChevronDown, FaChevronUp, FaTag, FaGlobe, FaEyeSlash, FaRobot } from 'react-icons/fa';
 import TokenIcon from '../components/TokenIcon';
+import BotIcon from '../components/BotIcon';
 import PrincipalInput from '../components/PrincipalInput';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import priceService from '../services/PriceService';
@@ -6577,15 +6578,7 @@ export default function TradingBot() {
                             flexShrink: 0,
                             position: 'relative',
                         }}>
-                            <FaRobot style={{ color: '#fff', fontSize: '1.6rem' }} />
-                            <FaChartLine style={{
-                                color: '#fff',
-                                fontSize: '0.8rem',
-                                position: 'absolute',
-                                top: '8px',
-                                right: '8px',
-                                opacity: 0.85,
-                            }} />
+                            <BotIcon type="trading" size={28} color="#fff" />
                         </div>
                         <div style={{ minWidth: 0, flex: 1 }}>
                             <div style={{
@@ -6888,7 +6881,7 @@ export default function TradingBot() {
                             accentColor={ACCENT}
                             accentColorSecondary={ACCENT_SECONDARY}
                             botName="Trading Bot"
-                            botIcon={<span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}><FaRobot style={{ color: ACCENT, fontSize: '16px' }} /><FaChartLine style={{ color: ACCENT, fontSize: '8px', position: 'absolute', top: '-2px', right: '-6px', opacity: 0.85 }} /></span>}
+                            botIcon={<BotIcon type="trading" size={16} color={ACCENT} />}
                             appId={APP_ID}
                             permissionLabels={PERMISSION_LABELS}
                             permissionDescriptions={PERMISSION_DESCRIPTIONS}

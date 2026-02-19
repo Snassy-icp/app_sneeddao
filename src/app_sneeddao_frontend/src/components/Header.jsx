@@ -1591,7 +1591,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                                 }}
                                             >
                                                 <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', width: '24px', height: '16px' }}>
-                                                    <FaBrain size={14} style={{ color: theme.colors.mutedText }} />
+                                                    <FaRobot size={14} style={{ color: theme.colors.mutedText }} />
                                                     {snsLogo && (
                                                         <img 
                                                             src={snsLogo} 

@@ -73,6 +73,7 @@ import TopUpCyclesDialog from './components/TopUpCyclesDialog';
 import { PERM } from './utils/NeuronPermissionUtils.jsx';
 import { IDL } from '@dfinity/candid';
 import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt, FaSearch, FaArrowUp, FaBolt, FaSpinner, FaChartLine } from 'react-icons/fa';
+import BotIcon from './components/BotIcon';
 
 // Custom CSS for Wallet page animations
 const walletCustomStyles = `
@@ -6819,7 +6820,7 @@ function Wallet() {
                                     gap: '0.5rem'
                                 }}>
                                     {neuronManagersExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
-                                    <FaBrain size={16} color="#8b5cf6" />
+                                    <BotIcon type="staking" size={16} color="#8b5cf6" />
                                     Sneedapp
                                     {neuronManagers.length > 0 && (
                                         <span style={{ color: '#8b5cf6', fontWeight: '500' }}>
@@ -7071,9 +7072,9 @@ function Wallet() {
                                             >
                                                 <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                                                     {isStakingBot 
-                                                        ? <FaBrain size={36} style={{ color: isValidManager === false ? '#ef4444' : theme.colors.mutedText }} />
+                                                        ? <BotIcon type="staking" size={36} color={isValidManager === false ? '#ef4444' : theme.colors.mutedText} />
                                                         : isTradingBot
-                                                        ? <FaChartLine size={36} style={{ color: isValidManager === false ? '#ef4444' : '#10b981' }} />
+                                                        ? <BotIcon type="trading" size={36} color={isValidManager === false ? '#ef4444' : '#10b981'} />
                                                         : <FaBox size={36} style={{ color: isValidManager === false ? '#ef4444' : theme.colors.accent }} />
                                                     }
                                                     {neuronManagerIsController[canisterId] && (
@@ -8432,9 +8433,9 @@ function Wallet() {
                                                 >
                                                     <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                                                         {isStakingBot 
-                                                            ? <FaBrain size={36} style={{ color: '#8b5cf6' }} />
+                                                            ? <BotIcon type="staking" size={36} color="#8b5cf6" />
                                                             : isTradingBot
-                                                            ? <FaChartLine size={36} style={{ color: '#10b981' }} />
+                                                            ? <BotIcon type="trading" size={36} color="#10b981" />
                                                             : <FaBox size={36} style={{ color: theme.colors.accent }} />
                                                         }
                                                         {managerIsController && (
@@ -8825,7 +8826,7 @@ function Wallet() {
                                                                     gap: '6px',
                                                                 }}
                                                             >
-                                                                {isStakingBot ? <FaBrain size={12} /> : isTradingBot ? <FaChartLine size={12} /> : <FaBox size={12} />}
+                                                                {isStakingBot ? <BotIcon type="staking" size={12} /> : isTradingBot ? <BotIcon type="trading" size={12} /> : <FaBox size={12} />}
                                                                 {isStakingBot ? 'Manage Neurons' : 'Manage'}
                                                             </Link>
                                                             <Link
@@ -9120,9 +9121,9 @@ function Wallet() {
                                                 >
                                                     <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                                                         {isStakingBot 
-                                                            ? <FaBrain size={36} style={{ color: '#f59e0b' }} />
+                                                            ? <BotIcon type="staking" size={36} color="#f59e0b" />
                                                             : isTradingBot
-                                                            ? <FaChartLine size={36} style={{ color: '#f59e0b' }} />
+                                                            ? <BotIcon type="trading" size={36} color="#f59e0b" />
                                                             : <FaBox size={36} style={{ color: '#f59e0b' }} />
                                                         }
                                                         {managerIsController && (
@@ -9372,7 +9373,7 @@ function Wallet() {
                                             >
                                                 <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                                                     {isTradingBot
-                                                        ? <FaChartLine size={36} style={{ color: '#10b981' }} />
+                                                        ? <BotIcon type="trading" size={36} color="#10b981" />
                                                         : getCanisterTypeIcon(displayInfo?.canisterTypes, 36, theme.colors.mutedText)}
                                                     {isController && (
                                                         <span 

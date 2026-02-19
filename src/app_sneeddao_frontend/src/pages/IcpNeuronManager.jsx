@@ -15,6 +15,7 @@ import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { setPrincipalNickname, setPrincipalNameFor } from '../utils/BackendUtils';
 import { FaGasPump, FaRobot, FaBrain, FaArrowRight, FaSync, FaChevronDown, FaChevronUp, FaShieldAlt, FaWallet, FaTag, FaGlobe, FaEyeSlash } from 'react-icons/fa';
+import BotIcon from '../components/BotIcon';
 import PrincipalInput from '../components/PrincipalInput';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { encodeIcrcAccount, decodeIcrcAccount } from '@dfinity/ledger-icrc';
@@ -2899,15 +2900,7 @@ function IcpNeuronManager() {
                             boxShadow: `0 8px 32px ${neuronPrimary}40`,
                             position: 'relative',
                         }}>
-                            <FaRobot style={{ color: '#fff', fontSize: '1.6rem' }} />
-                            <FaBrain style={{ 
-                                color: '#fff', 
-                                fontSize: '0.8rem', 
-                                position: 'absolute', 
-                                top: '10px', 
-                                right: '10px',
-                                opacity: 0.85,
-                            }} />
+                            <BotIcon type="staking" size={28} color="#fff" />
                         </div>
                         <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.75rem', fontSize: '1.5rem' }}>
                             ICP Staking Bot
@@ -3088,15 +3081,7 @@ function IcpNeuronManager() {
                             flexShrink: 0,
                             position: 'relative',
                         }}>
-                            <FaRobot style={{ color: '#fff', fontSize: '1.6rem' }} />
-                            <FaBrain style={{ 
-                                color: '#fff', 
-                                fontSize: '0.8rem', 
-                                position: 'absolute', 
-                                top: '8px', 
-                                right: '8px',
-                                opacity: 0.85,
-                            }} />
+                            <BotIcon type="staking" size={28} color="#fff" />
                         </div>
                         <div style={{ minWidth: 0, flex: 1 }}>
                             <div style={{ 
@@ -3504,7 +3489,7 @@ function IcpNeuronManager() {
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                     }}>
-                                        <FaRobot style={{ color: neuronPrimary, fontSize: '16px' }} />
+                                        <BotIcon type="staking" size={16} color={neuronPrimary} />
                                     </div>
                                     <span style={{ fontSize: '1.05rem', fontWeight: '600' }}>Bot</span>
                                     {canisterStatus && (

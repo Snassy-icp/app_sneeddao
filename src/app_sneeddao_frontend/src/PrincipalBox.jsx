@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt, FaSync, FaCoins, FaWater, FaLock, FaBug, FaTimes, FaBrain, FaBox, FaCrown, FaMicrochip, FaChevronDown, FaExchangeAlt, FaChartLine } from 'react-icons/fa';
+import BotIcon from './components/BotIcon';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
@@ -2655,7 +2656,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                           color: theme.colors.primaryText,
                                       }}
                                   >
-                                      <FaBrain size={11} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                                      <BotIcon type="staking" size={11} color="#f59e0b" style={{ flexShrink: 0 }} />
                                       <span style={{ flex: 1 }}>
                                           <strong>{outdatedManagers.length}</strong> bot{outdatedManagers.length !== 1 ? 's' : ''} outdated
                                       </span>
@@ -2807,9 +2808,9 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                   }}
                                               >
                                                   {isTradingBot ? (
-                                                      <FaChartLine size={13} style={{ color: '#10b981' }} />
+                                                      <BotIcon type="trading" size={13} color="#10b981" />
                                                   ) : isStakingBot ? (
-                                                      <FaBrain size={14} style={{ color: theme.colors.accent }} />
+                                                      <BotIcon type="staking" size={14} color={theme.colors.accent} />
                                                   ) : (
                                                       <FaBox size={12} style={{ color: theme.colors.mutedText }} />
                                                   )}
@@ -2994,9 +2995,9 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                   }}
                                               >
                                                   {isTradingBot ? (
-                                                      <FaChartLine size={13} style={{ color: '#10b981' }} />
+                                                      <BotIcon type="trading" size={13} color="#10b981" />
                                                   ) : isNeuronManager ? (
-                                                      <FaBrain size={14} style={{ color: theme.colors.accent }} />
+                                                      <BotIcon type="staking" size={14} color={theme.colors.accent} />
                                                   ) : (
                                                       <FaBox size={12} style={{ color: theme.colors.mutedText }} />
                                                   )}

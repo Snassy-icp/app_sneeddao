@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { FaTimes, FaArrowUp, FaCheckCircle, FaExclamationTriangle, FaSpinner, FaBrain, FaChartLine, FaBox } from 'react-icons/fa';
+import BotIcon from './BotIcon';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
@@ -55,8 +56,8 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
     };
 
     const getAppIcon = (resolvedAppId) => {
-        if (resolvedAppId === 'sneed-icp-staking-bot') return <FaBrain size={12} style={{ color: '#f59e0b', flexShrink: 0 }} />;
-        if (resolvedAppId === 'sneed-trading-bot') return <FaChartLine size={12} style={{ color: '#10b981', flexShrink: 0 }} />;
+        if (resolvedAppId === 'sneed-icp-staking-bot') return <BotIcon type="staking" size={12} color="#f59e0b" style={{ flexShrink: 0 }} />;
+        if (resolvedAppId === 'sneed-trading-bot') return <BotIcon type="trading" size={12} color="#10b981" style={{ flexShrink: 0 }} />;
         return <FaBox size={12} style={{ color: '#8b5cf6', flexShrink: 0 }} />;
     };
 

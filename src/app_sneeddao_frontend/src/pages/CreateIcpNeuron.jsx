@@ -15,6 +15,7 @@ import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, computeAccountId } from '../utils/PrincipalUtils';
 import { FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaWallet, FaPlus, FaChevronDown, FaChevronUp, FaBrain, FaSync, FaCog, FaShieldAlt, FaExternalLinkAlt } from 'react-icons/fa';
+import BotIcon from '../components/BotIcon';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
 import { useSneedMembership } from '../hooks/useSneedMembership';
 import { SneedMemberGateMessage, SneedMemberGateLoading, SneedMemberBadge, BetaWarningBanner, GATE_TYPES } from '../components/SneedMemberGate';
@@ -981,7 +982,7 @@ function CreateIcpNeuron() {
                                 fontSize: '1.15rem',
                                 fontWeight: '600'
                             }}>
-                                <FaBrain style={{ color: neuronPrimary }} />
+                                <BotIcon type="staking" size={16} color={neuronPrimary} />
                                 Your Staking Bots {managers.length > 0 && (
                                     <span style={{
                                         background: `${neuronPrimary}20`,
@@ -1079,7 +1080,7 @@ function CreateIcpNeuron() {
                                                                 justifyContent: 'center',
                                                                 flexShrink: 0
                                                             }}>
-                                                                <FaBrain style={{ color: neuronPrimary, fontSize: '14px' }} />
+                                                                <BotIcon type="staking" size={14} color={neuronPrimary} />
                                                             </div>
                                                             <PrincipalDisplay
                                                                 principal={canisterIdText}

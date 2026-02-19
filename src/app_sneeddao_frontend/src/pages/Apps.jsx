@@ -13,6 +13,7 @@ import { usePremiumStatus } from '../hooks/usePremiumStatus';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, getCanisterTypeIcon, isSnsCanisterType, SnsPill } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
 import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown, FaLock, FaStar, FaArrowRight, FaWallet, FaQuestionCircle, FaBox, FaExclamationTriangle, FaBolt, FaChartLine } from 'react-icons/fa';
+import BotIcon from '../components/BotIcon';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { useNavigate } from 'react-router-dom';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
@@ -3567,7 +3568,7 @@ export default function AppsPage() {
             >
                 <div style={styles.managerInfo}>
                     <div style={{ ...styles.managerIcon, position: 'relative' }}>
-                        {isStakingBot ? <FaBrain size={18} /> : isTradingBot ? <FaChartLine size={18} style={{ color: '#10b981' }} /> : <FaBox size={18} />}
+                        {isStakingBot ? <BotIcon type="staking" size={18} /> : isTradingBot ? <BotIcon type="trading" size={18} color="#10b981" /> : <FaBox size={18} />}
                         {isController && (
                             <FaCrown 
                                 size={10} 
@@ -3687,7 +3688,7 @@ export default function AppsPage() {
                         }}
                         title={isStakingBot ? 'Manage neurons' : 'Manage'}
                     >
-                        {isStakingBot ? <FaBrain size={12} /> : isTradingBot ? <FaChartLine size={12} /> : <FaBox size={12} />}
+                        {isStakingBot ? <BotIcon type="staking" size={12} /> : isTradingBot ? <BotIcon type="trading" size={12} /> : <FaBox size={12} />}
                     </Link>
                     <Link
                         to={`/canister?id=${canisterId}`}
@@ -4247,7 +4248,7 @@ export default function AppsPage() {
                             <span><strong style={{ color: theme.colors.success }}>{trackedCanisters.length}</strong> wallet</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
-                            <FaBrain size={14} style={{ color: '#9b59b6' }} />
+                            <BotIcon type="staking" size={14} color="#9b59b6" />
                             <span><strong style={{ color: '#9b59b6' }}>{neuronManagers.length}</strong> Sneedapp</span>
                         </div>
                         <Link 
@@ -5348,7 +5349,7 @@ export default function AppsPage() {
                                                 />
                                             );
                                         })()}
-                                        <FaBrain style={{ color: '#8b5cf6' }} />
+                                        <BotIcon type="staking" size={16} color="#8b5cf6" />
                                         Sneedapp
                                         {neuronManagers.length > 0 && (
                                             <span style={{ ...styles.sectionCount, fontSize: '11px' }}>{neuronManagers.length}</span>
@@ -5529,7 +5530,7 @@ export default function AppsPage() {
                                                     >
                                                         <div style={styles.canisterInfo}>
                                                         <div style={{ ...styles.canisterIcon, position: 'relative' }}>
-                                                            {isTradingBot ? <FaChartLine size={18} style={{ color: '#10b981' }} /> : getCanisterTypeIcon(displayInfo?.canisterTypes, 18, theme.colors.accent)}
+                                                            {isTradingBot ? <BotIcon type="trading" size={18} color="#10b981" /> : getCanisterTypeIcon(displayInfo?.canisterTypes, 18, theme.colors.accent)}
                                                             {manager.isController && (
                                                                 <FaCrown 
                                                                     size={10} 
@@ -5696,7 +5697,7 @@ export default function AppsPage() {
                                                 >
                                                     <div style={styles.managerInfo}>
                                                         <div style={{ ...styles.managerIcon, position: 'relative' }}>
-                                                            {isStakingBot ? <FaBrain size={18} /> : isTradingBot ? <FaChartLine size={18} style={{ color: '#10b981' }} /> : <FaBox size={18} />}
+                                                            {isStakingBot ? <BotIcon type="staking" size={18} /> : isTradingBot ? <BotIcon type="trading" size={18} color="#10b981" /> : <FaBox size={18} />}
                                                             {manager.isController && (
                                                                 <FaCrown 
                                                                     size={10} 
@@ -5805,7 +5806,7 @@ export default function AppsPage() {
                                                             }}
                                                             title={isStakingBot ? 'Manage neurons' : 'Manage'}
                                                         >
-                                                            {isStakingBot ? <FaBrain size={12} /> : isTradingBot ? <FaChartLine size={12} /> : <FaBox size={12} />}
+                                                            {isStakingBot ? <BotIcon type="staking" size={12} /> : isTradingBot ? <BotIcon type="trading" size={12} /> : <FaBox size={12} />}
                                                         </Link>
                                                         <Link
                                                             to={`/canister?id=${canisterId}`}

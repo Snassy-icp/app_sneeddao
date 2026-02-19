@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { FaTimes, FaSync, FaBrain, FaBox, FaCrown, FaExternalLinkAlt, FaTrash, FaCoins, FaMicrochip, FaChevronDown, FaChevronRight, FaLock, FaHourglassHalf, FaCheck, FaQuestionCircle, FaSeedling, FaPaperPlane, FaArrowRight, FaChartLine } from 'react-icons/fa';
+import BotIcon from './BotIcon';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import StatusLamp, {
@@ -257,9 +258,9 @@ const DappCardModal = ({
                             flexShrink: 0,
                         }}>
                             {isTradingBot ? (
-                                <FaChartLine size={22} style={{ color: accentColor }} />
+                                <BotIcon type="trading" size={22} color={accentColor} />
                             ) : isNeuronManager ? (
-                                <FaBrain size={24} style={{ color: accentColor }} />
+                                <BotIcon type="staking" size={24} color={accentColor} />
                             ) : (
                                 <FaBox size={20} style={{ color: theme.colors.mutedText }} />
                             )}
@@ -617,7 +618,7 @@ const DappCardModal = ({
                                     justifyContent: 'center',
                                     gap: '4px',
                                 }}>
-                                    <FaBrain size={12} /> {neuronCount}
+                                    <BotIcon type="staking" size={12} /> {neuronCount}
                                 </div>
                             </div>
                         )}
@@ -759,7 +760,7 @@ const DappCardModal = ({
                                 }}
                             >
                                 {showNeuronsList ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
-                                <FaBrain size={14} style={{ color: accentColor }} />
+                                <BotIcon type="staking" size={14} color={accentColor} />
                                 Neurons ({neurons.length})
                             </div>
                             
@@ -986,7 +987,7 @@ const DappCardModal = ({
                                     transition: 'all 0.2s ease',
                                 }}
                             >
-                                <FaBrain size={14} />
+                                <BotIcon type="staking" size={14} />
                                 Manage Neurons
                             </button>
                         )}
@@ -1015,7 +1016,7 @@ const DappCardModal = ({
                                     transition: 'all 0.2s ease',
                                 }}
                             >
-                                <FaChartLine size={14} />
+                                <BotIcon type="trading" size={14} />
                                 Manage Trading Bot
                             </button>
                         )}
