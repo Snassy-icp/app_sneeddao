@@ -442,7 +442,7 @@ export default function SneedApp() {
                                     onMouseEnter={e => e.currentTarget.style.opacity = '0.9'}
                                     onMouseLeave={e => e.currentTarget.style.opacity = '1'}
                                 >
-                                    <FaRocket /> Mint Canister
+                                    <FaRocket /> {(app.families || []).includes('sneed-bots') ? 'Mint Bot' : 'Mint App'}
                                 </button>
                             </div>
                             );
