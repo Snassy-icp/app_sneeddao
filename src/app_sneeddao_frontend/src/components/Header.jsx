@@ -579,17 +579,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'About', path: '/sneedex' }
             ]
         },
-        'Sneedapp': {
-            icon: <FaCubes size={18} />,
-            displayName: 'Sneedapp',
-            defaultPath: '/sneedapp',
-            subMenu: [
-                { name: 'Browse Apps', path: '/sneedapp' },
-                { name: 'ICP Staking Bot', path: '/create_icp_neuron' },
-                { name: 'Trading Bot', path: '/sneedapp' },
-                { name: 'My Canisters', path: '/apps' },
-            ]
-        },
         'Liquid Staking': {
             icon: <FaTint size={18} />,
             displayName: 'Liquid Staking',
@@ -630,6 +619,19 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Tools', path: '/tools/main' },
                 { name: 'SNS Jailbreak', path: '/tools/sns_jailbreak' },
                 { name: 'My Scripts', path: '/tools/sns_jailbreak_list' }
+            ]
+        };
+    }
+
+    // Add Sneedapp section only for admins (for now)
+    if (isAuthenticated && isAdmin === true) {
+        menuSections['Sneedapp'] = {
+            icon: <FaCubes size={18} />,
+            displayName: 'Sneedapp',
+            defaultPath: '/sneedapp',
+            subMenu: [
+                { name: 'Browse Apps', path: '/sneedapp' },
+                { name: 'My Apps', path: '/apps' },
             ]
         };
     }

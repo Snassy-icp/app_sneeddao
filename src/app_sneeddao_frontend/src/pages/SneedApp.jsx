@@ -208,23 +208,73 @@ export default function SneedApp() {
         <div style={{ minHeight: '100vh', background: theme.colors.primaryBg }}>
             <style>{customStyles}</style>
             <Header />
-            <div style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 16px 60px' }}>
-                {/* Hero */}
-                <div className="sneedapp-fade-in" style={{
-                    textAlign: 'center', marginBottom: 40, padding: '30px 20px',
-                    background: `linear-gradient(135deg, ${appPrimary}15 0%, ${appSecondary}10 100%)`,
-                    borderRadius: 16, border: `1px solid ${appPrimary}30`
-                }}>
-                    <div className="sneedapp-float" style={{ fontSize: 48, marginBottom: 12 }}>
-                        <FaStore style={{ color: appPrimary }} />
+
+            {/* Hero Section */}
+            <div style={{
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${appPrimary}15 50%, ${appSecondary}10 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '2rem 1.5rem',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                <div style={{
+                    position: 'absolute',
+                    top: '-50%',
+                    right: '-10%',
+                    width: '400px',
+                    height: '400px',
+                    background: `radial-gradient(circle, ${appPrimary}20 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-30%',
+                    left: '5%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${appSecondary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+
+                <div style={{ maxWidth: '1100px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                        <div className="sneedapp-float" style={{
+                            width: '56px',
+                            height: '56px',
+                            borderRadius: '16px',
+                            background: `linear-gradient(135deg, ${appPrimary}, ${appSecondary})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: `0 8px 32px ${appPrimary}50`,
+                            flexShrink: 0,
+                        }}>
+                            <FaStore style={{ color: '#fff', fontSize: '1.6rem' }} />
+                        </div>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                            <h1 style={{
+                                fontSize: '1.5rem',
+                                fontWeight: '700',
+                                color: theme.colors.primaryText,
+                                margin: 0,
+                                letterSpacing: '-0.5px'
+                            }}>
+                                Sneedapp
+                            </h1>
+                            <p style={{
+                                color: theme.colors.secondaryText,
+                                fontSize: '0.9rem',
+                                margin: '4px 0 0 0',
+                                lineHeight: '1.5'
+                            }}>
+                                Browse and mint canisters from the Sneed app ecosystem
+                            </p>
+                        </div>
                     </div>
-                    <h1 style={{ color: theme.colors.primaryText, fontSize: 28, fontWeight: 700, margin: 0 }}>
-                        Sneedapp
-                    </h1>
-                    <p style={{ color: theme.colors.secondaryText, fontSize: 15, marginTop: 8, maxWidth: 500, margin: '8px auto 0' }}>
-                        Browse and mint canisters from the Sneed app ecosystem
-                    </p>
                 </div>
+            </div>
+
+            <div style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 16px 60px' }}>
 
                 {/* Apps Grid */}
                 <h2 style={{ color: theme.colors.primaryText, fontSize: 20, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>

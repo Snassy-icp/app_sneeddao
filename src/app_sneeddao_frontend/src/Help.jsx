@@ -4,7 +4,7 @@ import Header from './components/Header';
 import { useTheme } from './contexts/ThemeContext';
 import { 
     FaQuestionCircle, FaBook, FaWallet, FaBrain, FaLock, FaServer, 
-    FaCubes, FaStore, FaUnlock, FaArrowRight, FaLifeRing 
+    FaCubes, FaStore, FaUnlock, FaArrowRight, FaLifeRing, FaChartLine 
 } from 'react-icons/fa';
 
 // Custom CSS for animations
@@ -75,6 +75,13 @@ const helpTopics = [
         title: 'ICP Staking Bot App Canisters',
         description: 'Create and manage dedicated app canisters for your ICP neurons',
         color: '#3b82f6',
+    },
+    {
+        path: '/help/trading_bot',
+        icon: FaChartLine,
+        title: 'Sneed Trading Bot',
+        description: 'Automate token swaps, portfolio rebalancing, and fund distribution',
+        color: '#10b981',
     },
     {
         path: '/help/dapp-manager',

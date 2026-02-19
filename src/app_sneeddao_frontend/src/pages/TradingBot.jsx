@@ -7,19 +7,21 @@
  * The per-chore configuration panels are custom to the trading bot.
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import Header from '../components/Header';
 import BotManagementPanel from '../components/BotManagementPanel';
 import TokenSelector from '../components/TokenSelector';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
+import { useNaming } from '../NamingContext';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 // Trading bot Candid declarations — aligned with staking bot API for shared BotManagementPanel.
 import { createActor as createBotActor } from 'external/sneed_trading_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { decodeIcrcAccount, encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { computeAccountId } from '../utils/PrincipalUtils';
-import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay, FaArrowUp, FaArrowDown, FaPaperPlane, FaExchangeAlt, FaWallet, FaShieldAlt, FaToggleOn, FaToggleOff, FaCopy, FaDownload } from 'react-icons/fa';
+import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay, FaArrowUp, FaArrowDown, FaPaperPlane, FaExchangeAlt, FaWallet, FaShieldAlt, FaToggleOn, FaToggleOff, FaCopy, FaDownload, FaArrowRight } from 'react-icons/fa';
 import TokenIcon from '../components/TokenIcon';
 import PrincipalInput from '../components/PrincipalInput';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
@@ -27,6 +29,20 @@ import priceService from '../services/PriceService';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Line } from 'recharts';
+
+// Custom CSS for animations
+const tradingBotStyles = `
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+@keyframes tradingFloat {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+.trading-bot-float { animation: tradingFloat 3s ease-in-out infinite; }
+.trading-bot-fade-in { animation: fadeInUp 0.5s ease-out forwards; }
+`;
 
 // Trading bot accent colors — green/teal for trading
 const ACCENT = '#10b981';
@@ -6389,7 +6405,10 @@ export default function TradingBot() {
     const { canisterId } = useParams();
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
+    const { principalNames, principalNicknames } = useNaming();
     const [cbEvents, setCbEvents] = useState(null);
+
+    const displayInfo = canisterId ? getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames) : null;
 
     // Load recent CB events for chore status indicators
     useEffect(() => {
@@ -6413,6 +6432,7 @@ export default function TradingBot() {
     if (!canisterId) {
         return (
             <div style={{ minHeight: '100vh', background: theme.colors.primaryBg }}>
+                <style>{tradingBotStyles}</style>
                 <Header />
                 <div style={{ maxWidth: 900, margin: '0 auto', padding: '40px 16px', textAlign: 'center' }}>
                     <div style={{ fontSize: '3rem', marginBottom: '16px' }}>📊</div>
@@ -6429,27 +6449,100 @@ export default function TradingBot() {
 
     return (
         <div style={{ minHeight: '100vh', background: theme.colors.primaryBg }}>
+            <style>{tradingBotStyles}</style>
             <Header />
-            <div style={{ maxWidth: 900, margin: '0 auto', padding: '20px 16px 60px' }}>
-                {/* Page header */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-                    <div style={{
-                        width: '44px', height: '44px', borderRadius: '12px',
-                        background: `linear-gradient(135deg, ${ACCENT}30, ${ACCENT}10)`,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                        <FaChartLine style={{ color: ACCENT, fontSize: '20px' }} />
-                    </div>
-                    <div>
-                        <h1 style={{ color: theme.colors.primaryText, fontSize: '1.3rem', margin: 0, fontWeight: '700' }}>
-                            Sneed Trading Bot
-                        </h1>
-                        <div style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', fontFamily: 'monospace' }}>
-                            {canisterId}
+
+            {/* Hero Section */}
+            <div style={{
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${ACCENT}15 50%, ${ACCENT_SECONDARY}10 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '2rem 1.5rem',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                <div style={{
+                    position: 'absolute',
+                    top: '-50%',
+                    right: '-10%',
+                    width: '400px',
+                    height: '400px',
+                    background: `radial-gradient(circle, ${ACCENT}20 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-30%',
+                    left: '5%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${ACCENT_SECONDARY}15 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+
+                <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                        <div className="trading-bot-float" style={{
+                            width: '56px',
+                            height: '56px',
+                            borderRadius: '16px',
+                            background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_SECONDARY})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: `0 8px 32px ${ACCENT}50`,
+                            flexShrink: 0,
+                        }}>
+                            <FaChartLine style={{ color: '#fff', fontSize: '1.6rem' }} />
+                        </div>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                marginBottom: '4px'
+                            }}>
+                                <h1 style={{
+                                    fontSize: '1.5rem',
+                                    fontWeight: '700',
+                                    color: theme.colors.primaryText,
+                                    margin: 0,
+                                    letterSpacing: '-0.5px'
+                                }}>
+                                    Sneed Trading Bot
+                                </h1>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <PrincipalDisplay
+                                    principal={canisterId}
+                                    displayInfo={displayInfo}
+                                    showCopyButton={true}
+                                    isAuthenticated={isAuthenticated}
+                                    noLink={true}
+                                />
+                            </div>
                         </div>
                     </div>
-                </div>
 
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+                        <Link
+                            to="/help/trading_bot"
+                            style={{
+                                color: ACCENT,
+                                fontSize: '0.85rem',
+                                textDecoration: 'none',
+                                fontWeight: '500',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                            }}
+                        >
+                            Learn how it works <FaArrowRight size={10} />
+                        </Link>
+                    </div>
+                </div>
+            </div>
+
+            <main style={{ maxWidth: '900px', margin: '0 auto', padding: '1.5rem 1rem 3.75rem' }}>
                 {/* Authentication check */}
                 {!isAuthenticated ? (
                     <div style={{
@@ -6494,7 +6587,7 @@ export default function TradingBot() {
                         />
                     </>
                 )}
-            </div>
+            </main>
         </div>
     );
 }

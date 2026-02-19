@@ -92,6 +92,7 @@ import HelpIcpNeuronManager from './pages/HelpIcpNeuronManager';
 import HelpSneedex from './pages/HelpSneedex';
 import HelpCanisterManager from './pages/HelpCanisterManager';
 import HelpSnsJailbreak from './pages/HelpSnsJailbreak';
+import HelpTradingBot from './pages/HelpTradingBot';
 import Canister from './pages/Canister';
 import Canisters from './pages/Canisters';
 import Apps from './pages/Apps';
@@ -168,6 +169,7 @@ function App() {
                     <Route path="/help/dapp-manager" element={<HelpCanisterManager />} />
                     <Route path="/help/canister-manager" element={<HelpCanisterManager />} /> {/* Backwards compat */}
                     <Route path="/help/sns_jailbreak" element={<HelpSnsJailbreak />} />
+                    <Route path="/help/trading_bot" element={<HelpTradingBot />} />
                     <Route path="/rll" element={<RLL />} />
                     <Route path="/rll_info" element={<RLLInfo />} />
                     <Route path="/scan_wallet" element={<ScanWallet />} />
