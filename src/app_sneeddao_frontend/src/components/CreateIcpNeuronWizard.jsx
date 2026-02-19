@@ -12,7 +12,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { computeAccountId } from '../utils/PrincipalUtils';
 import { formatCyclesCompact } from '../utils/NeuronManagerSettings';
-import { usePremiumStatus } from '../hooks/usePremiumStatus';
+
 
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const E8S = 100_000_000;
@@ -27,9 +27,6 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
     const { identity, isAuthenticated } = useAuth();
     const navigate = useNavigate();
     
-    // Premium status for discounted pricing
-    const { isPremium, loading: loadingPremium } = usePremiumStatus(identity);
-    
     // Wizard state
     const [currentStep, setCurrentStep] = useState(1);
     
@@ -40,8 +37,8 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
     const [copiedAccountId, setCopiedAccountId] = useState(false);
     
     // Step 2: Gas configuration
+    const [pricingInfo, setPricingInfo] = useState(null);
     const [paymentConfig, setPaymentConfig] = useState(null);
-    const [premiumFeeE8s, setPremiumFeeE8s] = useState(null);
     const [conversionRate, setConversionRate] = useState(null);
     const [extraGasIcp, setExtraGasIcp] = useState('');
     
@@ -92,13 +89,13 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
             const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
             const factory = createFactoryActor(factoryCanisterId, { agent });
             
-            const [walletBalance, config, premiumFee, subaccount] = await Promise.all([
+            const [walletBalance, config, appPrice, subaccount] = await Promise.all([
                 ledger.icrc1_balance_of({
                     owner: identity.getPrincipal(),
                     subaccount: [],
                 }),
                 factory.getPaymentConfig(),
-                factory.getPremiumCreationFee(),
+                factory.getAppMintPrice('sneed-icp-staking-bot', identity.getPrincipal()),
                 factory.getPaymentSubaccount(identity.getPrincipal()),
             ]);
             
@@ -109,7 +106,12 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                 feeDestination: config.feeDestination,
                 paymentRequired: config.paymentRequired,
             });
-            setPremiumFeeE8s(Number(premiumFee));
+            setPricingInfo({
+                regular: Number(appPrice.regular),
+                premium: Number(appPrice.premium),
+                applicable: Number(appPrice.applicable),
+                isPremium: appPrice.isPremium,
+            });
             setPaymentSubaccount(Array.from(subaccount));
         } catch (err) {
             console.error('Error fetching data:', err);
@@ -153,13 +155,11 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
         }
     }, [currentStep, isAuthenticated, identity, fetchData]);
 
-    // Calculate effective fee
-    const effectiveFeeE8s = isPremium && premiumFeeE8s !== null 
-        ? premiumFeeE8s 
-        : (paymentConfig?.creationFeeE8s || 0);
+    // Calculate effective fee from per-app pricing
+    const effectiveFeeE8s = pricingInfo ? pricingInfo.applicable : (paymentConfig?.creationFeeE8s || 0);
     
-    const discountPercent = paymentConfig && premiumFeeE8s !== null && paymentConfig.creationFeeE8s > 0
-        ? Math.round((1 - premiumFeeE8s / paymentConfig.creationFeeE8s) * 100)
+    const discountPercent = pricingInfo && pricingInfo.regular > 0 && pricingInfo.premium < pricingInfo.regular
+        ? Math.round((1 - pricingInfo.premium / pricingInfo.regular) * 100)
         : 0;
     
     // Calculate total ICP needed
@@ -786,9 +786,9 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                     <div style={styles.infoBox}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                             <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>Creation Fee:</span>
-                            <span style={{ color: isPremium ? '#FFD700' : theme.colors.primaryText, fontWeight: '600' }}>
+                            <span style={{ color: pricingInfo?.isPremium ? '#FFD700' : theme.colors.primaryText, fontWeight: '600' }}>
                                 {formatIcp(effectiveFeeE8s)} ICP
-                                {isPremium && discountPercent > 0 && (
+                                {pricingInfo?.isPremium && discountPercent > 0 && (
                                     <span style={{ 
                                         marginLeft: '8px', 
                                         background: 'linear-gradient(135deg, #FFD700, #FFA500)',

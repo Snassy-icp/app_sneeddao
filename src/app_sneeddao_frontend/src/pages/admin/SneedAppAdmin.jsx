@@ -59,6 +59,32 @@ export default function SneedAppAdmin() {
     const [daoStats, setDaoStats] = useState(null);
     const [pubStats, setPubStats] = useState([]);
 
+    // Network/Config state
+    const [paymentConfig, setPaymentConfig] = useState(null);
+    const [creationFee, setCreationFee] = useState('');
+    const [targetCycles, setTargetCycles] = useState('');
+    const [feeDestPrincipal, setFeeDestPrincipal] = useState('');
+    const [feeDestSubaccount, setFeeDestSubaccount] = useState('');
+    const [paymentRequired, setPaymentRequired] = useState(true);
+    const [premiumCreationFee, setPremiumCreationFee] = useState('');
+    const [sneedPremiumCanisterId, setSneedPremiumCanisterId] = useState('');
+    const [canisterCreationCycles, setCanisterCreationCycles] = useState('');
+    const [cyclesBalance, setCyclesBalance] = useState(null);
+    const [icpBalance, setIcpBalance] = useState(null);
+    const [mintCount, setMintCount] = useState(0);
+    const [conversionRate, setConversionRate] = useState(null);
+
+    // Admin management state
+    const [adminList, setAdminList] = useState([]);
+    const [addAdminPrincipal, setAddAdminPrincipal] = useState('');
+    const [removeAdminPrincipal, setRemoveAdminPrincipal] = useState('');
+    const [sneedGovernance, setSneedGovernance] = useState(null);
+    const [newGovernancePrincipal, setNewGovernancePrincipal] = useState('');
+
+    // Stats state
+    const [factoryAggregates, setFactoryAggregates] = useState(null);
+    const [statsLoading, setStatsLoading] = useState(false);
+
     // Migration state
     const [migrationInput, setMigrationInput] = useState({ user: '', canisterId: '', appId: '' });
     const [bulkInput, setBulkInput] = useState('');
@@ -158,6 +184,52 @@ export default function SneedAppAdmin() {
         } catch (e) { showError('Failed to load revenue: ' + e.message); }
     }, [getFactory]);
 
+    const loadNetworkConfig = useCallback(async () => {
+        try {
+            const factory = getFactory();
+            if (!factory) return;
+            const [config, premFee, premCanId, creationCyc, cycles, icp, count, rate, admins, governance] = await Promise.all([
+                factory.getPaymentConfig(),
+                factory.getPremiumCreationFee(),
+                factory.getSneedPremiumCanisterId(),
+                factory.getCanisterCreationCycles(),
+                factory.getCyclesBalance(),
+                factory.getIcpBalance(),
+                factory.getManagerCount(),
+                factory.getConversionRate().catch(() => null),
+                factory.getAdmins(),
+                factory.getSneedGovernance(),
+            ]);
+            setPaymentConfig(config);
+            setCreationFee((Number(config.creationFeeE8s) / E8S).toString());
+            setTargetCycles((Number(config.targetCyclesAmount) / 1_000_000_000_000).toString());
+            setFeeDestPrincipal(config.feeDestination.owner.toText());
+            if (config.feeDestination.subaccount?.length > 0) {
+                setFeeDestSubaccount(Array.from(config.feeDestination.subaccount[0]).map(b => b.toString(16).padStart(2, '0')).join(''));
+            }
+            setPaymentRequired(config.paymentRequired);
+            setPremiumCreationFee((Number(premFee) / E8S).toString());
+            setSneedPremiumCanisterId(premCanId?.length > 0 ? premCanId[0].toText() : '');
+            setCanisterCreationCycles((Number(creationCyc) / 1_000_000_000_000).toString());
+            setCyclesBalance(cycles);
+            setIcpBalance(icp);
+            setMintCount(Number(count));
+            if (rate) setConversionRate(rate);
+            setAdminList(admins);
+            setSneedGovernance(governance?.length > 0 ? governance[0] : null);
+        } catch (e) { showError('Failed to load network config: ' + e.message); }
+    }, [getFactory]);
+
+    const loadFactoryAggregates = useCallback(async () => {
+        setStatsLoading(true);
+        try {
+            const factory = getFactory();
+            if (!factory) return;
+            setFactoryAggregates(await factory.getFactoryAggregates());
+        } catch (e) { showError('Failed to load stats: ' + e.message); }
+        finally { setStatsLoading(false); }
+    }, [getFactory]);
+
     useEffect(() => {
         if (isAdmin) { loadPublishers(); loadApps(); }
     }, [isAdmin, loadPublishers, loadApps]);
@@ -165,6 +237,8 @@ export default function SneedAppAdmin() {
     useEffect(() => { if (isAdmin && activeTab === 'versions') loadVersions(); }, [isAdmin, activeTab, loadVersions]);
     useEffect(() => { if (isAdmin && activeTab === 'mintlog') loadMintLog(); }, [isAdmin, activeTab, loadMintLog]);
     useEffect(() => { if (isAdmin && activeTab === 'revenue') loadRevenue(); }, [isAdmin, activeTab, loadRevenue]);
+    useEffect(() => { if (isAdmin && (activeTab === 'network' || activeTab === 'admins')) loadNetworkConfig(); }, [isAdmin, activeTab, loadNetworkConfig]);
+    useEffect(() => { if (isAdmin && activeTab === 'stats') loadFactoryAggregates(); }, [isAdmin, activeTab, loadFactoryAggregates]);
 
     // ==================== PUBLISHER CRUD ====================
 
@@ -520,6 +594,111 @@ export default function SneedAppAdmin() {
 
     // ==================== STYLES ====================
 
+    // ==================== NETWORK HANDLERS ====================
+
+    const handleUpdatePaymentConfig = async () => {
+        setLoading(true);
+        try {
+            const factory = getFactory();
+            const sub = feeDestSubaccount ? [Array.from(hexToBytes(feeDestSubaccount))] : [];
+            await factory.setPaymentConfig({
+                creationFeeE8s: BigInt(Math.round(parseFloat(creationFee) * E8S)),
+                targetCyclesAmount: BigInt(Math.round(parseFloat(targetCycles) * 1_000_000_000_000)),
+                feeDestination: { owner: Principal.fromText(feeDestPrincipal), subaccount: sub },
+                paymentRequired: paymentRequired,
+            });
+            showSuccess('Payment config updated');
+            loadNetworkConfig();
+        } catch (e) { showError('Failed: ' + e.message); }
+        finally { setLoading(false); }
+    };
+
+    const handleSetPaymentRequired = async (val) => {
+        setLoading(true);
+        try {
+            const factory = getFactory();
+            await factory.setPaymentRequired(val);
+            setPaymentRequired(val);
+            showSuccess(`Payment ${val ? 'enabled' : 'disabled'}`);
+        } catch (e) { showError('Failed: ' + e.message); }
+        finally { setLoading(false); }
+    };
+
+    const handleSetCanisterCreationCycles = async () => {
+        setLoading(true);
+        try {
+            const factory = getFactory();
+            await factory.setCanisterCreationCycles(BigInt(Math.round(parseFloat(canisterCreationCycles) * 1_000_000_000_000)));
+            showSuccess('Canister creation cycles updated');
+        } catch (e) { showError('Failed: ' + e.message); }
+        finally { setLoading(false); }
+    };
+
+    const handleUpdatePremiumConfig = async () => {
+        setLoading(true);
+        try {
+            const factory = getFactory();
+            await factory.setPremiumCreationFee(BigInt(Math.round(parseFloat(premiumCreationFee) * E8S)));
+            const premCanId = sneedPremiumCanisterId.trim() ? [Principal.fromText(sneedPremiumCanisterId.trim())] : [];
+            await factory.setSneedPremiumCanisterId(premCanId);
+            showSuccess('Premium config updated');
+            loadNetworkConfig();
+        } catch (e) { showError('Failed: ' + e.message); }
+        finally { setLoading(false); }
+    };
+
+    // ==================== ADMIN HANDLERS ====================
+
+    const handleAddAdmin = async () => {
+        if (!addAdminPrincipal.trim()) return;
+        setLoading(true);
+        try {
+            const factory = getFactory();
+            await factory.addAdmin(Principal.fromText(addAdminPrincipal.trim()));
+            setAddAdminPrincipal('');
+            showSuccess('Admin added');
+            loadNetworkConfig();
+        } catch (e) { showError('Failed: ' + e.message); }
+        finally { setLoading(false); }
+    };
+
+    const handleRemoveAdmin = async () => {
+        if (!removeAdminPrincipal.trim()) return;
+        setLoading(true);
+        try {
+            const factory = getFactory();
+            await factory.removeAdmin(Principal.fromText(removeAdminPrincipal.trim()));
+            setRemoveAdminPrincipal('');
+            showSuccess('Admin removed');
+            loadNetworkConfig();
+        } catch (e) { showError('Failed: ' + e.message); }
+        finally { setLoading(false); }
+    };
+
+    const handleSetGovernance = async () => {
+        setLoading(true);
+        try {
+            const factory = getFactory();
+            const gov = newGovernancePrincipal.trim() ? [Principal.fromText(newGovernancePrincipal.trim())] : [];
+            await factory.setSneedGovernance(gov);
+            showSuccess(newGovernancePrincipal.trim() ? 'Governance set' : 'Governance cleared');
+            setNewGovernancePrincipal('');
+            loadNetworkConfig();
+        } catch (e) { showError('Failed: ' + e.message); }
+        finally { setLoading(false); }
+    };
+
+    // ==================== HELPERS ====================
+
+    const formatCycles = (c) => {
+        const n = Number(c);
+        if (n >= 1_000_000_000_000) return (n / 1_000_000_000_000).toFixed(2) + ' T';
+        if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(2) + ' B';
+        return n.toLocaleString();
+    };
+
+    const formatIcp = (e8s) => (Number(e8s) / E8S).toFixed(4);
+
     const inputStyle = {
         width: '100%', padding: '8px 12px', borderRadius: 6,
         border: `1px solid ${theme.colors.borderColor || '#444'}`,
@@ -558,7 +737,7 @@ export default function SneedAppAdmin() {
     if (adminLoading) return <div style={{ minHeight: '100vh', background: theme.colors.primaryBg }}><Header /><div style={{ textAlign: 'center', padding: 60, color: theme.colors.secondaryText }}><FaSpinner className="fa-spin" /> Loading...</div></div>;
     if (!isAdmin) return <div style={{ minHeight: '100vh', background: theme.colors.primaryBg }}><Header /><div style={{ textAlign: 'center', padding: 60, color: '#ef4444' }}>{adminError || 'Not authorized'}</div></div>;
 
-    const tabNames = { publishers: 'Publishers', apps: 'Apps', versions: 'Versions', mintlog: 'Mint Log', revenue: 'Revenue', migration: 'Migration' };
+    const tabNames = { publishers: 'Publishers', apps: 'Apps', versions: 'Versions', mintlog: 'Mint Log', revenue: 'Revenue', network: 'Network', admins: 'Admins', stats: 'Stats', migration: 'Migration' };
 
     return (
         <div style={{ minHeight: '100vh', background: theme.colors.primaryBg }}>
@@ -952,6 +1131,254 @@ export default function SneedAppAdmin() {
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                )}
+
+                {/* ==================== NETWORK TAB ==================== */}
+                {activeTab === 'network' && (
+                    <div>
+                        <h3 style={{ color: theme.colors.primaryText, marginBottom: 12 }}>Factory Balances</h3>
+                        <div style={cardStyle}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+                                <div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 4 }}>Cycles Balance</div>
+                                    <div style={{ color: '#10b981', fontSize: 22, fontWeight: 700 }}>{cyclesBalance !== null ? formatCycles(cyclesBalance) : '...'}</div>
+                                </div>
+                                <div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 4 }}>ICP Balance</div>
+                                    <div style={{ color: '#f59e0b', fontSize: 22, fontWeight: 700 }}>{icpBalance !== null ? formatIcp(icpBalance) + ' ICP' : '...'}</div>
+                                </div>
+                                <div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 4 }}>Total Mints</div>
+                                    <div style={{ color: appPrimary, fontSize: 22, fontWeight: 700 }}>{mintCount}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h3 style={{ color: theme.colors.primaryText, marginBottom: 12 }}>Payment Requirement</h3>
+                        <div style={cardStyle}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <span style={{ color: theme.colors.primaryText }}>
+                                    Currently: <strong style={{ color: paymentRequired ? '#10b981' : '#ef4444' }}>{paymentRequired ? 'Required' : 'Free'}</strong>
+                                </span>
+                                <button onClick={() => handleSetPaymentRequired(!paymentRequired)} disabled={loading} style={btnSm(paymentRequired ? '#ef4444' : '#10b981')}>
+                                    {paymentRequired ? 'Disable' : 'Enable'} Payment
+                                </button>
+                            </div>
+                        </div>
+
+                        {conversionRate && (
+                            <>
+                                <h3 style={{ color: theme.colors.primaryText, marginBottom: 12 }}>CMC Conversion Rate</h3>
+                                <div style={cardStyle}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                        <div>
+                                            <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 4 }}>Cycles per ICP</div>
+                                            <div style={{ color: '#10b981', fontSize: 18, fontWeight: 600 }}>{formatCycles(Number(conversionRate.cyclesPerIcp))}</div>
+                                        </div>
+                                        <div>
+                                            <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 4 }}>Est. ICP for 2T Cycles</div>
+                                            <div style={{ color: '#f59e0b', fontSize: 18, fontWeight: 600 }}>
+                                                {Number(conversionRate.cyclesPerIcp) > 0
+                                                    ? ((2_000_000_000_000 / Number(conversionRate.cyclesPerIcp)) * 1.05).toFixed(4) + ' ICP'
+                                                    : '...'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        <h3 style={{ color: theme.colors.primaryText, marginBottom: 12 }}>Fee Settings</h3>
+                        <div style={cardStyle}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                                <div><label style={label}>Creation Fee (ICP)</label><input type="number" step="0.0001" min="0" value={creationFee} onChange={e => setCreationFee(e.target.value)} style={inputStyle} /></div>
+                                <div><label style={label}>Target Cycles (Trillion)</label><input type="number" step="0.1" min="0" value={targetCycles} onChange={e => setTargetCycles(e.target.value)} style={inputStyle} /></div>
+                            </div>
+                            <div style={{ marginTop: 12 }}>
+                                <label style={label}>Fee Destination Principal</label>
+                                <input value={feeDestPrincipal} onChange={e => setFeeDestPrincipal(e.target.value)} style={{ ...inputStyle, fontFamily: 'monospace' }} />
+                            </div>
+                            <div style={{ marginTop: 8 }}>
+                                <label style={label}>Fee Destination Subaccount (hex, optional)</label>
+                                <input value={feeDestSubaccount} onChange={e => setFeeDestSubaccount(e.target.value)} placeholder="64-char hex" style={{ ...inputStyle, fontFamily: 'monospace' }} />
+                            </div>
+                            <button onClick={handleUpdatePaymentConfig} disabled={loading} style={{ marginTop: 12, padding: '10px 20px', borderRadius: 8, background: `linear-gradient(135deg, ${appPrimary}, #22d3ee)`, color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' }}>
+                                {loading ? <FaSpinner className="fa-spin" /> : <FaSave />} Update Config
+                            </button>
+                        </div>
+
+                        <h3 style={{ color: theme.colors.primaryText, marginBottom: 12 }}>Canister Creation Cycles</h3>
+                        <div style={cardStyle}>
+                            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+                                <div style={{ flex: 1, maxWidth: 300 }}>
+                                    <label style={label}>Cycles per new canister (Trillion)</label>
+                                    <input type="number" step="0.1" min="0.1" value={canisterCreationCycles} onChange={e => setCanisterCreationCycles(e.target.value)} style={inputStyle} />
+                                </div>
+                                <button onClick={handleSetCanisterCreationCycles} disabled={loading} style={btnSm('#8b5cf6')}>Update Cycles</button>
+                            </div>
+                        </div>
+
+                        <h3 style={{ color: '#FFD700', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>Premium Discount</h3>
+                        <div style={{ ...cardStyle, border: '1px solid #FFD70040' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                                <div>
+                                    <label style={label}>Premium Creation Fee (ICP)</label>
+                                    <input type="number" step="0.0001" min="0" value={premiumCreationFee} onChange={e => setPremiumCreationFee(e.target.value)} style={inputStyle} />
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: 11, marginTop: 4 }}>Global fallback for legacy minting flow</div>
+                                </div>
+                                <div>
+                                    <label style={label}>Sneed Premium Canister ID</label>
+                                    <input value={sneedPremiumCanisterId} onChange={e => setSneedPremiumCanisterId(e.target.value)} placeholder="xxxx-cai (leave empty to disable)" style={{ ...inputStyle, fontFamily: 'monospace' }} />
+                                </div>
+                            </div>
+                            <button onClick={handleUpdatePremiumConfig} disabled={loading} style={{ marginTop: 12, padding: '10px 20px', borderRadius: 8, background: 'linear-gradient(135deg, #FFD700, #FFA500)', color: '#1a1a2e', border: 'none', fontWeight: 700, cursor: 'pointer' }}>
+                                {loading ? <FaSpinner className="fa-spin" /> : <FaSave />} Update Premium Config
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* ==================== ADMINS TAB ==================== */}
+                {activeTab === 'admins' && (
+                    <div>
+                        <h3 style={{ color: theme.colors.primaryText, marginBottom: 12 }}>Current Admins ({adminList.length})</h3>
+                        <div style={cardStyle}>
+                            {adminList.length === 0 ? (
+                                <div style={{ color: theme.colors.secondaryText, textAlign: 'center' }}>No admins found</div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    {adminList.map((admin, i) => (
+                                        <div key={i} style={{ background: theme.colors.primaryBg, padding: 10, borderRadius: 6, fontFamily: 'monospace', fontSize: 13, color: appPrimary, wordBreak: 'break-all' }}>
+                                            {admin.toString()}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'flex-end' }}>
+                                <div style={{ flex: 1 }}>
+                                    <label style={label}>Add Admin Principal</label>
+                                    <input value={addAdminPrincipal} onChange={e => setAddAdminPrincipal(e.target.value)} placeholder="Enter principal" style={{ ...inputStyle, fontFamily: 'monospace' }} />
+                                </div>
+                                <button onClick={handleAddAdmin} disabled={loading || !addAdminPrincipal.trim()} style={btnSm('#10b981')}><FaPlus /> Add</button>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'flex-end' }}>
+                                <div style={{ flex: 1 }}>
+                                    <label style={label}>Remove Admin Principal</label>
+                                    <input value={removeAdminPrincipal} onChange={e => setRemoveAdminPrincipal(e.target.value)} placeholder="Enter principal" style={{ ...inputStyle, fontFamily: 'monospace' }} />
+                                </div>
+                                <button onClick={handleRemoveAdmin} disabled={loading || !removeAdminPrincipal.trim()} style={btnSm('#ef4444')}><FaTrash /> Remove</button>
+                            </div>
+                        </div>
+
+                        <h3 style={{ color: theme.colors.primaryText, marginTop: 20, marginBottom: 12 }}>Sneed Governance</h3>
+                        <div style={cardStyle}>
+                            <div style={{ marginBottom: 10, color: theme.colors.secondaryText, fontSize: 13 }}>
+                                Current: <span style={{ color: sneedGovernance ? appPrimary : theme.colors.secondaryText, fontFamily: 'monospace' }}>
+                                    {sneedGovernance ? sneedGovernance.toString() : 'Not set'}
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                                <div style={{ flex: 1 }}>
+                                    <label style={label}>Set Governance Principal (empty to clear)</label>
+                                    <input value={newGovernancePrincipal} onChange={e => setNewGovernancePrincipal(e.target.value)} placeholder="Enter principal or leave empty" style={{ ...inputStyle, fontFamily: 'monospace' }} />
+                                </div>
+                                <button onClick={handleSetGovernance} disabled={loading} style={btnSm('#8b5cf6')}>
+                                    {newGovernancePrincipal.trim() ? 'Set' : 'Clear'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ==================== STATS TAB ==================== */}
+                {activeTab === 'stats' && (
+                    <div>
+                        <h3 style={{ color: theme.colors.primaryText, marginBottom: 12 }}>Factory Statistics</h3>
+                        {statsLoading && <div style={{ color: theme.colors.secondaryText }}><FaSpinner className="fa-spin" /> Loading stats...</div>}
+
+                        {factoryAggregates && (
+                            <>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 20 }}>
+                                    <div style={cardStyle}>
+                                        <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 6, textTransform: 'uppercase' }}>Total Mints</div>
+                                        <div style={{ color: appPrimary, fontSize: 30, fontWeight: 700 }}>{Number(factoryAggregates.totalCanistersCreated)}</div>
+                                    </div>
+                                    <div style={cardStyle}>
+                                        <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 6, textTransform: 'uppercase' }}>Total ICP Received</div>
+                                        <div style={{ color: '#f59e0b', fontSize: 30, fontWeight: 700 }}>{formatIcp(factoryAggregates.totalIcpPaidE8s)}</div>
+                                    </div>
+                                    <div style={cardStyle}>
+                                        <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 6, textTransform: 'uppercase' }}>Total Profit</div>
+                                        <div style={{ color: '#10b981', fontSize: 30, fontWeight: 700 }}>{formatIcp(factoryAggregates.totalIcpProfitE8s)}</div>
+                                    </div>
+                                </div>
+
+                                <h3 style={{ color: theme.colors.primaryText, marginBottom: 12 }}>ICP Breakdown</h3>
+                                <div style={cardStyle}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+                                        <div>
+                                            <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 4 }}>ICP Paid by Users</div>
+                                            <div style={{ color: '#f59e0b', fontSize: 18, fontWeight: 600 }}>{formatIcp(factoryAggregates.totalIcpPaidE8s)} ICP</div>
+                                        </div>
+                                        <div>
+                                            <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 4 }}>ICP for Cycles</div>
+                                            <div style={{ color: '#8b5cf6', fontSize: 18, fontWeight: 600 }}>{formatIcp(factoryAggregates.totalIcpForCyclesE8s)} ICP</div>
+                                        </div>
+                                        <div>
+                                            <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 4 }}>ICP Profit</div>
+                                            <div style={{ color: '#10b981', fontSize: 18, fontWeight: 600 }}>{formatIcp(factoryAggregates.totalIcpProfitE8s)} ICP</div>
+                                        </div>
+                                        <div>
+                                            <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 4 }}>Transfer Fees</div>
+                                            <div style={{ color: '#ef4444', fontSize: 18, fontWeight: 600 }}>{formatIcp(factoryAggregates.totalIcpTransferFeesE8s)} ICP</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <h3 style={{ color: theme.colors.primaryText, marginBottom: 12 }}>Cycles Breakdown</h3>
+                                <div style={cardStyle}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+                                        <div>
+                                            <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 4 }}>Cycles from CMC</div>
+                                            <div style={{ color: '#10b981', fontSize: 18, fontWeight: 600 }}>{formatCycles(factoryAggregates.totalCyclesReceivedFromCmc)}</div>
+                                        </div>
+                                        <div>
+                                            <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 4 }}>Cycles Spent on Creation</div>
+                                            <div style={{ color: '#ef4444', fontSize: 18, fontWeight: 600 }}>{formatCycles(factoryAggregates.totalCyclesSpentOnCreation)}</div>
+                                        </div>
+                                        <div>
+                                            <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 4 }}>Net Cycles</div>
+                                            <div style={{ color: Number(factoryAggregates.totalCyclesReceivedFromCmc) >= Number(factoryAggregates.totalCyclesSpentOnCreation) ? '#10b981' : '#ef4444', fontSize: 18, fontWeight: 600 }}>
+                                                {formatCycles(Number(factoryAggregates.totalCyclesReceivedFromCmc) - Number(factoryAggregates.totalCyclesSpentOnCreation))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {Number(factoryAggregates.totalCanistersCreated) > 0 && (
+                                    <>
+                                        <h3 style={{ color: theme.colors.primaryText, marginBottom: 12 }}>Per-Canister Averages</h3>
+                                        <div style={cardStyle}>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+                                                <div>
+                                                    <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 4 }}>Avg ICP Paid</div>
+                                                    <div style={{ color: '#f59e0b', fontSize: 16, fontWeight: 600 }}>{(Number(factoryAggregates.totalIcpPaidE8s) / Number(factoryAggregates.totalCanistersCreated) / E8S).toFixed(4)} ICP</div>
+                                                </div>
+                                                <div>
+                                                    <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 4 }}>Avg Profit</div>
+                                                    <div style={{ color: '#10b981', fontSize: 16, fontWeight: 600 }}>{(Number(factoryAggregates.totalIcpProfitE8s) / Number(factoryAggregates.totalCanistersCreated) / E8S).toFixed(4)} ICP</div>
+                                                </div>
+                                                <div>
+                                                    <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 4 }}>Avg Cycles Used</div>
+                                                    <div style={{ color: '#8b5cf6', fontSize: 16, fontWeight: 600 }}>{formatCycles(Number(factoryAggregates.totalCyclesSpentOnCreation) / Number(factoryAggregates.totalCanistersCreated))}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </>
+                        )}
                     </div>
                 )}
 

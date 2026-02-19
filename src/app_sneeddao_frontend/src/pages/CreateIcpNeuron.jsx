@@ -18,7 +18,7 @@ import { FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaWallet, FaPlus, F
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
 import { useSneedMembership } from '../hooks/useSneedMembership';
 import { SneedMemberGateMessage, SneedMemberGateLoading, SneedMemberBadge, BetaWarningBanner, GATE_TYPES } from '../components/SneedMemberGate';
-import { usePremiumStatus } from '../hooks/usePremiumStatus';
+
 
 // Custom CSS for animations
 const customStyles = `
@@ -136,8 +136,6 @@ function CreateIcpNeuron() {
         loading: loadingSneedVP 
     } = useSneedMembership();
     
-    // Premium membership for discounted pricing
-    const { isPremium, loading: loadingPremium } = usePremiumStatus(identity);
     
     // Admin check (for showing total managers)
     const [isAdmin, setIsAdmin] = useState(false);
@@ -156,7 +154,7 @@ function CreateIcpNeuron() {
     
     // Payment state
     const [paymentConfig, setPaymentConfig] = useState(null);
-    const [premiumFeeE8s, setPremiumFeeE8s] = useState(null); // Discounted fee for premium members
+    const [pricingInfo, setPricingInfo] = useState(null);
     const [userIcpBalance, setUserIcpBalance] = useState(null);
     const [paymentBalance, setPaymentBalance] = useState(null);
     const [conversionRate, setConversionRate] = useState(null);
@@ -246,12 +244,15 @@ function CreateIcpNeuron() {
             }
             const factory = createFactoryActor(factoryCanisterId, { agent });
             
-            const [version, cyclesBalance, managerCount, config, premiumFee] = await Promise.all([
+            const appPricePromise = identity 
+                ? factory.getAppMintPrice('sneed-icp-staking-bot', identity.getPrincipal())
+                : Promise.resolve(null);
+            const [version, cyclesBalance, managerCount, config, appPrice] = await Promise.all([
                 factory.getCurrentVersion(),
                 factory.getCyclesBalance(),
                 factory.getManagerCount(),
                 factory.getPaymentConfig(),
-                factory.getPremiumCreationFee(),
+                appPricePromise,
             ]);
             
             setFactoryInfo({
@@ -267,7 +268,14 @@ function CreateIcpNeuron() {
                 paymentRequired: config.paymentRequired,
             });
             
-            setPremiumFeeE8s(Number(premiumFee));
+            if (appPrice) {
+                setPricingInfo({
+                    regular: Number(appPrice.regular),
+                    premium: Number(appPrice.premium),
+                    applicable: Number(appPrice.applicable),
+                    isPremium: appPrice.isPremium,
+                });
+            }
             
             // Also get the user's payment subaccount
             if (identity) {
@@ -502,14 +510,12 @@ function CreateIcpNeuron() {
         return cycles.toLocaleString();
     };
 
-    // Calculate effective fee (premium discount if applicable)
-    const effectiveFeeE8s = isPremium && premiumFeeE8s !== null 
-        ? premiumFeeE8s 
-        : (paymentConfig?.creationFeeE8s || 0);
+    // Calculate effective fee from per-app pricing
+    const effectiveFeeE8s = pricingInfo ? pricingInfo.applicable : (paymentConfig?.creationFeeE8s || 0);
     
     // Calculate discount percentage
-    const discountPercent = paymentConfig && premiumFeeE8s !== null && paymentConfig.creationFeeE8s > 0
-        ? Math.round((1 - premiumFeeE8s / paymentConfig.creationFeeE8s) * 100)
+    const discountPercent = pricingInfo && pricingInfo.regular > 0 && pricingInfo.premium < pricingInfo.regular
+        ? Math.round((1 - pricingInfo.premium / pricingInfo.regular) * 100)
         : 0;
 
     return (
@@ -864,10 +870,10 @@ function CreateIcpNeuron() {
                                 {/* Quick info */}
                                 {paymentConfig && (
                                     <div style={{ marginTop: '1.25rem', color: theme.colors.mutedText, fontSize: '0.85rem' }}>
-                                        Creation fee: <strong style={{ color: isPremium ? '#FFD700' : theme.colors.primaryText }}>
+                                        Creation fee: <strong style={{ color: pricingInfo?.isPremium ? '#FFD700' : theme.colors.primaryText }}>
                                             {formatIcp(effectiveFeeE8s)} ICP
                                         </strong>
-                                        {isPremium && discountPercent > 0 && (
+                                        {pricingInfo?.isPremium && discountPercent > 0 && (
                                             <span style={{
                                                 marginLeft: '8px',
                                                 background: 'linear-gradient(135deg, #FFD700, #FFA500)',

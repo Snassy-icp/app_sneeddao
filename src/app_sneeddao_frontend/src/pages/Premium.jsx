@@ -245,24 +245,24 @@ export default function Premium() {
                     }
                 }
                 
-                // Fetch neuron manager factory fees
+                // Fetch sneedapp per-app pricing for ICP staking bot
                 if (NEURON_MANAGER_FACTORY_CANISTER_ID) {
                     try {
                         const factoryActor = createNeuronManagerFactoryActor(NEURON_MANAGER_FACTORY_CANISTER_ID, {});
-                        const [paymentConfig, premiumFee] = await Promise.all([
-                            factoryActor.getPaymentConfig(),
-                            factoryActor.getPremiumCreationFee(),
-                        ]);
-                        
-                        // Only show if there's a discount
-                        if (Number(paymentConfig.creationFeeE8s) > Number(premiumFee)) {
-                            pricing.neuronManager = {
-                                regularFeeE8s: paymentConfig.creationFeeE8s,
-                                premiumFeeE8s: premiumFee,
-                            };
+                        const appInfo = await factoryActor.getApp('sneed-icp-staking-bot');
+                        if (appInfo && appInfo.length > 0) {
+                            const app = appInfo[0];
+                            const regular = Number(app.mintPriceE8s);
+                            const premium = Number(app.premiumMintPriceE8s);
+                            if (regular > premium) {
+                                pricing.neuronManager = {
+                                    regularFeeE8s: BigInt(regular),
+                                    premiumFeeE8s: BigInt(premium),
+                                };
+                            }
                         }
                     } catch (err) {
-                        console.warn('Failed to fetch ICP staking bot factory fees:', err);
+                        console.warn('Failed to fetch ICP staking bot pricing:', err);
                     }
                 }
                 
