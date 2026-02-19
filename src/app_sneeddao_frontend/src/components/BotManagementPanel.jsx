@@ -23,7 +23,7 @@
  *   identity           – Current user identity (from useAuth)
  *   isAuthenticated    – Boolean
  */
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
@@ -196,7 +196,7 @@ const formatBps = (v) => {
     return (n / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + '%';
 };
 
-export default function BotManagementPanel({
+const BotManagementPanel = forwardRef(function BotManagementPanel({
     canisterId,
     createBotActor,
     accentColor = '#8b5cf6',
@@ -213,7 +213,7 @@ export default function BotManagementPanel({
     extraInfoContent,
     cbEvents,
     preferredChoreTypeOrder,
-}) {
+}, ref) {
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
     const accent = accentColor;
@@ -284,6 +284,15 @@ export default function BotManagementPanel({
     const [renameLabel, setRenameLabel] = useState('');
     const [confirmingDelete, setConfirmingDelete] = useState(null); // choreId awaiting delete confirmation
     const chorePollingRef = useRef(null); // Interval ID for post-action status polling
+
+    useImperativeHandle(ref, () => ({
+        navigateToChore(choreTypeId, choreInstanceId) {
+            setExpanded(true);
+            setActiveTab('chores');
+            if (choreTypeId) setChoreActiveTab(choreTypeId);
+            if (choreInstanceId) setChoreActiveInstance(choreInstanceId);
+        },
+    }), []);
 
     // Log
     const [logEntries, setLogEntries] = useState([]);
@@ -3082,4 +3091,6 @@ export default function BotManagementPanel({
             )}
         </div>
     );
-}
+});
+
+export default BotManagementPanel;

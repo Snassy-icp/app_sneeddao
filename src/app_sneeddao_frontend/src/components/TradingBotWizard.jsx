@@ -311,6 +311,7 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
     const [deployError, setDeployError] = useState('');
     const [deploySuccess, setDeploySuccess] = useState(false);
     const [deployStep, setDeployStep] = useState('');
+    const [deployedInstanceId, setDeployedInstanceId] = useState(null);
 
     useEffect(() => {
         if (!inputToken || !identity) { setWalletBalance(null); setInputMeta(null); return; }
@@ -394,6 +395,7 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
 
             setDeployStep('Starting chore...');
             await bot.startChore(instId);
+            setDeployedInstanceId(instId);
             setDeploySuccess(true);
         } catch (e) {
             setDeployError(e.message || 'Deployment failed');
@@ -416,7 +418,7 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
             <div className="wizard-fade-in" style={{ textAlign: 'center' }}>
                 <WizardMascot message="Your DCA bot is live! It will automatically buy on schedule. You can always adjust settings from the Chores tab." theme={theme} />
                 <div style={{ marginTop: '1.5rem' }}>
-                    <button onClick={onComplete} style={btnPrimary(theme)}>
+                    <button onClick={() => onComplete('trade', deployedInstanceId)} style={btnPrimary(theme)}>
                         Done <FaCheck size={12} />
                     </button>
                 </div>
@@ -504,6 +506,7 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
 
 function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, identity }) {
     const [step, setStep] = useState(1);
+    const [deployedInstanceId, setDeployedInstanceId] = useState(null);
     const [tokenA, setTokenA] = useState('');
     const [tokenB, setTokenB] = useState('');
     const [sellAMinPrice, setSellAMinPrice] = useState('');
@@ -651,6 +654,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
 
             setDeployStep('Starting chore...');
             await bot.startChore(instId);
+            setDeployedInstanceId(instId);
             setDeploySuccess(true);
         } catch (e) {
             setDeployError(e.message || 'Deployment failed');
@@ -669,7 +673,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
             <div className="wizard-fade-in" style={{ textAlign: 'center' }}>
                 <WizardMascot message={`Your range trading bot for ${symA}/${symB} is live! It will trade when prices hit your ranges.`} theme={theme} />
                 <div style={{ marginTop: '1.5rem' }}>
-                    <button onClick={onComplete} style={btnPrimary(theme)}>Done <FaCheck size={12} /></button>
+                    <button onClick={() => onComplete('trade', deployedInstanceId)} style={btnPrimary(theme)}>Done <FaCheck size={12} /></button>
                 </div>
             </div>
         );
@@ -813,6 +817,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
 
 function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, identity }) {
     const [step, setStep] = useState(1);
+    const [deployedInstanceId, setDeployedInstanceId] = useState(null);
     const [targets, setTargets] = useState([{ token: '', targetPct: '' }]);
     const [denomToken, setDenomToken] = useState(ICP_LEDGER);
     const [thresholdPct, setThresholdPct] = useState('5');
@@ -907,6 +912,7 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
 
             setDeployStep('Starting rebalancer...');
             await bot.startChore(instId);
+            setDeployedInstanceId(instId);
             setDeploySuccess(true);
         } catch (e) {
             setDeployError(e.message || 'Deployment failed');
@@ -925,7 +931,7 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
             <div className="wizard-fade-in" style={{ textAlign: 'center' }}>
                 <WizardMascot message="Your self-balancing portfolio is live! The rebalancer will keep your allocations on target." theme={theme} />
                 <div style={{ marginTop: '1.5rem' }}>
-                    <button onClick={onComplete} style={btnPrimary(theme)}>Done <FaCheck size={12} /></button>
+                    <button onClick={() => onComplete('rebalance', deployedInstanceId)} style={btnPrimary(theme)}>Done <FaCheck size={12} /></button>
                 </div>
             </div>
         );
@@ -1096,9 +1102,9 @@ export default function TradingBotWizard({ isOpen, onClose, getReadyBotActor, ca
 
     if (!isOpen) return null;
 
-    const handleComplete = () => {
+    const handleComplete = (choreTypeId, instanceId) => {
         setScenario(null);
-        onClose(true);
+        onClose(true, choreTypeId, instanceId);
     };
 
     const scenarios = [

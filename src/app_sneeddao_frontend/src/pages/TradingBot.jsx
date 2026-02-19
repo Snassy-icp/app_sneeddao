@@ -6437,6 +6437,7 @@ export default function TradingBot() {
     const [showWizard, setShowWizard] = useState(false);
     const [hasTokens, setHasTokens] = useState(null);
     const wizardActorRef = useRef(null);
+    const botPanelRef = useRef(null);
 
     const getWizardBotActor = useCallback(async () => {
         if (wizardActorRef.current) return wizardActorRef.current;
@@ -6930,6 +6931,7 @@ export default function TradingBot() {
                 ) : (
                     <>
                         <BotManagementPanel
+                            ref={botPanelRef}
                             canisterId={canisterId}
                             createBotActor={createBotActor}
                             accentColor={ACCENT}
@@ -6959,7 +6961,18 @@ export default function TradingBot() {
             </main>
             <TradingBotWizard
                 isOpen={showWizard}
-                onClose={(didDeploy) => { setShowWizard(false); if (didDeploy) { setHasTokens(true); wizardActorRef.current = null; } }}
+                onClose={(didDeploy, deployedChoreTypeId, deployedInstanceId) => {
+                    setShowWizard(false);
+                    if (didDeploy) {
+                        setHasTokens(true);
+                        wizardActorRef.current = null;
+                        if (botPanelRef.current && deployedChoreTypeId) {
+                            setTimeout(() => {
+                                botPanelRef.current.navigateToChore(deployedChoreTypeId, deployedInstanceId);
+                            }, 100);
+                        }
+                    }
+                }}
                 getReadyBotActor={getWizardBotActor}
                 canisterId={canisterId}
                 identity={identity}
