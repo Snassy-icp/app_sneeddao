@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea, FaCloudDownloadAlt, FaBolt, FaRobot, FaCubes, FaChartLine, FaArrowUp, FaStore } from 'react-icons/fa';
-import BotIcon from './BotIcon';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -1592,7 +1591,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                                 }}
                                             >
                                                 <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', width: '24px', height: '16px' }}>
-                                                    <BotIcon type="staking" size={14} color={theme.colors.mutedText} />
+                                                    <FaRobot size={14} style={{ color: theme.colors.mutedText }} />
+                                                    <FaBrain size={8} style={{ position: 'absolute', top: '-3px', right: '6px', color: '#a78bfa', filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.4))' }} />
                                                     {snsLogo && (
                                                         <img 
                                                             src={snsLogo} 
