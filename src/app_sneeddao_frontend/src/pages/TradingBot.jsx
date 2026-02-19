@@ -3539,9 +3539,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                             const ledgerActor = createLedgerActor(job.tid, { agent });
                             const subParam = job.acc.number === 0 ? [] : [job.acc.subaccount];
                             const balance = await ledgerActor.icrc1_balance_of({ owner: botPrincipal, subaccount: subParam });
-                            if (BigInt(balance) > 0n) {
-                                accumulated[job.acc.number].balances.push({ token: job.tid, balance: BigInt(balance) });
-                            }
+                            accumulated[job.acc.number].balances.push({ token: job.tid, balance: BigInt(balance) });
                         } catch (_) {}
                         completed++;
                         // Progressive update: push current state every few completions or at the end
