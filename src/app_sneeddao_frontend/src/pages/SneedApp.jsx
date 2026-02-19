@@ -8,7 +8,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { getCanisterInfo } from '../utils/BackendUtils';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
-import { FaRocket, FaCubes, FaExternalLinkAlt, FaStore, FaSpinner, FaChevronDown, FaChevronUp, FaPlus, FaEye, FaCog, FaTag, FaCheckCircle, FaBrain, FaChartLine, FaBox } from 'react-icons/fa';
+import { FaRocket, FaCubes, FaExternalLinkAlt, FaStore, FaSpinner, FaChevronDown, FaChevronUp, FaPlus, FaEye, FaCog, FaTag, FaCheckCircle, FaBrain, FaChartLine, FaBox, FaRobot } from 'react-icons/fa';
+import BotIcon from '../components/BotIcon';
 
 const customStyles = `
 @keyframes fadeInUp {
@@ -26,6 +27,15 @@ const customStyles = `
 const appPrimary = '#06b6d4';
 const appSecondary = '#22d3ee';
 const appAccent = '#67e8f9';
+
+const BOT_BRANDING = {
+    'sneed-icp-staking-bot': { color: '#8b5cf6', secondary: '#a78bfa', gradient: 'linear-gradient(135deg, #8b5cf6, #a78bfa)', type: 'staking' },
+    'sneed-trading-bot': { color: '#10b981', secondary: '#34d399', gradient: 'linear-gradient(135deg, #10b981, #34d399)', type: 'trading' },
+};
+
+const FAMILY_ICONS = {
+    'sneed-bots': <FaRobot size={10} />,
+};
 
 const E8S = 100_000_000;
 
@@ -198,10 +208,10 @@ export default function SneedApp() {
 
     const getAppInfo = (appId) => apps.find(a => a.appId === appId);
 
-    const getCanisterIcon = (resolvedAppId) => {
-        if (resolvedAppId === 'sneed-icp-staking-bot') return <FaBrain style={{ color: '#f59e0b' }} />;
-        if (resolvedAppId === 'sneed-trading-bot') return <FaChartLine style={{ color: '#10b981' }} />;
-        return <FaBox style={{ color: appPrimary }} />;
+    const getCanisterIcon = (resolvedAppId, size = 14) => {
+        const branding = BOT_BRANDING[resolvedAppId];
+        if (branding) return <BotIcon type={branding.type} size={size} color={branding.color} />;
+        return <FaBox size={size} style={{ color: appPrimary }} />;
     };
 
     return (
@@ -278,7 +288,7 @@ export default function SneedApp() {
 
                 {/* Apps Grid */}
                 <h2 style={{ color: theme.colors.primaryText, fontSize: 20, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <FaCubes style={{ color: appPrimary }} /> Available Apps
+                    <FaStore style={{ color: appPrimary }} /> Available Apps
                 </h2>
 
                 {allFamilies.length > 0 && (
@@ -292,8 +302,12 @@ export default function SneedApp() {
                             <button key={f} onClick={() => setSelectedFamily(f === selectedFamily ? null : f)} style={{
                                 padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 500,
                                 background: selectedFamily === f ? '#8b5cf6' : '#8b5cf615',
-                                color: selectedFamily === f ? '#fff' : '#8b5cf6'
-                            }}>{f}</button>
+                                color: selectedFamily === f ? '#fff' : '#8b5cf6',
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                            }}>
+                                {FAMILY_ICONS[f]}
+                                {f}
+                            </button>
                         ))}
                     </div>
                 )}
@@ -315,21 +329,35 @@ export default function SneedApp() {
                         display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
                         gap: 16, marginBottom: 40
                     }}>
-                        {filteredApps.map((app, i) => (
+                        {filteredApps.map((app, i) => {
+                            const branding = BOT_BRANDING[app.appId];
+                            const cardColor = branding?.color || appPrimary;
+                            const cardSecondary = branding?.secondary || appSecondary;
+                            const cardGradient = branding?.gradient || `linear-gradient(135deg, ${appPrimary}, ${appSecondary})`;
+
+                            return (
                             <div key={app.appId} className="sneedapp-fade-in" style={{
                                 animationDelay: `${i * 0.1}s`,
                                 background: theme.colors.cardGradient, borderRadius: 12,
-                                border: `1px solid ${theme.colors.borderColor || '#333'}`,
+                                border: `1px solid ${branding ? `${cardColor}30` : (theme.colors.borderColor || '#333')}`,
                                 padding: 20, display: 'flex', flexDirection: 'column', gap: 12,
                                 transition: 'transform 0.2s, box-shadow 0.2s',
                                 cursor: 'pointer'
                             }}
-                                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 8px 24px ${appPrimary}20`; }}
+                                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 8px 24px ${cardColor}20`; }}
                                 onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}
                             >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                                     {app.iconUrl && app.iconUrl.length > 0 ? (
                                         <img src={app.iconUrl[0]} alt="" style={{ width: 40, height: 40, borderRadius: 8 }} />
+                                    ) : branding ? (
+                                        <div style={{
+                                            width: 40, height: 40, borderRadius: 8,
+                                            background: cardGradient,
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        }}>
+                                            <BotIcon type={branding.type} size={22} color="#fff" />
+                                        </div>
                                     ) : (
                                         <div style={{
                                             width: 40, height: 40, borderRadius: 8,
@@ -366,8 +394,13 @@ export default function SneedApp() {
                                         {app.families.map(f => (
                                             <span key={f} style={{
                                                 padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 500,
-                                                background: '#8b5cf615', color: '#8b5cf6'
-                                            }}>{f}</span>
+                                                background: f === 'sneed-bots' ? `${cardColor}15` : '#8b5cf615',
+                                                color: f === 'sneed-bots' ? cardColor : '#8b5cf6',
+                                                display: 'inline-flex', alignItems: 'center', gap: 3,
+                                            }}>
+                                                {FAMILY_ICONS[f]}
+                                                {f}
+                                            </span>
                                         ))}
                                     </div>
                                 )}
@@ -379,8 +412,8 @@ export default function SneedApp() {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                     <div style={{
                                         display: 'flex', alignItems: 'center', gap: 4,
-                                        background: `${appPrimary}15`, padding: '4px 10px',
-                                        borderRadius: 6, fontSize: 13, color: appSecondary
+                                        background: `${cardColor}15`, padding: '4px 10px',
+                                        borderRadius: 6, fontSize: 13, color: cardSecondary
                                     }}>
                                         <FaTag style={{ fontSize: 10 }} />
                                         {formatIcp(app.mintPriceE8s)} ICP
@@ -401,7 +434,7 @@ export default function SneedApp() {
                                     navigate(getMintUrl(app));
                                 }} style={{
                                     width: '100%', padding: '10px 16px', borderRadius: 8,
-                                    background: `linear-gradient(135deg, ${appPrimary}, ${appSecondary})`,
+                                    background: cardGradient,
                                     color: '#fff', border: 'none', fontWeight: 600, fontSize: 14,
                                     cursor: 'pointer', display: 'flex', alignItems: 'center',
                                     justifyContent: 'center', gap: 8, transition: 'opacity 0.2s'
@@ -412,7 +445,8 @@ export default function SneedApp() {
                                     <FaRocket /> Mint Canister
                                 </button>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
 
@@ -449,14 +483,17 @@ export default function SneedApp() {
                                 Object.entries(walletByApp).map(([appId, entries]) => {
                                     const appInfo = getAppInfo(appId);
                                     const appName = appInfo ? appInfo.name : (appId === 'unknown' ? 'Unknown' : appId);
+                                    const branding = BOT_BRANDING[appId];
+                                    const sectionColor = branding?.color || appPrimary;
+                                    const sectionSecondary = branding?.secondary || appSecondary;
                                     return (
                                         <div key={appId} style={{ marginBottom: 16 }}>
                                             <h3 style={{
-                                                color: theme.colors.secondaryText, fontSize: 14,
+                                                color: sectionColor, fontSize: 14,
                                                 fontWeight: 600, marginBottom: 8, textTransform: 'uppercase',
                                                 letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 6
                                             }}>
-                                                {getCanisterIcon(appId)} {appName} ({entries.length})
+                                                {getCanisterIcon(appId, 16)} {appName} ({entries.length})
                                             </h3>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                                 {entries.map(entry => {
@@ -465,11 +502,15 @@ export default function SneedApp() {
                                                     const info = getAppInfo(resolvedId);
                                                     const viewUrl = info ? getViewUrl(info, cid) : null;
                                                     const manageUrl = info ? getManageUrl(info, cid) : null;
+                                                    const rowBranding = BOT_BRANDING[resolvedId];
+                                                    const rowColor = rowBranding?.color || appPrimary;
+                                                    const rowSecondary = rowBranding?.secondary || appSecondary;
                                                     return (
                                                         <div key={cid} style={{
                                                             display: 'flex', alignItems: 'center', gap: 12,
                                                             background: theme.colors.secondaryBg, padding: '12px 16px',
-                                                            borderRadius: 10, border: `1px solid ${theme.colors.borderColor || '#333'}`
+                                                            borderRadius: 10,
+                                                            border: `1px solid ${rowBranding ? `${rowColor}20` : (theme.colors.borderColor || '#333')}`,
                                                         }}>
                                                             {getCanisterIcon(resolvedId)}
                                                             <code style={{
@@ -482,7 +523,7 @@ export default function SneedApp() {
                                                                 {viewUrl && (
                                                                     <Link to={viewUrl} style={{
                                                                         padding: '6px 10px', borderRadius: 6,
-                                                                        background: `${appPrimary}20`, color: appPrimary,
+                                                                        background: `${rowColor}20`, color: rowColor,
                                                                         fontSize: 12, textDecoration: 'none',
                                                                         display: 'flex', alignItems: 'center', gap: 4
                                                                     }}>
@@ -492,7 +533,7 @@ export default function SneedApp() {
                                                                 {manageUrl && manageUrl !== viewUrl && (
                                                                     <Link to={manageUrl} style={{
                                                                         padding: '6px 10px', borderRadius: 6,
-                                                                        background: `${appSecondary}20`, color: appSecondary,
+                                                                        background: `${rowSecondary}20`, color: rowSecondary,
                                                                         fontSize: 12, textDecoration: 'none',
                                                                         display: 'flex', alignItems: 'center', gap: 4
                                                                     }}>
