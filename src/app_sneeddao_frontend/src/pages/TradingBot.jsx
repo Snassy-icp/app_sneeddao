@@ -27,6 +27,7 @@ import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSea
 import TokenIcon from '../components/TokenIcon';
 import BotIcon from '../components/BotIcon';
 import PrincipalInput from '../components/PrincipalInput';
+import TradingBotWizard, { WIZARD_SVG_URL } from '../components/TradingBotWizard';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import priceService from '../services/PriceService';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
@@ -6433,6 +6434,41 @@ export default function TradingBot() {
     const { principalNames, principalNicknames, fetchAllNames } = useNaming();
     const [cbEvents, setCbEvents] = useState(null);
     const [controllers, setControllers] = useState([]);
+    const [showWizard, setShowWizard] = useState(false);
+    const [hasTokens, setHasTokens] = useState(null);
+    const wizardActorRef = useRef(null);
+
+    const getWizardBotActor = useCallback(async () => {
+        if (wizardActorRef.current) return wizardActorRef.current;
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
+        const agent = HttpAgent.createSync({ identity, host });
+        if (isLocal) await agent.fetchRootKey();
+        const actor = createBotActor(canisterId, { agent });
+        wizardActorRef.current = actor;
+        return actor;
+    }, [canisterId, identity]);
+
+    useEffect(() => {
+        wizardActorRef.current = null;
+    }, [identity, canisterId]);
+
+    useEffect(() => {
+        if (!isAuthenticated || !canisterId || !identity) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const bot = await getWizardBotActor();
+                const registry = bot.getTokenRegistry ? await bot.getTokenRegistry() : [];
+                if (!cancelled) {
+                    const found = registry.length > 0;
+                    setHasTokens(found);
+                    if (!found) setShowWizard(true);
+                }
+            } catch (_) { if (!cancelled) setHasTokens(null); }
+        })();
+        return () => { cancelled = true; };
+    }, [isAuthenticated, canisterId, identity, getWizardBotActor]);
 
     // Naming state
     const [showNamingSection, setShowNamingSection] = useState(false);
@@ -6611,6 +6647,23 @@ export default function TradingBot() {
                     </div>
 
                     <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+                        {isAuthenticated && (
+                            <button
+                                onClick={() => setShowWizard(true)}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                    background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_SECONDARY})`,
+                                    border: 'none', borderRadius: '10px',
+                                    color: '#fff', fontSize: '0.85rem', fontWeight: '600',
+                                    padding: '8px 16px', cursor: 'pointer',
+                                    boxShadow: `0 4px 16px ${ACCENT}40`,
+                                    transition: 'all 0.2s ease',
+                                }}
+                            >
+                                <img src={WIZARD_SVG_URL} alt="" style={{ width: 18, height: 18, filter: 'brightness(10)', maxWidth: 'none' }} />
+                                Setup Wizard
+                            </button>
+                        )}
                         <Link
                             to="/help/trading_bot"
                             style={{
@@ -6904,6 +6957,14 @@ export default function TradingBot() {
                     </>
                 )}
             </main>
+            <TradingBotWizard
+                isOpen={showWizard}
+                onClose={(didDeploy) => { setShowWizard(false); if (didDeploy) { setHasTokens(true); wizardActorRef.current = null; } }}
+                getReadyBotActor={getWizardBotActor}
+                canisterId={canisterId}
+                identity={identity}
+                hasTokens={hasTokens}
+            />
         </div>
     );
 }
