@@ -769,10 +769,14 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
         try {
             const bot = await getReadyBotActor();
             setDeployStep('Registering tokens...');
-            for (const t of targets) {
-                const meta = getTokenMetadataSync(t.token);
+            const allTokensToRegister = [...targets.map(t => t.token)];
+            if (denomToken && !allTokensToRegister.includes(denomToken)) {
+                allTokensToRegister.push(denomToken);
+            }
+            for (const tokenId of allTokensToRegister) {
+                const meta = getTokenMetadataSync(tokenId);
                 await bot.addToken({
-                    ledgerCanisterId: Principal.fromText(t.token),
+                    ledgerCanisterId: Principal.fromText(tokenId),
                     symbol: meta?.symbol || '???',
                     decimals: meta?.decimals ?? 8,
                     fee: BigInt(meta?.fee ?? 10000),
