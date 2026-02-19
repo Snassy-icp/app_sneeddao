@@ -445,6 +445,8 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
     const [enableStopLoss, setEnableStopLoss] = useState(false);
     const [stopLossPrice, setStopLossPrice] = useState('');
     const [stopLossSellToken, setStopLossSellToken] = useState('A');
+    const [stopLossMaxSlippage, setStopLossMaxSlippage] = useState('100');
+    const [stopLossMaxImpact, setStopLossMaxImpact] = useState('100');
     const [fundToken, setFundToken] = useState('');
     const [fundAmount, setFundAmount] = useState('');
     const [walletBalance, setWalletBalance] = useState(null);
@@ -522,7 +524,8 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                     minBalance: [], maxBalance: [], balanceDenominationToken: [],
                     minPrice: [], maxPrice: [toRawPrice(stopLossPrice)],
                     priceDenominationToken: [Principal.fromText(priceDenomToken)],
-                    maxPriceImpactBps: [500], maxSlippageBps: [300],
+                    maxPriceImpactBps: [Math.round(Number(stopLossMaxImpact) * 100)],
+                    maxSlippageBps: [Math.round(Number(stopLossMaxSlippage) * 100)],
                     minFrequencySeconds: [], maxFrequencySeconds: [],
                     tradeSizeDenominationToken: [],
                 });
@@ -663,15 +666,24 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                                 Enable Stop Loss
                             </label>
                             {enableStopLoss && (
-                                <div style={{ marginTop: '10px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                                    <div style={{ minWidth: '120px' }}>
-                                        <label style={{ display: 'block', fontSize: '0.78rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Sell all of:</label>
-                                        <select value={stopLossSellToken} onChange={e => setStopLossSellToken(e.target.value)} style={{ padding: '8px 10px', background: theme.colors.primaryBg, border: `1px solid ${theme.colors.border}`, borderRadius: '8px', color: theme.colors.primaryText, fontSize: '0.85rem' }}>
-                                            <option value="A">{symA}</option>
-                                            <option value="B">{symB}</option>
-                                        </select>
+                                <div style={{ marginTop: '10px' }}>
+                                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: '10px' }}>
+                                        <div style={{ minWidth: '120px' }}>
+                                            <label style={{ display: 'block', fontSize: '0.78rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Sell all of:</label>
+                                            <select value={stopLossSellToken} onChange={e => setStopLossSellToken(e.target.value)} style={{ padding: '8px 10px', background: theme.colors.primaryBg, border: `1px solid ${theme.colors.border}`, borderRadius: '8px', color: theme.colors.primaryText, fontSize: '0.85rem' }}>
+                                                <option value="A">{symA}</option>
+                                                <option value="B">{symB}</option>
+                                            </select>
+                                        </div>
+                                        <AmountInput label={`If price drops below (${symB})`} value={stopLossPrice} onChange={setStopLossPrice} theme={theme} />
                                     </div>
-                                    <AmountInput label={`If price drops below (${symB})`} value={stopLossPrice} onChange={setStopLossPrice} theme={theme} />
+                                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                        <AmountInput label="Max slippage (%)" value={stopLossMaxSlippage} onChange={setStopLossMaxSlippage} theme={theme} placeholder="100" />
+                                        <AmountInput label="Max price impact (%)" value={stopLossMaxImpact} onChange={setStopLossMaxImpact} theme={theme} placeholder="100" />
+                                    </div>
+                                    <p style={{ fontSize: '0.75rem', color: theme.colors.mutedText, margin: '6px 0 0', lineHeight: '1.4' }}>
+                                        High tolerances ensure the stop loss executes even in volatile conditions. Lower them only if you'd prefer the stop loss to skip rather than accept a bad price.
+                                    </p>
                                 </div>
                             )}
                         </div>
@@ -709,7 +721,10 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                             <SummaryRow label={`Sell ${symB} range`} value={`${sellBMinPrice} – ${sellBMaxPrice} ${symB}`} theme={theme} />
                             <SummaryRow label={`Sell ${symB} size`} value={`${tradeSizeB} ${symB}`} theme={theme} />
                             <SummaryRow label="Interval" value={`Every ${intervalMinutes} min`} theme={theme} />
-                            {enableStopLoss && <SummaryRow label="Stop loss" value={`Sell all ${stopLossSellToken === 'A' ? symA : symB} below ${stopLossPrice} ${symB}`} theme={theme} />}
+                            {enableStopLoss && <>
+                                <SummaryRow label="Stop loss" value={`Sell all ${stopLossSellToken === 'A' ? symA : symB} below ${stopLossPrice} ${symB}`} theme={theme} />
+                                <SummaryRow label="Stop loss tolerances" value={`${stopLossMaxSlippage}% slippage, ${stopLossMaxImpact}% impact`} theme={theme} />
+                            </>}
                         </div>
                         {deployError && <div style={{ color: theme.colors.error || '#ef4444', fontSize: '0.82rem', padding: '10px 12px', background: `${theme.colors.error || '#ef4444'}15`, borderRadius: '8px', marginBottom: '10px' }}>{deployError}</div>}
                         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
