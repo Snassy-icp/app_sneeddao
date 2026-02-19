@@ -23,9 +23,9 @@ export default function BotIcon({ type, size = 16, color, style, className }) {
         return <FaRobot size={size} style={{ color, ...style }} className={className} />;
     }
 
-    const badgeSize = Math.max(8, Math.round(size * 0.45));
-    const offsetTop = size >= 28 ? -Math.round(size * 0.04) : -Math.round(size * 0.1);
-    const offsetRight = size >= 28 ? -Math.round(size * 0.06) : -Math.round(size * 0.14);
+    const badgeSize = Math.max(9, Math.round(size * 0.55));
+    const offsetTop = -Math.round(badgeSize * 0.45);
+    const offsetRight = -Math.round(badgeSize * 0.45);
     const badgeColor = BADGE_ACCENT[type] || color || 'currentColor';
 
     return (
@@ -49,7 +49,7 @@ export default function BotIcon({ type, size = 16, color, style, className }) {
                     position: 'absolute',
                     top: `${offsetTop}px`,
                     right: `${offsetRight}px`,
-                    filter: `drop-shadow(0 0 1px rgba(0,0,0,0.4))`,
+                    filter: `drop-shadow(0 0 2px rgba(0,0,0,0.5))`,
                 }}
             />
         </span>
