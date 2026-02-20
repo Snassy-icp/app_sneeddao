@@ -5,6 +5,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { NamingContext } from '../NamingContext';
 import { get_token_conversion_rate } from '../utils/TokenUtils';
+import { useDenomination } from '../contexts/DenominationContext';
 
 // Add CSS animations
 const animationStyles = `
@@ -54,6 +55,7 @@ const TipModal = ({
     onAnimationComplete = null // Callback when flying animation completes
 }) => {
     const { principalNames, principalNicknames } = useContext(NamingContext);
+    const { formatValue: denomFormatValue } = useDenomination();
     const [selectedToken, setSelectedToken] = useState(defaultToken || '');
     const [amount, setAmount] = useState('');
     const [error, setError] = useState('');
@@ -568,11 +570,9 @@ const TipModal = ({
         return usdValue;
     };
 
-    // Format USD value
     const formatUsdValue = (value) => {
         if (value === null || value === undefined) return null;
-        if (value < 0.01) return '< $0.01';
-        return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        return denomFormatValue(value);
     };
 
     // Calculate max amount (balance - fee)
@@ -1279,7 +1279,7 @@ const TipModal = ({
                                         color: '#8fbc8f',
                                         fontWeight: '500'
                                     }}>
-                                        ≈ {formatUsdValue(getUsdValue())} USD
+                                        ≈ {formatUsdValue(getUsdValue())}
                                     </span>
                                 ) : (
                                     <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>

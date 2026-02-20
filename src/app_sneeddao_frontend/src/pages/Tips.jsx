@@ -17,6 +17,7 @@ import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay } from '../utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
 import { get_token_conversion_rate } from '../utils/TokenUtils';
+import { useDenomination } from '../contexts/DenominationContext';
 import Header from '../components/Header';
 import TokenConfetti from '../components/TokenConfetti';
 import { FaGift, FaArrowDown, FaArrowUp, FaSync, FaLock, FaExternalLinkAlt, FaComment } from 'react-icons/fa';
@@ -233,6 +234,7 @@ const Tips = () => {
     const { getTokenMetadata, fetchTokenMetadata } = useTokenMetadata();
     const { principalNames, principalNicknames, fetchAllNames } = useNaming();
     const { refreshNotifications } = useTipNotifications();
+    const { formatValue: denomFormatValue } = useDenomination();
     
     const [tipsReceived, setTipsReceived] = useState([]);
     const [tipsGiven, setTipsGiven] = useState([]);
@@ -612,12 +614,9 @@ const Tips = () => {
         return tokenAmount * price;
     };
 
-    // Format USD value for display
     const formatUsdValue = (value) => {
         if (value === null || value === undefined) return null;
-        if (value < 0.01) return '< $0.01';
-        if (value >= 1000) return `$${(value / 1000).toFixed(1)}K`;
-        return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        return denomFormatValue(value);
     };
     
     // Calculate total USD values for received and given tips

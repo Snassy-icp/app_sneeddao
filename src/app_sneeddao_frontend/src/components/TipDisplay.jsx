@@ -5,10 +5,12 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { formatPrincipal } from '../utils/PrincipalUtils';
 import { get_token_conversion_rate } from '../utils/TokenUtils';
+import { useDenomination } from '../contexts/DenominationContext';
 import { FaCoins } from 'react-icons/fa';
 
 const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = new Map(), isNarrowScreen = false, onTip = null, animateToken = null, postId = null }) => {
     const { theme } = useTheme();
+    const { formatValue: denomFormatValue } = useDenomination();
     const [hoveredToken, setHoveredToken] = useState(null);
     const [tooltipPosition, setTooltipPosition] = useState({ x: -9999, y: -9999 }); // Start off-screen to prevent flash
     const [expandedTokens, setExpandedTokens] = useState(new Set()); // Track which pills are expanded
@@ -283,8 +285,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         if (!price || price <= 0) return null;
         const tokenAmount = amount / Math.pow(10, decimals);
         const usdValue = tokenAmount * price;
-        if (usdValue < 0.01) return '< $0.01';
-        return `$${usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        return denomFormatValue(usdValue);
     };
 
     const getTokenSymbol = (principal) => {
@@ -867,7 +868,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                                     fontSize: '12px',
                                     fontWeight: '600'
                                 }}>
-                                    ≈ {formatUsdValue(tipsByToken[hoveredToken].totalAmount, getTokenDecimals(tipsByToken[hoveredToken].principal), hoveredToken)} USD
+                                    ≈ {formatUsdValue(tipsByToken[hoveredToken].totalAmount, getTokenDecimals(tipsByToken[hoveredToken].principal), hoveredToken)}
                                 </span>
                             </div>
                         )}
