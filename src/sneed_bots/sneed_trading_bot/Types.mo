@@ -118,25 +118,9 @@ module {
         fee: Nat;
     };
 
-    // ============================================
-    // NAMED SUBACCOUNTS
-    // ============================================
-
-    public type SubaccountInfo = {
-        number: Nat;
-        name: Text;
-        subaccount: Blob;
-    };
-
     public type TokenBalance = {
         token: Principal;
         balance: Nat;
-    };
-
-    public type SubaccountBalances = {
-        subaccountNumber: Nat;
-        name: Text;
-        balances: [TokenBalance];
     };
 
     // ============================================
@@ -329,8 +313,8 @@ module {
     // Action type IDs (stored as Nat, not enum)
     public module ActionType {
         public let Trade: Nat = 0;
-        public let Deposit: Nat = 1;
-        public let Withdraw: Nat = 2;
+        public let FundPurse: Nat = 1;
+        public let Reclaim: Nat = 2;
         public let Send: Nat = 3;
         public let DetectedInflow: Nat = 4;
         public let DetectedOutflow: Nat = 5;
@@ -341,7 +325,7 @@ module {
     /// This avoids enum variants in stable storage.
     public type ActionConfig = {
         id: Nat;
-        actionType: Nat;                    // 0=Trade, 1=Deposit, 2=Withdraw, 3=Send
+        actionType: Nat;                    // 0=Trade, 1=FundPurse, 2=Reclaim, 3=Send
         enabled: Bool;
 
         // Token(s): Trade uses both, others use inputToken only
@@ -360,11 +344,11 @@ module {
         // DEX preference (Trade only)
         preferredDex: ?Nat;                 // null = best across all enabled DEXes
 
-        // Subaccount references
-        sourceSubaccount: ?Nat;             // Withdraw: source, Send: source (null=main)
-        targetSubaccount: ?Nat;             // Deposit: target
+        // Purse references (FundPurse / Reclaim)
+        sourcePurseId: ?Text;              // Reclaim: source purse, Send: source purse (null=main purse)
+        targetPurseId: ?Text;              // FundPurse: target purse
 
-        // Destination (Send only)
+        // Destination (Send only — external ICRC-1 account)
         destinationOwner: ?Principal;
         destinationSubaccount: ?Blob;
 
@@ -404,8 +388,8 @@ module {
         amountMode: Nat;
         balancePercent: ?Nat;
         preferredDex: ?Nat;
-        sourceSubaccount: ?Nat;
-        targetSubaccount: ?Nat;
+        sourcePurseId: ?Text;
+        targetPurseId: ?Text;
         destinationOwner: ?Principal;
         destinationSubaccount: ?Blob;
         minBalance: ?Nat;
@@ -471,8 +455,7 @@ module {
         #ViewLogs;                  // 3: Read log entries
         #ManageLogs;                // 4: Set log level, clear logs
         // --- Trading Bot permissions (IDs 200+) ---
-        #ViewPortfolio;             // 200: View balances, subaccounts, portfolio state
-        #ManageSubaccounts;         // 201: Create/rename/delete named subaccounts
+        #ViewPortfolio;             // 200: View balances, portfolio state
         #ManageTrades;              // 202: Configure trade chore actions
         #ManageRebalancer;          // 203: Configure rebalancer targets and parameters
         #ManageTradeChore;          // 204: Start/stop/pause/resume/trigger trade chores
@@ -500,7 +483,6 @@ module {
         public let ManageLogs: Nat = BotkeyTypes.BasePermission.ManageLogs;               // 4
         // Trading Bot permissions (range 200–299)
         public let ViewPortfolio: Nat = 200;
-        public let ManageSubaccounts: Nat = 201;
         public let ManageTrades: Nat = 202;
         public let ManageRebalancer: Nat = 203;
         public let ManageTradeChore: Nat = 204;
@@ -687,7 +669,6 @@ module {
         tradeLogId: ?Nat;          // Link to the trade log entry that triggered this
         phase: SnapshotPhase;
         choreId: ?Text;            // Instance ID of the chore that triggered this
-        subaccount: ?Blob;         // null = main account, ?blob = named subaccount
         denominationToken: ?Principal;
         totalValueIcpE8s: ?Nat;
         totalValueUsdE8s: ?Nat;
@@ -716,10 +697,9 @@ module {
     // DAILY OHLC AGGREGATION
     // ============================================
 
-    /// Daily portfolio value summary per account (main or subaccount).
+    /// Daily portfolio value summary for the main account.
     public type DailyPortfolioSummary = {
         date: Int;              // UTC day start (midnight) in nanoseconds
-        subaccount: ?Blob;      // null = main account
         openValueIcpE8s: Nat;
         highValueIcpE8s: Nat;
         lowValueIcpE8s: Nat;
@@ -749,7 +729,6 @@ module {
     public type DailyPortfolioSummaryQuery = {
         fromDate: ?Int;
         toDate: ?Int;
-        subaccount: ?(?Blob);   // null = all accounts, ?(null) = main only, ?(?blob) = specific subaccount
         limit: ?Nat;
         offset: ?Nat;
     };
@@ -871,8 +850,7 @@ module {
     public type CBValueSource = {
         sourceType: Nat;        // 0=specificToken, 1=rebalChoreTokens, 2=allTokensInAccount
         token: ?Principal;      // for type 0
-        subaccount: ?Nat;       // for types 0, 2 (null = main)
-        choreInstanceId: ?Text; // for type 1
+        choreInstanceId: ?Text; // for types 0, 1, 2
     };
 
     /// Unified condition record — works for price, value, balance, AND-group, and OR-group conditions.
@@ -883,10 +861,9 @@ module {
         priceToken1: ?Principal;
         priceToken2: ?Principal;
 
-        // Balance (type 2): single token in specific account
+        // Balance (type 2): single token in specific purse
         balanceToken: ?Principal;
-        balanceSubaccount: ?Nat;        // null = main account
-        balanceChoreInstanceId: ?Text;  // if set, read from this chore's purse instead of on-chain
+        balanceChoreInstanceId: ?Text;  // null/absent = main purse, "__main__" = full on-chain, other = chore purse
 
         // Value (type 1): sum of multiple sources
         valueSources: [CBValueSource];
@@ -979,14 +956,12 @@ module {
     /// Balance entry for a chore's purse.
     public type PurseBalance = {
         token: Principal;
-        subaccountNumber: ?Nat;
         balance: Nat;
     };
 
     /// Balance entry for the main purse (computed: on-chain minus all chore purses).
     public type MainPurseBalance = {
         token: Principal;
-        subaccountNumber: ?Nat;
         balance: Nat;
         overcommitted: Bool;
     };

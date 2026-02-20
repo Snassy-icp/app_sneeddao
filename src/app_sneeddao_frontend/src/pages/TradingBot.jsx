@@ -93,7 +93,7 @@ const PERMISSION_LABELS = {
     'ViewLogs': 'Read Logs',
     'ManageLogs': 'Manage Logs',
     'ViewPortfolio': 'View Portfolio',
-    'ManageSubaccounts': 'Manage Subaccounts',
+    'ManagePurses': 'Manage Purses',
     'ManageTrades': 'Manage Trades',
     'ManageRebalancer': 'Manage Rebalancer',
     'ManageTradeChore': 'Manage Trade Chore',
@@ -115,8 +115,8 @@ const PERMISSION_DESCRIPTIONS = {
     'ViewChores': 'View bot chore statuses, configurations, and settings',
     'ViewLogs': 'Read bot log entries and view log configuration',
     'ManageLogs': 'Set log level, max entries, and clear logs',
-    'ViewPortfolio': 'View balances, subaccounts, and portfolio state',
-    'ManageSubaccounts': 'Create, rename, and delete named subaccounts',
+    'ViewPortfolio': 'View balances, purses, and portfolio state',
+    'ManagePurses': 'Fund and reclaim purse balances',
     'ManageTrades': 'Configure trade chore actions (add/edit/remove trades)',
     'ManageRebalancer': 'Configure rebalancer targets and parameters',
     'ManageTradeChore': 'Start/stop/pause/resume/trigger trade chores',
@@ -147,8 +147,8 @@ const ACTION_TYPE_DETECTED_OUTFLOW = 5;
 
 const ACTION_TYPE_LABELS = {
     [ACTION_TYPE_TRADE]: 'Trade (Swap)',
-    [ACTION_TYPE_DEPOSIT]: 'Deposit',
-    [ACTION_TYPE_WITHDRAW]: 'Withdraw',
+    [ACTION_TYPE_DEPOSIT]: 'Fund Purse',
+    [ACTION_TYPE_WITHDRAW]: 'Reclaim from Purse',
     [ACTION_TYPE_SEND]: 'Send',
     [ACTION_TYPE_DETECTED_INFLOW]: 'Detected Inflow',
     [ACTION_TYPE_DETECTED_OUTFLOW]: 'Detected Outflow',
@@ -433,11 +433,10 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
     const [fMaxPriceImpactBps, setFMaxPriceImpactBps] = useState('');
     const [fMaxSlippageBps, setFMaxSlippageBps] = useState('');
     const [fDestOwner, setFDestOwner] = useState('');
-    // Subaccount fields: number index into bot's named subaccounts ('' = not set)
-    const [fSourceSubaccount, setFSourceSubaccount] = useState('');
-    const [fTargetSubaccount, setFTargetSubaccount] = useState('');
-    // Named subaccounts loaded from the bot
-    const [subaccounts, setSubaccounts] = useState([]);
+    const [fSourcePurse, setFSourcePurse] = useState('');
+    const [fTargetPurse, setFTargetPurse] = useState('');
+    // Purse allocations for purse selectors
+    const [purseAllocations, setPurseAllocations] = useState([]);
     // Price direction toggle: 'output_per_input' means "SNEED per ICP", 'input_per_output' means "ICP per SNEED"
     const [fPriceDirection, setFPriceDirection] = useState('input_per_output');
     // Denomination token state: null = native, otherwise a canister ID string
@@ -528,17 +527,17 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
 
     useEffect(() => { loadActions(); }, [loadActions]);
 
-    // Load named subaccounts for Deposit/Withdraw selectors
-    const loadSubaccounts = useCallback(async () => {
+    // Load chore purse allocations for purse selectors
+    const loadPurseAllocations = useCallback(async () => {
         try {
             const bot = await getReadyBotActor();
-            if (bot?.getSubaccounts) {
-                const subs = await bot.getSubaccounts();
-                setSubaccounts(subs);
+            if (bot?.getAllPurseAllocations) {
+                const allocs = await bot.getAllPurseAllocations();
+                setPurseAllocations(allocs);
             }
         } catch (_) {}
     }, [getReadyBotActor]);
-    useEffect(() => { loadSubaccounts(); }, [loadSubaccounts]);
+    useEffect(() => { loadPurseAllocations(); }, [loadPurseAllocations]);
 
     // Helper: extract optional Candid value
     const optVal = (arr) => arr?.length > 0 ? arr[0] : null;
@@ -551,7 +550,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         setFEnabled(true);
         setFMinBalance(''); setFMaxBalance(''); setFMinPrice(''); setFMaxPrice('');
         setFMaxPriceImpactBps(''); setFMaxSlippageBps(''); setFDestOwner('');
-        setFSourceSubaccount(''); setFTargetSubaccount('');
+        setFSourcePurse(''); setFTargetPurse('');
         setFPriceDirection('input_per_output');
         setFTradeSizeDenom(''); setFPriceDenom(''); setFBalanceDenom('');
         setShowConditions(false);
@@ -613,8 +612,8 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         } else {
             setFDestOwner(destOwner ? principalToStr(destOwner) : '');
         }
-        setFSourceSubaccount(optVal(action.sourceSubaccount) != null ? String(Number(optVal(action.sourceSubaccount))) : '');
-        setFTargetSubaccount(optVal(action.targetSubaccount) != null ? String(Number(optVal(action.targetSubaccount))) : '');
+        setFSourcePurse(optVal(action.sourcePurseId) || '');
+        setFTargetPurse(optVal(action.targetPurseId) || '');
         // Auto-expand conditions if any condition fields are set
         const hasConditions = optVal(action.minBalance) != null || optVal(action.maxBalance) != null ||
             optVal(action.minPrice) != null || optVal(action.maxPrice) != null ||
@@ -647,8 +646,8 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
             amountMode: BigInt(fAmountMode),
             balancePercent: fAmountMode === 1 ? [BigInt(Math.round(Number(fBalancePercent) * 100))] : [],
             preferredDex: [],
-            sourceSubaccount: fSourceSubaccount !== '' ? [BigInt(fSourceSubaccount)] : [],
-            targetSubaccount: fTargetSubaccount !== '' ? [BigInt(fTargetSubaccount)] : [],
+            sourcePurseId: fSourcePurse !== '' ? [fSourcePurse] : [],
+            targetPurseId: fTargetPurse !== '' ? [fTargetPurse] : [],
             ...(() => {
                 // For Send: parse ICRC1 account to extract principal + optional subaccount
                 const raw = fDestOwner.trim();
@@ -766,8 +765,8 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                 amountMode: action.amountMode ?? BigInt(0),
                 balancePercent: action.balancePercent?.length > 0 ? action.balancePercent : [],
                 preferredDex: action.preferredDex?.length > 0 ? action.preferredDex : [],
-                sourceSubaccount: action.sourceSubaccount?.length > 0 ? action.sourceSubaccount : [],
-                targetSubaccount: action.targetSubaccount?.length > 0 ? action.targetSubaccount : [],
+                sourcePurseId: action.sourcePurseId?.length > 0 ? action.sourcePurseId : [],
+                targetPurseId: action.targetPurseId?.length > 0 ? action.targetPurseId : [],
                 destinationOwner: action.destinationOwner?.length > 0 ? action.destinationOwner : [],
                 destinationSubaccount: action.destinationSubaccount?.length > 0 ? action.destinationSubaccount : [],
                 minBalance: action.minBalance?.length > 0 ? action.minBalance : [],
@@ -907,24 +906,40 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                             </div>
                         </div>
                     )}
-                    {/* Deposit: target subaccount selector */}
-                    {fActionType === ACTION_TYPE_DEPOSIT && (
+                    {/* Fund Purse: source and target purse selectors */}
+                    {fActionType === ACTION_TYPE_DEPOSIT && (<>
                         <div>
-                            <label style={labelStyle}>Destination Subaccount</label>
-                            <select value={fTargetSubaccount} onChange={(e) => setFTargetSubaccount(e.target.value)} style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
-                                <option value="">— Select subaccount —</option>
-                                {subaccounts.map(s => <option key={Number(s.number)} value={String(Number(s.number))}>{s.name} (#{Number(s.number)})</option>)}
+                            <label style={labelStyle}>Source Purse</label>
+                            <select value={fSourcePurse} onChange={(e) => setFSourcePurse(e.target.value)} style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
+                                <option value="">Main Purse</option>
+                                {purseAllocations.map(a => <option key={a.instanceId} value={a.instanceId}>{a.instanceId}</option>)}
                             </select>
-                            {subaccounts.length === 0 && <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, marginTop: '2px' }}>No subaccounts yet. Create one in the Accounts tab.</div>}
+                        </div>
+                        <div>
+                            <label style={labelStyle}>Target Purse</label>
+                            <select value={fTargetPurse} onChange={(e) => setFTargetPurse(e.target.value)} style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
+                                <option value="">Main Purse</option>
+                                {purseAllocations.map(a => <option key={a.instanceId} value={a.instanceId}>{a.instanceId}</option>)}
+                            </select>
+                        </div>
+                    </>)}
+                    {/* Reclaim from Purse: source purse selector */}
+                    {fActionType === ACTION_TYPE_WITHDRAW && (
+                        <div>
+                            <label style={labelStyle}>Source Purse</label>
+                            <select value={fSourcePurse} onChange={(e) => setFSourcePurse(e.target.value)} style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
+                                <option value="">Main Purse</option>
+                                {purseAllocations.map(a => <option key={a.instanceId} value={a.instanceId}>{a.instanceId}</option>)}
+                            </select>
                         </div>
                     )}
-                    {/* Withdraw / Send: source subaccount selector */}
-                    {(fActionType === ACTION_TYPE_WITHDRAW || fActionType === ACTION_TYPE_SEND) && (
+                    {/* Send: source purse selector */}
+                    {fActionType === ACTION_TYPE_SEND && (
                         <div>
-                            <label style={labelStyle}>Source Subaccount</label>
-                            <select value={fSourceSubaccount} onChange={(e) => setFSourceSubaccount(e.target.value)} style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
-                                <option value="">Main Account</option>
-                                {subaccounts.map(s => <option key={Number(s.number)} value={String(Number(s.number))}>{s.name} (#{Number(s.number)})</option>)}
+                            <label style={labelStyle}>Source Purse (debit)</label>
+                            <select value={fSourcePurse} onChange={(e) => setFSourcePurse(e.target.value)} style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
+                                <option value="">Main Purse</option>
+                                {purseAllocations.map(a => <option key={a.instanceId} value={a.instanceId}>{a.instanceId}</option>)}
                             </select>
                         </div>
                     )}
@@ -1146,13 +1161,12 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                                 </>
                                             )}
                                             {optVal(action.destinationOwner) && <div><strong>Dest:</strong> {shortPrincipal(optVal(action.destinationOwner))}</div>}
-                                            {optVal(action.targetSubaccount) != null && (() => {
-                                                const sub = subaccounts.find(s => Number(s.number) === Number(optVal(action.targetSubaccount)));
-                                                return <div><strong>To Sub:</strong> {sub ? `${sub.name} (#${Number(sub.number)})` : `#${Number(optVal(action.targetSubaccount))}`}</div>;
+                                            {optVal(action.targetPurseId) && (() => {
+                                                const p = purseAllocations.find(a => a.instanceId === optVal(action.targetPurseId));
+                                                return <div><strong>To Purse:</strong> {p ? `${optVal(action.targetPurseId)}` : optVal(action.targetPurseId)}</div>;
                                             })()}
-                                            {optVal(action.sourceSubaccount) != null && (() => {
-                                                const sub = subaccounts.find(s => Number(s.number) === Number(optVal(action.sourceSubaccount)));
-                                                return <div><strong>From Sub:</strong> {sub ? `${sub.name} (#${Number(sub.number)})` : `#${Number(optVal(action.sourceSubaccount))}`}</div>;
+                                            {optVal(action.sourcePurseId) && (() => {
+                                                return <div><strong>From Purse:</strong> {optVal(action.sourcePurseId)}</div>;
                                             })()}
                                             {optVal(action.minBalance) != null && <div><strong>Min Bal:</strong> {actBDenom && hasCurrencySign(actBDenom)
                                                 ? formatDenomAmount(Number(formatTokenAmount(optVal(action.minBalance), balDec)), actBDenom, balSym)
@@ -2062,14 +2076,12 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
         try {
             const bot = await getReadyBotActor();
             if (!bot) return;
-            const [result, subs, purses, statuses] = await Promise.all([
+            const [result, purses, statuses] = await Promise.all([
                 bot.getDistributionLists(instanceId),
-                bot.getSubaccounts ? bot.getSubaccounts() : [],
                 bot.getAllPurseAllocations ? bot.getAllPurseAllocations() : [],
                 bot.getChoreStatuses ? bot.getChoreStatuses() : [],
             ]);
             setLists(result);
-            setSubaccounts(subs);
             setPurseAllocations(purses);
             setChoreStatuses(statuses);
         } catch (err) { setError('Failed to load distribution lists: ' + err.message); }
@@ -2140,7 +2152,6 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
             const bot = await getReadyBotActor();
             await bot.addDistributionList(instanceId, {
                 name: newName.trim(),
-                sourceSubaccount: [],
                 tokenLedgerCanisterId: Principal.fromText(newLedger.trim()),
                 thresholdAmount: BigInt(newThreshold || 0),
                 maxDistributionAmount: BigInt(newMaxDist || 0),
@@ -2200,7 +2211,6 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
             const mode = draftSettings.amountMode || '0';
             await bot.updateDistributionList(instanceId, BigInt(listId), {
                 name: list.name,
-                sourceSubaccount: list.sourceSubaccount || [],
                 tokenLedgerCanisterId: Principal.fromText(ledger),
                 thresholdAmount: BigInt(draftSettings.thresholdAmount || 0),
                 maxDistributionAmount: BigInt(draftSettings.maxDistributionAmount || 0),
@@ -2230,7 +2240,6 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
             const ledger = typeof list.tokenLedgerCanisterId === 'string' ? list.tokenLedgerCanisterId : list.tokenLedgerCanisterId?.toText?.();
             await bot.updateDistributionList(instanceId, BigInt(listId), {
                 name: list.name,
-                sourceSubaccount: list.sourceSubaccount || [],
                 tokenLedgerCanisterId: Principal.fromText(ledger),
                 thresholdAmount: list.thresholdAmount,
                 maxDistributionAmount: list.maxDistributionAmount,
@@ -2965,8 +2974,8 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                                         </div>
                                     ) : (() => {
                                         const at = Number(e.actionType);
-                                        const inLabel = at === ACTION_TYPE_DEPOSIT ? 'Deposited:' : at === ACTION_TYPE_WITHDRAW ? 'Withdrew:' : at === ACTION_TYPE_SEND ? 'Sent:' : 'Sold:';
-                                        const outLabel = at === ACTION_TYPE_DEPOSIT ? 'To:' : at === ACTION_TYPE_WITHDRAW ? 'To:' : at === ACTION_TYPE_SEND ? 'To:' : 'Bought:';
+                                        const inLabel = at === ACTION_TYPE_DEPOSIT ? 'Funded:' : at === ACTION_TYPE_WITHDRAW ? 'Reclaimed:' : at === ACTION_TYPE_SEND ? 'Sent:' : 'Sold:';
+                                        const outLabel = at === ACTION_TYPE_DEPOSIT ? 'To Purse:' : at === ACTION_TYPE_WITHDRAW ? 'To Main:' : at === ACTION_TYPE_SEND ? 'To:' : 'Bought:';
                                         return (
                                             <>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -3020,34 +3029,18 @@ function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
     const [stats, setStats] = useState(null);
     const [hasMore, setHasMore] = useState(false);
     const [expandedKey, setExpandedKey] = useState(null);
-    const [subaccounts, setSubaccounts] = useState([]);
-
-    const resolveSubaccountLabel = useCallback((subBlob) => {
-        if (!subBlob || subBlob.length === 0) return null;
-        const blob = subBlob[0];
-        if (!blob || blob.length === 0) return null;
-        const bytes = Array.from(blob);
-        if (bytes.every(b => b === 0)) return null;
-        const match = subaccounts.find(s => {
-            const sBytes = Array.from(s.subaccount || []);
-            return sBytes.length === bytes.length && sBytes.every((b, i) => b === bytes[i]);
-        });
-        return match ? `${match.name} (#${Number(match.number)})` : 'Subaccount';
-    }, [subaccounts]);
 
     const loadData = useCallback(async () => {
         try {
             const bot = await getReadyBotActor();
             if (!bot) return;
-            const [result, st, subs] = await Promise.all([
+            const [result, st] = await Promise.all([
                 bot.getPortfolioSnapshots({ startId: [], limit: [100], tradeLogId: [], phase: [], fromTime: [], toTime: [] }),
                 bot.getPortfolioSnapshotStats(),
-                bot.getSubaccounts ? bot.getSubaccounts() : [],
             ]);
             setSnapshots(result.entries);
             setHasMore(result.hasMore);
             setStats(st);
-            setSubaccounts(subs);
         } catch (err) {
             setError('Failed to load portfolio snapshots: ' + err.message);
         } finally {
@@ -3137,8 +3130,6 @@ function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
         const isExpanded = expandedKey === itemKey;
         const trigger = (before?.trigger || after?.trigger || '').replace(/ pre-swap| post-swap/, '');
         const ts = new Date(Number((before || after).timestamp) / 1_000_000).toLocaleString();
-        const subLabel = resolveSubaccountLabel((before || after)?.subaccount);
-
         // Merge tokens from both snapshots
         const tokenMap = new Map();
         const addTokens = (snap, phase) => {
@@ -3168,9 +3159,6 @@ function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
                         <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '600',
                             background: `${accentColor}20`, color: accentColor,
                         }}>Before / After</span>
-                        {subLabel && <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: '500',
-                            background: '#8b5cf620', color: '#8b5cf6',
-                        }}>{subLabel}</span>}
                         <span style={{ color: theme.colors.secondaryText }}>{trigger}</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -3241,8 +3229,6 @@ function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
         const isExpanded = expandedKey === itemKey;
         const phaseKey = getPhase(snap);
         const ts = new Date(Number(snap.timestamp) / 1_000_000).toLocaleString();
-        const subLabel = resolveSubaccountLabel(snap.subaccount);
-
         return (
             <div key={itemKey} style={{
                 padding: '10px 12px', background: theme.colors.primaryBg, borderRadius: '8px',
@@ -3256,9 +3242,6 @@ function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
                             background: phaseKey === 'Before' ? '#3b82f620' : '#22c55e20',
                             color: phaseKey === 'Before' ? '#3b82f6' : '#22c55e',
                         }}>{phaseKey || 'Snapshot'}</span>
-                        {subLabel && <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: '500',
-                            background: '#8b5cf620', color: '#8b5cf6',
-                        }}>{subLabel}</span>}
                         <span style={{ color: theme.colors.secondaryText }}>{snap.trigger}</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -5016,24 +4999,20 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
     const [selectedPricepair, setSelectedPricePair] = useState(null);
     const [dailyPortfolioSummaries, setDailyPortfolioSummaries] = useState([]);
     const [dailyPriceCandles, setDailyPriceCandles] = useState([]);
-    const [subaccounts, setSubaccounts] = useState([]);
-    const [selectedSubaccount, setSelectedSubaccount] = useState('main'); // 'main' or 'all' or subaccount blob key
-
     const loadData = useCallback(async () => {
         setLoading(true);
         setError('');
         try {
             const bot = await getReadyBotActor();
             if (!bot) return;
-            const [snapResult, flows, registry, prices, history, dailyPortfolio, dailyPrices, subs] = await Promise.all([
+            const [snapResult, flows, registry, prices, history, dailyPortfolio, dailyPrices] = await Promise.all([
                 bot.getPortfolioSnapshots({ startId: [], limit: [500], tradeLogId: [], phase: [{ After: null }], fromTime: [], toTime: [] }),
                 bot.getCapitalFlows(),
                 bot.getTokenRegistry ? bot.getTokenRegistry() : Promise.resolve([]),
                 bot.getLastKnownPrices ? bot.getLastKnownPrices() : Promise.resolve([]),
                 bot.getPriceHistory ? bot.getPriceHistory({ pairKey: [], limit: [5000], offset: [] }) : Promise.resolve({ entries: [], totalCount: 0n }),
-                bot.getDailyPortfolioSummaries ? bot.getDailyPortfolioSummaries({ fromDate: [], toDate: [], subaccount: [], limit: [1000], offset: [] }) : Promise.resolve({ entries: [], totalCount: 0n }),
+                bot.getDailyPortfolioSummaries ? bot.getDailyPortfolioSummaries({ fromDate: [], toDate: [], limit: [1000], offset: [] }) : Promise.resolve({ entries: [], totalCount: 0n }),
                 bot.getDailyPriceCandles ? bot.getDailyPriceCandles({ pairKey: [], fromDate: [], toDate: [], limit: [1000], offset: [] }) : Promise.resolve({ entries: [], totalCount: 0n }),
-                bot.getSubaccounts ? bot.getSubaccounts() : Promise.resolve([]),
             ]);
             setSnapshots(snapResult.entries);
             setCapitalFlows(flows);
@@ -5042,7 +5021,6 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
             setPriceHistory(history.entries);
             setDailyPortfolioSummaries(dailyPortfolio.entries || []);
             setDailyPriceCandles(dailyPrices.entries || []);
-            setSubaccounts(subs);
         } catch (err) {
             setError('Failed to load performance data: ' + err.message);
         } finally {
@@ -5058,13 +5036,6 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
     const chartData = React.useMemo(() => {
         return snapshots
             .filter(s => Object.keys(s.phase || {})[0] === 'After')
-            .filter(s => {
-                // Filter by selected subaccount
-                const sub = s.subaccount?.length > 0 ? s.subaccount[0] : null;
-                if (selectedSubaccount === 'all') return true;
-                if (selectedSubaccount === 'main') return !sub || (sub && Array.from(sub).every(b => b === 0));
-                return false;
-            })
             .sort((a, b) => Number(a.timestamp) - Number(b.timestamp))
             .map(s => {
                 const ts = Number(s.timestamp) / 1_000_000; // ns -> ms
@@ -5078,17 +5049,11 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
                 };
             })
             .filter(d => (denomination === 'icp' ? d.icp != null : d.usd != null));
-    }, [snapshots, denomination, selectedSubaccount]);
+    }, [snapshots, denomination]);
 
     // Build daily OHLC chart data for portfolio value
     const dailyChartData = React.useMemo(() => {
         return dailyPortfolioSummaries
-            .filter(s => {
-                const sub = s.subaccount?.length > 0 ? s.subaccount[0] : null;
-                if (selectedSubaccount === 'all') return true;
-                if (selectedSubaccount === 'main') return !sub || (sub && Array.from(sub).every(b => b === 0));
-                return false;
-            })
             .sort((a, b) => Number(a.date) - Number(b.date))
             .map(s => {
                 const ts = Number(s.date) / 1_000_000; // ns -> ms
@@ -5106,7 +5071,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
                 };
             })
             .filter(d => d.close > 0);
-    }, [dailyPortfolioSummaries, denomination, selectedSubaccount]);
+    }, [dailyPortfolioSummaries, denomination]);
 
     // Build daily OHLC data for price candles
     const dailyPriceCandleData = React.useMemo(() => {
@@ -5119,15 +5084,6 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
         for (const [, entries] of map) entries.sort((a, b) => Number(a.date) - Number(b.date));
         return map;
     }, [dailyPriceCandles]);
-
-    // Available subaccount options for the equity curve
-    const subaccountOptions = React.useMemo(() => {
-        const opts = [{ value: 'main', label: 'Main Account' }, { value: 'all', label: 'All Accounts' }];
-        for (const s of subaccounts) {
-            opts.push({ value: 'sub-' + Number(s.number), label: `${s.name} (#${Number(s.number)})` });
-        }
-        return opts;
-    }, [subaccounts]);
 
     // Latest portfolio value
     const latestSnap = chartData.length > 0 ? chartData[chartData.length - 1] : null;
@@ -5250,15 +5206,6 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingLeft: '16px', flexWrap: 'wrap', gap: '8px' }}>
                     <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.text }}>Equity Curve</span>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
-                        {subaccountOptions.length > 2 && (
-                            <select value={selectedSubaccount} onChange={e => setSelectedSubaccount(e.target.value)} style={{
-                                padding: '3px 8px', fontSize: '0.72rem', borderRadius: '4px',
-                                border: `1px solid ${theme.colors.border}`, background: theme.colors.primaryBg,
-                                color: theme.colors.text, marginRight: '4px', appearance: 'auto',
-                            }}>
-                                {subaccountOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                            </select>
-                        )}
                         {['detailed', 'daily'].map(v => (
                             <button key={v} onClick={() => setEquityView(v)} style={{
                                 padding: '3px 10px', fontSize: '0.72rem', fontWeight: '500', cursor: 'pointer',
@@ -5688,7 +5635,7 @@ const CB_PERIOD_UNITS = [
 ];
 
 function cbEmptyCondition(type = 0) {
-    return { conditionType: type, priceToken1: '', priceToken2: '', balanceToken: '', balanceSubaccount: '',
+    return { conditionType: type, priceToken1: '', priceToken2: '', balanceToken: '', balanceChoreInstanceId: '',
         valueSources: [], operator: 4, threshold: '', rangeMin: '', rangeMax: '',
         changePercent: '', changeDirection: '2', changePeriodValue: '1', changePeriodUnit: '3600',
         denominationToken: '', children: [] };
@@ -5710,7 +5657,6 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
     const [showLog, setShowLog] = useState(false);
     const [tokenRegistry, setTokenRegistry] = useState([]);
     const [choreInstances, setChoreInstances] = useState([]);
-    const [subaccounts, setSubaccounts] = useState([]);
     const [purseAllocations, setPurseAllocations] = useState([]);
 
     // Themed select style — fixes white-on-white issue
@@ -5775,20 +5721,16 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
         return Math.round(v * Math.pow(10, decimals)).toString();
     };
 
-    // Account options for condition dropdowns (named subaccounts + chore purses)
     const accountOptions = React.useMemo(() => {
         const opts = [];
-        for (const s of subaccounts) {
-            opts.push({ value: String(Number(s.number)), label: `${s.name} (#${Number(s.number)})` });
-        }
         for (const p of purseAllocations) {
             if (p.enabled) {
                 const lbl = choreStatuses?.find(c => c.choreId === p.instanceId)?.instanceLabel || p.instanceId;
-                opts.push({ value: `purse:${p.instanceId}`, label: `Purse: ${lbl}` });
+                opts.push({ value: p.instanceId, label: `Purse: ${lbl}` });
             }
         }
         return opts;
-    }, [subaccounts, purseAllocations, choreStatuses]);
+    }, [purseAllocations, choreStatuses]);
 
     // Period helpers — convert raw seconds <-> value+unit for UI
     const periodToValueUnit = (totalSeconds) => {
@@ -5811,16 +5753,15 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
         try {
             setLoading(true);
             const bot = await getReadyBotActor();
-            const [rls, enabled, log, tokens, instances, subs, purses] = await Promise.all([
+            const [rls, enabled, log, tokens, instances, purses] = await Promise.all([
                 bot.getCircuitBreakerRules(), bot.getCircuitBreakerEnabled(),
                 bot.getCircuitBreakerLog({ startId: [], limit: [50], ruleId: [], fromTime: [], toTime: [] }),
                 bot.getTokenRegistry(), bot.listChoreInstances([]),
-                bot.getSubaccounts ? bot.getSubaccounts() : [],
                 bot.getAllPurseAllocations ? bot.getAllPurseAllocations() : [],
             ]);
             setRules(rls); setGlobalEnabled(enabled); setEvents(log.entries);
             setEventCount(Number(log.totalCount)); setTokenRegistry(tokens); setChoreInstances(instances);
-            setSubaccounts(subs); setPurseAllocations(purses);
+            setPurseAllocations(purses);
             setError(null);
         } catch (e) { setError('Failed to load circuit breaker data: ' + e.message); }
         finally { setLoading(false); }
@@ -5867,24 +5808,14 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
             priceToken1: c.priceToken1?.length ? [Principal.fromText(c.priceToken1)] : [],
             priceToken2: c.priceToken2?.length ? [Principal.fromText(c.priceToken2)] : [],
             balanceToken: c.balanceToken?.length ? [Principal.fromText(c.balanceToken)] : [],
-            balanceSubaccount: (c.balanceSubaccount !== '' && c.balanceSubaccount != null
-                && c.balanceSubaccount !== 'mainpurse' && !String(c.balanceSubaccount).startsWith('purse:'))
-                ? [BigInt(c.balanceSubaccount)] : [],
-            balanceChoreInstanceId: c.balanceSubaccount === 'mainpurse' ? ['__main__']
-                : (typeof c.balanceSubaccount === 'string' && c.balanceSubaccount.startsWith('purse:')) ? [c.balanceSubaccount.slice(6)]
-                : [],
-            valueSources: (c.valueSources || []).map(vs => {
-                const isPurse = typeof vs.subaccount === 'string' && vs.subaccount.startsWith('purse:');
-                const isMainPurse = vs.subaccount === 'mainpurse';
-                return {
-                    sourceType: BigInt(vs.sourceType),
-                    token: vs.token?.length ? [Principal.fromText(vs.token)] : [],
-                    subaccount: (vs.subaccount !== '' && vs.subaccount != null && !isPurse && !isMainPurse) ? [BigInt(vs.subaccount)] : [],
-                    choreInstanceId: isMainPurse ? ['__main__']
-                        : isPurse ? [vs.subaccount.slice(6)]
-                        : (vs.choreInstanceId?.length ? [vs.choreInstanceId] : []),
-                };
-            }),
+            balanceChoreInstanceId: c.balanceChoreInstanceId === '__main__' ? ['__main__']
+                : (c.balanceChoreInstanceId?.length ? [c.balanceChoreInstanceId] : []),
+            valueSources: (c.valueSources || []).map(vs => ({
+                sourceType: BigInt(vs.sourceType),
+                token: vs.token?.length ? [Principal.fromText(vs.token)] : [],
+                choreInstanceId: vs.choreInstanceId === '__main__' ? ['__main__']
+                    : (vs.choreInstanceId?.length ? [vs.choreInstanceId] : []),
+            })),
             operator: BigInt(c.operator),
             threshold: threshE8s != null ? [threshE8s] : [],
             rangeMin: rMinE8s != null ? [rMinE8s] : [],
@@ -5932,21 +5863,12 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
             priceToken1: c.priceToken1?.[0]?.toText?.() || c.priceToken1?.[0]?.toString?.() || '',
             priceToken2: c.priceToken2?.[0]?.toText?.() || c.priceToken2?.[0]?.toString?.() || '',
             balanceToken: c.balanceToken?.[0]?.toText?.() || c.balanceToken?.[0]?.toString?.() || '',
-            balanceSubaccount: c.balanceChoreInstanceId?.[0] === '__main__' ? 'mainpurse'
-                : c.balanceChoreInstanceId?.[0] ? `purse:${c.balanceChoreInstanceId[0]}`
-                : (c.balanceSubaccount?.[0] != null ? Number(c.balanceSubaccount[0]).toString() : ''),
-            valueSources: (c.valueSources || []).map(vs => {
-                const st = Number(vs.sourceType);
-                const cidRaw = vs.choreInstanceId?.[0] || '';
-                const hasPurseSub = (st === 0 || st === 2) && cidRaw && vs.subaccount?.[0] == null;
-                return {
-                    sourceType: st,
-                    token: vs.token?.[0]?.toText?.() || vs.token?.[0]?.toString?.() || '',
-                    subaccount: hasPurseSub ? (cidRaw === '__main__' ? 'mainpurse' : `purse:${cidRaw}`)
-                        : (vs.subaccount?.[0] != null ? Number(vs.subaccount[0]).toString() : ''),
-                    choreInstanceId: (st === 1) ? cidRaw : '',
-                };
-            }),
+            balanceChoreInstanceId: c.balanceChoreInstanceId?.[0] || '',
+            valueSources: (c.valueSources || []).map(vs => ({
+                sourceType: Number(vs.sourceType),
+                token: vs.token?.[0]?.toText?.() || vs.token?.[0]?.toString?.() || '',
+                choreInstanceId: vs.choreInstanceId?.[0] || '',
+            })),
             operator: Number(c.operator),
             threshold: c.threshold?.[0] != null ? toTokenUnits(Number(c.threshold[0]).toString(), dec) : '',
             rangeMin: c.rangeMin?.[0] != null ? toTokenUnits(Number(c.rangeMin[0]).toString(), dec) : '',
@@ -6046,15 +5968,11 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
         return <>{val(formatted)} {tkn(p)}</>;
     };
 
-    const acctLabel = (sub) => {
-        if (sub == null || sub === '' || sub === '0') return 'main account';
-        if (sub === 'mainpurse') return 'main purse';
-        if (typeof sub === 'string' && sub.startsWith('purse:')) {
-            const cid = sub.slice(6);
-            const lbl = choreStatuses?.find(c => c.choreId === cid)?.instanceLabel || cid;
-            return <>{kw('Purse', theme.colors.secondaryText)}{' '}{val(`"${lbl}"`)}</>;
-        }
-        return <>{kw('Sub', theme.colors.secondaryText)} {val('#' + sub)}</>;
+    const acctLabel = (choreInstanceId) => {
+        if (!choreInstanceId || choreInstanceId === '') return 'main account';
+        if (choreInstanceId === '__main__') return 'main purse';
+        const lbl = choreStatuses?.find(c => c.choreId === choreInstanceId)?.instanceLabel || choreInstanceId;
+        return <>{kw('Purse', theme.colors.secondaryText)}{' '}{val(`"${lbl}"`)}</>;
     };
 
     // Describe a list of value sources compactly
@@ -6065,20 +5983,16 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
             const sep = i > 0 ? <>{', '}</> : null;
             if (st === 0) {
                 const tok = _pid(vs.token?.[0] || vs.token);
-                const cidRaw = vs.choreInstanceId?.[0] || vs.choreInstanceId || '';
-                const subRaw = vs.subaccount?.[0] != null ? Number(vs.subaccount[0]) : (vs.subaccount !== '' && vs.subaccount != null ? vs.subaccount : null);
-                const sub = (cidRaw && subRaw == null) ? `purse:${cidRaw}` : subRaw;
-                return <span key={i}>{sep}{tkn(tok)}{' in '}{acctLabel(sub)}</span>;
+                const cid = vs.choreInstanceId?.[0] || vs.choreInstanceId || '';
+                return <span key={i}>{sep}{tkn(tok)}{' in '}{acctLabel(cid)}</span>;
             }
             if (st === 1) {
                 const cid = vs.choreInstanceId?.[0] || vs.choreInstanceId;
                 return <span key={i}>{sep}{kw('portfolio', theme.colors.secondaryText)} {val(`"${choreInstanceLabel(cid)}"`)}</span>;
             }
             if (st === 2) {
-                const cidRaw = vs.choreInstanceId?.[0] || vs.choreInstanceId || '';
-                const subRaw = vs.subaccount?.[0] != null ? Number(vs.subaccount[0]) : (vs.subaccount !== '' && vs.subaccount != null ? vs.subaccount : null);
-                const sub = (cidRaw && subRaw == null) ? `purse:${cidRaw}` : subRaw;
-                return <span key={i}>{sep}{kw('all tokens in', theme.colors.secondaryText)} {acctLabel(sub)}</span>;
+                const cid = vs.choreInstanceId?.[0] || vs.choreInstanceId || '';
+                return <span key={i}>{sep}{kw('all tokens in', theme.colors.secondaryText)} {acctLabel(cid)}</span>;
             }
             return <span key={i}>{sep}{'?'}</span>;
         });
@@ -6136,10 +6050,7 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
         // ── BALANCE ──
         if (ct === 2) {
             const tok = _pid(c.balanceToken?.[0] || c.balanceToken);
-            const cidBal = c.balanceChoreInstanceId?.[0] || '';
-            const sub = cidBal === '__main__' ? 'mainpurse'
-                : cidBal ? `purse:${cidBal}`
-                : (c.balanceSubaccount?.[0] != null ? Number(c.balanceSubaccount[0]).toString() : '');
+            const sub = c.balanceChoreInstanceId?.[0] || '';
             if (op === 4) {
                 const bps = c.changePercentBps?.[0] != null ? Number(c.changePercentBps[0]) : 0;
                 const pct = (bps / 100).toFixed(1);
@@ -6293,10 +6204,10 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                         </div>
                         <div>
                             <div style={label}>Account</div>
-                            <select value={cond.balanceSubaccount} onChange={e => update({ balanceSubaccount: e.target.value })}
+                            <select value={cond.balanceChoreInstanceId} onChange={e => update({ balanceChoreInstanceId: e.target.value })}
                                 style={sel({ marginTop: '4px', minWidth: '150px' })}>
                                 <option value="">Main account (full on-chain)</option>
-                                <option value="mainpurse">Main purse (minus allocations)</option>
+                                <option value="__main__">Main purse (minus allocations)</option>
                                 {accountOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </select>
                         </div>
@@ -6309,7 +6220,7 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
                             <span style={label}>Value Sources</span>
                             <button style={btnSm({ fontSize: '0.75rem', color: accentColor, borderColor: accentColor })}
-                                onClick={() => update({ valueSources: [...(cond.valueSources || []), { sourceType: 0, token: '', subaccount: '', choreInstanceId: '' }] })}><FaPlus /> Add Source</button>
+                                onClick={() => update({ valueSources: [...(cond.valueSources || []), { sourceType: 0, token: '', choreInstanceId: '' }] })}><FaPlus /> Add Source</button>
                         </div>
                         {(cond.valueSources || []).map((vs, vi) => (
                             <div key={vi} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '6px', paddingLeft: '8px', borderLeft: `2px solid ${theme.colors.border}` }}>
@@ -6325,10 +6236,10 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                                             <TokenSelector value={vs.token} onChange={v => update({ valueSources: cond.valueSources.map((s, j) => j === vi ? { ...s, token: v } : s) })}
                                                 allowCustom placeholder="Token..." style={{ width: '100%' }} />
                                         </div>
-                                        <select value={vs.subaccount} onChange={e => update({ valueSources: cond.valueSources.map((s, j) => j === vi ? { ...s, subaccount: e.target.value } : s) })}
+                                        <select value={vs.choreInstanceId} onChange={e => update({ valueSources: cond.valueSources.map((s, j) => j === vi ? { ...s, choreInstanceId: e.target.value } : s) })}
                                             style={sel({ minWidth: '120px', fontSize: '0.8rem' })}>
                                             <option value="">Main account (full on-chain)</option>
-                                            <option value="mainpurse">Main purse (minus allocations)</option>
+                                            <option value="__main__">Main purse (minus allocations)</option>
                                             {accountOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                                         </select>
                                     </>
@@ -6342,10 +6253,10 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                                     </select>
                                 )}
                                 {vs.sourceType === 2 && (
-                                    <select value={vs.subaccount} onChange={e => update({ valueSources: cond.valueSources.map((s, j) => j === vi ? { ...s, subaccount: e.target.value } : s) })}
+                                    <select value={vs.choreInstanceId} onChange={e => update({ valueSources: cond.valueSources.map((s, j) => j === vi ? { ...s, choreInstanceId: e.target.value } : s) })}
                                         style={sel({ minWidth: '140px', fontSize: '0.8rem' })}>
                                         <option value="">Main account (full on-chain)</option>
-                                        <option value="mainpurse">Main purse (minus allocations)</option>
+                                        <option value="__main__">Main purse (minus allocations)</option>
                                         {accountOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                                     </select>
                                 )}
@@ -6666,7 +6577,7 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
 // Trading Bot Logs Section (combines trade log, portfolio snapshots, logging settings)
 // ============================================
 function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, identity }) {
-    const [activeTab, setActiveTab] = useState('accounts');
+    const [activeTab, setActiveTab] = useState('wallet');
     const [choreStatuses, setChoreStatuses] = useState([]);
     const agentRef = useRef(null);
     const actorRef = useRef(null);
@@ -6708,9 +6619,8 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
         <div style={{ marginTop: '16px' }}>
             {/* Tab bar */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '12px', borderBottom: `1px solid ${theme.colors.border}`, paddingBottom: '0' }}>
-                <button onClick={() => setActiveTab('accounts')} style={tabStyle(activeTab === 'accounts')}>Accounts</button>
-                <button onClick={() => setActiveTab('purses')} style={tabStyle(activeTab === 'purses')}>
-                    <FaWallet style={{ marginRight: '4px', fontSize: '0.75rem' }} />Purses
+                <button onClick={() => setActiveTab('wallet')} style={tabStyle(activeTab === 'wallet')}>
+                    <FaWallet style={{ marginRight: '4px', fontSize: '0.75rem' }} />Wallet
                 </button>
                 <button onClick={() => setActiveTab('performance')} style={tabStyle(activeTab === 'performance')}>Performance</button>
                 <button onClick={() => setActiveTab('trade')} style={tabStyle(activeTab === 'trade')}>Trade Log</button>
@@ -6721,8 +6631,7 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
                 <button onClick={() => setActiveTab('settings')} style={tabStyle(activeTab === 'settings')}>Logging Settings</button>
             </div>
 
-            {activeTab === 'accounts' && <AccountsPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} canisterId={canisterId} />}
-            {activeTab === 'purses' && <PursesPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} canisterId={canisterId} choreStatuses={choreStatuses} />}
+            {activeTab === 'wallet' && <WalletPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} canisterId={canisterId} choreStatuses={choreStatuses} />}
             {activeTab === 'performance' && <PerformancePanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
             {activeTab === 'trade' && <TradeLogViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
             {activeTab === 'snapshots' && <PortfolioSnapshotViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
@@ -6737,7 +6646,7 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
 // ============================================
 function SnapshotChoreConfigPanel({ instanceId, theme, accentColor, cardStyle }) {
     const features = [
-        { icon: '📊', label: 'Balance Snapshots', desc: 'Captures balances of all registered tokens across main account and all named subaccounts.' },
+        { icon: '📊', label: 'Balance Snapshots', desc: 'Captures balances of all registered tokens in the main account.' },
         { icon: '💹', label: 'Price Snapshots', desc: 'Fetches fresh quotes for all registered token pairs, updating price history and daily candles.' },
         { icon: '📁', label: 'Daily Archive', desc: 'Finalizes the previous day\'s OHLC summaries for portfolio value and prices, patching any gaps.' },
     ];
@@ -6999,6 +6908,601 @@ function PursesPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                     </div>
                 ))
             )}
+        </div>
+    );
+}
+
+// ============================================
+// Wallet Panel (combined on-chain balances + purse allocations)
+// ============================================
+function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreStatuses }) {
+    const { identity } = useAuth();
+    const [tokenRegistry, setTokenRegistry] = useState([]);
+    const [mainBalances, setMainBalances] = useState({});
+    const [allPurses, setAllPurses] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [balancesLoading, setBalancesLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+
+    const [activeOp, setActiveOp] = useState(null);
+    const [opToken, setOpToken] = useState('');
+    const [opAmount, setOpAmount] = useState('');
+    const [opDestination, setOpDestination] = useState('');
+    const [opDestSubaccount, setOpDestSubaccount] = useState('');
+    const [opExecuting, setOpExecuting] = useState(false);
+
+    const [fundTarget, setFundTarget] = useState(null);
+    const [fundToken, setFundToken] = useState('');
+    const [fundAmount, setFundAmount] = useState('');
+    const [reclaimTarget, setReclaimTarget] = useState(null);
+    const [reclaimToken, setReclaimToken] = useState('');
+    const [reclaimAmount, setReclaimAmount] = useState('');
+    const [purseSaving, setPurseSaving] = useState(false);
+
+    const borderColor = theme.colors.border;
+    const cardBg = theme.colors.cardBg || theme.colors.cardGradient;
+    const inputStyle = { padding: '6px 10px', borderRadius: '6px', border: `1px solid ${borderColor}`, background: theme.colors.primaryBg, color: theme.colors.primaryText, fontSize: '0.8rem', outline: 'none' };
+    const btnStyle = { padding: '4px 10px', borderRadius: '6px', border: `1px solid ${accentColor}40`, background: 'none', color: accentColor, cursor: 'pointer', fontSize: '0.75rem', fontWeight: '500' };
+    const thStyle = { textAlign: 'left', padding: '6px 10px', color: theme.colors.secondaryText, fontWeight: 500, fontSize: '0.78rem' };
+    const thStyleR = { ...thStyle, textAlign: 'right' };
+    const tdStyle = { padding: '6px 10px', color: theme.colors.primaryText, fontSize: '0.82rem' };
+    const tdStyleR = { ...tdStyle, textAlign: 'right', fontFamily: 'monospace' };
+    const rowBorder = { borderBottom: `1px solid ${borderColor}` };
+
+    const allTokenIds = React.useMemo(() => {
+        const ids = new Set();
+        for (const t of tokenRegistry) {
+            const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+            ids.add(tid);
+        }
+        for (const chore of allPurses) {
+            for (const b of chore.balances) {
+                const tok = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+                ids.add(tok);
+            }
+        }
+        return [...ids];
+    }, [tokenRegistry, allPurses]);
+    useTokenMetadata(allTokenIds, identity);
+
+    const tokLabel = (tok) => {
+        const p = typeof tok === 'string' ? tok : tok?.toText?.() || tok?.toString?.() || '';
+        const cached = getTokenMetadataSync(p);
+        return cached?.symbol || shortPrincipal(p);
+    };
+    const tokDecimals = (tok) => {
+        const p = typeof tok === 'string' ? tok : tok?.toText?.() || tok?.toString?.() || '';
+        const cached = getTokenMetadataSync(p);
+        return cached?.decimals ?? 8;
+    };
+    const fmtBal = (raw, decimals) => {
+        const n = Number(raw);
+        if (isNaN(n)) return '0';
+        return (n / (10 ** Number(decimals))).toLocaleString(undefined, { maximumFractionDigits: Number(decimals) });
+    };
+    const choreLabel = (instanceId) => {
+        if (!choreStatuses) return instanceId;
+        const cs = choreStatuses.find(c => c.choreId === instanceId);
+        return cs?.instanceLabel || instanceId;
+    };
+
+    const loadData = useCallback(async () => {
+        setLoading(true);
+        setError('');
+        try {
+            const bot = await getReadyBotActor();
+            const [registry, purses] = await Promise.all([
+                bot.getTokenRegistry ? bot.getTokenRegistry() : [],
+                bot.getAllPurseAllocations(),
+            ]);
+            setTokenRegistry(registry);
+            setAllPurses(purses);
+
+            const tokenSet = new Set();
+            for (const t of registry) {
+                const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+                tokenSet.add(tid);
+            }
+            for (const chore of purses) {
+                for (const b of chore.balances) {
+                    const tok = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+                    tokenSet.add(tok);
+                }
+            }
+
+            if (tokenSet.size > 0 && canisterId) {
+                setBalancesLoading(true);
+                try {
+                    const { HttpAgent } = await import('@dfinity/agent');
+                    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                    const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
+                    const agent = HttpAgent.createSync({ identity, host });
+                    if (isLocal) await agent.fetchRootKey();
+                    const botPrincipal = Principal.fromText(canisterId);
+
+                    const tokens = [...tokenSet];
+                    const results = {};
+                    await Promise.all(tokens.map(async (tid) => {
+                        try {
+                            const ledgerActor = createLedgerActor(tid, { agent });
+                            const bal = await ledgerActor.icrc1_balance_of({ owner: botPrincipal, subaccount: [] });
+                            results[tid] = BigInt(bal);
+                        } catch (_) { results[tid] = 0n; }
+                    }));
+                    setMainBalances(results);
+                } catch (e) {
+                    console.warn('WalletPanel: failed to fetch on-chain balances', e);
+                } finally {
+                    setBalancesLoading(false);
+                }
+            }
+        } catch (e) {
+            setError(e?.message || String(e));
+        } finally {
+            setLoading(false);
+        }
+    }, [getReadyBotActor, canisterId, identity]);
+
+    useEffect(() => { loadData(); }, [loadData]);
+
+    // Purse allocation totals
+    const totalAllocated = {};
+    const purseTokenSet = new Set();
+    for (const chore of allPurses) {
+        for (const b of chore.balances) {
+            const tok = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+            purseTokenSet.add(tok);
+            totalAllocated[tok] = (totalAllocated[tok] || 0n) + BigInt(b.balance);
+        }
+    }
+
+    // Main purse = on-chain minus allocated
+    const mainPurseEntries = [];
+    const seenTokens = new Set();
+    for (const tok of purseTokenSet) {
+        seenTokens.add(tok);
+        const chain = mainBalances[tok] || 0n;
+        const allocated = totalAllocated[tok] || 0n;
+        const available = chain > allocated ? chain - allocated : 0n;
+        const overcommitted = allocated > chain;
+        if (chain > 0n || overcommitted) {
+            mainPurseEntries.push({ token: tok, balance: available, onChain: chain, allocated, overcommitted });
+        }
+    }
+    for (const [tok, chain] of Object.entries(mainBalances)) {
+        if (!seenTokens.has(tok) && chain > 0n) {
+            mainPurseEntries.push({ token: tok, balance: chain, onChain: chain, allocated: 0n, overcommitted: false });
+        }
+    }
+
+    // Main account on-chain entries
+    const mainAccountEntries = Object.entries(mainBalances)
+        .filter(([_, bal]) => bal > 0n)
+        .map(([tok, bal]) => ({ token: tok, balance: bal }));
+
+    const registeredTokenIds = tokenRegistry.map(t => {
+        const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+        return tid;
+    });
+
+    const enabledPurses = allPurses.filter(p => p.enabled && p.balances.length > 0);
+    const opTokenBalance = opToken ? (mainBalances[opToken] || 0n) : null;
+
+    const handleExecuteOp = async () => {
+        if (!opToken || !opAmount) return;
+        setOpExecuting(true); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            const dec = tokDecimals(opToken);
+            const amount = BigInt(Math.round(parseFloat(opAmount) * (10 ** dec)));
+            if (amount <= 0n) { setError('Amount must be greater than 0'); setOpExecuting(false); return; }
+            const tokenPrincipal = Principal.fromText(opToken);
+
+            if (activeOp === 'withdraw') {
+                const userPrincipal = identity.getPrincipal();
+                const result = await bot.withdrawToken(tokenPrincipal, amount, { owner: userPrincipal, subaccount: [] });
+                if ('Ok' in result) {
+                    setSuccess(`Withdrew ${opAmount} ${tokLabel(opToken)} to your wallet. Block: ${result.Ok.transfer_block_height.toString()}`);
+                    setActiveOp(null); setOpAmount(''); setOpToken('');
+                    loadData();
+                } else {
+                    setError('Withdraw failed: ' + JSON.stringify(result.Err));
+                }
+            } else if (activeOp === 'send') {
+                if (!opDestination) { setError('Please enter a destination principal'); setOpExecuting(false); return; }
+                let destPrincipal;
+                try { destPrincipal = Principal.fromText(opDestination); }
+                catch { setError('Invalid destination principal'); setOpExecuting(false); return; }
+                let destSubBlob = [];
+                if (opDestSubaccount.trim()) {
+                    const hex = opDestSubaccount.replace(/^0x/, '').trim();
+                    if (hex.length > 0 && hex.length <= 64) {
+                        const bytes = [];
+                        const padded = hex.padStart(64, '0');
+                        for (let i = 0; i < padded.length; i += 2) {
+                            bytes.push(parseInt(padded.substr(i, 2), 16));
+                        }
+                        destSubBlob = [bytes];
+                    }
+                }
+                const result = await bot.manualSend(tokenPrincipal, [], destPrincipal, destSubBlob, amount);
+                if ('Ok' in result) {
+                    setSuccess(`Sent ${opAmount} ${tokLabel(opToken)} to ${opDestination.slice(0, 10)}... Block: ${result.Ok.blockIndex.toString()}`);
+                    setActiveOp(null); setOpAmount(''); setOpToken(''); setOpDestination(''); setOpDestSubaccount('');
+                    loadData();
+                } else {
+                    setError('Send failed: ' + JSON.stringify(result.Err));
+                }
+            }
+        } catch (e) { setError('Operation failed: ' + e.message); }
+        finally { setOpExecuting(false); }
+    };
+
+    const handleFundPurse = async () => {
+        if (!fundTarget || !fundToken || !fundAmount) return;
+        setPurseSaving(true); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            const dec = tokDecimals(fundToken);
+            const raw = BigInt(Math.round(parseFloat(fundAmount) * (10 ** Number(dec))));
+            const result = await bot.fundPurse(fundTarget, typeof fundToken === 'string' ? Principal.fromText(fundToken) : fundToken, raw);
+            if ('Err' in result) { setError(typeof result.Err === 'string' ? result.Err : JSON.stringify(result.Err)); return; }
+            setSuccess(`Funded ${fundAmount} ${tokLabel(fundToken)} to ${choreLabel(fundTarget)}`);
+            setFundAmount(''); setFundTarget(null); setFundToken('');
+            await loadData();
+        } catch (e) {
+            setError(e?.message || String(e));
+        } finally {
+            setPurseSaving(false);
+        }
+    };
+
+    const handleReclaimPurse = async () => {
+        if (!reclaimTarget || !reclaimToken || !reclaimAmount) return;
+        setPurseSaving(true); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            const dec = tokDecimals(reclaimToken);
+            const raw = BigInt(Math.round(parseFloat(reclaimAmount) * (10 ** Number(dec))));
+            const result = await bot.reclaimFromPurse(reclaimTarget, typeof reclaimToken === 'string' ? Principal.fromText(reclaimToken) : reclaimToken, raw);
+            if ('Err' in result) { setError(typeof result.Err === 'string' ? result.Err : JSON.stringify(result.Err)); return; }
+            setSuccess(`Reclaimed ${reclaimAmount} ${tokLabel(reclaimToken)} from ${choreLabel(reclaimTarget)}`);
+            setReclaimAmount(''); setReclaimTarget(null); setReclaimToken('');
+            await loadData();
+        } catch (e) {
+            setError(e?.message || String(e));
+        } finally {
+            setPurseSaving(false);
+        }
+    };
+
+    if (loading) return <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText, padding: '16px 0' }}>Loading wallet data...</div>;
+
+    return (
+        <div>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FaWallet style={{ color: accentColor }} /> Wallet
+                </h3>
+                <button onClick={loadData} style={{
+                    padding: '4px 10px', fontSize: '0.75rem', border: `1px solid ${borderColor}`,
+                    borderRadius: '6px', cursor: 'pointer', background: cardBg, color: theme.colors.primaryText,
+                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                }}>
+                    <FaSyncAlt size={10} /> Refresh
+                </button>
+                {balancesLoading && <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>fetching balances...</span>}
+            </div>
+
+            {error && <div style={{ padding: '8px 12px', background: '#ef444415', border: '1px solid #ef444430', borderRadius: '8px', color: '#ef4444', fontSize: '0.8rem', marginBottom: '10px' }}>{error}</div>}
+            {success && <div style={{ padding: '8px 12px', background: '#22c55e15', border: '1px solid #22c55e30', borderRadius: '8px', color: '#22c55e', fontSize: '0.8rem', marginBottom: '10px' }}>{success}</div>}
+
+            {/* ── Main Account (on-chain balances) ── */}
+            <div style={{ padding: '12px', background: cardBg, borderRadius: '10px', border: `1px solid ${borderColor}`, marginBottom: '14px' }}>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: theme.colors.primaryText }}>
+                    Main Account
+                </h4>
+                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText || theme.colors.secondaryText, marginBottom: '8px' }}>
+                    On-chain token balances held by the bot's main account.
+                </div>
+
+                {/* Receiving Addresses */}
+                {canisterId && (() => {
+                    const botPrincipal = Principal.fromText(canisterId);
+                    const icrc1Account = encodeIcrcAccount({ owner: botPrincipal });
+                    const accountId = computeAccountId(botPrincipal, null);
+                    const copyBtn = (text) => (
+                        <button title="Copy" onClick={() => { navigator.clipboard.writeText(text); setSuccess('Copied!'); setTimeout(() => setSuccess(''), 1500); }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: accentColor, padding: '2px 4px', fontSize: '0.7rem' }}>
+                            <FaCopy />
+                        </button>
+                    );
+                    const addrRow = (label, value) => (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                            <span style={{ fontSize: '0.72rem', color: theme.colors.secondaryText, minWidth: '80px', flexShrink: 0 }}>{label}</span>
+                            <code style={{ fontSize: '0.72rem', color: theme.colors.primaryText, fontFamily: 'monospace', wordBreak: 'break-all', lineHeight: '1.4' }}>{value}</code>
+                            {copyBtn(value)}
+                        </div>
+                    );
+                    return (
+                        <div style={{ marginBottom: '10px', padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${borderColor}`, fontSize: '0.78rem' }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: theme.colors.primaryText, marginBottom: '6px' }}>Receiving Addresses</div>
+                            {addrRow('Principal', canisterId)}
+                            {addrRow('ICRC-1 Account', icrc1Account)}
+                            {accountId && addrRow('Account ID', accountId)}
+                            <div style={{ fontSize: '0.68rem', color: theme.colors.mutedText, marginTop: '4px', lineHeight: '1.4' }}>
+                                Use <strong>ICRC-1 Account</strong> or <strong>Principal</strong> to receive tokens.
+                                {' '}<strong>Account ID</strong> is for receiving ICP from centralized exchanges only.
+                            </div>
+                        </div>
+                    );
+                })()}
+
+                {/* Balance table */}
+                {mainAccountEntries.length === 0 ? (
+                    <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, fontStyle: 'italic' }}>
+                        {balancesLoading ? 'Fetching balances...' : (tokenRegistry.length === 0 ? 'No tokens registered. Register tokens in the Accounts panel to see balances.' : 'No token balances found.')}
+                    </div>
+                ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                            <tr style={rowBorder}>
+                                <th style={thStyle}>Token</th>
+                                <th style={thStyleR}>Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {mainAccountEntries.map((e) => {
+                                const dec = tokDecimals(e.token);
+                                return (
+                                    <tr key={e.token} style={rowBorder}>
+                                        <td style={tdStyle}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <TokenIcon canisterId={e.token} size={18} />
+                                                {tokLabel(e.token)}
+                                            </div>
+                                        </td>
+                                        <td style={tdStyleR}>{fmtBal(e.balance, dec)}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                )}
+
+                {/* Withdraw / Send buttons */}
+                <div style={{ marginTop: '10px', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button onClick={() => { setActiveOp(activeOp === 'withdraw' ? null : 'withdraw'); setOpToken(''); setOpAmount(''); }}
+                        style={{ ...btnStyle, background: activeOp === 'withdraw' ? `${accentColor}15` : 'none', borderColor: activeOp === 'withdraw' ? accentColor : `${accentColor}40`, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <FaWallet style={{ fontSize: '0.6rem' }} /> Withdraw
+                    </button>
+                    <button onClick={() => { setActiveOp(activeOp === 'send' ? null : 'send'); setOpToken(''); setOpAmount(''); setOpDestination(''); setOpDestSubaccount(''); }}
+                        style={{ ...btnStyle, background: activeOp === 'send' ? `${accentColor}15` : 'none', borderColor: activeOp === 'send' ? accentColor : `${accentColor}40`, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <FaPaperPlane style={{ fontSize: '0.6rem' }} /> Send
+                    </button>
+                </div>
+
+                {/* Operation form */}
+                {activeOp && (
+                    <div style={{ marginTop: '10px', padding: '12px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${borderColor}` }}>
+                        <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>
+                            {activeOp === 'withdraw' && <>Withdraw to Your Wallet</>}
+                            {activeOp === 'send' && <>Send to External Account</>}
+                            <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginLeft: '8px' }}>(from Main Account)</span>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                            <div style={{ minWidth: '140px' }}>
+                                <label style={{ fontSize: '0.68rem', color: theme.colors.mutedText, display: 'block', marginBottom: '3px' }}>Token</label>
+                                <select value={opToken} onChange={(e) => setOpToken(e.target.value)} style={{ ...inputStyle, width: '100%' }}>
+                                    <option value="">Select token...</option>
+                                    {mainAccountEntries.map(e => (
+                                        <option key={e.token} value={e.token}>{tokLabel(e.token)}</option>
+                                    ))}
+                                    {registeredTokenIds.filter(tid => !mainAccountEntries.some(e => e.token === tid)).map(tid => (
+                                        <option key={tid} value={tid}>{tokLabel(tid)} (0)</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div style={{ minWidth: '120px', flex: 1 }}>
+                                <label style={{ fontSize: '0.68rem', color: theme.colors.mutedText, display: 'block', marginBottom: '3px' }}>
+                                    Amount
+                                    {opToken && opTokenBalance != null && (
+                                        <span style={{ marginLeft: '6px', color: theme.colors.secondaryText }}>
+                                            (bal: {formatTokenAmount(opTokenBalance, tokDecimals(opToken))})
+                                        </span>
+                                    )}
+                                </label>
+                                <div style={{ display: 'flex', gap: '4px' }}>
+                                    <input type="text" inputMode="decimal" value={opAmount} onChange={(e) => setOpAmount(e.target.value)}
+                                        placeholder="0.00" style={{ ...inputStyle, flex: 1 }} />
+                                    {opToken && opTokenBalance != null && opTokenBalance > 0n && (
+                                        <button onClick={() => {
+                                            const dec = tokDecimals(opToken);
+                                            const fee = tokenRegistry.find(t => {
+                                                const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+                                                return tid === opToken;
+                                            })?.fee || 0n;
+                                            const maxRaw = BigInt(opTokenBalance) > BigInt(fee) ? BigInt(opTokenBalance) - BigInt(fee) : 0n;
+                                            setOpAmount((Number(maxRaw) / (10 ** dec)).toString());
+                                        }} style={{ ...btnStyle, padding: '4px 6px', fontSize: '0.65rem' }}>Max</button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {activeOp === 'send' && (
+                                <div style={{ minWidth: '200px', flex: 2 }}>
+                                    <label style={{ fontSize: '0.68rem', color: theme.colors.mutedText, display: 'block', marginBottom: '3px' }}>Destination Principal</label>
+                                    <input type="text" value={opDestination} onChange={(e) => setOpDestination(e.target.value)}
+                                        placeholder="Principal ID..." style={{ ...inputStyle, width: '100%' }} />
+                                </div>
+                            )}
+                            {activeOp === 'send' && (
+                                <div style={{ minWidth: '160px' }}>
+                                    <label style={{ fontSize: '0.68rem', color: theme.colors.mutedText, display: 'block', marginBottom: '3px' }}>Subaccount (optional, hex)</label>
+                                    <input type="text" value={opDestSubaccount} onChange={(e) => setOpDestSubaccount(e.target.value)}
+                                        placeholder="0x00...00" style={{ ...inputStyle, width: '100%' }} />
+                                </div>
+                            )}
+                        </div>
+
+                        {activeOp === 'withdraw' && identity && (
+                            <div style={{ marginTop: '6px', fontSize: '0.72rem', color: theme.colors.secondaryText }}>
+                                Destination: <span style={{ fontFamily: 'monospace', color: accentColor }}>{identity.getPrincipal().toText()}</span>
+                            </div>
+                        )}
+
+                        <div style={{ marginTop: '10px', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                            <button onClick={handleExecuteOp} disabled={opExecuting || !opToken || !opAmount || (activeOp === 'send' && !opDestination)}
+                                style={{
+                                    ...btnStyle, padding: '6px 14px', fontWeight: '600',
+                                    opacity: (opExecuting || !opToken || !opAmount) ? 0.5 : 1,
+                                    background: `${accentColor}15`, borderColor: accentColor,
+                                }}>
+                                {opExecuting ? 'Executing...' : (activeOp === 'withdraw' ? 'Withdraw' : 'Send')}
+                            </button>
+                            <button onClick={() => setActiveOp(null)} style={{ ...btnStyle, color: theme.colors.mutedText, borderColor: borderColor }}>
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* ── Main Purse (unallocated) ── */}
+            <div style={{ padding: '12px', background: cardBg, borderRadius: '10px', border: `1px solid ${borderColor}`, marginBottom: '14px' }}>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: theme.colors.primaryText }}>
+                    Main Purse
+                </h4>
+                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText || theme.colors.secondaryText, marginBottom: '8px' }}>
+                    Unallocated funds available for chores without a dedicated purse, or to fund chore purses.
+                </div>
+                {mainPurseEntries.length === 0 ? (
+                    <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, fontStyle: 'italic' }}>No token balances detected.</div>
+                ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                            <tr style={rowBorder}>
+                                <th style={thStyle}>Token</th>
+                                <th style={thStyleR}>Available</th>
+                                <th style={thStyleR}>Allocated</th>
+                                <th style={thStyleR}>On-chain</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {mainPurseEntries.map((e, i) => {
+                                const dec = tokDecimals(e.token);
+                                return (
+                                    <tr key={i} style={rowBorder}>
+                                        <td style={tdStyle}>
+                                            {tokLabel(e.token)}
+                                            {e.overcommitted && <span style={{ color: '#e74c3c', fontSize: '0.72rem', marginLeft: '6px' }}>overcommitted</span>}
+                                        </td>
+                                        <td style={tdStyleR}>{fmtBal(e.balance, dec)}</td>
+                                        <td style={{ ...tdStyleR, color: theme.colors.secondaryText }}>{fmtBal(e.allocated, dec)}</td>
+                                        <td style={{ ...tdStyleR, color: theme.colors.secondaryText }}>{fmtBal(e.onChain, dec)}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                )}
+            </div>
+
+            {/* ── Purse Allocations (per-chore) ── */}
+            <div style={{ padding: '12px', background: cardBg, borderRadius: '10px', border: `1px solid ${borderColor}`, marginBottom: '14px' }}>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FaWallet style={{ color: accentColor, fontSize: '0.75rem' }} /> Purse Allocations
+                </h4>
+                {enabledPurses.length === 0 ? (
+                    <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, fontStyle: 'italic', padding: '8px 0' }}>
+                        No chores have funded purses yet. Enable a purse in a chore's settings to isolate its balances.
+                    </div>
+                ) : (
+                    enabledPurses.map((chore) => {
+                        const purseTokenIds = chore.balances.filter(b => Number(b.balance) > 0).map(b => {
+                            return typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+                        });
+                        const mainTokenIds = mainPurseEntries.map(e => e.token);
+                        const isFunding = fundTarget === chore.instanceId;
+                        const isReclaiming = reclaimTarget === chore.instanceId;
+
+                        return (
+                            <div key={chore.instanceId} style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${borderColor}`, marginBottom: '10px' }}>
+                                <h5 style={{ margin: '0 0 6px 0', fontSize: '0.82rem', fontWeight: 600, color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <FaWallet style={{ color: accentColor, fontSize: '0.7rem' }} />
+                                    {choreLabel(chore.instanceId)}
+                                </h5>
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead>
+                                        <tr style={rowBorder}>
+                                            <th style={thStyle}>Token</th>
+                                            <th style={thStyleR}>Balance</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {chore.balances.filter(b => Number(b.balance) > 0).map((b, i) => {
+                                            const tok = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+                                            const dec = tokDecimals(tok);
+                                            return (
+                                                <tr key={i} style={rowBorder}>
+                                                    <td style={tdStyle}>{tokLabel(tok)}</td>
+                                                    <td style={tdStyleR}>{fmtBal(b.balance, dec)}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+
+                                {/* Fund / Reclaim controls */}
+                                <div style={{ marginTop: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                    <button onClick={() => { setFundTarget(isFunding ? null : chore.instanceId); setFundToken(''); setFundAmount(''); setReclaimTarget(null); }}
+                                        style={{ ...btnStyle, fontSize: '0.7rem', padding: '3px 8px', background: isFunding ? `${accentColor}15` : 'none', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                        <FaArrowDown size={9} /> Fund
+                                    </button>
+                                    <button onClick={() => { setReclaimTarget(isReclaiming ? null : chore.instanceId); setReclaimToken(''); setReclaimAmount(''); setFundTarget(null); }}
+                                        style={{ ...btnStyle, fontSize: '0.7rem', padding: '3px 8px', color: '#e67e22', borderColor: '#e67e2240', background: isReclaiming ? '#e67e2215' : 'none', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                        <FaArrowUp size={9} /> Reclaim
+                                    </button>
+                                </div>
+
+                                {isFunding && (
+                                    <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                        <select value={fundToken} onChange={e => setFundToken(e.target.value)} style={{ ...inputStyle, minWidth: '100px', fontSize: '0.78rem' }}>
+                                            <option value="">Token...</option>
+                                            {mainTokenIds.map(id => <option key={id} value={id}>{tokLabel(id)}</option>)}
+                                        </select>
+                                        <input type="number" placeholder="Amount" value={fundAmount} onChange={e => setFundAmount(e.target.value)}
+                                            style={{ ...inputStyle, width: '110px', fontSize: '0.78rem' }} step="any" min="0" />
+                                        <button onClick={handleFundPurse} disabled={purseSaving || !fundToken || !fundAmount}
+                                            style={{ ...btnStyle, fontSize: '0.7rem', padding: '4px 10px', opacity: (purseSaving || !fundToken || !fundAmount) ? 0.5 : 1 }}>
+                                            {purseSaving ? 'Funding...' : 'Fund'}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {isReclaiming && (
+                                    <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                        <select value={reclaimToken} onChange={e => setReclaimToken(e.target.value)} style={{ ...inputStyle, minWidth: '100px', fontSize: '0.78rem' }}>
+                                            <option value="">Token...</option>
+                                            {purseTokenIds.map(id => <option key={id} value={id}>{tokLabel(id)}</option>)}
+                                        </select>
+                                        <input type="number" placeholder="Amount" value={reclaimAmount} onChange={e => setReclaimAmount(e.target.value)}
+                                            style={{ ...inputStyle, width: '110px', fontSize: '0.78rem' }} step="any" min="0" />
+                                        <button onClick={handleReclaimPurse} disabled={purseSaving || !reclaimToken || !reclaimAmount}
+                                            style={{ ...btnStyle, fontSize: '0.7rem', padding: '4px 10px', color: '#e67e22', borderColor: '#e67e2240', opacity: (purseSaving || !reclaimToken || !reclaimAmount) ? 0.5 : 1 }}>
+                                            {purseSaving ? 'Reclaiming...' : 'Reclaim'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })
+                )}
+            </div>
         </div>
     );
 }
@@ -7365,7 +7869,6 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
         case 'move-funds':
             return (
                 <>
-                    {pursePanel}
                     <ActionListPanel
                         key={instanceId}
                         instanceId={instanceId}
@@ -7382,7 +7885,7 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
                         removeFn="removeMoveFundsAction"
                         allowedTypes={[ACTION_TYPE_DEPOSIT, ACTION_TYPE_WITHDRAW, ACTION_TYPE_SEND]}
                         title="Move Funds Actions"
-                        description="Schedule deposit, withdraw, and send operations between subaccounts and external addresses."
+                        description="Schedule fund purse, reclaim, and send operations between purses and external addresses."
                     />
                 </>
             );
@@ -7390,7 +7893,6 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
         case 'distribute-funds':
             return (
                 <>
-                    {pursePanel}
                     <DistributionConfigPanel
                         key={instanceId}
                         instanceId={instanceId}

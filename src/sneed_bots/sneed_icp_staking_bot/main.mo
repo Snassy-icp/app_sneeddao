@@ -1681,7 +1681,6 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         let newList: DistributionTypes.DistributionList = {
             id = id;
             name = input.name;
-            sourceSubaccount = input.sourceSubaccount;
             tokenLedgerCanisterId = input.tokenLedgerCanisterId;
             thresholdAmount = input.thresholdAmount;
             maxDistributionAmount = input.maxDistributionAmount;
@@ -1709,7 +1708,6 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                     {
                         id = id;
                         name = input.name;
-                        sourceSubaccount = input.sourceSubaccount;
                         tokenLedgerCanisterId = input.tokenLedgerCanisterId;
                         thresholdAmount = input.thresholdAmount;
                         maxDistributionAmount = input.maxDistributionAmount;
@@ -2300,7 +2298,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             // Query balance of source account
             let sourceAccount: T.Account = {
                 owner = Principal.fromActor(this);
-                subaccount = list.sourceSubaccount;
+                subaccount = null;
             };
             let balance = await tokenLedger.icrc1_balance_of(sourceAccount);
             logEngine.logTrace(src, "List '" # listName # "' source balance: " # Nat.toText(balance), null, [("list", listName), ("balance", Nat.toText(balance))]);
@@ -2397,7 +2395,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                         amount = amount;
                         fee = ?fee;
                         memo = null;
-                        from_subaccount = list.sourceSubaccount;
+                        from_subaccount = null;
                         created_at_time = null;
                     });
                     switch (transferResult) {

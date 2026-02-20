@@ -26,7 +26,6 @@ export const idlFactory = ({ IDL }) => {
         ViewLogs: IDL.Null,
         ManageLogs: IDL.Null,
         ViewPortfolio: IDL.Null,
-        ManageSubaccounts: IDL.Null,
         ManageTrades: IDL.Null,
         ManageRebalancer: IDL.Null,
         ManageTradeChore: IDL.Null,
@@ -57,24 +56,9 @@ export const idlFactory = ({ IDL }) => {
         fee: IDL.Nat,
     });
 
-    // ==========================================
-    // Subaccounts
-    // ==========================================
-    const SubaccountInfo = IDL.Record({
-        number: IDL.Nat,
-        name: IDL.Text,
-        subaccount: IDL.Vec(IDL.Nat8),
-    });
-
     const TokenBalance = IDL.Record({
         token: IDL.Principal,
         balance: IDL.Nat,
-    });
-
-    const SubaccountBalances = IDL.Record({
-        subaccountNumber: IDL.Nat,
-        name: IDL.Text,
-        balances: IDL.Vec(TokenBalance),
     });
 
     // ==========================================
@@ -110,8 +94,8 @@ export const idlFactory = ({ IDL }) => {
         amountMode: IDL.Nat,
         balancePercent: IDL.Opt(IDL.Nat),
         preferredDex: IDL.Opt(IDL.Nat),
-        sourceSubaccount: IDL.Opt(IDL.Nat),
-        targetSubaccount: IDL.Opt(IDL.Nat),
+        sourcePurseId: IDL.Opt(IDL.Text),
+        targetPurseId: IDL.Opt(IDL.Text),
         destinationOwner: IDL.Opt(IDL.Principal),
         destinationSubaccount: IDL.Opt(IDL.Vec(IDL.Nat8)),
         minBalance: IDL.Opt(IDL.Nat),
@@ -138,8 +122,8 @@ export const idlFactory = ({ IDL }) => {
         amountMode: IDL.Nat,
         balancePercent: IDL.Opt(IDL.Nat),
         preferredDex: IDL.Opt(IDL.Nat),
-        sourceSubaccount: IDL.Opt(IDL.Nat),
-        targetSubaccount: IDL.Opt(IDL.Nat),
+        sourcePurseId: IDL.Opt(IDL.Text),
+        targetPurseId: IDL.Opt(IDL.Text),
         destinationOwner: IDL.Opt(IDL.Principal),
         destinationSubaccount: IDL.Opt(IDL.Vec(IDL.Nat8)),
         minBalance: IDL.Opt(IDL.Nat),
@@ -202,7 +186,6 @@ export const idlFactory = ({ IDL }) => {
     const DistributionList = IDL.Record({
         id: IDL.Nat,
         name: IDL.Text,
-        sourceSubaccount: IDL.Opt(IDL.Vec(IDL.Nat8)),
         tokenLedgerCanisterId: IDL.Principal,
         thresholdAmount: IDL.Nat,
         maxDistributionAmount: IDL.Nat,
@@ -215,7 +198,6 @@ export const idlFactory = ({ IDL }) => {
 
     const DistributionListInput = IDL.Record({
         name: IDL.Text,
-        sourceSubaccount: IDL.Opt(IDL.Vec(IDL.Nat8)),
         tokenLedgerCanisterId: IDL.Principal,
         thresholdAmount: IDL.Nat,
         maxDistributionAmount: IDL.Nat,
@@ -451,7 +433,6 @@ export const idlFactory = ({ IDL }) => {
         tradeLogId: IDL.Opt(IDL.Nat),
         phase: SnapshotPhase,
         choreId: IDL.Opt(IDL.Text),
-        subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)),
         denominationToken: IDL.Opt(IDL.Principal),
         totalValueIcpE8s: IDL.Opt(IDL.Nat),
         totalValueUsdE8s: IDL.Opt(IDL.Nat),
@@ -479,7 +460,6 @@ export const idlFactory = ({ IDL }) => {
     // ==========================================
     const DailyPortfolioSummary = IDL.Record({
         date: IDL.Int,
-        subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)),
         openValueIcpE8s: IDL.Nat,
         highValueIcpE8s: IDL.Nat,
         lowValueIcpE8s: IDL.Nat,
@@ -507,7 +487,6 @@ export const idlFactory = ({ IDL }) => {
     const DailyPortfolioSummaryQuery = IDL.Record({
         fromDate: IDL.Opt(IDL.Int),
         toDate: IDL.Opt(IDL.Int),
-        subaccount: IDL.Opt(IDL.Opt(IDL.Vec(IDL.Nat8))),
         limit: IDL.Opt(IDL.Nat),
         offset: IDL.Opt(IDL.Nat),
     });
@@ -562,7 +541,6 @@ export const idlFactory = ({ IDL }) => {
     const CBValueSource = IDL.Record({
         sourceType: IDL.Nat,
         token: IDL.Opt(IDL.Principal),
-        subaccount: IDL.Opt(IDL.Nat),
         choreInstanceId: IDL.Opt(IDL.Text),
     });
 
@@ -572,7 +550,6 @@ export const idlFactory = ({ IDL }) => {
         priceToken1: IDL.Opt(IDL.Principal),
         priceToken2: IDL.Opt(IDL.Principal),
         balanceToken: IDL.Opt(IDL.Principal),
-        balanceSubaccount: IDL.Opt(IDL.Nat),
         balanceChoreInstanceId: IDL.Opt(IDL.Text),
         valueSources: IDL.Vec(CBValueSource),
         operator: IDL.Nat,
@@ -639,13 +616,11 @@ export const idlFactory = ({ IDL }) => {
     // ==========================================
     const PurseBalance = IDL.Record({
         token: IDL.Principal,
-        subaccountNumber: IDL.Opt(IDL.Nat),
         balance: IDL.Nat,
     });
 
     const MainPurseBalance = IDL.Record({
         token: IDL.Principal,
-        subaccountNumber: IDL.Opt(IDL.Nat),
         balance: IDL.Nat,
         overcommitted: IDL.Bool,
     });
@@ -699,14 +674,7 @@ export const idlFactory = ({ IDL }) => {
         // Manual Operations (Accounts tab + Info tab withdraw)
         withdrawIcp: IDL.Func([IDL.Nat64, Account], [WithdrawResult], []),
         withdrawToken: IDL.Func([IDL.Principal, IDL.Nat, Account], [WithdrawResult], []),
-        manualTransfer: IDL.Func([IDL.Principal, IDL.Opt(IDL.Nat), IDL.Opt(IDL.Nat), IDL.Nat], [ManualOperationResult], []),
-        manualSend: IDL.Func([IDL.Principal, IDL.Opt(IDL.Nat), IDL.Principal, IDL.Opt(IDL.Vec(IDL.Nat8)), IDL.Nat], [ManualOperationResult], []),
-
-        // Subaccounts
-        getSubaccounts: IDL.Func([], [IDL.Vec(SubaccountInfo)], ['query']),
-        createSubaccount: IDL.Func([IDL.Text], [SubaccountInfo], []),
-        renameSubaccount: IDL.Func([IDL.Nat, IDL.Text], [IDL.Bool], []),
-        deleteSubaccount: IDL.Func([IDL.Nat], [IDL.Bool], []),
+        manualSend: IDL.Func([IDL.Principal, IDL.Opt(IDL.Text), IDL.Principal, IDL.Opt(IDL.Vec(IDL.Nat8)), IDL.Nat], [ManualOperationResult], []),
 
         // Balances (REMOVED: getBalances, getAllBalances — use frontend ledger calls)
 
@@ -837,10 +805,10 @@ export const idlFactory = ({ IDL }) => {
         enablePurse: IDL.Func([IDL.Text], [], []),
         disablePurse: IDL.Func([IDL.Text], [PurseResult], []),
         getPurseBalances: IDL.Func([IDL.Text], [IDL.Vec(PurseBalance)], ['query']),
-        getPurseBalance: IDL.Func([IDL.Text, IDL.Principal, IDL.Opt(IDL.Nat)], [IDL.Nat], ['query']),
+        getPurseBalance: IDL.Func([IDL.Text, IDL.Principal], [IDL.Nat], ['query']),
         getAllPurseAllocations: IDL.Func([], [IDL.Vec(ChorePurseInfo)], ['query']),
         getMainPurseBalances: IDL.Func([], [IDL.Vec(MainPurseBalance)], []),
-        getMainPurseBalance: IDL.Func([IDL.Principal, IDL.Opt(IDL.Nat)], [MainPurseBalance], []),
+        getMainPurseBalance: IDL.Func([IDL.Principal], [MainPurseBalance], []),
         fundPurse: IDL.Func([IDL.Text, IDL.Principal, IDL.Nat], [PurseResult], []),
         reclaimFromPurse: IDL.Func([IDL.Text, IDL.Principal, IDL.Nat], [PurseResult], []),
     });

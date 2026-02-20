@@ -29,9 +29,6 @@ module {
         id: Nat;
         /// Human-readable name for this distribution list.
         name: Text;
-        /// Source subaccount to check balance and transfer from.
-        /// null = the bot's default account (no subaccount).
-        sourceSubaccount: ?Blob;
         /// The ICRC-1 token ledger canister to query and transfer through.
         tokenLedgerCanisterId: Principal;
         /// Minimum balance (in token's smallest unit) before distribution triggers.
@@ -54,7 +51,6 @@ module {
     /// Input type for creating/updating a distribution list (no id field).
     public type DistributionListInput = {
         name: Text;
-        sourceSubaccount: ?Blob;
         tokenLedgerCanisterId: Principal;
         thresholdAmount: Nat;
         maxDistributionAmount: Nat;
