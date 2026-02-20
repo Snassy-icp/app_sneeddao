@@ -2100,7 +2100,7 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
 
     // Candid target -> draft target for editing
     const candidToDraft = (t) => {
-        const cid = t.choreInstanceId?.[0] || t.choreInstanceId || '';
+        const cid = (Array.isArray(t.choreInstanceId) ? t.choreInstanceId[0] : t.choreInstanceId) || '';
         const isPurse = !!cid;
         const ownerStr = !isPurse ? (typeof t.account?.owner === 'string' ? t.account.owner : t.account?.owner?.toText?.() || '') : '';
         const subBlob = t.account?.subaccount;
@@ -2279,7 +2279,7 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
     const tinyBtn = (extra) => ({ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', ...extra });
 
     const renderTargetDisplay = (target) => {
-        const cid = target.choreInstanceId?.[0] || target.choreInstanceId || '';
+        const cid = (Array.isArray(target.choreInstanceId) ? target.choreInstanceId[0] : target.choreInstanceId) || '';
         const bps = target.basisPoints?.length > 0 ? Number(target.basisPoints[0]) : null;
         const pctLabel = bps != null ? `${(bps / 100).toFixed(1)}%` : 'Auto-split';
         if (cid) {
