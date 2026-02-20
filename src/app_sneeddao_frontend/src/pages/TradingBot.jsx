@@ -6416,11 +6416,18 @@ function PursesPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
         setError(null);
         try {
             const actor = await getReadyBotActor();
-            const purses = await actor.getAllPurseAllocations();
+            const [purses, registry] = await Promise.all([
+                actor.getAllPurseAllocations(),
+                actor.getTokenRegistry ? actor.getTokenRegistry() : [],
+            ]);
             setAllPurses(purses);
 
-            // Collect all unique tokens across all purses
+            // Build full token set from registry + any tokens mentioned in purses
             const tokenSet = new Set();
+            for (const t of registry) {
+                const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+                tokenSet.add(tid);
+            }
             for (const chore of purses) {
                 for (const b of chore.balances) {
                     const tok = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
@@ -6428,7 +6435,7 @@ function PursesPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                 }
             }
 
-            // Fetch on-chain balances from ledgers
+            // Fetch on-chain balances for all registered tokens from ledgers
             if (tokenSet.size > 0 && canisterId) {
                 setBalancesLoading(true);
                 try {
@@ -6476,16 +6483,19 @@ function PursesPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
     }
 
     const mainPurseEntries = [];
+    const seenTokens = new Set();
     for (const tok of allTokens) {
+        seenTokens.add(tok);
         const chain = onChainBalances[tok] || 0n;
         const allocated = totalAllocated[tok] || 0n;
         const available = chain > allocated ? chain - allocated : 0n;
         const overcommitted = allocated > chain;
-        mainPurseEntries.push({ token: tok, balance: available, onChain: chain, allocated, overcommitted });
+        if (chain > 0n || overcommitted) {
+            mainPurseEntries.push({ token: tok, balance: available, onChain: chain, allocated, overcommitted });
+        }
     }
-    // Also add tokens with on-chain balance but no purse allocations
     for (const [tok, chain] of Object.entries(onChainBalances)) {
-        if (!allTokens.has(tok) && chain > 0n) {
+        if (!seenTokens.has(tok) && chain > 0n) {
             mainPurseEntries.push({ token: tok, balance: chain, onChain: chain, allocated: 0n, overcommitted: false });
         }
     }
