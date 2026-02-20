@@ -464,7 +464,7 @@ module {
             let nextRunAt = now + intervalNanos;
 
             let tid = Timer.setTimer<system>(#seconds intervalSecs, func(): async () {
-                await schedulerFired<system>(choreId);
+                await* schedulerFired<system>(choreId);
             });
 
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
@@ -571,7 +571,7 @@ module {
                         let intervalNanos = intervalSecs * 1_000_000_000;
                         let nextRunAt = now + intervalNanos;
                         let tid = Timer.setTimer<system>(#seconds intervalSecs, func(): async () {
-                            await schedulerFired<system>(choreId);
+                            await* schedulerFired<system>(choreId);
                         });
                         updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                             { s with schedulerTimerId = ?tid; nextScheduledRunAt = ?nextRunAt }
@@ -847,7 +847,7 @@ module {
             let nextRunAt = now + delayNanos;
 
             let tid = Timer.setTimer<system>(#seconds delaySeconds, func(): async () {
-                await schedulerFired<system>(choreId);
+                await* schedulerFired<system>(choreId);
             });
 
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
@@ -856,7 +856,7 @@ module {
         };
 
         /// Called when a scheduler timer fires.
-        func schedulerFired<system>(choreId: Text): async () {
+        func schedulerFired<system>(choreId: Text): async* () {
             let config = getConfigOrDefault(choreId);
             let state = getStateOrDefault(choreId);
 
@@ -892,7 +892,7 @@ module {
                 let nextRunAt = now + intervalNanos;
 
                 let tid = Timer.setTimer<system>(#seconds interval, func(): async () {
-                    await schedulerFired<system>(choreId);
+                    await* schedulerFired<system>(choreId);
                 });
 
                 updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
@@ -923,7 +923,7 @@ module {
                 ("previousTimerId", switch (previousTid) { case (?tid) Nat.toText(tid); case null "none" }),
             ]);
             let tid = Timer.setTimer<system>(#seconds delaySecs, func(): async () {
-                await conductorTick<system>(choreId, nextSeq);
+                await* conductorTick<system>(choreId, nextSeq);
             });
 
             // Commit sequence/timer swap only after timer creation succeeds.
@@ -954,7 +954,7 @@ module {
 
         /// One tick of the conductor loop.
         /// Uses schedule-first semantics plus stale-tick protection.
-        func conductorTick<system>(choreId: Text, scheduleSeq: Nat): async () {
+        func conductorTick<system>(choreId: Text, scheduleSeq: Nat): async* () {
             // Tiny concurrency guard: stale or superseded ticks self-drop.
             if (scheduleSeq != getConductorScheduleSeq(choreId)) {
                 emitLog(#Debug, choreId, "Conductor tick dropped: stale schedule sequence", [
@@ -976,19 +976,7 @@ module {
                 { s with conductorTimerId = null }
             });
 
-            try {
-                await conductorTickBody<system>(choreId);
-            } catch (e) {
-                let errMsg = Error.message(e);
-                if (errMsg == "could not perform self call") {
-                    emitLog(#Warning, choreId, "Conductor wrapper self-call failed; will retry in 3s", [
-                        ("error", errMsg)
-                    ]);
-                    scheduleConductorTick<system>(choreId, 3);
-                } else {
-                    markConductorError(choreId, "Conductor tick wrapper threw: " # errMsg);
-                };
-            };
+            await* conductorTickBody<system>(choreId);
 
             setConductorTickInFlight(choreId, false);
 
@@ -1001,7 +989,7 @@ module {
         /// 3. Call conductor callback
         /// 4. Start pending task (if any)
         /// 5. Finalize run state based on conductor action
-        func conductorTickBody<system>(choreId: Text): async () {
+        func conductorTickBody<system>(choreId: Text): async* () {
             let state = getStateOrDefault(choreId);
 
             // 0. Check stop/active flags BEFORE doing work.
@@ -1262,7 +1250,7 @@ module {
         /// Start the task loop with a 0-second timer.
         func startTaskLoop<system>(choreId: Text, taskFn: () -> async BotChoreTypes.TaskAction) {
             let tid = Timer.setTimer<system>(#seconds 0, func(): async () {
-                await taskLoopTick<system>(choreId, taskFn);
+                await* taskLoopTick<system>(choreId, taskFn);
             });
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                 { s with taskTimerId = ?tid }
@@ -1270,7 +1258,7 @@ module {
         };
 
         /// One tick of the task loop.
-        func taskLoopTick<system>(choreId: Text, taskFn: () -> async BotChoreTypes.TaskAction): async () {
+        func taskLoopTick<system>(choreId: Text, taskFn: () -> async BotChoreTypes.TaskAction): async* () {
             let state = getStateOrDefault(choreId);
 
             // Check stop flag BEFORE doing work
@@ -1291,7 +1279,7 @@ module {
                     case (#Continue) {
                         // More work — reschedule immediately
                         let tid = Timer.setTimer<system>(#seconds 0, func(): async () {
-                            await taskLoopTick<system>(choreId, taskFn);
+                            await* taskLoopTick<system>(choreId, taskFn);
                         });
                         updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                             { s with taskTimerId = ?tid }

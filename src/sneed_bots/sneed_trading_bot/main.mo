@@ -723,7 +723,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     /// Get ICPSwap pool canister for a token pair.
     /// Returns cached result if available, otherwise queries factory.
-    func getICPSwapPool(tokenA: Principal, tokenB: Principal): async ?Principal {
+    func getICPSwapPool(tokenA: Principal, tokenB: Principal): async* ?Principal {
         let key = pairKey(tokenA, tokenB);
         // Check cache
         for ((k, v) in icpswapPoolCache.vals()) {
@@ -1663,7 +1663,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     /// Get token info from registry, then metadata cache, then fetch on-the-fly.
     /// Results are stored in the metadata cache for future lookups.
-    func getTokenInfoOrFetch(token: Principal): async T.TokenRegistryEntry {
+    func getTokenInfoOrFetch(token: Principal): async* T.TokenRegistryEntry {
         // 1. Check token registry first (user-managed, always authoritative)
         switch (getTokenInfo(token)) {
             case (?entry) { return entry };
@@ -1700,8 +1700,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // ============================================
 
     /// Get a swap quote from ICPSwap.
-    func getICPSwapQuote(inputToken: Principal, outputToken: Principal, amount: Nat): async ?T.SwapQuote {
-        let poolOpt = await getICPSwapPool(inputToken, outputToken);
+    func getICPSwapQuote(inputToken: Principal, outputToken: Principal, amount: Nat): async* ?T.SwapQuote {
+        let poolOpt = await* getICPSwapPool(inputToken, outputToken);
         let poolCid = switch (poolOpt) {
             case (?p) p;
             case null {
@@ -1710,11 +1710,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             };
         };
 
-        let inputInfo = try { await getTokenInfoOrFetch(inputToken) } catch (e) {
+        let inputInfo = try { await* getTokenInfoOrFetch(inputToken) } catch (e) {
             logEngine.logWarning("dex", "ICPSwap: failed to get info for input token " # Principal.toText(inputToken) # ": " # Error.message(e), null, []);
             return null;
         };
-        let outputInfo = try { await getTokenInfoOrFetch(outputToken) } catch (e) {
+        let outputInfo = try { await* getTokenInfoOrFetch(outputToken) } catch (e) {
             logEngine.logWarning("dex", "ICPSwap: failed to get info for output token " # Principal.toText(outputToken) # ": " # Error.message(e), null, []);
             return null;
         };
@@ -1772,12 +1772,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     /// Get a swap quote from KongSwap.
-    func getKongQuote(inputToken: Principal, outputToken: Principal, amount: Nat): async ?T.SwapQuote {
-        let inputInfo = try { await getTokenInfoOrFetch(inputToken) } catch (e) {
+    func getKongQuote(inputToken: Principal, outputToken: Principal, amount: Nat): async* ?T.SwapQuote {
+        let inputInfo = try { await* getTokenInfoOrFetch(inputToken) } catch (e) {
             logEngine.logWarning("dex", "Kong: failed to get info for input token " # Principal.toText(inputToken) # ": " # Error.message(e), null, []);
             return null;
         };
-        let outputInfo = try { await getTokenInfoOrFetch(outputToken) } catch (e) {
+        let outputInfo = try { await* getTokenInfoOrFetch(outputToken) } catch (e) {
             logEngine.logWarning("dex", "Kong: failed to get info for output token " # Principal.toText(outputToken) # ": " # Error.message(e), null, []);
             return null;
         };
@@ -1834,16 +1834,16 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     /// Get quotes from all enabled DEXes, sorted by output (best first).
-    func getAllQuotes(inputToken: Principal, outputToken: Principal, amount: Nat): async [T.SwapQuote] {
+    func getAllQuotes(inputToken: Principal, outputToken: Principal, amount: Nat): async* [T.SwapQuote] {
         let quotes = Buffer.Buffer<T.SwapQuote>(2);
 
         if (isDexEnabled(T.DexId.ICPSwap)) {
-            let q = await getICPSwapQuote(inputToken, outputToken, amount);
+            let q = await* getICPSwapQuote(inputToken, outputToken, amount);
             switch (q) { case (?quote) { quotes.add(quote) }; case null {} };
         };
 
         if (isDexEnabled(T.DexId.KongSwap)) {
-            let q = await getKongQuote(inputToken, outputToken, amount);
+            let q = await* getKongQuote(inputToken, outputToken, amount);
             switch (q) { case (?quote) { quotes.add(quote) }; case null {} };
         };
 
@@ -1857,8 +1857,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     /// Get the best quote across all enabled DEXes.
-    func getBestQuote(inputToken: Principal, outputToken: Principal, amount: Nat): async ?T.SwapQuote {
-        let quotes = await getAllQuotes(inputToken, outputToken, amount);
+    func getBestQuote(inputToken: Principal, outputToken: Principal, amount: Nat): async* ?T.SwapQuote {
+        let quotes = await* getAllQuotes(inputToken, outputToken, amount);
         if (quotes.size() > 0) { ?quotes[0] } else { null }
     };
 
@@ -1868,16 +1868,16 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     /// Execute a swap on ICPSwap using ICRC-1 path.
     /// (Transfer to pool subaccount, then depositAndSwap)
-    func executeICPSwapSwap(quote: T.SwapQuote, slippageBps: Nat): async T.SwapResult {
+    func executeICPSwapSwap(quote: T.SwapQuote, slippageBps: Nat): async* T.SwapResult {
         let poolCid = switch (quote.poolCanisterId) {
             case (?p) p;
             case null { return #Err("No pool canister for ICPSwap swap") };
         };
 
-        let inputInfo = try { await getTokenInfoOrFetch(quote.inputToken) } catch (e) {
+        let inputInfo = try { await* getTokenInfoOrFetch(quote.inputToken) } catch (e) {
             return #Err("Failed to get input token info: " # Error.message(e));
         };
-        let outputInfo = try { await getTokenInfoOrFetch(quote.outputToken) } catch (e) {
+        let outputInfo = try { await* getTokenInfoOrFetch(quote.outputToken) } catch (e) {
             return #Err("Failed to get output token info: " # Error.message(e));
         };
 
@@ -1939,8 +1939,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     /// Execute a swap on KongSwap using ICRC-1 path.
     /// (Transfer to Kong canister, then swap with block index)
-    func executeKongSwapSwap(quote: T.SwapQuote, slippageBps: Nat): async T.SwapResult {
-        let inputInfo = try { await getTokenInfoOrFetch(quote.inputToken) } catch (e) {
+    func executeKongSwapSwap(quote: T.SwapQuote, slippageBps: Nat): async* T.SwapResult {
+        let inputInfo = try { await* getTokenInfoOrFetch(quote.inputToken) } catch (e) {
             return #Err("Failed to get input token info: " # Error.message(e));
         };
 
@@ -2000,11 +2000,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     /// Execute a swap using the given quote.
-    func executeSwap(quote: T.SwapQuote, slippageBps: Nat): async T.SwapResult {
+    func executeSwap(quote: T.SwapQuote, slippageBps: Nat): async* T.SwapResult {
         if (quote.dexId == T.DexId.ICPSwap) {
-            await executeICPSwapSwap(quote, slippageBps)
+            await* executeICPSwapSwap(quote, slippageBps)
         } else if (quote.dexId == T.DexId.KongSwap) {
-            await executeKongSwapSwap(quote, slippageBps)
+            await* executeKongSwapSwap(quote, slippageBps)
         } else {
             #Err("Unknown DEX ID: " # Nat.toText(quote.dexId))
         }
@@ -2015,7 +2015,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // ============================================
 
     /// Transfer tokens (internal helper).
-    func transferTokens(token: Principal, fromSubaccount: ?Blob, to: T.Account, amount: Nat): async T.TransferResult {
+    func transferTokens(token: Principal, fromSubaccount: ?Blob, to: T.Account, amount: Nat): async* T.TransferResult {
         let ledger = getLedger(token);
         let fee = switch (getTokenInfo(token)) {
             case (?info) { info.fee };
@@ -2032,7 +2032,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     /// Get balance of a token in a subaccount.
-    func getBalance(token: Principal, subaccount: ?Blob): async Nat {
+    func getBalance(token: Principal, subaccount: ?Blob): async* Nat {
         let ledger = getLedger(token);
         await ledger.icrc1_balance_of({
             owner = Principal.fromActor(this);
@@ -2300,7 +2300,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     /// Take token snapshots for a list of tokens. Uses cached metadata and prices.
     /// Returns TokenSnapshot array.
-    func takeTokenSnapshots(tokens: [Principal]): async [T.TokenSnapshot] {
+    func takeTokenSnapshots(tokens: [Principal]): async* [T.TokenSnapshot] {
         let snaps = Buffer.Buffer<T.TokenSnapshot>(tokens.size());
 
         let icpToken = Principal.fromText(T.ICP_LEDGER);
@@ -2322,7 +2322,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
 
         for (token in tokens.vals()) {
-            let balance = await getBalance(token, null); // Main account
+            let balance = await* getBalance(token, null); // Main account
             // Reconcile balance: detects any untracked inflows/outflows since last known
             reconcileBalance(token, null, balance, "snapshot");
             let meta = getCachedMeta(token);
@@ -2393,7 +2393,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     func _makeSnapshotTaskFn(tokens: [Principal], phase: T.SnapshotPhase, instanceId: Text, actionId: Nat): () -> async BotChoreTypes.TaskAction {
         func(): async BotChoreTypes.TaskAction {
             try {
-                let snaps = await takeTokenSnapshots(tokens);
+                let snaps = await* takeTokenSnapshots(tokens);
                 let trigger = switch (phase) {
                     case (#Before) { "Trade " # Nat.toText(actionId) # " pre-swap" };
                     case (#After) { "Trade " # Nat.toText(actionId) # " post-swap" };
@@ -2445,7 +2445,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 let phaseLabel = switch (phase) { case (#Before) "pre"; case (#After) "post" };
 
                 for ((token, subaccount) in pairs.vals()) {
-                    let balance = await getBalance(token, subaccount);
+                    let balance = await* getBalance(token, subaccount);
                     reconcileBalance(token, subaccount, balance, "snapshot");
                     let meta = getCachedMeta(token);
                     let symbol = switch (meta) { case (?m) m.symbol; case null { switch (getTokenInfo(token)) { case (?i) i.symbol; case null "?" } } };
@@ -2524,7 +2524,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     /// Execute a single trade action. Returns true if executed, false if skipped.
-    func executeTradeAction(action: T.ActionConfig, instanceId: Text): async Bool {
+    func executeTradeAction(action: T.ActionConfig, instanceId: Text): async* Bool {
         let src = "chore:" # instanceId;
 
         // Check frequency
@@ -2546,16 +2546,16 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
         switch (action.actionType) {
             case (0) { // Trade
-                await executeTradeSwap(action, instanceId)
+                await* executeTradeSwap(action, instanceId)
             };
             case (1) { // Deposit
-                await executeDeposit(action, instanceId)
+                await* executeDeposit(action, instanceId)
             };
             case (2) { // Withdraw
-                await executeWithdraw(action, instanceId)
+                await* executeWithdraw(action, instanceId)
             };
             case (3) { // Send
-                await executeSend(action, instanceId)
+                await* executeSend(action, instanceId)
             };
             case (_) {
                 logEngine.logError(src, "Unknown action type: " # Nat.toText(action.actionType), null, []);
@@ -2565,7 +2565,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     /// Execute a Trade action (action type 0).
-    func executeTradeSwap(action: T.ActionConfig, instanceId: Text): async Bool {
+    func executeTradeSwap(action: T.ActionConfig, instanceId: Text): async* Bool {
         let src = "chore:" # instanceId;
         let outputToken = switch (action.outputToken) {
             case (?t) t;
@@ -2575,18 +2575,37 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             };
         };
 
+        func logSkip(reason: Text, quoteOpt: ?T.SwapQuote, tradeAmount: ?Nat) {
+            ignore appendTradeLog({
+                choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                actionType = 0;
+                inputToken = action.inputToken; outputToken = ?outputToken;
+                inputAmount = switch (tradeAmount) { case (?a) a; case null 0 };
+                outputAmount = null;
+                priceE8s = switch (quoteOpt) { case (?q) ?q.spotPriceE8s; case null null };
+                priceImpactBps = switch (quoteOpt) { case (?q) ?q.priceImpactBps; case null null };
+                slippageBps = null;
+                dexId = switch (quoteOpt) { case (?q) ?q.dexId; case null null };
+                status = #Skipped;
+                errorMessage = ?reason;
+                txId = null; destinationOwner = null;
+            });
+        };
+
         // Global pause/freeze check — paused or frozen tokens cannot be traded
         if (isTokenPausedOrFrozen(action.inputToken)) {
             logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: input token is paused/frozen globally", null, []);
+            logSkip("Input token is paused/frozen", null, null);
             return false;
         };
         if (isTokenPausedOrFrozen(outputToken)) {
             logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: output token is paused/frozen globally", null, []);
+            logSkip("Output token is paused/frozen", null, null);
             return false;
         };
 
         // Check input balance (optionally denominated in another token)
-        let balance = await getBalance(action.inputToken, null); // Main account only for trades
+        let balance = await* getBalance(action.inputToken, null); // Main account only for trades
         reconcileBalance(action.inputToken, null, balance, src);
         let effectiveBal = getEffectiveBalance(instanceId, action.inputToken, null, balance);
         let balanceForComparison: Nat = switch (action.balanceDenominationToken) {
@@ -2595,6 +2614,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case (?converted) converted;
                     case null {
                         logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: no cached quote to convert balance to denomination token", null, []);
+                        logSkip("No cached quote to convert balance to denomination token", null, null);
                         return false;
                     };
                 };
@@ -2604,6 +2624,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         switch (action.minBalance) {
             case (?min) { if (balanceForComparison < min) {
                 logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: balance " # Nat.toText(balanceForComparison) # " < min " # Nat.toText(min), null, []);
+                logSkip("Balance " # Nat.toText(balanceForComparison) # " < min " # Nat.toText(min), null, null);
                 return false;
             }};
             case null {};
@@ -2611,6 +2632,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         switch (action.maxBalance) {
             case (?max) { if (balanceForComparison > max) {
                 logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: balance " # Nat.toText(balanceForComparison) # " > max " # Nat.toText(max), null, []);
+                logSkip("Balance " # Nat.toText(balanceForComparison) # " > max " # Nat.toText(max), null, null);
                 return false;
             }};
             case null {};
@@ -2624,6 +2646,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case (?v) v;
                     case null {
                         logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: no cached quote to convert trade size min from denomination token", null, []);
+                        logSkip("No cached quote to convert trade size min from denomination token", null, null);
                         return false;
                     };
                 };
@@ -2631,6 +2654,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case (?v) v;
                     case null {
                         logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: no cached quote to convert trade size max from denomination token", null, []);
+                        logSkip("No cached quote to convert trade size max from denomination token", null, null);
                         return false;
                     };
                 };
@@ -2642,13 +2666,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         let tradeSize = computeActionAmount(action, effectiveBal, effectiveMinAmount, effectiveMaxAmount);
 
         // Clamp to available balance (minus fees) — use min of effective and on-chain
-        let inputFee = try { (await getTokenInfoOrFetch(action.inputToken)).fee } catch (_) { 0 };
+        let inputFee = try { (await* getTokenInfoOrFetch(action.inputToken)).fee } catch (_) { 0 };
         let cappedBal = Nat.min(effectiveBal, balance);
         let maxAffordable = if (cappedBal > inputFee * 3) { cappedBal - inputFee * 3 } else { 0 };
         let actualTradeSize = Nat.min(tradeSize, maxAffordable);
 
         if (actualTradeSize < effectiveMinAmount) {
             logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: affordable amount " # Nat.toText(actualTradeSize) # " < min " # Nat.toText(effectiveMinAmount), null, []);
+            logSkip("Affordable amount " # Nat.toText(actualTradeSize) # " < min " # Nat.toText(effectiveMinAmount), null, ?actualTradeSize);
             return false;
         };
 
@@ -2657,9 +2682,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (?dexId) {
                 // User specified a DEX — always get a fresh quote for the actual trade size
                 if (dexId == T.DexId.ICPSwap) {
-                    await getICPSwapQuote(action.inputToken, outputToken, actualTradeSize)
+                    await* getICPSwapQuote(action.inputToken, outputToken, actualTradeSize)
                 } else if (dexId == T.DexId.KongSwap) {
-                    await getKongQuote(action.inputToken, outputToken, actualTradeSize)
+                    await* getKongQuote(action.inputToken, outputToken, actualTradeSize)
                 } else { null }
             };
             case null {
@@ -2668,15 +2693,15 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case (?cachedQ) {
                         // Re-fetch a quote on the same DEX but with actual trade size
                         if (cachedQ.dexId == T.DexId.ICPSwap) {
-                            await getICPSwapQuote(action.inputToken, outputToken, actualTradeSize)
+                            await* getICPSwapQuote(action.inputToken, outputToken, actualTradeSize)
                         } else if (cachedQ.dexId == T.DexId.KongSwap) {
-                            await getKongQuote(action.inputToken, outputToken, actualTradeSize)
+                            await* getKongQuote(action.inputToken, outputToken, actualTradeSize)
                         } else {
-                            await getBestQuote(action.inputToken, outputToken, actualTradeSize)
+                            await* getBestQuote(action.inputToken, outputToken, actualTradeSize)
                         }
                     };
                     case null {
-                        await getBestQuote(action.inputToken, outputToken, actualTradeSize)
+                        await* getBestQuote(action.inputToken, outputToken, actualTradeSize)
                     };
                 }
             };
@@ -2686,6 +2711,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (?q) q;
             case null {
                 logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: no quote available", null, []);
+                logSkip("No quote available from any DEX", null, ?actualTradeSize);
                 return false;
             };
         };
@@ -2697,6 +2723,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
         if (quote.priceImpactBps > maxImpact) {
             logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: price impact " # Nat.toText(quote.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps", null, []);
+            logSkip("Price impact " # Nat.toText(quote.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps", ?quote, ?actualTradeSize);
             return false;
         };
 
@@ -2716,6 +2743,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                 switch (action.minPrice) {
                                     case (?min) { if (currentPriceInDenom < min) {
                                         logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: denominated price " # Nat.toText(currentPriceInDenom) # " < min " # Nat.toText(min), null, []);
+                                        logSkip("Price " # Nat.toText(currentPriceInDenom) # " < min " # Nat.toText(min), ?quote, ?actualTradeSize);
                                         return false;
                                     }};
                                     case null {};
@@ -2723,6 +2751,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                 switch (action.maxPrice) {
                                     case (?max) { if (currentPriceInDenom > max) {
                                         logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: denominated price " # Nat.toText(currentPriceInDenom) # " > max " # Nat.toText(max), null, []);
+                                        logSkip("Price " # Nat.toText(currentPriceInDenom) # " > max " # Nat.toText(max), ?quote, ?actualTradeSize);
                                         return false;
                                     }};
                                     case null {};
@@ -2730,6 +2759,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             };
                             case null {
                                 logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: cannot convert output token price to denomination token (no direct or ICP-hop quote)", null, []);
+                                logSkip("Cannot convert output token price to denomination token", ?quote, ?actualTradeSize);
                                 return false;
                             };
                         };
@@ -2748,6 +2778,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         switch (action.minPrice) {
                             case (?min) { if (min * quote.spotPriceE8s > scale) {
                                 logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: price too low", null, []);
+                                logSkip("Price too low (below min price)", ?quote, ?actualTradeSize);
                                 return false;
                             }};
                             case null {};
@@ -2755,6 +2786,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         switch (action.maxPrice) {
                             case (?max) { if (max * quote.spotPriceE8s < scale) {
                                 logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: price too high", null, []);
+                                logSkip("Price too high (above max price)", ?quote, ?actualTradeSize);
                                 return false;
                             }};
                             case null {};
@@ -2770,7 +2802,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case null { defaultSlippageBps };
         };
 
-        let result = await executeSwap(quote, slippage);
+        let result = await* executeSwap(quote, slippage);
 
         switch (result) {
             case (#Ok(r)) {
@@ -2853,7 +2885,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     /// Execute a Deposit action (action type 1).
-    func executeDeposit(action: T.ActionConfig, instanceId: Text): async Bool {
+    func executeDeposit(action: T.ActionConfig, instanceId: Text): async* Bool {
         let src = "chore:" # instanceId;
         let targetSub = switch (action.targetSubaccount) {
             case (?n) n;
@@ -2869,7 +2901,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             return false;
         };
 
-        let balance = await getBalance(action.inputToken, null); // Main account
+        let balance = await* getBalance(action.inputToken, null); // Main account
         reconcileBalance(action.inputToken, null, balance, src);
         let effectiveBal = getEffectiveBalance(instanceId, action.inputToken, null, balance);
         switch (action.minBalance) {
@@ -2884,7 +2916,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         if (amount < action.minAmount or amount == 0) return false;
 
         let targetBlob = subaccountNumberToBlob(targetSub);
-        let result = await transferTokens(
+        let result = await* transferTokens(
             action.inputToken,
             null, // from main
             { owner = Principal.fromActor(this); subaccount = ?targetBlob },
@@ -2947,7 +2979,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     /// Execute a Withdraw action (action type 2).
-    func executeWithdraw(action: T.ActionConfig, instanceId: Text): async Bool {
+    func executeWithdraw(action: T.ActionConfig, instanceId: Text): async* Bool {
         let src = "chore:" # instanceId;
         let sourceSub = switch (action.sourceSubaccount) {
             case (?n) n;
@@ -2964,7 +2996,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
 
         let sourceBlob = subaccountNumberToBlob(sourceSub);
-        let balance = await getBalance(action.inputToken, ?sourceBlob);
+        let balance = await* getBalance(action.inputToken, ?sourceBlob);
         reconcileBalance(action.inputToken, ?sourceBlob, balance, src);
         let effectiveBal = getEffectiveBalance(instanceId, action.inputToken, ?sourceBlob, balance);
         switch (action.minBalance) {
@@ -2978,7 +3010,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         let amount = computeActionAmount(action, effectiveBal, action.minAmount, Nat.min(action.maxAmount, affordable));
         if (amount < action.minAmount or amount == 0) return false;
 
-        let result = await transferTokens(
+        let result = await* transferTokens(
             action.inputToken,
             ?sourceBlob, // from subaccount
             { owner = Principal.fromActor(this); subaccount = null }, // to main
@@ -3041,7 +3073,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     /// Execute a Send action (action type 3).
-    func executeSend(action: T.ActionConfig, instanceId: Text): async Bool {
+    func executeSend(action: T.ActionConfig, instanceId: Text): async* Bool {
         let src = "chore:" # instanceId;
         let destOwner = switch (action.destinationOwner) {
             case (?o) o;
@@ -3058,7 +3090,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
 
         let sourceBlob = getSubaccountBlob(action.sourceSubaccount);
-        let balance = await getBalance(action.inputToken, sourceBlob);
+        let balance = await* getBalance(action.inputToken, sourceBlob);
         reconcileBalance(action.inputToken, sourceBlob, balance, src);
         let effectiveBal = getEffectiveBalance(instanceId, action.inputToken, sourceBlob, balance);
         switch (action.minBalance) {
@@ -3072,7 +3104,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         let amount = computeActionAmount(action, effectiveBal, action.minAmount, Nat.min(action.maxAmount, affordable));
         if (amount < action.minAmount or amount == 0) return false;
 
-        let result = await transferTokens(
+        let result = await* transferTokens(
             action.inputToken,
             sourceBlob,
             { owner = destOwner; subaccount = action.destinationSubaccount },
@@ -3167,7 +3199,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         slippage: Nat,
         tradeSize: Nat,
         route: Text,
-    ): async Bool {
+    ): async* Bool {
         logEngine.logTrace(src, "Executing swap: " # tokenLabel(sellToken.token) # " → " # tokenLabel(buyToken.token) # " on dex " # Nat.toText(quote.dexId), null, [
             ("sellToken", tokenLabel(sellToken.token)),
             ("sellTokenId", Principal.toText(sellToken.token)),
@@ -3181,7 +3213,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             ("dexId", Nat.toText(quote.dexId)),
             ("route", route),
         ]);
-        let result = await executeSwap(quote, slippage);
+        let result = await* executeSwap(quote, slippage);
         switch (result) {
             case (#Ok(r)) {
                 logEngine.logInfo(src, "Rebalance trade executed: sold " # Nat.toText(tradeSize) # " " # tokenLabel(sellToken.token) # " → received " # Nat.toText(r.amountOut) # " " # tokenLabel(buyToken.token) # " (" # route # ", dex " # Nat.toText(quote.dexId) # ", impact " # Nat.toText(quote.priceImpactBps) # " bps)", null, [
@@ -3268,7 +3300,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     /// Execute one rebalancing trade for the given instance.
-    func executeRebalance(instanceId: Text): async Bool {
+    func executeRebalance(instanceId: Text): async* Bool {
         let src = "chore:" # instanceId;
         let allTargets = getRebalTargets(instanceId);
         let denomToken = getRebalDenomToken(instanceId);
@@ -3358,7 +3390,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         var totalValue: Nat = 0;
 
         for (target in targets.vals()) {
-            let onChainBal = try { await getBalance(target.token, null) }
+            let onChainBal = try { await* getBalance(target.token, null) }
                 catch (e) {
                     logEngine.logWarning(src, "Failed to fetch balance for " # tokenLabel(target.token) # ": " # Error.message(e) # " — using 0", null, [
                         ("token", tokenLabel(target.token)),
@@ -3387,7 +3419,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 var freshValue: Nat = 0;
                 var usedFresh = false;
                 try {
-                    let freshQuoteOpt = await getBestQuote(target.token, denomToken, balance);
+                    let freshQuoteOpt = await* getBestQuote(target.token, denomToken, balance);
                     switch (freshQuoteOpt) {
                         case (?q) {
                             if (q.expectedOutput > 0) {
@@ -3773,7 +3805,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         ]);
 
         // Try direct quote first
-        let directQuoteOpt = await getBestQuote(sellToken.token, buyToken.token, tradeSize);
+        let directQuoteOpt = await* getBestQuote(sellToken.token, buyToken.token, tradeSize);
         let directOk = switch (directQuoteOpt) {
             case (?q) {
                 logEngine.logTrace(src, "Direct quote received: " # Nat.toText(q.expectedOutput) # " " # tokenLabel(buyToken.token) # " (dex " # Nat.toText(q.dexId) # ", impact " # Nat.toText(q.priceImpactBps) # " bps, spot " # Nat.toText(q.spotPriceE8s) # ")", null, [
@@ -3805,7 +3837,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 ("expectedOutput", Nat.toText(quote.expectedOutput)),
                 ("slippageBps", Nat.toText(slippage)),
             ]);
-            return await _rebalExecuteAndLog(instanceId, src, sellToken, buyToken, quote, slippage, tradeSize, "direct");
+            return await* _rebalExecuteAndLog(instanceId, src, sellToken, buyToken, quote, slippage, tradeSize, "direct");
         };
 
         // --- 6b. Fallback routing (sell → intermediary → buy) ---
@@ -3857,7 +3889,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     ("sellToken", tokenLabel(sellToken.token)),
                     ("amount", Nat.toText(tradeSize)),
                 ]);
-                let leg1Opt = await getBestQuote(sellToken.token, intermediary, tradeSize);
+                let leg1Opt = await* getBestQuote(sellToken.token, intermediary, tradeSize);
                 switch (leg1Opt) {
                     case (?q1) {
                         if (q1.priceImpactBps > maxImpact) {
@@ -3868,7 +3900,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             ]);
                         } else {
                             // Leg 1 OK — try leg 2: intermediary → buy
-                            let leg2Opt = await getBestQuote(intermediary, buyToken.token, q1.expectedOutput);
+                            let leg2Opt = await* getBestQuote(intermediary, buyToken.token, q1.expectedOutput);
                             switch (leg2Opt) {
                                 case (?q2) {
                                     if (q2.priceImpactBps > maxImpact) {
@@ -3969,7 +4001,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             ("expectedOutput", Nat.toText(leg1Quote.expectedOutput)),
             ("slippageBps", Nat.toText(slippage)),
         ]);
-        let leg1Result = await executeSwap(leg1Quote, slippage);
+        let leg1Result = await* executeSwap(leg1Quote, slippage);
         let intermediaryReceived = switch (leg1Result) {
             case (#Ok(r)) {
                 // Subtract the quote's output fees (intermediary withdrawal/transfer fee)
@@ -4057,7 +4089,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             ("buyToken", tokenLabel(buyToken.token)),
             ("buyTokenId", Principal.toText(buyToken.token)),
         ]);
-        let leg2FreshQuoteOpt = await getBestQuote(intermediary, buyToken.token, intermediaryReceived);
+        let leg2FreshQuoteOpt = await* getBestQuote(intermediary, buyToken.token, intermediaryReceived);
         let leg2FreshQuote = switch (leg2FreshQuoteOpt) {
             case (?q) {
                 logEngine.logTrace(src, "Fresh leg2 quote received: " # Nat.toText(q.expectedOutput) # " " # tokenLabel(buyToken.token) # " (dex " # Nat.toText(q.dexId) # ", impact " # Nat.toText(q.priceImpactBps) # " bps)", null, [
@@ -4087,7 +4119,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             ("expectedOutput", Nat.toText(leg2FreshQuote.expectedOutput)),
             ("slippageBps", Nat.toText(slippage)),
         ]);
-        let leg2Result = await executeSwap(leg2FreshQuote, slippage);
+        let leg2Result = await* executeSwap(leg2FreshQuote, slippage);
         switch (leg2Result) {
             case (#Ok(r)) {
                 logEngine.logInfo(src, "Rebalance " # routeLabel # " complete: sold " # Nat.toText(tradeSize) # " " # tokenLabel(sellToken.token) # " → " # Nat.toText(intermediaryReceived) # " " # intLabel # " → " # Nat.toText(r.amountOut) # " " # tokenLabel(buyToken.token), null, [
@@ -4188,7 +4220,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     func _makeRebalSnapshotTaskFn(tokens: [Principal], phase: T.SnapshotPhase, instanceId: Text): () -> async BotChoreTypes.TaskAction {
         func(): async BotChoreTypes.TaskAction {
             try {
-                let snaps = await takeTokenSnapshots(tokens);
+                let snaps = await* takeTokenSnapshots(tokens);
                 let trigger = switch (phase) {
                     case (#Before) { "Rebalance pre-trade" };
                     case (#After) { "Rebalance post-trade" };
@@ -4370,7 +4402,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             case null {
                                 // Fetch from ledger and cache
                                 try {
-                                    ignore await getTokenInfoOrFetch(token);
+                                    ignore await* getTokenInfoOrFetch(token);
                                 } catch (e) {
                                     logEngine.logWarning("prep", "Failed to fetch metadata for " # Principal.toText(token) # ": " # Error.message(e), null, []);
                                 };
@@ -4406,9 +4438,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case null {
                         try {
                             // Use a reference amount of 1 full token unit for price discovery
-                            let info = await getTokenInfoOrFetch(inputToken);
+                            let info = await* getTokenInfoOrFetch(inputToken);
                             let oneUnit = Nat.pow(10, Nat8.toNat(info.decimals));
-                            let quoteOpt = await getBestQuote(inputToken, outputToken, oneUnit);
+                            let quoteOpt = await* getBestQuote(inputToken, outputToken, oneUnit);
                             switch (quoteOpt) {
                                 case (?q) { setCachedQuote(inputToken, outputToken, q) };
                                 case null {
@@ -4542,7 +4574,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     func _trade_makeTaskFn(action: T.ActionConfig, instanceId: Text, isTradeChore: Bool): () -> async BotChoreTypes.TaskAction {
         func(): async BotChoreTypes.TaskAction {
             try {
-                let executed = await executeTradeAction(action, instanceId);
+                let executed = await* executeTradeAction(action, instanceId);
                 if (executed) {
                     updateActionLastExecuted(instanceId, action.id, isTradeChore);
                 };
@@ -4659,7 +4691,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 if (allTokens.size() == 0) return #Done;
 
                 // Main account snapshot
-                let mainSnaps = await takeTokenSnapshots(allTokens);
+                let mainSnaps = await* takeTokenSnapshots(allTokens);
                 let mainIcp = Array.foldLeft<T.TokenSnapshot, Nat>(mainSnaps, 0, func(acc, s) { acc + (switch (s.valueIcpE8s) { case (?v) v; case null 0 }) });
                 let mainUsd = Array.foldLeft<T.TokenSnapshot, Nat>(mainSnaps, 0, func(acc, s) { acc + (switch (s.valueUsdE8s) { case (?v) v; case null 0 }) });
                 ignore appendPortfolioSnapshot({
@@ -4681,7 +4713,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     // Take snapshot for each token in this subaccount
                     let subSnapBuf = Buffer.Buffer<T.TokenSnapshot>(allTokens.size());
                     for (token in allTokens.vals()) {
-                        let balance = await getBalance(token, ?subBlob);
+                        let balance = await* getBalance(token, ?subBlob);
                         reconcileBalance(token, ?subBlob, balance, "snapshot");
                         let meta = getCachedMeta(token);
                         let symbol = switch (meta) { case (?m) m.symbol; case null { switch (getTokenInfo(token)) { case (?i) i.symbol; case null "?" } } };
@@ -5183,7 +5215,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             };
                             // No CB rules → proceed to rebalance directly
                             let taskFn = func(): async BotChoreTypes.TaskAction {
-                                try { ignore await executeRebalance(instanceId); #Done }
+                                try { ignore await* executeRebalance(instanceId); #Done }
                                 catch (e) { #Error("Rebalance failed: " # Error.message(e)) }
                             };
                             choreEngine.setPendingTask(instanceId, "rebalance-exec-" # Nat.toText(Int.abs(Time.now())), taskFn);
@@ -5200,7 +5232,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             };
                             logEngine.logInfo(src, "Circuit breaker check passed", null, []);
                             let taskFn = func(): async BotChoreTypes.TaskAction {
-                                try { ignore await executeRebalance(instanceId); #Done }
+                                try { ignore await* executeRebalance(instanceId); #Done }
                                 catch (e) { #Error("Rebalance failed: " # Error.message(e)) }
                             };
                             choreEngine.setPendingTask(instanceId, "rebalance-exec-" # Nat.toText(Int.abs(Time.now())), taskFn);
@@ -5701,14 +5733,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
 
         let amount = Nat64.toNat(amount_e8s);
-        let balance = await getBalance(token, null);
+        let balance = await* getBalance(token, null);
         reconcileBalance(token, null, balance, "api");
         let fee = switch (getTokenInfo(token)) { case (?i) i.fee; case null 10_000 };
         if (balance < amount + fee) {
             return #Err(#TransferFailed("Insufficient balance"));
         };
 
-        let result = await transferTokens(token, null, to_account, amount);
+        let result = await* transferTokens(token, null, to_account, amount);
         switch (result) {
             case (#Ok(blockIdx)) {
                 logEngine.logInfo("api", "withdrawIcp: " # Nat.toText(amount) # " to " # Principal.toText(to_account.owner), ?msg.caller, []);
@@ -5756,14 +5788,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             return #Err(#InvalidOperation("Token is frozen"));
         };
 
-        let balance = await getBalance(ledger_canister_id, null);
+        let balance = await* getBalance(ledger_canister_id, null);
         reconcileBalance(ledger_canister_id, null, balance, "api");
         let fee = switch (getTokenInfo(ledger_canister_id)) { case (?i) i.fee; case null 0 };
         if (balance < amount + fee) {
             return #Err(#TransferFailed("Insufficient balance"));
         };
 
-        let result = await transferTokens(ledger_canister_id, null, to_account, amount);
+        let result = await* transferTokens(ledger_canister_id, null, to_account, amount);
         switch (result) {
             case (#Ok(blockIdx)) {
                 logEngine.logInfo("api", "withdrawToken: " # Nat.toText(amount) # " of " # Principal.toText(ledger_canister_id) # " to " # Principal.toText(to_account.owner), ?msg.caller, []);
@@ -5821,14 +5853,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case null null;
         };
 
-        let balance = await getBalance(token, fromBlob);
+        let balance = await* getBalance(token, fromBlob);
         reconcileBalance(token, fromBlob, balance, "api");
         let fee = switch (getTokenInfo(token)) { case (?i) i.fee; case null 0 };
         if (balance < amount + fee) {
             return #Err(#TransferFailed("Insufficient balance"));
         };
 
-        let result = await transferTokens(
+        let result = await* transferTokens(
             token, fromBlob,
             { owner = Principal.fromActor(this); subaccount = toBlob },
             amount
@@ -5897,14 +5929,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case null null;
         };
 
-        let balance = await getBalance(token, fromBlob);
+        let balance = await* getBalance(token, fromBlob);
         reconcileBalance(token, fromBlob, balance, "api");
         let fee = switch (getTokenInfo(token)) { case (?i) i.fee; case null 0 };
         if (balance < amount + fee) {
             return #Err(#TransferFailed("Insufficient balance"));
         };
 
-        let result = await transferTokens(
+        let result = await* transferTokens(
             token, fromBlob,
             { owner = destinationOwner; subaccount = destinationSubaccount },
             amount
@@ -7017,7 +7049,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         let buf = Buffer.Buffer<T.MainPurseBalance>(8);
         for (entry in tokenRegistry.vals()) {
             let tok = entry.ledgerCanisterId;
-            let onChain = try { await getBalance(tok, null) } catch (_) { 0 };
+            let onChain = try { await* getBalance(tok, null) } catch (_) { 0 };
             let main = computeMainPurseBalance(tok, null, onChain);
             if (onChain > 0 or main.overcommitted) {
                 buf.add({ token = tok; subaccountNumber = null; balance = main.balance; overcommitted = main.overcommitted });
@@ -7032,7 +7064,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (?n) ?subaccountNumberToBlob(n);
             case null null;
         };
-        let onChain = await getBalance(token, sub);
+        let onChain = await* getBalance(token, sub);
         let main = computeMainPurseBalance(token, sub, onChain);
         { token = token; subaccountNumber = subaccountNumber; balance = main.balance; overcommitted = main.overcommitted }
     };
@@ -7043,7 +7075,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             return #Err("Purse is not enabled for this chore.");
         };
         if (amount == 0) { return #Err("Amount must be > 0.") };
-        let onChain = await getBalance(token, null);
+        let onChain = await* getBalance(token, null);
         let main = computeMainPurseBalance(token, null, onChain);
         if (amount > main.balance) {
             return #Err("Insufficient main purse balance. Available: " # Nat.toText(main.balance) # ", requested: " # Nat.toText(amount));
