@@ -1432,17 +1432,21 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
     
-    // Internal: check if a canister is escrowed in any offer
+    // Internal: check if a canister is currently held in escrow by a live offer.
+    // Only PendingEscrow and Active offers actually hold custody of assets;
+    // Cancelled/Expired/Reclaimed/Completed/Claimed offers no longer do.
     func isCanisterInEscrow(canisterId : Principal) : Bool {
         for (offer in offers.vals()) {
-            for (assetEntry in offer.assets.vals()) {
-                switch (assetEntry.asset) {
-                    case (#Canister(c)) {
-                        if (c.canister_id == canisterId and assetEntry.escrowed) {
-                            return true;
+            if (offer.state == #PendingEscrow or offer.state == #Active) {
+                for (assetEntry in offer.assets.vals()) {
+                    switch (assetEntry.asset) {
+                        case (#Canister(c)) {
+                            if (c.canister_id == canisterId and assetEntry.escrowed) {
+                                return true;
+                            };
                         };
+                        case (_) {};
                     };
-                    case (_) {};
                 };
             };
         };
