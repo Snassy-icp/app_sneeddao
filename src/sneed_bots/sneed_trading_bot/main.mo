@@ -1131,6 +1131,13 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     /// otherwise fall back to getLastKnownBalance (on-chain cache).
     func cbGetBalance(tok: Principal, sub: ?Blob, choreInstanceId: ?Text): Nat {
         switch (choreInstanceId) {
+            case (?"__main__") {
+                let onChain = switch (getLastKnownBalance(tok, sub)) {
+                    case (?b) b;
+                    case null { return 0 };
+                };
+                return computeMainPurseBalance(tok, sub, onChain).balance;
+            };
             case (?cid) {
                 if (isPurseEnabledForChore(cid)) {
                     return getChorePurseBalance(cid, tok, sub);
@@ -1138,11 +1145,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             };
             case null {};
         };
-        let onChain = switch (getLastKnownBalance(tok, sub)) {
+        switch (getLastKnownBalance(tok, sub)) {
             case (?b) b;
-            case null { return 0 };
-        };
-        computeMainPurseBalance(tok, sub, onChain).balance
+            case null 0;
+        }
     };
 
     func evaluateValueCondition(cond: T.CircuitBreakerCondition): Bool {
