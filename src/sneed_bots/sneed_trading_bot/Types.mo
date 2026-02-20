@@ -631,8 +631,9 @@ module {
 
     /// Query filter for the trade log.
     public type TradeLogQuery = {
-        startId: ?Nat;             // Pagination: start from this ID (inclusive)
-        limit: ?Nat;               // Max entries (default 50)
+        startId: ?Nat;             // Filter: only entries with id >= startId
+        limit: ?Nat;               // Max entries per page (default 50)
+        offset: ?Nat;              // Skip first N matching entries (for page-based pagination)
         choreId: ?Text;            // Filter by chore instance
         choreTypeId: ?Text;        // Filter by chore type
         actionType: ?Nat;          // Filter by action type

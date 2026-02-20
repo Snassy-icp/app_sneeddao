@@ -2272,11 +2272,13 @@ const DEX_LABELS = { 0: 'ICPSwap', 1: 'KongSwap' };
 // ============================================
 function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
     const { identity } = useAuth();
+    const PAGE_SIZE = 50;
     const [entries, setEntries] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [stats, setStats] = useState(null);
-    const [query, setQuery] = useState({ startId: [], limit: [50], choreId: [], choreTypeId: [], actionType: [], inputToken: [], outputToken: [], status: [], fromTime: [], toTime: [] });
+    const [totalCount, setTotalCount] = useState(0);
+    const [page, setPage] = useState(0);
     const [hasMore, setHasMore] = useState(false);
     const [filterStatus, setFilterStatus] = useState('');
     const [filterChoreType, setFilterChoreType] = useState('');
@@ -2308,17 +2310,30 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
         return tokenMeta[key]?.decimals ?? 8;
     };
 
+    const filterStatusRef = React.useRef(filterStatus);
+    const filterChoreTypeRef = React.useRef(filterChoreType);
+    filterStatusRef.current = filterStatus;
+    filterChoreTypeRef.current = filterChoreType;
+
     // Load trade entries + batch-fetch all related snapshots
-    const loadData = useCallback(async (q) => {
+    const loadData = useCallback(async (pg) => {
         try {
             const bot = await getReadyBotActor();
             if (!bot) return;
+            const q = {
+                startId: [], limit: [PAGE_SIZE], offset: [(pg ?? 0) * PAGE_SIZE],
+                choreId: [], choreTypeId: filterChoreTypeRef.current ? [filterChoreTypeRef.current] : [],
+                actionType: [], inputToken: [], outputToken: [],
+                status: filterStatusRef.current ? [{ [filterStatusRef.current]: null }] : [],
+                fromTime: [], toTime: [],
+            };
             const [result, st] = await Promise.all([
-                bot.getTradeLog(q || query),
+                bot.getTradeLog(q),
                 bot.getTradeLogStats(),
             ]);
             setEntries(result.entries);
             setHasMore(result.hasMore);
+            setTotalCount(Number(result.totalCount));
             setStats(st);
 
             // Batch-fetch snapshots in the time range of visible entries
@@ -2378,22 +2393,25 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
         } finally {
             setLoading(false);
         }
-    }, [getReadyBotActor, query]);
+    }, [getReadyBotActor]);
 
-    useEffect(() => { loadData(); }, [loadData]);
+    useEffect(() => { loadData(0); }, [loadData]);
 
-    const applyFilters = () => {
-        const q = {
-            startId: [], limit: [50],
-            choreId: [], choreTypeId: filterChoreType ? [filterChoreType] : [],
-            actionType: [], inputToken: [], outputToken: [],
-            status: filterStatus ? [{ [filterStatus]: null }] : [],
-            fromTime: [], toTime: [],
-        };
-        setQuery(q);
+    const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
+    const goToPage = (pg) => {
+        const clamped = Math.max(0, Math.min(pg, totalPages - 1));
+        setPage(clamped);
         setLoading(true);
         setSnapMap({});
-        loadData(q);
+        loadData(clamped);
+    };
+
+    const applyFilters = () => {
+        setPage(0);
+        setLoading(true);
+        setSnapMap({});
+        loadData(0);
     };
 
     const cardStyle = {
@@ -2520,7 +2538,7 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <h3 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '0.95rem', fontWeight: '600' }}>Trade Log</h3>
                     <button
-                        onClick={() => { setLoading(true); setSnapMap({}); loadData(); }}
+                        onClick={() => { setLoading(true); setSnapMap({}); loadData(page); }}
                         disabled={loading}
                         title="Refresh"
                         style={{ background: 'none', border: 'none', cursor: loading ? 'default' : 'pointer', color: accentColor, padding: '2px', display: 'flex', alignItems: 'center', opacity: loading ? 0.5 : 1 }}
@@ -2528,7 +2546,12 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                         <FaSyncAlt style={{ fontSize: '0.75rem', animation: loading ? 'spin 1s linear infinite' : 'none' }} />
                     </button>
                 </div>
-                {stats && <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>{Number(stats.totalEntries)} entries</span>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {stats && <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>{totalCount} entries</span>}
+                    {totalCount > PAGE_SIZE && (
+                        <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>Page {page + 1} of {totalPages}</span>
+                    )}
+                </div>
             </div>
 
             {/* Filters */}
@@ -2559,7 +2582,7 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                 </div>
             ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {[...entries].sort((a, b) => Number(b.id) - Number(a.id)).map((e) => {
+                    {entries.map((e) => {
                         const statusKey = Object.keys(e.status || {})[0] || 'Failed';
                         const inputDec = getDec(e.inputToken);
                         const outputDec = e.outputToken?.length > 0 ? getDec(e.outputToken[0]) : 8;
@@ -2627,12 +2650,20 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                             </div>
                         );
                     })}
-                    {hasMore && (
-                        <button onClick={() => {
-                            const lastId = entries[entries.length - 1]?.id;
-                            const nextQ = { ...query, startId: lastId != null ? [Number(lastId) + 1] : [] };
-                            setQuery(nextQ); setLoading(true); loadData(nextQ);
-                        }} style={{ ...inputStyle, cursor: 'pointer', textAlign: 'center', marginTop: '4px', background: `${accentColor}10`, color: accentColor, fontWeight: '500', border: `1px solid ${accentColor}30` }}>Load More...</button>
+                    {totalCount > PAGE_SIZE && (
+                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                            <button onClick={() => goToPage(0)} disabled={page === 0 || loading}
+                                style={{ ...inputStyle, cursor: page === 0 ? 'default' : 'pointer', opacity: page === 0 ? 0.4 : 1, padding: '5px 10px' }}>First</button>
+                            <button onClick={() => goToPage(page - 1)} disabled={page === 0 || loading}
+                                style={{ ...inputStyle, cursor: page === 0 ? 'default' : 'pointer', opacity: page === 0 ? 0.4 : 1, padding: '5px 10px' }}>Prev</button>
+                            <span style={{ fontSize: '0.8rem', color: theme.colors.primaryText, fontWeight: '500', minWidth: '80px', textAlign: 'center' }}>
+                                {page + 1} / {totalPages}
+                            </span>
+                            <button onClick={() => goToPage(page + 1)} disabled={!hasMore || loading}
+                                style={{ ...inputStyle, cursor: !hasMore ? 'default' : 'pointer', opacity: !hasMore ? 0.4 : 1, padding: '5px 10px' }}>Next</button>
+                            <button onClick={() => goToPage(totalPages - 1)} disabled={!hasMore || loading}
+                                style={{ ...inputStyle, cursor: !hasMore ? 'default' : 'pointer', opacity: !hasMore ? 0.4 : 1, padding: '5px 10px' }}>Last</button>
+                        </div>
                     )}
                 </div>
             )}

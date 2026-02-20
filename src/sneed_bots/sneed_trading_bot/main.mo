@@ -6559,12 +6559,16 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         assertPermission(msg.caller, T.TradingPermission.ViewLogs);
 
         let limit = switch (q.limit) { case (?l) l; case null 50 };
+        let offset = switch (q.offset) { case (?o) o; case null 0 };
         let filtered = Array.filter<T.TradeLogEntry>(tradeLogEntries, func(e: T.TradeLogEntry): Bool { matchTradeLogEntry(e, q) });
         let totalCount = filtered.size();
-        let page = if (totalCount <= limit) { filtered } else {
-            Array.tabulate<T.TradeLogEntry>(limit, func(i: Nat): T.TradeLogEntry { filtered[i] })
-        };
-        { entries = page; totalCount = totalCount; hasMore = totalCount > limit }
+        // Reverse so newest entries come first
+        let reversed = Array.tabulate<T.TradeLogEntry>(totalCount, func(i: Nat): T.TradeLogEntry { filtered[totalCount - 1 - i : Nat] });
+        let pageStart = if (offset >= totalCount) { totalCount } else { offset };
+        let pageEnd = if (pageStart + limit >= totalCount) { totalCount } else { pageStart + limit };
+        let pageSize = pageEnd - pageStart : Nat;
+        let page = Array.tabulate<T.TradeLogEntry>(pageSize, func(i: Nat): T.TradeLogEntry { reversed[pageStart + i] });
+        { entries = page; totalCount = totalCount; hasMore = pageEnd < totalCount }
     };
 
     public shared query (msg) func getTradeLogStats(): async { totalEntries: Nat; nextId: Nat } {

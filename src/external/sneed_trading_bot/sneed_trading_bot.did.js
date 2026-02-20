@@ -397,6 +397,7 @@ export const idlFactory = ({ IDL }) => {
     const TradeLogQuery = IDL.Record({
         startId: IDL.Opt(IDL.Nat),
         limit: IDL.Opt(IDL.Nat),
+        offset: IDL.Opt(IDL.Nat),
         choreId: IDL.Opt(IDL.Text),
         choreTypeId: IDL.Opt(IDL.Text),
         actionType: IDL.Opt(IDL.Nat),
