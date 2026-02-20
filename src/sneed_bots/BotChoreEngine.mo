@@ -669,11 +669,27 @@ module {
         };
 
         /// Force-run a chore immediately, regardless of schedule.
-        /// If the conductor is already running, this is a no-op.
+        /// If the conductor is actively running, this is a no-op — unless it appears stuck
+        /// (no timer and no task, or active for >120s without progress), in which case it force-resets.
         public func trigger<system>(choreId: Text) {
             let state = getStateOrDefault(choreId);
             if (state.conductorActive) {
-                return; // Already running
+                let hasTimer = state.conductorTimerId != null;
+                let hasTask = state.taskActive;
+                let stuckByState = not hasTimer and not hasTask;
+                let stuckByTime = switch (state.conductorStartedAt) {
+                    case (?startTime) { (Time.now() - startTime) > 120_000_000_000 }; // >120s
+                    case null { false };
+                };
+                if (not stuckByState and not stuckByTime) {
+                    return; // Genuinely running
+                };
+                let reason = if (stuckByState) { "active but no timer/task" } else { "active for >120s without completing" };
+                emitLog(#Warning, choreId, "Conductor appears stuck (" # reason # "); force-resetting", []);
+                switch (state.conductorTimerId) {
+                    case (?tid) { Timer.cancelTimer(tid) };
+                    case null {};
+                };
             };
 
             // Clear any previous stop request and start conductor
@@ -965,9 +981,10 @@ module {
             } catch (e) {
                 let errMsg = Error.message(e);
                 if (errMsg == "could not perform self call") {
-                    emitLog(#Warning, choreId, "Conductor wrapper self-call failed; will retry", [
+                    emitLog(#Warning, choreId, "Conductor wrapper self-call failed; will retry in 3s", [
                         ("error", errMsg)
                     ]);
+                    scheduleConductorTick<system>(choreId, 3);
                 } else {
                     markConductorError(choreId, "Conductor tick wrapper threw: " # errMsg);
                 };
