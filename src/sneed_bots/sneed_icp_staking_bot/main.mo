@@ -1686,6 +1686,10 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             thresholdAmount = input.thresholdAmount;
             maxDistributionAmount = input.maxDistributionAmount;
             targets = input.targets;
+            sourcePurseId = input.sourcePurseId;
+            amountMode = input.amountMode;
+            balancePercent = input.balancePercent;
+            minDistributionAmount = input.minDistributionAmount;
         };
         let buf = Buffer.fromArray<DistributionTypes.DistributionList>(ds.lists);
         buf.add(newList);
@@ -1710,6 +1714,10 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                         thresholdAmount = input.thresholdAmount;
                         maxDistributionAmount = input.maxDistributionAmount;
                         targets = input.targets;
+                        sourcePurseId = input.sourcePurseId;
+                        amountMode = input.amountMode;
+                        balancePercent = input.balancePercent;
+                        minDistributionAmount = input.minDistributionAmount;
                     }
                 } else { list }
             }
@@ -2303,8 +2311,21 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                 return #Done;
             };
 
-            // Calculate distributable amount (capped at max)
-            let distributable = Nat.min(balance, list.maxDistributionAmount);
+            let distributable = if (list.amountMode == 1) {
+                let pct = switch (list.balancePercent) { case (?p) p; case null 10000 };
+                let pctAmount = (balance * pct) / 10000;
+                Nat.min(pctAmount, list.maxDistributionAmount)
+            } else {
+                let minAmt = list.minDistributionAmount;
+                let maxAmt = Nat.min(balance, list.maxDistributionAmount);
+                if (maxAmt < minAmt) { 0 }
+                else if (minAmt == maxAmt) { minAmt }
+                else {
+                    let range = maxAmt - minAmt;
+                    let entropy = Int.abs(Time.now()) % (range + 1);
+                    minAmt + entropy
+                }
+            };
 
             // Reserve fees for all transfers
             let totalFees = numTargets * fee;

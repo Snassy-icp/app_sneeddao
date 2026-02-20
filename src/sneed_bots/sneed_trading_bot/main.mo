@@ -4289,13 +4289,22 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     subaccount = list.sourceSubaccount;
                 });
                 reconcileBalance(tok, list.sourceSubaccount, balance, src);
-                let effectiveBal = getEffectiveBalance(instanceId, tok, list.sourceSubaccount, balance);
+
+                // Determine effective balance based on source purse
+                let effectiveBal = switch (list.sourcePurseId) {
+                    case (?spid) {
+                        let purse = getChorePurseBalance(spid, tok, list.sourceSubaccount);
+                        Nat.min(purse, balance)
+                    };
+                    case null {
+                        getEffectiveBalance(instanceId, tok, list.sourceSubaccount, balance)
+                    };
+                };
 
                 if (effectiveBal < list.thresholdAmount) {
                     return #Done;
                 };
 
-                // Count external (on-chain) vs purse (internal) targets for fee budgeting
                 var externalTargetCount: Nat = 0;
                 for (t in list.targets.vals()) {
                     switch (t.choreInstanceId) {
@@ -4304,7 +4313,21 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     };
                 };
 
-                let distributable = Nat.min(effectiveBal, list.maxDistributionAmount);
+                let distributable = if (list.amountMode == 1) {
+                    let pct = switch (list.balancePercent) { case (?p) p; case null 10000 };
+                    let pctAmount = (effectiveBal * pct) / 10000;
+                    Nat.min(pctAmount, list.maxDistributionAmount)
+                } else {
+                    let minAmt = list.minDistributionAmount;
+                    let maxAmt = Nat.min(effectiveBal, list.maxDistributionAmount);
+                    if (maxAmt < minAmt) { 0 }
+                    else if (minAmt == maxAmt) { minAmt }
+                    else {
+                        let range = maxAmt - minAmt;
+                        let entropy = Int.abs(Time.now()) % (range + 1);
+                        minAmt + entropy
+                    }
+                };
                 let totalFees = fee * externalTargetCount;
                 if (distributable <= totalFees) {
                     return #Done;
@@ -4323,7 +4346,6 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 var totalExternalDistributed: Nat = 0;
                 var totalPurseDistributed: Nat = 0;
                 var externalTransferCount: Nat = 0;
-                let sourcePurseEnabled = isPurseEnabledForChore(instanceId);
 
                 for (target in list.targets.vals()) {
                     let share = switch (target.basisPoints) {
@@ -4338,18 +4360,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
                     switch (target.choreInstanceId) {
                         case (?targetChoreId) {
-                            // Purse target: internal bookkeeping, no transfer, no fee
                             if (share > 0) {
                                 adjustChorePurseBalance(targetChoreId, tok, null, share, false);
-                                if (sourcePurseEnabled) {
-                                    adjustChorePurseBalance(instanceId, tok, list.sourceSubaccount, share, true);
+                                switch (list.sourcePurseId) {
+                                    case (?spid) { adjustChorePurseBalance(spid, tok, list.sourceSubaccount, share, true) };
+                                    case null {};
                                 };
                                 totalPurseDistributed += share;
                                 logEngine.logDebug(src, "Distributed " # Nat.toText(share) # " of " # tokenLabel(tok) # " to purse " # targetChoreId, null, []);
                             };
                         };
                         case null {
-                            // External target: on-chain icrc1_transfer
                             if (share > fee) {
                                 ignore await ledger.icrc1_transfer({
                                     to = { owner = target.account.owner; subaccount = target.account.subaccount };
@@ -4366,16 +4387,19 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     };
                 };
 
-                // Update lastKnown only for on-chain movements
                 let totalOnChainSpent = totalExternalDistributed + (fee * externalTransferCount);
                 if (totalOnChainSpent > 0) {
                     setLastKnownBalance(tok, list.sourceSubaccount, if (balance > totalOnChainSpent) { balance - totalOnChainSpent } else { 0 });
-                    if (sourcePurseEnabled) {
-                        adjustChorePurseBalance(instanceId, tok, list.sourceSubaccount, totalOnChainSpent, true);
+                    switch (list.sourcePurseId) {
+                        case (?spid) { adjustChorePurseBalance(spid, tok, list.sourceSubaccount, totalOnChainSpent, true) };
+                        case null {
+                            if (isPurseEnabledForChore(instanceId)) {
+                                adjustChorePurseBalance(instanceId, tok, list.sourceSubaccount, totalOnChainSpent, true);
+                            };
+                        };
                     };
                 };
 
-                // Capital outflow only for external transfers (purse distributions stay in the bot)
                 if (totalExternalDistributed > 0) {
                     let (icpVal, usdVal) = valueTokenInIcpAndUsd(tok, totalExternalDistributed);
                     capitalDeployedIcpE8s -= icpVal;
@@ -6437,7 +6461,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             thresholdAmount = input.thresholdAmount;
             maxDistributionAmount = input.maxDistributionAmount;
             targets = input.targets;
+            sourcePurseId = input.sourcePurseId;
+            amountMode = input.amountMode;
+            balancePercent = input.balancePercent;
+            minDistributionAmount = input.minDistributionAmount;
         };
+        logEngine.logDebug("api", "Dist list " # Nat.toText(newId) # " amountMode=" # Nat.toText(input.amountMode) # " balPct=" # debug_show(input.balancePercent) # " minDist=" # Nat.toText(input.minDistributionAmount), ?msg.caller, []);
         setDistSettings(instanceId, { lists = Array.append(ds.lists, [newList]); nextListId = newId + 1 });
         logEngine.logInfo("api", "Added distribution list " # Nat.toText(newId), ?msg.caller, []);
         newId
@@ -6448,7 +6477,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         let ds = getDistSettings(instanceId);
         let updated = Array.map<DistributionTypes.DistributionList, DistributionTypes.DistributionList>(ds.lists, func(l) {
             if (l.id == id) {
-                { l with name = input.name; sourceSubaccount = input.sourceSubaccount; tokenLedgerCanisterId = input.tokenLedgerCanisterId; thresholdAmount = input.thresholdAmount; maxDistributionAmount = input.maxDistributionAmount; targets = input.targets }
+                { l with name = input.name; sourceSubaccount = input.sourceSubaccount; tokenLedgerCanisterId = input.tokenLedgerCanisterId; thresholdAmount = input.thresholdAmount; maxDistributionAmount = input.maxDistributionAmount; targets = input.targets; sourcePurseId = input.sourcePurseId; amountMode = input.amountMode; balancePercent = input.balancePercent; minDistributionAmount = input.minDistributionAmount }
             } else { l }
         });
         setDistSettings(instanceId, { ds with lists = updated });

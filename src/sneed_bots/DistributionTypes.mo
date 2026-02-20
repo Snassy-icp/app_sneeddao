@@ -40,6 +40,15 @@ module {
         maxDistributionAmount: Nat;
         /// Ordered list of targets to distribute to.
         targets: [DistributionTarget];
+        /// If set, source funds from this chore's purse (debit on distribution).
+        /// null = source from the main purse.
+        sourcePurseId: ?Text;
+        /// 0 = random in [minDistributionAmount, maxDistributionAmount], 1 = % of balance (capped by max).
+        amountMode: Nat;
+        /// When amountMode=1: percentage in basis points (0–10000 = 0–100%).
+        balancePercent: ?Nat;
+        /// Minimum amount to distribute (for random mode).
+        minDistributionAmount: Nat;
     };
 
     /// Input type for creating/updating a distribution list (no id field).
@@ -50,5 +59,9 @@ module {
         thresholdAmount: Nat;
         maxDistributionAmount: Nat;
         targets: [DistributionTarget];
+        sourcePurseId: ?Text;
+        amountMode: Nat;
+        balancePercent: ?Nat;
+        minDistributionAmount: Nat;
     };
 }

@@ -2046,12 +2046,17 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
     const [choreStatuses, setChoreStatuses] = useState([]);
     const [editingTargets, setEditingTargets] = useState(null);
     const [draftTargets, setDraftTargets] = useState([]);
+    const [editingSettings, setEditingSettings] = useState(null);
+    const [draftSettings, setDraftSettings] = useState({});
 
     const [newName, setNewName] = useState('');
     const [newLedger, setNewLedger] = useState('');
     const [newThreshold, setNewThreshold] = useState('0');
     const [newMaxDist, setNewMaxDist] = useState('0');
-    const [newSourceSub, setNewSourceSub] = useState('');
+    const [newMinDist, setNewMinDist] = useState('0');
+    const [newSourcePurse, setNewSourcePurse] = useState('');
+    const [newAmountMode, setNewAmountMode] = useState('0');
+    const [newBalancePct, setNewBalancePct] = useState('100');
 
     const loadLists = useCallback(async () => {
         try {
@@ -2073,27 +2078,10 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
 
     useEffect(() => { loadLists(); }, [loadLists]);
 
-    const subaccountBlobFromNumber = (num) => {
-        const bytes = new Uint8Array(32);
-        let n = BigInt(num);
-        for (let i = 31; i >= 0; i--) {
-            bytes[i] = Number(n & 0xFFn);
-            n >>= 8n;
-        }
-        return [...bytes];
-    };
-
-    const resolveSubaccountName = (sourceSubBlob) => {
-        if (!sourceSubBlob || sourceSubBlob.length === 0) return 'Main Account';
-        const blob = sourceSubBlob[0];
-        if (!blob || blob.length === 0) return 'Main Account';
-        const bytes = Array.from(blob);
-        if (bytes.every(b => b === 0)) return 'Main Account';
-        const match = subaccounts.find(s => {
-            const sBytes = Array.from(s.subaccount || []);
-            return sBytes.length === bytes.length && sBytes.every((b, i) => b === bytes[i]);
-        });
-        return match ? `${match.name} (#${Number(match.number)})` : 'Custom Subaccount';
+    const resolveSourceLabel = (list) => {
+        const spid = list.sourcePurseId?.[0] || '';
+        if (spid) return `Purse: ${choreLabel(spid)}`;
+        return 'Main Purse';
     };
 
     const purseOptions = React.useMemo(() => {
@@ -2150,17 +2138,20 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
         setSaving(true); setError(''); setSuccess('');
         try {
             const bot = await getReadyBotActor();
-            const sourceSubBlob = newSourceSub ? [subaccountBlobFromNumber(newSourceSub)] : [];
             await bot.addDistributionList(instanceId, {
                 name: newName.trim(),
-                sourceSubaccount: sourceSubBlob,
+                sourceSubaccount: [],
                 tokenLedgerCanisterId: Principal.fromText(newLedger.trim()),
                 thresholdAmount: BigInt(newThreshold || 0),
                 maxDistributionAmount: BigInt(newMaxDist || 0),
                 targets: [],
+                sourcePurseId: newSourcePurse ? [newSourcePurse] : [],
+                amountMode: BigInt(newAmountMode),
+                balancePercent: newAmountMode === '1' ? [BigInt(Math.round(parseFloat(newBalancePct || '100') * 100))] : [],
+                minDistributionAmount: BigInt(newMinDist || 0),
             });
             setSuccess('Distribution list added.');
-            setAdding(false); setNewName(''); setNewLedger(''); setNewThreshold('0'); setNewMaxDist('0'); setNewSourceSub('');
+            setAdding(false); setNewName(''); setNewLedger(''); setNewThreshold('0'); setNewMaxDist('0'); setNewMinDist('0'); setNewSourcePurse(''); setNewAmountMode('0'); setNewBalancePct('100');
             await loadLists();
         } catch (err) { setError('Failed to add: ' + err.message); }
         finally { setSaving(false); }
@@ -2184,6 +2175,48 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
 
     const cancelEditingTargets = () => { setEditingTargets(null); setDraftTargets([]); };
 
+    const startEditingSettings = (list) => {
+        const lid = Number(list.id);
+        const mode = Number(list.amountMode ?? 0);
+        setEditingSettings(lid);
+        setDraftSettings({
+            amountMode: String(mode),
+            balancePercent: list.balancePercent?.[0] != null ? String(Number(list.balancePercent[0]) / 100) : '100',
+            minDistributionAmount: String(Number(list.minDistributionAmount ?? 0)),
+            maxDistributionAmount: String(Number(list.maxDistributionAmount)),
+            thresholdAmount: String(Number(list.thresholdAmount)),
+            sourcePurseId: list.sourcePurseId?.[0] || '',
+        });
+    };
+    const cancelEditingSettings = () => { setEditingSettings(null); setDraftSettings({}); };
+
+    const saveSettings = async (listId) => {
+        const list = lists.find(l => Number(l.id) === listId);
+        if (!list) return;
+        setSaving(true); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            const ledger = typeof list.tokenLedgerCanisterId === 'string' ? list.tokenLedgerCanisterId : list.tokenLedgerCanisterId?.toText?.();
+            const mode = draftSettings.amountMode || '0';
+            await bot.updateDistributionList(instanceId, BigInt(listId), {
+                name: list.name,
+                sourceSubaccount: list.sourceSubaccount || [],
+                tokenLedgerCanisterId: Principal.fromText(ledger),
+                thresholdAmount: BigInt(draftSettings.thresholdAmount || 0),
+                maxDistributionAmount: BigInt(draftSettings.maxDistributionAmount || 0),
+                targets: list.targets,
+                sourcePurseId: draftSettings.sourcePurseId ? [draftSettings.sourcePurseId] : [],
+                amountMode: BigInt(mode),
+                balancePercent: mode === '1' ? [BigInt(Math.round(parseFloat(draftSettings.balancePercent || '100') * 100))] : [],
+                minDistributionAmount: BigInt(draftSettings.minDistributionAmount || 0),
+            });
+            setSuccess('Settings saved.');
+            setEditingSettings(null); setDraftSettings({});
+            await loadLists();
+        } catch (err) { setError('Failed to save settings: ' + err.message); }
+        finally { setSaving(false); }
+    };
+
     const saveTargets = async (listId) => {
         const list = lists.find(l => Number(l.id) === listId);
         if (!list) return;
@@ -2197,11 +2230,15 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
             const ledger = typeof list.tokenLedgerCanisterId === 'string' ? list.tokenLedgerCanisterId : list.tokenLedgerCanisterId?.toText?.();
             await bot.updateDistributionList(instanceId, BigInt(listId), {
                 name: list.name,
-                sourceSubaccount: list.sourceSubaccount,
+                sourceSubaccount: list.sourceSubaccount || [],
                 tokenLedgerCanisterId: Principal.fromText(ledger),
                 thresholdAmount: list.thresholdAmount,
                 maxDistributionAmount: list.maxDistributionAmount,
                 targets: draftTargets.map(draftToCandid),
+                sourcePurseId: list.sourcePurseId || [],
+                amountMode: list.amountMode ?? BigInt(0),
+                balancePercent: list.balancePercent ?? [],
+                minDistributionAmount: list.minDistributionAmount ?? BigInt(0),
             });
             setSuccess('Targets saved.');
             setEditingTargets(null); setDraftTargets([]);
@@ -2282,8 +2319,18 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
                             {purseOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
                     ) : (
-                        <input value={d.owner} onChange={e => updateDraft(idx, { owner: e.target.value })}
-                            placeholder="Principal ID..." style={{ ...inputStyle, flex: '1 1 200px', fontSize: '0.78rem' }} />
+                        <div style={{ flex: '1 1 240px' }}>
+                            <PrincipalInput
+                                value={d.owner}
+                                onChange={(val) => updateDraft(idx, { owner: val })}
+                                placeholder="Principal ID or ICRC-1 account..."
+                                showSubaccountOption={true}
+                                onAccountChange={({ principal, subaccount }) => {
+                                    updateDraft(idx, { owner: principal, subaccount: subaccount || null });
+                                }}
+                                style={{ width: '100%' }}
+                            />
+                        </div>
                     )}
                     <input value={d.basisPoints} onChange={e => updateDraft(idx, { basisPoints: e.target.value })}
                         placeholder="%" title="Percentage (leave blank for auto-split)"
@@ -2345,6 +2392,7 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
                         const lid = Number(list.id);
                         const isExpanded = expandedList === lid;
                         const isEditing = editingTargets === lid;
+                        const isEditingSet = editingSettings === lid;
                         return (
                             <div key={lid} style={{
                                 padding: '12px', marginBottom: '8px',
@@ -2357,15 +2405,21 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
                                         <span style={{ marginLeft: '8px', fontSize: '0.7rem', color: theme.colors.secondaryText }}>#{lid}</span>
                                     </div>
                                     <div style={{ display: 'flex', gap: '6px' }}>
-                                        <button onClick={() => { setExpandedList(isExpanded ? null : lid); if (isEditing) cancelEditingTargets(); }}
+                                        <button onClick={() => { setExpandedList(isExpanded ? null : lid); if (isEditing) cancelEditingTargets(); if (isEditingSet) cancelEditingSettings(); }}
                                             style={tinyBtn({})}>
                                             {isExpanded ? 'Collapse' : 'Details'}
                                         </button>
-                                        {!isEditing && (
-                                            <button onClick={() => { setExpandedList(lid); startEditingTargets(list); }}
-                                                style={tinyBtn({ color: accentColor, borderColor: `${accentColor}60` })}>
-                                                <FaEdit style={{ fontSize: '0.6rem' }} /> Targets
-                                            </button>
+                                        {!isEditing && !isEditingSet && (
+                                            <>
+                                                <button onClick={() => { setExpandedList(lid); startEditingSettings(list); }}
+                                                    style={tinyBtn({ color: accentColor, borderColor: `${accentColor}60` })}>
+                                                    <FaEdit style={{ fontSize: '0.6rem' }} /> Settings
+                                                </button>
+                                                <button onClick={() => { setExpandedList(lid); startEditingTargets(list); }}
+                                                    style={tinyBtn({ color: accentColor, borderColor: `${accentColor}60` })}>
+                                                    <FaEdit style={{ fontSize: '0.6rem' }} /> Targets
+                                                </button>
+                                            </>
                                         )}
                                         <button onClick={() => handleRemove(lid)} disabled={saving}
                                             style={tinyBtn({ color: '#ef4444', borderColor: '#ef444440' })}>
@@ -2375,9 +2429,11 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
                                 </div>
                                 <div style={{ marginTop: '6px', fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
                                     <span>Token: {getDistTokenSymbol(list.tokenLedgerCanisterId)}</span>
-                                    <span>From: {resolveSubaccountName(list.sourceSubaccount)}</span>
+                                    <span>From: {resolveSourceLabel(list)}</span>
                                     <span>Threshold: {Number(list.thresholdAmount).toLocaleString()}</span>
-                                    <span>Max: {Number(list.maxDistributionAmount).toLocaleString()}</span>
+                                    {Number(list.amountMode ?? 0) === 1
+                                        ? <span>Amount: {list.balancePercent?.[0] != null ? (Number(list.balancePercent[0]) / 100).toFixed(1) : '100'}% of balance (max {Number(list.maxDistributionAmount).toLocaleString()})</span>
+                                        : <span>Amount: {Number(list.minDistributionAmount ?? 0).toLocaleString()} – {Number(list.maxDistributionAmount).toLocaleString()} (random)</span>}
                                     <span>Targets: {list.targets.length}</span>
                                 </div>
                                 {isExpanded && !isEditing && list.targets.length > 0 && (
@@ -2393,6 +2449,58 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
                                     </div>
                                 )}
                                 {isEditing && renderTargetEditor(lid)}
+                                {isEditingSet && (
+                                    <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: `1px solid ${theme.colors.border}` }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '8px' }}>
+                                            <div>
+                                                <label style={lbl}>Source Purse</label>
+                                                <select value={draftSettings.sourcePurseId || ''} onChange={e => setDraftSettings(s => ({ ...s, sourcePurseId: e.target.value }))}
+                                                    style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
+                                                    <option value="">Main Purse</option>
+                                                    {purseOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label style={lbl}>Threshold Amount</label>
+                                                <input value={draftSettings.thresholdAmount || ''} onChange={e => setDraftSettings(s => ({ ...s, thresholdAmount: e.target.value }))}
+                                                    style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" />
+                                            </div>
+                                            <div>
+                                                <label style={lbl}>Amount Mode</label>
+                                                <select value={draftSettings.amountMode || '0'} onChange={e => setDraftSettings(s => ({ ...s, amountMode: e.target.value }))}
+                                                    style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
+                                                    <option value="0">Random in range</option>
+                                                    <option value="1">% of balance</option>
+                                                </select>
+                                            </div>
+                                            {draftSettings.amountMode === '1' ? (
+                                                <div>
+                                                    <label style={lbl}>Balance %</label>
+                                                    <input value={draftSettings.balancePercent || ''} onChange={e => setDraftSettings(s => ({ ...s, balancePercent: e.target.value }))}
+                                                        style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="e.g. 50" />
+                                                </div>
+                                            ) : (
+                                                <div>
+                                                    <label style={lbl}>Min Distribution Amount</label>
+                                                    <input value={draftSettings.minDistributionAmount || ''} onChange={e => setDraftSettings(s => ({ ...s, minDistributionAmount: e.target.value }))}
+                                                        style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" />
+                                                </div>
+                                            )}
+                                            <div>
+                                                <label style={lbl}>Max Distribution Amount</label>
+                                                <input value={draftSettings.maxDistributionAmount || ''} onChange={e => setDraftSettings(s => ({ ...s, maxDistributionAmount: e.target.value }))}
+                                                    style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" />
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                                            <button onClick={() => saveSettings(lid)} disabled={saving}
+                                                style={{ ...buttonStyle, fontSize: '0.7rem', padding: '3px 10px', background: `linear-gradient(135deg, ${accentColor}, ${accentColor}cc)`, color: '#fff', border: 'none', opacity: saving ? 0.6 : 1 }}>
+                                                <FaSave style={{ marginRight: '3px', fontSize: '0.6rem' }} /> Save Settings
+                                            </button>
+                                            <button onClick={cancelEditingSettings} style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 10px' }}>Cancel</button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         );
                     })}
@@ -2415,16 +2523,36 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
                                     />
                                 </div>
                                 <div>
-                                    <label style={lbl}>Source Subaccount</label>
-                                    <select value={newSourceSub} onChange={(e) => setNewSourceSub(e.target.value)} style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
-                                        <option value="">Main Account</option>
-                                        {subaccounts.map(s => <option key={Number(s.number)} value={String(Number(s.number))}>{s.name} (#{Number(s.number)})</option>)}
+                                    <label style={lbl}>Source Purse</label>
+                                    <select value={newSourcePurse} onChange={(e) => setNewSourcePurse(e.target.value)} style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
+                                        <option value="">Main Purse</option>
+                                        {purseOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                                     </select>
                                 </div>
                                 <div>
                                     <label style={lbl}>Threshold Amount</label>
                                     <input value={newThreshold} onChange={(e) => setNewThreshold(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" />
                                 </div>
+                                <div>
+                                    <label style={lbl}>Amount Mode</label>
+                                    <select value={newAmountMode} onChange={(e) => setNewAmountMode(e.target.value)} style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
+                                        <option value="0">Random in range</option>
+                                        <option value="1">% of balance</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: newAmountMode === '1' ? '1fr 1fr' : '1fr 1fr', gap: '8px', marginTop: '8px' }}>
+                                {newAmountMode === '1' ? (
+                                    <div>
+                                        <label style={lbl}>Balance %</label>
+                                        <input value={newBalancePct} onChange={(e) => setNewBalancePct(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="e.g. 50" />
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <label style={lbl}>Min Distribution Amount</label>
+                                        <input value={newMinDist} onChange={(e) => setNewMinDist(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" />
+                                    </div>
+                                )}
                                 <div>
                                     <label style={lbl}>Max Distribution Amount</label>
                                     <input value={newMaxDist} onChange={(e) => setNewMaxDist(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" />

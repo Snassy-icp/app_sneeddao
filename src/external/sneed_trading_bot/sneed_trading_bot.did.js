@@ -207,6 +207,10 @@ export const idlFactory = ({ IDL }) => {
         thresholdAmount: IDL.Nat,
         maxDistributionAmount: IDL.Nat,
         targets: IDL.Vec(DistributionTarget),
+        sourcePurseId: IDL.Opt(IDL.Text),
+        amountMode: IDL.Nat,
+        balancePercent: IDL.Opt(IDL.Nat),
+        minDistributionAmount: IDL.Nat,
     });
 
     const DistributionListInput = IDL.Record({
@@ -216,6 +220,10 @@ export const idlFactory = ({ IDL }) => {
         thresholdAmount: IDL.Nat,
         maxDistributionAmount: IDL.Nat,
         targets: IDL.Vec(DistributionTarget),
+        sourcePurseId: IDL.Opt(IDL.Text),
+        amountMode: IDL.Nat,
+        balancePercent: IDL.Opt(IDL.Nat),
+        minDistributionAmount: IDL.Nat,
     });
 
     // ==========================================
