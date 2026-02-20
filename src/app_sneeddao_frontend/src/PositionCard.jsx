@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { formatAmount, getUSD } from './utils/StringUtils';
+import { useDenomination } from './contexts/DenominationContext';
 import { bigDateToReadable, format_duration } from './utils/DateUtils';
 import { getIcpSwapLink, isLockedPosition, getPositionTVL } from './utils/PositionUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
@@ -74,6 +75,7 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
     const { isAuthenticated } = useAuth();
+    const { formatValue: denomFormatValue } = useDenomination();
     
     // Normalize positionDetails to handle both naming conventions (token0Amount vs amount0)
     const positionDetails = useMemo(() => ({
@@ -190,7 +192,7 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                     <div className="header-row-1">
                         <span className="token-name">{position.token0Symbol}/{position.token1Symbol} #{positionDetails.positionId.toString()}</span>
                         <span className="token-usd-value">
-                            ${getPositionTVL(position, positionDetails, hideUnclaimedFees).toFixed(2)}
+                            {denomFormatValue(getPositionTVL(position, positionDetails, hideUnclaimedFees))}
                         </span>
                     </div>
                     {/* Row 2: First token balance, expand and refresh buttons */}
@@ -320,7 +322,7 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                                     }} title={`Unclaimed fees: ${formatAmount(positionDetails.tokensOwed0, position.token0Decimals)} ${position.token0Symbol} + ${formatAmount(positionDetails.tokensOwed1, position.token1Decimals)} ${position.token1Symbol}`}>
                                         <FaCoins size={12} />
                                         <span style={{ fontSize: '12px', color: theme.colors.secondaryText }}>
-                                            ${totalFeesUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            {denomFormatValue(totalFeesUSD)}
                                         </span>
                                     </span>
                                 );
@@ -558,21 +560,21 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                                 <span className="token-symbol">Total</span>
                             </div>
                             <div className="amount-value" style={{ marginTop: '4px' }}>
-                                ${getPositionTVL(position, positionDetails, hideUnclaimedFees).toFixed(2)}
+                                {denomFormatValue(getPositionTVL(position, positionDetails, hideUnclaimedFees))}
                             </div>
                             <div className="token-amounts" style={{ marginTop: '8px' }}>
                                 <div className="token-amount">
                                     <span className="token-symbol">{position.token0Symbol}:</span>
                                     <span className="amount-value">
                                         {formatAmount(positionDetails.token0Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed0), position.token0Decimals)}
-                                        {getUSD(positionDetails.token0Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed0), position.token0Decimals, position.token0_conversion_rate)}
+                                        {getUSD(positionDetails.token0Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed0), position.token0Decimals, position.token0_conversion_rate, denomFormatValue)}
                                     </span>
                                 </div>
                                 <div className="token-amount">
                                     <span className="token-symbol">{position.token1Symbol}:</span>
                                     <span className="amount-value">
                                         {formatAmount(positionDetails.token1Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed1), position.token1Decimals)}
-                                        {getUSD(positionDetails.token1Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed1), position.token1Decimals, position.token1_conversion_rate)}
+                                        {getUSD(positionDetails.token1Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed1), position.token1Decimals, position.token1_conversion_rate, denomFormatValue)}
                                     </span>
                                 </div>
                             </div>
@@ -585,11 +587,11 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                     <div className="token-amounts">
                         <div className="token-amount">
                             <span className="token-symbol">{position.token0Symbol}:</span>
-                            <span className="amount-value">{formatAmount(positionDetails.token0Amount, position.token0Decimals)}{getUSD(positionDetails.token0Amount, position.token0Decimals, position.token0_conversion_rate)}</span>
+                            <span className="amount-value">{formatAmount(positionDetails.token0Amount, position.token0Decimals)}{getUSD(positionDetails.token0Amount, position.token0Decimals, position.token0_conversion_rate, denomFormatValue)}</span>
                         </div>
                         <div className="token-amount">
                             <span className="token-symbol">{position.token1Symbol}:</span>
-                            <span className="amount-value">{formatAmount(positionDetails.token1Amount, position.token1Decimals)}{getUSD(positionDetails.token1Amount, position.token1Decimals, position.token1_conversion_rate)}</span>
+                            <span className="amount-value">{formatAmount(positionDetails.token1Amount, position.token1Decimals)}{getUSD(positionDetails.token1Amount, position.token1Decimals, position.token1_conversion_rate, denomFormatValue)}</span>
                         </div>
                     </div>
                 </div>
@@ -602,11 +604,11 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                         <div className="token-amounts">
                             <div className="token-amount">
                                 <span className="token-symbol">{position.token0Symbol}:</span>
-                                <span className="amount-value">{formatAmount(positionDetails.tokensOwed0, position.token0Decimals)}{getUSD(positionDetails.tokensOwed0, position.token0Decimals, position.token0_conversion_rate)}</span>
+                                <span className="amount-value">{formatAmount(positionDetails.tokensOwed0, position.token0Decimals)}{getUSD(positionDetails.tokensOwed0, position.token0Decimals, position.token0_conversion_rate, denomFormatValue)}</span>
                             </div>
                             <div className="token-amount">
                                 <span className="token-symbol">{position.token1Symbol}:</span>
-                                <span className="amount-value">{formatAmount(positionDetails.tokensOwed1, position.token1Decimals)}{getUSD(positionDetails.tokensOwed1, position.token1Decimals, position.token1_conversion_rate)}</span>
+                                <span className="amount-value">{formatAmount(positionDetails.tokensOwed1, position.token1Decimals)}{getUSD(positionDetails.tokensOwed1, position.token1Decimals, position.token1_conversion_rate, denomFormatValue)}</span>
                             </div>
                         </div>
                         {/* Claim button for frontend positions */}
@@ -729,11 +731,11 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                         <div className="token-amounts">
                             <div className="token-amount">
                                 <span className="token-symbol">{position.token0Symbol}:</span>
-                                <span className="amount-value">{formatAmount(swapCanisterBalance0 || 0n, position.token0Decimals)}{getUSD(swapCanisterBalance0 || 0n, position.token0Decimals, position.token0_conversion_rate)}</span>
+                                <span className="amount-value">{formatAmount(swapCanisterBalance0 || 0n, position.token0Decimals)}{getUSD(swapCanisterBalance0 || 0n, position.token0Decimals, position.token0_conversion_rate, denomFormatValue)}</span>
                             </div>
                             <div className="token-amount">
                                 <span className="token-symbol">{position.token1Symbol}:</span>
-                                <span className="amount-value">{formatAmount(swapCanisterBalance1 || 0n, position.token1Decimals)}{getUSD(swapCanisterBalance1 || 0n, position.token1Decimals, position.token1_conversion_rate)}</span>
+                                <span className="amount-value">{formatAmount(swapCanisterBalance1 || 0n, position.token1Decimals)}{getUSD(swapCanisterBalance1 || 0n, position.token1Decimals, position.token1_conversion_rate, denomFormatValue)}</span>
                             </div>
                         </div>
                         {handleWithdrawSwapBalance && (

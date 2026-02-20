@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { formatAmount, getUSD, formatAmountWithConversion } from './utils/StringUtils';
+import { formatAmount, getUSD, computeUsdValue } from './utils/StringUtils';
+import { useDenomination } from './contexts/DenominationContext';
 import { dateToReadable, format_duration } from './utils/DateUtils'
 import { rewardAmountOrZero, availableOrZero, get_available_backend } from './utils/TokenUtils';
 import { PrincipalDisplay } from './utils/PrincipalUtils';
@@ -92,6 +93,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
     const { getNeuronDisplayName } = useNaming();
+    const { formatValue: denomFormatValue, currencySign } = useDenomination();
     
     // Get wallet context for neuron cache
     const walletContext = useWalletOptional();
@@ -1275,7 +1277,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         <span className="token-name">{token.name || token.symbol}</span>
                         <span className="token-usd-value">
                             {((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable)) > 0n && token.conversion_rate > 0 && 
-                                `$${formatAmountWithConversion((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}`
+                                denomFormatValue(computeUsdValue((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate))
                             }
                         </span>
                     </div>
@@ -1440,12 +1442,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         padding: '2px 6px',
                                         borderRadius: '4px'
                                     }}>
-                                        ${token.conversion_rate < 0.01 
-                                            ? token.conversion_rate.toExponential(2) 
-                                            : token.conversion_rate < 1 
-                                                ? token.conversion_rate.toFixed(4).replace(/\.?0+$/, '')
-                                                : token.conversion_rate.toLocaleString(undefined, { maximumFractionDigits: 2 })
-                                        }
+                                        {denomFormatValue(token.conversion_rate)}
                                     </span>
                                 )}
                                 {(!token.icp_rate || token.icp_rate === 0) && (!token.conversion_rate || token.conversion_rate === 0) && (
@@ -1846,7 +1843,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         {balanceSectionExpanded ? <FaChevronDown size={10} /> : <FaChevronRight size={10} />}
                                     </span>
                                 </div>
-                                <div className="balance-value">{formatAmount(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)}{getUSD(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}</div>
+                                <div className="balance-value">{formatAmount(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)}{getUSD(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate, denomFormatValue)}</div>
                             </div>
                             {balanceSectionExpanded && (
                                 <>
@@ -1862,7 +1859,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                 )}
                                             </div>
                                         </div>
-                                        <div className="balance-value">{formatAmount(token.available || 0n, token.decimals)}{getUSD(token.available || 0n, token.decimals, token.conversion_rate)}</div>
+                                        <div className="balance-value">{formatAmount(token.available || 0n, token.decimals)}{getUSD(token.available || 0n, token.decimals, token.conversion_rate, denomFormatValue)}</div>
                                     </div>
                                     
                                     {showBalanceBreakdown && (
@@ -2002,7 +1999,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                 <FaLock size={14} style={{ color: theme.colors.mutedText }} />
                                                 Locked
                                             </div>
-                                            <div className="balance-value">{formatAmount(token.locked || 0n, token.decimals)}{getUSD(token.locked || 0n, token.decimals, token.conversion_rate)}</div>
+                                            <div className="balance-value">{formatAmount(token.locked || 0n, token.decimals)}{getUSD(token.locked || 0n, token.decimals, token.conversion_rate, denomFormatValue)}</div>
                                         </div>
                                     )}
                                     {isSnsToken && neurons.length > 0 && (
@@ -2012,7 +2009,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                     <FaBrain size={14} style={{ color: theme.colors.mutedText }} />
                                                     Staked
                                                 </div>
-                                                <div className="balance-value">{formatAmount(getTotalNeuronStake(), token.decimals)}{getUSD(getTotalNeuronStake(), token.decimals, token.conversion_rate)}</div>
+                                                <div className="balance-value">{formatAmount(getTotalNeuronStake(), token.decimals)}{getUSD(getTotalNeuronStake(), token.decimals, token.conversion_rate, denomFormatValue)}</div>
                                             </div>
                                             {getTotalNeuronMaturity() > 0n && (
                                                 <div className="balance-item">
@@ -2020,7 +2017,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                         <FaSeedling size={14} style={{ color: theme.colors.mutedText }} />
                                                         Maturity
                                                     </div>
-                                                    <div className="balance-value">{formatAmount(getTotalNeuronMaturity(), token.decimals)}{getUSD(getTotalNeuronMaturity(), token.decimals, token.conversion_rate)}</div>
+                                                    <div className="balance-value">{formatAmount(getTotalNeuronMaturity(), token.decimals)}{getUSD(getTotalNeuronMaturity(), token.decimals, token.conversion_rate, denomFormatValue)}</div>
                                                 </div>
                                             )}
                                             {getTotalDisbursingMaturity() > 0n && (
@@ -2029,7 +2026,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                         <FaHourglassHalf size={14} style={{ color: theme.colors.accent }} />
                                                         Disbursing
                                                     </div>
-                                                    <div className="balance-value" style={{ color: theme.colors.accent }}>{formatAmount(getTotalDisbursingMaturity(), token.decimals)}{getUSD(getTotalDisbursingMaturity(), token.decimals, token.conversion_rate)}</div>
+                                                    <div className="balance-value" style={{ color: theme.colors.accent }}>{formatAmount(getTotalDisbursingMaturity(), token.decimals)}{getUSD(getTotalDisbursingMaturity(), token.decimals, token.conversion_rate, denomFormatValue)}</div>
                                                 </div>
                                             )}
                                         </>
@@ -2072,7 +2069,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                     Claim
                                                 </button>
                                             </div>
-                                            <div className="balance-value">{formatAmount(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)}{getUSD(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}</div>
+                                            <div className="balance-value">{formatAmount(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)}{getUSD(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate, denomFormatValue)}</div>
                                         </div>
                                     ) : (
                                         ((Object.keys(rewardDetailsLoading).length === 0 || (rewardDetailsLoading[normalizeId(token.ledger_canister_id)] != null && rewardDetailsLoading[normalizeId(token.ledger_canister_id)] < 0))) && (
@@ -2240,7 +2237,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             </div>
                                             <div className="lock-details">
                                                 <span className="lock-label">Amount:</span>
-                                                <span className="lock-value">{formatAmount(lock.amount || 0n, token.decimals)}{getUSD(lock.amount || 0n, token.decimals, token.conversion_rate)}</span>
+                                                <span className="lock-value">{formatAmount(lock.amount || 0n, token.decimals)}{getUSD(lock.amount || 0n, token.decimals, token.conversion_rate, denomFormatValue)}</span>
                                             </div>
                                             <div className="lock-details">
                                                 <span className="lock-label">Expires:</span>

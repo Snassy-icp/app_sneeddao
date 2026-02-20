@@ -39,8 +39,25 @@ const formatAmountWithConversion = (amount, decimals, conversion_rate) => {
     return finalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-function getUSD(amount, decimals, conversion_rate) {
+/** Compute the raw USD numeric value from a token amount + conversion rate. */
+const computeUsdValue = (amount, decimals, conversion_rate) => {
+    if (amount === undefined || amount === null || !conversion_rate) return 0;
+    const divisor = 10n ** BigInt(decimals || 8);
+    return Number(BigInt(amount)) / Number(divisor) * conversion_rate;
+};
+
+/**
+ * Render a denomination-aware inline value.
+ * When denomFormatFn is provided, computes the USD value and delegates formatting
+ * to the denomination context (supports any currency). Without it, falls back to
+ * the original hardcoded USD behaviour.
+ */
+function getUSD(amount, decimals, conversion_rate, denomFormatFn) {
     if (amount > 0n && conversion_rate > 0) {
+        if (denomFormatFn) {
+            const usdVal = computeUsdValue(amount, decimals, conversion_rate);
+            return (<i className="usd-text"> • {denomFormatFn(usdVal)}</i>);
+        }
         const usd = formatAmountWithConversion(amount, decimals, conversion_rate);
         return (<i className="usd-text"> • ${usd}</i>);
     }
@@ -62,6 +79,7 @@ export {
     toJsonString,
     formatAmount,
     formatAmountWithConversion,
+    computeUsdValue,
     getUSD,
     subaccountToHex
 };
