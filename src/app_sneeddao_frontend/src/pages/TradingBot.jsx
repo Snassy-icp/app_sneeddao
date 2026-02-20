@@ -6917,6 +6917,7 @@ function PursesPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
 // ============================================
 function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreStatuses }) {
     const { identity } = useAuth();
+    const { whitelistedTokens } = useWhitelistTokens();
     const [tokenRegistry, setTokenRegistry] = useState([]);
     const [mainBalances, setMainBalances] = useState({});
     const [allPurses, setAllPurses] = useState([]);
@@ -6924,6 +6925,8 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
     const [balancesLoading, setBalancesLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [scanning, setScanning] = useState(false);
+    const [scanProgress, setScanProgress] = useState(null);
 
     const [activeOp, setActiveOp] = useState(null);
     const [opToken, setOpToken] = useState('');
@@ -7045,6 +7048,66 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
     }, [getReadyBotActor, canisterId, identity]);
 
     useEffect(() => { loadData(); }, [loadData]);
+
+    const handleScanForTokens = async () => {
+        if (scanning) return;
+        setScanning(true); setError(''); setSuccess('');
+        setScanProgress({ current: 0, total: 0, found: 0 });
+        try {
+            const bot = await getReadyBotActor();
+            const registeredSet = new Set(tokenRegistry.map(t => {
+                const k = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+                return k;
+            }));
+            const ledgersToScan = whitelistedTokens
+                .map(t => ({ id: t.ledger_id?.toString?.() ?? String(t.ledger_id), symbol: t.symbol, decimals: t.decimals, fee: t.fee }))
+                .filter(t => !registeredSet.has(t.id));
+            setScanProgress({ current: 0, total: ledgersToScan.length, found: 0 });
+            if (ledgersToScan.length === 0) {
+                setSuccess('All whitelisted tokens are already registered.');
+                setScanning(false); setScanProgress(null);
+                return;
+            }
+            const { HttpAgent } = await import('@dfinity/agent');
+            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
+            const agent = HttpAgent.createSync({ identity, host });
+            if (isLocal) await agent.fetchRootKey();
+            const botPrincipal = Principal.fromText(canisterId);
+            let foundCount = 0;
+            let scanned = 0;
+            const CONCURRENCY = 8;
+            const queue = [...ledgersToScan];
+            const workers = [];
+            for (let i = 0; i < Math.min(CONCURRENCY, queue.length); i++) {
+                workers.push((async () => {
+                    while (queue.length > 0) {
+                        const item = queue.shift();
+                        if (!item) break;
+                        try {
+                            const ledgerActor = createLedgerActor(item.id, { agent });
+                            const balance = await ledgerActor.icrc1_balance_of({ owner: botPrincipal, subaccount: [] });
+                            if (BigInt(balance) > 0n) {
+                                await bot.addToken({
+                                    ledgerCanisterId: Principal.fromText(item.id),
+                                    symbol: item.symbol || '???',
+                                    decimals: item.decimals ?? 8,
+                                    fee: BigInt(item.fee ?? 10000),
+                                });
+                                foundCount++;
+                            }
+                        } catch (_) {}
+                        scanned++;
+                        setScanProgress({ current: scanned, total: ledgersToScan.length, found: foundCount });
+                    }
+                })());
+            }
+            await Promise.all(workers);
+            setSuccess(`Scan complete. Found ${foundCount} token${foundCount !== 1 ? 's' : ''} with balances.`);
+            await loadData();
+        } catch (e) { setError('Scan failed: ' + e.message); }
+        finally { setScanning(false); setScanProgress(null); }
+    };
 
     // Purse allocation totals
     const totalAllocated = {};
@@ -7182,7 +7245,7 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
     return (
         <div>
             {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
                 <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <FaWallet style={{ color: accentColor }} /> Wallet
                 </h3>
@@ -7193,8 +7256,22 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                 }}>
                     <FaSyncAlt size={10} /> Refresh
                 </button>
+                <button onClick={handleScanForTokens} disabled={scanning} style={{
+                    padding: '4px 10px', fontSize: '0.75rem', border: `1px solid ${accentColor}40`,
+                    borderRadius: '6px', cursor: scanning ? 'default' : 'pointer', background: 'none', color: accentColor,
+                    display: 'inline-flex', alignItems: 'center', gap: '4px', opacity: scanning ? 0.6 : 1,
+                }}>
+                    <FaSearch style={{ fontSize: '0.6rem', animation: scanning ? 'spin 1s linear infinite' : 'none' }} />
+                    {scanning ? 'Scanning...' : 'Scan for Tokens'}
+                </button>
                 {balancesLoading && <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>fetching balances...</span>}
             </div>
+
+            {scanProgress && (
+                <div style={{ fontSize: '0.72rem', color: theme.colors.secondaryText, marginBottom: '10px' }}>
+                    Scanning {scanProgress.current}/{scanProgress.total}... Found {scanProgress.found} so far.
+                </div>
+            )}
 
             {error && <div style={{ padding: '8px 12px', background: '#ef444415', border: '1px solid #ef444430', borderRadius: '8px', color: '#ef4444', fontSize: '0.8rem', marginBottom: '10px' }}>{error}</div>}
             {success && <div style={{ padding: '8px 12px', background: '#22c55e15', border: '1px solid #22c55e30', borderRadius: '8px', color: '#22c55e', fontSize: '0.8rem', marginBottom: '10px' }}>{success}</div>}
