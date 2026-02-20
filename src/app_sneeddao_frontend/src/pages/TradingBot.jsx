@@ -6315,6 +6315,9 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
             {/* Tab bar */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '12px', borderBottom: `1px solid ${theme.colors.border}`, paddingBottom: '0' }}>
                 <button onClick={() => setActiveTab('accounts')} style={tabStyle(activeTab === 'accounts')}>Accounts</button>
+                <button onClick={() => setActiveTab('purses')} style={tabStyle(activeTab === 'purses')}>
+                    <FaWallet style={{ marginRight: '4px', fontSize: '0.75rem' }} />Purses
+                </button>
                 <button onClick={() => setActiveTab('performance')} style={tabStyle(activeTab === 'performance')}>Performance</button>
                 <button onClick={() => setActiveTab('trade')} style={tabStyle(activeTab === 'trade')}>Trade Log</button>
                 <button onClick={() => setActiveTab('snapshots')} style={tabStyle(activeTab === 'snapshots')}>Portfolio Snapshots</button>
@@ -6325,6 +6328,7 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
             </div>
 
             {activeTab === 'accounts' && <AccountsPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} canisterId={canisterId} />}
+            {activeTab === 'purses' && <PursesPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} canisterId={canisterId} choreStatuses={choreStatuses} />}
             {activeTab === 'performance' && <PerformancePanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
             {activeTab === 'trade' && <TradeLogViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
             {activeTab === 'snapshots' && <PortfolioSnapshotViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
@@ -6372,7 +6376,231 @@ function SnapshotChoreConfigPanel({ instanceId, theme, accentColor, cardStyle })
 }
 
 // ============================================
-// Chore Purse Panel
+// Purses Overview Tab
+// ============================================
+function PursesPanel({ getReadyBotActor, theme, accentColor, canisterId, choreStatuses }) {
+    const { identity } = useAuth();
+    const [allPurses, setAllPurses] = useState([]);
+    const [onChainBalances, setOnChainBalances] = useState({});
+    const [loading, setLoading] = useState(true);
+    const [balancesLoading, setBalancesLoading] = useState(false);
+    const [error, setError] = useState(null);
+
+    const borderColor = theme.colors.border;
+    const cardBg = theme.colors.cardBg;
+
+    const tokLabel = (tok) => {
+        const p = typeof tok === 'string' ? tok : tok?.toText?.() || tok?.toString?.() || '';
+        const cached = getTokenMetadataSync(p);
+        return cached?.symbol || p.slice(0, 8) + '...';
+    };
+    const tokDecimals = (tok) => {
+        const p = typeof tok === 'string' ? tok : tok?.toText?.() || tok?.toString?.() || '';
+        const cached = getTokenMetadataSync(p);
+        return cached?.decimals ?? 8;
+    };
+    const fmtBal = (raw, decimals) => {
+        const n = Number(raw);
+        if (isNaN(n)) return '0';
+        return (n / (10 ** Number(decimals))).toLocaleString(undefined, { maximumFractionDigits: Number(decimals) });
+    };
+
+    const choreLabel = (instanceId) => {
+        if (!choreStatuses) return instanceId;
+        const cs = choreStatuses.find(c => c.choreId === instanceId);
+        return cs?.instanceLabel || instanceId;
+    };
+
+    const loadData = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const actor = await getReadyBotActor();
+            const purses = await actor.getAllPurseAllocations();
+            setAllPurses(purses);
+
+            // Collect all unique tokens across all purses
+            const tokenSet = new Set();
+            for (const chore of purses) {
+                for (const b of chore.balances) {
+                    const tok = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+                    tokenSet.add(tok);
+                }
+            }
+
+            // Fetch on-chain balances from ledgers
+            if (tokenSet.size > 0 && canisterId) {
+                setBalancesLoading(true);
+                try {
+                    const { HttpAgent } = await import('@dfinity/agent');
+                    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                    const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
+                    const agent = HttpAgent.createSync({ identity, host });
+                    if (isLocal) await agent.fetchRootKey();
+                    const botPrincipal = Principal.fromText(canisterId);
+
+                    const tokens = [...tokenSet];
+                    const results = {};
+                    await Promise.all(tokens.map(async (tid) => {
+                        try {
+                            const ledgerActor = createLedgerActor(tid, { agent });
+                            const bal = await ledgerActor.icrc1_balance_of({ owner: botPrincipal, subaccount: [] });
+                            results[tid] = BigInt(bal);
+                        } catch (_) { results[tid] = 0n; }
+                    }));
+                    setOnChainBalances(results);
+                } catch (e) {
+                    console.warn('PursesPanel: failed to fetch on-chain balances', e);
+                } finally {
+                    setBalancesLoading(false);
+                }
+            }
+        } catch (e) {
+            setError(e?.message || String(e));
+        } finally {
+            setLoading(false);
+        }
+    }, [getReadyBotActor, canisterId, identity]);
+
+    useEffect(() => { loadData(); }, [loadData]);
+
+    // Compute totals
+    const totalAllocated = {};
+    const allTokens = new Set();
+    for (const chore of allPurses) {
+        for (const b of chore.balances) {
+            const tok = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+            allTokens.add(tok);
+            totalAllocated[tok] = (totalAllocated[tok] || 0n) + BigInt(b.balance);
+        }
+    }
+
+    const mainPurseEntries = [];
+    for (const tok of allTokens) {
+        const chain = onChainBalances[tok] || 0n;
+        const allocated = totalAllocated[tok] || 0n;
+        const available = chain > allocated ? chain - allocated : 0n;
+        const overcommitted = allocated > chain;
+        mainPurseEntries.push({ token: tok, balance: available, onChain: chain, allocated, overcommitted });
+    }
+    // Also add tokens with on-chain balance but no purse allocations
+    for (const [tok, chain] of Object.entries(onChainBalances)) {
+        if (!allTokens.has(tok) && chain > 0n) {
+            mainPurseEntries.push({ token: tok, balance: chain, onChain: chain, allocated: 0n, overcommitted: false });
+        }
+    }
+
+    const enabledPurses = allPurses.filter(p => p.enabled && p.balances.length > 0);
+
+    const thStyle = { textAlign: 'left', padding: '6px 10px', color: theme.colors.secondaryText, fontWeight: 500, fontSize: '0.78rem' };
+    const thStyleR = { ...thStyle, textAlign: 'right' };
+    const tdStyle = { padding: '6px 10px', color: theme.colors.primaryText, fontSize: '0.82rem' };
+    const tdStyleR = { ...tdStyle, textAlign: 'right', fontFamily: 'monospace' };
+    const rowBorder = { borderBottom: `1px solid ${borderColor}` };
+
+    if (loading) return <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText, padding: '16px 0' }}>Loading purse data...</div>;
+    if (error) return <div style={{ color: '#e74c3c', fontSize: '0.85rem', padding: '16px 0' }}>{error}</div>;
+
+    return (
+        <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FaWallet style={{ color: accentColor }} /> Purse Overview
+                </h3>
+                <button onClick={loadData} style={{
+                    padding: '4px 10px', fontSize: '0.75rem', border: `1px solid ${borderColor}`,
+                    borderRadius: '6px', cursor: 'pointer', background: cardBg, color: theme.colors.primaryText,
+                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                }}>
+                    <FaSyncAlt size={10} /> Refresh
+                </button>
+                {balancesLoading && <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>fetching balances...</span>}
+            </div>
+
+            {/* Main Purse */}
+            <div style={{ padding: '12px', background: cardBg, borderRadius: '10px', border: `1px solid ${borderColor}`, marginBottom: '14px' }}>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: theme.colors.primaryText }}>
+                    Main Purse
+                </h4>
+                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText || theme.colors.secondaryText, marginBottom: '8px' }}>
+                    Unallocated funds available for chores without a dedicated purse, or to fund chore purses.
+                </div>
+                {mainPurseEntries.length === 0 ? (
+                    <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, fontStyle: 'italic' }}>No token balances detected.</div>
+                ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                            <tr style={rowBorder}>
+                                <th style={thStyle}>Token</th>
+                                <th style={thStyleR}>Available</th>
+                                <th style={thStyleR}>Allocated</th>
+                                <th style={thStyleR}>On-chain</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {mainPurseEntries.map((e, i) => {
+                                const dec = tokDecimals(e.token);
+                                return (
+                                    <tr key={i} style={rowBorder}>
+                                        <td style={tdStyle}>
+                                            {tokLabel(e.token)}
+                                            {e.overcommitted && <span style={{ color: '#e74c3c', fontSize: '0.72rem', marginLeft: '6px' }}>overcommitted</span>}
+                                        </td>
+                                        <td style={tdStyleR}>{fmtBal(e.balance, dec)}</td>
+                                        <td style={{ ...tdStyleR, color: theme.colors.secondaryText }}>{fmtBal(e.allocated, dec)}</td>
+                                        <td style={{ ...tdStyleR, color: theme.colors.secondaryText }}>{fmtBal(e.onChain, dec)}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                )}
+            </div>
+
+            {/* Per-chore purses */}
+            {enabledPurses.length === 0 ? (
+                <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, fontStyle: 'italic', padding: '8px 0' }}>
+                    No chores have funded purses yet. Enable a purse in a chore's settings to isolate its balances.
+                </div>
+            ) : (
+                enabledPurses.map((chore) => (
+                    <div key={chore.instanceId} style={{ padding: '12px', background: cardBg, borderRadius: '10px', border: `1px solid ${borderColor}`, marginBottom: '10px' }}>
+                        <h4 style={{ margin: '0 0 6px 0', fontSize: '0.85rem', fontWeight: 600, color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <FaWallet style={{ color: accentColor, fontSize: '0.75rem' }} />
+                            {choreLabel(chore.instanceId)}
+                        </h4>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={rowBorder}>
+                                    <th style={thStyle}>Token</th>
+                                    <th style={thStyleR}>Balance</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {chore.balances.filter(b => Number(b.balance) > 0).map((b, i) => {
+                                    const tok = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+                                    const dec = tokDecimals(tok);
+                                    return (
+                                        <tr key={i} style={rowBorder}>
+                                            <td style={tdStyle}>
+                                                {tokLabel(tok)}
+                                                {b.subaccountNumber?.[0] != null ? ` (sub ${Number(b.subaccountNumber[0])})` : ''}
+                                            </td>
+                                            <td style={tdStyleR}>{fmtBal(b.balance, dec)}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                ))
+            )}
+        </div>
+    );
+}
+
+// ============================================
+// Chore Purse Panel (per-chore, inline)
 // ============================================
 function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canisterId }) {
     const { identity } = useAuth();
