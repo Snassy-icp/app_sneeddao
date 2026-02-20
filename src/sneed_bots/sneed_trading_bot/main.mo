@@ -2677,7 +2677,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             return false;
         };
 
-        // Get quote — check price cache first, then fetch fresh
+        // Get quote — impact-aware selection when no preferred DEX
+        let maxImpact = switch (action.maxPriceImpactBps) {
+            case (?m) m;
+            case null { defaultMaxPriceImpactBps };
+        };
+
         let quoteOpt: ?T.SwapQuote = switch (action.preferredDex) {
             case (?dexId) {
                 // User specified a DEX — always get a fresh quote for the actual trade size
@@ -2688,20 +2693,35 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 } else { null }
             };
             case null {
-                // No preferred DEX — use cached quote's DEX if available, otherwise getBestQuote
-                switch (getCachedQuote(action.inputToken, outputToken)) {
-                    case (?cachedQ) {
-                        // Re-fetch a quote on the same DEX but with actual trade size
-                        if (cachedQ.dexId == T.DexId.ICPSwap) {
-                            await* getICPSwapQuote(action.inputToken, outputToken, actualTradeSize)
-                        } else if (cachedQ.dexId == T.DexId.KongSwap) {
-                            await* getKongQuote(action.inputToken, outputToken, actualTradeSize)
-                        } else {
-                            await* getBestQuote(action.inputToken, outputToken, actualTradeSize)
-                        }
+                // No preferred DEX — get all quotes, pick best that passes impact check
+                let allQuotes = await* getAllQuotes(action.inputToken, outputToken, actualTradeSize);
+                var best: ?T.SwapQuote = null;
+                for (q in allQuotes.vals()) {
+                    if (q.priceImpactBps <= maxImpact) {
+                        switch (best) {
+                            case null { best := ?q };
+                            case (?b) {
+                                if (q.expectedOutput > b.expectedOutput) { best := ?q };
+                            };
+                        };
+                    };
+                };
+                switch (best) {
+                    case (?b) {
+                        if (allQuotes.size() > 1) {
+                            logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # ": selected DEX " # Nat.toText(b.dexId) # " (impact " # Nat.toText(b.priceImpactBps) # " bps) — other DEX(es) had higher impact", null, []);
+                        };
+                        ?b
                     };
                     case null {
-                        await* getBestQuote(action.inputToken, outputToken, actualTradeSize)
+                        // All quotes exceeded impact — log the best one for context
+                        if (allQuotes.size() > 0) {
+                            let topQ = allQuotes[0];
+                            logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: all " # Nat.toText(allQuotes.size()) # " DEX quotes exceed max impact " # Nat.toText(maxImpact) # " bps (best: DEX " # Nat.toText(topQ.dexId) # " at " # Nat.toText(topQ.priceImpactBps) # " bps)", null, []);
+                            logSkip("All " # Nat.toText(allQuotes.size()) # " DEX quotes exceed max impact " # Nat.toText(maxImpact) # " bps (best: " # Nat.toText(topQ.priceImpactBps) # " bps)", ?topQ, ?actualTradeSize);
+                            return false;
+                        };
+                        null
                     };
                 }
             };
@@ -2716,11 +2736,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             };
         };
 
-        // Check price impact
-        let maxImpact = switch (action.maxPriceImpactBps) {
-            case (?m) m;
-            case null { defaultMaxPriceImpactBps };
-        };
+        // Safety check: verify impact for preferred-DEX path
         if (quote.priceImpactBps > maxImpact) {
             logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: price impact " # Nat.toText(quote.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps", null, []);
             logSkip("Price impact " # Nat.toText(quote.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps", ?quote, ?actualTradeSize);
