@@ -12,6 +12,7 @@ import priceService from '../services/PriceService';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { FaExternalLinkAlt, FaGift, FaCoins, FaHistory, FaCheckCircle, FaWallet, FaChevronDown } from 'react-icons/fa';
+import { useDenomination } from '../contexts/DenominationContext';
 
 const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
 
@@ -128,6 +129,7 @@ function Rewards() {
     const { identity, isAuthenticated, login } = useAuth();
     const { theme } = useTheme();
     const { fetchTokenMetadata, getTokenMetadata, isLoadingMetadata } = useTokenMetadata();
+    const { formatValue: denomFormatValue } = useDenomination();
     
     const [userBalances, setUserBalances] = useState([]);
     const [loadingUserBalances, setLoadingUserBalances] = useState(true);
@@ -362,11 +364,7 @@ function Rewards() {
     };
 
     const formatUSD = (usdValue) => {
-        if (!usdValue || usdValue === 0) return '$0.00';
-        return '$' + usdValue.toLocaleString(undefined, { 
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2 
-        });
+        return denomFormatValue(usdValue || 0);
     };
 
     const getTotalRewardsUSD = () => {
