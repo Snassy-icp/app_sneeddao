@@ -2465,29 +2465,41 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
                                                 <input value={draftSettings.thresholdAmount || ''} onChange={e => setDraftSettings(s => ({ ...s, thresholdAmount: e.target.value }))}
                                                     style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" />
                                             </div>
-                                            <div>
-                                                <label style={lbl}>Amount Mode</label>
-                                                <select value={draftSettings.amountMode || '0'} onChange={e => setDraftSettings(s => ({ ...s, amountMode: e.target.value }))}
-                                                    style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
-                                                    <option value="0">Random in range</option>
-                                                    <option value="1">% of balance</option>
-                                                </select>
+                                        </div>
+                                        <div style={{ marginTop: '8px' }}>
+                                            <label style={lbl}>Amount Mode</label>
+                                            <div style={{ display: 'flex', gap: '0', borderRadius: '6px', overflow: 'hidden', border: `1px solid ${theme.colors.border}`, width: 'fit-content' }}>
+                                                {[{ value: '0', label: 'Random in Range' }, { value: '1', label: '% of Balance' }].map(opt => (
+                                                    <button key={opt.value} type="button" onClick={() => setDraftSettings(s => ({ ...s, amountMode: opt.value }))}
+                                                        style={{
+                                                            padding: '5px 14px', fontSize: '0.78rem', border: 'none', cursor: 'pointer',
+                                                            background: (draftSettings.amountMode || '0') === opt.value ? accentColor : 'transparent',
+                                                            color: (draftSettings.amountMode || '0') === opt.value ? '#fff' : theme.colors.secondaryText,
+                                                            fontWeight: (draftSettings.amountMode || '0') === opt.value ? 600 : 400,
+                                                            transition: 'all 0.15s',
+                                                        }}>
+                                                        {opt.label}
+                                                    </button>
+                                                ))}
                                             </div>
-                                            {draftSettings.amountMode === '1' ? (
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '8px', marginTop: '8px' }}>
+                                            {draftSettings.amountMode === '1' && (
                                                 <div>
                                                     <label style={lbl}>Balance %</label>
                                                     <input value={draftSettings.balancePercent || ''} onChange={e => setDraftSettings(s => ({ ...s, balancePercent: e.target.value }))}
                                                         style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="e.g. 50" />
                                                 </div>
-                                            ) : (
+                                            )}
+                                            {draftSettings.amountMode !== '1' && (
                                                 <div>
-                                                    <label style={lbl}>Min Distribution Amount</label>
+                                                    <label style={lbl}>Min Amount</label>
                                                     <input value={draftSettings.minDistributionAmount || ''} onChange={e => setDraftSettings(s => ({ ...s, minDistributionAmount: e.target.value }))}
                                                         style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" />
                                                 </div>
                                             )}
                                             <div>
-                                                <label style={lbl}>Max Distribution Amount</label>
+                                                <label style={lbl}>{draftSettings.amountMode === '1' ? 'Max Amount (cap)' : 'Max Amount'}</label>
                                                 <input value={draftSettings.maxDistributionAmount || ''} onChange={e => setDraftSettings(s => ({ ...s, maxDistributionAmount: e.target.value }))}
                                                     style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" />
                                             </div>
@@ -2533,28 +2545,39 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
                                     <label style={lbl}>Threshold Amount</label>
                                     <input value={newThreshold} onChange={(e) => setNewThreshold(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" />
                                 </div>
-                                <div>
-                                    <label style={lbl}>Amount Mode</label>
-                                    <select value={newAmountMode} onChange={(e) => setNewAmountMode(e.target.value)} style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
-                                        <option value="0">Random in range</option>
-                                        <option value="1">% of balance</option>
-                                    </select>
+                            </div>
+                            <div style={{ marginTop: '8px' }}>
+                                <label style={lbl}>Amount Mode</label>
+                                <div style={{ display: 'flex', gap: '0', borderRadius: '6px', overflow: 'hidden', border: `1px solid ${theme.colors.border}`, width: 'fit-content' }}>
+                                    {[{ value: '0', label: 'Random in Range' }, { value: '1', label: '% of Balance' }].map(opt => (
+                                        <button key={opt.value} type="button" onClick={() => setNewAmountMode(opt.value)}
+                                            style={{
+                                                padding: '5px 14px', fontSize: '0.78rem', border: 'none', cursor: 'pointer',
+                                                background: newAmountMode === opt.value ? accentColor : 'transparent',
+                                                color: newAmountMode === opt.value ? '#fff' : theme.colors.secondaryText,
+                                                fontWeight: newAmountMode === opt.value ? 600 : 400,
+                                                transition: 'all 0.15s',
+                                            }}>
+                                            {opt.label}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: newAmountMode === '1' ? '1fr 1fr' : '1fr 1fr', gap: '8px', marginTop: '8px' }}>
-                                {newAmountMode === '1' ? (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '8px', marginTop: '8px' }}>
+                                {newAmountMode === '1' && (
                                     <div>
                                         <label style={lbl}>Balance %</label>
                                         <input value={newBalancePct} onChange={(e) => setNewBalancePct(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="e.g. 50" />
                                     </div>
-                                ) : (
+                                )}
+                                {newAmountMode !== '1' && (
                                     <div>
-                                        <label style={lbl}>Min Distribution Amount</label>
+                                        <label style={lbl}>Min Amount</label>
                                         <input value={newMinDist} onChange={(e) => setNewMinDist(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" />
                                     </div>
                                 )}
                                 <div>
-                                    <label style={lbl}>Max Distribution Amount</label>
+                                    <label style={lbl}>{newAmountMode === '1' ? 'Max Amount (cap)' : 'Max Amount'}</label>
                                     <input value={newMaxDist} onChange={(e) => setNewMaxDist(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" />
                                 </div>
                             </div>
