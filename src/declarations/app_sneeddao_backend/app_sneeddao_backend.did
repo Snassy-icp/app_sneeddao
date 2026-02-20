@@ -20,6 +20,7 @@ type UserSettingsUpdate =
    canister_manager_cycle_threshold_orange: opt nat;
    canister_manager_cycle_threshold_red: opt nat;
    collectibles_threshold: opt float64;
+   denomination_token: opt text;
    expand_quick_links_on_desktop: opt bool;
    frontend_auto_update_enabled: opt bool;
    frontend_clear_cache_on_update: opt bool;
@@ -51,6 +52,7 @@ type UserSettings =
    canister_manager_cycle_threshold_orange: nat;
    canister_manager_cycle_threshold_red: nat;
    collectibles_threshold: float64;
+   denomination_token: text;
    expand_quick_links_on_desktop: bool;
    frontend_auto_update_enabled: bool;
    frontend_clear_cache_on_update: bool;

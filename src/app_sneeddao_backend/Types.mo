@@ -65,6 +65,7 @@ module {
         frontend_update_countdown_sec: Nat;
         swap_slippage_tolerance: Float;
         always_show_remove_token: Bool;
+        denomination_token: Text;
         // Per-notification-type visibility settings
         notify_replies: Bool;
         notify_tips: Bool;
@@ -97,6 +98,7 @@ module {
         frontend_update_countdown_sec: ?Nat;
         swap_slippage_tolerance: ?Float;
         always_show_remove_token: ?Bool;
+        denomination_token: ?Text;
         // Per-notification-type visibility settings
         notify_replies: ?Bool;
         notify_tips: ?Bool;

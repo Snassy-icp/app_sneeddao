@@ -59,6 +59,9 @@ import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import ThemeToggle from '../components/ThemeToggle';
 import InfoTooltip from '../components/InfoTooltip';
 import TokenIcon from '../components/TokenIcon';
+import TokenSelector from '../components/TokenSelector';
+import { useDenomination } from '../contexts/DenominationContext';
+import { CKUSDC_LEDGER, getCurrencySign } from '../utils/DenominationUtils';
 import { Principal } from '@dfinity/principal';
 import { createSneedexActor } from '../utils/SneedexUtils';
 import { FaUser, FaCrown, FaKey, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel, FaShareAlt, FaExternalLinkAlt, FaCopy, FaPen, FaChevronRight, FaChevronDown, FaVoteYea, FaUserShield, FaQuestion, FaTimes, FaExclamationTriangle } from 'react-icons/fa';
@@ -128,6 +131,7 @@ export default function Me() {
     const { identity } = useAuth();
     const { selectedSnsRoot, updateSelectedSns } = useSns();
     const { createForumActor } = useForum();
+    const { denomTokenId, setDenomToken } = useDenomination();
     
     // Use WalletContext's global neuron cache for user neurons
     const walletContext = useWalletOptional();
@@ -222,6 +226,7 @@ export default function Me() {
         frontend_update_countdown_sec: 300,
         swap_slippage_tolerance: 0.01,
         always_show_remove_token: false,
+        denomination_token: CKUSDC_LEDGER,
         notify_replies: true,
         notify_tips: true,
         notify_messages: true,
@@ -284,6 +289,7 @@ export default function Me() {
             frontend_update_countdown_sec: readNat('frontendUpdateCountdownSec', defaultUserSettings.frontend_update_countdown_sec),
             swap_slippage_tolerance: readFloat('swapSlippageTolerance', defaultUserSettings.swap_slippage_tolerance),
             always_show_remove_token: readBool('alwaysShowRemoveToken', defaultUserSettings.always_show_remove_token),
+            denomination_token: localStorage.getItem('denominationToken') || defaultUserSettings.denomination_token,
             notify_replies: readBool('notifyReplies', defaultUserSettings.notify_replies),
             notify_tips: readBool('notifyTips', defaultUserSettings.notify_tips),
             notify_messages: readBool('notifyMessages', defaultUserSettings.notify_messages),
@@ -321,6 +327,7 @@ export default function Me() {
             && toNumber(settings.frontend_update_countdown_sec ?? defaultUserSettings.frontend_update_countdown_sec) === defaultUserSettings.frontend_update_countdown_sec
             && toNumber(settings.swap_slippage_tolerance ?? defaultUserSettings.swap_slippage_tolerance) === defaultUserSettings.swap_slippage_tolerance
             && (settings.always_show_remove_token ?? defaultUserSettings.always_show_remove_token) === defaultUserSettings.always_show_remove_token
+            && (settings.denomination_token ?? defaultUserSettings.denomination_token) === defaultUserSettings.denomination_token
             && (settings.notify_replies ?? defaultUserSettings.notify_replies) === defaultUserSettings.notify_replies
             && (settings.notify_tips ?? defaultUserSettings.notify_tips) === defaultUserSettings.notify_tips
             && (settings.notify_messages ?? defaultUserSettings.notify_messages) === defaultUserSettings.notify_messages
@@ -440,6 +447,9 @@ export default function Me() {
         setAlwaysShowRemoveToken(alwaysShowRemoveTokenValue);
         localStorage.setItem('alwaysShowRemoveToken', JSON.stringify(alwaysShowRemoveTokenValue));
         window.dispatchEvent(new CustomEvent('alwaysShowRemoveTokenChanged', { detail: alwaysShowRemoveTokenValue }));
+
+        const denominationTokenValue = settings.denomination_token || CKUSDC_LEDGER;
+        setDenomToken(denominationTokenValue);
 
         // Per-notification-type settings
         const notifyRepliesValue = settings.notify_replies ?? true;
@@ -2270,6 +2280,64 @@ export default function Me() {
                                         theme={theme}
                                     >
                                         <ThemeToggle size="medium" showLabel={true} />
+                                    </SettingItem>
+
+                                    <SettingItem
+                                        title="Denomination Currency"
+                                        description="Choose which token to use for displaying values across the site"
+                                        theme={theme}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <div style={{ width: '200px' }}>
+                                                <TokenSelector
+                                                    value={denomTokenId}
+                                                    onChange={(tokenId) => {
+                                                        const newId = tokenId || CKUSDC_LEDGER;
+                                                        setDenomToken(newId);
+                                                        updateBackendSettings({ denomination_token: newId });
+                                                    }}
+                                                    onSelectToken={(tokenData) => {
+                                                        if (tokenData?.ledger_id) {
+                                                            setDenomToken(tokenData.ledger_id, tokenData.symbol);
+                                                            updateBackendSettings({ denomination_token: tokenData.ledger_id });
+                                                        }
+                                                    }}
+                                                    allowCustom={true}
+                                                    placeholder="Select currency..."
+                                                />
+                                            </div>
+                                            {denomTokenId && denomTokenId !== CKUSDC_LEDGER && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setDenomToken(CKUSDC_LEDGER);
+                                                        updateBackendSettings({ denomination_token: CKUSDC_LEDGER });
+                                                    }}
+                                                    style={{
+                                                        background: 'none',
+                                                        border: 'none',
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.8rem',
+                                                        color: theme.colors.mutedText,
+                                                        padding: '4px 8px',
+                                                    }}
+                                                    title="Reset to USD"
+                                                >
+                                                    <FaTimes />
+                                                </button>
+                                            )}
+                                            {getCurrencySign(denomTokenId) && (
+                                                <span style={{
+                                                    fontSize: '1.2rem',
+                                                    fontWeight: '600',
+                                                    color: theme.colors.primaryText,
+                                                    minWidth: '24px',
+                                                    textAlign: 'center',
+                                                }}>
+                                                    {getCurrencySign(denomTokenId)}
+                                                </span>
+                                            )}
+                                        </div>
                                     </SettingItem>
                                     
                                     <SettingItem

@@ -132,6 +132,7 @@ export const idlFactory = ({ IDL }) => {
     'collectibles_threshold' : IDL.Float64,
     'notify_bot_log_errors' : IDL.Bool,
     'neuron_manager_cycle_threshold_orange' : IDL.Nat,
+    'denomination_token' : IDL.Text,
   });
   const Partner = IDL.Record({
     'id' : IDL.Nat,
@@ -222,6 +223,7 @@ export const idlFactory = ({ IDL }) => {
     'collectibles_threshold' : IDL.Opt(IDL.Float64),
     'notify_bot_log_errors' : IDL.Opt(IDL.Bool),
     'neuron_manager_cycle_threshold_orange' : IDL.Opt(IDL.Nat),
+    'denomination_token' : IDL.Opt(IDL.Text),
   });
   const Result_3 = IDL.Variant({ 'ok' : UserSettings, 'err' : IDL.Text });
   const TransferPositionError = IDL.Variant({

@@ -50,6 +50,7 @@ export const setMySettings = async (identity, updates) => {
             frontend_update_countdown_sec: toOptional(updates.frontend_update_countdown_sec),
             swap_slippage_tolerance: toOptional(updates.swap_slippage_tolerance),
             always_show_remove_token: toOptional(updates.always_show_remove_token),
+            denomination_token: toOptional(updates.denomination_token),
             notify_replies: toOptional(updates.notify_replies),
             notify_tips: toOptional(updates.notify_tips),
             notify_messages: toOptional(updates.notify_messages),

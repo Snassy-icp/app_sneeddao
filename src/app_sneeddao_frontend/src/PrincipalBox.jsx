@@ -24,6 +24,7 @@ import { uint8ArrayToHex } from './utils/NeuronUtils';
 import { getCanisterInfo } from './utils/BackendUtils';
 import SendTokenModal from './SendTokenModal';
 import SendLiquidityPositionModal from './SendLiquidityPositionModal';
+import { useDenomination } from './contexts/DenominationContext';
 import StatusLamp, { getAllChoresSummaryLamp, getSummaryLabel } from './components/ChoreStatusLamp';
 import UpgradeBotsDialog from './components/UpgradeBotsDialog';
 import TopUpCyclesDialog from './components/TopUpCyclesDialog';
@@ -104,6 +105,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const { getPrincipalDisplayName, principalCanisterTypes } = useNaming();
     const walletContext = useWalletOptional();
     const walletLayoutCtx = useWalletLayout();
+    const { formatValue: denomFormatValue, formatValueCompact: denomFormatCompact } = useDenomination();
     const navigate = useNavigate();
     const { isPremium } = usePremiumStatus(identity);
     
@@ -1627,7 +1629,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                       fontSize: '16px',
                                       fontWeight: '700'
                                   }}>
-                                      ${grandTotalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      {denomFormatValue(grandTotalUSD)}
                                   </span>
                                   {/* Admin debug report button */}
                                   {isAdmin && (
@@ -1776,7 +1778,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                       textTransform: 'none',
                                       letterSpacing: 'normal'
                                   }}>
-                                      ${totalTokensUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      {denomFormatValue(totalTokensUSD)}
                                   </span>
                               )}
                               {refreshWallet && (
@@ -2002,7 +2004,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                   opacity: 0.8
                                               }}>
                                                   {usdValue !== null && usdValue !== undefined 
-                                                      ? `$${usdValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                                      ? denomFormatValue(usdValue)
                                                       : <span style={{ opacity: 0.5 }}>...</span>
                                                   }
                                               </span>
@@ -2121,7 +2123,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                       textTransform: 'none',
                                       letterSpacing: 'normal'
                                   }}>
-                                      ${totalPositionsUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      {denomFormatValue(totalPositionsUSD)}
                                   </span>
                               )}
                               {refreshWallet && (
@@ -2372,12 +2374,12 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                   opacity: 0.8
                                               }}>
                                                   {hasValue 
-                                                      ? `$${totalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                                      ? denomFormatValue(totalUSD)
                                                       : position.loading ? '...' : 'N/A'
                                                   }
                                                   {feesUSD > 0.01 && (
                                                       <span style={{ color: theme.colors.success, marginLeft: '4px' }}>
-                                                          +${feesUSD.toFixed(2)}
+                                                          +{denomFormatValue(feesUSD)}
                                                       </span>
                                                   )}
                                               </span>
@@ -2512,7 +2514,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                       textTransform: 'none',
                                       letterSpacing: 'normal'
                                   }}>
-                                      ${totalManagersUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      {denomFormatValue(totalManagersUSD)}
                                   </span>
                               )}
                               {walletContext?.refreshNeuronManagers && (
@@ -2884,7 +2886,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                   {isLoading 
                                                       ? 'Loading...'
                                                       : managerUsdValue !== null 
-                                                          ? `$${managerUsdValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                                          ? denomFormatValue(managerUsdValue)
                                                           : `${managerIcpTotal.toFixed(2)} ICP`
                                                   }
                                               </span>

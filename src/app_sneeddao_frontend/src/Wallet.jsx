@@ -58,6 +58,7 @@ import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import { useNaming } from './NamingContext';
 import { useWhitelistTokens } from './contexts/WhitelistTokensContext';
 import { useWallet } from './contexts/WalletContext';
+import { useDenomination } from './contexts/DenominationContext';
 import { useWalletLayout } from './contexts/WalletLayoutContext';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -140,7 +141,7 @@ const CATEGORY_ICONS = {
     icpBots: <FaStore size={10} />,
 };
 
-function WalletPieChart({ segments, size = 160, thickness = 28, label, centerText, centerSubText, theme }) {
+function WalletPieChart({ segments, size = 160, thickness = 28, label, centerText, centerSubText, theme, formatDenom }) {
     const r = (size - thickness) / 2;
     const cx = size / 2;
     const cy = size / 2;
@@ -154,7 +155,7 @@ function WalletPieChart({ segments, size = 160, thickness = 28, label, centerTex
         offset += frac;
         return { ...seg, dashLen, dashOffset, frac };
     }) : [];
-    const fmtUSD = (v) => v >= 10000 ? `$${(v/1000).toFixed(1)}k` : v >= 1 ? `$${v.toFixed(0)}` : v > 0 ? `$${v.toFixed(2)}` : '$0';
+    const fmtUSD = formatDenom || ((v) => v >= 10000 ? `$${(v/1000).toFixed(1)}k` : v >= 1 ? `$${v.toFixed(0)}` : v > 0 ? `$${v.toFixed(2)}` : '$0');
     return (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
             {label && <div style={{ fontSize: '0.8rem', fontWeight: '600', color: theme.colors.primaryText, letterSpacing: '0.3px' }}>{label}</div>}
@@ -669,6 +670,7 @@ function Wallet() {
         allKnownWasmHashes: contextAllKnownWasmHashes,
     } = useWallet();
     const walletLayoutCtx = useWalletLayout();
+    const { formatValue: denomFormatValue, formatValueCompact: denomFormatCompact, convertUSD, currencySign: denomSign, isFiat: denomIsFiat } = useDenomination();
     const navigate = useNavigate();
     
     // Build canisterId → resolvedAppId map from WASM hash matching
@@ -3354,13 +3356,7 @@ function Wallet() {
             total += managerNeuronsTotal * icpPrice;
         }
 
-        // Format with commas and 2 decimals
-        const formattedTotal = total.toLocaleString(undefined, { 
-            minimumFractionDigits: 2, 
-            maximumFractionDigits: 2 
-        });
-
-        setTotalDollarValue(formattedTotal);
+        setTotalDollarValue(total);
         
         // Console log subtotals to verify they add up
         setTotalBreakdown({
@@ -6130,7 +6126,7 @@ function Wallet() {
                                             fontSize: '1.5rem', 
                                             fontWeight: '700'
                                         }}>
-                                            ${totalDollarValue}
+                                            {denomFormatValue(totalDollarValue)}
                                         </div>
                                         {/* Admin debug report button */}
                                         {isAdmin && (
@@ -6172,7 +6168,7 @@ function Wallet() {
                                                     alignItems: 'center',
                                                     gap: '0.2rem'
                                                 }}>
-                                                    <FaTint size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.liquid.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    <FaTint size={12} style={{ marginRight: '4px' }} /> {denomFormatCompact(totalBreakdown.liquid)}
                                                 </span>
                                             )}
                                             {totalBreakdown.staked > 0 && (
@@ -6182,7 +6178,7 @@ function Wallet() {
                                                     alignItems: 'center',
                                                     gap: '0.2rem'
                                                 }}>
-                                                    <FaBrain size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.staked.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    <FaBrain size={12} style={{ marginRight: '4px' }} /> {denomFormatCompact(totalBreakdown.staked)}
                                                 </span>
                                             )}
                                             {totalBreakdown.locked > 0 && (
@@ -6192,7 +6188,7 @@ function Wallet() {
                                                     alignItems: 'center',
                                                     gap: '0.2rem'
                                                 }}>
-                                                    <FaLock size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.locked.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    <FaLock size={12} style={{ marginRight: '4px' }} /> {denomFormatCompact(totalBreakdown.locked)}
                                                 </span>
                                             )}
                                             {totalBreakdown.liquidity > 0 && (
@@ -6202,7 +6198,7 @@ function Wallet() {
                                                     alignItems: 'center',
                                                     gap: '0.2rem'
                                                 }}>
-                                                    <FaWater size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.liquidity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    <FaWater size={12} style={{ marginRight: '4px' }} /> {denomFormatCompact(totalBreakdown.liquidity)}
                                                 </span>
                                             )}
                                             {totalBreakdown.hasAnyMaturity && totalBreakdown.maturity > 0 && (
@@ -6212,7 +6208,7 @@ function Wallet() {
                                                     alignItems: 'center',
                                                     gap: '0.2rem'
                                                 }}>
-                                                    <FaSeedling size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.maturity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    <FaSeedling size={12} style={{ marginRight: '4px' }} /> {denomFormatCompact(totalBreakdown.maturity)}
                                                 </span>
                                             )}
                                             {totalBreakdown.hasAnyRewards && totalBreakdown.rewards > 0 && (
@@ -6222,7 +6218,7 @@ function Wallet() {
                                                     alignItems: 'center',
                                                     gap: '0.2rem'
                                                 }}>
-                                                    <FaGift size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.rewards.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    <FaGift size={12} style={{ marginRight: '4px' }} /> {denomFormatCompact(totalBreakdown.rewards)}
                                                 </span>
                                             )}
                                             {totalBreakdown.hasAnyFees && totalBreakdown.fees > 0 && (
@@ -6232,7 +6228,7 @@ function Wallet() {
                                                     alignItems: 'center',
                                                     gap: '0.2rem'
                                                 }}>
-                                                    <FaMoneyBillWave size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.fees.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    <FaMoneyBillWave size={12} style={{ marginRight: '4px' }} /> {denomFormatCompact(totalBreakdown.fees)}
                                                 </span>
                                             )}
                                         </div>
@@ -6273,10 +6269,7 @@ function Wallet() {
                                                 fontSize: '1.25rem', 
                                                 fontWeight: '700'
                                             }}>
-                                                ${(totalBreakdown.fees + totalBreakdown.rewards + totalBreakdown.collectableMaturity).toLocaleString(undefined, { 
-                                                    minimumFractionDigits: 2, 
-                                                    maximumFractionDigits: 2 
-                                                })}
+                                                {denomFormatValue(totalBreakdown.fees + totalBreakdown.rewards + totalBreakdown.collectableMaturity)}
                                             </div>
                                         </div>
                                         <button
@@ -6320,7 +6313,7 @@ function Wallet() {
                                                 onMouseEnter={(e) => e.target.style.background = `${walletPrimary}20`}
                                                 onMouseLeave={(e) => e.target.style.background = 'transparent'}
                                             >
-                                                <FaMoneyBillWave size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.fees.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                <FaMoneyBillWave size={12} style={{ marginRight: '4px' }} /> {denomFormatCompact(totalBreakdown.fees)}
                                             </span>
                                         )}
                                         {totalBreakdown.hasAnyRewards && (
@@ -6339,7 +6332,7 @@ function Wallet() {
                                                 onMouseEnter={(e) => e.target.style.background = `${walletPrimary}20`}
                                                 onMouseLeave={(e) => e.target.style.background = 'transparent'}
                                             >
-                                                <FaGift size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.rewards.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                <FaGift size={12} style={{ marginRight: '4px' }} /> {denomFormatCompact(totalBreakdown.rewards)}
                                             </span>
                                         )}
                                         {totalBreakdown.hasAnyCollectableMaturity && (
@@ -6358,7 +6351,7 @@ function Wallet() {
                                                 onMouseEnter={(e) => e.target.style.background = `${walletPrimary}20`}
                                                 onMouseLeave={(e) => e.target.style.background = 'transparent'}
                                             >
-                                                <FaSeedling size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.collectableMaturity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                <FaSeedling size={12} style={{ marginRight: '4px' }} /> {denomFormatCompact(totalBreakdown.collectableMaturity)}
                                             </span>
                                         )}
                                     </div>
@@ -6465,10 +6458,10 @@ function Wallet() {
                     border: `1px solid ${theme.colors.border}`
                 }}>
                     {[
-                        { id: 'tokens', label: 'Tokens', icon: <FaCoins size={14} />, subtitle: tokensTotal > 0 ? `$${tokensTotal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : null },
-                        { id: 'positions', label: 'Liquidity', icon: <FaExchangeAlt size={14} />, subtitle: lpPositionsTotal > 0 ? `$${lpPositionsTotal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : null },
-                        { id: 'dapps', label: 'Apps', icon: <FaBox size={14} />, subtitle: (() => { const appsCount = neuronManagers.length + trackedCanisters.length; const appsUsd = managerNeuronsTotal > 0 && icpPrice ? managerNeuronsTotal * icpPrice : 0; if (appsCount === 0 && appsUsd === 0) return null; const parts = []; if (appsUsd > 0) parts.push(`$${appsUsd.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`); if (appsCount > 0 && appsUsd === 0) parts.push(`${appsCount}`); return parts.join('') || null; })() },
-                        { id: 'stats', label: 'Statistics', icon: <FaChartPie size={14} />, subtitle: totalDollarValue ? `$${totalDollarValue}` : null }
+                        { id: 'tokens', label: 'Tokens', icon: <FaCoins size={14} />, subtitle: tokensTotal > 0 ? denomFormatCompact(tokensTotal) : null },
+                        { id: 'positions', label: 'Liquidity', icon: <FaExchangeAlt size={14} />, subtitle: lpPositionsTotal > 0 ? denomFormatCompact(lpPositionsTotal) : null },
+                        { id: 'dapps', label: 'Apps', icon: <FaBox size={14} />, subtitle: (() => { const appsCount = neuronManagers.length + trackedCanisters.length; const appsUsd = managerNeuronsTotal > 0 && icpPrice ? managerNeuronsTotal * icpPrice : 0; if (appsCount === 0 && appsUsd === 0) return null; const parts = []; if (appsUsd > 0) parts.push(denomFormatCompact(appsUsd)); if (appsCount > 0 && appsUsd === 0) parts.push(`${appsCount}`); return parts.join('') || null; })() },
+                        { id: 'stats', label: 'Statistics', icon: <FaChartPie size={14} />, subtitle: totalDollarValue ? denomFormatCompact(totalDollarValue) : null }
                     ].map(tab => (
                         <button
                             key={tab.id}
@@ -6533,7 +6526,7 @@ function Wallet() {
                             Tokens
                             {tokensTotal > 0 && (
                                 <span style={{ color: walletPrimary, fontWeight: '500' }}>
-                                    (${tokensTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                                    ({denomFormatValue(tokensTotal)})
                                 </span>
                             )}
                         </h3>
@@ -6740,7 +6733,7 @@ function Wallet() {
                             Liquidity Positions
                             {lpPositionsTotal > 0 && (
                                 <span style={{ color: walletPrimary, fontWeight: '500' }}>
-                                    (${lpPositionsTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                                    ({denomFormatValue(lpPositionsTotal)})
                                 </span>
                             )}
                         </h3>
@@ -7004,7 +6997,7 @@ function Wallet() {
                                             ({neuronManagers.length})
                                             {managerNeuronsTotal > 0 && icpPrice && (
                                                 <span style={{ marginLeft: '0.25rem' }}>
-                                                    • ${(managerNeuronsTotal * icpPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    • {denomFormatValue(managerNeuronsTotal * icpPrice)}
                                                 </span>
                                             )}
                                         </span>
@@ -7295,7 +7288,7 @@ function Wallet() {
                                                         </span>
                                                         <span className="token-usd-value">
                                                             {managerTotalIcp > 0 && icpPrice && 
-                                                                `$${(managerTotalIcp * icpPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                                                denomFormatValue(managerTotalIcp * icpPrice)
                                                             }
                                                         </span>
                                                     </div>
@@ -7799,7 +7792,7 @@ function Wallet() {
                                                                                     {stake.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} ICP
                                                                                     {icpPrice && (
                                                                                         <span style={{ color: theme.colors.mutedText, fontWeight: '400', fontSize: '0.85rem', marginLeft: '6px' }}>
-                                                                                            (${(stake * icpPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                                                                                            ({denomFormatValue(stake * icpPrice)})
                                                                                         </span>
                                                                                     )}
                                                                                 </div>
@@ -10138,9 +10131,10 @@ function Wallet() {
                                     size={200}
                                     thickness={36}
                                     label="Portfolio by Token"
-                                    centerText={statsChartData.grandTotal > 0 ? `$${statsChartData.grandTotal >= 10000 ? (statsChartData.grandTotal/1000).toFixed(1) + 'k' : statsChartData.grandTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : null}
+                                    centerText={statsChartData.grandTotal > 0 ? denomFormatCompact(statsChartData.grandTotal) : null}
                                     centerSubText={statsChartData.portfolioSegments.length > 0 ? `${statsChartData.portfolioSegments.length} tokens` : null}
                                     theme={theme}
+                                    formatDenom={denomFormatCompact}
                                 />
                             </div>
 
@@ -10161,6 +10155,7 @@ function Wallet() {
                                     centerText={statsChartData.catBreakdown.length > 0 ? `${statsChartData.catBreakdown.length}` : null}
                                     centerSubText={statsChartData.catBreakdown.length > 0 ? 'categories' : null}
                                     theme={theme}
+                                    formatDenom={denomFormatCompact}
                                 />
                             </div>
                         </div>
@@ -10186,8 +10181,9 @@ function Wallet() {
                                     size={160}
                                     thickness={28}
                                     label="Liquid Tokens"
-                                    centerText={statsChartData.liquidSegments.length > 0 ? `$${statsChartData.liquidSegments.reduce((s, v) => s + v.value, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : null}
+                                    centerText={statsChartData.liquidSegments.length > 0 ? denomFormatCompact(statsChartData.liquidSegments.reduce((s, v) => s + v.value, 0)) : null}
                                     theme={theme}
+                                    formatDenom={denomFormatCompact}
                                 />
                             </div>
 
@@ -10206,8 +10202,9 @@ function Wallet() {
                                     size={160}
                                     thickness={28}
                                     label="Staked (Neurons)"
-                                    centerText={statsChartData.stakedSegments.length > 0 ? `$${statsChartData.stakedSegments.reduce((s, v) => s + v.value, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : null}
+                                    centerText={statsChartData.stakedSegments.length > 0 ? denomFormatCompact(statsChartData.stakedSegments.reduce((s, v) => s + v.value, 0)) : null}
                                     theme={theme}
+                                    formatDenom={denomFormatCompact}
                                 />
                             </div>
 
@@ -10226,8 +10223,9 @@ function Wallet() {
                                     size={160}
                                     thickness={28}
                                     label="Liquidity Positions"
-                                    centerText={statsChartData.lpSegments.length > 0 ? `$${statsChartData.lpSegments.reduce((s, v) => s + v.value, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : null}
+                                    centerText={statsChartData.lpSegments.length > 0 ? denomFormatCompact(statsChartData.lpSegments.reduce((s, v) => s + v.value, 0)) : null}
                                     theme={theme}
+                                    formatDenom={denomFormatCompact}
                                 />
                             </div>
 
@@ -10246,8 +10244,9 @@ function Wallet() {
                                     size={160}
                                     thickness={28}
                                     label="Locked Assets"
-                                    centerText={statsChartData.lockedSegments.length > 0 ? `$${statsChartData.lockedSegments.reduce((s, v) => s + v.value, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : null}
+                                    centerText={statsChartData.lockedSegments.length > 0 ? denomFormatCompact(statsChartData.lockedSegments.reduce((s, v) => s + v.value, 0)) : null}
                                     theme={theme}
+                                    formatDenom={denomFormatCompact}
                                 />
                             </div>
 
@@ -10267,8 +10266,9 @@ function Wallet() {
                                         size={160}
                                         thickness={28}
                                         label="Unclaimed Rewards & Fees"
-                                        centerText={`$${statsChartData.rewardsFeesSegments.reduce((s, v) => s + v.value, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                                        centerText={denomFormatCompact(statsChartData.rewardsFeesSegments.reduce((s, v) => s + v.value, 0))}
                                         theme={theme}
+                                        formatDenom={denomFormatCompact}
                                     />
                                 </div>
                             )}
@@ -10321,7 +10321,7 @@ function Wallet() {
                                     </thead>
                                     <tbody>
                                         {statsChartData.tokenTotals.map((t, i) => {
-                                            const fmtCell = (v) => v > 0.01 ? `$${v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-';
+                                            const fmtCell = (v) => v > 0.01 ? (denomFormatCompact(v) || '-') : '-';
                                             return (
                                                 <tr key={i} style={{ transition: 'background 0.15s ease' }}
                                                     onMouseEnter={(e) => e.currentTarget.style.background = `${walletPrimary}08`}
@@ -10339,7 +10339,7 @@ function Wallet() {
                                                     <td style={{ padding: '6px 8px', textAlign: 'right', color: t.locked > 0.01 ? CATEGORY_COLORS.locked : theme.colors.mutedText }}>{fmtCell(t.locked)}</td>
                                                     <td style={{ padding: '6px 8px', textAlign: 'right', color: t.rewards > 0.01 ? CATEGORY_COLORS.rewards : theme.colors.mutedText }}>{fmtCell(t.rewards)}</td>
                                                     <td style={{ padding: '6px 8px', textAlign: 'right', color: t.icpBots > 0.01 ? CATEGORY_COLORS.icpBots : theme.colors.mutedText }}>{fmtCell(t.icpBots)}</td>
-                                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: '700', color: walletPrimary }}>${t.total.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: '700', color: walletPrimary }}>{denomFormatCompact(t.total)}</td>
                                                 </tr>
                                             );
                                         })}
@@ -10351,12 +10351,12 @@ function Wallet() {
                                                 const sum = statsChartData.tokenTotals.reduce((s, t) => s + t[key], 0);
                                                 return (
                                                     <td key={key} style={{ padding: '8px', textAlign: 'right', fontWeight: '600', color: sum > 0.01 ? theme.colors.primaryText : theme.colors.mutedText, borderTop: `2px solid ${theme.colors.border}` }}>
-                                                        {sum > 0.01 ? `$${sum.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '-'}
+                                                        {sum > 0.01 ? (denomFormatCompact(sum) || '-') : '-'}
                                                     </td>
                                                 );
                                             })}
                                             <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700', color: walletPrimary, borderTop: `2px solid ${theme.colors.border}`, fontSize: '0.8rem' }}>
-                                                ${statsChartData.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                {denomFormatValue(statsChartData.grandTotal)}
                                             </td>
                                         </tr>
                                     </tfoot>

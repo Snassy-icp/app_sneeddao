@@ -402,6 +402,7 @@ export interface UserSettings {
   'collectibles_threshold' : number,
   'notify_bot_log_errors' : boolean,
   'neuron_manager_cycle_threshold_orange' : bigint,
+  'denomination_token' : string,
 }
 export interface UserSettingsUpdate {
   'expand_quick_links_on_desktop' : [] | [boolean],
@@ -432,6 +433,7 @@ export interface UserSettingsUpdate {
   'collectibles_threshold' : [] | [number],
   'notify_bot_log_errors' : [] | [boolean],
   'neuron_manager_cycle_threshold_orange' : [] | [bigint],
+  'denomination_token' : [] | [string],
 }
 export interface WalletLayout {
   'apps' : Array<Principal>,

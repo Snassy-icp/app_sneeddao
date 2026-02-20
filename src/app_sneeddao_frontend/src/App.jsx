@@ -25,6 +25,7 @@ import { WalletProvider } from './contexts/WalletContext';
 import { WalletLayoutProvider } from './contexts/WalletLayoutContext';
 import { FrontendUpdateProvider, useFrontendUpdate } from './contexts/FrontendUpdateContext';
 import { WhitelistTokensProvider } from './contexts/WhitelistTokensContext';
+import { DenominationProvider } from './contexts/DenominationContext';
 import Layout from './components/Layout';
 import CacheRefreshDialog from './components/CacheRefreshDialog';
 
@@ -149,6 +150,7 @@ function App() {
                 <PremiumProvider>
                 <WhitelistTokensProvider>
                 <WalletProvider>
+                <DenominationProvider>
                 <WalletLayoutProvider>
                 <NamingProvider>
                   <FrontendUpdateProvider>
@@ -278,6 +280,7 @@ function App() {
                   </FrontendUpdateProvider>
                 </NamingProvider>
                 </WalletLayoutProvider>
+                </DenominationProvider>
                 </WalletProvider>
                 </WhitelistTokensProvider>
                 </PremiumProvider>

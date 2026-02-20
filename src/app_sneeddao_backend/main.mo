@@ -147,6 +147,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   stable var stable_user_setting_notify_bot_log_errors : [(Principal, Bool)] = [];
   stable var stable_user_setting_notify_bot_log_warnings : [(Principal, Bool)] = [];
   stable var stable_user_setting_notify_updates : [(Principal, Bool)] = [];
+  stable var stable_user_setting_denomination_token : [(Principal, Text)] = [];
   
   // Per-user per-canister last-seen log ID (for cross-device bot log alert tracking)
   stable var stable_user_last_seen_log_id : [(Principal, [(Principal, Nat)])] = [];
@@ -264,6 +265,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   transient let default_frontend_update_countdown_sec : Nat = 300;
   transient let default_swap_slippage_tolerance : Float = 0.01;
   transient let default_always_show_remove_token : Bool = false;
+  transient let default_denomination_token : Text = "xevnm-gaaaa-aaaar-qafnq-cai"; // ckUSDC
   transient let default_notify_replies : Bool = true;
   transient let default_notify_tips : Bool = true;
   transient let default_notify_messages : Bool = true;
@@ -294,6 +296,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   transient var user_setting_frontend_update_countdown_sec : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
   transient var user_setting_swap_slippage_tolerance : HashMap.HashMap<Principal, Float> = HashMap.HashMap<Principal, Float>(100, Principal.equal, Principal.hash);
   transient var user_setting_always_show_remove_token : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  transient var user_setting_denomination_token : HashMap.HashMap<Principal, Text> = HashMap.HashMap<Principal, Text>(100, Principal.equal, Principal.hash);
   transient var user_setting_notify_replies : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
   transient var user_setting_notify_tips : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
   transient var user_setting_notify_messages : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
@@ -496,6 +499,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         case (?value) value;
         case null default_always_show_remove_token;
       };
+      denomination_token = switch (user_setting_denomination_token.get(user)) {
+        case (?value) value;
+        case null default_denomination_token;
+      };
       notify_replies = switch (user_setting_notify_replies.get(user)) {
         case (?value) value;
         case null default_notify_replies;
@@ -612,6 +619,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       case (?value) { user_setting_always_show_remove_token.put(user, value) };
       case null {};
     };
+    switch (update.denomination_token) {
+      case (?value) { user_setting_denomination_token.put(user, value) };
+      case null {};
+    };
     switch (update.notify_replies) {
       case (?value) { user_setting_notify_replies.put(user, value) };
       case null {};
@@ -679,6 +690,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         frontend_update_countdown_sec = default_frontend_update_countdown_sec;
         swap_slippage_tolerance = default_swap_slippage_tolerance;
         always_show_remove_token = default_always_show_remove_token;
+        denomination_token = default_denomination_token;
         notify_replies = default_notify_replies;
         notify_tips = default_notify_tips;
         notify_messages = default_notify_messages;
@@ -3475,6 +3487,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     stable_user_setting_notify_bot_log_errors := Iter.toArray(user_setting_notify_bot_log_errors.entries());
     stable_user_setting_notify_bot_log_warnings := Iter.toArray(user_setting_notify_bot_log_warnings.entries());
     stable_user_setting_notify_updates := Iter.toArray(user_setting_notify_updates.entries());
+    stable_user_setting_denomination_token := Iter.toArray(user_setting_denomination_token.entries());
 
     // Serialize per-user per-canister last-seen log IDs
     var lastSeenEntries = List.nil<(Principal, [(Principal, Nat)])>();
@@ -3733,6 +3746,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         user_setting_notify_updates.put(user, value);
       };
       stable_user_setting_notify_updates := [];
+      for ((user, value) in stable_user_setting_denomination_token.vals()) {
+        user_setting_denomination_token.put(user, value);
+      };
+      stable_user_setting_denomination_token := [];
 
       // Restore per-user per-canister last-seen log IDs
       for ((user, pairs) in stable_user_last_seen_log_id.vals()) {
