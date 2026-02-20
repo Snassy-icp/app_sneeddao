@@ -39,6 +39,7 @@ export const idlFactory = ({ IDL }) => {
         ManageDistributeFunds: IDL.Null,
         ManageSnapshotChore: IDL.Null,
         ManageCircuitBreaker: IDL.Null,
+        ManagePurses: IDL.Null,
     });
 
     const HotkeyPermissionInfo = IDL.Record({
@@ -623,6 +624,27 @@ export const idlFactory = ({ IDL }) => {
     });
 
     // ==========================================
+    // Chore Purse types
+    // ==========================================
+    const PurseBalance = IDL.Record({
+        token: IDL.Principal,
+        subaccountNumber: IDL.Opt(IDL.Nat),
+        balance: IDL.Nat,
+    });
+
+    const MainPurseBalance = IDL.Record({
+        token: IDL.Principal,
+        subaccountNumber: IDL.Opt(IDL.Nat),
+        balance: IDL.Nat,
+        overcommitted: IDL.Bool,
+    });
+
+    const PurseResult = IDL.Variant({
+        Ok: IDL.Null,
+        Err: IDL.Text,
+    });
+
+    // ==========================================
     // Service definition
     // ==========================================
     return IDL.Service({
@@ -792,6 +814,17 @@ export const idlFactory = ({ IDL }) => {
         setCircuitBreakerEnabled: IDL.Func([IDL.Bool], [], []),
         getCircuitBreakerLog: IDL.Func([CBLogQuery], [CBLogResult], ['query']),
         clearCircuitBreakerLog: IDL.Func([], [], []),
+
+        // Chore Purses
+        isPurseEnabled: IDL.Func([IDL.Text], [IDL.Bool], ['query']),
+        enablePurse: IDL.Func([IDL.Text], [], []),
+        disablePurse: IDL.Func([IDL.Text], [PurseResult], []),
+        getPurseBalances: IDL.Func([IDL.Text], [IDL.Vec(PurseBalance)], ['query']),
+        getPurseBalance: IDL.Func([IDL.Text, IDL.Principal, IDL.Opt(IDL.Nat)], [IDL.Nat], ['query']),
+        getMainPurseBalances: IDL.Func([], [IDL.Vec(MainPurseBalance)], []),
+        getMainPurseBalance: IDL.Func([IDL.Principal, IDL.Opt(IDL.Nat)], [MainPurseBalance], []),
+        fundPurse: IDL.Func([IDL.Text, IDL.Principal, IDL.Nat], [PurseResult], []),
+        reclaimFromPurse: IDL.Func([IDL.Text, IDL.Principal, IDL.Nat], [PurseResult], []),
     });
 };
 

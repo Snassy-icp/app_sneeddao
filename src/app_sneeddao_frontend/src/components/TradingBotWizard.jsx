@@ -355,6 +355,8 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
     const [fundAmount, setFundAmount] = useState('');
     const [walletBalance, setWalletBalance] = useState(null);
     const [inputMeta, setInputMeta] = useState(null);
+    const [usePurse, setUsePurse] = useState(false);
+    const [autoStart, setAutoStart] = useState(true);
     const [deploying, setDeploying] = useState(false);
     const [deployError, setDeployError] = useState('');
     const [deploySuccess, setDeploySuccess] = useState(false);
@@ -431,6 +433,11 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
             setDeployStep('Setting chore interval...');
             await bot.setChoreInterval(instId, Number(intervalMinutes) * 60);
 
+            if (usePurse) {
+                setDeployStep('Enabling chore purse...');
+                await bot.enablePurse(instId);
+            }
+
             if (fundAmount && Number(fundAmount) > 0) {
                 setDeployStep('Funding bot from wallet...');
                 const rawFund = BigInt(Math.floor(Number(fundAmount) * Math.pow(10, dec)));
@@ -440,10 +447,17 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
                     amount: rawFund,
                     fee: [], memo: [], from_subaccount: [], created_at_time: [],
                 });
+                if (usePurse) {
+                    setDeployStep('Funding chore purse...');
+                    const result = await bot.fundPurse(instId, Principal.fromText(inputToken), rawFund);
+                    if ('Err' in result) throw new Error('Fund purse failed: ' + result.Err);
+                }
             }
 
-            setDeployStep('Starting chore...');
-            await bot.startChore(instId);
+            if (autoStart) {
+                setDeployStep('Starting chore...');
+                await bot.startChore(instId);
+            }
             setDeployedInstanceId(instId);
             setDeploySuccess(true);
         } catch (e) {
@@ -465,7 +479,7 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
     if (deploySuccess) {
         return (
             <div className="wizard-fade-in" style={{ textAlign: 'center' }}>
-                <WizardMascot message="Your DCA bot is live! It will automatically buy on schedule. You can always adjust settings from the Chores tab." theme={theme} />
+                <WizardMascot message={autoStart ? "Your DCA bot is live! It will automatically buy on schedule. You can always adjust settings from the Chores tab." : "Your DCA bot is deployed but paused. Start it from the Chores tab when you're ready."} theme={theme} />
                 <div style={{ marginTop: '1.5rem' }}>
                     <button onClick={() => onComplete('trade', deployedInstanceId)} style={btnPrimary(theme)}>
                         Done <FaCheck size={12} />
@@ -533,12 +547,32 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
                             )}
                         </div>
                         <div style={{ padding: '12px', background: theme.colors.primaryBg, borderRadius: '10px', border: `1px solid ${theme.colors.border}`, marginBottom: '14px' }}>
+                            <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>Options</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                <button onClick={() => setUsePurse(!usePurse)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: usePurse ? ACCENT : theme.colors.secondaryText, display: 'flex', alignItems: 'center', padding: 0 }}>
+                                    {usePurse ? <FaShieldAlt size={16} /> : <FaShieldAlt size={16} />}
+                                </button>
+                                <span style={{ fontSize: '0.82rem', color: theme.colors.primaryText }}>Isolate funds with own purse</span>
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: theme.colors.secondaryText, marginBottom: '10px', paddingLeft: '24px' }}>
+                                {usePurse ? 'This chore will only use funds explicitly allocated to its purse.' : 'This chore will share the main account balance with other chores.'}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <button onClick={() => setAutoStart(!autoStart)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: autoStart ? ACCENT : theme.colors.secondaryText, display: 'flex', alignItems: 'center', padding: 0 }}>
+                                    {autoStart ? <FaCheck size={14} /> : <FaTimes size={14} />}
+                                </button>
+                                <span style={{ fontSize: '0.82rem', color: theme.colors.primaryText }}>Start chore immediately after deploy</span>
+                            </div>
+                        </div>
+                        <div style={{ padding: '12px', background: theme.colors.primaryBg, borderRadius: '10px', border: `1px solid ${theme.colors.border}`, marginBottom: '14px' }}>
                             <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>Summary</div>
                             <SummaryRow label="Strategy" value="Dollar Cost Averaging" theme={theme} />
                             <SummaryRow label="Pair" value={`${inputSymbol} → ${outputSymbol}`} theme={theme} />
                             <SummaryRow label="Trade size" value={`${tradeSize} ${inputSymbol}`} theme={theme} />
                             <SummaryRow label="Interval" value={`Every ${intervalMinutes} min`} theme={theme} />
                             {fundAmount && Number(fundAmount) > 0 && <SummaryRow label="Funding" value={`${fundAmount} ${inputSymbol}`} theme={theme} />}
+                            <SummaryRow label="Purse" value={usePurse ? 'Isolated' : 'Shared (main)'} theme={theme} />
+                            <SummaryRow label="Auto-start" value={autoStart ? 'Yes' : 'No'} theme={theme} />
                         </div>
                         {deployError && <div style={{ color: theme.colors.error || '#ef4444', fontSize: '0.82rem', padding: '10px 12px', background: `${theme.colors.error || '#ef4444'}15`, borderRadius: '8px', marginBottom: '10px' }}>{deployError}</div>}
                         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -577,6 +611,8 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
     const [fundAmount, setFundAmount] = useState('');
     const [walletBalance, setWalletBalance] = useState(null);
     const [fundMeta, setFundMeta] = useState(null);
+    const [usePurse, setUsePurse] = useState(false);
+    const [autoStart, setAutoStart] = useState(true);
     const [deploying, setDeploying] = useState(false);
     const [deployError, setDeployError] = useState('');
     const [deploySuccess, setDeploySuccess] = useState(false);
@@ -696,6 +732,11 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
             setDeployStep('Setting chore interval...');
             await bot.setChoreInterval(instId, Number(intervalMinutes) * 60);
 
+            if (usePurse) {
+                setDeployStep('Enabling chore purse...');
+                await bot.enablePurse(instId);
+            }
+
             if (fundAmount && Number(fundAmount) > 0 && fundToken) {
                 setDeployStep('Funding bot...');
                 const rawFund = BigInt(Math.floor(Number(fundAmount) * Math.pow(10, fundDecimals)));
@@ -704,10 +745,17 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                     to: { owner: Principal.fromText(canisterId), subaccount: [] },
                     amount: rawFund, fee: [], memo: [], from_subaccount: [], created_at_time: [],
                 });
+                if (usePurse) {
+                    setDeployStep('Funding chore purse...');
+                    const result = await bot.fundPurse(instId, Principal.fromText(fundToken), rawFund);
+                    if ('Err' in result) throw new Error('Fund purse failed: ' + result.Err);
+                }
             }
 
-            setDeployStep('Starting chore...');
-            await bot.startChore(instId);
+            if (autoStart) {
+                setDeployStep('Starting chore...');
+                await bot.startChore(instId);
+            }
             setDeployedInstanceId(instId);
             setDeploySuccess(true);
         } catch (e) {
@@ -725,7 +773,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
     if (deploySuccess) {
         return (
             <div className="wizard-fade-in" style={{ textAlign: 'center' }}>
-                <WizardMascot message={`Your range trading bot for ${symA}/${symB} is live! It will trade when prices hit your ranges.`} theme={theme} />
+                <WizardMascot message={autoStart ? `Your range trading bot for ${symA}/${symB} is live! It will trade when prices hit your ranges.` : `Your range trading bot for ${symA}/${symB} is deployed but paused. Start it from the Chores tab when you're ready.`} theme={theme} />
                 <div style={{ marginTop: '1.5rem' }}>
                     <button onClick={() => onComplete('trade', deployedInstanceId)} style={btnPrimary(theme)}>Done <FaCheck size={12} /></button>
                 </div>
@@ -845,6 +893,24 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                             <AmountInput label={`Amount to fund (optional)`} value={fundAmount} onChange={setFundAmount} theme={theme} placeholder="0" />
                         </div>
                         <div style={{ padding: '12px', background: theme.colors.primaryBg, borderRadius: '10px', border: `1px solid ${theme.colors.border}`, marginBottom: '14px' }}>
+                            <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>Options</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                <button onClick={() => setUsePurse(!usePurse)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: usePurse ? ACCENT : theme.colors.secondaryText, display: 'flex', alignItems: 'center', padding: 0 }}>
+                                    <FaShieldAlt size={16} />
+                                </button>
+                                <span style={{ fontSize: '0.82rem', color: theme.colors.primaryText }}>Isolate funds with own purse</span>
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: theme.colors.secondaryText, marginBottom: '10px', paddingLeft: '24px' }}>
+                                {usePurse ? 'This chore will only use funds explicitly allocated to its purse.' : 'This chore will share the main account balance with other chores.'}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <button onClick={() => setAutoStart(!autoStart)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: autoStart ? ACCENT : theme.colors.secondaryText, display: 'flex', alignItems: 'center', padding: 0 }}>
+                                    {autoStart ? <FaCheck size={14} /> : <FaTimes size={14} />}
+                                </button>
+                                <span style={{ fontSize: '0.82rem', color: theme.colors.primaryText }}>Start chore immediately after deploy</span>
+                            </div>
+                        </div>
+                        <div style={{ padding: '12px', background: theme.colors.primaryBg, borderRadius: '10px', border: `1px solid ${theme.colors.border}`, marginBottom: '14px' }}>
                             <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>Summary</div>
                             <SummaryRow label="Strategy" value="Range Trade" theme={theme} />
                             <SummaryRow label="Pair" value={`${symA} / ${symB}`} theme={theme} />
@@ -857,6 +923,8 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                                 <SummaryRow label="Stop loss" value={`Sell all ${stopLossSellToken === 'A' ? symA : symB} below ${stopLossPrice} ${symB}`} theme={theme} />
                                 <SummaryRow label="Stop loss tolerances" value={`${stopLossMaxSlippage}% slippage, ${stopLossMaxImpact}% impact`} theme={theme} />
                             </>}
+                            <SummaryRow label="Purse" value={usePurse ? 'Isolated' : 'Shared (main)'} theme={theme} />
+                            <SummaryRow label="Auto-start" value={autoStart ? 'Yes' : 'No'} theme={theme} />
                         </div>
                         {deployError && <div style={{ color: theme.colors.error || '#ef4444', fontSize: '0.82rem', padding: '10px 12px', background: `${theme.colors.error || '#ef4444'}15`, borderRadius: '8px', marginBottom: '10px' }}>{deployError}</div>}
                         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -885,6 +953,8 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
     const [fundAmount, setFundAmount] = useState('');
     const [walletBalance, setWalletBalance] = useState(null);
     const [fundMeta, setFundMeta] = useState(null);
+    const [usePurse, setUsePurse] = useState(false);
+    const [autoStart, setAutoStart] = useState(true);
     const [deploying, setDeploying] = useState(false);
     const [deployError, setDeployError] = useState('');
     const [deploySuccess, setDeploySuccess] = useState(false);
@@ -961,6 +1031,11 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
             await bot.setRebalanceMaxPriceImpactBps(instId, Math.round(Number(maxImpact) * 100));
             await bot.setChoreInterval(instId, Number(intervalMinutes) * 60);
 
+            if (usePurse) {
+                setDeployStep('Enabling chore purse...');
+                await bot.enablePurse(instId);
+            }
+
             if (fundAmount && Number(fundAmount) > 0 && fundToken) {
                 setDeployStep('Funding bot...');
                 const rawFund = BigInt(Math.floor(Number(fundAmount) * Math.pow(10, fundDecimals)));
@@ -969,10 +1044,17 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
                     to: { owner: Principal.fromText(canisterId), subaccount: [] },
                     amount: rawFund, fee: [], memo: [], from_subaccount: [], created_at_time: [],
                 });
+                if (usePurse) {
+                    setDeployStep('Funding chore purse...');
+                    const result = await bot.fundPurse(instId, Principal.fromText(fundToken), rawFund);
+                    if ('Err' in result) throw new Error('Fund purse failed: ' + result.Err);
+                }
             }
 
-            setDeployStep('Starting rebalancer...');
-            await bot.startChore(instId);
+            if (autoStart) {
+                setDeployStep('Starting rebalancer...');
+                await bot.startChore(instId);
+            }
             setDeployedInstanceId(instId);
             setDeploySuccess(true);
         } catch (e) {
@@ -990,7 +1072,7 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
     if (deploySuccess) {
         return (
             <div className="wizard-fade-in" style={{ textAlign: 'center' }}>
-                <WizardMascot message="Your self-balancing portfolio is live! The rebalancer will keep your allocations on target." theme={theme} />
+                <WizardMascot message={autoStart ? "Your self-balancing portfolio is live! The rebalancer will keep your allocations on target." : "Your self-balancing portfolio is deployed but paused. Start it from the Chores tab when you're ready."} theme={theme} />
                 <div style={{ marginTop: '1.5rem' }}>
                     <button onClick={() => onComplete('rebalance', deployedInstanceId)} style={btnPrimary(theme)}>Done <FaCheck size={12} /></button>
                 </div>
@@ -1097,6 +1179,24 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
                             <AmountInput label="Amount to fund (optional)" value={fundAmount} onChange={setFundAmount} theme={theme} placeholder="0" />
                         </div>
                         <div style={{ padding: '12px', background: theme.colors.primaryBg, borderRadius: '10px', border: `1px solid ${theme.colors.border}`, marginBottom: '14px' }}>
+                            <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>Options</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                <button onClick={() => setUsePurse(!usePurse)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: usePurse ? ACCENT : theme.colors.secondaryText, display: 'flex', alignItems: 'center', padding: 0 }}>
+                                    <FaShieldAlt size={16} />
+                                </button>
+                                <span style={{ fontSize: '0.82rem', color: theme.colors.primaryText }}>Isolate funds with own purse</span>
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: theme.colors.secondaryText, marginBottom: '10px', paddingLeft: '24px' }}>
+                                {usePurse ? 'This chore will only use funds explicitly allocated to its purse.' : 'This chore will share the main account balance with other chores.'}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <button onClick={() => setAutoStart(!autoStart)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: autoStart ? ACCENT : theme.colors.secondaryText, display: 'flex', alignItems: 'center', padding: 0 }}>
+                                    {autoStart ? <FaCheck size={14} /> : <FaTimes size={14} />}
+                                </button>
+                                <span style={{ fontSize: '0.82rem', color: theme.colors.primaryText }}>Start chore immediately after deploy</span>
+                            </div>
+                        </div>
+                        <div style={{ padding: '12px', background: theme.colors.primaryBg, borderRadius: '10px', border: `1px solid ${theme.colors.border}`, marginBottom: '14px' }}>
                             <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>Summary</div>
                             <SummaryRow label="Strategy" value="Self-Balancing Portfolio" theme={theme} />
                             {targets.map((t, i) => t.token && (
@@ -1104,6 +1204,8 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
                             ))}
                             <SummaryRow label="Threshold" value={`${thresholdPct}%`} theme={theme} />
                             <SummaryRow label="Interval" value={`Every ${intervalMinutes} min`} theme={theme} />
+                            <SummaryRow label="Purse" value={usePurse ? 'Isolated' : 'Shared (main)'} theme={theme} />
+                            <SummaryRow label="Auto-start" value={autoStart ? 'Yes' : 'No'} theme={theme} />
                         </div>
                         {deployError && <div style={{ color: theme.colors.error || '#ef4444', fontSize: '0.82rem', padding: '10px 12px', background: `${theme.colors.error || '#ef4444'}15`, borderRadius: '8px', marginBottom: '10px' }}>{deployError}</div>}
                         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>

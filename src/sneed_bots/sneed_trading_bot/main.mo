@@ -6413,11 +6413,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     public shared (msg) func createChoreInstance(typeId: Text, instanceId: Text, instanceLabel: Text): async Bool {
         assertPermission(msg.caller, choreManagePermission(typeId));
-        let ok = choreEngine.createInstance(typeId, instanceId, instanceLabel);
-        if (ok) {
-            chorePurseEnabled := Array.append(chorePurseEnabled, [(instanceId, true)]);
-        };
-        ok
+        choreEngine.createInstance(typeId, instanceId, instanceLabel)
     };
 
     public shared (msg) func deleteChoreInstance(instanceId: Text): async Bool {
@@ -7018,7 +7014,6 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         for (entry in tokenRegistry.vals()) {
             let tok = entry.ledgerCanisterId;
             let onChain = try { await getBalance(tok, null) } catch (_) { 0 };
-            reconcileBalance(tok, null, onChain, "api");
             let main = computeMainPurseBalance(tok, null, onChain);
             if (onChain > 0 or main.overcommitted) {
                 buf.add({ token = tok; subaccountNumber = null; balance = main.balance; overcommitted = main.overcommitted });
@@ -7034,7 +7029,6 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case null null;
         };
         let onChain = await getBalance(token, sub);
-        reconcileBalance(token, sub, onChain, "api");
         let main = computeMainPurseBalance(token, sub, onChain);
         { token = token; subaccountNumber = subaccountNumber; balance = main.balance; overcommitted = main.overcommitted }
     };
@@ -7046,7 +7040,6 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
         if (amount == 0) { return #Err("Amount must be > 0.") };
         let onChain = await getBalance(token, null);
-        reconcileBalance(token, null, onChain, "api");
         let main = computeMainPurseBalance(token, null, onChain);
         if (amount > main.balance) {
             return #Err("Insufficient main purse balance. Available: " # Nat.toText(main.balance) # ", requested: " # Nat.toText(amount));
