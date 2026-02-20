@@ -7044,6 +7044,38 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         getChorePurseBalance(instanceId, token, sub)
     };
 
+    public shared query (msg) func getAllPurseAllocations(): async [T.ChorePurseInfo] {
+        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
+        let choreIds = Buffer.Buffer<Text>(8);
+        for ((id, _) in chorePurseEnabled.vals()) {
+            choreIds.add(id);
+        };
+        for ((id, _) in chorePurseBalances.vals()) {
+            if (not Buffer.contains<Text>(choreIds, id, Text.equal)) {
+                choreIds.add(id);
+            };
+        };
+        let result = Buffer.Buffer<T.ChorePurseInfo>(choreIds.size());
+        for (id in choreIds.vals()) {
+            let enabled = isPurseEnabledForChore(id);
+            let balBuf = Buffer.Buffer<T.PurseBalance>(4);
+            for ((cid, entries) in chorePurseBalances.vals()) {
+                if (cid == id) {
+                    for ((key, bal) in entries.vals()) {
+                        if (bal > 0) {
+                            switch (parseBalanceKey(key)) {
+                                case (?(tok, sub)) { balBuf.add({ token = tok; subaccountNumber = sub; balance = bal }) };
+                                case null {};
+                            };
+                        };
+                    };
+                };
+            };
+            result.add({ instanceId = id; enabled = enabled; balances = Buffer.toArray(balBuf) });
+        };
+        Buffer.toArray(result)
+    };
+
     public shared (msg) func getMainPurseBalances(): async [T.MainPurseBalance] {
         assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
         let buf = Buffer.Buffer<T.MainPurseBalance>(8);

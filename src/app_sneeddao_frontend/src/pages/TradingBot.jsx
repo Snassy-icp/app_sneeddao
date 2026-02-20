@@ -6374,7 +6374,8 @@ function SnapshotChoreConfigPanel({ instanceId, theme, accentColor, cardStyle })
 // ============================================
 // Chore Purse Panel
 // ============================================
-function PursePanel({ instanceId, getReadyBotActor, theme, accentColor }) {
+function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canisterId }) {
+    const { identity } = useAuth();
     const [purseEnabled, setPurseEnabled] = useState(null);
     const [purseBalances, setPurseBalances] = useState([]);
     const [mainPurseBalances, setMainPurseBalances] = useState([]);
@@ -6421,22 +6422,78 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor }) {
         setError(null);
         try {
             const actor = await getReadyBotActor();
-            const enabled = await actor.isPurseEnabled(instanceId);
+            const allPurses = await actor.getAllPurseAllocations();
+
+            const myPurse = allPurses.find(p => p.instanceId === instanceId);
+            const enabled = myPurse?.enabled ?? false;
             setPurseEnabled(enabled);
+
             if (enabled) {
-                const [bals, mainBals] = await Promise.all([
-                    actor.getPurseBalances(instanceId),
-                    actor.getMainPurseBalances(),
-                ]);
+                const bals = (myPurse?.balances || []).filter(b => Number(b.balance) > 0);
                 setPurseBalances(bals);
-                setMainPurseBalances(mainBals);
+
+                // Collect all tokens that have purse allocations across ALL chores (for main purse computation)
+                const totalAllocated = {}; // tokenKey -> BigInt total
+                const tokenSet = new Set();
+                for (const chore of allPurses) {
+                    for (const b of chore.balances) {
+                        const tok = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+                        const subNum = b.subaccountNumber?.[0] != null ? Number(b.subaccountNumber[0]) : null;
+                        const key = subNum != null ? `${tok}:${subNum}` : tok;
+                        tokenSet.add(tok);
+                        totalAllocated[key] = (totalAllocated[key] || 0n) + BigInt(b.balance);
+                    }
+                }
+
+                // Fetch on-chain balances for these tokens directly from ledgers
+                if (tokenSet.size > 0 && canisterId) {
+                    try {
+                        const { HttpAgent } = await import('@dfinity/agent');
+                        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                        const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
+                        const agent = HttpAgent.createSync({ identity, host });
+                        if (isLocal) await agent.fetchRootKey();
+                        const botPrincipal = Principal.fromText(canisterId);
+
+                        const tokens = [...tokenSet];
+                        const onChain = {};
+                        await Promise.all(tokens.map(async (tid) => {
+                            try {
+                                const ledgerActor = createLedgerActor(tid, { agent });
+                                const bal = await ledgerActor.icrc1_balance_of({ owner: botPrincipal, subaccount: [] });
+                                onChain[tid] = BigInt(bal);
+                            } catch (_) { onChain[tid] = 0n; }
+                        }));
+
+                        // Compute main purse: on-chain - sum of all chore allocations (main account only, subaccountNumber=null)
+                        const mainBals = [];
+                        for (const tid of tokens) {
+                            const chain = onChain[tid] || 0n;
+                            const allocated = totalAllocated[tid] || 0n;
+                            const available = chain > allocated ? chain - allocated : 0n;
+                            const overcommitted = allocated > chain;
+                            if (chain > 0n || overcommitted) {
+                                mainBals.push({ token: tid, subaccountNumber: [], balance: available, overcommitted });
+                            }
+                        }
+                        setMainPurseBalances(mainBals);
+                    } catch (e) {
+                        console.warn('PursePanel: failed to fetch on-chain balances', e);
+                        setMainPurseBalances([]);
+                    }
+                } else {
+                    setMainPurseBalances([]);
+                }
+            } else {
+                setPurseBalances([]);
+                setMainPurseBalances([]);
             }
         } catch (e) {
             setError(e?.message || String(e));
         } finally {
             setLoading(false);
         }
-    }, [instanceId, getReadyBotActor]);
+    }, [instanceId, getReadyBotActor, canisterId, identity]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
@@ -6624,6 +6681,7 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
             getReadyBotActor={getReadyBotActor}
             theme={theme}
             accentColor={accentColor}
+            canisterId={canisterId}
         />
     );
 

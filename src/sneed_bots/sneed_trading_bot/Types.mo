@@ -990,4 +990,11 @@ module {
         overcommitted: Bool;
     };
 
+    /// All purse allocations for a single chore.
+    public type ChorePurseInfo = {
+        instanceId: Text;
+        enabled: Bool;
+        balances: [PurseBalance];
+    };
+
 };

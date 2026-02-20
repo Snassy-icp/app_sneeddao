@@ -645,6 +645,12 @@ export const idlFactory = ({ IDL }) => {
         Err: IDL.Text,
     });
 
+    const ChorePurseInfo = IDL.Record({
+        instanceId: IDL.Text,
+        enabled: IDL.Bool,
+        balances: IDL.Vec(PurseBalance),
+    });
+
     // ==========================================
     // Service definition
     // ==========================================
@@ -822,6 +828,7 @@ export const idlFactory = ({ IDL }) => {
         disablePurse: IDL.Func([IDL.Text], [PurseResult], []),
         getPurseBalances: IDL.Func([IDL.Text], [IDL.Vec(PurseBalance)], ['query']),
         getPurseBalance: IDL.Func([IDL.Text, IDL.Principal, IDL.Opt(IDL.Nat)], [IDL.Nat], ['query']),
+        getAllPurseAllocations: IDL.Func([], [IDL.Vec(ChorePurseInfo)], ['query']),
         getMainPurseBalances: IDL.Func([], [IDL.Vec(MainPurseBalance)], []),
         getMainPurseBalance: IDL.Func([IDL.Principal, IDL.Opt(IDL.Nat)], [MainPurseBalance], []),
         fundPurse: IDL.Func([IDL.Text, IDL.Principal, IDL.Nat], [PurseResult], []),
