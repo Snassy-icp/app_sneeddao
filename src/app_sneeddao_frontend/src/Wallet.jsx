@@ -72,7 +72,7 @@ import UpgradeBotsDialog from './components/UpgradeBotsDialog';
 import TopUpCyclesDialog from './components/TopUpCyclesDialog';
 import { PERM } from './utils/NeuronPermissionUtils.jsx';
 import { IDL } from '@dfinity/candid';
-import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt, FaSearch, FaArrowUp, FaBolt, FaSpinner, FaChartLine, FaStore } from 'react-icons/fa';
+import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt, FaSearch, FaArrowUp, FaBolt, FaSpinner, FaChartLine, FaStore, FaChartPie } from 'react-icons/fa';
 import BotIcon from './components/BotIcon';
 
 // Custom CSS for Wallet page animations
@@ -117,6 +117,78 @@ const walletCustomStyles = `
 const walletPrimary = '#10b981'; // Emerald green
 const walletSecondary = '#059669'; // Darker green
 const walletAccent = '#34d399'; // Light green
+
+const STATS_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#ec4899', '#8b5cf6', '#14b8a6', '#f97316', '#06b6d4', '#84cc16', '#e11d48', '#22d3ee', '#a78bfa', '#fb923c', '#4ade80', '#f472b6', '#38bdf8'];
+const CATEGORY_COLORS = {
+    liquid: '#3b82f6',
+    staked: '#8b5cf6',
+    maturity: '#a78bfa',
+    locked: '#ef4444',
+    liquidity: '#10b981',
+    fees: '#14b8a6',
+    rewards: '#f59e0b',
+    icpBots: '#6366f1',
+};
+const CATEGORY_ICONS = {
+    liquid: <FaTint size={10} />,
+    staked: <FaBrain size={10} />,
+    maturity: <FaSeedling size={10} />,
+    locked: <FaLock size={10} />,
+    liquidity: <FaWater size={10} />,
+    fees: <FaGift size={10} />,
+    rewards: <FaGift size={10} />,
+    icpBots: <FaStore size={10} />,
+};
+
+function WalletPieChart({ segments, size = 160, thickness = 28, label, centerText, centerSubText, theme }) {
+    const r = (size - thickness) / 2;
+    const cx = size / 2;
+    const cy = size / 2;
+    const circ = 2 * Math.PI * r;
+    const total = segments.reduce((s, seg) => s + (seg.value || 0), 0);
+    let offset = 0;
+    const arcs = total > 0 ? segments.filter(s => s.value > 0).map((seg) => {
+        const frac = seg.value / total;
+        const dashLen = frac * circ;
+        const dashOffset = -offset * circ;
+        offset += frac;
+        return { ...seg, dashLen, dashOffset, frac };
+    }) : [];
+    const fmtUSD = (v) => v >= 10000 ? `$${(v/1000).toFixed(1)}k` : v >= 1 ? `$${v.toFixed(0)}` : v > 0 ? `$${v.toFixed(2)}` : '$0';
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+            {label && <div style={{ fontSize: '0.8rem', fontWeight: '600', color: theme.colors.primaryText, letterSpacing: '0.3px' }}>{label}</div>}
+            <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+                <circle cx={cx} cy={cy} r={r} fill="none" stroke={theme.colors.border} strokeWidth={thickness} opacity={0.15} />
+                {arcs.map((arc, i) => (
+                    <circle key={i} cx={cx} cy={cy} r={r} fill="none"
+                        stroke={arc.color}
+                        strokeWidth={thickness}
+                        strokeDasharray={`${arc.dashLen} ${circ - arc.dashLen}`}
+                        strokeDashoffset={arc.dashOffset}
+                        transform={`rotate(-90 ${cx} ${cy})`}
+                        style={{ transition: 'stroke-dasharray 0.5s ease, stroke-dashoffset 0.5s ease' }}
+                    />
+                ))}
+                {centerText && <text x={cx} y={centerSubText ? cy - 7 : cy} textAnchor="middle" dominantBaseline="central" fill={theme.colors.primaryText} fontSize={size >= 200 ? 15 : 12} fontWeight="700">{centerText}</text>}
+                {centerSubText && <text x={cx} y={cy + 10} textAnchor="middle" dominantBaseline="central" fill={theme.colors.mutedText} fontSize="9">{centerSubText}</text>}
+                {total === 0 && !centerText && <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fill={theme.colors.mutedText} fontSize="10">No data</text>}
+            </svg>
+            {arcs.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', width: '100%', maxWidth: size + 80 }}>
+                    {arcs.map((arc, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem' }}>
+                            <span style={{ width: 10, height: 10, borderRadius: '50%', background: arc.color, flexShrink: 0 }} />
+                            <span style={{ color: theme.colors.secondaryText, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{arc.icon || null} {arc.label}</span>
+                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', whiteSpace: 'nowrap' }}>{fmtUSD(arc.value)}</span>
+                            <span style={{ color: theme.colors.mutedText, fontSize: '0.6rem', minWidth: '34px', textAlign: 'right' }}>{(arc.frac * 100).toFixed(1)}%</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
 
 const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
@@ -3315,6 +3387,110 @@ function Wallet() {
         setLpPositionsTotal(lpUsdTotal);
     }, [tokens, liquidityPositions, rewardDetailsLoading, neuronTotals, managerNeuronsTotal, icpPrice]);
 
+    const statsChartData = useMemo(() => {
+        const tokenMap = {};
+        for (const token of tokens) {
+            const divisor = 10 ** token.decimals;
+            const rate = token.conversion_rate || 0;
+            const ledgerId = normalizeId(token.ledger_canister_id);
+            const symbol = token.symbol || 'Unknown';
+            const liquid = Number(token.available || 0n) / divisor * rate;
+            const locked = Number(token.locked || 0n) / divisor * rate;
+            const staked = Number(BigInt(token.neuronStake || 0n)) / divisor * rate;
+            const maturity = Number(BigInt(token.neuronMaturity || 0n)) / divisor * rate;
+            let rewards = 0;
+            if (rewardDetailsLoading && rewardDetailsLoading[ledgerId] != null && BigInt(rewardDetailsLoading[ledgerId]) > 0) {
+                rewards = Number(BigInt(rewardDetailsLoading[ledgerId])) / divisor * rate;
+            }
+            tokenMap[ledgerId] = { symbol, logo: getTokenLogo(token), liquid, locked, staked, maturity, rewards, liquidity: 0, fees: 0, icpBots: 0 };
+        }
+
+        const pairMap = {};
+        for (const lp of liquidityPositions) {
+            const lid0 = lp.token0 ? normalizeId(lp.token0) : null;
+            const lid1 = lp.token1 ? normalizeId(lp.token1) : null;
+            for (const pd of lp.positions) {
+                const token0Amt = pd.token0Amount ?? pd.amount0 ?? 0n;
+                const token1Amt = pd.token1Amount ?? pd.amount1 ?? 0n;
+                const pos0USD = parseFloat(formatAmountWithConversion(token0Amt, lp.token0Decimals, lp.token0_conversion_rate)) || 0;
+                const pos1USD = parseFloat(formatAmountWithConversion(token1Amt, lp.token1Decimals, lp.token1_conversion_rate)) || 0;
+                const fees0USD = parseFloat(formatAmountWithConversion(pd.tokensOwed0 || 0n, lp.token0Decimals, lp.token0_conversion_rate)) || 0;
+                const fees1USD = parseFloat(formatAmountWithConversion(pd.tokensOwed1 || 0n, lp.token1Decimals, lp.token1_conversion_rate)) || 0;
+                const isLocked = isLockedPosition(pd);
+                if (lid0 && tokenMap[lid0]) {
+                    if (isLocked) { tokenMap[lid0].locked += pos0USD; } else { tokenMap[lid0].liquidity += pos0USD; }
+                    tokenMap[lid0].fees += fees0USD;
+                }
+                if (lid1 && tokenMap[lid1]) {
+                    if (isLocked) { tokenMap[lid1].locked += pos1USD; } else { tokenMap[lid1].liquidity += pos1USD; }
+                    tokenMap[lid1].fees += fees1USD;
+                }
+                const pairKey = `${lp.token0Symbol || '?'}/${lp.token1Symbol || '?'}`;
+                if (!pairMap[pairKey]) pairMap[pairKey] = { value: 0, fees: 0, lockedValue: 0 };
+                if (isLocked) {
+                    pairMap[pairKey].lockedValue += pos0USD + pos1USD;
+                } else {
+                    pairMap[pairKey].value += pos0USD + pos1USD;
+                }
+                pairMap[pairKey].fees += fees0USD + fees1USD;
+            }
+        }
+
+        if (managerNeuronsTotal > 0 && icpPrice) {
+            const icpEntry = Object.values(tokenMap).find(t => t.symbol === 'ICP');
+            if (icpEntry) icpEntry.icpBots = managerNeuronsTotal * icpPrice;
+        }
+
+        const tokenTotals = Object.entries(tokenMap)
+            .map(([lid, t]) => ({
+                ...t,
+                ledgerId: lid,
+                total: t.liquid + t.locked + t.staked + t.maturity + t.rewards + t.liquidity + t.fees + t.icpBots
+            }))
+            .filter(t => t.total > 0.01)
+            .sort((a, b) => b.total - a.total);
+        const grandTotal = tokenTotals.reduce((s, t) => s + t.total, 0);
+
+        const portfolioSegments = tokenTotals.map((t, i) => ({
+            label: t.symbol, value: t.total, color: STATS_COLORS[i % STATS_COLORS.length]
+        }));
+
+        const vals = Object.values(tokenMap);
+        const catBreakdown = [
+            { label: 'Liquid', value: vals.reduce((s, t) => s + t.liquid, 0), color: CATEGORY_COLORS.liquid, icon: CATEGORY_ICONS.liquid },
+            { label: 'Staked', value: vals.reduce((s, t) => s + t.staked, 0), color: CATEGORY_COLORS.staked, icon: CATEGORY_ICONS.staked },
+            { label: 'Maturity', value: vals.reduce((s, t) => s + t.maturity, 0), color: CATEGORY_COLORS.maturity, icon: CATEGORY_ICONS.maturity },
+            { label: 'Locked', value: vals.reduce((s, t) => s + t.locked, 0), color: CATEGORY_COLORS.locked, icon: CATEGORY_ICONS.locked },
+            { label: 'Liquidity', value: vals.reduce((s, t) => s + t.liquidity, 0), color: CATEGORY_COLORS.liquidity, icon: CATEGORY_ICONS.liquidity },
+            { label: 'Fees', value: vals.reduce((s, t) => s + t.fees, 0), color: CATEGORY_COLORS.fees, icon: CATEGORY_ICONS.fees },
+            { label: 'Rewards', value: vals.reduce((s, t) => s + t.rewards, 0), color: CATEGORY_COLORS.rewards, icon: CATEGORY_ICONS.rewards },
+            { label: 'ICP Bots', value: vals.reduce((s, t) => s + t.icpBots, 0), color: CATEGORY_COLORS.icpBots, icon: CATEGORY_ICONS.icpBots },
+        ].filter(c => c.value > 0.01);
+
+        const liquidSegments = tokenTotals
+            .filter(t => t.liquid > 0.01)
+            .map((t, i) => ({ label: t.symbol, value: t.liquid, color: STATS_COLORS[i % STATS_COLORS.length] }));
+
+        const stakedSegments = tokenTotals
+            .filter(t => (t.staked + t.maturity) > 0.01)
+            .map((t, i) => ({ label: t.symbol, value: t.staked + t.maturity, color: STATS_COLORS[i % STATS_COLORS.length] }));
+
+        const lpSegments = Object.entries(pairMap)
+            .filter(([, v]) => (v.value + v.fees) > 0.01)
+            .sort(([, a], [, b]) => (b.value + b.fees) - (a.value + a.fees))
+            .map(([pair, v], i) => ({ label: pair, value: v.value + v.fees, color: STATS_COLORS[i % STATS_COLORS.length] }));
+
+        const lockedSegments = tokenTotals
+            .filter(t => t.locked > 0.01)
+            .map((t, i) => ({ label: t.symbol, value: t.locked, color: STATS_COLORS[i % STATS_COLORS.length] }));
+
+        const rewardsFeesSegments = tokenTotals
+            .filter(t => (t.rewards + t.fees) > 0.01)
+            .map((t, i) => ({ label: t.symbol, value: t.rewards + t.fees, color: STATS_COLORS[i % STATS_COLORS.length] }));
+
+        return { grandTotal, portfolioSegments, catBreakdown, liquidSegments, stakedSegments, lpSegments, lockedSegments, rewardsFeesSegments, tokenTotals };
+    }, [tokens, liquidityPositions, rewardDetailsLoading, managerNeuronsTotal, icpPrice]);
+
     // Note: Total ICP value from manager neurons is now calculated in WalletContext
 
     const calc_send_amounts = (token, amount) => {
@@ -6291,7 +6467,8 @@ function Wallet() {
                     {[
                         { id: 'tokens', label: 'Tokens', icon: <FaCoins size={14} />, subtitle: tokensTotal > 0 ? `$${tokensTotal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : null },
                         { id: 'positions', label: 'Liquidity', icon: <FaExchangeAlt size={14} />, subtitle: lpPositionsTotal > 0 ? `$${lpPositionsTotal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : null },
-                        { id: 'dapps', label: 'Apps', icon: <FaBox size={14} />, subtitle: (() => { const appsCount = neuronManagers.length + trackedCanisters.length; const appsUsd = managerNeuronsTotal > 0 && icpPrice ? managerNeuronsTotal * icpPrice : 0; if (appsCount === 0 && appsUsd === 0) return null; const parts = []; if (appsUsd > 0) parts.push(`$${appsUsd.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`); if (appsCount > 0 && appsUsd === 0) parts.push(`${appsCount}`); return parts.join('') || null; })() }
+                        { id: 'dapps', label: 'Apps', icon: <FaBox size={14} />, subtitle: (() => { const appsCount = neuronManagers.length + trackedCanisters.length; const appsUsd = managerNeuronsTotal > 0 && icpPrice ? managerNeuronsTotal * icpPrice : 0; if (appsCount === 0 && appsUsd === 0) return null; const parts = []; if (appsUsd > 0) parts.push(`$${appsUsd.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`); if (appsCount > 0 && appsUsd === 0) parts.push(`${appsCount}`); return parts.join('') || null; })() },
+                        { id: 'stats', label: 'Statistics', icon: <FaChartPie size={14} />, subtitle: totalDollarValue ? `$${totalDollarValue}` : null }
                     ].map(tab => (
                         <button
                             key={tab.id}
@@ -9879,6 +10056,326 @@ function Wallet() {
                             </>
                             )}
                         </DroppableWalletSection>
+                    </div>
+                )}
+
+                {/* Statistics Tab Content */}
+                {activeWalletTab === 'stats' && (
+                    <div style={{ marginBottom: '20px' }}>
+                        <h3 style={{
+                            color: theme.colors.primaryText,
+                            fontSize: '1.1rem',
+                            fontWeight: '600',
+                            margin: '0 0 1rem 0',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem'
+                        }}>
+                            <FaChartPie size={16} color={walletPrimary} />
+                            Portfolio Statistics
+                            {statsChartData.grandTotal > 0 && (
+                                <span style={{ color: walletPrimary, fontWeight: '500' }}>
+                                    (${statsChartData.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                                </span>
+                            )}
+                        </h3>
+
+                        {/* Stacked category bar */}
+                        {statsChartData.catBreakdown.length > 0 && statsChartData.grandTotal > 0 && (
+                            <div style={{
+                                background: theme.colors.secondaryBg,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '12px',
+                                padding: '1rem 1.25rem',
+                                marginBottom: '1rem',
+                            }}>
+                                <div style={{ display: 'flex', borderRadius: '8px', overflow: 'hidden', height: '28px', marginBottom: '0.75rem' }}>
+                                    {statsChartData.catBreakdown.map((cat, i) => (
+                                        <div
+                                            key={i}
+                                            title={`${cat.label}: $${cat.value.toLocaleString(undefined, { maximumFractionDigits: 0 })} (${((cat.value / statsChartData.grandTotal) * 100).toFixed(1)}%)`}
+                                            style={{
+                                                width: `${(cat.value / statsChartData.grandTotal) * 100}%`,
+                                                background: cat.color,
+                                                minWidth: cat.value > 0 ? '2px' : 0,
+                                                transition: 'width 0.5s ease',
+                                                position: 'relative',
+                                            }}
+                                        />
+                                    ))}
+                                </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem' }}>
+                                    {statsChartData.catBreakdown.map((cat, i) => (
+                                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem' }}>
+                                            <span style={{ width: 10, height: 10, borderRadius: '3px', background: cat.color, flexShrink: 0 }} />
+                                            <span style={{ color: theme.colors.secondaryText, display: 'flex', alignItems: 'center', gap: '3px' }}>{cat.icon} {cat.label}</span>
+                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>${cat.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                            <span style={{ color: theme.colors.mutedText, fontSize: '0.65rem' }}>({((cat.value / statsChartData.grandTotal) * 100).toFixed(1)}%)</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Hero charts: Portfolio by Token + Category Breakdown */}
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                            gap: '1rem',
+                            marginBottom: '1rem'
+                        }}>
+                            <div style={{
+                                background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, ${walletPrimary}08 100%)`,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '16px',
+                                padding: '1.5rem',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                            }}>
+                                <WalletPieChart
+                                    segments={statsChartData.portfolioSegments}
+                                    size={200}
+                                    thickness={36}
+                                    label="Portfolio by Token"
+                                    centerText={statsChartData.grandTotal > 0 ? `$${statsChartData.grandTotal >= 10000 ? (statsChartData.grandTotal/1000).toFixed(1) + 'k' : statsChartData.grandTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : null}
+                                    centerSubText={statsChartData.portfolioSegments.length > 0 ? `${statsChartData.portfolioSegments.length} tokens` : null}
+                                    theme={theme}
+                                />
+                            </div>
+
+                            <div style={{
+                                background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, #8b5cf608 100%)`,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '16px',
+                                padding: '1.5rem',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                            }}>
+                                <WalletPieChart
+                                    segments={statsChartData.catBreakdown}
+                                    size={200}
+                                    thickness={36}
+                                    label="Category Breakdown"
+                                    centerText={statsChartData.catBreakdown.length > 0 ? `${statsChartData.catBreakdown.length}` : null}
+                                    centerSubText={statsChartData.catBreakdown.length > 0 ? 'categories' : null}
+                                    theme={theme}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Breakdown charts grid */}
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                            gap: '1rem',
+                        }}>
+                            {/* Liquid Tokens */}
+                            <div style={{
+                                background: theme.colors.secondaryBg,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '16px',
+                                padding: '1.25rem',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                            }}>
+                                <WalletPieChart
+                                    segments={statsChartData.liquidSegments}
+                                    size={160}
+                                    thickness={28}
+                                    label="Liquid Tokens"
+                                    centerText={statsChartData.liquidSegments.length > 0 ? `$${statsChartData.liquidSegments.reduce((s, v) => s + v.value, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : null}
+                                    theme={theme}
+                                />
+                            </div>
+
+                            {/* Staked (Neurons) */}
+                            <div style={{
+                                background: theme.colors.secondaryBg,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '16px',
+                                padding: '1.25rem',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                            }}>
+                                <WalletPieChart
+                                    segments={statsChartData.stakedSegments}
+                                    size={160}
+                                    thickness={28}
+                                    label="Staked (Neurons)"
+                                    centerText={statsChartData.stakedSegments.length > 0 ? `$${statsChartData.stakedSegments.reduce((s, v) => s + v.value, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : null}
+                                    theme={theme}
+                                />
+                            </div>
+
+                            {/* Liquidity Positions */}
+                            <div style={{
+                                background: theme.colors.secondaryBg,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '16px',
+                                padding: '1.25rem',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                            }}>
+                                <WalletPieChart
+                                    segments={statsChartData.lpSegments}
+                                    size={160}
+                                    thickness={28}
+                                    label="Liquidity Positions"
+                                    centerText={statsChartData.lpSegments.length > 0 ? `$${statsChartData.lpSegments.reduce((s, v) => s + v.value, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : null}
+                                    theme={theme}
+                                />
+                            </div>
+
+                            {/* Locked Assets */}
+                            <div style={{
+                                background: theme.colors.secondaryBg,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '16px',
+                                padding: '1.25rem',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                            }}>
+                                <WalletPieChart
+                                    segments={statsChartData.lockedSegments}
+                                    size={160}
+                                    thickness={28}
+                                    label="Locked Assets"
+                                    centerText={statsChartData.lockedSegments.length > 0 ? `$${statsChartData.lockedSegments.reduce((s, v) => s + v.value, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : null}
+                                    theme={theme}
+                                />
+                            </div>
+
+                            {/* Rewards & Fees */}
+                            {statsChartData.rewardsFeesSegments.length > 0 && (
+                                <div style={{
+                                    background: theme.colors.secondaryBg,
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderRadius: '16px',
+                                    padding: '1.25rem',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                }}>
+                                    <WalletPieChart
+                                        segments={statsChartData.rewardsFeesSegments}
+                                        size={160}
+                                        thickness={28}
+                                        label="Unclaimed Rewards & Fees"
+                                        centerText={`$${statsChartData.rewardsFeesSegments.reduce((s, v) => s + v.value, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                                        theme={theme}
+                                    />
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Detailed Breakdown Table */}
+                        {statsChartData.tokenTotals.length > 0 && (
+                            <div style={{
+                                marginTop: '1.25rem',
+                                background: theme.colors.secondaryBg,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '16px',
+                                padding: '1.25rem',
+                                overflowX: 'auto',
+                            }}>
+                                <div style={{
+                                    fontSize: '0.85rem',
+                                    fontWeight: '600',
+                                    color: theme.colors.primaryText,
+                                    marginBottom: '0.75rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                }}>
+                                    <FaChartBar size={14} color={walletPrimary} />
+                                    Detailed Breakdown
+                                </div>
+                                <table style={{
+                                    width: '100%',
+                                    borderCollapse: 'separate',
+                                    borderSpacing: '0 2px',
+                                    fontSize: '0.72rem',
+                                }}>
+                                    <thead>
+                                        <tr>
+                                            {['Token', 'Liquid', 'Staked', 'Maturity', 'Liquidity', 'Fees', 'Locked', 'Rewards', 'ICP Bots', 'Total'].map(h => (
+                                                <th key={h} style={{
+                                                    textAlign: h === 'Token' ? 'left' : 'right',
+                                                    padding: '6px 8px',
+                                                    color: theme.colors.mutedText,
+                                                    fontWeight: '500',
+                                                    fontSize: '0.65rem',
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: '0.5px',
+                                                    borderBottom: `1px solid ${theme.colors.border}`,
+                                                    whiteSpace: 'nowrap',
+                                                }}>{h}</th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {statsChartData.tokenTotals.map((t, i) => {
+                                            const fmtCell = (v) => v > 0.01 ? `$${v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-';
+                                            return (
+                                                <tr key={i} style={{ transition: 'background 0.15s ease' }}
+                                                    onMouseEnter={(e) => e.currentTarget.style.background = `${walletPrimary}08`}
+                                                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                                >
+                                                    <td style={{ padding: '6px 8px', fontWeight: '600', color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        {t.logo && <TokenIcon logo={t.logo} alt={t.symbol} size={18} />}
+                                                        {t.symbol}
+                                                    </td>
+                                                    <td style={{ padding: '6px 8px', textAlign: 'right', color: t.liquid > 0.01 ? CATEGORY_COLORS.liquid : theme.colors.mutedText }}>{fmtCell(t.liquid)}</td>
+                                                    <td style={{ padding: '6px 8px', textAlign: 'right', color: t.staked > 0.01 ? CATEGORY_COLORS.staked : theme.colors.mutedText }}>{fmtCell(t.staked)}</td>
+                                                    <td style={{ padding: '6px 8px', textAlign: 'right', color: t.maturity > 0.01 ? CATEGORY_COLORS.maturity : theme.colors.mutedText }}>{fmtCell(t.maturity)}</td>
+                                                    <td style={{ padding: '6px 8px', textAlign: 'right', color: t.liquidity > 0.01 ? CATEGORY_COLORS.liquidity : theme.colors.mutedText }}>{fmtCell(t.liquidity)}</td>
+                                                    <td style={{ padding: '6px 8px', textAlign: 'right', color: t.fees > 0.01 ? CATEGORY_COLORS.fees : theme.colors.mutedText }}>{fmtCell(t.fees)}</td>
+                                                    <td style={{ padding: '6px 8px', textAlign: 'right', color: t.locked > 0.01 ? CATEGORY_COLORS.locked : theme.colors.mutedText }}>{fmtCell(t.locked)}</td>
+                                                    <td style={{ padding: '6px 8px', textAlign: 'right', color: t.rewards > 0.01 ? CATEGORY_COLORS.rewards : theme.colors.mutedText }}>{fmtCell(t.rewards)}</td>
+                                                    <td style={{ padding: '6px 8px', textAlign: 'right', color: t.icpBots > 0.01 ? CATEGORY_COLORS.icpBots : theme.colors.mutedText }}>{fmtCell(t.icpBots)}</td>
+                                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: '700', color: walletPrimary }}>${t.total.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr>
+                                            <td style={{ padding: '8px', fontWeight: '700', color: theme.colors.primaryText, borderTop: `2px solid ${theme.colors.border}` }}>Total</td>
+                                            {['liquid', 'staked', 'maturity', 'liquidity', 'fees', 'locked', 'rewards', 'icpBots'].map(key => {
+                                                const sum = statsChartData.tokenTotals.reduce((s, t) => s + t[key], 0);
+                                                return (
+                                                    <td key={key} style={{ padding: '8px', textAlign: 'right', fontWeight: '600', color: sum > 0.01 ? theme.colors.primaryText : theme.colors.mutedText, borderTop: `2px solid ${theme.colors.border}` }}>
+                                                        {sum > 0.01 ? `$${sum.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '-'}
+                                                    </td>
+                                                );
+                                            })}
+                                            <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700', color: walletPrimary, borderTop: `2px solid ${theme.colors.border}`, fontSize: '0.8rem' }}>
+                                                ${statsChartData.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        )}
+
+                        {/* Empty state */}
+                        {statsChartData.grandTotal === 0 && (
+                            <div style={{
+                                textAlign: 'center',
+                                padding: '3rem 1rem',
+                                color: theme.colors.mutedText,
+                            }}>
+                                <FaChartPie size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
+                                <div style={{ fontSize: '0.95rem', fontWeight: '500' }}>No portfolio data yet</div>
+                                <div style={{ fontSize: '0.8rem', marginTop: '0.5rem' }}>Add tokens and connect your wallet to see portfolio statistics.</div>
+                            </div>
+                        )}
                     </div>
                 )}
 
