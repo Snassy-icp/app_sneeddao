@@ -885,7 +885,8 @@ module {
 
         // Balance (type 2): single token in specific account
         balanceToken: ?Principal;
-        balanceSubaccount: ?Nat;  // null = main account
+        balanceSubaccount: ?Nat;        // null = main account
+        balanceChoreInstanceId: ?Text;  // if set, read from this chore's purse instead of on-chain
 
         // Value (type 1): sum of multiple sources
         valueSources: [CBValueSource];

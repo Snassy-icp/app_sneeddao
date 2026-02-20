@@ -564,6 +564,7 @@ export const idlFactory = ({ IDL }) => {
         priceToken2: IDL.Opt(IDL.Principal),
         balanceToken: IDL.Opt(IDL.Principal),
         balanceSubaccount: IDL.Opt(IDL.Nat),
+        balanceChoreInstanceId: IDL.Opt(IDL.Text),
         valueSources: IDL.Vec(CBValueSource),
         operator: IDL.Nat,
         threshold: IDL.Opt(IDL.Nat),

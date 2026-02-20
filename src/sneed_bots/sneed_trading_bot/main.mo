@@ -1020,16 +1020,18 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         }
     };
 
-    /// Resolve value sources to a set of unique (token, subaccountBlob) pairs.
-    func resolveValueSources(sources: [T.CBValueSource]): [(Principal, ?Blob)] {
-        let buf = Buffer.Buffer<(Principal, ?Blob)>(sources.size());
-        let addUnique = func(tok: Principal, sub: ?Blob) {
-            let key = balanceKey(tok, sub);
+    /// Resolve value sources to (token, subaccountBlob, choreInstanceId) triples.
+    /// The choreInstanceId allows per-source purse-awareness.
+    func resolveValueSources(sources: [T.CBValueSource]): [(Principal, ?Blob, ?Text)] {
+        let buf = Buffer.Buffer<(Principal, ?Blob, ?Text)>(sources.size());
+        let addUnique = func(tok: Principal, sub: ?Blob, cid: ?Text) {
+            let key = balanceKey(tok, sub) # (switch (cid) { case (?c) ":" # c; case null "" });
             var exists = false;
-            for ((t, s) in buf.vals()) {
-                if (balanceKey(t, s) == key) { exists := true };
+            for ((t, s, c) in buf.vals()) {
+                let k2 = balanceKey(t, s) # (switch (c) { case (?c2) ":" # c2; case null "" });
+                if (k2 == key) { exists := true };
             };
-            if (not exists) { buf.add((tok, sub)) };
+            if (not exists) { buf.add((tok, sub, cid)) };
         };
 
         for (src in sources.vals()) {
@@ -1038,7 +1040,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     switch (src.token) {
                         case (?tok) {
                             let sub = getSubaccountBlob(src.subaccount);
-                            addUnique(tok, sub);
+                            addUnique(tok, sub, src.choreInstanceId);
                         };
                         case null {};
                     };
@@ -1047,7 +1049,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     switch (src.choreInstanceId) {
                         case (?cid) {
                             let targets = getRebalTargets(cid);
-                            for (t in targets.vals()) { addUnique(t.token, null) };
+                            for (t in targets.vals()) { addUnique(t.token, null, ?cid) };
                         };
                         case null {};
                     };
@@ -1055,7 +1057,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 case (2) { // AllTokensInAccount
                     let sub = getSubaccountBlob(src.subaccount);
                     for (entry in tokenRegistry.vals()) {
-                        addUnique(entry.ledgerCanisterId, sub);
+                        addUnique(entry.ledgerCanisterId, sub, src.choreInstanceId);
                     };
                 };
                 case _ {};
@@ -1064,14 +1066,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         Buffer.toArray(buf)
     };
 
-    /// Evaluate a balance condition (type 2) — uses cached balance.
+    /// Evaluate a balance condition (type 2) — purse-aware.
     func evaluateBalanceCondition(cond: T.CircuitBreakerCondition): Bool {
         let token = switch (cond.balanceToken) { case (?t) t; case null { return false } };
         let sub = getSubaccountBlob(cond.balanceSubaccount);
-        let currentBal = switch (getLastKnownBalance(token, sub)) {
-            case (?b) b;
-            case null { return false };
-        };
+        let currentBal = cbGetBalance(token, sub, cond.balanceChoreInstanceId);
 
         switch (cond.operator) {
             case (4) { // PercentChange
@@ -1139,10 +1138,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             };
             case null {};
         };
-        switch (getLastKnownBalance(tok, sub)) {
+        let onChain = switch (getLastKnownBalance(tok, sub)) {
             case (?b) b;
-            case null 0;
-        }
+            case null { return 0 };
+        };
+        computeMainPurseBalance(tok, sub, onChain).balance
     };
 
     func evaluateValueCondition(cond: T.CircuitBreakerCondition): Bool {
@@ -1152,16 +1152,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case null { Principal.fromText(T.ICP_LEDGER) };
         };
 
-        // Determine if all value sources reference a single chore with a purse
-        var choreRef: ?Text = null;
-        for (src in cond.valueSources.vals()) {
-            if (src.sourceType == 1) { // RebalChoreTokens
-                choreRef := src.choreInstanceId;
-            };
-        };
-
         var totalValue: Nat = 0;
-        for ((tok, sub) in pairs.vals()) {
+        for ((tok, sub, choreRef) in pairs.vals()) {
             let bal = cbGetBalance(tok, sub, choreRef);
             if (bal > 0) {
                 let value = switch (convertAmountViaCache(bal, tok, denomToken)) {
@@ -1194,11 +1186,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                     case _ false;
                                 };
                             };
-                            for ((tok, sub_) in pairs.vals()) {
+                            for ((tok, sub_, _cid) in pairs.vals()) {
                                 if (subMatch(sub_)) {
                                     for (ts in snap.tokens.vals()) {
                                         if (ts.token == tok) {
-                                            // Use ICP value from snapshot if denomination is ICP
                                             if (denomToken == Principal.fromText(T.ICP_LEDGER)) {
                                                 switch (ts.valueIcpE8s) {
                                                     case (?v) { snapValue += v };

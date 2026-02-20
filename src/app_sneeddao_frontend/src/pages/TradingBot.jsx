@@ -5371,6 +5371,8 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
     const [showLog, setShowLog] = useState(false);
     const [tokenRegistry, setTokenRegistry] = useState([]);
     const [choreInstances, setChoreInstances] = useState([]);
+    const [subaccounts, setSubaccounts] = useState([]);
+    const [purseAllocations, setPurseAllocations] = useState([]);
 
     // Themed select style — fixes white-on-white issue
     const sel = (extra = {}) => ({
@@ -5434,6 +5436,21 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
         return Math.round(v * Math.pow(10, decimals)).toString();
     };
 
+    // Account options for condition dropdowns (named subaccounts + chore purses)
+    const accountOptions = React.useMemo(() => {
+        const opts = [];
+        for (const s of subaccounts) {
+            opts.push({ value: String(Number(s.number)), label: `${s.name} (#${Number(s.number)})` });
+        }
+        for (const p of purseAllocations) {
+            if (p.enabled) {
+                const lbl = choreStatuses?.find(c => c.choreId === p.instanceId)?.instanceLabel || p.instanceId;
+                opts.push({ value: `purse:${p.instanceId}`, label: `Purse: ${lbl}` });
+            }
+        }
+        return opts;
+    }, [subaccounts, purseAllocations, choreStatuses]);
+
     // Period helpers — convert raw seconds <-> value+unit for UI
     const periodToValueUnit = (totalSeconds) => {
         const s = Number(totalSeconds);
@@ -5455,13 +5472,16 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
         try {
             setLoading(true);
             const bot = await getReadyBotActor();
-            const [rls, enabled, log, tokens, instances] = await Promise.all([
+            const [rls, enabled, log, tokens, instances, subs, purses] = await Promise.all([
                 bot.getCircuitBreakerRules(), bot.getCircuitBreakerEnabled(),
                 bot.getCircuitBreakerLog({ startId: [], limit: [50], ruleId: [], fromTime: [], toTime: [] }),
                 bot.getTokenRegistry(), bot.listChoreInstances([]),
+                bot.getSubaccounts ? bot.getSubaccounts() : [],
+                bot.getAllPurseAllocations ? bot.getAllPurseAllocations() : [],
             ]);
             setRules(rls); setGlobalEnabled(enabled); setEvents(log.entries);
             setEventCount(Number(log.totalCount)); setTokenRegistry(tokens); setChoreInstances(instances);
+            setSubaccounts(subs); setPurseAllocations(purses);
             setError(null);
         } catch (e) { setError('Failed to load circuit breaker data: ' + e.message); }
         finally { setLoading(false); }
@@ -5508,13 +5528,17 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
             priceToken1: c.priceToken1?.length ? [Principal.fromText(c.priceToken1)] : [],
             priceToken2: c.priceToken2?.length ? [Principal.fromText(c.priceToken2)] : [],
             balanceToken: c.balanceToken?.length ? [Principal.fromText(c.balanceToken)] : [],
-            balanceSubaccount: c.balanceSubaccount !== '' && c.balanceSubaccount != null ? [BigInt(c.balanceSubaccount)] : [],
-            valueSources: (c.valueSources || []).map(vs => ({
-                sourceType: BigInt(vs.sourceType),
-                token: vs.token?.length ? [Principal.fromText(vs.token)] : [],
-                subaccount: vs.subaccount !== '' && vs.subaccount != null ? [BigInt(vs.subaccount)] : [],
-                choreInstanceId: vs.choreInstanceId?.length ? [vs.choreInstanceId] : [],
-            })),
+            balanceSubaccount: (c.balanceSubaccount !== '' && c.balanceSubaccount != null && !String(c.balanceSubaccount).startsWith('purse:')) ? [BigInt(c.balanceSubaccount)] : [],
+            balanceChoreInstanceId: (typeof c.balanceSubaccount === 'string' && c.balanceSubaccount.startsWith('purse:')) ? [c.balanceSubaccount.slice(6)] : [],
+            valueSources: (c.valueSources || []).map(vs => {
+                const isPurse = typeof vs.subaccount === 'string' && vs.subaccount.startsWith('purse:');
+                return {
+                    sourceType: BigInt(vs.sourceType),
+                    token: vs.token?.length ? [Principal.fromText(vs.token)] : [],
+                    subaccount: (vs.subaccount !== '' && vs.subaccount != null && !isPurse) ? [BigInt(vs.subaccount)] : [],
+                    choreInstanceId: isPurse ? [vs.subaccount.slice(6)] : (vs.choreInstanceId?.length ? [vs.choreInstanceId] : []),
+                };
+            }),
             operator: BigInt(c.operator),
             threshold: threshE8s != null ? [threshE8s] : [],
             rangeMin: rMinE8s != null ? [rMinE8s] : [],
@@ -5562,12 +5586,20 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
             priceToken1: c.priceToken1?.[0]?.toText?.() || c.priceToken1?.[0]?.toString?.() || '',
             priceToken2: c.priceToken2?.[0]?.toText?.() || c.priceToken2?.[0]?.toString?.() || '',
             balanceToken: c.balanceToken?.[0]?.toText?.() || c.balanceToken?.[0]?.toString?.() || '',
-            balanceSubaccount: c.balanceSubaccount?.[0] != null ? Number(c.balanceSubaccount[0]).toString() : '',
-            valueSources: (c.valueSources || []).map(vs => ({
-                sourceType: Number(vs.sourceType), token: vs.token?.[0]?.toText?.() || vs.token?.[0]?.toString?.() || '',
-                subaccount: vs.subaccount?.[0] != null ? Number(vs.subaccount[0]).toString() : '',
-                choreInstanceId: vs.choreInstanceId?.[0] || '',
-            })),
+            balanceSubaccount: c.balanceChoreInstanceId?.[0]
+                ? `purse:${c.balanceChoreInstanceId[0]}`
+                : (c.balanceSubaccount?.[0] != null ? Number(c.balanceSubaccount[0]).toString() : ''),
+            valueSources: (c.valueSources || []).map(vs => {
+                const st = Number(vs.sourceType);
+                const cidRaw = vs.choreInstanceId?.[0] || '';
+                const hasPurseSub = (st === 0 || st === 2) && cidRaw && vs.subaccount?.[0] == null;
+                return {
+                    sourceType: st,
+                    token: vs.token?.[0]?.toText?.() || vs.token?.[0]?.toString?.() || '',
+                    subaccount: hasPurseSub ? `purse:${cidRaw}` : (vs.subaccount?.[0] != null ? Number(vs.subaccount[0]).toString() : ''),
+                    choreInstanceId: (st === 1) ? cidRaw : '',
+                };
+            }),
             operator: Number(c.operator),
             threshold: c.threshold?.[0] != null ? toTokenUnits(Number(c.threshold[0]).toString(), dec) : '',
             rangeMin: c.rangeMin?.[0] != null ? toTokenUnits(Number(c.rangeMin[0]).toString(), dec) : '',
@@ -5667,9 +5699,13 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
         return <>{val(formatted)} {tkn(p)}</>;
     };
 
-    // Describe a subaccount
     const acctLabel = (sub) => {
         if (sub == null || sub === '' || sub === '0') return 'main account';
+        if (typeof sub === 'string' && sub.startsWith('purse:')) {
+            const cid = sub.slice(6);
+            const lbl = choreStatuses?.find(c => c.choreId === cid)?.instanceLabel || cid;
+            return <>{kw('Purse', theme.colors.secondaryText)}{' '}{val(`"${lbl}"`)}</>;
+        }
         return <>{kw('Sub', theme.colors.secondaryText)} {val('#' + sub)}</>;
     };
 
@@ -5681,7 +5717,9 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
             const sep = i > 0 ? <>{', '}</> : null;
             if (st === 0) {
                 const tok = _pid(vs.token?.[0] || vs.token);
-                const sub = vs.subaccount?.[0] != null ? Number(vs.subaccount[0]) : (vs.subaccount !== '' && vs.subaccount != null ? vs.subaccount : null);
+                const cidRaw = vs.choreInstanceId?.[0] || vs.choreInstanceId || '';
+                const subRaw = vs.subaccount?.[0] != null ? Number(vs.subaccount[0]) : (vs.subaccount !== '' && vs.subaccount != null ? vs.subaccount : null);
+                const sub = (cidRaw && subRaw == null) ? `purse:${cidRaw}` : subRaw;
                 return <span key={i}>{sep}{tkn(tok)}{' in '}{acctLabel(sub)}</span>;
             }
             if (st === 1) {
@@ -5689,7 +5727,9 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                 return <span key={i}>{sep}{kw('portfolio', theme.colors.secondaryText)} {val(`"${choreInstanceLabel(cid)}"`)}</span>;
             }
             if (st === 2) {
-                const sub = vs.subaccount?.[0] != null ? Number(vs.subaccount[0]) : (vs.subaccount !== '' && vs.subaccount != null ? vs.subaccount : null);
+                const cidRaw = vs.choreInstanceId?.[0] || vs.choreInstanceId || '';
+                const subRaw = vs.subaccount?.[0] != null ? Number(vs.subaccount[0]) : (vs.subaccount !== '' && vs.subaccount != null ? vs.subaccount : null);
+                const sub = (cidRaw && subRaw == null) ? `purse:${cidRaw}` : subRaw;
                 return <span key={i}>{sep}{kw('all tokens in', theme.colors.secondaryText)} {acctLabel(sub)}</span>;
             }
             return <span key={i}>{sep}{'?'}</span>;
@@ -5748,7 +5788,9 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
         // ── BALANCE ──
         if (ct === 2) {
             const tok = _pid(c.balanceToken?.[0] || c.balanceToken);
-            const sub = c.balanceSubaccount?.[0] != null ? Number(c.balanceSubaccount[0]).toString() : '';
+            const sub = c.balanceChoreInstanceId?.[0]
+                ? `purse:${c.balanceChoreInstanceId[0]}`
+                : (c.balanceSubaccount?.[0] != null ? Number(c.balanceSubaccount[0]).toString() : '');
             if (op === 4) {
                 const bps = c.changePercentBps?.[0] != null ? Number(c.changePercentBps[0]) : 0;
                 const pct = (bps / 100).toFixed(1);
@@ -5904,8 +5946,8 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                             <div style={label}>Account</div>
                             <select value={cond.balanceSubaccount} onChange={e => update({ balanceSubaccount: e.target.value })}
                                 style={sel({ marginTop: '4px', minWidth: '150px' })}>
-                                <option value="">Main account</option>
-                                {Array.from({ length: 10 }, (_, i) => i + 1).map(n => <option key={n} value={n}>Subaccount #{n}</option>)}
+                                <option value="">Main account (main purse)</option>
+                                {accountOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </select>
                         </div>
                     </div>
@@ -5935,8 +5977,8 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                                         </div>
                                         <select value={vs.subaccount} onChange={e => update({ valueSources: cond.valueSources.map((s, j) => j === vi ? { ...s, subaccount: e.target.value } : s) })}
                                             style={sel({ minWidth: '120px', fontSize: '0.8rem' })}>
-                                            <option value="">Main account</option>
-                                            {Array.from({ length: 10 }, (_, i) => i + 1).map(n => <option key={n} value={n}>Sub #{n}</option>)}
+                                            <option value="">Main account (main purse)</option>
+                                            {accountOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                                         </select>
                                     </>
                                 )}
@@ -5951,8 +5993,8 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                                 {vs.sourceType === 2 && (
                                     <select value={vs.subaccount} onChange={e => update({ valueSources: cond.valueSources.map((s, j) => j === vi ? { ...s, subaccount: e.target.value } : s) })}
                                         style={sel({ minWidth: '140px', fontSize: '0.8rem' })}>
-                                        <option value="">Main account</option>
-                                        {Array.from({ length: 10 }, (_, i) => i + 1).map(n => <option key={n} value={n}>Sub #{n}</option>)}
+                                        <option value="">Main account (main purse)</option>
+                                        {accountOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                                     </select>
                                 )}
                                 <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c', padding: '4px' }}
