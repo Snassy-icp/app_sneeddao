@@ -104,7 +104,7 @@ const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 export default function Premium() {
     const { isAuthenticated, identity } = useAuth();
     const { theme } = useTheme();
-    const { formatValue: denomFormatValue, isUSD } = useDenomination();
+    const { formatValue: denomFormatValue, denomTokenId } = useDenomination();
     const [icpUsdPrice, setIcpUsdPrice] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -1927,7 +1927,7 @@ export default function Premium() {
                                         )}
                                         <div style={styles.tierName}>{tier.name}</div>
                                         <div style={styles.tierPrice}>{formatIcp(tier.amountE8s)}</div>
-                                        {formatIcpDenom(tier.amountE8s) && !isUSD && (
+                                        {formatIcpDenom(tier.amountE8s) && denomTokenId !== ICP_LEDGER_ID && (
                                             <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '2px' }}>
                                                 ≈ {formatIcpDenom(tier.amountE8s)}
                                             </div>
@@ -1972,7 +1972,7 @@ export default function Premium() {
                                                 <div style={{ fontSize: '1.1rem', fontWeight: '600', color: theme.colors.primaryText }}>
                                                     {walletBalance !== null ? formatIcp(walletBalance) : '—'}
                                                 </div>
-                                                {walletBalance !== null && formatIcpDenom(walletBalance) && !isUSD && (
+                                                {walletBalance !== null && formatIcpDenom(walletBalance) && denomTokenId !== ICP_LEDGER_ID && (
                                                     <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem' }}>
                                                         ≈ {formatIcpDenom(walletBalance)}
                                                     </div>
@@ -1984,7 +1984,7 @@ export default function Premium() {
                                                     <div style={{ fontSize: '1.1rem', fontWeight: '600', color: theme.colors.accent }}>
                                                         {formatIcp(icpTiers[selectedIcpTier].amountE8s)}
                                                     </div>
-                                                    {formatIcpDenom(icpTiers[selectedIcpTier].amountE8s) && !isUSD && (
+                                                    {formatIcpDenom(icpTiers[selectedIcpTier].amountE8s) && denomTokenId !== ICP_LEDGER_ID && (
                                                         <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem' }}>
                                                             ≈ {formatIcpDenom(icpTiers[selectedIcpTier].amountE8s)}
                                                         </div>
@@ -2008,7 +2008,7 @@ export default function Premium() {
                                             {payingNow ? (
                                                 <><FaSpinner className="spin" /> Processing Payment...</>
                                             ) : (
-                                                <><FaCrown /> Pay Now{selectedIcpTier !== null ? ` - ${formatIcp(icpTiers[selectedIcpTier].amountE8s)}` : ''}{selectedIcpTier !== null && formatIcpDenom(icpTiers[selectedIcpTier].amountE8s) && !isUSD ? ` (≈ ${formatIcpDenom(icpTiers[selectedIcpTier].amountE8s)})` : ''}</>
+                                                <><FaCrown /> Pay Now{selectedIcpTier !== null ? ` - ${formatIcp(icpTiers[selectedIcpTier].amountE8s)}` : ''}{selectedIcpTier !== null && formatIcpDenom(icpTiers[selectedIcpTier].amountE8s) && denomTokenId !== ICP_LEDGER_ID ? ` (≈ ${formatIcpDenom(icpTiers[selectedIcpTier].amountE8s)})` : ''}</>
                                             )}
                                         </button>
                                     </div>
