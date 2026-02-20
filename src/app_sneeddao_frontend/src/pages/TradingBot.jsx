@@ -2042,8 +2042,11 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
     const [adding, setAdding] = useState(false);
     const [expandedList, setExpandedList] = useState(null);
     const [subaccounts, setSubaccounts] = useState([]);
+    const [purseAllocations, setPurseAllocations] = useState([]);
+    const [choreStatuses, setChoreStatuses] = useState([]);
+    const [editingTargets, setEditingTargets] = useState(null);
+    const [draftTargets, setDraftTargets] = useState([]);
 
-    // New list form
     const [newName, setNewName] = useState('');
     const [newLedger, setNewLedger] = useState('');
     const [newThreshold, setNewThreshold] = useState('0');
@@ -2054,24 +2057,21 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
         try {
             const bot = await getReadyBotActor();
             if (!bot) return;
-            const result = await bot.getDistributionLists(instanceId);
+            const [result, subs, purses, statuses] = await Promise.all([
+                bot.getDistributionLists(instanceId),
+                bot.getSubaccounts ? bot.getSubaccounts() : [],
+                bot.getAllPurseAllocations ? bot.getAllPurseAllocations() : [],
+                bot.getChoreStatuses ? bot.getChoreStatuses() : [],
+            ]);
             setLists(result);
+            setSubaccounts(subs);
+            setPurseAllocations(purses);
+            setChoreStatuses(statuses);
         } catch (err) { setError('Failed to load distribution lists: ' + err.message); }
         finally { setLoading(false); }
     }, [getReadyBotActor, instanceId]);
 
     useEffect(() => { loadLists(); }, [loadLists]);
-
-    const loadSubaccounts = useCallback(async () => {
-        try {
-            const bot = await getReadyBotActor();
-            if (bot?.getSubaccounts) {
-                const subs = await bot.getSubaccounts();
-                setSubaccounts(subs);
-            }
-        } catch (_) {}
-    }, [getReadyBotActor]);
-    useEffect(() => { loadSubaccounts(); }, [loadSubaccounts]);
 
     const subaccountBlobFromNumber = (num) => {
         const bytes = new Uint8Array(32);
@@ -2094,6 +2094,54 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
             return sBytes.length === bytes.length && sBytes.every((b, i) => b === bytes[i]);
         });
         return match ? `${match.name} (#${Number(match.number)})` : 'Custom Subaccount';
+    };
+
+    const purseOptions = React.useMemo(() => {
+        return purseAllocations
+            .filter(p => p.enabled)
+            .map(p => {
+                const cs = choreStatuses.find(c => c.choreId === p.instanceId);
+                return { value: p.instanceId, label: cs?.instanceLabel || p.instanceId };
+            });
+    }, [purseAllocations, choreStatuses]);
+
+    const choreLabel = (cid) => {
+        const cs = choreStatuses.find(c => c.choreId === cid);
+        return cs?.instanceLabel || cid;
+    };
+
+    // Candid target -> draft target for editing
+    const candidToDraft = (t) => {
+        const cid = t.choreInstanceId?.[0] || t.choreInstanceId || '';
+        const isPurse = !!cid;
+        const ownerStr = !isPurse ? (typeof t.account?.owner === 'string' ? t.account.owner : t.account?.owner?.toText?.() || '') : '';
+        const subBlob = t.account?.subaccount;
+        const hasSub = subBlob && subBlob.length > 0 && subBlob[0] && Array.from(subBlob[0]).some(b => b !== 0);
+        return {
+            type: isPurse ? 'purse' : 'external',
+            choreInstanceId: cid,
+            owner: ownerStr,
+            subaccount: hasSub ? subBlob[0] : null,
+            basisPoints: t.basisPoints?.length > 0 ? (Number(t.basisPoints[0]) / 100).toString() : '',
+        };
+    };
+
+    // Draft target -> Candid target for saving
+    const draftToCandid = (d) => {
+        const bps = d.basisPoints !== '' && d.basisPoints != null ? [BigInt(Math.round(parseFloat(d.basisPoints) * 100))] : [];
+        if (d.type === 'purse') {
+            return {
+                account: { owner: Principal.fromText('aaaaa-aa'), subaccount: [] },
+                basisPoints: bps,
+                choreInstanceId: [d.choreInstanceId],
+            };
+        }
+        const subBlob = d.subaccount ? [Array.from(d.subaccount)] : [];
+        return {
+            account: { owner: Principal.fromText(d.owner), subaccount: subBlob },
+            basisPoints: bps,
+            choreInstanceId: [],
+        };
     };
 
     const handleAdd = async () => {
@@ -2129,7 +2177,55 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
         finally { setSaving(false); }
     };
 
-    // Resolve token metadata for ledger tokens in distribution lists
+    const startEditingTargets = (list) => {
+        setEditingTargets(Number(list.id));
+        setDraftTargets(list.targets.map(candidToDraft));
+    };
+
+    const cancelEditingTargets = () => { setEditingTargets(null); setDraftTargets([]); };
+
+    const saveTargets = async (listId) => {
+        const list = lists.find(l => Number(l.id) === listId);
+        if (!list) return;
+        for (const d of draftTargets) {
+            if (d.type === 'external' && !d.owner) { setError('All external targets must have a principal.'); return; }
+            if (d.type === 'purse' && !d.choreInstanceId) { setError('All purse targets must have a chore selected.'); return; }
+        }
+        setSaving(true); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            const ledger = typeof list.tokenLedgerCanisterId === 'string' ? list.tokenLedgerCanisterId : list.tokenLedgerCanisterId?.toText?.();
+            await bot.updateDistributionList(instanceId, BigInt(listId), {
+                name: list.name,
+                sourceSubaccount: list.sourceSubaccount,
+                tokenLedgerCanisterId: Principal.fromText(ledger),
+                thresholdAmount: list.thresholdAmount,
+                maxDistributionAmount: list.maxDistributionAmount,
+                targets: draftTargets.map(draftToCandid),
+            });
+            setSuccess('Targets saved.');
+            setEditingTargets(null); setDraftTargets([]);
+            await loadLists();
+        } catch (err) { setError('Failed to save targets: ' + err.message); }
+        finally { setSaving(false); }
+    };
+
+    const addDraftTarget = (type) => {
+        setDraftTargets([...draftTargets, {
+            type,
+            choreInstanceId: type === 'purse' ? (purseOptions[0]?.value || '') : '',
+            owner: '', subaccount: null, basisPoints: '',
+        }]);
+    };
+
+    const updateDraft = (idx, patch) => {
+        setDraftTargets(draftTargets.map((d, i) => i === idx ? { ...d, ...patch } : d));
+    };
+
+    const removeDraft = (idx) => {
+        setDraftTargets(draftTargets.filter((_, i) => i !== idx));
+    };
+
     const distTokenIds = React.useMemo(() => {
         return lists.map(l => {
             const key = typeof l.tokenLedgerCanisterId === 'string' ? l.tokenLedgerCanisterId : l.tokenLedgerCanisterId?.toText?.() || String(l.tokenLedgerCanisterId);
@@ -2142,11 +2238,94 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
         return distTokenMeta[key]?.symbol || shortPrincipal(key);
     };
 
+    const lbl = { fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' };
+    const tinyBtn = (extra) => ({ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', ...extra });
+
+    const renderTargetDisplay = (target) => {
+        const cid = target.choreInstanceId?.[0] || target.choreInstanceId || '';
+        const bps = target.basisPoints?.length > 0 ? Number(target.basisPoints[0]) : null;
+        const pctLabel = bps != null ? `${(bps / 100).toFixed(1)}%` : 'Auto-split';
+        if (cid) {
+            return (
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '0.75rem' }}>
+                    <span style={{ color: theme.colors.primaryText }}>
+                        <FaWallet style={{ marginRight: '4px', fontSize: '0.65rem', opacity: 0.7 }} />
+                        Purse: {choreLabel(cid)}
+                    </span>
+                    <span style={{ color: accentColor, fontWeight: '500' }}>{pctLabel}</span>
+                </div>
+            );
+        }
+        return (
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '0.75rem' }}>
+                <span style={{ color: theme.colors.primaryText, fontFamily: 'monospace' }}>
+                    {shortPrincipal(target.account?.owner)}
+                </span>
+                <span style={{ color: accentColor, fontWeight: '500' }}>{pctLabel}</span>
+            </div>
+        );
+    };
+
+    const renderTargetEditor = (listId) => (
+        <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: `1px solid ${theme.colors.border}` }}>
+            {draftTargets.map((d, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '6px', padding: '6px 8px', background: `${theme.colors.secondaryBg}80`, borderRadius: '6px', flexWrap: 'wrap' }}>
+                    <select value={d.type} onChange={e => updateDraft(idx, { type: e.target.value, choreInstanceId: e.target.value === 'purse' ? (purseOptions[0]?.value || '') : '', owner: '', subaccount: null })}
+                        style={{ ...inputStyle, width: 'auto', minWidth: '90px', appearance: 'auto', fontSize: '0.78rem' }}>
+                        <option value="purse">Purse</option>
+                        <option value="external">External</option>
+                    </select>
+                    {d.type === 'purse' ? (
+                        <select value={d.choreInstanceId} onChange={e => updateDraft(idx, { choreInstanceId: e.target.value })}
+                            style={{ ...inputStyle, width: 'auto', minWidth: '160px', appearance: 'auto', fontSize: '0.78rem', flex: '1 1 160px' }}>
+                            <option value="">Select chore purse...</option>
+                            {purseOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                    ) : (
+                        <input value={d.owner} onChange={e => updateDraft(idx, { owner: e.target.value })}
+                            placeholder="Principal ID..." style={{ ...inputStyle, flex: '1 1 200px', fontSize: '0.78rem' }} />
+                    )}
+                    <input value={d.basisPoints} onChange={e => updateDraft(idx, { basisPoints: e.target.value })}
+                        placeholder="%" title="Percentage (leave blank for auto-split)"
+                        style={{ ...inputStyle, width: '60px', textAlign: 'center', fontSize: '0.78rem' }} />
+                    <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText }}>%</span>
+                    <button onClick={() => removeDraft(idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '4px' }}>
+                        <FaTrash style={{ fontSize: '0.6rem' }} />
+                    </button>
+                </div>
+            ))}
+            <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                <button onClick={() => addDraftTarget('purse')} style={tinyBtn({ color: accentColor, borderColor: `${accentColor}60` })}>
+                    <FaPlus style={{ marginRight: '3px', fontSize: '0.6rem' }} /> Purse Target
+                </button>
+                <button onClick={() => addDraftTarget('external')} style={tinyBtn({})}>
+                    <FaPlus style={{ marginRight: '3px', fontSize: '0.6rem' }} /> External Target
+                </button>
+                <div style={{ flex: '1' }} />
+                <button onClick={() => saveTargets(listId)} disabled={saving}
+                    style={{ ...buttonStyle, fontSize: '0.7rem', padding: '3px 10px', background: `linear-gradient(135deg, ${accentColor}, ${accentColor}cc)`, color: '#fff', border: 'none', opacity: saving ? 0.6 : 1 }}>
+                    <FaSave style={{ marginRight: '3px', fontSize: '0.6rem' }} /> Save Targets
+                </button>
+                <button onClick={cancelEditingTargets} style={tinyBtn({})}>Cancel</button>
+            </div>
+            {draftTargets.length > 0 && (() => {
+                const totalBps = draftTargets.reduce((s, d) => s + (d.basisPoints ? Math.round(parseFloat(d.basisPoints) * 100) : 0), 0);
+                const autoCount = draftTargets.filter(d => !d.basisPoints).length;
+                return (
+                    <div style={{ marginTop: '6px', fontSize: '0.7rem', color: theme.colors.mutedText }}>
+                        Assigned: {(totalBps / 100).toFixed(1)}% &middot; Auto-split targets: {autoCount}
+                        {totalBps > 10000 && <span style={{ color: '#ef4444', marginLeft: '8px' }}>Total exceeds 100%!</span>}
+                    </div>
+                );
+            })()}
+        </div>
+    );
+
     return (
         <div style={cardStyle}>
             <h3 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: '600' }}>Distribution Lists</h3>
             <p style={{ margin: '0 0 12px 0', fontSize: '0.85rem', color: theme.colors.secondaryText, lineHeight: '1.5' }}>
-                Configure percentage-based distribution lists to automatically split and send funds to multiple recipients.
+                Configure percentage-based distribution lists to automatically split and send funds to chore purses or external recipients.
             </p>
 
             {error && <div style={{ padding: '8px 12px', background: '#ef444415', border: '1px solid #ef444430', borderRadius: '8px', color: '#ef4444', fontSize: '0.8rem', marginBottom: '10px' }}>{error}</div>}
@@ -2162,62 +2341,71 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
                         </div>
                     )}
 
-                    {lists.map((list) => (
-                        <div key={Number(list.id)} style={{
-                            padding: '12px', marginBottom: '8px',
-                            background: theme.colors.primaryBg, borderRadius: '8px',
-                            border: `1px solid ${theme.colors.border}`,
-                        }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                                <div>
-                                    <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.primaryText }}>{list.name}</span>
-                                    <span style={{ marginLeft: '8px', fontSize: '0.7rem', color: theme.colors.secondaryText }}>#{Number(list.id)}</span>
+                    {lists.map((list) => {
+                        const lid = Number(list.id);
+                        const isExpanded = expandedList === lid;
+                        const isEditing = editingTargets === lid;
+                        return (
+                            <div key={lid} style={{
+                                padding: '12px', marginBottom: '8px',
+                                background: theme.colors.primaryBg, borderRadius: '8px',
+                                border: `1px solid ${theme.colors.border}`,
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                                    <div>
+                                        <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.primaryText }}>{list.name}</span>
+                                        <span style={{ marginLeft: '8px', fontSize: '0.7rem', color: theme.colors.secondaryText }}>#{lid}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                        <button onClick={() => { setExpandedList(isExpanded ? null : lid); if (isEditing) cancelEditingTargets(); }}
+                                            style={tinyBtn({})}>
+                                            {isExpanded ? 'Collapse' : 'Details'}
+                                        </button>
+                                        {!isEditing && (
+                                            <button onClick={() => { setExpandedList(lid); startEditingTargets(list); }}
+                                                style={tinyBtn({ color: accentColor, borderColor: `${accentColor}60` })}>
+                                                <FaEdit style={{ fontSize: '0.6rem' }} /> Targets
+                                            </button>
+                                        )}
+                                        <button onClick={() => handleRemove(lid)} disabled={saving}
+                                            style={tinyBtn({ color: '#ef4444', borderColor: '#ef444440' })}>
+                                            <FaTrash style={{ fontSize: '0.6rem' }} />
+                                        </button>
+                                    </div>
                                 </div>
-                                <div style={{ display: 'flex', gap: '6px' }}>
-                                    <button onClick={() => setExpandedList(expandedList === Number(list.id) ? null : Number(list.id))}
-                                        style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px' }}>
-                                        {expandedList === Number(list.id) ? 'Collapse' : 'Details'}
-                                    </button>
-                                    <button onClick={() => handleRemove(Number(list.id))} disabled={saving}
-                                        style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', color: '#ef4444', borderColor: '#ef444440' }}>
-                                        <FaTrash style={{ fontSize: '0.6rem' }} />
-                                    </button>
+                                <div style={{ marginTop: '6px', fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                                    <span>Token: {getDistTokenSymbol(list.tokenLedgerCanisterId)}</span>
+                                    <span>From: {resolveSubaccountName(list.sourceSubaccount)}</span>
+                                    <span>Threshold: {Number(list.thresholdAmount).toLocaleString()}</span>
+                                    <span>Max: {Number(list.maxDistributionAmount).toLocaleString()}</span>
+                                    <span>Targets: {list.targets.length}</span>
                                 </div>
+                                {isExpanded && !isEditing && list.targets.length > 0 && (
+                                    <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: `1px solid ${theme.colors.border}` }}>
+                                        {list.targets.map((target, i) => (
+                                            <React.Fragment key={i}>{renderTargetDisplay(target)}</React.Fragment>
+                                        ))}
+                                    </div>
+                                )}
+                                {isExpanded && !isEditing && list.targets.length === 0 && (
+                                    <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: `1px solid ${theme.colors.border}`, fontSize: '0.75rem', color: theme.colors.mutedText }}>
+                                        No targets configured. Click "Targets" to add some.
+                                    </div>
+                                )}
+                                {isEditing && renderTargetEditor(lid)}
                             </div>
-                            <div style={{ marginTop: '6px', fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                                <span>Token: {getDistTokenSymbol(list.tokenLedgerCanisterId)}</span>
-                                <span>From: {resolveSubaccountName(list.sourceSubaccount)}</span>
-                                <span>Threshold: {Number(list.thresholdAmount).toLocaleString()}</span>
-                                <span>Max: {Number(list.maxDistributionAmount).toLocaleString()}</span>
-                                <span>Targets: {list.targets.length}</span>
-                            </div>
-                            {expandedList === Number(list.id) && list.targets.length > 0 && (
-                                <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: `1px solid ${theme.colors.border}` }}>
-                                    {list.targets.map((target, i) => (
-                                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '0.75rem' }}>
-                                            <span style={{ color: theme.colors.primaryText, fontFamily: 'monospace' }}>
-                                                {shortPrincipal(target.account.owner)}
-                                            </span>
-                                            <span style={{ color: accentColor, fontWeight: '500' }}>
-                                                {target.basisPoints?.length > 0 ? `${(Number(target.basisPoints[0]) / 100).toFixed(1)}%` : 'Auto-split'}
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    ))}
+                        );
+                    })}
 
-                    {/* Add Distribution List Form */}
                     {adding ? (
                         <div style={{ padding: '14px', background: `${accentColor}06`, borderRadius: '8px', border: `1px solid ${accentColor}20`, marginTop: '10px' }}>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
                                 <div>
-                                    <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Name</label>
+                                    <label style={lbl}>Name</label>
                                     <input value={newName} onChange={(e) => setNewName(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="e.g. Revenue Share" />
                                 </div>
                                 <div>
-                                    <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Token Ledger</label>
+                                    <label style={lbl}>Token Ledger</label>
                                     <TokenSelector
                                         value={newLedger}
                                         onChange={setNewLedger}
@@ -2227,18 +2415,18 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
                                     />
                                 </div>
                                 <div>
-                                    <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Source Subaccount</label>
+                                    <label style={lbl}>Source Subaccount</label>
                                     <select value={newSourceSub} onChange={(e) => setNewSourceSub(e.target.value)} style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
                                         <option value="">Main Account</option>
                                         {subaccounts.map(s => <option key={Number(s.number)} value={String(Number(s.number))}>{s.name} (#{Number(s.number)})</option>)}
                                     </select>
                                 </div>
                                 <div>
-                                    <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Threshold Amount</label>
+                                    <label style={lbl}>Threshold Amount</label>
                                     <input value={newThreshold} onChange={(e) => setNewThreshold(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" />
                                 </div>
                                 <div>
-                                    <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Max Distribution Amount</label>
+                                    <label style={lbl}>Max Distribution Amount</label>
                                     <input value={newMaxDist} onChange={(e) => setNewMaxDist(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" />
                                 </div>
                             </div>

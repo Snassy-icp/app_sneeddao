@@ -4274,33 +4274,43 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     func _df_makeTaskFn(list: DistributionTypes.DistributionList, instanceId: Text): () -> async BotChoreTypes.TaskAction {
         func(): async BotChoreTypes.TaskAction {
             try {
-                // Global freeze check — frozen tokens cannot be distributed
-                if (isTokenFrozen(list.tokenLedgerCanisterId)) {
-                    logEngine.logDebug("distribution", "Distribution list " # list.name # " skipped: token is frozen globally", null, []);
+                let src = "chore:" # instanceId;
+                let tok = list.tokenLedgerCanisterId;
+
+                if (isTokenFrozen(tok)) {
+                    logEngine.logDebug(src, "Distribution list " # list.name # " skipped: token is frozen globally", null, []);
                     return #Done;
                 };
 
-                let ledger = getLedger(list.tokenLedgerCanisterId);
+                let ledger = getLedger(tok);
                 let fee = await ledger.icrc1_fee();
                 let balance = await ledger.icrc1_balance_of({
                     owner = Principal.fromActor(this);
                     subaccount = list.sourceSubaccount;
                 });
-                reconcileBalance(list.tokenLedgerCanisterId, list.sourceSubaccount, balance, "distribution");
-                let effectiveBal = getEffectiveBalance(instanceId, list.tokenLedgerCanisterId, list.sourceSubaccount, balance);
+                reconcileBalance(tok, list.sourceSubaccount, balance, src);
+                let effectiveBal = getEffectiveBalance(instanceId, tok, list.sourceSubaccount, balance);
 
                 if (effectiveBal < list.thresholdAmount) {
-                    return #Done; // Below threshold, skip
+                    return #Done;
+                };
+
+                // Count external (on-chain) vs purse (internal) targets for fee budgeting
+                var externalTargetCount: Nat = 0;
+                for (t in list.targets.vals()) {
+                    switch (t.choreInstanceId) {
+                        case null { externalTargetCount += 1 };
+                        case _ {};
+                    };
                 };
 
                 let distributable = Nat.min(effectiveBal, list.maxDistributionAmount);
-                let totalFees = fee * list.targets.size();
+                let totalFees = fee * externalTargetCount;
                 if (distributable <= totalFees) {
-                    return #Done; // Not enough to cover fees
+                    return #Done;
                 };
                 let net = distributable - totalFees;
 
-                // Calculate shares based on basis points
                 var assignedBps: Nat = 0;
                 var autoSplitCount: Nat = 0;
                 for (t in list.targets.vals()) {
@@ -4310,8 +4320,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     };
                 };
 
-                var totalDistributed: Nat = 0;
-                var transferCount: Nat = 0;
+                var totalExternalDistributed: Nat = 0;
+                var totalPurseDistributed: Nat = 0;
+                var externalTransferCount: Nat = 0;
+                let sourcePurseEnabled = isPurseEnabledForChore(instanceId);
+
                 for (target in list.targets.vals()) {
                     let share = switch (target.basisPoints) {
                         case (?bp) { (net * bp) / 10000 };
@@ -4323,33 +4336,56 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         };
                     };
 
-                    if (share > fee) {
-                        ignore await ledger.icrc1_transfer({
-                            to = { owner = target.account.owner; subaccount = target.account.subaccount };
-                            fee = ?fee;
-                            memo = null;
-                            from_subaccount = list.sourceSubaccount;
-                            created_at_time = null;
-                            amount = share;
-                        });
-                        totalDistributed += share;
-                        transferCount += 1;
+                    switch (target.choreInstanceId) {
+                        case (?targetChoreId) {
+                            // Purse target: internal bookkeeping, no transfer, no fee
+                            if (share > 0) {
+                                adjustChorePurseBalance(targetChoreId, tok, null, share, false);
+                                if (sourcePurseEnabled) {
+                                    adjustChorePurseBalance(instanceId, tok, list.sourceSubaccount, share, true);
+                                };
+                                totalPurseDistributed += share;
+                                logEngine.logDebug(src, "Distributed " # Nat.toText(share) # " of " # tokenLabel(tok) # " to purse " # targetChoreId, null, []);
+                            };
+                        };
+                        case null {
+                            // External target: on-chain icrc1_transfer
+                            if (share > fee) {
+                                ignore await ledger.icrc1_transfer({
+                                    to = { owner = target.account.owner; subaccount = target.account.subaccount };
+                                    fee = ?fee;
+                                    memo = null;
+                                    from_subaccount = list.sourceSubaccount;
+                                    created_at_time = null;
+                                    amount = share;
+                                });
+                                totalExternalDistributed += share;
+                                externalTransferCount += 1;
+                            };
+                        };
                     };
                 };
 
-                // Update lastKnown: source decreased by distributed amounts + fees
-                let totalSpent = totalDistributed + (fee * transferCount);
-                setLastKnownBalance(list.tokenLedgerCanisterId, list.sourceSubaccount, if (balance > totalSpent) { balance - totalSpent } else { 0 });
-                if (isPurseEnabledForChore(instanceId) and totalSpent > 0) {
-                    adjustChorePurseBalance(instanceId, list.tokenLedgerCanisterId, list.sourceSubaccount, totalSpent, true);
+                // Update lastKnown only for on-chain movements
+                let totalOnChainSpent = totalExternalDistributed + (fee * externalTransferCount);
+                if (totalOnChainSpent > 0) {
+                    setLastKnownBalance(tok, list.sourceSubaccount, if (balance > totalOnChainSpent) { balance - totalOnChainSpent } else { 0 });
+                    if (sourcePurseEnabled) {
+                        adjustChorePurseBalance(instanceId, tok, list.sourceSubaccount, totalOnChainSpent, true);
+                    };
                 };
 
-                // Track capital outflow (distributed to external recipients)
-                if (totalDistributed > 0) {
-                    let (icpVal, usdVal) = valueTokenInIcpAndUsd(list.tokenLedgerCanisterId, totalDistributed);
+                // Capital outflow only for external transfers (purse distributions stay in the bot)
+                if (totalExternalDistributed > 0) {
+                    let (icpVal, usdVal) = valueTokenInIcpAndUsd(tok, totalExternalDistributed);
                     capitalDeployedIcpE8s -= icpVal;
                     capitalDeployedUsdE8s -= usdVal;
-                    recordTokenOutflow(list.tokenLedgerCanisterId, totalDistributed);
+                    recordTokenOutflow(tok, totalExternalDistributed);
+                };
+
+                let totalDist = totalExternalDistributed + totalPurseDistributed;
+                if (totalDist > 0) {
+                    logEngine.logInfo(src, "Distribution list " # list.name # ": distributed " # Nat.toText(totalDist) # " of " # tokenLabel(tok) # " (" # Nat.toText(totalPurseDistributed) # " to purses, " # Nat.toText(totalExternalDistributed) # " external)", null, []);
                 };
 
                 #Done
@@ -5063,7 +5099,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
         // --- Chore: Rebalance ---
         // Pipeline: meta → prices → snapshot(before) → execute → snapshot(after) → done
-        choreEngine.registerChore({
+        choreEngine.registerChoreType({
             id = "rebalance";
             name = "Rebalance Portfolio";
             description = "Automatically rebalance a portfolio toward target allocations by identifying over/underweight tokens and executing weighted-random trades between them.";
@@ -5344,7 +5380,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         });
 
         // --- Chore: Distribute Funds ---
-        choreEngine.registerChore({
+        choreEngine.registerChoreType({
             id = "distribute-funds";
             name = "Distribute Funds";
             description = "Periodically distributes funds from the bot's account to target accounts based on configured percentages. Supports multiple distribution lists per instance.";

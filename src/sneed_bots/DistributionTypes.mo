@@ -13,11 +13,14 @@ module {
 
     /// A single distribution target.
     public type DistributionTarget = {
-        /// The ICRC-1 account to receive funds.
+        /// The ICRC-1 account to receive funds (ignored when choreInstanceId is set).
         account: Account;
         /// Share of the distribution in basis points (0–10000, where 10000 = 100%).
         /// null = auto-split: evenly share whatever is left after assigned targets.
         basisPoints: ?Nat;
+        /// If set, credit this chore's purse instead of doing an icrc1_transfer.
+        /// Internal bookkeeping only — no on-chain transfer, no fee.
+        choreInstanceId: ?Text;
     };
 
     /// A complete distribution list configuration.

@@ -196,6 +196,7 @@ export const idlFactory = ({ IDL }) => {
     const DistributionTarget = IDL.Record({
         account: Account,
         basisPoints: IDL.Opt(IDL.Nat),
+        choreInstanceId: IDL.Opt(IDL.Text),
     });
 
     const DistributionList = IDL.Record({
