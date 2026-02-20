@@ -390,44 +390,6 @@ function SneedexCreate() {
                     setWalletCanisters([]);
                 }
                 
-                // Fetch neuron managers
-                const host = getHost();
-                const agent = HttpAgent.createSync({ host, identity });
-                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                    await agent.fetchRootKey();
-                }
-                
-                // Use WASM-resolved bot entries from WalletContext if available
-                const contextEntries = walletContext?.allBotEntries;
-                let managerIds;
-                if (contextEntries && contextEntries.length > 0) {
-                    managerIds = contextEntries
-                        .filter(e => e.resolvedAppId === 'sneed-icp-staking-bot' || e.resolvedAppId === 'icp-staking-bot')
-                        .map(e => e.canisterId);
-                } else {
-                    const factory = createFactoryActor(factoryCanisterId, { agent });
-                    const walletEntries = await factory.getMyWallet().catch(() => []);
-                    managerIds = (walletEntries || [])
-                        .filter(e => e.appId === 'sneed-icp-staking-bot' || e.appId === 'icp-staking-bot')
-                        .map(e => e.canisterId);
-                }
-                setNeuronManagers(managerIds.map(p => p.toString()));
-                
-                // Fetch trading bots
-                let tradingBotIds;
-                if (contextEntries && contextEntries.length > 0) {
-                    tradingBotIds = contextEntries
-                        .filter(e => e.resolvedAppId === 'sneed-trading-bot')
-                        .map(e => e.canisterId);
-                } else {
-                    const factory2 = createFactoryActor(factoryCanisterId, { agent });
-                    const walletEntries2 = await factory2.getMyWallet().catch(() => []);
-                    tradingBotIds = (walletEntries2 || [])
-                        .filter(e => e.appId === 'sneed-trading-bot')
-                        .map(e => e.canisterId);
-                }
-                setTradingBots(tradingBotIds.map(p => p.toString()));
-                
             } catch (e) {
                 console.error('Failed to fetch user canisters:', e);
             } finally {
@@ -465,6 +427,72 @@ function SneedexCreate() {
             }
         })();
     }, [identity]);
+    
+    // Classify canisters into bot types using WASM-resolved allBotEntries + hash lookup for unclassified canisters.
+    // Reactive: re-runs whenever allBotEntries, WASM hash map, or canister lists update.
+    useEffect(() => {
+        if (!identity) return;
+        
+        const contextEntries = walletContext?.allBotEntries || [];
+        const wasmHashes = {
+            ...(walletContext?.allKnownWasmHashes || {}),
+            ...allKnownWasmHashes,
+        };
+        
+        const stakingBotIds = new Set();
+        const tradingBotIds = new Set();
+        const classifiedIds = new Set();
+        
+        for (const entry of contextEntries) {
+            const cid = entry.canisterId.toString();
+            classifiedIds.add(cid);
+            const app = entry.resolvedAppId || '';
+            if (app === 'sneed-icp-staking-bot' || app === 'icp-staking-bot') {
+                stakingBotIds.add(cid);
+            } else if (app === 'sneed-trading-bot') {
+                tradingBotIds.add(cid);
+            }
+        }
+        
+        const allCanisters = [...new Set([...userCanisters, ...walletCanisters])];
+        const unclassified = allCanisters.filter(id => !classifiedIds.has(id));
+        
+        if (unclassified.length === 0 || Object.keys(wasmHashes).length === 0) {
+            setNeuronManagers(Array.from(stakingBotIds));
+            setTradingBots(Array.from(tradingBotIds));
+            return;
+        }
+        
+        let cancelled = false;
+        (async () => {
+            await Promise.allSettled(unclassified.map(async (canisterId) => {
+                try {
+                    const result = await getCanisterInfo(identity, canisterId);
+                    if (result && 'ok' in result) {
+                        const moduleHash = result.ok.module_hash?.[0];
+                        if (moduleHash) {
+                            const hashHex = uint8ArrayToHex(new Uint8Array(moduleHash)).toLowerCase();
+                            const entry = wasmHashes[hashHex];
+                            if (entry) {
+                                if (entry.appId === 'sneed-icp-staking-bot' || entry.appId === 'icp-staking-bot') {
+                                    stakingBotIds.add(canisterId);
+                                } else if (entry.appId === 'sneed-trading-bot') {
+                                    tradingBotIds.add(canisterId);
+                                }
+                            }
+                        }
+                    }
+                } catch (_) {}
+            }));
+            
+            if (!cancelled) {
+                setNeuronManagers(Array.from(stakingBotIds));
+                setTradingBots(Array.from(tradingBotIds));
+            }
+        })();
+        
+        return () => { cancelled = true; };
+    }, [identity, walletContext?.allBotEntries, walletContext?.allKnownWasmHashes, allKnownWasmHashes, userCanisters, walletCanisters]);
     
     // Helper to get canister display name (show nickname + name if both exist)
     const getCanisterName = useCallback((canisterId) => {
