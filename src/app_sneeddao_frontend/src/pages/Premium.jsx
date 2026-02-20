@@ -29,6 +29,8 @@ import {
     FaBrain, FaComments, FaEnvelope, FaAddressBook, FaCube, FaPercent, FaUsers, FaTachometerAlt, FaFolder, FaUnlock, FaLock
 } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
+import { useDenomination } from '../contexts/DenominationContext';
+import priceService from '../services/PriceService';
 
 // Custom CSS for animations
 const customStyles = `
@@ -102,6 +104,8 @@ const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 export default function Premium() {
     const { isAuthenticated, identity } = useAuth();
     const { theme } = useTheme();
+    const { formatValue: denomFormatValue, isUSD } = useDenomination();
+    const [icpUsdPrice, setIcpUsdPrice] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     
@@ -158,6 +162,21 @@ export default function Premium() {
         setPremiumConfirmModal({ ...premiumConfirmModal, show: false });
     };
     
+    // Fetch ICP price for denomination display
+    useEffect(() => {
+        priceService.getICPUSDPrice()
+            .then(price => { if (price) setIcpUsdPrice(price); })
+            .catch(() => {});
+    }, []);
+
+    /** Convert an ICP e8s amount to a formatted denomination string, or null if price unavailable. */
+    const formatIcpDenom = useCallback((e8s) => {
+        if (icpUsdPrice == null || !e8s) return null;
+        const icpAmount = Number(BigInt(e8s)) / 1e8;
+        const usdValue = icpAmount * icpUsdPrice;
+        return denomFormatValue(usdValue);
+    }, [icpUsdPrice, denomFormatValue]);
+
     // Get or create actor
     const getActor = useCallback(async () => {
         if (!identity) return null;
@@ -1908,6 +1927,11 @@ export default function Premium() {
                                         )}
                                         <div style={styles.tierName}>{tier.name}</div>
                                         <div style={styles.tierPrice}>{formatIcp(tier.amountE8s)}</div>
+                                        {formatIcpDenom(tier.amountE8s) && !isUSD && (
+                                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '2px' }}>
+                                                ≈ {formatIcpDenom(tier.amountE8s)}
+                                            </div>
+                                        )}
                                         <div style={styles.tierDuration}>
                                             <FaClock /> {formatDuration(tier.durationNs)}
                                         </div>
@@ -1948,6 +1972,11 @@ export default function Premium() {
                                                 <div style={{ fontSize: '1.1rem', fontWeight: '600', color: theme.colors.primaryText }}>
                                                     {walletBalance !== null ? formatIcp(walletBalance) : '—'}
                                                 </div>
+                                                {walletBalance !== null && formatIcpDenom(walletBalance) && !isUSD && (
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem' }}>
+                                                        ≈ {formatIcpDenom(walletBalance)}
+                                                    </div>
+                                                )}
                                             </div>
                                             {selectedIcpTier !== null && (
                                                 <div style={{ minWidth: '100px' }}>
@@ -1955,6 +1984,11 @@ export default function Premium() {
                                                     <div style={{ fontSize: '1.1rem', fontWeight: '600', color: theme.colors.accent }}>
                                                         {formatIcp(icpTiers[selectedIcpTier].amountE8s)}
                                                     </div>
+                                                    {formatIcpDenom(icpTiers[selectedIcpTier].amountE8s) && !isUSD && (
+                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem' }}>
+                                                            ≈ {formatIcpDenom(icpTiers[selectedIcpTier].amountE8s)}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -1974,7 +2008,7 @@ export default function Premium() {
                                             {payingNow ? (
                                                 <><FaSpinner className="spin" /> Processing Payment...</>
                                             ) : (
-                                                <><FaCrown /> Pay Now{selectedIcpTier !== null ? ` - ${formatIcp(icpTiers[selectedIcpTier].amountE8s)}` : ''}</>
+                                                <><FaCrown /> Pay Now{selectedIcpTier !== null ? ` - ${formatIcp(icpTiers[selectedIcpTier].amountE8s)}` : ''}{selectedIcpTier !== null && formatIcpDenom(icpTiers[selectedIcpTier].amountE8s) && !isUSD ? ` (≈ ${formatIcpDenom(icpTiers[selectedIcpTier].amountE8s)})` : ''}</>
                                             )}
                                         </button>
                                     </div>
