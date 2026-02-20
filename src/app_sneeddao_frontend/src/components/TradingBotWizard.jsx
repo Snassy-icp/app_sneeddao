@@ -355,7 +355,7 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
     const [fundAmount, setFundAmount] = useState('');
     const [walletBalance, setWalletBalance] = useState(null);
     const [inputMeta, setInputMeta] = useState(null);
-    const [usePurse, setUsePurse] = useState(false);
+    const [usePurse, setUsePurse] = useState(true);
     const [autoStart, setAutoStart] = useState(true);
     const [deploying, setDeploying] = useState(false);
     const [deployError, setDeployError] = useState('');
@@ -611,7 +611,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
     const [fundAmount, setFundAmount] = useState('');
     const [walletBalance, setWalletBalance] = useState(null);
     const [fundMeta, setFundMeta] = useState(null);
-    const [usePurse, setUsePurse] = useState(false);
+    const [usePurse, setUsePurse] = useState(true);
     const [autoStart, setAutoStart] = useState(true);
     const [deploying, setDeploying] = useState(false);
     const [deployError, setDeployError] = useState('');
@@ -953,7 +953,7 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
     const [fundAmount, setFundAmount] = useState('');
     const [walletBalance, setWalletBalance] = useState(null);
     const [fundMeta, setFundMeta] = useState(null);
-    const [usePurse, setUsePurse] = useState(false);
+    const [usePurse, setUsePurse] = useState(true);
     const [autoStart, setAutoStart] = useState(true);
     const [deploying, setDeploying] = useState(false);
     const [deployError, setDeployError] = useState('');
