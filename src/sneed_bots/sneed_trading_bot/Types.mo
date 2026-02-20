@@ -485,6 +485,7 @@ module {
         #ManageDistributeFunds;     // 211: Start/stop/pause/resume/trigger distribute-funds chore
         #ManageSnapshotChore;       // 212: Start/stop/pause/resume/trigger snapshot chore
         #ManageCircuitBreaker;      // 213: Configure circuit breaker rules
+        #ManagePurses;              // 214: Enable/disable chore purses; fund and reclaim
     };
 
     /// Numeric IDs for permission types (for stable storage).
@@ -512,6 +513,7 @@ module {
         public let ManageDistributeFunds: Nat = 211;
         public let ManageSnapshotChore: Nat = 212;
         public let ManageCircuitBreaker: Nat = 213;
+        public let ManagePurses: Nat = 214;
     };
 
     /// Info about a botkey principal and their permissions (for API responses).
@@ -966,6 +968,25 @@ module {
         entries: [CircuitBreakerEvent];
         totalCount: Nat;
         hasMore: Bool;
+    };
+
+    // ============================================
+    // CHORE PURSE TYPES
+    // ============================================
+
+    /// Balance entry for a chore's purse.
+    public type PurseBalance = {
+        token: Principal;
+        subaccountNumber: ?Nat;
+        balance: Nat;
+    };
+
+    /// Balance entry for the main purse (computed: on-chain minus all chore purses).
+    public type MainPurseBalance = {
+        token: Principal;
+        subaccountNumber: ?Nat;
+        balance: Nat;
+        overcommitted: Bool;
     };
 
 };

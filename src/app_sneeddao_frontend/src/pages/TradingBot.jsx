@@ -105,6 +105,8 @@ const PERMISSION_LABELS = {
     'ConfigureDistribution': 'Configure Distribution',
     'ManageDistributeFunds': 'Manage Distribute Funds',
     'ManageSnapshotChore': 'Manage Snapshot Chore',
+    'ManageCircuitBreaker': 'Manage Circuit Breaker',
+    'ManagePurses': 'Manage Purses',
 };
 
 const PERMISSION_DESCRIPTIONS = {
@@ -126,6 +128,8 @@ const PERMISSION_DESCRIPTIONS = {
     'ConfigureDistribution': 'Add, edit, and remove distribution lists',
     'ManageDistributeFunds': 'Start/stop/pause/resume/trigger distribute-funds chore',
     'ManageSnapshotChore': 'Start/stop/pause/resume/trigger snapshot chore',
+    'ManageCircuitBreaker': 'Configure circuit breaker rules and conditions',
+    'ManagePurses': 'Enable/disable chore purses, fund and reclaim operations',
 };
 
 // Chore types that support multiple instances
@@ -6337,83 +6341,347 @@ function SnapshotChoreConfigPanel({ instanceId, theme, accentColor, cardStyle })
 }
 
 // ============================================
+// Chore Purse Panel
+// ============================================
+function PursePanel({ instanceId, getReadyBotActor, theme, accentColor }) {
+    const [purseEnabled, setPurseEnabled] = useState(null);
+    const [purseBalances, setPurseBalances] = useState([]);
+    const [mainPurseBalances, setMainPurseBalances] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [fundToken, setFundToken] = useState('');
+    const [fundAmount, setFundAmount] = useState('');
+    const [reclaimToken, setReclaimToken] = useState('');
+    const [reclaimAmount, setReclaimAmount] = useState('');
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState(null);
+    const [success, setSuccess] = useState(null);
+
+    const cardSt = { background: theme.colors.cardBg, border: `1px solid ${theme.colors.border}`, borderRadius: '8px', padding: '14px', marginBottom: '10px' };
+    const btnSm = (extra = {}) => ({
+        padding: '5px 12px', fontSize: '0.8rem', border: `1px solid ${theme.colors.border}`,
+        borderRadius: '6px', cursor: 'pointer', background: theme.colors.cardBg, color: theme.colors.primaryText,
+        display: 'inline-flex', alignItems: 'center', gap: '4px', ...extra,
+    });
+    const inp = (extra = {}) => ({
+        padding: '6px 10px', fontSize: '0.82rem', borderRadius: '6px',
+        border: `1px solid ${theme.colors.border}`,
+        background: theme.colors.inputBg || theme.colors.secondaryBg,
+        color: theme.colors.primaryText, outline: 'none', ...extra,
+    });
+
+    const tokLabel = (tok) => {
+        const p = typeof tok === 'string' ? tok : tok?.toText?.() || tok?.toString?.() || '';
+        const cached = getTokenMetadataSync(p);
+        return cached?.symbol || p.slice(0, 8) + '...';
+    };
+    const tokDecimals = (tok) => {
+        const p = typeof tok === 'string' ? tok : tok?.toText?.() || tok?.toString?.() || '';
+        const cached = getTokenMetadataSync(p);
+        return cached?.decimals ?? 8;
+    };
+    const fmtBal = (raw, decimals) => {
+        const n = Number(raw);
+        if (isNaN(n)) return '0';
+        return (n / (10 ** Number(decimals))).toLocaleString(undefined, { maximumFractionDigits: Number(decimals) });
+    };
+
+    const loadData = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const actor = await getReadyBotActor();
+            const enabled = await actor.isPurseEnabled(instanceId);
+            setPurseEnabled(enabled);
+            if (enabled) {
+                const [bals, mainBals] = await Promise.all([
+                    actor.getPurseBalances(instanceId),
+                    actor.getMainPurseBalances(),
+                ]);
+                setPurseBalances(bals);
+                setMainPurseBalances(mainBals);
+            }
+        } catch (e) {
+            setError(e?.message || String(e));
+        } finally {
+            setLoading(false);
+        }
+    }, [instanceId, getReadyBotActor]);
+
+    useEffect(() => { loadData(); }, [loadData]);
+
+    const handleToggle = async () => {
+        setSaving(true); setError(null); setSuccess(null);
+        try {
+            const actor = await getReadyBotActor();
+            if (purseEnabled) {
+                const result = await actor.disablePurse(instanceId);
+                if ('Err' in result) { setError(result.Err); return; }
+            } else {
+                await actor.enablePurse(instanceId);
+            }
+            await loadData();
+            setSuccess(purseEnabled ? 'Purse disabled' : 'Purse enabled');
+        } catch (e) {
+            setError(e?.message || String(e));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleFund = async () => {
+        if (!fundToken || !fundAmount) return;
+        setSaving(true); setError(null); setSuccess(null);
+        try {
+            const actor = await getReadyBotActor();
+            const dec = tokDecimals(fundToken);
+            const raw = BigInt(Math.round(parseFloat(fundAmount) * (10 ** Number(dec))));
+            const result = await actor.fundPurse(instanceId, typeof fundToken === 'string' ? Principal.fromText(fundToken) : fundToken, raw);
+            if ('Err' in result) { setError(result.Err); return; }
+            setSuccess('Funded successfully');
+            setFundAmount('');
+            await loadData();
+        } catch (e) {
+            setError(e?.message || String(e));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleReclaim = async () => {
+        if (!reclaimToken || !reclaimAmount) return;
+        setSaving(true); setError(null); setSuccess(null);
+        try {
+            const actor = await getReadyBotActor();
+            const dec = tokDecimals(reclaimToken);
+            const raw = BigInt(Math.round(parseFloat(reclaimAmount) * (10 ** Number(dec))));
+            const result = await actor.reclaimFromPurse(instanceId, typeof reclaimToken === 'string' ? Principal.fromText(reclaimToken) : reclaimToken, raw);
+            if ('Err' in result) { setError(result.Err); return; }
+            setSuccess('Reclaimed successfully');
+            setReclaimAmount('');
+            await loadData();
+        } catch (e) {
+            setError(e?.message || String(e));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (loading) return <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, padding: '8px 0' }}>Loading purse...</div>;
+
+    // Gather all tokens from main purse for fund dropdown
+    const mainTokenIds = mainPurseBalances.map(b => typeof b.token === 'string' ? b.token : b.token?.toText?.() || b.token?.toString?.() || '');
+    const purseTokenIds = purseBalances.map(b => typeof b.token === 'string' ? b.token : b.token?.toText?.() || b.token?.toString?.() || '');
+
+    return (
+        <div style={cardSt}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 600, color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FaWallet style={{ color: accentColor }} /> Chore Purse
+                </h4>
+                <button onClick={handleToggle} disabled={saving} style={btnSm({ color: purseEnabled ? '#27ae60' : '#e74c3c' })}>
+                    {purseEnabled ? <FaToggleOn size={16} /> : <FaToggleOff size={16} />}
+                    {purseEnabled ? 'Enabled' : 'Disabled'}
+                </button>
+                <button onClick={loadData} disabled={saving} style={btnSm()} title="Refresh">
+                    <FaSyncAlt size={12} />
+                </button>
+            </div>
+
+            {error && <div style={{ color: '#e74c3c', fontSize: '0.8rem', marginBottom: '8px' }}>{error}</div>}
+            {success && <div style={{ color: '#27ae60', fontSize: '0.8rem', marginBottom: '8px' }}>{success}</div>}
+
+            {purseEnabled && (
+                <>
+                    {/* Purse Balances */}
+                    <div style={{ marginBottom: '12px' }}>
+                        <div style={{ fontSize: '0.78rem', color: theme.colors.secondaryText, fontWeight: 500, marginBottom: '4px' }}>Purse Balances</div>
+                        {purseBalances.length === 0 ? (
+                            <div style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, fontStyle: 'italic' }}>Empty — fund this purse to begin trading</div>
+                        ) : (
+                            <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                        <th style={{ textAlign: 'left', padding: '4px 8px', color: theme.colors.secondaryText, fontWeight: 500 }}>Token</th>
+                                        <th style={{ textAlign: 'right', padding: '4px 8px', color: theme.colors.secondaryText, fontWeight: 500 }}>Balance</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {purseBalances.map((b, i) => {
+                                        const p = typeof b.token === 'string' ? b.token : b.token?.toText?.() || b.token?.toString?.() || '';
+                                        const dec = tokDecimals(p);
+                                        return (
+                                            <tr key={i} style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                <td style={{ padding: '4px 8px', color: theme.colors.primaryText }}>{tokLabel(p)}{b.subaccountNumber?.[0] != null ? ` (sub ${Number(b.subaccountNumber[0])})` : ''}</td>
+                                                <td style={{ padding: '4px 8px', textAlign: 'right', color: theme.colors.primaryText, fontFamily: 'monospace' }}>{fmtBal(b.balance, dec)}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
+
+                    {/* Main Purse Context */}
+                    {mainPurseBalances.length > 0 && (
+                        <div style={{ marginBottom: '12px' }}>
+                            <div style={{ fontSize: '0.78rem', color: theme.colors.secondaryText, fontWeight: 500, marginBottom: '4px' }}>Main Purse (available to fund)</div>
+                            <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                        <th style={{ textAlign: 'left', padding: '4px 8px', color: theme.colors.secondaryText, fontWeight: 500 }}>Token</th>
+                                        <th style={{ textAlign: 'right', padding: '4px 8px', color: theme.colors.secondaryText, fontWeight: 500 }}>Available</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {mainPurseBalances.map((b, i) => {
+                                        const p = typeof b.token === 'string' ? b.token : b.token?.toText?.() || b.token?.toString?.() || '';
+                                        const dec = tokDecimals(p);
+                                        return (
+                                            <tr key={i} style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                <td style={{ padding: '4px 8px', color: theme.colors.primaryText }}>
+                                                    {tokLabel(p)}
+                                                    {b.overcommitted && <span style={{ color: '#e74c3c', fontSize: '0.72rem', marginLeft: '6px' }}>overcommitted</span>}
+                                                </td>
+                                                <td style={{ padding: '4px 8px', textAlign: 'right', color: theme.colors.primaryText, fontFamily: 'monospace' }}>{fmtBal(b.balance, dec)}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {/* Fund */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText, fontWeight: 500 }}>Fund:</span>
+                        <select value={fundToken} onChange={e => setFundToken(e.target.value)} style={inp({ minWidth: '100px' })}>
+                            <option value="">Token...</option>
+                            {mainTokenIds.map(id => <option key={id} value={id}>{tokLabel(id)}</option>)}
+                        </select>
+                        <input type="number" placeholder="Amount" value={fundAmount} onChange={e => setFundAmount(e.target.value)} style={inp({ width: '110px' })} step="any" min="0" />
+                        <button onClick={handleFund} disabled={saving || !fundToken || !fundAmount} style={btnSm({ color: accentColor, borderColor: accentColor })}>
+                            <FaArrowDown size={10} /> Fund
+                        </button>
+                    </div>
+
+                    {/* Reclaim */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText, fontWeight: 500 }}>Reclaim:</span>
+                        <select value={reclaimToken} onChange={e => setReclaimToken(e.target.value)} style={inp({ minWidth: '100px' })}>
+                            <option value="">Token...</option>
+                            {purseTokenIds.map(id => <option key={id} value={id}>{tokLabel(id)}</option>)}
+                        </select>
+                        <input type="number" placeholder="Amount" value={reclaimAmount} onChange={e => setReclaimAmount(e.target.value)} style={inp({ width: '110px' })} step="any" min="0" />
+                        <button onClick={handleReclaim} disabled={saving || !reclaimToken || !reclaimAmount} style={btnSm({ color: '#e67e22', borderColor: '#e67e22' })}>
+                            <FaArrowUp size={10} /> Reclaim
+                        </button>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+}
+
+// ============================================
 // Custom chore configuration renderer (dispatches to real components)
 // ============================================
 function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, getReadyBotActor, theme, accentColor, cardStyle, inputStyle, buttonStyle, secondaryButtonStyle, canisterId }) {
+    const pursePanel = (
+        <PursePanel
+            key={`purse-${instanceId}`}
+            instanceId={instanceId}
+            getReadyBotActor={getReadyBotActor}
+            theme={theme}
+            accentColor={accentColor}
+        />
+    );
+
     switch (choreTypeId) {
         case 'trade':
             return (
-                <ActionListPanel
-                    key={instanceId}
-                    instanceId={instanceId}
-                    getReadyBotActor={getReadyBotActor}
-                    theme={theme}
-                    accentColor={accentColor}
-                    cardStyle={cardStyle}
-                    inputStyle={inputStyle}
-                    buttonStyle={buttonStyle}
-                    secondaryButtonStyle={secondaryButtonStyle}
-                    fetchFn="getTradeActions"
-                    addFn="addTradeAction"
-                    updateFn="updateTradeAction"
-                    removeFn="removeTradeAction"
-                    allowedTypes={[ACTION_TYPE_TRADE, ACTION_TYPE_DEPOSIT, ACTION_TYPE_WITHDRAW, ACTION_TYPE_SEND]}
-                    title="Trade Actions"
-                    description="Configure token swaps, deposits, withdrawals, and sends that execute when this chore fires. Each action can have conditions (balance thresholds, price ranges) and frequency limits."
-                />
+                <>
+                    {pursePanel}
+                    <ActionListPanel
+                        key={instanceId}
+                        instanceId={instanceId}
+                        getReadyBotActor={getReadyBotActor}
+                        theme={theme}
+                        accentColor={accentColor}
+                        cardStyle={cardStyle}
+                        inputStyle={inputStyle}
+                        buttonStyle={buttonStyle}
+                        secondaryButtonStyle={secondaryButtonStyle}
+                        fetchFn="getTradeActions"
+                        addFn="addTradeAction"
+                        updateFn="updateTradeAction"
+                        removeFn="removeTradeAction"
+                        allowedTypes={[ACTION_TYPE_TRADE, ACTION_TYPE_DEPOSIT, ACTION_TYPE_WITHDRAW, ACTION_TYPE_SEND]}
+                        title="Trade Actions"
+                        description="Configure token swaps, deposits, withdrawals, and sends that execute when this chore fires. Each action can have conditions (balance thresholds, price ranges) and frequency limits."
+                    />
+                </>
             );
 
         case 'rebalance':
             return (
-                <RebalancerConfigPanel
-                    key={instanceId}
-                    instanceId={instanceId}
-                    getReadyBotActor={getReadyBotActor}
-                    theme={theme}
-                    accentColor={accentColor}
-                    cardStyle={cardStyle}
-                    inputStyle={inputStyle}
-                    buttonStyle={buttonStyle}
-                    secondaryButtonStyle={secondaryButtonStyle}
-                    canisterId={canisterId}
-                />
+                <>
+                    {pursePanel}
+                    <RebalancerConfigPanel
+                        key={instanceId}
+                        instanceId={instanceId}
+                        getReadyBotActor={getReadyBotActor}
+                        theme={theme}
+                        accentColor={accentColor}
+                        cardStyle={cardStyle}
+                        inputStyle={inputStyle}
+                        buttonStyle={buttonStyle}
+                        secondaryButtonStyle={secondaryButtonStyle}
+                        canisterId={canisterId}
+                    />
+                </>
             );
 
         case 'move-funds':
             return (
-                <ActionListPanel
-                    key={instanceId}
-                    instanceId={instanceId}
-                    getReadyBotActor={getReadyBotActor}
-                    theme={theme}
-                    accentColor={accentColor}
-                    cardStyle={cardStyle}
-                    inputStyle={inputStyle}
-                    buttonStyle={buttonStyle}
-                    secondaryButtonStyle={secondaryButtonStyle}
-                    fetchFn="getMoveFundsActions"
-                    addFn="addMoveFundsAction"
-                    updateFn="updateMoveFundsAction"
-                    removeFn="removeMoveFundsAction"
-                    allowedTypes={[ACTION_TYPE_DEPOSIT, ACTION_TYPE_WITHDRAW, ACTION_TYPE_SEND]}
-                    title="Move Funds Actions"
-                    description="Schedule deposit, withdraw, and send operations between subaccounts and external addresses."
-                />
+                <>
+                    {pursePanel}
+                    <ActionListPanel
+                        key={instanceId}
+                        instanceId={instanceId}
+                        getReadyBotActor={getReadyBotActor}
+                        theme={theme}
+                        accentColor={accentColor}
+                        cardStyle={cardStyle}
+                        inputStyle={inputStyle}
+                        buttonStyle={buttonStyle}
+                        secondaryButtonStyle={secondaryButtonStyle}
+                        fetchFn="getMoveFundsActions"
+                        addFn="addMoveFundsAction"
+                        updateFn="updateMoveFundsAction"
+                        removeFn="removeMoveFundsAction"
+                        allowedTypes={[ACTION_TYPE_DEPOSIT, ACTION_TYPE_WITHDRAW, ACTION_TYPE_SEND]}
+                        title="Move Funds Actions"
+                        description="Schedule deposit, withdraw, and send operations between subaccounts and external addresses."
+                    />
+                </>
             );
 
         case 'distribute-funds':
             return (
-                <DistributionConfigPanel
-                    key={instanceId}
-                    instanceId={instanceId}
-                    getReadyBotActor={getReadyBotActor}
-                    theme={theme}
-                    accentColor={accentColor}
-                    cardStyle={cardStyle}
-                    inputStyle={inputStyle}
-                    buttonStyle={buttonStyle}
-                    secondaryButtonStyle={secondaryButtonStyle}
-                />
+                <>
+                    {pursePanel}
+                    <DistributionConfigPanel
+                        key={instanceId}
+                        instanceId={instanceId}
+                        getReadyBotActor={getReadyBotActor}
+                        theme={theme}
+                        accentColor={accentColor}
+                        cardStyle={cardStyle}
+                        inputStyle={inputStyle}
+                        buttonStyle={buttonStyle}
+                        secondaryButtonStyle={secondaryButtonStyle}
+                    />
+                </>
             );
 
         case 'snapshot':

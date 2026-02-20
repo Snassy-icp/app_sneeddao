@@ -47,6 +47,7 @@ The Trading Bot uses the shared base permissions (0–99) plus its own bot-speci
 | 209 | `#WithdrawFunds`         | Send tokens from the bot to external accounts |
 | 210 | `#ConfigureDistribution` | Add/update/remove distribution lists |
 | 211 | `#ManageDistributeFunds` | Start/stop/pause/resume/trigger distribute-funds chore |
+| 214 | `#ManagePurses`          | Enable/disable chore purses; fund and reclaim operations |
 
 ---
 
@@ -774,6 +775,10 @@ var circuitBreakerNextRuleId: Nat
 var circuitBreakerLog: [CircuitBreakerEvent]
 var circuitBreakerLogNextId: Nat
 var circuitBreakerMaxLogEntries: Nat
+
+// Chore Purses (isolated chore balances)
+var chorePurseEnabled: [(Text, Bool)]                     // instanceId → enabled
+var chorePurseBalances: [(Text, [(Text, Nat)])]           // instanceId → [(balanceKey, amount)]
 ```
 
 ---
@@ -887,6 +892,19 @@ setChoreTaskTimeout(choreId: Text, seconds: Nat) : async ()
 setChoreNextRun(choreId: Text, timestampNanos: Int) : async ()
 ```
 
+### Chore Purses
+```motoko
+isPurseEnabled(instanceId: Text) : async Bool
+enablePurse(instanceId: Text) : async ()
+disablePurse(instanceId: Text) : async { #Ok; #Err: Text }
+getPurseBalances(instanceId: Text) : async [PurseBalance]
+getPurseBalance(instanceId: Text, token: Principal, subaccountNumber: ?Nat) : async Nat
+getMainPurseBalances() : async [MainPurseBalance]
+getMainPurseBalance(token: Principal, subaccountNumber: ?Nat) : async { balance: Nat; overcommitted: Bool }
+fundPurse(instanceId: Text, token: Principal, amount: Nat) : async { #Ok; #Err: Text }
+reclaimFromPurse(instanceId: Text, token: Principal, amount: Nat) : async { #Ok; #Err: Text }
+```
+
 ### Log (shared pattern)
 ```motoko
 getLogs(filter: LogFilter) : async LogResult
@@ -987,6 +1005,301 @@ The bot should prefer ICRC-2 when the token supports it, falling back to ICRC-1.
 
 ### Phase 8: Distribute Funds Chore
 - Reuse pattern from staking bot.
+
+---
+
+## 17. Chore Purses (Isolated Chore Balances)
+
+### Overview
+
+By default, all chores share the same token balances in the main account (and subaccounts). A DCA chore buying SNEED and a range-trading chore trading TACO both draw from and contribute to the same ICP balance. While this comingled model is sometimes desirable (and remains available), most users expect **isolated balances per chore**.
+
+**Chore Purses** are a virtual accounting layer that tracks per-chore token balances. All tokens physically remain in the canister's on-chain accounts (main account and subaccounts), but the purse system tracks "how much of each token belongs to each chore."
+
+The term **"Purse"** is deliberately chosen to avoid overloading "Account" (ICRC-1 concept), "Subaccount" (ICRC-1 subaccount blob), or "Wallet" (user wallet).
+
+### Concepts
+
+| Term | Meaning |
+|------|---------|
+| **Purse** | A virtual balance sheet tracking token balances per (token, subaccount). Each chore instance can have its own purse. |
+| **Main Purse** | The default purse holding all on-chain funds not allocated to any chore-specific purse. Its balance is always **computed**: `main purse = on-chain balance − Σ chore purse balances`. Chores without their own purse share the main purse. Detected inflows and outflows are automatically reflected in the main purse (since on-chain balance changes while chore purse balances stay the same). |
+| **Fund** | Move tokens from the main purse into a chore's purse. No on-chain transfer occurs — this is purely bookkeeping. The main purse decreases and the chore's purse increases by the same amount. |
+| **Reclaim** | Move tokens from a chore's purse back to the main purse. No on-chain transfer occurs. The chore's purse decreases and the main purse increases. |
+
+Every token in the on-chain account is accounted for: it belongs either to the **main purse** or to a **chore's purse**. No chore can ever access another chore's funds.
+
+"Fund" and "Reclaim" are deliberately distinct from the existing "Deposit" (main → subaccount ICRC-1 transfer) and "Withdraw" (subaccount → main ICRC-1 transfer) action types.
+
+### Behavior by Purse State
+
+| Chore Purse State | Balance Used for Trading | Inflows / Outflows | Fund/Reclaim |
+|---|---|---|---|
+| **Disabled** (default for existing chores) | **Main purse** balance (shared with other purse-disabled chores) | Go to / come from the main purse | N/A (chore uses main purse directly) |
+| **Enabled** (default for new chores) | **Chore's own purse** balance only | Go to / come from the main purse (user must Fund to move into a chore purse) | Available |
+
+When no chore-specific purses exist (or none are funded), the main purse equals the full on-chain balance, so the system behaves identically to the pre-purse era. The moment a user Funds a chore's purse, the main purse shrinks by that amount, and other chores (sharing the main purse) see less available balance.
+
+### Data Model
+
+```motoko
+// NEW stable vars — additive only, no changes to any existing stable vars
+var chorePurseEnabled: [(Text, Bool)]                     // instanceId → enabled
+var chorePurseBalances: [(Text, [(Text, Nat)])]           // instanceId → [(balanceKey, amount)]
+```
+
+The `balanceKey` format matches the existing `lastKnownBalances` convention: `"<tokenPrincipal>:main"` for the main account (null subaccount), or `"<tokenPrincipal>:<subaccountHex>"` for named subaccounts.
+
+### Defaults
+
+- **New chore instances** (created after this feature is deployed): Purse enabled by default. The `createChoreInstance` flow adds `(instanceId, true)` to `chorePurseEnabled`.
+- **Existing chore instances** (created before this feature): Not present in `chorePurseEnabled`, which is treated as **disabled**. The user can enable it manually.
+
+### Fund & Reclaim Mechanics
+
+#### Fund (Main Purse → Chore Purse)
+
+```
+fundPurse(instanceId, token, amount):
+  1. Verify purse is enabled for this chore
+  2. Get actual on-chain balance for (token, main account) — requires async ledger call
+  3. Calculate main purse balance = on-chain − Σ chore purse balances of ALL chores for (token, main)
+  4. Verify amount ≤ main purse balance (reject otherwise)
+  5. Increase this chore's purse balance for (token, main) by amount
+     (main purse balance automatically decreases since it is computed)
+```
+
+No ICRC-1 transfer occurs. The tokens already reside in the main account on-chain. The main purse shrinks and the chore's purse grows by the same amount.
+
+#### Reclaim (Chore Purse → Main Purse)
+
+```
+reclaimFromPurse(instanceId, token, amount):
+  1. Verify purse is enabled for this chore
+  2. Get purse balance for (token, main account) for this chore
+  3. Verify amount ≤ purse balance (reject otherwise)
+  4. Decrease this chore's purse balance for (token, main) by amount
+     (main purse balance automatically increases since it is computed)
+```
+
+No ICRC-1 transfer occurs. The chore's purse shrinks and the main purse grows.
+
+#### Fund from Subaccount
+
+For the initial version, Fund and Reclaim operate only on the **main account** (subaccount null) portion of purse balances. To fund from a subaccount, the user must first Withdraw (ICRC-1 transfer from subaccount → main), then Fund the purse. This keeps the API surface small while covering the primary use case.
+
+### Integration with Trade Chores
+
+The execution flow is determined by whether the chore has its own purse or uses the main purse.
+
+#### Helper: `getEffectiveBalance(instanceId, token, subaccount)`
+
+A single internal helper resolves the balance a chore should use:
+
+```
+if chorePurseEnabled(instanceId):
+    return chorePurseBalance(instanceId, token, subaccount)
+else:
+    return mainPurseBalance(token, subaccount)
+      // = on-chain balance − Σ all chore purse balances for (token, subaccount)
+```
+
+This helper replaces the current `getBalance(token, subaccount)` calls in all chore execution paths.
+
+#### Trade Action (actionType 0 — Swap)
+
+1. **Balance check**: Use `getEffectiveBalance(instanceId, inputToken, null)`.
+2. **Balance conditions** (`minBalance`, `maxBalance`): Evaluated against the effective balance (with optional denomination conversion, same as today).
+3. **Trade size computation** (`computeActionAmount`): Uses the effective balance as the `balance` parameter.
+4. **Affordable cap**: `maxAffordable = min(effectiveBalance, on-chain balance) − fees × 3`. The on-chain check is a safety guard since the actual ICRC-1 transfer comes from the main account.
+5. **Swap execution**: No change — the swap still happens from the main account via `executeSwap`.
+6. **Post-swap success (chore has its own purse)**:
+   - Decrease chore purse balance for `(inputToken, main)` by `(inputAmount + inputFeesTotal)`
+   - Increase chore purse balance for `(outputToken, main)` by `(amountOut − outputFeesTotal)`
+7. **Post-swap success (chore uses main purse)**: No explicit purse update needed. The on-chain balance changed, and since the main purse is computed (`on-chain − Σ chore purses`), it automatically reflects the swap result.
+8. **Post-swap failure** (input fees lost to DEX):
+   - If chore has its own purse: decrease purse balance for `(inputToken, main)` by `inputFeesTotal`
+   - If chore uses main purse: no explicit update needed (on-chain decreased, main purse reflects it)
+
+**Critical invariant**: For chores with their own purse, the post-swap purse deduction must exactly mirror the `lastKnownBalance` update logic that already exists. Both track the same event; the purse is an additional layer on top.
+
+#### Deposit Action (actionType 1 — Main → Subaccount)
+
+1. **Balance check**: Use `getEffectiveBalance(instanceId, token, null)` (main account portion).
+2. **Post-transfer success (chore has its own purse)**:
+   - Decrease chore purse balance for `(token, main)` by `(amount + fee)`
+   - Increase chore purse balance for `(token, targetSubaccount)` by `amount`
+   - This tracks that the tokens in the subaccount still belong to this chore's purse.
+3. **Post-transfer success (chore uses main purse)**: No explicit purse update. The on-chain main account balance decreased and the subaccount balance increased; the main purse reflects both changes automatically.
+
+#### Withdraw Action (actionType 2 — Subaccount → Main)
+
+1. **Balance check**: Use `getEffectiveBalance(instanceId, token, sourceSubaccount)`.
+2. **Post-transfer success (chore has its own purse)**:
+   - Decrease chore purse balance for `(token, sourceSubaccount)` by `(amount + fee)`
+   - Increase chore purse balance for `(token, main)` by `amount`
+3. **Post-transfer success (chore uses main purse)**: No explicit purse update needed.
+
+#### Send Action (actionType 3 — Send to External)
+
+1. **Balance check**: Use `getEffectiveBalance(instanceId, token, source)`.
+2. **Post-transfer success (chore has its own purse)**:
+   - Decrease chore purse balance for `(token, source)` by `(amount + fee)`
+   - No increase anywhere (tokens left the canister)
+3. **Post-transfer success (chore uses main purse)**: No explicit purse update needed (on-chain decreased, main purse reflects it).
+
+### Integration with Rebalancer
+
+The rebalancer uses `getEffectiveBalance` for all token balance reads, so it automatically operates on the correct purse:
+
+1. **Portfolio valuation**: For each target token, use `getEffectiveBalance(instanceId, token, null)`. A rebalancer with its own purse rebalances *its own allocated funds*; a rebalancer on the main purse rebalances the shared main purse funds.
+2. **Deviation calculation**: Based on effective balances.
+3. **Trade sizing**: Clamped to the effective balance (and also to the on-chain balance as a safety check).
+4. **Post-trade updates**: Same as Trade Chore swap — if the chore has its own purse, decrease purse input and increase purse output. If on the main purse, no explicit update needed.
+5. **Fallback routing** (two-leg trades via intermediary): Both legs update the purse if enabled. Leg 1: decrease sell token, increase intermediary. Leg 2: decrease intermediary, increase buy token.
+
+### Integration with Move Funds Chores
+
+Move-funds chores use `getEffectiveBalance` for all balance checks, following the same mechanics as the trade chore's Deposit/Withdraw/Send actions. Chores with their own purse get explicit post-operation updates; chores on the main purse get automatic updates via the computed main purse balance.
+
+### Integration with Distribute Funds Chore
+
+The distribute-funds chore also uses `getEffectiveBalance`. Each distribution list's token balance is checked against the chore's effective balance (own purse or main purse). Post-send, chores with their own purse get an explicit decrease; main-purse chores get automatic updates. This allows isolating distribution reserves from trading reserves when desired.
+
+### Inflow/Outflow Detection & Reconciliation
+
+The existing `reconcileBalance` function continues to operate on **on-chain balances** only. It does NOT interact with chore purse balances. This is the correct behavior because the main purse is a computed value:
+
+- **Detected inflows** (someone sends tokens to the bot's main account): The on-chain balance increases. Since no chore purse balances change, the **main purse** balance increases by the inflow amount. The user can then Fund a chore's purse from the main purse if desired.
+- **Detected outflows** (unexpected balance decrease): The on-chain balance decreases. The **main purse** balance decreases accordingly. If the main purse was already 0 or near 0, it goes negative (overcommitted — see Safety section).
+- **Chore purse balance changes** are tracked explicitly by the chore execution logic after each operation. They are never inferred from on-chain balance changes.
+- **Users cannot send funds directly to a chore purse** from their wallet. They send to the bot's main account (which increases the main purse), then Fund the chore's purse. The frontend can orchestrate both steps as a convenience flow.
+
+### Enabling/Disabling Purses
+
+#### Enabling
+
+When a purse is enabled for a chore:
+- The purse starts with all balances at 0.
+- The chore **cannot trade** until the user funds the purse (a balance of 0 means no trade size is possible).
+- The user must explicitly Fund the purse with the desired tokens and amounts.
+
+#### Disabling
+
+When disabling a purse:
+- **All purse balances must be 0** — the user must Reclaim all funds first.
+- If any purse balance is non-zero, the disable operation fails with an error listing the non-zero balances.
+
+### Circuit Breaker Integration
+
+Circuit breaker conditions that check balances should respect purses:
+
+- **Balance condition** (`conditionType = 2`): If the condition references a token and account, and the relevant chore has a purse, the balance check uses the purse balance.
+- **Value conditions** (`conditionType = 1`, source type `rebalChoreTokens`): If the referenced rebalancer chore has a purse, use purse balances for token valuation.
+- **Value conditions** (source type `specificToken` or `allTokensInAccount`): These reference on-chain balances, not purses, unless the source explicitly ties to a specific chore instance.
+
+### Main Purse Balance
+
+The **main purse balance** for a given `(token, subaccount)` is always computed, never stored:
+
+```
+main purse = on-chain balance − Σ (chore purse balances for ALL chore-specific purses)
+```
+
+The main purse is the single source of truth for funds available to chores without their own purse, and for Fund operations.
+
+- When `main purse < 0` (due to accumulated fee drift, unexpected outflows, or rounding), it is reported as `0` with an `overcommitted` flag. This means the sum of chore purses exceeds the actual on-chain balance.
+- The overcommitted state is a **warning** — the system does not automatically reduce any chore purse's balance. The user should either add more funds to the bot or reclaim from chore purses to resolve the discrepancy.
+- Chores sharing the main purse **cannot trade** while it is overcommitted (balance = 0).
+
+### Frontend Integration
+
+1. **Purse toggle**: Each chore card in the `BotManagementPanel` shows a Purse enabled/disabled toggle. Disabling requires all chore purse balances to be 0.
+
+2. **Chore purse balance table**: When a chore's purse is enabled, the chore configuration panel shows a per-token balance table for the chore's purse (similar to the existing balance table but scoped to this purse).
+
+3. **Fund/Reclaim controls**: Per-token amount input with Fund and Reclaim buttons within the chore panel. Shows the available main purse balance for context (so the user knows how much can be funded).
+
+4. **Main purse balance view**: The portfolio/balances section shows both the total on-chain balance and the main purse balance for each token. The main purse balance is what chores without their own purse can access.
+
+5. **Send-to-chore convenience flow**: A button on the trading bot page that orchestrates: (1) send from user's wallet to the bot's main account (increases main purse), (2) wait for balance confirmation, (3) Fund the chore's purse from the main purse. This is a frontend orchestration of two separate operations, not a single backend API call.
+
+6. **Overcommitted warning**: If the main purse balance for any token is negative (chore purses sum to more than on-chain balance), show a warning banner with advice to add funds or reclaim from chore purses.
+
+### API
+
+```motoko
+// Purse configuration
+isPurseEnabled(instanceId: Text) : async Bool                          // query, ViewPortfolio
+enablePurse(instanceId: Text) : async ()                               // ManagePurses
+disablePurse(instanceId: Text) : async { #Ok; #Err: Text }            // ManagePurses
+
+// Chore purse balance queries
+getPurseBalances(instanceId: Text) : async [{
+    token: Principal;
+    subaccountNumber: ?Nat;     // null = main account
+    balance: Nat;
+}]                                                                      // query, ViewPortfolio
+
+getPurseBalance(instanceId: Text, token: Principal, subaccountNumber: ?Nat) : async Nat  // query, ViewPortfolio
+
+// Main purse balance queries
+getMainPurseBalances() : async [{
+    token: Principal;
+    subaccountNumber: ?Nat;
+    balance: Nat;               // 0 if overcommitted
+    overcommitted: Bool;        // true if Σ chore purses > on-chain
+}]                                                                      // ViewPortfolio (async — queries ledgers)
+
+getMainPurseBalance(token: Principal, subaccountNumber: ?Nat) : async {
+    balance: Nat;
+    overcommitted: Bool;
+}                                                                       // ViewPortfolio (async — queries ledger)
+
+// Fund & Reclaim (main account only — subaccount null)
+fundPurse(instanceId: Text, token: Principal, amount: Nat) : async { #Ok; #Err: Text }       // ManagePurses
+reclaimFromPurse(instanceId: Text, token: Principal, amount: Nat) : async { #Ok; #Err: Text } // ManagePurses
+```
+
+### Permission
+
+| ID  | Variant          | Description |
+|-----|------------------|-------------|
+| 214 | `#ManagePurses`  | Enable/disable chore purses and fund/reclaim operations |
+
+### Stable Variables (additions only)
+
+```motoko
+var chorePurseEnabled: [(Text, Bool)]                     // instanceId → enabled
+var chorePurseBalances: [(Text, [(Text, Nat)])]           // instanceId → [(balanceKey, amount)]
+```
+
+These are **new** stable vars added alongside the existing ones. No existing stable vars are modified.
+
+### Invariants & Safety
+
+1. **Fundamental accounting identity**: For every `(token, subaccount)`:
+   ```
+   on-chain balance = main purse balance + Σ chore purse balances
+   ```
+   The main purse is always computed from this identity, never stored independently.
+
+2. **Non-negative chore purse balances**: All chore purse balances are `Nat`. Operations that would cause underflow are **rejected** (not clamped to 0). This is critical — clamping would silently lose accounting precision.
+
+3. **On-chain sufficiency check**: Before executing an actual ICRC-1 transfer or swap, the chore verifies both:
+   - The effective balance (own purse or main purse) is sufficient, AND
+   - The on-chain account has sufficient actual balance.
+   If the on-chain balance is insufficient (e.g., due to an external untracked outflow), the operation is skipped and logged as a warning.
+
+4. **Overcommit detection**: After every `reconcileBalance` call, if the main purse balance for any (token, subaccount) is negative, a warning is logged. This means `Σ chore purse balances > on-chain balance`, which can happen due to fee drift or unexpected outflows. The user is alerted to resolve the discrepancy.
+
+5. **Fee precision**: All fee deductions from chore purses mirror the existing `lastKnownBalance` update patterns. For swaps: `inputAmount + inputFeesTotal` is deducted from the input purse, `amountOut − outputFeesTotal` is added to the output purse. For ICRC-1 transfers: `amount + fee` is deducted from source, `amount` is added to destination. For chores on the main purse, no explicit purse update is needed — the computed main purse balance reflects the on-chain changes automatically.
+
+6. **No concurrent modification risk**: IC canister message processing is sequential. Purse balance updates occur in the same synchronous block following an `await` (swap/transfer), before the next `await` point. This prevents race conditions between concurrent chore runs or API calls.
+
+7. **Upgrade safety**: Purse state is in stable vars and persists across upgrades. In-progress trades interrupted by an upgrade are simply retried on the next chore cycle — the purse balance was not yet modified (the modification happens after the await returns, which never completes if the canister upgrades mid-call).
+
+8. **Chore deletion**: When a chore instance is deleted, its chore purse balances are released back to the main purse (equivalent to reclaiming all balances, then removing the entry from `chorePurseEnabled` and `chorePurseBalances`). Since the main purse is computed, simply deleting the chore's purse entries automatically increases the main purse balance.
 
 ---
 
