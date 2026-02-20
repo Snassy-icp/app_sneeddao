@@ -2802,6 +2802,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case null { defaultSlippageBps };
         };
 
+        // Pre-adjust lastKnown for input token before the swap so any concurrent
+        // reconciliation during the await doesn't flag a false outflow.
+        let preSwapLastKnown = balance;
+        setLastKnownBalance(action.inputToken, null, if (balance > actualTradeSize) { balance - actualTradeSize } else { 0 });
+
         let result = await* executeSwap(quote, slippage);
 
         switch (result) {
@@ -2832,12 +2837,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     txId = r.txId;
                     destinationOwner = null;
                 });
-                // Store trade log ID so the after-snapshot task can link to it
                 _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
-                // Update lastKnown: input decreased by trade amount, output increased by received amount
-                // Subtract the quote's output fees (covers DEX-specific withdrawal/transfer fees)
+                // Finalize lastKnown: input already pre-adjusted, now add the output
                 let netAmountOut = if (r.amountOut > quote.outputFeesTotal) { r.amountOut - quote.outputFeesTotal } else { 0 };
-                setLastKnownBalance(action.inputToken, null, if (balance > actualTradeSize) { balance - actualTradeSize } else { 0 });
                 adjustLastKnownBalance(outputToken, null, netAmountOut);
                 if (isPurseEnabledForChore(instanceId)) {
                     adjustChorePurseBalance(instanceId, action.inputToken, null, actualTradeSize, true);
@@ -2868,16 +2870,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     txId = null;
                     destinationOwner = null;
                 });
-                // Store trade log ID so the after-snapshot task can link to it
                 _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
-                // On failure the DEX refunds input tokens, but input fees are lost
-                // (transfer fee + any deposit fee already committed to the DEX)
+                // On failure the DEX refunds input tokens — restore lastKnown, minus any lost fees
                 let feeLost = quote.inputFeesTotal;
-                if (feeLost > 0) {
-                    setLastKnownBalance(action.inputToken, null, if (balance > feeLost) { balance - feeLost } else { 0 });
-                    if (isPurseEnabledForChore(instanceId)) {
-                        adjustChorePurseBalance(instanceId, action.inputToken, null, feeLost, true);
-                    };
+                setLastKnownBalance(action.inputToken, null, if (preSwapLastKnown > feeLost) { preSwapLastKnown - feeLost } else { 0 });
+                if (feeLost > 0 and isPurseEnabledForChore(instanceId)) {
+                    adjustChorePurseBalance(instanceId, action.inputToken, null, feeLost, true);
                 };
                 false
             };
@@ -3213,6 +3211,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             ("dexId", Nat.toText(quote.dexId)),
             ("route", route),
         ]);
+        // Pre-adjust lastKnown for sell token before the swap
+        let preSwapSellBalance = sellToken.balance;
+        setLastKnownBalance(sellToken.token, null, if (sellToken.balance > tradeSize) { sellToken.balance - tradeSize } else { 0 });
+
         let result = await* executeSwap(quote, slippage);
         switch (result) {
             case (#Ok(r)) {
@@ -3246,10 +3248,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     destinationOwner = null;
                 });
                 _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
-                // Update lastKnown: sell token decreased, buy token increased
-                // Subtract the quote's output fees (covers DEX-specific withdrawal/transfer fees)
+                // Finalize lastKnown: sell already pre-adjusted, now add the output
                 let netAmountOut = if (r.amountOut > quote.outputFeesTotal) { r.amountOut - quote.outputFeesTotal } else { 0 };
-                setLastKnownBalance(sellToken.token, null, if (sellToken.balance > tradeSize) { sellToken.balance - tradeSize } else { 0 });
                 adjustLastKnownBalance(buyToken.token, null, netAmountOut);
                 if (isPurseEnabledForChore(instanceId)) {
                     adjustChorePurseBalance(instanceId, sellToken.token, null, tradeSize, true);
@@ -3286,13 +3286,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     destinationOwner = null;
                 });
                 _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
-                // On failure the DEX refunds input tokens, but input fees are lost
+                // On failure: restore lastKnown, minus any lost fees
                 let feeLost = quote.inputFeesTotal;
-                if (feeLost > 0) {
-                    setLastKnownBalance(sellToken.token, null, if (sellToken.balance > feeLost) { sellToken.balance - feeLost } else { 0 });
-                    if (isPurseEnabledForChore(instanceId)) {
-                        adjustChorePurseBalance(instanceId, sellToken.token, null, feeLost, true);
-                    };
+                setLastKnownBalance(sellToken.token, null, if (preSwapSellBalance > feeLost) { preSwapSellBalance - feeLost } else { 0 });
+                if (feeLost > 0 and isPurseEnabledForChore(instanceId)) {
+                    adjustChorePurseBalance(instanceId, sellToken.token, null, feeLost, true);
                 };
                 false
             };
@@ -4001,6 +3999,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             ("expectedOutput", Nat.toText(leg1Quote.expectedOutput)),
             ("slippageBps", Nat.toText(slippage)),
         ]);
+        // Pre-adjust lastKnown for sell token before leg 1
+        let preSwapSellBalance = sellToken.balance;
+        setLastKnownBalance(sellToken.token, null, if (sellToken.balance > tradeSize) { sellToken.balance - tradeSize } else { 0 });
+
         let leg1Result = await* executeSwap(leg1Quote, slippage);
         let intermediaryReceived = switch (leg1Result) {
             case (#Ok(r)) {
@@ -4043,13 +4045,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     destinationOwner = null;
                 });
                 _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
-                // On failure the DEX refunds input tokens, but input fees are lost
+                // On failure: restore lastKnown, minus any lost fees
                 let feeLost1 = leg1Quote.inputFeesTotal;
-                if (feeLost1 > 0) {
-                    setLastKnownBalance(sellToken.token, null, if (sellToken.balance > feeLost1) { sellToken.balance - feeLost1 } else { 0 });
-                    if (isPurseEnabledForChore(instanceId)) {
-                        adjustChorePurseBalance(instanceId, sellToken.token, null, feeLost1, true);
-                    };
+                setLastKnownBalance(sellToken.token, null, if (preSwapSellBalance > feeLost1) { preSwapSellBalance - feeLost1 } else { 0 });
+                if (feeLost1 > 0 and isPurseEnabledForChore(instanceId)) {
+                    adjustChorePurseBalance(instanceId, sellToken.token, null, feeLost1, true);
                 };
                 return false;
             };
@@ -4074,8 +4074,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             txId = null;
             destinationOwner = null;
         });
-        // Update lastKnown after leg 1: sellToken decreased, intermediary increased
-        setLastKnownBalance(sellToken.token, null, if (sellToken.balance > tradeSize) { sellToken.balance - tradeSize } else { 0 });
+        // Finalize lastKnown after leg 1: sell already pre-adjusted, now add the intermediary
         adjustLastKnownBalance(intermediary, null, intermediaryReceived);
         if (isPurseEnabledForChore(instanceId)) {
             adjustChorePurseBalance(instanceId, sellToken.token, null, tradeSize, true);
@@ -4119,6 +4118,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             ("expectedOutput", Nat.toText(leg2FreshQuote.expectedOutput)),
             ("slippageBps", Nat.toText(slippage)),
         ]);
+        // Pre-adjust lastKnown for intermediary token before leg 2
+        let preSwapIntBalance = switch (getLastKnownBalance(intermediary, null)) { case (?v) v; case null 0 };
+        setLastKnownBalance(intermediary, null, if (preSwapIntBalance > intermediaryReceived) { preSwapIntBalance - intermediaryReceived } else { 0 });
+
         let leg2Result = await* executeSwap(leg2FreshQuote, slippage);
         switch (leg2Result) {
             case (#Ok(r)) {
@@ -4156,13 +4159,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     destinationOwner = null;
                 });
                 _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
-                // Update lastKnown after leg 2: intermediary decreased, buyToken increased
-                // Subtract the quote's output fees (covers DEX-specific withdrawal/transfer fees)
+                // Finalize lastKnown after leg 2: intermediary already pre-adjusted, now add the output
                 let netAmountOut2 = if (r.amountOut > leg2FreshQuote.outputFeesTotal) { r.amountOut - leg2FreshQuote.outputFeesTotal } else { 0 };
-                switch (getLastKnownBalance(intermediary, null)) {
-                    case (?prev) { setLastKnownBalance(intermediary, null, if (prev > intermediaryReceived) { prev - intermediaryReceived } else { 0 }) };
-                    case null {};
-                };
                 adjustLastKnownBalance(buyToken.token, null, netAmountOut2);
                 if (isPurseEnabledForChore(instanceId)) {
                     adjustChorePurseBalance(instanceId, intermediary, null, intermediaryReceived, true);
@@ -4199,16 +4197,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     destinationOwner = null;
                 });
                 _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
-                // On leg2 failure the DEX refunds intermediary tokens, but input fees are lost
+                // On leg2 failure: restore intermediary lastKnown, minus any lost fees
                 let intFeeLost = leg2FreshQuote.inputFeesTotal;
-                if (intFeeLost > 0) {
-                    switch (getLastKnownBalance(intermediary, null)) {
-                        case (?prev) { setLastKnownBalance(intermediary, null, if (prev > intFeeLost) { prev - intFeeLost } else { 0 }) };
-                        case null {};
-                    };
-                    if (isPurseEnabledForChore(instanceId)) {
-                        adjustChorePurseBalance(instanceId, intermediary, null, intFeeLost, true);
-                    };
+                setLastKnownBalance(intermediary, null, if (preSwapIntBalance > intFeeLost) { preSwapIntBalance - intFeeLost } else { 0 });
+                if (intFeeLost > 0 and isPurseEnabledForChore(instanceId)) {
+                    adjustChorePurseBalance(instanceId, intermediary, null, intFeeLost, true);
                 };
                 false
             };
