@@ -37,6 +37,8 @@ import {
     CANISTER_KIND_NAMES
 } from '../utils/SneedexUtils';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
+import { getCanisterInfo as getCanisterInfoViaBackend } from '../utils/BackendUtils';
+import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import priceService from '../services/PriceService';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createNeuronManagerActor } from 'declarations/sneed_icp_neuron_manager';
@@ -188,6 +190,7 @@ function SneedexOffer() {
     const [neuronManagerBotkeys, setNeuronManagerBotkeys] = useState({}); // {assetIndex: botkeys array or null}
     const [loadingNeuronManagerInfo, setLoadingNeuronManagerInfo] = useState({}); // {assetIndex: boolean}
     const [managerWasmVerification, setManagerWasmVerification] = useState({}); // {assetIndex: {verified, officialVersion}}
+    const [allKnownWasmHashes, setAllKnownWasmHashes] = useState({}); // hash -> { appId, version }
     const [neuronInfo, setNeuronInfo] = useState({}); // {assetIndex: neuronInfo}
     const [loadingNeuronInfo, setLoadingNeuronInfo] = useState({}); // {assetIndex: boolean}
     const [snsNervousSystemParams, setSnsNervousSystemParams] = useState({}); // {governanceId: params}
@@ -498,6 +501,34 @@ function SneedexOffer() {
         }
     }, [offer, walletTokens]);
     
+    // Build WASM hash map from all known app versions
+    useEffect(() => {
+        if (!identity) return;
+        (async () => {
+            try {
+                const host = getHost();
+                const agent = HttpAgent.createSync({ host, identity });
+                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                    await agent.fetchRootKey();
+                }
+                const factory = createFactoryActor(factoryCanisterId, { agent });
+                const apps = await factory.getApps();
+                const hashMap = {};
+                await Promise.allSettled((apps || []).map(async (app) => {
+                    const versions = await factory.getAppVersions(app.appId);
+                    for (const v of (versions || [])) {
+                        if (v.wasmHash) {
+                            hashMap[v.wasmHash.toLowerCase()] = { appId: app.appId, version: v };
+                        }
+                    }
+                }));
+                setAllKnownWasmHashes(hashMap);
+            } catch (e) {
+                console.error('Failed to build WASM hash map:', e);
+            }
+        })();
+    }, [identity]);
+    
     // Fetch canister info for an escrowed canister asset
     const fetchCanisterInfo = useCallback(async (assetIndex) => {
         if (!identity || !offer) return;
@@ -574,84 +605,65 @@ function SneedexOffer() {
                 });
                 setNeuronManagerInfo(prev => ({ ...prev, [assetIndex]: info }));
                 
-                // Verify wasm hash against official versions
-                // Get module_hash from canisterInfo if already loaded, otherwise fetch via Sneedex backend
+                // Verify WASM hash against known app versions
                 let moduleHashHex = null;
                 
-                // Try to get from already loaded canister info
+                // Try to get from already loaded canister info (escrowed via sneedex)
                 const existingCanisterInfo = canisterInfo[assetIndex];
                 if (existingCanisterInfo?.module_hash?.[0]) {
                     moduleHashHex = Array.from(existingCanisterInfo.module_hash[0])
                         .map(b => b.toString(16).padStart(2, '0'))
                         .join('');
-                    console.log('Got module hash from existing canister info:', moduleHashHex);
-                } else {
-                    // Fetch canister info directly via Sneedex backend
-                    // Note: getCanisterInfo takes (offerId, assetIndex) not canisterId
+                }
+                
+                // Fallback: try sneedex getCanisterInfo (for escrowed canisters)
+                if (!moduleHashHex) {
                     try {
-                        console.log('Fetching canister info via backend for offer', offer.id, 'asset', assetIndex);
                         const canisterInfoResult = await actor.getCanisterInfo(offer.id, BigInt(assetIndex));
-                        console.log('Canister info result:', canisterInfoResult);
                         if ('ok' in canisterInfoResult && canisterInfoResult.ok.module_hash?.[0]) {
                             moduleHashHex = Array.from(canisterInfoResult.ok.module_hash[0])
                                 .map(b => b.toString(16).padStart(2, '0'))
                                 .join('');
-                            console.log('Got module hash from backend:', moduleHashHex);
                         }
-                    } catch (e) {
-                        console.log('Could not get canister info for wasm verification:', e);
-                    }
+                    } catch (e) {}
+                }
+                
+                // Fallback: try backend get_canister_info (uses IC.canister_info, public)
+                if (!moduleHashHex) {
+                    try {
+                        const backendResult = await getCanisterInfoViaBackend(identity, canisterId);
+                        if (backendResult && 'ok' in backendResult && backendResult.ok.module_hash?.[0]) {
+                            moduleHashHex = uint8ArrayToHex(backendResult.ok.module_hash[0]);
+                        }
+                    } catch (e) {}
                 }
                 
                 if (moduleHashHex) {
-                    try {
-                        const host = getHost();
-                        const agent = HttpAgent.createSync({ host, identity });
-                        if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                            await agent.fetchRootKey();
-                        }
+                    const hashEntry = allKnownWasmHashes[moduleHashHex.toLowerCase()];
+                    if (hashEntry) {
+                        const officialVersion = hashEntry.version;
+                        const managerVersion = info.version;
+                        const managerVersionStr = `${Number(managerVersion.major)}.${Number(managerVersion.minor)}.${Number(managerVersion.patch)}`;
+                        const officialVersionStr = `${Number(officialVersion.major)}.${Number(officialVersion.minor)}.${Number(officialVersion.patch)}`;
                         
-                        const factory = createFactoryActor(factoryCanisterId, { agent });
-                        console.log('Checking official version by hash:', moduleHashHex);
-                        const officialVersionResult = await factory.getOfficialVersionByHash(moduleHashHex);
-                        console.log('Official version result:', officialVersionResult);
-                        
-                        if (officialVersionResult && officialVersionResult.length > 0) {
-                            const officialVersion = officialVersionResult[0];
-                            const managerVersion = info.version;
-                            const managerVersionStr = `${Number(managerVersion.major)}.${Number(managerVersion.minor)}.${Number(managerVersion.patch)}`;
-                            const officialVersionStr = `${Number(officialVersion.major)}.${Number(officialVersion.minor)}.${Number(officialVersion.patch)}`;
-                            
-                            setManagerWasmVerification(prev => ({
-                                ...prev,
-                                [assetIndex]: {
-                                    checked: true,
-                                    verified: true,
-                                    versionMatch: managerVersionStr === officialVersionStr,
-                                    officialVersion: officialVersion,
-                                    moduleHash: moduleHashHex,
-                                }
-                            }));
-                        } else {
-                            setManagerWasmVerification(prev => ({
-                                ...prev,
-                                [assetIndex]: {
-                                    checked: true,
-                                    verified: false,
-                                    moduleHash: moduleHashHex,
-                                    message: 'Unknown WASM hash',
-                                }
-                            }));
-                        }
-                    } catch (e) {
-                        console.error('Failed to verify wasm hash:', e);
+                        setManagerWasmVerification(prev => ({
+                            ...prev,
+                            [assetIndex]: {
+                                checked: true,
+                                verified: true,
+                                versionMatch: managerVersionStr === officialVersionStr,
+                                officialVersion: officialVersion,
+                                moduleHash: moduleHashHex,
+                            }
+                        }));
+                    } else {
                         setManagerWasmVerification(prev => ({
                             ...prev,
                             [assetIndex]: {
                                 checked: true,
                                 verified: false,
                                 moduleHash: moduleHashHex,
-                                message: 'Verification failed',
+                                message: 'Unknown WASM hash',
                             }
                         }));
                     }
@@ -692,7 +704,65 @@ function SneedexOffer() {
         } finally {
             setLoadingNeuronManagerInfo(prev => ({ ...prev, [assetIndex]: false }));
         }
-    }, [identity, canisterInfo, offer]);
+    }, [identity, canisterInfo, offer, allKnownWasmHashes]);
+    
+    // Verify WASM for a Trading Bot canister (no neuron info, just version + WASM check)
+    const fetchTradingBotWasmVerification = useCallback(async (assetIndex, canisterId) => {
+        if (!identity || !offer) return;
+        
+        try {
+            // Get version from the bot
+            const sneedexActor = await createSneedexActor(identity);
+            const versionResult = await sneedexActor.verifyTradingBot(Principal.fromText(canisterId));
+            
+            if ('Err' in versionResult) {
+                setManagerWasmVerification(prev => ({ ...prev, [assetIndex]: { checked: true, verified: false, message: versionResult.Err } }));
+                return;
+            }
+            
+            const version = versionResult.Ok;
+            
+            // Get module hash
+            let moduleHashHex = null;
+            const existingInfo = canisterInfo[assetIndex];
+            if (existingInfo?.module_hash?.[0]) {
+                moduleHashHex = Array.from(existingInfo.module_hash[0]).map(b => b.toString(16).padStart(2, '0')).join('');
+            }
+            if (!moduleHashHex) {
+                try {
+                    const actor = createSneedexActor(identity);
+                    const ciResult = await actor.getCanisterInfo(offer.id, BigInt(assetIndex));
+                    if ('ok' in ciResult && ciResult.ok.module_hash?.[0]) {
+                        moduleHashHex = Array.from(ciResult.ok.module_hash[0]).map(b => b.toString(16).padStart(2, '0')).join('');
+                    }
+                } catch (e) {}
+            }
+            if (!moduleHashHex) {
+                try {
+                    const backendResult = await getCanisterInfoViaBackend(identity, canisterId);
+                    if (backendResult && 'ok' in backendResult && backendResult.ok.module_hash?.[0]) {
+                        moduleHashHex = uint8ArrayToHex(backendResult.ok.module_hash[0]);
+                    }
+                } catch (e) {}
+            }
+            
+            if (moduleHashHex) {
+                const hashEntry = allKnownWasmHashes[moduleHashHex.toLowerCase()];
+                if (hashEntry) {
+                    const officialVersion = hashEntry.version;
+                    const botVersionStr = `${Number(version.major)}.${Number(version.minor)}.${Number(version.patch)}`;
+                    const officialVersionStr = `${Number(officialVersion.major)}.${Number(officialVersion.minor)}.${Number(officialVersion.patch)}`;
+                    setManagerWasmVerification(prev => ({ ...prev, [assetIndex]: { checked: true, verified: true, versionMatch: botVersionStr === officialVersionStr, officialVersion, moduleHash: moduleHashHex } }));
+                } else {
+                    setManagerWasmVerification(prev => ({ ...prev, [assetIndex]: { checked: true, verified: false, moduleHash: moduleHashHex, message: 'Unknown WASM hash' } }));
+                }
+            } else {
+                setManagerWasmVerification(prev => ({ ...prev, [assetIndex]: { checked: true, verified: false, moduleHash: null, message: 'Could not get module hash' } }));
+            }
+        } catch (e) {
+            setManagerWasmVerification(prev => ({ ...prev, [assetIndex]: { checked: true, verified: false, message: e.message || 'Error' } }));
+        }
+    }, [identity, canisterInfo, offer, allKnownWasmHashes]);
     
     // Fetch SNS neuron info directly from governance canister
     const fetchNeuronInfo = useCallback(async (assetIndex, governanceId, neuronIdHex) => {
@@ -967,10 +1037,14 @@ function SneedexOffer() {
                     if (details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && !neuronManagerInfo[idx]) {
                         fetchNeuronManagerInfo(idx, details.canister_id);
                     }
+                    // Verify WASM for Trading Bots
+                    if (details.canister_kind === CANISTER_KIND_TRADING_BOT && !managerWasmVerification[idx]) {
+                        fetchTradingBotWasmVerification(idx, details.canister_id);
+                    }
                 }
             });
         }
-    }, [offer, identity, canisterInfo, neuronManagerInfo, fetchCanisterInfo, fetchNeuronManagerInfo]);
+    }, [offer, identity, canisterInfo, neuronManagerInfo, managerWasmVerification, fetchCanisterInfo, fetchNeuronManagerInfo, fetchTradingBotWasmVerification]);
     
     // Toggle asset expansion and fetch info if needed
     const toggleAssetExpanded = useCallback((assetIndex, assetEntry, details) => {
@@ -987,6 +1061,10 @@ function SneedexOffer() {
                 // If it's an ICP Neuron Manager, also fetch neuron manager info
                 if (details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && !neuronManagerInfo[assetIndex]) {
                     fetchNeuronManagerInfo(assetIndex, details.canister_id);
+                }
+                // If it's a Trading Bot, verify WASM
+                if (details.canister_kind === CANISTER_KIND_TRADING_BOT && !managerWasmVerification[assetIndex]) {
+                    fetchTradingBotWasmVerification(assetIndex, details.canister_id);
                 }
             } else if ('SNSNeuron' in assetEntry.asset && !neuronInfo[assetIndex]) {
                 fetchNeuronInfo(assetIndex, details.governance_id, details.neuron_id);
@@ -4326,6 +4404,72 @@ function SneedexOffer() {
                                                             Failed to load ICP staking bot info
                                                         </div>
                                                     )}
+                                                </div>
+                                            )}
+                                            
+                                            {/* Trading Bot Info Section */}
+                                            {details.type === 'Canister' && details.canister_kind === CANISTER_KIND_TRADING_BOT && details.escrowed && isExpanded && (
+                                                <div style={{
+                                                    marginTop: '1rem',
+                                                    padding: '16px',
+                                                    background: `#11998e08`,
+                                                    border: `1px solid #11998e30`,
+                                                    borderRadius: '12px',
+                                                }}>
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        marginBottom: '1rem',
+                                                        color: '#11998e',
+                                                        fontWeight: '600',
+                                                    }}>
+                                                        <FaChartLine /> Trading Bot Details
+                                                    </div>
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                                                        <div style={{
+                                                            background: `#11998e15`,
+                                                            padding: '8px 12px',
+                                                            borderRadius: '8px',
+                                                            minWidth: '150px',
+                                                            border: `1px solid #11998e30`,
+                                                        }}>
+                                                            <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>WASM Status</div>
+                                                            <div style={{ 
+                                                                fontWeight: '600', 
+                                                                color: managerWasmVerification[idx]?.verified 
+                                                                    ? (managerWasmVerification[idx]?.versionMatch ? '#10B981' : '#F59E0B')
+                                                                    : theme.colors.mutedText,
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '4px',
+                                                                fontSize: '0.85rem',
+                                                            }}>
+                                                                {managerWasmVerification[idx]?.verified ? (
+                                                                    <>
+                                                                        <FaCheck />
+                                                                        Official v{Number(managerWasmVerification[idx].officialVersion.major)}.
+                                                                        {Number(managerWasmVerification[idx].officialVersion.minor)}.
+                                                                        {Number(managerWasmVerification[idx].officialVersion.patch)}
+                                                                    </>
+                                                                ) : managerWasmVerification[idx]?.checked ? (
+                                                                    managerWasmVerification[idx]?.moduleHash ? (
+                                                                        <>
+                                                                            <FaExclamationTriangle style={{ color: '#F59E0B' }} />
+                                                                            Unknown WASM
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <FaExclamationTriangle style={{ color: theme.colors.mutedText }} />
+                                                                            {managerWasmVerification[idx]?.message || 'Could not verify'}
+                                                                        </>
+                                                                    )
+                                                                ) : (
+                                                                    'Checking...'
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             )}
                                             

@@ -26,7 +26,7 @@ import {
     MAX_CANISTER_TITLE_LENGTH,
     MAX_CANISTER_DESCRIPTION_LENGTH
 } from '../utils/SneedexUtils';
-import { getCanisterGroups, convertGroupsFromBackend } from '../utils/BackendUtils';
+import { getCanisterGroups, convertGroupsFromBackend, getCanisterInfo } from '../utils/BackendUtils';
 import TokenSelector from '../components/TokenSelector';
 import priceService from '../services/PriceService';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
@@ -201,6 +201,7 @@ function SneedexCreate() {
     const [neuronManagers, setNeuronManagers] = useState([]); // Array of canister ID strings
     const [tradingBots, setTradingBots] = useState([]); // Array of canister ID strings
     const [loadingCanisters, setLoadingCanisters] = useState(true);
+    const [allKnownWasmHashes, setAllKnownWasmHashes] = useState({}); // hash -> { appId, version }
     
     // Derived token info from selected ledger (with custom token fallback)
     const selectedPriceToken = whitelistedTokens.find(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)) === priceTokenLedger);
@@ -435,6 +436,34 @@ function SneedexCreate() {
         };
         
         fetchUserCanisters();
+    }, [identity]);
+    
+    // Build WASM hash map from all known app versions (for version verification)
+    useEffect(() => {
+        if (!identity) return;
+        (async () => {
+            try {
+                const host = getHost();
+                const agent = HttpAgent.createSync({ host, identity });
+                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                    await agent.fetchRootKey();
+                }
+                const factory = createFactoryActor(factoryCanisterId, { agent });
+                const apps = await factory.getApps();
+                const hashMap = {};
+                await Promise.allSettled((apps || []).map(async (app) => {
+                    const versions = await factory.getAppVersions(app.appId);
+                    for (const v of (versions || [])) {
+                        if (v.wasmHash) {
+                            hashMap[v.wasmHash.toLowerCase()] = { appId: app.appId, version: v };
+                        }
+                    }
+                }));
+                setAllKnownWasmHashes(hashMap);
+            } catch (e) {
+                console.error('Failed to build WASM hash map:', e);
+            }
+        })();
     }, [identity]);
     
     // Helper to get canister display name (show nickname + name if both exist)
@@ -758,30 +787,25 @@ function SneedexCreate() {
     }, [assets, getAssetKey]);
     
     // Verify canister - check if user is controller
+    // Uses backend get_canister_info (IC.canister_info) which works for any canister,
+    // then checks if user's principal is in the controllers list
     const verifyCanister = useCallback(async (canisterId) => {
         if (!identity) return { verified: false, message: 'Not authenticated' };
         
         try {
-            const canisterPrincipal = Principal.fromText(canisterId);
-            const host = getHost();
-            const agent = HttpAgent.createSync({ host, identity });
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                await agent.fetchRootKey();
+            const userPrincipal = identity.getPrincipal().toString();
+            const result = await getCanisterInfo(identity, canisterId);
+            if (result && 'ok' in result) {
+                const controllers = (result.ok.controllers || []).map(p => p.toString());
+                if (controllers.includes(userPrincipal)) {
+                    return { verified: true, message: 'You are a controller' };
+                } else {
+                    return { verified: false, message: 'Not a controller' };
+                }
             }
-            
-            const managementCanister = Actor.createActor(managementIdlFactory, {
-                agent,
-                canisterId: MANAGEMENT_CANISTER_ID,
-                callTransform: (methodName, args, callConfig) => ({
-                    ...callConfig,
-                    effectiveCanisterId: canisterPrincipal,
-                }),
-            });
-            
-            await managementCanister.canister_status({ canister_id: canisterPrincipal });
-            return { verified: true, message: 'You are a controller' };
+            return { verified: false, message: 'Could not check controller status' };
         } catch (e) {
-            return { verified: false, message: 'Not a controller' };
+            return { verified: false, message: 'Could not check controller status' };
         }
     }, [identity]);
     
@@ -807,7 +831,8 @@ function SneedexCreate() {
     
     // Debounced effect to check controller status when canister ID changes
     useEffect(() => {
-        if (!newAssetCanisterId || newAssetType !== 'canister') {
+        const isCanisterType = newAssetType === 'canister' || newAssetType === 'neuron_manager' || newAssetType === 'trading_bot';
+        if (!newAssetCanisterId || !isCanisterType) {
             setCanisterControllerStatus(null);
             return;
         }
@@ -816,7 +841,6 @@ function SneedexCreate() {
         try {
             Principal.fromText(newAssetCanisterId);
         } catch (e) {
-            // Invalid format, don't check yet
             setCanisterControllerStatus(null);
             return;
         }
@@ -829,130 +853,23 @@ function SneedexCreate() {
         return () => clearTimeout(timer);
     }, [newAssetCanisterId, newAssetType, checkCanisterControllerStatus]);
     
-    // Verify if a canister is an ICP Neuron Manager with wasm hash verification
-    const verifyICPNeuronManager = useCallback(async (canisterId) => {
-        if (!canisterId) return { verified: false, message: 'No app canister id' };
-        
-        try {
-            setVerifyingCanisterKind(true);
-            setCanisterKindVerified(null);
-            
-            const host = getHost();
-            const agent = HttpAgent.createSync({ host, identity });
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                await agent.fetchRootKey();
-            }
-            
-            // Step 1: Get canister's module_hash via management canister
-            const canisterPrincipal = Principal.fromText(canisterId);
-            const managementCanister = Actor.createActor(managementIdlFactory, {
-                agent,
-                canisterId: MANAGEMENT_CANISTER_ID,
-                callTransform: (methodName, args, callConfig) => ({
-                    ...callConfig,
-                    effectiveCanisterId: canisterPrincipal,
-                }),
-            });
-            
-            let moduleHash = null;
-            try {
-                const status = await managementCanister.canister_status({ canister_id: canisterPrincipal });
-                if (status.module_hash && status.module_hash.length > 0) {
-                    moduleHash = uint8ArrayToHex(status.module_hash[0]);
-                }
-            } catch (e) {
-                // User might not be controller - continue anyway since wasm hash is public info
-                console.log('Could not get canister status (may not be controller):', e.message);
-            }
-            
-            // Step 2: Call getVersion() on the neuron manager to verify it responds correctly
-            const sneedexActor = await createSneedexActor(identity);
-            const versionResult = await sneedexActor.verifyICPNeuronManager(canisterPrincipal);
-            
-            if ('Err' in versionResult) {
-                setCanisterKindVerified(versionResult.Err);
-                return { verified: false, message: versionResult.Err };
-            }
-            
-            const version = versionResult.Ok;
-            const versionStr = `${Number(version.major)}.${Number(version.minor)}.${Number(version.patch)}`;
-            
-            // Step 3: Verify wasm hash against official versions if we have it
-            let officialVersion = null;
-            let wasmVerified = false;
-            
-            if (moduleHash) {
-                try {
-                    const factory = createFactoryActor(factoryCanisterId, { agent });
-                    const officialVersionResult = await factory.getOfficialVersionByHash(moduleHash);
-                    if (officialVersionResult && officialVersionResult.length > 0) {
-                        officialVersion = officialVersionResult[0];
-                        const officialVersionStr = `${Number(officialVersion.major)}.${Number(officialVersion.minor)}.${Number(officialVersion.patch)}`;
-                        wasmVerified = (officialVersionStr === versionStr);
-                    }
-                } catch (e) {
-                    console.log('Could not check official versions:', e.message);
-                }
-            }
-            
-            // Build verification result
-            const verificationInfo = {
-                verified: true,
-                version: version,
-                versionStr: versionStr,
-                moduleHash: moduleHash,
-                officialVersion: officialVersion,
-                wasmVerified: wasmVerified,
-            };
-            
-            setCanisterKindVerified(verificationInfo);
-            return verificationInfo;
-            
-        } catch (e) {
-            const msg = 'Failed to verify: ' + (e.message || 'Unknown error');
-            setCanisterKindVerified(msg);
-            return { verified: false, message: msg };
-        } finally {
-            setVerifyingCanisterKind(false);
-        }
-    }, [identity]);
-    
-    const verifyTradingBot = useCallback(async (canisterId) => {
+    // Verify a canister as a specific bot type (ICP Staking Bot or Trading Bot)
+    // Uses backend get_canister_info for module hash (works without being controller)
+    // and the comprehensive WASM hash map from getAppVersions for version matching
+    const verifyBotCanister = useCallback(async (canisterId, botType) => {
         if (!canisterId) return { verified: false, message: 'No canister id' };
         
         try {
             setVerifyingCanisterKind(true);
             setCanisterKindVerified(null);
             
-            const host = getHost();
-            const agent = HttpAgent.createSync({ host, identity });
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                await agent.fetchRootKey();
-            }
-            
             const canisterPrincipal = Principal.fromText(canisterId);
             
-            // Get module hash if we're a controller
-            let moduleHash = null;
-            try {
-                const managementCanister = Actor.createActor(managementIdlFactory, {
-                    agent,
-                    canisterId: MANAGEMENT_CANISTER_ID,
-                    callTransform: (methodName, args, callConfig) => ({
-                        ...callConfig,
-                        effectiveCanisterId: canisterPrincipal,
-                    }),
-                });
-                const status = await managementCanister.canister_status({ canister_id: canisterPrincipal });
-                if (status.module_hash && status.module_hash.length > 0) {
-                    moduleHash = uint8ArrayToHex(status.module_hash[0]);
-                }
-            } catch (e) {
-                console.log('Could not get canister status (may not be controller):', e.message);
-            }
-            
+            // Step 1: Verify the canister responds as the expected bot type
             const sneedexActor = await createSneedexActor(identity);
-            const versionResult = await sneedexActor.verifyTradingBot(canisterPrincipal);
+            const versionResult = botType === 'trading_bot'
+                ? await sneedexActor.verifyTradingBot(canisterPrincipal)
+                : await sneedexActor.verifyICPNeuronManager(canisterPrincipal);
             
             if ('Err' in versionResult) {
                 setCanisterKindVerified(versionResult.Err);
@@ -962,30 +879,37 @@ function SneedexCreate() {
             const version = versionResult.Ok;
             const versionStr = `${Number(version.major)}.${Number(version.minor)}.${Number(version.patch)}`;
             
+            // Step 2: Get module hash via backend (uses IC.canister_info, no controller needed)
+            let moduleHash = null;
+            try {
+                const infoResult = await getCanisterInfo(identity, canisterId);
+                if (infoResult && 'ok' in infoResult && infoResult.ok.module_hash?.[0]) {
+                    moduleHash = uint8ArrayToHex(infoResult.ok.module_hash[0]);
+                }
+            } catch (e) {
+                console.log('Could not get canister info:', e.message);
+            }
+            
+            // Step 3: Match against comprehensive WASM hash map
             let officialVersion = null;
             let wasmVerified = false;
             
             if (moduleHash) {
-                try {
-                    const factory = createFactoryActor(factoryCanisterId, { agent });
-                    const officialVersionResult = await factory.getOfficialVersionByHash(moduleHash);
-                    if (officialVersionResult && officialVersionResult.length > 0) {
-                        officialVersion = officialVersionResult[0];
-                        const officialVersionStr = `${Number(officialVersion.major)}.${Number(officialVersion.minor)}.${Number(officialVersion.patch)}`;
-                        wasmVerified = (officialVersionStr === versionStr);
-                    }
-                } catch (e) {
-                    console.log('Could not check official versions:', e.message);
+                const hashEntry = allKnownWasmHashes[moduleHash.toLowerCase()];
+                if (hashEntry) {
+                    officialVersion = hashEntry.version;
+                    const officialVersionStr = `${Number(officialVersion.major)}.${Number(officialVersion.minor)}.${Number(officialVersion.patch)}`;
+                    wasmVerified = (officialVersionStr === versionStr);
                 }
             }
             
             const verificationInfo = {
                 verified: true,
-                version: version,
-                versionStr: versionStr,
-                moduleHash: moduleHash,
-                officialVersion: officialVersion,
-                wasmVerified: wasmVerified,
+                version,
+                versionStr,
+                moduleHash,
+                officialVersion,
+                wasmVerified,
             };
             
             setCanisterKindVerified(verificationInfo);
@@ -998,7 +922,10 @@ function SneedexCreate() {
         } finally {
             setVerifyingCanisterKind(false);
         }
-    }, [identity]);
+    }, [identity, allKnownWasmHashes]);
+    
+    const verifyICPNeuronManager = useCallback((canisterId) => verifyBotCanister(canisterId, 'neuron_manager'), [verifyBotCanister]);
+    const verifyTradingBot = useCallback((canisterId) => verifyBotCanister(canisterId, 'trading_bot'), [verifyBotCanister]);
     
     // Fetch neuron manager info (list of ICP neurons inside)
     const fetchNeuronManagerInfo = useCallback(async (canisterId) => {
