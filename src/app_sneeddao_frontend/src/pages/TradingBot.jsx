@@ -7018,6 +7018,15 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
     const [reclaimAmount, setReclaimAmount] = useState('');
     const [purseSaving, setPurseSaving] = useState(false);
 
+    // Denomination selector for value display
+    const [denomToken, setDenomToken] = useState(CKUSDC_LEDGER);
+    const [denomPrices, setDenomPrices] = useState({});
+    const [loadingPrices, setLoadingPrices] = useState(false);
+    // Token pause/freeze state
+    const [pausedTokens, setPausedTokens] = useState(new Set());
+    const [frozenTokens, setFrozenTokens] = useState(new Set());
+    const [togglingToken, setTogglingToken] = useState(null);
+
     const borderColor = theme.colors.border;
     const cardBg = theme.colors.cardBg || theme.colors.cardGradient;
     const inputStyle = { padding: '6px 10px', borderRadius: '6px', border: `1px solid ${borderColor}`, background: theme.colors.primaryBg, color: theme.colors.primaryText, fontSize: '0.8rem', outline: 'none' };
@@ -7070,12 +7079,16 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
         setError('');
         try {
             const bot = await getReadyBotActor();
-            const [registry, purses] = await Promise.all([
+            const [registry, purses, paused, frozen] = await Promise.all([
                 bot.getTokenRegistry ? bot.getTokenRegistry() : [],
                 bot.getAllPurseAllocations(),
+                bot.getPausedTokens ? bot.getPausedTokens() : [],
+                bot.getFrozenTokens ? bot.getFrozenTokens() : [],
             ]);
             setTokenRegistry(registry);
             setAllPurses(purses);
+            setPausedTokens(new Set(paused.map(p => typeof p === 'string' ? p : p?.toText?.() || String(p))));
+            setFrozenTokens(new Set(frozen.map(p => typeof p === 'string' ? p : p?.toText?.() || String(p))));
 
             const tokenSet = new Set();
             for (const t of registry) {
@@ -7123,6 +7136,39 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
     }, [getReadyBotActor, canisterId, identity]);
 
     useEffect(() => { loadData(); }, [loadData]);
+
+    // Fetch denomination prices when denomToken or tokenRegistry changes
+    const denomCacheKeyRef = useRef('');
+    useEffect(() => {
+        if (!denomToken || tokenRegistry.length === 0) { setDenomPrices({}); setLoadingPrices(false); return; }
+        const ids = tokenRegistry.map(t => typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId)).sort().join(',');
+        const cacheKey = `${denomToken}:${ids}`;
+        if (cacheKey === denomCacheKeyRef.current) return;
+        let cancelled = false;
+        setLoadingPrices(true);
+        (async () => {
+            try {
+                const decFor = (id) => {
+                    const cached = getTokenMetadataSync(id);
+                    if (cached?.decimals != null) return Number(cached.decimals);
+                    const regEntry = tokenRegistry.find(t => {
+                        const k = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+                        return k === id;
+                    });
+                    if (regEntry?.decimals != null) return Number(regEntry.decimals);
+                    return 8;
+                };
+                const tokenIds = ids.split(',');
+                const prices = await fetchDenomPrices(tokenIds, denomToken, decFor);
+                if (!cancelled) {
+                    denomCacheKeyRef.current = cacheKey;
+                    setDenomPrices(prices);
+                }
+            } catch (e) { console.warn('WalletPanel: Failed to fetch denom prices:', e); }
+            finally { if (!cancelled) setLoadingPrices(false); }
+        })();
+        return () => { cancelled = true; };
+    }, [denomToken, tokenRegistry]);
 
     const handleScanForTokens = async () => {
         if (scanning) return;
@@ -7184,6 +7230,41 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
         finally { setScanning(false); setScanProgress(null); }
     };
 
+    // Toggle pause/freeze for a token
+    const handleTogglePause = async (tokenId) => {
+        setTogglingToken(tokenId); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            const p = Principal.fromText(tokenId);
+            if (pausedTokens.has(tokenId)) {
+                await bot.unpauseToken(p);
+                setSuccess(`${tokLabel(tokenId)} unpaused.`);
+            } else {
+                await bot.pauseToken(p);
+                setSuccess(`${tokLabel(tokenId)} paused — it will not be traded by any chore.`);
+            }
+            await loadData();
+        } catch (e) { setError('Failed to toggle pause: ' + e.message); }
+        finally { setTogglingToken(null); }
+    };
+
+    const handleToggleFreeze = async (tokenId) => {
+        setTogglingToken(tokenId); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            const p = Principal.fromText(tokenId);
+            if (frozenTokens.has(tokenId)) {
+                await bot.unfreezeToken(p);
+                setSuccess(`${tokLabel(tokenId)} unfrozen.`);
+            } else {
+                await bot.freezeToken(p);
+                setSuccess(`${tokLabel(tokenId)} frozen — it will not be traded or moved by any chore.`);
+            }
+            await loadData();
+        } catch (e) { setError('Failed to toggle freeze: ' + e.message); }
+        finally { setTogglingToken(null); }
+    };
+
     // Purse allocation totals
     const totalAllocated = {};
     const purseTokenSet = new Set();
@@ -7214,10 +7295,22 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
         }
     }
 
-    // Main account on-chain entries
-    const mainAccountEntries = Object.entries(mainBalances)
-        .filter(([_, bal]) => bal > 0n)
-        .map(([tok, bal]) => ({ token: tok, balance: bal }));
+    // Main account entries: all registered tokens (even if balance is 0)
+    const mainAccountEntries = React.useMemo(() => {
+        const entries = [];
+        const seen = new Set();
+        for (const t of tokenRegistry) {
+            const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+            seen.add(tid);
+            entries.push({ token: tid, balance: mainBalances[tid] || 0n });
+        }
+        for (const [tok, bal] of Object.entries(mainBalances)) {
+            if (!seen.has(tok)) {
+                entries.push({ token: tok, balance: bal });
+            }
+        }
+        return entries;
+    }, [tokenRegistry, mainBalances]);
 
     const registeredTokenIds = tokenRegistry.map(t => {
         const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
@@ -7353,11 +7446,28 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
 
             {/* ── Main Account (on-chain balances) ── */}
             <div style={{ padding: '12px', background: cardBg, borderRadius: '10px', border: `1px solid ${borderColor}`, marginBottom: '14px' }}>
-                <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: theme.colors.primaryText }}>
-                    Main Account
-                </h4>
-                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText || theme.colors.secondaryText, marginBottom: '8px' }}>
-                    On-chain token balances held by the bot's main account.
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: theme.colors.primaryText }}>
+                        Main Account — Token Balances
+                    </h4>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <label style={{ fontSize: '0.7rem', color: theme.colors.secondaryText }}>Value in:</label>
+                        <div style={{ width: '160px' }}>
+                            <TokenSelector
+                                value={denomToken}
+                                onChange={(v) => { setDenomToken(v); setDenomPrices({}); }}
+                                allowCustom={true}
+                                placeholder="Denomination..."
+                            />
+                        </div>
+                        {denomToken && (
+                            <button type="button" onClick={() => { setDenomToken(''); setDenomPrices({}); }}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.6rem', color: accentColor, padding: '2px' }}
+                                title="Clear denomination">
+                                <FaTimes />
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 {/* Receiving Addresses */}
@@ -7392,36 +7502,153 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                     );
                 })()}
 
-                {/* Balance table */}
+                {/* Token balance table with denomination, prices, pie chart, and status */}
                 {mainAccountEntries.length === 0 ? (
                     <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, fontStyle: 'italic' }}>
                         {balancesLoading ? 'Fetching balances...' : (tokenRegistry.length === 0 ? 'No tokens registered. Register tokens in the Accounts panel to see balances.' : 'No token balances found.')}
                     </div>
-                ) : (
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead>
-                            <tr style={rowBorder}>
-                                <th style={thStyle}>Token</th>
-                                <th style={thStyleR}>Balance</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {mainAccountEntries.map((e) => {
-                                const dec = tokDecimals(e.token);
-                                return (
-                                    <tr key={e.token} style={rowBorder}>
-                                        <td style={tdStyle}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <TokenIcon canisterId={e.token} size={18} />
-                                                {tokLabel(e.token)}
-                                            </div>
-                                        </td>
-                                        <td style={tdStyleR}>{fmtBal(e.balance, dec)}</td>
+                ) : (() => {
+                    const denomSym = denomToken ? tokLabel(denomToken) : '';
+                    const denomSign = getCurrencySign(denomToken);
+                    let totalDenomValue = 0;
+                    let hasAnyDenomValue = false;
+
+                    const rows = mainAccountEntries.map((e) => {
+                        const dec = tokDecimals(e.token);
+                        const humanBal = Number(e.balance) / (10 ** dec);
+                        const price = denomPrices[e.token];
+                        let denomValue = null;
+                        if (denomToken && price != null && price > 0) {
+                            denomValue = humanBal * price;
+                            totalDenomValue += denomValue;
+                            hasAnyDenomValue = true;
+                        }
+                        return { tid: e.token, dec, humanBal, balance: e.balance, denomValue, price };
+                    });
+
+                    const pieSegments = hasAnyDenomValue ? rows.filter(r => r.denomValue != null && r.denomValue > 0).map((r, i) => ({
+                        label: tokLabel(r.tid), value: r.denomValue, color: CHART_COLORS[i % CHART_COLORS.length],
+                    })) : [];
+
+                    const colCount = (denomToken ? (hasAnyDenomValue ? 5 : 4) : 2) + 1;
+
+                    return (
+                        <>
+                            {pieSegments.length > 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px', padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${borderColor}` }}>
+                                    <PieChart segments={pieSegments} label="Main Account" theme={theme} />
+                                </div>
+                            )}
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                <thead>
+                                    <tr style={{ color: theme.colors.mutedText, textAlign: 'left' }}>
+                                        <th style={{ padding: '4px 8px' }}>Token</th>
+                                        <th style={{ padding: '4px 8px', textAlign: 'right' }}>Balance</th>
+                                        {denomToken && <th style={{ padding: '4px 8px', textAlign: 'right' }}>Price ({denomSign || denomSym})</th>}
+                                        {denomToken && <th style={{ padding: '4px 8px', textAlign: 'right' }}>{denomSign ? `Value (${denomSign})` : `Value (${denomSym})`}</th>}
+                                        {denomToken && hasAnyDenomValue && <th style={{ padding: '4px 8px', textAlign: 'right' }}>%</th>}
+                                        <th style={{ padding: '4px 8px', textAlign: 'center', fontSize: '0.7rem' }}>Status</th>
                                     </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                                </thead>
+                                <tbody>
+                                    {rows.map(({ tid, dec, balance, denomValue, price }) => {
+                                        const tPaused = pausedTokens.has(tid);
+                                        const tFrozen = frozenTokens.has(tid);
+                                        const isToggling = togglingToken === tid;
+                                        return (
+                                        <tr key={tid} style={{ borderTop: `1px solid ${borderColor}20`, opacity: tFrozen ? 0.55 : tPaused ? 0.7 : 1 }}>
+                                            <td style={{ padding: '5px 8px', color: theme.colors.primaryText }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <TokenIcon canisterId={tid} size={18} />
+                                                    {tokLabel(tid)}
+                                                    {tFrozen && <span style={{ fontSize: '0.6rem', color: '#3b82f6', fontWeight: '600' }}>FROZEN</span>}
+                                                    {tPaused && !tFrozen && <span style={{ fontSize: '0.6rem', color: '#f59e0b', fontWeight: '600' }}>PAUSED</span>}
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', color: theme.colors.secondaryText }}>
+                                                {formatTokenAmount(balance, dec)}
+                                            </td>
+                                            {denomToken && (
+                                                <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', color: price != null ? theme.colors.secondaryText : theme.colors.mutedText, fontSize: '0.75rem' }}>
+                                                    {tid === denomToken ? '1.00' : (price != null
+                                                        ? formatDenomAmount(price, denomToken, denomSym)
+                                                        : (loadingPrices ? '...' : '—'))}
+                                                </td>
+                                            )}
+                                            {denomToken && (
+                                                <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', color: denomValue != null ? theme.colors.primaryText : theme.colors.mutedText, fontSize: '0.78rem' }}>
+                                                    {denomValue != null
+                                                        ? formatDenomAmount(denomValue, denomToken, denomSym)
+                                                        : (loadingPrices ? '...' : '—')}
+                                                </td>
+                                            )}
+                                            {denomToken && hasAnyDenomValue && (
+                                                <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.75rem', color: denomValue != null && totalDenomValue > 0 ? accentColor : theme.colors.mutedText }}>
+                                                    {denomValue != null && totalDenomValue > 0
+                                                        ? ((denomValue / totalDenomValue) * 100).toFixed(1) + '%'
+                                                        : '—'}
+                                                </td>
+                                            )}
+                                            <td style={{ padding: '5px 8px', textAlign: 'center' }}>
+                                                <div style={{ display: 'flex', gap: '3px', justifyContent: 'center' }}>
+                                                    <button
+                                                        onClick={() => handleTogglePause(tid)}
+                                                        disabled={isToggling}
+                                                        title={tPaused ? 'Unpause — allow trading' : 'Pause — prevent trading by all chores'}
+                                                        style={{
+                                                            background: 'none', border: `1px solid ${tPaused ? '#f59e0b50' : borderColor}`,
+                                                            borderRadius: '4px', cursor: isToggling ? 'wait' : 'pointer', padding: '2px 5px',
+                                                            color: tPaused ? '#f59e0b' : theme.colors.mutedText, fontSize: '0.6rem',
+                                                            opacity: isToggling ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: '2px',
+                                                        }}
+                                                    >
+                                                        {tPaused ? <FaPlay style={{ fontSize: '0.5rem' }} /> : <FaPause style={{ fontSize: '0.5rem' }} />}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleToggleFreeze(tid)}
+                                                        disabled={isToggling}
+                                                        title={tFrozen ? 'Unfreeze — allow trading and movement' : 'Freeze — prevent trading and all movement'}
+                                                        style={{
+                                                            background: 'none', border: `1px solid ${tFrozen ? '#3b82f650' : borderColor}`,
+                                                            borderRadius: '4px', cursor: isToggling ? 'wait' : 'pointer', padding: '2px 5px',
+                                                            color: tFrozen ? '#3b82f6' : theme.colors.mutedText, fontSize: '0.6rem',
+                                                            opacity: isToggling ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: '2px',
+                                                        }}
+                                                    >
+                                                        {tFrozen ? <FaLockOpen style={{ fontSize: '0.5rem' }} /> : <FaLock style={{ fontSize: '0.5rem' }} />}
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        );
+                                    })}
+                                    {denomToken && hasAnyDenomValue && (
+                                        <tr style={{ borderTop: `2px solid ${borderColor}40` }}>
+                                            <td style={{ padding: '6px 8px', fontWeight: '700', color: theme.colors.primaryText }}>
+                                                Total{balancesLoading ? ' (loading...)' : ''}
+                                            </td>
+                                            <td />
+                                            {denomToken && <td />}
+                                            <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: accentColor, fontSize: '0.85rem' }}>
+                                                {formatDenomAmount(totalDenomValue, denomToken, denomSym)}
+                                            </td>
+                                            <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '600', color: accentColor, fontSize: '0.75rem' }}>100%</td>
+                                            <td />
+                                        </tr>
+                                    )}
+                                    {balancesLoading && !hasAnyDenomValue && (
+                                        <tr><td colSpan={colCount} style={{ padding: '4px 8px', fontSize: '0.75rem', color: theme.colors.mutedText }}>Scanning balances...</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </>
+                    );
+                })()}
+                {(pausedTokens.size > 0 || frozenTokens.size > 0) && (
+                    <div style={{ marginTop: '6px', fontSize: '0.68rem', color: theme.colors.mutedText }}>
+                        <FaPause style={{ fontSize: '0.5rem', color: '#f59e0b', marginRight: '3px' }} /> Paused — not traded by any chore
+                        {frozenTokens.size > 0 && <>{' '}<FaLock style={{ fontSize: '0.5rem', color: '#3b82f6', marginLeft: '10px', marginRight: '3px' }} /> Frozen — not traded or moved</>}
+                    </div>
                 )}
 
                 {/* Withdraw / Send buttons */}
