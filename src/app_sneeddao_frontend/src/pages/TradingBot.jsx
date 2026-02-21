@@ -9155,7 +9155,7 @@ function SwapProgressCard({ entry, isRunning, theme, accentColor, onDismiss }) {
                         <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.primaryText }}>{inSym}</span>
                     </div>
                     <div style={{ fontSize: '0.82rem', fontWeight: '600', color: isSkipped ? theme.colors.secondaryText : theme.colors.primaryText, fontFamily: 'monospace' }}>
-                        {inAmt != null ? `${isSkipped ? '' : '−'}${fmtAmt(inAmt, inDec)}` : '...'}
+                        {inAmt != null ? `${isSkipped ? '' : entry?.isEstimate ? '~' : '−'}${fmtAmt(inAmt, inDec)}` : '...'}
                     </div>
                 </div>
 
@@ -9251,7 +9251,9 @@ function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
     const botActorRef = useRef(getReadyBotActor);
     botActorRef.current = getReadyBotActor;
 
-    const triggerFetch = useCallback((fetchKey, choreId) => {
+    const pollTimerRef = useRef({});
+
+    const triggerFetch = useCallback((fetchKey, choreId, poll) => {
         if (fetchingRef.current.has(fetchKey)) return;
         fetchingRef.current.add(fetchKey);
         (async () => {
@@ -9267,8 +9269,17 @@ function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
                 const entries = result?.entries || [];
                 if (entries.length > 0) {
                     setSwapResults(prev => ({ ...prev, [fetchKey]: parseTradeLogEntry(entries[0]) }));
+                    if (pollTimerRef.current[fetchKey]) { clearTimeout(pollTimerRef.current[fetchKey]); delete pollTimerRef.current[fetchKey]; }
+                } else if (poll) {
+                    fetchingRef.current.delete(fetchKey);
+                    pollTimerRef.current[fetchKey] = setTimeout(() => triggerFetch(fetchKey, choreId, true), 3000);
                 }
-            } catch { /* silently ignore */ }
+            } catch {
+                if (poll) {
+                    fetchingRef.current.delete(fetchKey);
+                    pollTimerRef.current[fetchKey] = setTimeout(() => triggerFetch(fetchKey, choreId, true), 3000);
+                }
+            }
         })();
     }, []);
 
@@ -9286,7 +9297,11 @@ function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
                     for (const a of actions) {
                         const inTid = typeof a.inputToken === 'string' ? a.inputToken : a.inputToken?.toText?.() || String(a.inputToken);
                         const outTid = a.outputToken?.[0] ? (typeof a.outputToken[0] === 'string' ? a.outputToken[0] : a.outputToken[0]?.toText?.() || String(a.outputToken[0])) : null;
-                        map[Number(a.id)] = { inputToken: inTid, outputToken: outTid };
+                        map[Number(a.id)] = {
+                            inputToken: inTid, outputToken: outTid,
+                            minAmount: a.minAmount != null ? Number(a.minAmount) : null,
+                            maxAmount: a.maxAmount != null ? Number(a.maxAmount) : null,
+                        };
                     }
                     setActionCache(prev => ({ ...prev, [choreId]: map }));
                 }
@@ -9321,30 +9336,43 @@ function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
 
         let entry = swapResults[activeKey] || null;
 
-        // For running swaps without a log entry yet, resolve token info from the action config
-        if (!entry && isSwapRunning) {
+        // For running swaps, resolve token info + amounts from the action config
+        if (isSwapRunning) {
             if (!actionCache[choreId]) {
                 setTimeout(() => triggerActionFetch(choreId), 0);
             } else {
-                // Parse action ID from task key: "trade-action-{instanceId}-{actionId}"
                 const actionIdMatch = currentTaskId.match(/-(\d+)$/);
                 const actionId = actionIdMatch ? Number(actionIdMatch[1]) : null;
-                const actionTokens = actionId != null ? actionCache[choreId][actionId] : null;
-                // Fall back to first action if we can't parse the ID
-                const tokens = actionTokens || Object.values(actionCache[choreId])[0];
-                if (tokens) {
-                    const inMeta = getTokenMetadataSync(tokens.inputToken);
-                    const outMeta = tokens.outputToken ? getTokenMetadataSync(tokens.outputToken) : null;
-                    entry = {
-                        inputToken: tokens.inputToken,
-                        outputToken: tokens.outputToken,
-                        inputSymbol: inMeta?.symbol || shortPrincipal(tokens.inputToken),
-                        outputSymbol: outMeta?.symbol || (tokens.outputToken ? shortPrincipal(tokens.outputToken) : '???'),
-                        inputDecimals: inMeta?.decimals ?? 8,
-                        outputDecimals: outMeta?.decimals ?? 8,
-                        inputAmount: null, outputAmount: null,
-                    };
+                const actionInfo = actionId != null ? actionCache[choreId][actionId] : null;
+                const info = actionInfo || Object.values(actionCache[choreId])[0];
+                if (info) {
+                    const inMeta = getTokenMetadataSync(info.inputToken);
+                    const outMeta = info.outputToken ? getTokenMetadataSync(info.outputToken) : null;
+                    const actionAmt = info.minAmount != null && info.minAmount > 0
+                        ? (info.maxAmount != null && info.maxAmount > info.minAmount
+                            ? Math.round((info.minAmount + info.maxAmount) / 2)
+                            : info.minAmount)
+                        : null;
+                    if (!entry) {
+                        entry = {
+                            inputToken: info.inputToken,
+                            outputToken: info.outputToken,
+                            inputSymbol: inMeta?.symbol || shortPrincipal(info.inputToken),
+                            outputSymbol: outMeta?.symbol || (info.outputToken ? shortPrincipal(info.outputToken) : '???'),
+                            inputDecimals: inMeta?.decimals ?? 8,
+                            outputDecimals: outMeta?.decimals ?? 8,
+                            inputAmount: actionAmt, outputAmount: null,
+                            isEstimate: actionAmt != null,
+                        };
+                    } else if (entry.inputAmount == null && actionAmt != null) {
+                        entry = { ...entry, inputAmount: actionAmt, isEstimate: true };
+                    }
                 }
+            }
+            // Poll trade log during active swap to pick up result as soon as it's written
+            const runningFetchKey = `${choreId}:${runStamp}:${currentTaskId}`;
+            if (!swapResults[runningFetchKey]) {
+                setTimeout(() => triggerFetch(runningFetchKey, choreId, true), 0);
             }
         }
 
