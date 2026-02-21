@@ -459,6 +459,7 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
                 maxSlippageBps: [Math.round(Number(maxSlippage) * 100)],
                 minFrequencySeconds: [], maxFrequencySeconds: [],
                 tradeSizeDenominationToken: sizeByOutput ? [Principal.fromText(outputToken)] : [],
+                trailingStopBps: [], trailingStopDirection: [], trailingStopResetOnExec: [],
                 haltChoreAfterExecution: false,
                 maxCumulativeInput: budgetLimit && Number(budgetLimit) > 0 ? [BigInt(Math.floor(Number(budgetLimit) * Math.pow(10, inputDecimals)))] : [],
                 maxCumulativeOutput: [], maxExecutions: [],
@@ -824,6 +825,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                     maxSlippageBps: [Math.round(Number(stopLossMaxSlippage) * 100)],
                     minFrequencySeconds: [], maxFrequencySeconds: [],
                     tradeSizeDenominationToken: [],
+                    trailingStopBps: [], trailingStopDirection: [], trailingStopResetOnExec: [],
                     haltChoreAfterExecution: true,
                     maxCumulativeInput: [], maxCumulativeOutput: [], maxExecutions: [],
                 });
@@ -845,6 +847,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                 maxSlippageBps: [Math.round(Number(maxSlippage) * 100)],
                 minFrequencySeconds: [], maxFrequencySeconds: [],
                 tradeSizeDenominationToken: sizeByOutputA ? [Principal.fromText(tokenB)] : [],
+                trailingStopBps: [], trailingStopDirection: [], trailingStopResetOnExec: [],
                 haltChoreAfterExecution: false,
                 maxCumulativeInput: [], maxCumulativeOutput: [], maxExecutions: [],
             });
@@ -865,6 +868,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                 maxSlippageBps: [Math.round(Number(maxSlippage) * 100)],
                 minFrequencySeconds: [], maxFrequencySeconds: [],
                 tradeSizeDenominationToken: sizeByOutputB ? [Principal.fromText(tokenA)] : [],
+                trailingStopBps: [], trailingStopDirection: [], trailingStopResetOnExec: [],
                 haltChoreAfterExecution: false,
                 maxCumulativeInput: [], maxCumulativeOutput: [], maxExecutions: [],
             });
