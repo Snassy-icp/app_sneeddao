@@ -7688,12 +7688,17 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
     const [opExecuting, setOpExecuting] = useState(false);
 
     const [fundTarget, setFundTarget] = useState(null);
+    const [fundSource, setFundSource] = useState('main');
     const [fundToken, setFundToken] = useState('');
     const [fundAmount, setFundAmount] = useState('');
     const [reclaimTarget, setReclaimTarget] = useState(null);
     const [reclaimToken, setReclaimToken] = useState('');
     const [reclaimAmount, setReclaimAmount] = useState('');
+    const [withdrawTarget, setWithdrawTarget] = useState(null);
+    const [withdrawToken, setWithdrawToken] = useState('');
+    const [withdrawAmount, setWithdrawAmount] = useState('');
     const [purseSaving, setPurseSaving] = useState(false);
+    const [reclaimingAll, setReclaimingAll] = useState(false);
 
     // Token registration
     const [addTokenValue, setAddTokenValue] = useState('');
@@ -8155,9 +8160,25 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
             const bot = await getReadyBotActor();
             const dec = tokDecimals(fundToken);
             const raw = BigInt(Math.round(parseFloat(fundAmount) * (10 ** Number(dec))));
-            const result = await bot.fundPurse(fundTarget, typeof fundToken === 'string' ? Principal.fromText(fundToken) : fundToken, raw);
-            if ('Err' in result) { setError(typeof result.Err === 'string' ? result.Err : JSON.stringify(result.Err)); return; }
-            setSuccess(`Funded ${fundAmount} ${tokLabel(fundToken)} to ${choreLabel(fundTarget)}`);
+            const tokenPrincipal = typeof fundToken === 'string' ? Principal.fromText(fundToken) : fundToken;
+            if (fundSource === 'wallet') {
+                const tokId = typeof fundToken === 'string' ? fundToken : fundToken.toText();
+                await ensureTokenRegistered(tokId);
+                const botPrincipal = Principal.fromText(canisterId);
+                const ledgerActor = createLedgerActor(tokId, { agentOptions: { identity } });
+                const xferResult = await ledgerActor.icrc1_transfer({
+                    to: { owner: botPrincipal, subaccount: [] },
+                    amount: raw, fee: [], memo: [], from_subaccount: [], created_at_time: [],
+                });
+                if ('Err' in xferResult) { setError('Wallet transfer failed: ' + JSON.stringify(xferResult.Err)); return; }
+                const fundResult = await bot.fundPurse(fundTarget, tokenPrincipal, raw);
+                if ('Err' in fundResult) { setError(typeof fundResult.Err === 'string' ? fundResult.Err : JSON.stringify(fundResult.Err)); return; }
+                setSuccess(`Funded ${fundAmount} ${tokLabel(fundToken)} from wallet to ${choreLabel(fundTarget)}`);
+            } else {
+                const result = await bot.fundPurse(fundTarget, tokenPrincipal, raw);
+                if ('Err' in result) { setError(typeof result.Err === 'string' ? result.Err : JSON.stringify(result.Err)); return; }
+                setSuccess(`Funded ${fundAmount} ${tokLabel(fundToken)} to ${choreLabel(fundTarget)}`);
+            }
             setFundAmount(''); setFundTarget(null); setFundToken('');
             await loadData();
         } catch (e) {
@@ -8183,6 +8204,110 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
             setError(e?.message || String(e));
         } finally {
             setPurseSaving(false);
+        }
+    };
+
+    const handleWithdrawFromPurse = async () => {
+        if (!withdrawTarget || !withdrawToken || !withdrawAmount) return;
+        setPurseSaving(true); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            const dec = tokDecimals(withdrawToken);
+            const raw = BigInt(Math.round(parseFloat(withdrawAmount) * (10 ** Number(dec))));
+            const tokenPrincipal = typeof withdrawToken === 'string' ? Principal.fromText(withdrawToken) : withdrawToken;
+            const userPrincipal = identity.getPrincipal();
+            const result = await bot.manualSend(tokenPrincipal, [withdrawTarget], userPrincipal, [], raw);
+            if ('Err' in result) { setError('Withdraw failed: ' + JSON.stringify(result.Err)); return; }
+            setSuccess(`Withdrew ${withdrawAmount} ${tokLabel(withdrawToken)} from ${choreLabel(withdrawTarget)} to wallet. Block: ${result.Ok.blockIndex.toString()}`);
+            setWithdrawAmount(''); setWithdrawTarget(null); setWithdrawToken('');
+            await loadData();
+        } catch (e) {
+            setError(e?.message || String(e));
+        } finally {
+            setPurseSaving(false);
+        }
+    };
+
+    const handleMaxFundPurse = async () => {
+        if (!fundToken || !fundTarget) return;
+        const dec = tokDecimals(fundToken);
+        if (fundSource === 'wallet') {
+            try {
+                const { HttpAgent } = await import('@dfinity/agent');
+                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
+                const agent = HttpAgent.createSync({ identity, host });
+                if (isLocal) await agent.fetchRootKey();
+                const userPrincipal = identity.getPrincipal();
+                const tokId = typeof fundToken === 'string' ? fundToken : fundToken.toText();
+                const ledgerActor = createLedgerActor(tokId, { agent });
+                const bal = BigInt(await ledgerActor.icrc1_balance_of({ owner: userPrincipal, subaccount: [] }));
+                const fee = BigInt(tokFee(fundToken));
+                const max = bal > fee ? bal - fee : 0n;
+                setFundAmount((Number(max) / (10 ** Number(dec))).toString());
+            } catch (e) { console.warn('Failed to fetch wallet balance', e); }
+        } else {
+            const tokId = typeof fundToken === 'string' ? fundToken : fundToken?.toText?.() || '';
+            const entry = mainPurseEntries.find(e => e.token === tokId);
+            if (entry) setFundAmount((Number(entry.balance) / (10 ** Number(dec))).toString());
+        }
+    };
+
+    const handleMaxReclaimPurse = (choreBalances) => {
+        if (!reclaimToken) return;
+        const dec = tokDecimals(reclaimToken);
+        const tokId = typeof reclaimToken === 'string' ? reclaimToken : reclaimToken?.toText?.() || '';
+        const entry = choreBalances.find(b => {
+            const p = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+            return p === tokId;
+        });
+        if (entry) setReclaimAmount((Number(entry.balance) / (10 ** Number(dec))).toString());
+    };
+
+    const handleMaxWithdrawPurse = (choreBalances) => {
+        if (!withdrawToken) return;
+        const dec = tokDecimals(withdrawToken);
+        const fee = tokFee(withdrawToken);
+        const tokId = typeof withdrawToken === 'string' ? withdrawToken : withdrawToken?.toText?.() || '';
+        const entry = choreBalances.find(b => {
+            const p = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+            return p === tokId;
+        });
+        if (entry) {
+            const raw = Number(entry.balance);
+            const max = raw > fee ? raw - fee : 0;
+            setWithdrawAmount((max / (10 ** Number(dec))).toString());
+        }
+    };
+
+    const tokFee = (tok) => {
+        const p = typeof tok === 'string' ? tok : tok?.toText?.() || tok?.toString?.() || '';
+        const cached = getTokenMetadataSync(p);
+        return cached?.fee != null ? Number(cached.fee) : 10000;
+    };
+
+    const handleReclaimAll = async () => {
+        const total = enabledPurses.reduce((sum, c) => sum + c.balances.filter(b => Number(b.balance) > 0).length, 0);
+        if (total === 0) return;
+        if (!window.confirm(`Reclaim all balances from ${enabledPurses.length} purse(s) (${total} token balance(s)) back to main purse?`)) return;
+        setReclaimingAll(true); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            let done = 0;
+            for (const chore of enabledPurses) {
+                for (const b of chore.balances) {
+                    if (Number(b.balance) <= 0) continue;
+                    const tok = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+                    const result = await bot.reclaimFromPurse(chore.instanceId, typeof tok === 'string' ? Principal.fromText(tok) : tok, BigInt(b.balance));
+                    if ('Ok' in result) done++;
+                }
+            }
+            setSuccess(`Reclaimed ${done} balance(s) back to main purse.`);
+            await loadData();
+        } catch (e) {
+            setError(e?.message || String(e));
+        } finally {
+            setReclaimingAll(false);
         }
     };
 
@@ -8674,9 +8799,17 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
 
             {/* ── Purse Allocations (per-chore) ── */}
             <div style={{ padding: '12px', background: cardBg, borderRadius: '10px', border: `1px solid ${borderColor}`, marginBottom: '14px' }}>
-                <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <FaWallet style={{ color: accentColor, fontSize: '0.75rem' }} /> Purse Allocations
-                </h4>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <FaWallet style={{ color: accentColor, fontSize: '0.75rem' }} /> Purse Allocations
+                    </h4>
+                    {enabledPurses.length > 0 && (
+                        <button onClick={handleReclaimAll} disabled={reclaimingAll || purseSaving}
+                            style={{ ...btnStyle, fontSize: '0.68rem', padding: '3px 8px', color: '#e67e22', borderColor: '#e67e2240', opacity: (reclaimingAll || purseSaving) ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <FaArrowUp size={8} /> {reclaimingAll ? 'Reclaiming...' : 'Reclaim All to Main'}
+                        </button>
+                    )}
+                </div>
                 {enabledPurses.length === 0 ? (
                     <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, fontStyle: 'italic', padding: '8px 0' }}>
                         No chores have funded purses yet. Enable a purse in a chore's settings to isolate its balances.
@@ -8686,9 +8819,15 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                         const purseTokenIds = chore.balances.filter(b => Number(b.balance) > 0).map(b => {
                             return typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
                         });
+                        const allRegTokenIds = tokenRegistry.map(t => {
+                            const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+                            return tid;
+                        });
                         const mainTokenIds = mainPurseEntries.map(e => e.token);
                         const isFunding = fundTarget === chore.instanceId;
                         const isReclaiming = reclaimTarget === chore.instanceId;
+                        const isWithdrawing = withdrawTarget === chore.instanceId;
+                        const maxBtnSt = { padding: '2px 6px', fontSize: '0.66rem', border: `1px solid ${borderColor}`, borderRadius: '4px', cursor: 'pointer', background: 'none', color: accentColor, fontWeight: 600, lineHeight: 1 };
 
                         return (
                             <div key={chore.instanceId} style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${borderColor}`, marginBottom: '10px' }}>
@@ -8717,30 +8856,40 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                                     </tbody>
                                 </table>
 
-                                {/* Fund / Reclaim controls */}
+                                {/* Fund / Reclaim / Withdraw controls */}
                                 <div style={{ marginTop: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-                                    <button onClick={() => { setFundTarget(isFunding ? null : chore.instanceId); setFundToken(''); setFundAmount(''); setReclaimTarget(null); }}
+                                    <button onClick={() => { setFundTarget(isFunding ? null : chore.instanceId); setFundToken(''); setFundAmount(''); setFundSource('main'); setReclaimTarget(null); setWithdrawTarget(null); }}
                                         style={{ ...btnStyle, fontSize: '0.7rem', padding: '3px 8px', background: isFunding ? `${accentColor}15` : 'none', display: 'flex', alignItems: 'center', gap: '3px' }}>
                                         <FaArrowDown size={9} /> Fund
                                     </button>
-                                    <button onClick={() => { setReclaimTarget(isReclaiming ? null : chore.instanceId); setReclaimToken(''); setReclaimAmount(''); setFundTarget(null); }}
+                                    <button onClick={() => { setReclaimTarget(isReclaiming ? null : chore.instanceId); setReclaimToken(''); setReclaimAmount(''); setFundTarget(null); setWithdrawTarget(null); }}
                                         style={{ ...btnStyle, fontSize: '0.7rem', padding: '3px 8px', color: '#e67e22', borderColor: '#e67e2240', background: isReclaiming ? '#e67e2215' : 'none', display: 'flex', alignItems: 'center', gap: '3px' }}>
                                         <FaArrowUp size={9} /> Reclaim
+                                    </button>
+                                    <button onClick={() => { setWithdrawTarget(isWithdrawing ? null : chore.instanceId); setWithdrawToken(''); setWithdrawAmount(''); setFundTarget(null); setReclaimTarget(null); }}
+                                        style={{ ...btnStyle, fontSize: '0.7rem', padding: '3px 8px', color: '#8e44ad', borderColor: '#8e44ad40', background: isWithdrawing ? '#8e44ad15' : 'none', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                        <FaArrowUp size={9} /> To Wallet
                                     </button>
                                 </div>
 
                                 {isFunding && (
                                     <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                        <select value={fundSource} onChange={e => { setFundSource(e.target.value); setFundToken(''); setFundAmount(''); }}
+                                            style={{ ...inputStyle, width: 'auto', padding: '3px 6px', fontSize: '0.72rem' }}>
+                                            <option value="main">Main Purse</option>
+                                            <option value="wallet">My Wallet</option>
+                                        </select>
                                         <div style={{ minWidth: '140px' }}>
                                             <TokenSelector
                                                 value={fundToken}
-                                                onChange={setFundToken}
-                                                tokenSubset={mainTokenIds.map(id => ({ ledger_id: id, symbol: tokLabel(id), name: tokLabel(id) }))}
+                                                onChange={v => { setFundToken(v); setFundAmount(''); }}
+                                                tokenSubset={(fundSource === 'wallet' ? allRegTokenIds : mainTokenIds).map(id => ({ ledger_id: id, symbol: tokLabel(id), name: tokLabel(id) }))}
                                                 placeholder="Token..."
                                             />
                                         </div>
                                         <input type="number" placeholder="Amount" value={fundAmount} onChange={e => setFundAmount(e.target.value)}
                                             style={{ ...inputStyle, width: '110px', fontSize: '0.78rem' }} step="any" min="0" />
+                                        <button onClick={handleMaxFundPurse} disabled={!fundToken} style={maxBtnSt} title="Max available">Max</button>
                                         <button onClick={handleFundPurse} disabled={purseSaving || !fundToken || !fundAmount}
                                             style={{ ...btnStyle, fontSize: '0.7rem', padding: '4px 10px', opacity: (purseSaving || !fundToken || !fundAmount) ? 0.5 : 1 }}>
                                             {purseSaving ? 'Funding...' : 'Fund'}
@@ -8753,16 +8902,37 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                                         <div style={{ minWidth: '140px' }}>
                                             <TokenSelector
                                                 value={reclaimToken}
-                                                onChange={setReclaimToken}
+                                                onChange={v => { setReclaimToken(v); setReclaimAmount(''); }}
                                                 tokenSubset={purseTokenIds.map(id => ({ ledger_id: id, symbol: tokLabel(id), name: tokLabel(id) }))}
                                                 placeholder="Token..."
                                             />
                                         </div>
                                         <input type="number" placeholder="Amount" value={reclaimAmount} onChange={e => setReclaimAmount(e.target.value)}
                                             style={{ ...inputStyle, width: '110px', fontSize: '0.78rem' }} step="any" min="0" />
+                                        <button onClick={() => handleMaxReclaimPurse(chore.balances)} disabled={!reclaimToken} style={maxBtnSt} title="Max purse balance">Max</button>
                                         <button onClick={handleReclaimPurse} disabled={purseSaving || !reclaimToken || !reclaimAmount}
                                             style={{ ...btnStyle, fontSize: '0.7rem', padding: '4px 10px', color: '#e67e22', borderColor: '#e67e2240', opacity: (purseSaving || !reclaimToken || !reclaimAmount) ? 0.5 : 1 }}>
                                             {purseSaving ? 'Reclaiming...' : 'Reclaim'}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {isWithdrawing && (
+                                    <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                        <div style={{ minWidth: '140px' }}>
+                                            <TokenSelector
+                                                value={withdrawToken}
+                                                onChange={v => { setWithdrawToken(v); setWithdrawAmount(''); }}
+                                                tokenSubset={purseTokenIds.map(id => ({ ledger_id: id, symbol: tokLabel(id), name: tokLabel(id) }))}
+                                                placeholder="Token..."
+                                            />
+                                        </div>
+                                        <input type="number" placeholder="Amount" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)}
+                                            style={{ ...inputStyle, width: '110px', fontSize: '0.78rem' }} step="any" min="0" />
+                                        <button onClick={() => handleMaxWithdrawPurse(chore.balances)} disabled={!withdrawToken} style={maxBtnSt} title="Max (minus fee)">Max</button>
+                                        <button onClick={handleWithdrawFromPurse} disabled={purseSaving || !withdrawToken || !withdrawAmount}
+                                            style={{ ...btnStyle, fontSize: '0.7rem', padding: '4px 10px', color: '#8e44ad', borderColor: '#8e44ad40', opacity: (purseSaving || !withdrawToken || !withdrawAmount) ? 0.5 : 1 }}>
+                                            {purseSaving ? 'Sending...' : 'To Wallet'}
                                         </button>
                                     </div>
                                 )}
@@ -8784,11 +8954,15 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
     const [purseEnabled, setPurseEnabled] = useState(null);
     const [purseBalances, setPurseBalances] = useState([]);
     const [mainPurseBalances, setMainPurseBalances] = useState([]);
+    const [registeredTokenIds, setRegisteredTokenIds] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [fundSource, setFundSource] = useState('main');
     const [fundToken, setFundToken] = useState('');
     const [fundAmount, setFundAmount] = useState('');
     const [reclaimToken, setReclaimToken] = useState('');
     const [reclaimAmount, setReclaimAmount] = useState('');
+    const [withdrawToken, setWithdrawToken] = useState('');
+    const [withdrawAmount, setWithdrawAmount] = useState('');
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
@@ -8821,13 +8995,26 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
         if (isNaN(n)) return '0';
         return (n / (10 ** Number(decimals))).toLocaleString(undefined, { maximumFractionDigits: Number(decimals) });
     };
+    const tokFee = (tok) => {
+        const p = typeof tok === 'string' ? tok : tok?.toText?.() || tok?.toString?.() || '';
+        const cached = getTokenMetadataSync(p);
+        return cached?.fee != null ? Number(cached.fee) : 10000;
+    };
+    const maxBtnSt = { padding: '2px 6px', fontSize: '0.68rem', border: `1px solid ${theme.colors.border}`, borderRadius: '4px', cursor: 'pointer', background: 'none', color: accentColor, fontWeight: 600, lineHeight: 1 };
 
     const loadData = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
             const actor = await getReadyBotActor();
-            const allPurses = await actor.getAllPurseAllocations();
+            const [allPurses, regTokens] = await Promise.all([
+                actor.getAllPurseAllocations(),
+                actor.getTokenRegistry ? actor.getTokenRegistry() : [],
+            ]);
+            setRegisteredTokenIds(regTokens.map(t => {
+                const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+                return tid;
+            }));
 
             const myPurse = allPurses.find(p => p.instanceId === instanceId);
             const enabled = myPurse?.enabled ?? false;
@@ -8928,9 +9115,28 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
             const actor = await getReadyBotActor();
             const dec = tokDecimals(fundToken);
             const raw = BigInt(Math.round(parseFloat(fundAmount) * (10 ** Number(dec))));
-            const result = await actor.fundPurse(instanceId, typeof fundToken === 'string' ? Principal.fromText(fundToken) : fundToken, raw);
-            if ('Err' in result) { setError(result.Err); return; }
-            setSuccess('Funded successfully');
+            const tokenPrincipal = typeof fundToken === 'string' ? Principal.fromText(fundToken) : fundToken;
+            if (fundSource === 'wallet') {
+                const tokId = typeof fundToken === 'string' ? fundToken : fundToken.toText();
+                const cached = getTokenMetadataSync(tokId);
+                if (cached) {
+                    try { await actor.addToken({ ledgerCanisterId: Principal.fromText(tokId), symbol: cached.symbol || '???', decimals: cached.decimals ?? 8, fee: BigInt(cached.fee ?? 10000) }); } catch (_) {}
+                }
+                const botPrincipal = Principal.fromText(canisterId);
+                const ledgerActor = createLedgerActor(tokId, { agentOptions: { identity } });
+                const xferResult = await ledgerActor.icrc1_transfer({
+                    to: { owner: botPrincipal, subaccount: [] },
+                    amount: raw, fee: [], memo: [], from_subaccount: [], created_at_time: [],
+                });
+                if ('Err' in xferResult) { setError('Wallet transfer failed: ' + JSON.stringify(xferResult.Err)); return; }
+                const fundResult = await actor.fundPurse(instanceId, tokenPrincipal, raw);
+                if ('Err' in fundResult) { setError(fundResult.Err); return; }
+                setSuccess('Funded from wallet successfully');
+            } else {
+                const result = await actor.fundPurse(instanceId, tokenPrincipal, raw);
+                if ('Err' in result) { setError(result.Err); return; }
+                setSuccess('Funded successfully');
+            }
             setFundAmount('');
             await loadData();
         } catch (e) {
@@ -8956,6 +9162,71 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
             setError(e?.message || String(e));
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleWithdrawToWallet = async () => {
+        if (!withdrawToken || !withdrawAmount) return;
+        setSaving(true); setError(null); setSuccess(null);
+        try {
+            const actor = await getReadyBotActor();
+            const dec = tokDecimals(withdrawToken);
+            const raw = BigInt(Math.round(parseFloat(withdrawAmount) * (10 ** Number(dec))));
+            const tokenPrincipal = typeof withdrawToken === 'string' ? Principal.fromText(withdrawToken) : withdrawToken;
+            const userPrincipal = identity.getPrincipal();
+            const result = await actor.manualSend(tokenPrincipal, [instanceId], userPrincipal, [], raw);
+            if ('Err' in result) { setError('Withdraw failed: ' + JSON.stringify(result.Err)); return; }
+            setSuccess(`Withdrawn to wallet. Block: ${result.Ok.blockIndex.toString()}`);
+            setWithdrawAmount('');
+            await loadData();
+        } catch (e) {
+            setError(e?.message || String(e));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleMaxFund = async () => {
+        if (!fundToken) return;
+        const dec = tokDecimals(fundToken);
+        if (fundSource === 'wallet') {
+            try {
+                const { HttpAgent } = await import('@dfinity/agent');
+                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
+                const agent = HttpAgent.createSync({ identity, host });
+                if (isLocal) await agent.fetchRootKey();
+                const userPrincipal = identity.getPrincipal();
+                const tokId = typeof fundToken === 'string' ? fundToken : fundToken.toText();
+                const ledgerActor = createLedgerActor(tokId, { agent });
+                const bal = BigInt(await ledgerActor.icrc1_balance_of({ owner: userPrincipal, subaccount: [] }));
+                const fee = BigInt(tokFee(fundToken));
+                const max = bal > fee ? bal - fee : 0n;
+                setFundAmount((Number(max) / (10 ** Number(dec))).toString());
+            } catch (e) { console.warn('Failed to fetch wallet balance', e); }
+        } else {
+            const tokId = typeof fundToken === 'string' ? fundToken : fundToken?.toText?.() || '';
+            const entry = mainPurseBalances.find(b => { const p = typeof b.token === 'string' ? b.token : b.token?.toText?.() || ''; return p === tokId; });
+            if (entry) setFundAmount((Number(entry.balance) / (10 ** Number(dec))).toString());
+        }
+    };
+    const handleMaxReclaim = () => {
+        if (!reclaimToken) return;
+        const dec = tokDecimals(reclaimToken);
+        const tokId = typeof reclaimToken === 'string' ? reclaimToken : reclaimToken?.toText?.() || '';
+        const entry = purseBalances.find(b => { const p = typeof b.token === 'string' ? b.token : b.token?.toText?.() || ''; return p === tokId; });
+        if (entry) setReclaimAmount((Number(entry.balance) / (10 ** Number(dec))).toString());
+    };
+    const handleMaxWithdraw = () => {
+        if (!withdrawToken) return;
+        const dec = tokDecimals(withdrawToken);
+        const fee = tokFee(withdrawToken);
+        const tokId = typeof withdrawToken === 'string' ? withdrawToken : withdrawToken?.toText?.() || '';
+        const entry = purseBalances.find(b => { const p = typeof b.token === 'string' ? b.token : b.token?.toText?.() || ''; return p === tokId; });
+        if (entry) {
+            const raw = Number(entry.balance);
+            const max = raw > fee ? raw - fee : 0;
+            setWithdrawAmount((max / (10 ** Number(dec))).toString());
         }
     };
 
@@ -9046,35 +9317,59 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
 
                     {/* Fund */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText, fontWeight: 500 }}>Fund:</span>
+                        <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText, fontWeight: 500 }}>Fund from:</span>
+                        <select value={fundSource} onChange={e => { setFundSource(e.target.value); setFundToken(''); setFundAmount(''); }} style={inp({ width: 'auto', padding: '4px 8px', fontSize: '0.76rem' })}>
+                            <option value="main">Main Purse</option>
+                            <option value="wallet">My Wallet</option>
+                        </select>
                         <div style={{ minWidth: '140px' }}>
                             <TokenSelector
                                 value={fundToken}
-                                onChange={setFundToken}
-                                tokenSubset={mainTokenIds.map(id => ({ ledger_id: id, symbol: tokLabel(id), name: tokLabel(id) }))}
+                                onChange={v => { setFundToken(v); setFundAmount(''); }}
+                                tokenSubset={(fundSource === 'wallet' ? registeredTokenIds : mainTokenIds).map(id => ({ ledger_id: id, symbol: tokLabel(id), name: tokLabel(id) }))}
                                 placeholder="Token..."
                             />
                         </div>
                         <input type="number" placeholder="Amount" value={fundAmount} onChange={e => setFundAmount(e.target.value)} style={inp({ width: '110px' })} step="any" min="0" />
-                        <button onClick={handleFund} disabled={saving || !fundToken || !fundAmount} style={btnSm({ color: accentColor, borderColor: accentColor })}>
-                            <FaArrowDown size={10} /> Fund
+                        <button onClick={handleMaxFund} disabled={!fundToken} style={maxBtnSt} title="Max available">Max</button>
+                        <button onClick={handleFund} disabled={saving || !fundToken || !fundAmount} style={btnSm({ color: accentColor, borderColor: accentColor, opacity: (saving || !fundToken || !fundAmount) ? 0.5 : 1 })}>
+                            {saving ? '...' : <><FaArrowDown size={10} /> Fund</>}
                         </button>
                     </div>
 
-                    {/* Reclaim */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    {/* Reclaim to main purse */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText, fontWeight: 500 }}>Reclaim:</span>
                         <div style={{ minWidth: '140px' }}>
                             <TokenSelector
                                 value={reclaimToken}
-                                onChange={setReclaimToken}
+                                onChange={v => { setReclaimToken(v); setReclaimAmount(''); }}
                                 tokenSubset={purseTokenIds.map(id => ({ ledger_id: id, symbol: tokLabel(id), name: tokLabel(id) }))}
                                 placeholder="Token..."
                             />
                         </div>
                         <input type="number" placeholder="Amount" value={reclaimAmount} onChange={e => setReclaimAmount(e.target.value)} style={inp({ width: '110px' })} step="any" min="0" />
-                        <button onClick={handleReclaim} disabled={saving || !reclaimToken || !reclaimAmount} style={btnSm({ color: '#e67e22', borderColor: '#e67e22' })}>
-                            <FaArrowUp size={10} /> Reclaim
+                        <button onClick={handleMaxReclaim} disabled={!reclaimToken} style={maxBtnSt} title="Max purse balance">Max</button>
+                        <button onClick={handleReclaim} disabled={saving || !reclaimToken || !reclaimAmount} style={btnSm({ color: '#e67e22', borderColor: '#e67e22', opacity: (saving || !reclaimToken || !reclaimAmount) ? 0.5 : 1 })}>
+                            {saving ? '...' : <><FaArrowUp size={10} /> Reclaim</>}
+                        </button>
+                    </div>
+
+                    {/* Withdraw to wallet */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText, fontWeight: 500 }}>Withdraw:</span>
+                        <div style={{ minWidth: '140px' }}>
+                            <TokenSelector
+                                value={withdrawToken}
+                                onChange={v => { setWithdrawToken(v); setWithdrawAmount(''); }}
+                                tokenSubset={purseTokenIds.map(id => ({ ledger_id: id, symbol: tokLabel(id), name: tokLabel(id) }))}
+                                placeholder="Token..."
+                            />
+                        </div>
+                        <input type="number" placeholder="Amount" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} style={inp({ width: '110px' })} step="any" min="0" />
+                        <button onClick={handleMaxWithdraw} disabled={!withdrawToken} style={maxBtnSt} title="Max (minus fee)">Max</button>
+                        <button onClick={handleWithdrawToWallet} disabled={saving || !withdrawToken || !withdrawAmount} style={btnSm({ color: '#8e44ad', borderColor: '#8e44ad', opacity: (saving || !withdrawToken || !withdrawAmount) ? 0.5 : 1 })}>
+                            {saving ? '...' : <><FaArrowUp size={10} /> To Wallet</>}
                         </button>
                     </div>
                 </>
