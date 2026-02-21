@@ -6,11 +6,14 @@ The **Sneed Trading Bot** is an autonomous trading canister on the Internet Comp
 
 ### Core Capabilities
 
-1. **Trade Chore** — Execute a configurable list of conditional trades (with deposit/withdraw/send actions) on a recurring schedule.
+1. **Trade Chore** — Execute a configurable list of conditional trades (with fund-purse/reclaim/send actions) on a recurring schedule.
 2. **Rebalance Chore** — Automatically rebalance a portfolio toward user-defined target allocations by picking weighted-random over/underweight token pairs and trading them.
-3. **Move Funds Chore** — Execute deposit/withdraw/send actions on a recurring schedule (no trading).
-4. **DEX Aggregator** — Backend library for quoting and executing swaps across multiple DEXes, mirroring the frontend `DexAggregator` API pattern.
-5. **Named Subaccounts** — User-managed named subaccounts for organizing funds, with deposit/withdraw/send between them.
+3. **Move Funds Chore** — Execute fund-purse/reclaim/send actions on a recurring schedule (no trading).
+4. **Distribute Funds Chore** — Distribute funds from a source purse to target purses or external accounts based on configured percentages/shares.
+5. **Snapshot Chore** — Take periodic portfolio snapshots for historical tracking.
+6. **DEX Aggregator** — Backend library for quoting and executing swaps across multiple DEXes, with impact-aware quote selection.
+7. **Chore Purses** — Virtual accounting layer for isolated per-chore token balances (see Section 16).
+8. **Circuit Breakers** — Automated safety rules that can pause/stop chores when configurable conditions are met.
 
 ### Design Principles
 
@@ -18,7 +21,8 @@ The **Sneed Trading Bot** is an autonomous trading canister on the Internet Comp
 - **No enums in stable vars**: All enumerations are stored as numeric indexes with transient runtime maps to variants (per `motoko_pnp.md`).
 - **Individual stable vars**: No config record objects — each setting is its own stable var to avoid upgrade migrations.
 - **Multi-instance chores**: Trade chores and Move Funds chores support multiple instances. The rebalancer is single-instance by default but supports multi-instance for managing multiple portfolios.
-- **Trades only from main account**: DEX APIs (ICPSwap, Kong) do not support swapping from subaccounts, so all actual swaps operate on the canister's main account (null subaccount). Deposit/Withdraw/Send actions move funds between subaccounts and the main account.
+- **Main account only**: All on-chain operations (swaps, sends) use the canister's main ICRC-1 account (null subaccount). There are no named subaccounts. Fund isolation is achieved through the **Purse** system (virtual accounting).
+- **`async*` for internal calls**: All private asynchronous functions use the `async*`/`await*` pattern to avoid IC self-call message queue saturation (see `motoko_pnp.md`).
 
 ---
 
@@ -35,8 +39,7 @@ The Trading Bot uses the shared base permissions (0–99) plus its own bot-speci
 | 2   | `#ViewChores`            | View chore statuses |
 | 3   | `#ViewLogs`              | Read log entries |
 | 4   | `#ManageLogs`            | Set log level, clear logs |
-| 200 | `#ViewPortfolio`         | View balances, subaccounts, portfolio state |
-| 201 | `#ManageSubaccounts`     | Create/rename/delete named subaccounts |
+| 200 | `#ViewPortfolio`         | View balances, purses, portfolio state |
 | 202 | `#ManageTrades`          | Configure trade chore actions (add/edit/remove trades) |
 | 203 | `#ManageRebalancer`      | Configure rebalancer targets and parameters |
 | 204 | `#ManageTradeChore`      | Start/stop/pause/resume/trigger trade chores |
@@ -47,6 +50,7 @@ The Trading Bot uses the shared base permissions (0–99) plus its own bot-speci
 | 209 | `#WithdrawFunds`         | Send tokens from the bot to external accounts |
 | 210 | `#ConfigureDistribution` | Add/update/remove distribution lists |
 | 211 | `#ManageDistributeFunds` | Start/stop/pause/resume/trigger distribute-funds chore |
+| 213 | `#ManageCircuitBreaker`  | Create/update/delete/enable CB rules and global toggle |
 | 214 | `#ManagePurses`          | Enable/disable chore purses; fund and reclaim operations |
 
 ---
@@ -67,17 +71,21 @@ The token registry is stored as a single stable var: `var tokenRegistry: [TokenR
 
 Tokens can be added and removed via admin API. The bot needs token metadata (symbol, decimals, fee) for proper amount calculations, display, and fee deduction.
 
+### Scan for Tokens
+
+The frontend provides a "Scan for Tokens" button in the Wallet tab. It iterates through whitelisted tokens (well-known IC tokens), checks on-chain balances, and automatically adds any token with a non-zero balance to the registry.
+
 ### Global Token Pause & Freeze
 
-Tokens can be **paused** or **frozen** at the account level (globally, across all chores):
+Tokens can be **paused** or **frozen** globally (across all chores):
 
-- **Paused** (`pausedTokens: [Principal]`): The token will **not be traded** by any rebalancer chore or trade action in any trade chore. Deposit, withdraw, send, and distribution actions are still allowed.
-- **Frozen** (`frozenTokens: [Principal]`): The token will **not be traded AND not be moved** — no trades, deposits, withdraws, sends, or distributions involving this token will execute. This is a superset of paused.
+- **Paused** (`pausedTokens: [Principal]`): The token will **not be traded** by any rebalancer chore or trade action in any trade chore. Fund-purse, reclaim, send, and distribution actions are still allowed.
+- **Frozen** (`frozenTokens: [Principal]`): The token will **not be traded AND not be moved** — no trades, fund-purse, reclaim, sends, or distributions involving this token will execute. This is a superset of paused.
 
 A frozen token is implicitly paused (no need to add it to both lists). The checks are:
 - **Trade actions** (swap): Skip if input or output token is paused or frozen.
-- **Rebalancer**: Exclude paused/frozen tokens from active targets (same as per-target pause, but global).
-- **Deposit/Withdraw/Send actions**: Skip if the token is frozen.
+- **Rebalancer**: Exclude paused/frozen tokens from active targets.
+- **Fund-purse/Reclaim/Send actions**: Skip if the token is frozen.
 - **Distribution chore**: Skip distribution lists whose token is frozen.
 - **Fallback routing**: Skip paused/frozen intermediary tokens.
 
@@ -86,10 +94,10 @@ A frozen token is implicitly paused (no need to add it to both lists). The check
 ```motoko
 getPausedTokens() : async [Principal]
 getFrozenTokens() : async [Principal]
-pauseToken(token: Principal) : async ()     // Requires ManageTokenRegistry
-unpauseToken(token: Principal) : async ()   // Requires ManageTokenRegistry
-freezeToken(token: Principal) : async ()    // Requires ManageTokenRegistry
-unfreezeToken(token: Principal) : async ()  // Requires ManageTokenRegistry
+pauseToken(token: Principal) : async ()
+unpauseToken(token: Principal) : async ()
+freezeToken(token: Principal) : async ()
+unfreezeToken(token: Principal) : async ()
 ```
 
 ### Circuit Breaker
@@ -99,10 +107,14 @@ The circuit breaker is an automated safety system that can pause or stop bot act
 #### Concepts
 
 - **Rules**: Independent circuit breaker rules, each with conditions (AND-gated) and actions.
-- **Conditions**: Three types — Price (token pair), Value (sum of multiple sources), Balance (specific token in account).
+- **Conditions**: Three types — Price (token pair), Value (sum of multiple sources), Balance (specific token in account/purse).
 - **Operators**: Greater than, Less than, Inside range, Outside range, Percentage change.
 - **Percentage Change**: Compares current value against historical data from a specified lookback period. Supports up/down/either direction.
-- **Value Sources**: Specific token in account, all tokens in a rebalancing chore, all tokens in an account. Multiple sources are de-duplicated by (token, subaccount) and summed.
+- **Value Sources**: Specific token in account, all tokens in a rebalancing chore, all tokens in an account. Multiple sources are de-duplicated by token and summed.
+- **Balance Sources**: Purse-aware. Can reference:
+  - **Full on-chain balance** of the main account (actual ICRC-1 balance).
+  - **Main purse balance** (on-chain minus all chore purse allocations).
+  - **A specific chore's purse balance**.
 - **Actions**: Pause token in rebal chore, pause/freeze token globally, stop/pause chore, stop/pause all chores by type, stop/pause all chores.
 - **Manual Reset**: When a circuit breaker triggers, affected chores/tokens remain paused/stopped until manually resumed by the user.
 - **Event Log**: All trigger events are recorded with timestamps, rule info, condition summaries, and actions taken.
@@ -145,34 +157,18 @@ See `Types.mo` for full type definitions: `CircuitBreakerCondition`, `CircuitBre
 #### API
 
 ```motoko
-// Rules CRUD
-getCircuitBreakerRules() : async [CircuitBreakerRule]              // query, ViewChores
-addCircuitBreakerRule(input: CircuitBreakerRuleInput) : async Nat  // ManageCircuitBreaker
-updateCircuitBreakerRule(id: Nat, input: CircuitBreakerRuleInput) : async ()  // ManageCircuitBreaker
-removeCircuitBreakerRule(id: Nat) : async ()                       // ManageCircuitBreaker
-enableCircuitBreakerRule(id: Nat, enabled: Bool) : async ()        // ManageCircuitBreaker
+getCircuitBreakerRules() : async [CircuitBreakerRule]
+addCircuitBreakerRule(input: CircuitBreakerRuleInput) : async Nat
+updateCircuitBreakerRule(id: Nat, input: CircuitBreakerRuleInput) : async ()
+removeCircuitBreakerRule(id: Nat) : async ()
+enableCircuitBreakerRule(id: Nat, enabled: Bool) : async ()
 
-// Global toggle
-getCircuitBreakerEnabled() : async Bool                            // query, ViewChores
-setCircuitBreakerEnabled(enabled: Bool) : async ()                 // ManageCircuitBreaker
+getCircuitBreakerEnabled() : async Bool
+setCircuitBreakerEnabled(enabled: Bool) : async ()
 
-// Event log
-getCircuitBreakerLog(q: CBLogQuery) : async CBLogResult            // query, ViewLogs
-clearCircuitBreakerLog() : async ()                                // ManageLogs
+getCircuitBreakerLog(q: CBLogQuery) : async CBLogResult
+clearCircuitBreakerLog() : async ()
 ```
-
-#### Permission
-
-Permission ID `213` — `ManageCircuitBreaker`: Required for creating, updating, deleting, and enabling/disabling rules and the global CB toggle.
-
-#### Frontend
-
-The Circuit Breaker tab in the TradingBotLogs section provides:
-- Global enable/disable toggle
-- Rule list with summary cards (conditions, actions, enable/disable, edit, delete)
-- Rule builder form with type-specific condition/action fields
-- Event log table with time, rule, conditions, and actions taken
-- Chore status lamps show an orange "CB" indicator when a chore is paused/stopped by a circuit breaker rule
 
 ### Well-Known Token Constants
 
@@ -186,34 +182,7 @@ SNEED_LEDGER  = "hvgxa-wqaaa-aaaaq-aacia-cai"
 
 ---
 
-## 4. Named Subaccounts
-
-### Data Model
-
-```
-Stable var:
-  var namedSubaccounts: [(Nat, Text)]  — (subaccount number, name)
-  var nextSubaccountNumber: Nat        — Next number to assign (starts at 1)
-```
-
-Subaccount 0 (null subaccount) is always the **main account** and is not stored in the list — it is implicitly available as "Main Account".
-
-When a user creates a subaccount, the next sequential number is assigned and converted to a 32-byte blob by encoding the Nat as big-endian bytes in a 32-byte array (e.g., 1 → `0x00...0001`, 2 → `0x00...0002`).
-
-### API
-
-```motoko
-getSubaccounts() : async [(Nat, Text, Blob)]  // (number, name, 32-byte subaccount blob)
-createSubaccount(name: Text) : async { number: Nat; subaccount: Blob }
-renameSubaccount(number: Nat, name: Text) : async Bool
-deleteSubaccount(number: Nat) : async Bool  // Only if balance is zero
-getBalances(subaccountNumber: ?Nat) : async [{ token: Principal; balance: Nat }]  // null = all
-getAllBalances() : async [{ subaccountNumber: Nat; name: Text; balances: [{ token: Principal; balance: Nat }] }]
-```
-
----
-
-## 5. DEX Aggregator (Backend)
+## 4. DEX Aggregator (Backend)
 
 ### Architecture
 
@@ -252,8 +221,8 @@ type ICPSwapFactoryActor = actor {
 ```motoko
 type ICPSwapPoolActor = actor {
     quote: shared query (QuoteArgs) -> async { #ok: Nat; #err: Text };
-    depositAndSwap: shared (SwapArgs) -> async { #ok: Nat; #err: Text };       // ICRC1
-    depositFromAndSwap: shared (SwapArgs) -> async { #ok: Nat; #err: Text };   // ICRC2
+    depositAndSwap: shared (SwapArgs) -> async { #ok: Nat; #err: Text };
+    depositFromAndSwap: shared (SwapArgs) -> async { #ok: Nat; #err: Text };
     metadata: shared query () -> async { #ok: PoolMetadata; #err: Text };
 };
 ```
@@ -271,39 +240,34 @@ type KongSwapActor = actor {
 The bot exposes these **internal functions** (not public API — called by chore logic):
 
 ```
-// Get a quote from a specific DEX
-getQuote(dexId: Nat, inputToken: Principal, outputToken: Principal, amount: Nat) : async ?SwapQuote
-
-// Get quotes from all supported DEXes, sorted by output (best first)
-getAllQuotes(inputToken: Principal, outputToken: Principal, amount: Nat) : async [SwapQuote]
-
-// Get the best quote across all DEXes
-getBestQuote(inputToken: Principal, outputToken: Principal, amount: Nat) : async ?SwapQuote
-
-// Execute a swap using a quote
-executeSwap(quote: SwapQuote, slippageBps: Nat) : async SwapResult
-
-// Get spot price from a specific DEX (output per 1 input, in raw units)
-getSpotPrice(dexId: Nat, inputToken: Principal, outputToken: Principal) : async ?Nat
+getQuote(dexId: Nat, inputToken: Principal, outputToken: Principal, amount: Nat) : async* ?SwapQuote
+getAllQuotes(inputToken: Principal, outputToken: Principal, amount: Nat) : async* [SwapQuote]
+getBestQuote(inputToken: Principal, outputToken: Principal, amount: Nat) : async* ?SwapQuote
+executeSwap(quote: SwapQuote, slippageBps: Nat) : async* SwapResult
+getSpotPrice(dexId: Nat, inputToken: Principal, outputToken: Principal) : async* ?Nat
 ```
+
+### Impact-Aware Quote Selection
+
+When a trade action specifies `maxPriceImpactBps`, the bot filters **all** available quotes by price impact tolerance *first*, then selects the best among the eligible ones. This prevents the scenario where the absolute best quote is rejected for high impact while an almost-as-good quote from another DEX would pass the check.
 
 ### SwapQuote Type
 
 ```
 SwapQuote = {
-    dexId: Nat;                     // 0=ICPSwap, 1=Kong
+    dexId: Nat;
     inputToken: Principal;
     outputToken: Principal;
-    inputAmount: Nat;               // User's input (before fees)
-    effectiveInputAmount: Nat;      // After transfer/deposit fees
-    expectedOutput: Nat;            // After DEX fee, before slippage
-    spotPrice: Nat;                 // Spot price in raw units (output per 1e(inputDecimals) input)
-    priceImpactBps: Nat;            // Price impact in basis points (100 = 1%)
-    dexFeeBps: Nat;                 // DEX trading fee in basis points
-    inputFeesTotal: Nat;            // Total input fees (transfer + deposit)
-    outputFeesTotal: Nat;           // Total output fees (withdrawal)
-    poolCanisterId: ?Principal;     // ICPSwap pool canister (null for Kong)
-    timestamp: Int;                 // Time.now() when quote was fetched
+    inputAmount: Nat;
+    effectiveInputAmount: Nat;
+    expectedOutput: Nat;
+    spotPrice: Nat;
+    priceImpactBps: Nat;
+    dexFeeBps: Nat;
+    inputFeesTotal: Nat;
+    outputFeesTotal: Nat;
+    poolCanisterId: ?Principal;
+    timestamp: Int;
 }
 ```
 
@@ -319,15 +283,15 @@ SwapResult = {
 ### DEX Settings (Stable Vars)
 
 ```
-var enabledDexes: [Nat]                  — Which DEXes are enabled (default: [0, 1])
-var defaultSlippageBps: Nat              — Default slippage tolerance in bps (default: 100 = 1%)
-var defaultMaxPriceImpactBps: Nat        — Default max price impact in bps (default: 300 = 3%)
-var icpswapPoolCache: [(Text, Principal)] — Cached pool canister lookups (pairKey → canisterId)
+var enabledDexes: [Nat]
+var defaultSlippageBps: Nat
+var defaultMaxPriceImpactBps: Nat
+var icpswapPoolCache: [(Text, Principal)]
 ```
 
 ---
 
-## 6. Denomination System
+## 5. Denomination System
 
 Trade conditions and rebalancer targets can be denominated in any registered ICRC-1 token. This allows expressing conditions like "trade when SNEED price < 50 USD" or "target 30% of portfolio value in ICP terms."
 
@@ -346,7 +310,7 @@ Trade conditions and rebalancer targets can be denominated in any registered ICR
 
 ---
 
-## 7. Trade Chore
+## 6. Trade Chore
 
 ### Overview
 
@@ -360,135 +324,12 @@ Default interval: 300 seconds (5 minutes), with `maxIntervalSeconds` for randomi
 
 Actions are stored with a numeric `actionType` field (not an enum):
 
-| Type ID | Name     | Description |
-|---------|----------|-------------|
-| 0       | Trade    | Execute a token swap on a DEX |
-| 1       | Deposit  | Send tokens from main account to a named subaccount |
-| 2       | Withdraw | Send tokens from a named subaccount to main account |
-| 3       | Send     | Send tokens from main or subaccount to any ICRC-1 address |
-
-### Trade Action Parameters
-
-```
-TradeActionConfig = {
-    id: Nat;                            // Unique within the chore instance
-    actionType: Nat;                    // 0 = Trade
-    enabled: Bool;
-
-    // Token pair
-    inputToken: Principal;
-    outputToken: Principal;
-
-    // Trade size (of input token, in native units)
-    minTradeSize: Nat;                  // Minimum input amount
-    maxTradeSize: Nat;                  // Maximum input amount
-
-    // Which DEX to use (null = best quote from all enabled)
-    preferredDex: ?Nat;
-
-    // --- Optional conditions ---
-
-    // Balance conditions (on main account by default)
-    minInputBalance: ?Nat;              // Only trade if input token balance >= this
-    maxInputBalance: ?Nat;              // Only trade if input token balance <= this
-
-    // Price conditions (output token price)
-    minPrice: ?Nat;                     // Only trade if output price >= this (per 1 input)
-    maxPrice: ?Nat;                     // Only trade if output price <= this (per 1 input)
-    priceDenominationToken: ?Principal; // Denomination for price conditions (null = native)
-
-    // Balance denomination (null = native token units)
-    balanceDenominationToken: ?Principal;
-
-    // Risk parameters
-    maxPriceImpactBps: ?Nat;            // Max price impact in bps (null = use global default)
-    maxSlippageBps: ?Nat;               // Max slippage in bps (null = use global default)
-
-    // Frequency control (seconds)
-    minFrequencySeconds: ?Nat;          // Min time between executions of this action
-    maxFrequencySeconds: ?Nat;          // Max time between executions (null = run every chore cycle)
-
-    // Trade size denomination (null = native input token units)
-    tradeSizeDenominationToken: ?Principal;
-}
-```
-
-### Deposit Action Parameters
-
-```
-DepositActionConfig = {
-    id: Nat;
-    actionType: Nat;                    // 1 = Deposit
-    enabled: Bool;
-
-    token: Principal;                   // Token to deposit
-    targetSubaccount: Nat;              // Subaccount number to deposit TO (from main)
-
-    // Amount range
-    minAmount: Nat;
-    maxAmount: Nat;
-
-    // Balance condition (on main account)
-    minBalance: ?Nat;                   // Only deposit if main balance >= this
-    maxBalance: ?Nat;                   // Only deposit if main balance <= this
-
-    // Frequency control
-    minFrequencySeconds: ?Nat;
-    maxFrequencySeconds: ?Nat;
-}
-```
-
-### Withdraw Action Parameters
-
-```
-WithdrawActionConfig = {
-    id: Nat;
-    actionType: Nat;                    // 2 = Withdraw
-    enabled: Bool;
-
-    token: Principal;                   // Token to withdraw
-    sourceSubaccount: Nat;              // Subaccount number to withdraw FROM (to main)
-
-    // Amount range
-    minAmount: Nat;
-    maxAmount: Nat;
-
-    // Balance condition (on source subaccount)
-    minBalance: ?Nat;                   // Only withdraw if subaccount balance >= this
-    maxBalance: ?Nat;                   // Only withdraw if subaccount balance <= this
-
-    // Frequency control
-    minFrequencySeconds: ?Nat;
-    maxFrequencySeconds: ?Nat;
-}
-```
-
-### Send Action Parameters
-
-```
-SendActionConfig = {
-    id: Nat;
-    actionType: Nat;                    // 3 = Send
-    enabled: Bool;
-
-    token: Principal;                   // Token to send
-    sourceSubaccount: ?Nat;             // null = main account, else subaccount number
-    destinationOwner: Principal;        // ICRC-1 destination owner
-    destinationSubaccount: ?Blob;       // ICRC-1 destination subaccount
-
-    // Amount range
-    minAmount: Nat;
-    maxAmount: Nat;
-
-    // Balance condition (on source)
-    minBalance: ?Nat;
-    maxBalance: ?Nat;
-
-    // Frequency control
-    minFrequencySeconds: ?Nat;
-    maxFrequencySeconds: ?Nat;
-}
-```
+| Type ID | Name       | Description |
+|---------|------------|-------------|
+| 0       | Trade      | Execute a token swap on a DEX |
+| 1       | Fund Purse | Move tokens from source purse (or main purse) to target chore's purse (bookkeeping only) |
+| 2       | Reclaim    | Move tokens from source chore's purse to target purse (or main purse) (bookkeeping only) |
+| 3       | Send       | Send tokens from source purse to any external ICRC-1 address (on-chain transfer) |
 
 ### Unified Action Storage
 
@@ -497,25 +338,30 @@ All action types are stored in a single unified record type to avoid enum-in-sta
 ```
 ActionConfig = {
     id: Nat;
-    actionType: Nat;                    // 0=Trade, 1=Deposit, 2=Withdraw, 3=Send
+    actionType: Nat;                    // 0=Trade, 1=FundPurse, 2=Reclaim, 3=Send
     enabled: Bool;
 
-    // Token(s) - Trade uses both, others use token only (stored as inputToken)
+    // Token(s) - Trade uses both, others use inputToken only
     inputToken: Principal;
     outputToken: ?Principal;            // Only for Trade
 
     // Amount range
-    minAmount: Nat;                     // Trade: minTradeSize, others: minAmount
-    maxAmount: Nat;                     // Trade: maxTradeSize, others: maxAmount
+    minAmount: Nat;
+    maxAmount: Nat;
+
+    // Amount mode: 0 = random in [min,max] range (default), 1 = percentage of balance
+    amountMode: Nat;
+    // When amountMode=1: percentage in basis points (0-10000 = 0-100%), capped by min/max
+    balancePercent: ?Nat;
 
     // DEX preference (Trade only)
     preferredDex: ?Nat;
 
-    // Subaccount references
-    sourceSubaccount: ?Nat;             // Withdraw: source, Send: source (null=main)
-    targetSubaccount: ?Nat;             // Deposit: target
+    // Purse references (FundPurse / Reclaim / Send)
+    sourcePurseId: ?Text;              // Reclaim: source purse, Send: source purse (null=main purse)
+    targetPurseId: ?Text;              // FundPurse: target purse
 
-    // Destination (Send only)
+    // Destination (Send only — external ICRC-1 account)
     destinationOwner: ?Principal;
     destinationSubaccount: ?Blob;
 
@@ -533,17 +379,78 @@ ActionConfig = {
     maxPriceImpactBps: ?Nat;
     maxSlippageBps: ?Nat;
 
-    // Frequency control
+    // Frequency control (seconds)
     minFrequencySeconds: ?Nat;
     maxFrequencySeconds: ?Nat;
 
     // Trade size denomination (Trade only)
     tradeSizeDenominationToken: ?Principal;
 
+    // Post-execution behavior (halt & cumulative limits)
+    haltChoreAfterExecution: Bool;      // If true, stop the chore after this action executes
+    maxCumulativeInput: ?Nat;           // Cumulative input budget; chore stops when reached
+    maxCumulativeOutput: ?Nat;          // Cumulative output target; chore stops when reached
+    maxExecutions: ?Nat;                // Execution count cap; chore stops when reached
+
     // Runtime state (tracked per action)
-    lastExecutedAt: ?Int;               // Timestamp of last execution
+    lastExecutedAt: ?Int;
+    cumulativeInputSpent: Nat;
+    cumulativeOutputReceived: Nat;
+    executionCount: Nat;
 }
 ```
+
+### ActionConfigInput
+
+The input type for creating/updating actions omits runtime state fields:
+
+```
+ActionConfigInput = {
+    actionType: Nat;
+    enabled: Bool;
+    inputToken: Principal;
+    outputToken: ?Principal;
+    minAmount: Nat;
+    maxAmount: Nat;
+    amountMode: Nat;
+    balancePercent: ?Nat;
+    preferredDex: ?Nat;
+    sourcePurseId: ?Text;
+    targetPurseId: ?Text;
+    destinationOwner: ?Principal;
+    destinationSubaccount: ?Blob;
+    minBalance: ?Nat;
+    maxBalance: ?Nat;
+    balanceDenominationToken: ?Principal;
+    minPrice: ?Nat;
+    maxPrice: ?Nat;
+    priceDenominationToken: ?Principal;
+    maxPriceImpactBps: ?Nat;
+    maxSlippageBps: ?Nat;
+    minFrequencySeconds: ?Nat;
+    maxFrequencySeconds: ?Nat;
+    tradeSizeDenominationToken: ?Principal;
+    haltChoreAfterExecution: Bool;
+    maxCumulativeInput: ?Nat;
+    maxCumulativeOutput: ?Nat;
+    maxExecutions: ?Nat;
+}
+```
+
+### Action Halt & Cumulative Limits
+
+Actions support post-execution behavior flags that can automatically stop the parent chore:
+
+- **`haltChoreAfterExecution`**: If `true`, the chore is stopped immediately after this action successfully executes. Primary use case: stop-loss / stop-buy actions that should fire once and halt all further trading.
+- **`maxCumulativeInput`**: When the action's `cumulativeInputSpent` reaches this threshold, the chore is stopped. Use case: "DCA until 100 ICP spent."
+- **`maxCumulativeOutput`**: When the action's `cumulativeOutputReceived` reaches this threshold, the chore is stopped. Use case: "Buy until I have 1 BTC."
+- **`maxExecutions`**: When the action's `executionCount` reaches this threshold, the chore is stopped. Use case: "Execute at most 50 trades."
+
+Pre-checks at the start of `executeTradeAction` skip the action entirely if its cumulative limits are already met, preventing wasted work.
+
+After each successful execution, `updateActionStats` atomically updates `lastExecutedAt`, `cumulativeInputSpent`, `cumulativeOutputReceived`, and `executionCount`. The chore conductor then checks all halt/limit conditions and stops the chore if any are triggered.
+
+`resetActionStats` API allows resetting cumulative stats for a specific action to re-enable a halted chore.
 
 ### Trade Chore Storage
 
@@ -559,22 +466,32 @@ When a Trade Chore instance fires:
 
 1. **Conductor (tick 0)**: Loads the action list for this instance. Filters to enabled actions.
 2. For each action (sequentially, as Level 3 tasks):
-   a. Check **frequency**: If `lastExecutedAt + minFrequencySeconds > now`, skip.
-   b. Check **balance conditions**: Query the relevant account balance. Skip if outside range.
-   c. For **Trade** actions:
+   a. Check **cumulative limits**: If `maxCumulativeInput` or `maxExecutions` already met, skip.
+   b. Check **frequency**: If `lastExecutedAt + minFrequencySeconds > now`, skip.
+   c. Check **balance conditions**: Query the relevant purse balance. Skip if outside range.
+   d. For **Trade** actions:
       - Check **price conditions**: Get spot price, convert denomination if needed. Skip if outside range.
-      - Calculate trade size: Pick a random amount in [minAmount, maxAmount], adjusted for balance and denomination.
-      - Get quote(s) from preferred DEX or best across all.
-      - Check **price impact** and **slippage** tolerances.
-      - Execute the swap.
-   d. For **Deposit/Withdraw** actions:
-      - Calculate amount in [minAmount, maxAmount], adjusted for balance.
-      - Execute the ICRC-1 transfer.
-   e. For **Send** actions:
-      - Calculate amount, execute the transfer.
-   f. Update `lastExecutedAt` on the action.
-   g. Log the result.
+      - Calculate trade size: Pick amount based on `amountMode` (random in range or % of balance), adjusted for denomination.
+      - Get quotes from all enabled DEXes. **Filter by `maxPriceImpactBps` first**, then select best eligible quote.
+      - Check **slippage** tolerance.
+      - Execute the swap. Returns `(success, inputSpent, outputReceived)`.
+      - On success: update chore purse balances (debit input, credit output) if chore has its own purse.
+   e. For **Fund Purse** actions:
+      - Move tokens from source purse to target chore's purse (bookkeeping only, no on-chain transfer).
+   f. For **Reclaim** actions:
+      - Move tokens from source chore's purse back to target purse or main purse (bookkeeping only).
+   g. For **Send** actions:
+      - Execute ICRC-1 transfer from the bot's main account. Debit the source purse.
+   h. Update `lastExecutedAt` and cumulative stats via `updateActionStats`.
+   i. Check halt/limit conditions. Stop chore if triggered.
+   j. Log the result (including skipped trades with `#Skipped` status).
 3. **Conductor (done)**: Return `#Done`.
+
+### Trade Log
+
+All trade attempts are logged, including skipped trades. The trade log supports page-based pagination via `getTradeLog(query)` with page/pageSize parameters.
+
+Skipped trades are logged with a `#Skipped` status and a reason (e.g., "Price impact 30% exceeds max 3%").
 
 ### Frequency Warnings
 
@@ -582,7 +499,7 @@ If an action's `minFrequencySeconds` is less than the chore's `intervalSeconds`,
 
 ---
 
-## 8. Rebalance Chore
+## 7. Rebalance Chore
 
 ### Overview
 
@@ -596,13 +513,13 @@ Default interval: 3600 seconds (1 hour), with `maxIntervalSeconds` for randomiza
 
 ```
 Stable var:
-  var rebalanceTargets: [(Text, [RebalanceTarget])]  — keyed by instanceId
-  var rebalanceDenominationToken: [(Text, Principal)] — keyed by instanceId (default: ICP ledger)
-  var rebalanceMaxTradeSize: [(Text, Nat)]            — keyed by instanceId
-  var rebalanceMinTradeSize: [(Text, Nat)]            — keyed by instanceId
-  var rebalanceMaxPriceImpactBps: [(Text, Nat)]       — keyed by instanceId
-  var rebalanceMaxSlippageBps: [(Text, Nat)]           — keyed by instanceId
-  var rebalanceThresholdBps: [(Text, Nat)]             — keyed by instanceId (min deviation to trade)
+  var rebalanceTargets: [(Text, [RebalanceTarget])]
+  var rebalanceDenominationToken: [(Text, Principal)]
+  var rebalanceMaxTradeSize: [(Text, Nat)]
+  var rebalanceMinTradeSize: [(Text, Nat)]
+  var rebalanceMaxPriceImpactBps: [(Text, Nat)]
+  var rebalanceMaxSlippageBps: [(Text, Nat)]
+  var rebalanceThresholdBps: [(Text, Nat)]
 ```
 
 ```
@@ -618,7 +535,7 @@ The sum of all `targetBps` should equal 10000. The API should warn if it doesn't
 
 When the Rebalance Chore fires:
 
-1. **Value Portfolio**: For each token in the target list, get the balance on the main account and the spot price in the denomination token. Calculate total portfolio value.
+1. **Value Portfolio**: For each token in the target list, get the effective balance (chore purse or main purse, via `getEffectiveBalance`) and the spot price in the denomination token. Calculate total portfolio value.
 
 2. **Calculate Deviations**: For each token, compute:
    - `currentBps = (tokenValue / totalValue) * 10000`
@@ -626,20 +543,13 @@ When the Rebalance Chore fires:
    - Overweight tokens: `deviationBps > thresholdBps`
    - Underweight tokens: `deviationBps < -thresholdBps`
 
-3. **Weighted Random Pair Selection**: Pick one overweight token and one underweight token, weighted by their absolute deviation. Tokens further from target have higher probability of being selected:
-   - Weight = `|deviationBps|` for each token
-   - Use `Time.now()` nanoseconds as entropy for randomization (same pattern as chore interval randomization)
+3. **Weighted Random Pair Selection**: Pick one overweight token and one underweight token, weighted by their absolute deviation.
 
-4. **Calculate Trade Size**: Determine how much of the overweight token to sell:
-   - Maximum that would bring the overweight token to target
-   - Clamped to `[rebalanceMinTradeSize, rebalanceMaxTradeSize]`
-   - Clamped to available balance minus transfer fees
+4. **Calculate Trade Size**: Determine how much of the overweight token to sell, clamped to `[rebalanceMinTradeSize, rebalanceMaxTradeSize]` and to available balance minus transfer fees.
 
-5. **Get Quote & Validate**: Get best quote for the pair. Check:
-   - Price impact <= `rebalanceMaxPriceImpactBps`
-   - Expected output moves the underweight token closer to (not past) its target
+5. **Get Quote & Validate**: Get best quote for the pair (impact-aware). Check price impact and that the expected output moves the underweight token closer to (not past) its target.
 
-6. **Execute Trade**: If all checks pass, execute the swap.
+6. **Execute Trade**: If all checks pass, execute the swap. Update chore purse balances if the chore has its own purse.
 
 7. **Log Result**: Record the trade details including deviation before/after.
 
@@ -656,7 +566,7 @@ setRebalanceMinTradeSize(instanceId: Text, amount: Nat) : async ()
 setRebalanceMaxPriceImpactBps(instanceId: Text, bps: Nat) : async ()
 setRebalanceMaxSlippageBps(instanceId: Text, bps: Nat) : async ()
 setRebalanceThresholdBps(instanceId: Text, bps: Nat) : async ()
-getPortfolioStatus(instanceId: Text) : async PortfolioStatus  // Current allocations vs targets
+getPortfolioStatus(instanceId: Text) : async PortfolioStatus
 ```
 
 ### PortfolioStatus Type
@@ -672,18 +582,20 @@ PortfolioStatus = {
         valueInDenomination: Nat;
         currentBps: Nat;
         targetBps: Nat;
-        deviationBps: Int;     // positive = overweight, negative = underweight
+        deviationBps: Int;
     }];
 }
 ```
 
 ---
 
-## 9. Move Funds Chore
+## 8. Move Funds Chore
 
 ### Overview
 
-A lightweight chore for scheduled fund movements without trading. Supports Deposit, Withdraw, and Send actions (action types 1, 2, 3 — same as in Trade Chore).
+A lightweight chore for scheduled fund movements without trading. Supports Fund Purse, Reclaim, and Send actions (action types 1, 2, 3 — same as in Trade Chore).
+
+Move Funds chores do **not** have their own purses — they operate on other chores' purses and the main purse.
 
 Chore type ID: `"move-funds"`
 
@@ -693,8 +605,8 @@ Default interval: 3600 seconds (1 hour).
 
 ```
 Stable var:
-  var moveFundsActions: [(Text, [ActionConfig])]   — keyed by instanceId
-  var moveFundsNextActionId: [(Text, Nat)]         — keyed by instanceId
+  var moveFundsActions: [(Text, [ActionConfig])]
+  var moveFundsNextActionId: [(Text, Nat)]
 ```
 
 Uses the same `ActionConfig` type as Trade Chore, but only action types 1, 2, 3 are valid.
@@ -705,11 +617,63 @@ Same pattern as Trade Chore but restricted to non-trade action types.
 
 ---
 
-## 10. Distribute Funds Chore
+## 9. Distribute Funds Chore
 
-Reused from the staking bot pattern — distributes funds based on percentage-based distribution lists. Same implementation as in the staking bot, using the shared `DistributionTypes.mo`.
+### Overview
+
+Distributes funds from a source purse to target purses or external accounts based on configured shares.
+
+Distribute Funds chores do **not** have their own purses — they source from a specified purse (or main purse) and distribute to other chores' purses or external accounts.
 
 Chore type ID: `"distribute-funds"`
+
+### Distribution List
+
+```
+DistributionList = {
+    id: Nat;
+    name: Text;
+    tokenLedgerCanisterId: Principal;
+    thresholdAmount: Nat;               // Min balance before distribution triggers
+    maxDistributionAmount: Nat;         // Max amount to distribute per round
+    minDistributionAmount: Nat;         // Min amount (for random mode lower bound)
+    targets: [DistributionTarget];
+    sourcePurseId: ?Text;               // null = main purse, else chore instanceId
+    amountMode: Nat;                    // 0 = random in [min, max], 1 = % of balance
+    balancePercent: ?Nat;               // When amountMode=1: bps (0-10000)
+}
+```
+
+### Distribution Targets
+
+Each target is either an **internal purse credit** or an **external ICRC-1 transfer**:
+
+```
+DistributionTarget = {
+    account: Account;                   // ICRC-1 account (used for external targets)
+    basisPoints: ?Nat;                  // Share in bps; null = auto-split remainder
+    choreInstanceId: ?Text;            // If set, credit this chore's purse (no on-chain transfer)
+}
+```
+
+When `choreInstanceId` is set, the distribution credits the target chore's purse (bookkeeping only — no transfer fee). When `choreInstanceId` is null, the distribution executes an on-chain ICRC-1 transfer to the specified `account`.
+
+### Execution Flow
+
+1. Check source purse (or main purse) balance for the distribution token.
+2. If balance >= `thresholdAmount`, calculate distribution amount based on `amountMode`.
+3. For each target (in order):
+   - Calculate target share: `distributionAmount * targetBps / 10000` (or auto-split remainder).
+   - If target has `choreInstanceId`: credit that chore's purse, debit source purse (bookkeeping).
+   - If target is external: execute ICRC-1 transfer, debit source purse by `(amount + fee)`.
+
+---
+
+## 10. Snapshot Chore
+
+Takes periodic portfolio snapshots for historical tracking. Snapshot chores do **not** have their own purses.
+
+Chore type ID: `"snapshot"`
 
 ---
 
@@ -724,12 +688,8 @@ var hotkeyPermissions: [(Principal, [Nat])]
 
 // Token Registry
 var tokenRegistry: [TokenRegistryEntry]
-var pausedTokens: [Principal]           // Globally paused (no trading)
-var frozenTokens: [Principal]           // Globally frozen (no trading or movement)
-
-// Subaccounts
-var namedSubaccounts: [(Nat, Text)]
-var nextSubaccountNumber: Nat
+var pausedTokens: [Principal]
+var frozenTokens: [Principal]
 
 // DEX Settings
 var enabledDexes: [Nat]
@@ -768,6 +728,11 @@ var botLogNextId: Nat
 var botLogLevel: Nat
 var botLogMaxEntries: Nat
 
+// Trade Log
+var tradeLog: [TradeLogEntry]
+var tradeLogNextId: Nat
+var tradeLogMaxEntries: Nat
+
 // Circuit Breaker
 var circuitBreakerEnabled: Bool
 var circuitBreakerRules: [CircuitBreakerRule]
@@ -779,6 +744,7 @@ var circuitBreakerMaxLogEntries: Nat
 // Chore Purses (isolated chore balances)
 var chorePurseEnabled: [(Text, Bool)]                     // instanceId → enabled
 var chorePurseBalances: [(Text, [(Text, Nat)])]           // instanceId → [(balanceKey, amount)]
+// balanceKey format: "<tokenPrincipal>" (main account only, no subaccount component)
 ```
 
 ---
@@ -806,21 +772,12 @@ getCallerPermissions() : async [TradingPermissionType]
 getTokenRegistry() : async [TokenRegistryEntry]
 addToken(entry: TokenRegistryEntry) : async ()
 removeToken(ledgerCanisterId: Principal) : async ()
-refreshTokenMetadata(ledgerCanisterId: Principal) : async ()  // Re-fetch fee/decimals from ledger
-```
-
-### Subaccounts
-```motoko
-getSubaccounts() : async [SubaccountInfo]
-createSubaccount(name: Text) : async SubaccountInfo
-renameSubaccount(number: Nat, name: Text) : async Bool
-deleteSubaccount(number: Nat) : async Bool
+refreshTokenMetadata(ledgerCanisterId: Principal) : async ()
 ```
 
 ### Portfolio & Balances
 ```motoko
-getBalances(subaccountNumber: ?Nat) : async [TokenBalance]
-getAllBalances() : async [SubaccountBalances]
+getBalances() : async [TokenBalance]                // On-chain balances for main account
 getPortfolioStatus(instanceId: Text) : async PortfolioStatus
 ```
 
@@ -836,10 +793,11 @@ setDefaultMaxPriceImpact(bps: Nat) : async ()
 ### Trade Chore Actions
 ```motoko
 getTradeActions(instanceId: Text) : async [ActionConfig]
-addTradeAction(instanceId: Text, config: ActionConfigInput) : async Nat  // returns action id
+addTradeAction(instanceId: Text, config: ActionConfigInput) : async Nat
 updateTradeAction(instanceId: Text, id: Nat, config: ActionConfigInput) : async Bool
 removeTradeAction(instanceId: Text, id: Nat) : async Bool
 reorderTradeActions(instanceId: Text, actionIds: [Nat]) : async Bool
+resetActionStats(instanceId: Text, actionId: Nat) : async Bool
 ```
 
 ### Move Funds Actions
@@ -898,11 +856,18 @@ isPurseEnabled(instanceId: Text) : async Bool
 enablePurse(instanceId: Text) : async ()
 disablePurse(instanceId: Text) : async { #Ok; #Err: Text }
 getPurseBalances(instanceId: Text) : async [PurseBalance]
-getPurseBalance(instanceId: Text, token: Principal, subaccountNumber: ?Nat) : async Nat
+getPurseBalance(instanceId: Text, token: Principal) : async Nat
+getAllPurseAllocations() : async [(Text, [(Text, Nat)])]    // Fast query: all purses
 getMainPurseBalances() : async [MainPurseBalance]
-getMainPurseBalance(token: Principal, subaccountNumber: ?Nat) : async { balance: Nat; overcommitted: Bool }
+getMainPurseBalance(token: Principal) : async { balance: Nat; overcommitted: Bool }
 fundPurse(instanceId: Text, token: Principal, amount: Nat) : async { #Ok; #Err: Text }
 reclaimFromPurse(instanceId: Text, token: Principal, amount: Nat) : async { #Ok; #Err: Text }
+manualSend(token: Principal, to: Account, amount: Nat, sourcePurseId: ?Text) : async { #Ok: Nat; #Err: Text }
+```
+
+### Trade Log
+```motoko
+getTradeLog(query: TradeLogQuery) : async TradeLogResult   // Paginated
 ```
 
 ### Log (shared pattern)
@@ -919,7 +884,7 @@ clearLogs() : async ()
 
 Since the bot canister is the caller (not a browser user), the flow is simpler:
 
-### ICRC-2 Path (preferred — no subaccount management)
+### ICRC-2 Path (preferred)
 1. **Approve**: Call `icrc2_approve` on the input token ledger, granting the pool canister an allowance.
 2. **depositFromAndSwap**: Call the pool's `depositFromAndSwap` which does `transferFrom` + swap + withdraw in one call.
 
@@ -949,10 +914,15 @@ The bot should prefer ICRC-2 when the token supports it, falling back to ICRC-1.
 - All trades are wrapped in try/catch. A failed trade logs the error and continues to the next action.
 - Quote staleness: Quotes are fetched immediately before execution. If the quote is worse than tolerance, the trade is skipped.
 - Balance validation: Always re-check balance before executing to avoid insufficient funds errors.
+- Pre-adjustment of `lastKnownBalance` for input tokens before `await* executeSwap` calls prevents false "Detected Outflow" entries from concurrent `reconcileBalance` calls during active trades.
 
 ### Cycle Management
 - The bot should monitor its own cycle balance and log warnings when low.
 - Inter-canister calls (DEX quotes, swaps) consume cycles. The bot should avoid unnecessary calls.
+
+### Conductor Resilience
+- The conductor reschedules on error (prevents stuck conductors after transient failures).
+- `triggerChore` force-resets stuck conductors where `conductorActive` is `true` but no progress is being made.
 
 ### Upgrade Safety
 - All conductor/task closures are transient and re-created on every canister start.
@@ -961,304 +931,187 @@ The bot should prefer ICRC-2 when the token supports it, falling back to ICRC-1.
 
 ---
 
-## 16. Implementation Plan
-
-### Phase 1: Types.mo
-- Define all types: permissions, token registry, action configs, rebalance targets, DEX types, swap quotes.
-- Follow the staking bot's pattern for permission ID ranges and numeric-to-variant maps.
-
-### Phase 2: main.mo — Core Infrastructure
-- Stable var declarations (individual vars, no config records).
-- Permission engine setup (PERMISSION_MAP, variant↔id conversions).
-- Log engine setup.
-- Chore engine setup.
-- Basic canister info API (version, principal).
-- Permission management API.
-
-### Phase 3: Token Registry & Subaccounts
-- Token registration/removal.
-- Named subaccount management.
-- Balance queries.
-
-### Phase 4: DEX Aggregator
-- Actor interfaces for ICPSwap and Kong.
-- Quote fetching (single DEX, all DEXes, best quote).
-- Swap execution (ICRC-1 and ICRC-2 paths).
-- Pool discovery and caching.
-
-### Phase 5: Trade Chore
-- Action CRUD API.
-- Conductor logic: iterate actions, evaluate conditions, execute.
-- Task logic: execute individual trades/deposits/withdraws/sends.
-- Frequency tracking and validation.
-
-### Phase 6: Rebalance Chore
-- Target management API.
-- Portfolio valuation.
-- Deviation calculation.
-- Weighted random pair selection.
-- Trade sizing and execution.
-
-### Phase 7: Move Funds Chore
-- Action CRUD (restricted to deposit/withdraw/send).
-- Conductor logic (subset of trade chore).
-
-### Phase 8: Distribute Funds Chore
-- Reuse pattern from staking bot.
-
----
-
-## 17. Chore Purses (Isolated Chore Balances)
+## 16. Chore Purses (Isolated Chore Balances)
 
 ### Overview
 
-By default, all chores share the same token balances in the main account (and subaccounts). A DCA chore buying SNEED and a range-trading chore trading TACO both draw from and contribute to the same ICP balance. While this comingled model is sometimes desirable (and remains available), most users expect **isolated balances per chore**.
+By default, all chores share the same token balances in the main account. A DCA chore buying SNEED and a range-trading chore trading TACO both draw from and contribute to the same ICP balance. While this comingled model is sometimes desirable (and remains available), most users expect **isolated balances per chore**.
 
-**Chore Purses** are a virtual accounting layer that tracks per-chore token balances. All tokens physically remain in the canister's on-chain accounts (main account and subaccounts), but the purse system tracks "how much of each token belongs to each chore."
+**Chore Purses** are a virtual accounting layer that tracks per-chore token balances. All tokens physically remain in the canister's main on-chain account, but the purse system tracks "how much of each token belongs to each chore."
 
-The term **"Purse"** is deliberately chosen to avoid overloading "Account" (ICRC-1 concept), "Subaccount" (ICRC-1 subaccount blob), or "Wallet" (user wallet).
+The term **"Purse"** is deliberately chosen to avoid overloading "Account" (ICRC-1 concept) or "Wallet" (user wallet).
 
 ### Concepts
 
 | Term | Meaning |
 |------|---------|
-| **Purse** | A virtual balance sheet tracking token balances per (token, subaccount). Each chore instance can have its own purse. |
-| **Main Purse** | The default purse holding all on-chain funds not allocated to any chore-specific purse. Its balance is always **computed**: `main purse = on-chain balance − Σ chore purse balances`. Chores without their own purse share the main purse. Detected inflows and outflows are automatically reflected in the main purse (since on-chain balance changes while chore purse balances stay the same). |
-| **Fund** | Move tokens from the main purse into a chore's purse. No on-chain transfer occurs — this is purely bookkeeping. The main purse decreases and the chore's purse increases by the same amount. |
-| **Reclaim** | Move tokens from a chore's purse back to the main purse. No on-chain transfer occurs. The chore's purse decreases and the main purse increases. |
+| **Purse** | A virtual balance sheet tracking token balances for a chore. Each chore instance can have its own purse. |
+| **Main Purse** | The default purse holding all on-chain funds not allocated to any chore-specific purse. Its balance is always **computed**: `main purse = on-chain balance − Σ chore purse balances`. Chores without their own purse share the main purse. Detected inflows and outflows are automatically reflected in the main purse. |
+| **Fund** | Move tokens from a source purse (or main purse) into a target chore's purse. No on-chain transfer occurs — this is purely bookkeeping. |
+| **Reclaim** | Move tokens from a chore's purse back to a target purse (or main purse). No on-chain transfer occurs. |
 
 Every token in the on-chain account is accounted for: it belongs either to the **main purse** or to a **chore's purse**. No chore can ever access another chore's funds.
 
-"Fund" and "Reclaim" are deliberately distinct from the existing "Deposit" (main → subaccount ICRC-1 transfer) and "Withdraw" (subaccount → main ICRC-1 transfer) action types.
+### Which Chores Get Purses
+
+- **Trade chores**: Can have their own purse (default: enabled for new chores).
+- **Rebalance chores**: Can have their own purse.
+- **Move-funds chores**: Do **not** have their own purse. They operate on other chores' purses and the main purse.
+- **Distribute-funds chores**: Do **not** have their own purse. They source from a specified purse and distribute to other purses or external accounts.
+- **Snapshot chores**: Do **not** have their own purse.
 
 ### Behavior by Purse State
 
 | Chore Purse State | Balance Used for Trading | Inflows / Outflows | Fund/Reclaim |
 |---|---|---|---|
-| **Disabled** (default for existing chores) | **Main purse** balance (shared with other purse-disabled chores) | Go to / come from the main purse | N/A (chore uses main purse directly) |
-| **Enabled** (default for new chores) | **Chore's own purse** balance only | Go to / come from the main purse (user must Fund to move into a chore purse) | Available |
+| **Disabled** (default for existing chores) | **Main purse** balance (shared with other purse-disabled chores) | Go to / come from the main purse | N/A |
+| **Enabled** (default for new chores) | **Chore's own purse** balance only | Go to / come from the main purse (user must Fund) | Available |
 
-When no chore-specific purses exist (or none are funded), the main purse equals the full on-chain balance, so the system behaves identically to the pre-purse era. The moment a user Funds a chore's purse, the main purse shrinks by that amount, and other chores (sharing the main purse) see less available balance.
+When no chore-specific purses exist (or none are funded), the main purse equals the full on-chain balance, so the system behaves identically to the pre-purse era.
 
 ### Data Model
 
 ```motoko
-// NEW stable vars — additive only, no changes to any existing stable vars
 var chorePurseEnabled: [(Text, Bool)]                     // instanceId → enabled
 var chorePurseBalances: [(Text, [(Text, Nat)])]           // instanceId → [(balanceKey, amount)]
 ```
 
-The `balanceKey` format matches the existing `lastKnownBalances` convention: `"<tokenPrincipal>:main"` for the main account (null subaccount), or `"<tokenPrincipal>:<subaccountHex>"` for named subaccounts.
+The `balanceKey` is simply the token principal as text: `"<tokenPrincipal>"`. There are no subaccounts.
 
 ### Defaults
 
-- **New chore instances** (created after this feature is deployed): Purse enabled by default. The `createChoreInstance` flow adds `(instanceId, true)` to `chorePurseEnabled`.
-- **Existing chore instances** (created before this feature): Not present in `chorePurseEnabled`, which is treated as **disabled**. The user can enable it manually.
+- **New chore instances** (created via wizard): Purse enabled by default. The user can opt out in the wizard.
+- **Existing chore instances** (created before purse feature): Not present in `chorePurseEnabled`, treated as **disabled**.
 
 ### Fund & Reclaim Mechanics
 
-#### Fund (Main Purse → Chore Purse)
+#### Fund (Source Purse → Target Purse)
 
 ```
 fundPurse(instanceId, token, amount):
-  1. Verify purse is enabled for this chore
-  2. Get actual on-chain balance for (token, main account) — requires async ledger call
-  3. Calculate main purse balance = on-chain − Σ chore purse balances of ALL chores for (token, main)
-  4. Verify amount ≤ main purse balance (reject otherwise)
-  5. Increase this chore's purse balance for (token, main) by amount
-     (main purse balance automatically decreases since it is computed)
+  1. Verify purse is enabled for the target chore
+  2. Get actual on-chain balance for the token
+  3. Calculate main purse balance = on-chain − Σ all chore purse balances for this token
+  4. Verify amount ≤ main purse balance (when funding from main purse)
+  5. Increase target chore's purse balance for this token by amount
 ```
 
-No ICRC-1 transfer occurs. The tokens already reside in the main account on-chain. The main purse shrinks and the chore's purse grows by the same amount.
+No ICRC-1 transfer occurs. The main purse shrinks and the chore's purse grows by the same amount.
 
 #### Reclaim (Chore Purse → Main Purse)
 
 ```
 reclaimFromPurse(instanceId, token, amount):
   1. Verify purse is enabled for this chore
-  2. Get purse balance for (token, main account) for this chore
-  3. Verify amount ≤ purse balance (reject otherwise)
-  4. Decrease this chore's purse balance for (token, main) by amount
-     (main purse balance automatically increases since it is computed)
+  2. Get purse balance for this token for this chore
+  3. Verify amount ≤ purse balance
+  4. Decrease this chore's purse balance for this token by amount
 ```
 
 No ICRC-1 transfer occurs. The chore's purse shrinks and the main purse grows.
 
-#### Fund from Subaccount
-
-For the initial version, Fund and Reclaim operate only on the **main account** (subaccount null) portion of purse balances. To fund from a subaccount, the user must first Withdraw (ICRC-1 transfer from subaccount → main), then Fund the purse. This keeps the API surface small while covering the primary use case.
-
 ### Integration with Trade Chores
 
-The execution flow is determined by whether the chore has its own purse or uses the main purse.
-
-#### Helper: `getEffectiveBalance(instanceId, token, subaccount)`
+#### Helper: `getEffectiveBalance(instanceId, token)`
 
 A single internal helper resolves the balance a chore should use:
 
 ```
 if chorePurseEnabled(instanceId):
-    return chorePurseBalance(instanceId, token, subaccount)
+    return chorePurseBalance(instanceId, token)
 else:
-    return mainPurseBalance(token, subaccount)
-      // = on-chain balance − Σ all chore purse balances for (token, subaccount)
+    return mainPurseBalance(token)
+      // = on-chain balance − Σ all chore purse balances for this token
 ```
 
-This helper replaces the current `getBalance(token, subaccount)` calls in all chore execution paths.
+This helper is used in all chore execution paths.
 
 #### Trade Action (actionType 0 — Swap)
 
-1. **Balance check**: Use `getEffectiveBalance(instanceId, inputToken, null)`.
-2. **Balance conditions** (`minBalance`, `maxBalance`): Evaluated against the effective balance (with optional denomination conversion, same as today).
-3. **Trade size computation** (`computeActionAmount`): Uses the effective balance as the `balance` parameter.
+1. **Balance check**: Use `getEffectiveBalance(instanceId, inputToken)`.
+2. **Balance conditions**: Evaluated against the effective balance.
+3. **Trade size computation**: Uses the effective balance.
 4. **Affordable cap**: `maxAffordable = min(effectiveBalance, on-chain balance) − fees × 3`. The on-chain check is a safety guard since the actual ICRC-1 transfer comes from the main account.
-5. **Swap execution**: No change — the swap still happens from the main account via `executeSwap`.
-6. **Post-swap success (chore has its own purse)**:
-   - Decrease chore purse balance for `(inputToken, main)` by `(inputAmount + inputFeesTotal)`
-   - Increase chore purse balance for `(outputToken, main)` by `(amountOut − outputFeesTotal)`
-7. **Post-swap success (chore uses main purse)**: No explicit purse update needed. The on-chain balance changed, and since the main purse is computed (`on-chain − Σ chore purses`), it automatically reflects the swap result.
-8. **Post-swap failure** (input fees lost to DEX):
-   - If chore has its own purse: decrease purse balance for `(inputToken, main)` by `inputFeesTotal`
-   - If chore uses main purse: no explicit update needed (on-chain decreased, main purse reflects it)
+5. **Pre-swap**: Adjust `lastKnownBalance` for input token to prevent false outflow detection during the swap.
+6. **Swap execution**: No change — the swap still happens from the main account via `executeSwap`.
+7. **Post-swap success (chore has its own purse)**:
+   - Decrease chore purse balance for `inputToken` by `(inputAmount + inputFeesTotal)`
+   - Increase chore purse balance for `outputToken` by `(amountOut − outputFeesTotal)`
+8. **Post-swap success (chore uses main purse)**: No explicit purse update needed. The computed main purse reflects on-chain changes.
+9. **Post-swap failure**: Restore `lastKnownBalance` pre-adjustment. If fees were lost, adjust purse accordingly.
 
-**Critical invariant**: For chores with their own purse, the post-swap purse deduction must exactly mirror the `lastKnownBalance` update logic that already exists. Both track the same event; the purse is an additional layer on top.
+#### Fund Purse Action (actionType 1)
 
-#### Deposit Action (actionType 1 — Main → Subaccount)
+Bookkeeping only: move tokens from source purse to target chore's purse.
 
-1. **Balance check**: Use `getEffectiveBalance(instanceId, token, null)` (main account portion).
-2. **Post-transfer success (chore has its own purse)**:
-   - Decrease chore purse balance for `(token, main)` by `(amount + fee)`
-   - Increase chore purse balance for `(token, targetSubaccount)` by `amount`
-   - This tracks that the tokens in the subaccount still belong to this chore's purse.
-3. **Post-transfer success (chore uses main purse)**: No explicit purse update. The on-chain main account balance decreased and the subaccount balance increased; the main purse reflects both changes automatically.
+#### Reclaim Action (actionType 2)
 
-#### Withdraw Action (actionType 2 — Subaccount → Main)
+Bookkeeping only: move tokens from source chore's purse to target purse or main purse.
 
-1. **Balance check**: Use `getEffectiveBalance(instanceId, token, sourceSubaccount)`.
-2. **Post-transfer success (chore has its own purse)**:
-   - Decrease chore purse balance for `(token, sourceSubaccount)` by `(amount + fee)`
-   - Increase chore purse balance for `(token, main)` by `amount`
-3. **Post-transfer success (chore uses main purse)**: No explicit purse update needed.
+#### Send Action (actionType 3)
 
-#### Send Action (actionType 3 — Send to External)
-
-1. **Balance check**: Use `getEffectiveBalance(instanceId, token, source)`.
-2. **Post-transfer success (chore has its own purse)**:
-   - Decrease chore purse balance for `(token, source)` by `(amount + fee)`
-   - No increase anywhere (tokens left the canister)
-3. **Post-transfer success (chore uses main purse)**: No explicit purse update needed (on-chain decreased, main purse reflects it).
+1. Execute ICRC-1 transfer from the bot's main account to the external destination.
+2. Debit the source purse (specified by `sourcePurseId`, or main purse if null) by `(amount + fee)`.
 
 ### Integration with Rebalancer
 
-The rebalancer uses `getEffectiveBalance` for all token balance reads, so it automatically operates on the correct purse:
-
-1. **Portfolio valuation**: For each target token, use `getEffectiveBalance(instanceId, token, null)`. A rebalancer with its own purse rebalances *its own allocated funds*; a rebalancer on the main purse rebalances the shared main purse funds.
-2. **Deviation calculation**: Based on effective balances.
-3. **Trade sizing**: Clamped to the effective balance (and also to the on-chain balance as a safety check).
-4. **Post-trade updates**: Same as Trade Chore swap — if the chore has its own purse, decrease purse input and increase purse output. If on the main purse, no explicit update needed.
-5. **Fallback routing** (two-leg trades via intermediary): Both legs update the purse if enabled. Leg 1: decrease sell token, increase intermediary. Leg 2: decrease intermediary, increase buy token.
-
-### Integration with Move Funds Chores
-
-Move-funds chores use `getEffectiveBalance` for all balance checks, following the same mechanics as the trade chore's Deposit/Withdraw/Send actions. Chores with their own purse get explicit post-operation updates; chores on the main purse get automatic updates via the computed main purse balance.
-
-### Integration with Distribute Funds Chore
-
-The distribute-funds chore also uses `getEffectiveBalance`. Each distribution list's token balance is checked against the chore's effective balance (own purse or main purse). Post-send, chores with their own purse get an explicit decrease; main-purse chores get automatic updates. This allows isolating distribution reserves from trading reserves when desired.
+The rebalancer uses `getEffectiveBalance` for all token balance reads. A rebalancer with its own purse rebalances *its own allocated funds*; a rebalancer on the main purse rebalances the shared main purse funds.
 
 ### Inflow/Outflow Detection & Reconciliation
 
-The existing `reconcileBalance` function continues to operate on **on-chain balances** only. It does NOT interact with chore purse balances. This is the correct behavior because the main purse is a computed value:
+The existing `reconcileBalance` function operates on **on-chain balances** only. It does NOT interact with chore purse balances.
 
-- **Detected inflows** (someone sends tokens to the bot's main account): The on-chain balance increases. Since no chore purse balances change, the **main purse** balance increases by the inflow amount. The user can then Fund a chore's purse from the main purse if desired.
-- **Detected outflows** (unexpected balance decrease): The on-chain balance decreases. The **main purse** balance decreases accordingly. If the main purse was already 0 or near 0, it goes negative (overcommitted — see Safety section).
-- **Chore purse balance changes** are tracked explicitly by the chore execution logic after each operation. They are never inferred from on-chain balance changes.
-- **Users cannot send funds directly to a chore purse** from their wallet. They send to the bot's main account (which increases the main purse), then Fund the chore's purse. The frontend can orchestrate both steps as a convenience flow.
+- **Detected inflows** (tokens sent to the bot's main account): The on-chain balance increases. Since no chore purse balances change, the **main purse** increases. The user can then Fund a chore's purse if desired.
+- **Detected outflows** (unexpected balance decrease): The on-chain balance decreases. The **main purse** decreases accordingly.
+- **Chore purse balance changes** are tracked explicitly by the chore execution logic after each operation.
+- **Users cannot send funds directly to a chore purse** from their wallet. They send to the bot's main account (increasing the main purse), then Fund the chore's purse.
 
 ### Enabling/Disabling Purses
 
 #### Enabling
-
-When a purse is enabled for a chore:
 - The purse starts with all balances at 0.
-- The chore **cannot trade** until the user funds the purse (a balance of 0 means no trade size is possible).
-- The user must explicitly Fund the purse with the desired tokens and amounts.
+- The chore **cannot trade** until the user funds the purse.
 
 #### Disabling
-
-When disabling a purse:
 - **All purse balances must be 0** — the user must Reclaim all funds first.
-- If any purse balance is non-zero, the disable operation fails with an error listing the non-zero balances.
+- If any purse balance is non-zero, the disable operation fails with an error.
 
-### Circuit Breaker Integration
+### Chore Deletion
 
-Circuit breaker conditions that check balances should respect purses:
-
-- **Balance condition** (`conditionType = 2`): If the condition references a token and account, and the relevant chore has a purse, the balance check uses the purse balance.
-- **Value conditions** (`conditionType = 1`, source type `rebalChoreTokens`): If the referenced rebalancer chore has a purse, use purse balances for token valuation.
-- **Value conditions** (source type `specificToken` or `allTokensInAccount`): These reference on-chain balances, not purses, unless the source explicitly ties to a specific chore instance.
+When a chore instance is deleted, its purse entries are simply removed from `chorePurseEnabled` and `chorePurseBalances`. Since the main purse is computed (`on-chain − Σ chore purses`), deleting a chore's purse entries automatically returns those funds to the main purse.
 
 ### Main Purse Balance
 
-The **main purse balance** for a given `(token, subaccount)` is always computed, never stored:
+The **main purse balance** for a given token is always computed, never stored:
 
 ```
-main purse = on-chain balance − Σ (chore purse balances for ALL chore-specific purses)
+main purse = on-chain balance − Σ (chore purse balances for ALL chores for this token)
 ```
 
-The main purse is the single source of truth for funds available to chores without their own purse, and for Fund operations.
-
-- When `main purse < 0` (due to accumulated fee drift, unexpected outflows, or rounding), it is reported as `0` with an `overcommitted` flag. This means the sum of chore purses exceeds the actual on-chain balance.
-- The overcommitted state is a **warning** — the system does not automatically reduce any chore purse's balance. The user should either add more funds to the bot or reclaim from chore purses to resolve the discrepancy.
+- When `main purse < 0` (due to fee drift, unexpected outflows, or rounding), it is reported as `0` with an `overcommitted` flag.
 - Chores sharing the main purse **cannot trade** while it is overcommitted (balance = 0).
 
-### Frontend Integration
+### Fast Purse Loading
 
-1. **Purse toggle**: Each chore card in the `BotManagementPanel` shows a Purse enabled/disabled toggle. Disabling requires all chore purse balances to be 0.
-
-2. **Chore purse balance table**: When a chore's purse is enabled, the chore configuration panel shows a per-token balance table for the chore's purse (similar to the existing balance table but scoped to this purse).
-
-3. **Fund/Reclaim controls**: Per-token amount input with Fund and Reclaim buttons within the chore panel. Shows the available main purse balance for context (so the user knows how much can be funded).
-
-4. **Main purse balance view**: The portfolio/balances section shows both the total on-chain balance and the main purse balance for each token. The main purse balance is what chores without their own purse can access.
-
-5. **Send-to-chore convenience flow**: A button on the trading bot page that orchestrates: (1) send from user's wallet to the bot's main account (increases main purse), (2) wait for balance confirmation, (3) Fund the chore's purse from the main purse. This is a frontend orchestration of two separate operations, not a single backend API call.
-
-6. **Overcommitted warning**: If the main purse balance for any token is negative (chore purses sum to more than on-chain balance), show a warning banner with advice to add funds or reclaim from chore purses.
+`getAllPurseAllocations()` is a fast **query** method that returns all purse balance data without making any inter-canister calls. The frontend uses this combined with on-chain balance data from the Wallet tab to compute main purse balances client-side, avoiding slow per-purse loading.
 
 ### API
 
 ```motoko
-// Purse configuration
-isPurseEnabled(instanceId: Text) : async Bool                          // query, ViewPortfolio
-enablePurse(instanceId: Text) : async ()                               // ManagePurses
-disablePurse(instanceId: Text) : async { #Ok; #Err: Text }            // ManagePurses
+isPurseEnabled(instanceId: Text) : async Bool
+enablePurse(instanceId: Text) : async ()
+disablePurse(instanceId: Text) : async { #Ok; #Err: Text }
 
-// Chore purse balance queries
-getPurseBalances(instanceId: Text) : async [{
-    token: Principal;
-    subaccountNumber: ?Nat;     // null = main account
-    balance: Nat;
-}]                                                                      // query, ViewPortfolio
+getPurseBalances(instanceId: Text) : async [PurseBalance]
+getPurseBalance(instanceId: Text, token: Principal) : async Nat
+getAllPurseAllocations() : async [(Text, [(Text, Nat)])]
 
-getPurseBalance(instanceId: Text, token: Principal, subaccountNumber: ?Nat) : async Nat  // query, ViewPortfolio
+getMainPurseBalances() : async [MainPurseBalance]
+getMainPurseBalance(token: Principal) : async { balance: Nat; overcommitted: Bool }
 
-// Main purse balance queries
-getMainPurseBalances() : async [{
-    token: Principal;
-    subaccountNumber: ?Nat;
-    balance: Nat;               // 0 if overcommitted
-    overcommitted: Bool;        // true if Σ chore purses > on-chain
-}]                                                                      // ViewPortfolio (async — queries ledgers)
-
-getMainPurseBalance(token: Principal, subaccountNumber: ?Nat) : async {
-    balance: Nat;
-    overcommitted: Bool;
-}                                                                       // ViewPortfolio (async — queries ledger)
-
-// Fund & Reclaim (main account only — subaccount null)
-fundPurse(instanceId: Text, token: Principal, amount: Nat) : async { #Ok; #Err: Text }       // ManagePurses
-reclaimFromPurse(instanceId: Text, token: Principal, amount: Nat) : async { #Ok; #Err: Text } // ManagePurses
+fundPurse(instanceId: Text, token: Principal, amount: Nat) : async { #Ok; #Err: Text }
+reclaimFromPurse(instanceId: Text, token: Principal, amount: Nat) : async { #Ok; #Err: Text }
+manualSend(token: Principal, to: Account, amount: Nat, sourcePurseId: ?Text) : async { #Ok: Nat; #Err: Text }
 ```
 
 ### Permission
@@ -1267,39 +1120,61 @@ reclaimFromPurse(instanceId: Text, token: Principal, amount: Nat) : async { #Ok;
 |-----|------------------|-------------|
 | 214 | `#ManagePurses`  | Enable/disable chore purses and fund/reclaim operations |
 
-### Stable Variables (additions only)
-
-```motoko
-var chorePurseEnabled: [(Text, Bool)]                     // instanceId → enabled
-var chorePurseBalances: [(Text, [(Text, Nat)])]           // instanceId → [(balanceKey, amount)]
-```
-
-These are **new** stable vars added alongside the existing ones. No existing stable vars are modified.
-
 ### Invariants & Safety
 
-1. **Fundamental accounting identity**: For every `(token, subaccount)`:
+1. **Fundamental accounting identity**: For every token:
    ```
    on-chain balance = main purse balance + Σ chore purse balances
    ```
    The main purse is always computed from this identity, never stored independently.
 
-2. **Non-negative chore purse balances**: All chore purse balances are `Nat`. Operations that would cause underflow are **rejected** (not clamped to 0). This is critical — clamping would silently lose accounting precision.
+2. **Non-negative chore purse balances**: All chore purse balances are `Nat`. Operations that would cause underflow are **rejected** (not clamped to 0).
 
-3. **On-chain sufficiency check**: Before executing an actual ICRC-1 transfer or swap, the chore verifies both:
-   - The effective balance (own purse or main purse) is sufficient, AND
-   - The on-chain account has sufficient actual balance.
-   If the on-chain balance is insufficient (e.g., due to an external untracked outflow), the operation is skipped and logged as a warning.
+3. **On-chain sufficiency check**: Before executing an actual ICRC-1 transfer or swap, the chore verifies both the effective balance and the on-chain balance are sufficient.
 
-4. **Overcommit detection**: After every `reconcileBalance` call, if the main purse balance for any (token, subaccount) is negative, a warning is logged. This means `Σ chore purse balances > on-chain balance`, which can happen due to fee drift or unexpected outflows. The user is alerted to resolve the discrepancy.
+4. **Overcommit detection**: If the main purse balance for any token is negative, a warning is logged and the `overcommitted` flag is set.
 
-5. **Fee precision**: All fee deductions from chore purses mirror the existing `lastKnownBalance` update patterns. For swaps: `inputAmount + inputFeesTotal` is deducted from the input purse, `amountOut − outputFeesTotal` is added to the output purse. For ICRC-1 transfers: `amount + fee` is deducted from source, `amount` is added to destination. For chores on the main purse, no explicit purse update is needed — the computed main purse balance reflects the on-chain changes automatically.
+5. **Fee precision**: All fee deductions from chore purses mirror the existing `lastKnownBalance` update patterns.
 
-6. **No concurrent modification risk**: IC canister message processing is sequential. Purse balance updates occur in the same synchronous block following an `await` (swap/transfer), before the next `await` point. This prevents race conditions between concurrent chore runs or API calls.
+6. **No concurrent modification risk**: IC canister message processing is sequential. Purse balance updates occur in the same synchronous block following an `await*`, before the next await point.
 
-7. **Upgrade safety**: Purse state is in stable vars and persists across upgrades. In-progress trades interrupted by an upgrade are simply retried on the next chore cycle — the purse balance was not yet modified (the modification happens after the await returns, which never completes if the canister upgrades mid-call).
+7. **Upgrade safety**: Purse state is in stable vars and persists across upgrades.
 
-8. **Chore deletion**: When a chore instance is deleted, its chore purse balances are released back to the main purse (equivalent to reclaiming all balances, then removing the entry from `chorePurseEnabled` and `chorePurseBalances`). Since the main purse is computed, simply deleting the chore's purse entries automatically increases the main purse balance.
+---
+
+## 17. Frontend
+
+### Wallet Tab
+
+The frontend presents a unified **Wallet** tab (replacing the former separate "Accounts" and "Purses" tabs). It shows:
+
+- **On-chain balances**: Actual ICRC-1 balances for all registered tokens in the main account.
+- **Main purse balances**: Computed client-side from on-chain balances minus purse allocations.
+- **Scan for Tokens**: Button to scan whitelisted tokens and auto-add any with non-zero balances to the registry.
+- **Send**: Send tokens from the main purse (or a specific chore's purse) to an external ICRC-1 address.
+
+### Chore Management
+
+Each chore card shows:
+- Purse enabled/disabled toggle.
+- Per-token purse balance table with Fund/Reclaim controls.
+- Action list with cumulative progress indicators (e.g., "42/100 ICP spent") and "Reset Stats" buttons.
+- Collapsible "Limits" section in the action form for halt/cumulative limit configuration.
+
+### Wizard
+
+The wizard supports creating:
+- **DCA chores**: With optional budget limit (`maxCumulativeInput`), purse isolation toggle (default: on), fund amount, and auto-start toggle (default: yes).
+- **Range Trade chores**: With stop-loss action (`haltChoreAfterExecution: true`), configurable price ranges, impact/slippage tolerance.
+
+### Circuit Breaker Tab
+
+The Circuit Breaker tab provides:
+- Global enable/disable toggle.
+- Rule list with summary cards (conditions, actions, enable/disable, edit, delete).
+- Rule builder with purse-aware balance/value source selection (main account, main purse, or specific chore purse).
+- Event log table.
+- Chore status lamps show an orange "CB" indicator when paused/stopped by a circuit breaker.
 
 ---
 
@@ -1308,8 +1183,8 @@ These are **new** stable vars added alongside the existing ones. No existing sta
 | Nat | ActionType Variant |
 |-----|-------------------|
 | 0   | `#Trade`          |
-| 1   | `#Deposit`        |
-| 2   | `#Withdraw`       |
+| 1   | `#FundPurse`      |
+| 2   | `#Reclaim`        |
 | 3   | `#Send`           |
 
 These are NEVER stored as variants in stable storage — only the Nat values are stored.
