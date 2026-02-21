@@ -461,6 +461,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
     const [fPriceDirection, setFPriceDirection] = useState('input_per_output');
     // Denomination token state: null = native, otherwise a canister ID string
     const [fTradeSizeDenom, setFTradeSizeDenom] = useState('');
+    const [fSizeByOutput, setFSizeByOutput] = useState(false);
     const [fPriceDenom, setFPriceDenom] = useState('');
     const [fBalanceDenom, setFBalanceDenom] = useState('');
     const [fHaltAfterExec, setFHaltAfterExec] = useState(false);
@@ -576,7 +577,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         setFMaxPriceImpactBps(''); setFMaxSlippageBps(''); setFDestOwner('');
         setFSourcePurse(''); setFTargetPurse('');
         setFPriceDirection('input_per_output');
-        setFTradeSizeDenom(''); setFPriceDenom(''); setFBalanceDenom('');
+        setFTradeSizeDenom(''); setFSizeByOutput(false); setFPriceDenom(''); setFBalanceDenom('');
         setFHaltAfterExec(false); setFMaxCumulativeInput(''); setFMaxCumulativeOutput(''); setFMaxExecutions('');
         setShowConditions(false);
     };
@@ -593,6 +594,9 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         const tsDenom = optVal(action.tradeSizeDenominationToken) ? principalToStr(optVal(action.tradeSizeDenominationToken)) : '';
         const pDenom = optVal(action.priceDenominationToken) ? principalToStr(optVal(action.priceDenominationToken)) : '';
         const bDenom = optVal(action.balanceDenominationToken) ? principalToStr(optVal(action.balanceDenominationToken)) : '';
+        const outputStr = optVal(action.outputToken) ? principalToStr(optVal(action.outputToken)) : '';
+        const isOutputSizing = tsDenom && outputStr && tsDenom === outputStr;
+        setFSizeByOutput(isOutputSizing);
         setFTradeSizeDenom(tsDenom);
         setFPriceDenom(pDenom);
         setFBalanceDenom(bDenom);
@@ -866,7 +870,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                             <label style={labelStyle}>Output Token</label>
                             <TokenSelector
                                 value={fOutputToken}
-                                onChange={setFOutputToken}
+                                onChange={(v) => { setFOutputToken(v); if (fSizeByOutput && v) { setFTradeSizeDenom(v); setFMinAmount(''); setFMaxAmount(''); } }}
                                 onSelectToken={cacheTokenMeta}
                                 allowCustom={true}
                                 placeholder="Select output token..."
@@ -894,28 +898,54 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                         </div>
                     </div>
                     <div>
-                        <label style={labelStyle}>{fAmountMode === 1 ? 'Min Amount (cap)' : 'Min Amount'}{amountSymLabel}</label>
+                        <label style={labelStyle}>{fSizeByOutput ? 'Min Buy Amount' : fAmountMode === 1 ? 'Min Amount (cap)' : 'Min Amount'}{amountSymLabel}</label>
                         <input value={fMinAmount} onChange={(e) => setFMinAmount(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="0.0" />
                     </div>
                     <div>
-                        <label style={labelStyle}>{fAmountMode === 1 ? 'Max Amount (cap)' : 'Max Amount'}{amountSymLabel}</label>
+                        <label style={labelStyle}>{fSizeByOutput ? 'Max Buy Amount' : fAmountMode === 1 ? 'Max Amount (cap)' : 'Max Amount'}{amountSymLabel}</label>
                         <input value={fMaxAmount} onChange={(e) => setFMaxAmount(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="0.0" />
                     </div>
                     {fActionType === ACTION_TYPE_TRADE && (
                         <div>
-                            <label style={labelStyle}>Amount Denomination</label>
-                            <TokenSelector
-                                value={fTradeSizeDenom}
-                                onChange={(v) => { setFTradeSizeDenom(v); setFMinAmount(''); setFMaxAmount(''); }}
-                                onSelectToken={cacheTokenMeta}
-                                allowCustom={true}
-                                placeholder="Native (input token)"
-                            />
-                            {fTradeSizeDenom && (
-                                <button type="button" onClick={() => { setFTradeSizeDenom(''); setFMinAmount(''); setFMaxAmount(''); }}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.65rem', color: accentColor, padding: '2px 0', marginTop: '2px' }}>
-                                    Clear (use native)
-                                </button>
+                            <label style={labelStyle}>Size by</label>
+                            <div style={{ display: 'flex', gap: '0', borderRadius: '6px', overflow: 'hidden', border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.15)'}`, width: 'fit-content', marginBottom: '6px' }}>
+                                <button type="button" onClick={() => {
+                                    setFSizeByOutput(false);
+                                    setFTradeSizeDenom(''); setFMinAmount(''); setFMaxAmount('');
+                                }} style={{
+                                    padding: '5px 12px', fontSize: '0.75rem', border: 'none', cursor: 'pointer',
+                                    background: !fSizeByOutput ? accentColor : 'transparent',
+                                    color: !fSizeByOutput ? '#fff' : (theme === 'dark' ? '#ccc' : '#555'),
+                                    fontWeight: !fSizeByOutput ? 600 : 400,
+                                }}>Input (spend)</button>
+                                <button type="button" onClick={() => {
+                                    setFSizeByOutput(true);
+                                    if (fOutputToken) { setFTradeSizeDenom(fOutputToken); }
+                                    setFMinAmount(''); setFMaxAmount('');
+                                }} style={{
+                                    padding: '5px 12px', fontSize: '0.75rem', border: 'none', cursor: 'pointer',
+                                    background: fSizeByOutput ? accentColor : 'transparent',
+                                    color: fSizeByOutput ? '#fff' : (theme === 'dark' ? '#ccc' : '#555'),
+                                    fontWeight: fSizeByOutput ? 600 : 400,
+                                }} disabled={!fOutputToken}>Output (buy)</button>
+                            </div>
+                            {!fSizeByOutput && (
+                                <>
+                                    <label style={{ ...labelStyle, marginTop: '4px' }}>Amount Denomination</label>
+                                    <TokenSelector
+                                        value={fTradeSizeDenom}
+                                        onChange={(v) => { setFTradeSizeDenom(v); setFMinAmount(''); setFMaxAmount(''); }}
+                                        onSelectToken={cacheTokenMeta}
+                                        allowCustom={true}
+                                        placeholder="Native (input token)"
+                                    />
+                                    {fTradeSizeDenom && (
+                                        <button type="button" onClick={() => { setFTradeSizeDenom(''); setFMinAmount(''); setFMaxAmount(''); }}
+                                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.65rem', color: accentColor, padding: '2px 0', marginTop: '2px' }}>
+                                            Clear (use native)
+                                        </button>
+                                    )}
+                                </>
                             )}
                         </div>
                     )}
@@ -1159,9 +1189,11 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                     {actions.map((action) => {
                         const inputSym = getSymbol(action.inputToken);
                         const inputDec = getDecimals(action.inputToken);
-                        const actTsDenom = optVal(action.tradeSizeDenominationToken) ? principalToStr(optVal(action.tradeSizeDenominationToken)) : '';
-                        const actPDenom = optVal(action.priceDenominationToken) ? principalToStr(optVal(action.priceDenominationToken)) : '';
-                        const actBDenom = optVal(action.balanceDenominationToken) ? principalToStr(optVal(action.balanceDenominationToken)) : '';
+                                        const actTsDenom = optVal(action.tradeSizeDenominationToken) ? principalToStr(optVal(action.tradeSizeDenominationToken)) : '';
+                                        const actOutputStr = action.outputToken?.length > 0 ? (typeof action.outputToken[0] === 'string' ? action.outputToken[0] : action.outputToken[0]?.toText?.() || String(action.outputToken[0])) : '';
+                                        const isOutputSized = actTsDenom && actOutputStr && actTsDenom === actOutputStr;
+                                        const actPDenom = optVal(action.priceDenominationToken) ? principalToStr(optVal(action.priceDenominationToken)) : '';
+                                        const actBDenom = optVal(action.balanceDenominationToken) ? principalToStr(optVal(action.balanceDenominationToken)) : '';
                         const amtDec = actTsDenom ? getDecimals(actTsDenom) : inputDec;
                         const amtSym = actTsDenom ? getSymbol(actTsDenom) : inputSym;
                         const balDec = actBDenom ? getDecimals(actBDenom) : inputDec;
@@ -1208,19 +1240,27 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                             {Number(action.amountMode) === 1 ? (
                                                 <>
                                                     <div><strong>Amount:</strong> {optVal(action.balancePercent) != null ? `${Number(optVal(action.balancePercent)) / 100}%` : '100%'} of balance</div>
-                                                    {Number(action.minAmount) > 0 && <div><strong>Min cap:</strong> {actTsDenom && hasCurrencySign(actTsDenom)
+                                                    {Number(action.minAmount) > 0 && <div><strong>Min cap:</strong> {isOutputSized
+                                                        ? `Buy ${formatTokenAmount(action.minAmount, amtDec)} ${amtSym}`
+                                                        : actTsDenom && hasCurrencySign(actTsDenom)
                                                         ? `${formatDenomAmount(Number(formatTokenAmount(action.minAmount, amtDec)), actTsDenom, amtSym)} of ${inputSym}`
                                                         : `${formatTokenAmount(action.minAmount, amtDec)} ${actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}`}</div>}
-                                                    {Number(action.maxAmount) > 0 && <div><strong>Max cap:</strong> {actTsDenom && hasCurrencySign(actTsDenom)
+                                                    {Number(action.maxAmount) > 0 && <div><strong>Max cap:</strong> {isOutputSized
+                                                        ? `Buy ${formatTokenAmount(action.maxAmount, amtDec)} ${amtSym}`
+                                                        : actTsDenom && hasCurrencySign(actTsDenom)
                                                         ? `${formatDenomAmount(Number(formatTokenAmount(action.maxAmount, amtDec)), actTsDenom, amtSym)} of ${inputSym}`
                                                         : `${formatTokenAmount(action.maxAmount, amtDec)} ${actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}`}</div>}
                                                 </>
                                             ) : (
                                                 <>
-                                                    <div><strong>Min:</strong> {actTsDenom && hasCurrencySign(actTsDenom)
+                                                    <div><strong>{isOutputSized ? 'Min buy:' : 'Min:'}</strong> {isOutputSized
+                                                        ? `${formatTokenAmount(action.minAmount, amtDec)} ${amtSym}`
+                                                        : actTsDenom && hasCurrencySign(actTsDenom)
                                                         ? `${formatDenomAmount(Number(formatTokenAmount(action.minAmount, amtDec)), actTsDenom, amtSym)} of ${inputSym}`
                                                         : `${formatTokenAmount(action.minAmount, amtDec)} ${actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}`}</div>
-                                                    <div><strong>Max:</strong> {actTsDenom && hasCurrencySign(actTsDenom)
+                                                    <div><strong>{isOutputSized ? 'Max buy:' : 'Max:'}</strong> {isOutputSized
+                                                        ? `${formatTokenAmount(action.maxAmount, amtDec)} ${amtSym}`
+                                                        : actTsDenom && hasCurrencySign(actTsDenom)
                                                         ? `${formatDenomAmount(Number(formatTokenAmount(action.maxAmount, amtDec)), actTsDenom, amtSym)} of ${inputSym}`
                                                         : `${formatTokenAmount(action.maxAmount, amtDec)} ${actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}`}</div>
                                                 </>

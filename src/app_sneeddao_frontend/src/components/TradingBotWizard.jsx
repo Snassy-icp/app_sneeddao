@@ -367,6 +367,7 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
     const [deployedInstanceId, setDeployedInstanceId] = useState(null);
     const [fallbackToken, setFallbackToken] = useState('');
     const [showFallbackOption, setShowFallbackOption] = useState(false);
+    const [sizeByOutput, setSizeByOutput] = useState(false);
 
     const needsFallback = inputToken && outputToken && inputToken !== ICP_LEDGER && outputToken !== ICP_LEDGER;
     useEffect(() => {
@@ -442,7 +443,8 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
             if (!ok) throw new Error('Failed to create chore instance');
 
             setDeployStep('Adding trade action...');
-            const rawSize = BigInt(Math.floor(Number(tradeSize) * Math.pow(10, dec)));
+            const sizeDec = sizeByOutput ? outDec : dec;
+            const rawSize = BigInt(Math.floor(Number(tradeSize) * Math.pow(10, sizeDec)));
             await bot.addTradeAction(instId, {
                 actionType: 0, enabled: true,
                 inputToken: Principal.fromText(inputToken),
@@ -456,7 +458,7 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
                 maxPriceImpactBps: [Math.round(Number(maxImpact) * 100)],
                 maxSlippageBps: [Math.round(Number(maxSlippage) * 100)],
                 minFrequencySeconds: [], maxFrequencySeconds: [],
-                tradeSizeDenominationToken: [],
+                tradeSizeDenominationToken: sizeByOutput ? [Principal.fromText(outputToken)] : [],
                 haltChoreAfterExecution: false,
                 maxCumulativeInput: budgetLimit && Number(budgetLimit) > 0 ? [BigInt(Math.floor(Number(budgetLimit) * Math.pow(10, inputDecimals)))] : [],
                 maxCumulativeOutput: [], maxExecutions: [],
@@ -554,12 +556,26 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
                             <FaChartLine size={14} color={ACCENT} style={{ marginRight: 8 }} />
                             DCA Schedule
                         </h4>
+                        <div style={{ display: 'flex', gap: '4px', marginBottom: '10px' }}>
+                            <button onClick={() => { setSizeByOutput(false); setTradeSize(''); }} style={{
+                                padding: '5px 12px', fontSize: '0.75rem', borderRadius: '6px', border: `1px solid ${!sizeByOutput ? ACCENT : theme.colors.border}`,
+                                background: !sizeByOutput ? `${ACCENT}18` : 'transparent', color: !sizeByOutput ? ACCENT : theme.colors.secondaryText,
+                                cursor: 'pointer', fontWeight: !sizeByOutput ? '600' : '400',
+                            }}>Amount to spend</button>
+                            <button onClick={() => { setSizeByOutput(true); setTradeSize(''); }} style={{
+                                padding: '5px 12px', fontSize: '0.75rem', borderRadius: '6px', border: `1px solid ${sizeByOutput ? ACCENT : theme.colors.border}`,
+                                background: sizeByOutput ? `${ACCENT}18` : 'transparent', color: sizeByOutput ? ACCENT : theme.colors.secondaryText,
+                                cursor: 'pointer', fontWeight: sizeByOutput ? '600' : '400',
+                            }}>Amount to buy</button>
+                        </div>
                         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
-                            <AmountInput label={`Amount per trade (${inputSymbol})`} value={tradeSize} onChange={setTradeSize} theme={theme} />
+                            <AmountInput label={sizeByOutput ? `Amount to buy (${outputSymbol})` : `Amount per trade (${inputSymbol})`} value={tradeSize} onChange={setTradeSize} theme={theme} />
                             <AmountInput label="Interval (minutes)" value={intervalMinutes} onChange={setIntervalMinutes} theme={theme} placeholder="60" />
                         </div>
                         <p style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, margin: '8px 0 12px', lineHeight: '1.5' }}>
-                            The bot will swap <strong style={{ color: ACCENT }}>{tradeSize || '?'} {inputSymbol}</strong> for <strong style={{ color: ACCENT }}>{outputSymbol}</strong> every <strong>{intervalMinutes || '?'} minutes</strong>.
+                            {sizeByOutput
+                                ? <>The bot will buy <strong style={{ color: ACCENT }}>{tradeSize || '?'} {outputSymbol}</strong> using <strong style={{ color: ACCENT }}>{inputSymbol}</strong> every <strong>{intervalMinutes || '?'} minutes</strong>.</>
+                                : <>The bot will swap <strong style={{ color: ACCENT }}>{tradeSize || '?'} {inputSymbol}</strong> for <strong style={{ color: ACCENT }}>{outputSymbol}</strong> every <strong>{intervalMinutes || '?'} minutes</strong>.</>}
                         </p>
                         <RiskSettings maxSlippage={maxSlippage} onSlippageChange={setMaxSlippage} maxImpact={maxImpact} onImpactChange={setMaxImpact} theme={theme} />
                         <div style={{ marginTop: '12px' }}>
@@ -652,7 +668,7 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
                             <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>Summary</div>
                             <SummaryRow label="Strategy" value="Dollar Cost Averaging" theme={theme} />
                             <SummaryRow label="Pair" value={`${inputSymbol} → ${outputSymbol}`} theme={theme} />
-                            <SummaryRow label="Trade size" value={`${tradeSize} ${inputSymbol}`} theme={theme} />
+                            <SummaryRow label="Trade size" value={sizeByOutput ? `Buy ${tradeSize} ${outputSymbol}` : `Spend ${tradeSize} ${inputSymbol}`} theme={theme} />
                             <SummaryRow label="Interval" value={`Every ${intervalMinutes} min`} theme={theme} />
                             {fallbackToken && <SummaryRow label="Fallback route" value={`via ${getTokenMetadataSync(fallbackToken)?.symbol || '???'}`} theme={theme} />}
                             {fundAmount && Number(fundAmount) > 0 && <SummaryRow label="Funding" value={`${fundAmount} ${inputSymbol} (from ${fundSource === 'wallet' ? 'wallet' : 'main purse'})`} theme={theme} />}
@@ -707,6 +723,8 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
     const [deployStep, setDeployStep] = useState('');
     const [fallbackToken, setFallbackToken] = useState('');
     const [showFallbackOption, setShowFallbackOption] = useState(false);
+    const [sizeByOutputA, setSizeByOutputA] = useState(false);
+    const [sizeByOutputB, setSizeByOutputB] = useState(false);
 
     const needsFallback = tokenA && tokenB && tokenA !== ICP_LEDGER && tokenB !== ICP_LEDGER;
     useEffect(() => {
@@ -780,8 +798,10 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
 
             const priceDenomToken = tokenB;
             const priceDec = decB;
-            const rawTradeSizeA = BigInt(Math.floor(Number(tradeSizeA) * Math.pow(10, decA)));
-            const rawTradeSizeB = BigInt(Math.floor(Number(tradeSizeB) * Math.pow(10, decB)));
+            const sizeDecA = sizeByOutputA ? decB : decA;
+            const sizeDecB = sizeByOutputB ? decA : decB;
+            const rawTradeSizeA = BigInt(Math.floor(Number(tradeSizeA) * Math.pow(10, sizeDecA)));
+            const rawTradeSizeB = BigInt(Math.floor(Number(tradeSizeB) * Math.pow(10, sizeDecB)));
 
             const toRawPrice = (humanPrice) => BigInt(Math.floor(Number(humanPrice) * Math.pow(10, priceDec)));
 
@@ -824,7 +844,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                 maxPriceImpactBps: [Math.round(Number(maxImpact) * 100)],
                 maxSlippageBps: [Math.round(Number(maxSlippage) * 100)],
                 minFrequencySeconds: [], maxFrequencySeconds: [],
-                tradeSizeDenominationToken: [],
+                tradeSizeDenominationToken: sizeByOutputA ? [Principal.fromText(tokenB)] : [],
                 haltChoreAfterExecution: false,
                 maxCumulativeInput: [], maxCumulativeOutput: [], maxExecutions: [],
             });
@@ -844,7 +864,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                 maxPriceImpactBps: [Math.round(Number(maxImpact) * 100)],
                 maxSlippageBps: [Math.round(Number(maxSlippage) * 100)],
                 minFrequencySeconds: [], maxFrequencySeconds: [],
-                tradeSizeDenominationToken: [],
+                tradeSizeDenominationToken: sizeByOutputB ? [Principal.fromText(tokenA)] : [],
                 haltChoreAfterExecution: false,
                 maxCumulativeInput: [], maxCumulativeOutput: [], maxExecutions: [],
             });
@@ -957,9 +977,37 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                             <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>
                                 Trade size per execution
                             </div>
+                            <div style={{ marginBottom: '10px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                                    <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, minWidth: '75px' }}>Sell {symA}:</span>
+                                    <button onClick={() => { setSizeByOutputA(false); setTradeSizeA(''); }} style={{
+                                        padding: '3px 10px', fontSize: '0.7rem', borderRadius: '5px', border: `1px solid ${!sizeByOutputA ? ACCENT : theme.colors.border}`,
+                                        background: !sizeByOutputA ? `${ACCENT}18` : 'transparent', color: !sizeByOutputA ? ACCENT : theme.colors.secondaryText,
+                                        cursor: 'pointer', fontWeight: !sizeByOutputA ? '600' : '400',
+                                    }}>Spend {symA}</button>
+                                    <button onClick={() => { setSizeByOutputA(true); setTradeSizeA(''); }} style={{
+                                        padding: '3px 10px', fontSize: '0.7rem', borderRadius: '5px', border: `1px solid ${sizeByOutputA ? ACCENT : theme.colors.border}`,
+                                        background: sizeByOutputA ? `${ACCENT}18` : 'transparent', color: sizeByOutputA ? ACCENT : theme.colors.secondaryText,
+                                        cursor: 'pointer', fontWeight: sizeByOutputA ? '600' : '400',
+                                    }}>Buy {symB}</button>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                                    <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, minWidth: '75px' }}>Sell {symB}:</span>
+                                    <button onClick={() => { setSizeByOutputB(false); setTradeSizeB(''); }} style={{
+                                        padding: '3px 10px', fontSize: '0.7rem', borderRadius: '5px', border: `1px solid ${!sizeByOutputB ? ACCENT : theme.colors.border}`,
+                                        background: !sizeByOutputB ? `${ACCENT}18` : 'transparent', color: !sizeByOutputB ? ACCENT : theme.colors.secondaryText,
+                                        cursor: 'pointer', fontWeight: !sizeByOutputB ? '600' : '400',
+                                    }}>Spend {symB}</button>
+                                    <button onClick={() => { setSizeByOutputB(true); setTradeSizeB(''); }} style={{
+                                        padding: '3px 10px', fontSize: '0.7rem', borderRadius: '5px', border: `1px solid ${sizeByOutputB ? ACCENT : theme.colors.border}`,
+                                        background: sizeByOutputB ? `${ACCENT}18` : 'transparent', color: sizeByOutputB ? ACCENT : theme.colors.secondaryText,
+                                        cursor: 'pointer', fontWeight: sizeByOutputB ? '600' : '400',
+                                    }}>Buy {symA}</button>
+                                </div>
+                            </div>
                             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                                <AmountInput label={`Sell ${symA} amount (${symA})`} value={tradeSizeA} onChange={setTradeSizeA} theme={theme} />
-                                <AmountInput label={`Sell ${symB} amount (${symB})`} value={tradeSizeB} onChange={setTradeSizeB} theme={theme} />
+                                <AmountInput label={sizeByOutputA ? `Buy ${symB} amount (${symB})` : `Sell ${symA} amount (${symA})`} value={tradeSizeA} onChange={setTradeSizeA} theme={theme} />
+                                <AmountInput label={sizeByOutputB ? `Buy ${symA} amount (${symA})` : `Sell ${symB} amount (${symB})`} value={tradeSizeB} onChange={setTradeSizeB} theme={theme} />
                             </div>
                             <AmountInput label="Check interval (minutes)" value={intervalMinutes} onChange={setIntervalMinutes} theme={theme} placeholder="5" />
                         </div>
@@ -1082,9 +1130,9 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                             <SummaryRow label="Strategy" value="Range Trade" theme={theme} />
                             <SummaryRow label="Pair" value={`${symA} / ${symB}`} theme={theme} />
                             <SummaryRow label={`Sell ${symA} range`} value={`${sellAMinPrice} – ${sellAMaxPrice} ${symB}`} theme={theme} />
-                            <SummaryRow label={`Sell ${symA} size`} value={`${tradeSizeA} ${symA}`} theme={theme} />
+                            <SummaryRow label={`Sell ${symA} size`} value={sizeByOutputA ? `Buy ${tradeSizeA} ${symB}` : `Spend ${tradeSizeA} ${symA}`} theme={theme} />
                             <SummaryRow label={`Sell ${symB} range`} value={`${sellBMinPrice} – ${sellBMaxPrice} ${symB}`} theme={theme} />
-                            <SummaryRow label={`Sell ${symB} size`} value={`${tradeSizeB} ${symB}`} theme={theme} />
+                            <SummaryRow label={`Sell ${symB} size`} value={sizeByOutputB ? `Buy ${tradeSizeB} ${symA}` : `Spend ${tradeSizeB} ${symB}`} theme={theme} />
                             <SummaryRow label="Interval" value={`Every ${intervalMinutes} min`} theme={theme} />
                             {fallbackToken && <SummaryRow label="Fallback route" value={`via ${getTokenMetadataSync(fallbackToken)?.symbol || '???'}`} theme={theme} />}
                             {enableStopLoss && <>
