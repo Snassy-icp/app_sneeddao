@@ -222,11 +222,31 @@ module {
         // Other fields exist but we don't need them all
     };
 
+    public type ICPSwapDepositArgs = {
+        amount: Nat;
+        fee: Nat;
+        token: Text;
+    };
+
+    public type ICPSwapWithdrawArgs = {
+        amount: Nat;
+        fee: Nat;
+        token: Text;
+    };
+
+    public type ICPSwapAccountBalance = {
+        balance0: Nat;
+        balance1: Nat;
+    };
+
     public type ICPSwapPoolActor = actor {
         quote: shared (ICPSwapQuoteArgs) -> async { #ok: Nat; #err: ICPSwapError };
         depositAndSwap: shared (ICPSwapSwapArgs) -> async { #ok: Nat; #err: ICPSwapError };
         depositFromAndSwap: shared (ICPSwapSwapArgs) -> async { #ok: Nat; #err: ICPSwapError };
         metadata: shared query () -> async { #ok: ICPSwapPoolMetadata; #err: ICPSwapError };
+        getUserUnusedBalance: shared query (Principal) -> async { #ok: ICPSwapAccountBalance; #err: ICPSwapError };
+        deposit: shared (ICPSwapDepositArgs) -> async { #ok: Nat; #err: ICPSwapError };
+        withdraw: shared (ICPSwapWithdrawArgs) -> async { #ok: Nat; #err: ICPSwapError };
     };
 
     // ============================================

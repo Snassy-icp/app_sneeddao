@@ -5785,6 +5785,125 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     // ============================================
+    // PUBLIC API — POOL RECOVERY
+    // ============================================
+
+    /// Recover funds stuck in an ICPSwap pool for a given token pair.
+    /// Checks the bot's unused (deposited) balance and subaccount balance,
+    /// then deposits any subaccount funds and withdraws everything back
+    /// to the bot's main account.
+    public shared (msg) func recoverPoolFunds(
+        token0: Principal,
+        token1: Principal
+    ): async {
+        #Ok: { recovered0: Nat; recovered1: Nat };
+        #Err: Text;
+    } {
+        assertPermission(msg.caller, T.TradingPermission.WithdrawFunds);
+        let src = "api:recoverPoolFunds";
+
+        let poolCidOpt = await* getICPSwapPool(token0, token1);
+        let poolCid = switch (poolCidOpt) {
+            case (?cid) cid;
+            case null { return #Err("No ICPSwap pool found for this token pair") };
+        };
+        let pool: T.ICPSwapPoolActor = actor(Principal.toText(poolCid));
+
+        let selfPrincipal = Principal.fromActor(this);
+        let poolSub = principalToSubaccount(selfPrincipal);
+
+        let t0Text = Principal.toText(token0);
+        let t1Text = Principal.toText(token1);
+        let (sorted0, sorted1) = if (t0Text < t1Text) { (token0, token1) } else { (token1, token0) };
+        let sorted0Text = Principal.toText(sorted0);
+        let sorted1Text = Principal.toText(sorted1);
+
+        let ledger0 = getLedger(sorted0);
+        let ledger1 = getLedger(sorted1);
+
+        let fee0 = switch (getTokenInfo(sorted0)) { case (?i) i.fee; case null 10000 };
+        let fee1 = switch (getTokenInfo(sorted1)) { case (?i) i.fee; case null 10000 };
+
+        // Check subaccount balances (tokens transferred to pool but not yet deposited)
+        var subBal0: Nat = 0;
+        var subBal1: Nat = 0;
+        try {
+            subBal0 := await ledger0.icrc1_balance_of({ owner = poolCid; subaccount = ?poolSub });
+        } catch (_) {};
+        try {
+            subBal1 := await ledger1.icrc1_balance_of({ owner = poolCid; subaccount = ?poolSub });
+        } catch (_) {};
+
+        // Deposit subaccount funds into pool's internal tracking
+        if (subBal0 > fee0) {
+            try {
+                let depResult = await pool.deposit({ token = sorted0Text; amount = subBal0; fee = fee0 });
+                switch (depResult) {
+                    case (#ok(_)) { logEngine.logInfo(src, "Deposited " # Nat.toText(subBal0) # " of token0 into pool", ?msg.caller, []) };
+                    case (#err(e)) { logEngine.logWarn(src, "Deposit token0 failed: " # T.icpSwapErrorToText(e), ?msg.caller, []) };
+                };
+            } catch (e) { logEngine.logWarn(src, "Deposit token0 exception: " # Error.message(e), ?msg.caller, []) };
+        };
+        if (subBal1 > fee1) {
+            try {
+                let depResult = await pool.deposit({ token = sorted1Text; amount = subBal1; fee = fee1 });
+                switch (depResult) {
+                    case (#ok(_)) { logEngine.logInfo(src, "Deposited " # Nat.toText(subBal1) # " of token1 into pool", ?msg.caller, []) };
+                    case (#err(e)) { logEngine.logWarn(src, "Deposit token1 failed: " # T.icpSwapErrorToText(e), ?msg.caller, []) };
+                };
+            } catch (e) { logEngine.logWarn(src, "Deposit token1 exception: " # Error.message(e), ?msg.caller, []) };
+        };
+
+        // Get unused balance (now includes anything we just deposited)
+        let unusedResult = await pool.getUserUnusedBalance(selfPrincipal);
+        let (bal0, bal1) = switch (unusedResult) {
+            case (#ok(b)) { (b.balance0, b.balance1) };
+            case (#err(e)) { return #Err("getUserUnusedBalance failed: " # T.icpSwapErrorToText(e)) };
+        };
+
+        var recovered0: Nat = 0;
+        var recovered1: Nat = 0;
+
+        // Withdraw token0
+        if (bal0 > fee0) {
+            try {
+                let w0 = await pool.withdraw({ token = sorted0Text; amount = bal0; fee = fee0 });
+                switch (w0) {
+                    case (#ok(amt)) {
+                        recovered0 := amt;
+                        logEngine.logInfo(src, "Recovered " # Nat.toText(amt) # " of " # sorted0Text, ?msg.caller, []);
+                    };
+                    case (#err(e)) {
+                        logEngine.logWarn(src, "Withdraw token0 failed: " # T.icpSwapErrorToText(e), ?msg.caller, []);
+                    };
+                };
+            } catch (e) { logEngine.logWarn(src, "Withdraw token0 exception: " # Error.message(e), ?msg.caller, []) };
+        };
+
+        // Withdraw token1
+        if (bal1 > fee1) {
+            try {
+                let w1 = await pool.withdraw({ token = sorted1Text; amount = bal1; fee = fee1 });
+                switch (w1) {
+                    case (#ok(amt)) {
+                        recovered1 := amt;
+                        logEngine.logInfo(src, "Recovered " # Nat.toText(amt) # " of " # sorted1Text, ?msg.caller, []);
+                    };
+                    case (#err(e)) {
+                        logEngine.logWarn(src, "Withdraw token1 failed: " # T.icpSwapErrorToText(e), ?msg.caller, []);
+                    };
+                };
+            } catch (e) { logEngine.logWarn(src, "Withdraw token1 exception: " # Error.message(e), ?msg.caller, []) };
+        };
+
+        if (recovered0 == 0 and recovered1 == 0 and bal0 == 0 and bal1 == 0) {
+            return #Err("No recoverable funds found in this pool");
+        };
+
+        #Ok({ recovered0 = recovered0; recovered1 = recovered1 })
+    };
+
+    // ============================================
     // PUBLIC API — BALANCES
     // ============================================
 

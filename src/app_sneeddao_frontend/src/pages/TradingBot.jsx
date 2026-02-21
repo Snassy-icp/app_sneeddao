@@ -23,7 +23,10 @@ import { createActor as createBotActor } from 'external/sneed_trading_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { decodeIcrcAccount, encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { computeAccountId } from '../utils/PrincipalUtils';
-import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay, FaArrowUp, FaArrowDown, FaPaperPlane, FaExchangeAlt, FaWallet, FaShieldAlt, FaToggleOn, FaToggleOff, FaCopy, FaDownload, FaArrowRight, FaChevronDown, FaChevronUp, FaTag, FaGlobe, FaEyeSlash, FaRobot } from 'react-icons/fa';
+import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay, FaArrowUp, FaArrowDown, FaPaperPlane, FaExchangeAlt, FaWallet, FaShieldAlt, FaToggleOn, FaToggleOff, FaCopy, FaDownload, FaArrowRight, FaChevronDown, FaChevronUp, FaTag, FaGlobe, FaEyeSlash, FaRobot, FaMedkit } from 'react-icons/fa';
+import { createActor as createIcpSwapActor } from 'external/icp_swap';
+import { createActor as createIcpSwapFactoryActor, canisterId as icpSwapFactoryCanisterId } from 'external/icp_swap_factory';
+import { principalToSubaccount } from '../services/dex/types';
 import TokenIcon from '../components/TokenIcon';
 import BotIcon from '../components/BotIcon';
 import PrincipalInput from '../components/PrincipalInput';
@@ -6710,6 +6713,9 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
                     <FaShieldAlt style={{ marginRight: '4px', fontSize: '0.75rem' }} />Circuit Breaker
                 </button>
                 <button onClick={() => setActiveTab('settings')} style={tabStyle(activeTab === 'settings')}>Logging Settings</button>
+                <button onClick={() => setActiveTab('recovery')} style={tabStyle(activeTab === 'recovery')}>
+                    <FaMedkit style={{ marginRight: '4px', fontSize: '0.75rem' }} />Recovery
+                </button>
             </div>
 
             {activeTab === 'wallet' && <WalletPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} canisterId={canisterId} choreStatuses={choreStatuses} />}
@@ -6718,6 +6724,7 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
             {activeTab === 'snapshots' && <PortfolioSnapshotViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
             {activeTab === 'circuit-breaker' && <CircuitBreakerPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}
             {activeTab === 'settings' && <LoggingSettingsPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}
+            {activeTab === 'recovery' && <RecoveryPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} canisterId={canisterId} />}
         </div>
     );
 }
@@ -8523,6 +8530,284 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
         default:
             return null;
     }
+}
+
+// ============================================
+// Recovery Panel — Recover stuck ICPSwap pool funds
+// ============================================
+const ICPSWAP_FEE_TIERS = [3000, 500, 10000, 30000];
+
+function RecoveryPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
+    const { identity } = useAuth();
+    const [tokenA, setTokenA] = useState('');
+    const [tokenB, setTokenB] = useState('');
+    const [checking, setChecking] = useState(false);
+    const [recovering, setRecovering] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [poolInfo, setPoolInfo] = useState(null);
+    // poolInfo: { poolCanisterId, token0, token1, sym0, sym1, dec0, dec1, fee0, fee1, unusedBal0, unusedBal1, subBal0, subBal1 }
+
+    const cardBg = theme.colors.cardBg;
+    const borderColor = theme.colors.border;
+
+    const formatBal = (raw, dec) => {
+        if (raw == null) return '...';
+        return (Number(raw) / Math.pow(10, dec)).toLocaleString(undefined, { maximumFractionDigits: dec });
+    };
+
+    const handleCheck = async () => {
+        if (!tokenA || !tokenB || tokenA === tokenB) return;
+        setChecking(true);
+        setError('');
+        setSuccess('');
+        setPoolInfo(null);
+        try {
+            const factoryActor = createIcpSwapFactoryActor(icpSwapFactoryCanisterId, {
+                agentOptions: { identity },
+            });
+
+            const [t0, t1] = tokenA.toLowerCase() < tokenB.toLowerCase()
+                ? [tokenA, tokenB]
+                : [tokenB, tokenA];
+
+            let poolCid = null;
+            let matchedFeeTier = null;
+            for (const feeTier of ICPSWAP_FEE_TIERS) {
+                try {
+                    const result = await factoryActor.getPool({
+                        token0: { address: t0, standard: 'ICRC1' },
+                        token1: { address: t1, standard: 'ICRC1' },
+                        fee: BigInt(feeTier),
+                    });
+                    if (result.ok) {
+                        const cid = typeof result.ok.canisterId === 'string'
+                            ? result.ok.canisterId
+                            : result.ok.canisterId.toText?.() || String(result.ok.canisterId);
+                        poolCid = cid;
+                        matchedFeeTier = feeTier;
+                        break;
+                    }
+                } catch { /* try next tier */ }
+            }
+
+            if (!poolCid) {
+                setError('No ICPSwap pool found for this token pair.');
+                return;
+            }
+
+            const poolActor = createIcpSwapActor(poolCid, {
+                agentOptions: { identity },
+            });
+
+            const botPrincipal = Principal.fromText(canisterId);
+            const botSubaccount = Array.from(principalToSubaccount(botPrincipal));
+
+            const metaResult = await poolActor.metadata();
+            if (!metaResult.ok) {
+                setError('Failed to get pool metadata.');
+                return;
+            }
+            const meta = metaResult.ok;
+            const pool0Addr = meta.token0.address;
+            const pool1Addr = meta.token1.address;
+
+            const ledger0 = createLedgerActor(pool0Addr, { agentOptions: { identity } });
+            const ledger1 = createLedgerActor(pool1Addr, { agentOptions: { identity } });
+
+            const [dec0, dec1, sym0, sym1, fee0, fee1] = await Promise.all([
+                ledger0.icrc1_decimals(), ledger1.icrc1_decimals(),
+                ledger0.icrc1_symbol(), ledger1.icrc1_symbol(),
+                ledger0.icrc1_fee(), ledger1.icrc1_fee(),
+            ]);
+
+            // Check bot's unused balance in the pool (deposited but not swapped)
+            const unusedResult = await poolActor.getUserUnusedBalance(botPrincipal);
+            const unusedBal0 = unusedResult.ok ? BigInt(unusedResult.ok.balance0) : 0n;
+            const unusedBal1 = unusedResult.ok ? BigInt(unusedResult.ok.balance1) : 0n;
+
+            // Check bot's subaccount balance in the pool (transferred but not deposited)
+            const subBal0 = BigInt(await ledger0.icrc1_balance_of({
+                owner: Principal.fromText(poolCid),
+                subaccount: [new Uint8Array(botSubaccount)],
+            }));
+            const subBal1 = BigInt(await ledger1.icrc1_balance_of({
+                owner: Principal.fromText(poolCid),
+                subaccount: [new Uint8Array(botSubaccount)],
+            }));
+
+            setPoolInfo({
+                poolCanisterId: poolCid,
+                feeTier: matchedFeeTier,
+                token0: pool0Addr,
+                token1: pool1Addr,
+                sym0, sym1,
+                dec0: Number(dec0), dec1: Number(dec1),
+                fee0: BigInt(fee0), fee1: BigInt(fee1),
+                unusedBal0, unusedBal1,
+                subBal0, subBal1,
+            });
+
+            if (unusedBal0 === 0n && unusedBal1 === 0n && subBal0 === 0n && subBal1 === 0n) {
+                setSuccess('No stuck funds found in this pool. Everything looks clean!');
+            }
+        } catch (e) {
+            setError(e.message || 'Failed to check pool');
+        } finally {
+            setChecking(false);
+        }
+    };
+
+    const handleRecover = async () => {
+        if (!poolInfo) return;
+        setRecovering(true);
+        setError('');
+        setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            const result = await bot.recoverPoolFunds(
+                Principal.fromText(poolInfo.token0),
+                Principal.fromText(poolInfo.token1),
+            );
+            if (result.Err) {
+                setError(typeof result.Err === 'string' ? result.Err : JSON.stringify(result.Err));
+            } else if (result.Ok) {
+                const r0 = Number(result.Ok.recovered0) / Math.pow(10, poolInfo.dec0);
+                const r1 = Number(result.Ok.recovered1) / Math.pow(10, poolInfo.dec1);
+                const parts = [];
+                if (r0 > 0) parts.push(`${r0.toLocaleString(undefined, { maximumFractionDigits: poolInfo.dec0 })} ${poolInfo.sym0}`);
+                if (r1 > 0) parts.push(`${r1.toLocaleString(undefined, { maximumFractionDigits: poolInfo.dec1 })} ${poolInfo.sym1}`);
+                setSuccess(parts.length > 0
+                    ? `Successfully recovered ${parts.join(' and ')} to main account!`
+                    : 'Recovery completed (no additional funds were returned).');
+                // Re-check to update display
+                handleCheck();
+            }
+        } catch (e) {
+            setError(e.message || 'Recovery failed');
+        } finally {
+            setRecovering(false);
+        }
+    };
+
+    const hasStuckFunds = poolInfo && (
+        poolInfo.unusedBal0 > 0n || poolInfo.unusedBal1 > 0n ||
+        poolInfo.subBal0 > 0n || poolInfo.subBal1 > 0n
+    );
+
+    return (
+        <div>
+            <h3 style={{ margin: '0 0 6px', fontSize: '0.95rem', fontWeight: 600, color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <FaMedkit size={14} color={accentColor} /> ICPSwap Pool Recovery
+            </h3>
+            <p style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, margin: '0 0 14px', lineHeight: '1.5' }}>
+                If a swap was interrupted, funds may be stuck in an ICPSwap pool's deposit balance or subaccount.
+                Select two tokens to check for recoverable funds.
+            </p>
+
+            {error && <div style={{ padding: '8px 12px', background: '#ef444415', border: '1px solid #ef444430', borderRadius: '8px', color: '#ef4444', fontSize: '0.8rem', marginBottom: '10px' }}>{error}</div>}
+            {success && <div style={{ padding: '8px 12px', background: '#22c55e15', border: '1px solid #22c55e30', borderRadius: '8px', color: '#22c55e', fontSize: '0.8rem', marginBottom: '10px' }}>{success}</div>}
+
+            <div style={{ padding: '14px', background: cardBg, borderRadius: '10px', border: `1px solid ${borderColor}`, marginBottom: '14px' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '10px' }}>Select Token Pair</div>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: '12px' }}>
+                    <div style={{ flex: 1, minWidth: '180px' }}>
+                        <label style={{ display: 'block', fontSize: '0.78rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Token A</label>
+                        <TokenSelector value={tokenA} onChange={setTokenA} placeholder="Select token..." excludeTokens={tokenB ? [tokenB] : []} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: '180px' }}>
+                        <label style={{ display: 'block', fontSize: '0.78rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Token B</label>
+                        <TokenSelector value={tokenB} onChange={setTokenB} placeholder="Select token..." excludeTokens={tokenA ? [tokenA] : []} />
+                    </div>
+                </div>
+                <button onClick={handleCheck} disabled={!tokenA || !tokenB || tokenA === tokenB || checking} style={{
+                    padding: '8px 18px', fontSize: '0.82rem', fontWeight: '600', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                    background: accentColor, color: '#fff', opacity: (!tokenA || !tokenB || tokenA === tokenB || checking) ? 0.5 : 1,
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                }}>
+                    {checking ? <><FaSyncAlt size={11} style={{ animation: 'spin 1s linear infinite' }} /> Checking Pool...</> : <><FaSearch size={11} /> Check Pool</>}
+                </button>
+            </div>
+
+            {poolInfo && (
+                <div style={{ padding: '14px', background: cardBg, borderRadius: '10px', border: `1px solid ${borderColor}`, marginBottom: '14px' }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '10px' }}>
+                        Pool: {poolInfo.sym0}/{poolInfo.sym1}
+                        <span style={{ fontWeight: '400', fontSize: '0.75rem', color: theme.colors.secondaryText, marginLeft: '8px' }}>
+                            ({poolInfo.feeTier / 10000}% fee tier)
+                        </span>
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginBottom: '12px', wordBreak: 'break-all' }}>
+                        Pool canister: {poolInfo.poolCanisterId}
+                    </div>
+
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                        <thead>
+                            <tr style={{ borderBottom: `1px solid ${borderColor}` }}>
+                                <th style={{ textAlign: 'left', padding: '6px 8px', color: theme.colors.secondaryText, fontWeight: '500' }}>Token</th>
+                                <th style={{ textAlign: 'right', padding: '6px 8px', color: theme.colors.secondaryText, fontWeight: '500' }}>Deposited (unused)</th>
+                                <th style={{ textAlign: 'right', padding: '6px 8px', color: theme.colors.secondaryText, fontWeight: '500' }}>In Subaccount</th>
+                                <th style={{ textAlign: 'right', padding: '6px 8px', color: theme.colors.secondaryText, fontWeight: '500' }}>Total Recoverable</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {[
+                                { sym: poolInfo.sym0, dec: poolInfo.dec0, unused: poolInfo.unusedBal0, sub: poolInfo.subBal0, tid: poolInfo.token0 },
+                                { sym: poolInfo.sym1, dec: poolInfo.dec1, unused: poolInfo.unusedBal1, sub: poolInfo.subBal1, tid: poolInfo.token1 },
+                            ].map(row => {
+                                const total = row.unused + row.sub;
+                                const hasBalance = total > 0n;
+                                return (
+                                    <tr key={row.tid} style={{ borderBottom: `1px solid ${borderColor}20` }}>
+                                        <td style={{ padding: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <TokenIcon tokenId={row.tid} size={18} />
+                                            <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{row.sym}</span>
+                                        </td>
+                                        <td style={{ textAlign: 'right', padding: '8px', color: row.unused > 0n ? '#f59e0b' : theme.colors.mutedText }}>
+                                            {formatBal(row.unused, row.dec)}
+                                        </td>
+                                        <td style={{ textAlign: 'right', padding: '8px', color: row.sub > 0n ? '#f59e0b' : theme.colors.mutedText }}>
+                                            {formatBal(row.sub, row.dec)}
+                                        </td>
+                                        <td style={{ textAlign: 'right', padding: '8px', fontWeight: hasBalance ? '600' : '400', color: hasBalance ? '#ef4444' : theme.colors.mutedText }}>
+                                            {formatBal(total, row.dec)} {row.sym}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+
+                    {hasStuckFunds && (
+                        <div style={{ marginTop: '14px' }}>
+                            <div style={{ fontSize: '0.78rem', color: theme.colors.secondaryText, marginBottom: '10px', lineHeight: '1.5' }}>
+                                Stuck funds detected. The recovery process will deposit any subaccount balances into the pool's internal tracking, then withdraw everything back to the bot's main account.
+                            </div>
+                            <button onClick={handleRecover} disabled={recovering} style={{
+                                padding: '8px 20px', fontSize: '0.82rem', fontWeight: '600', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                                background: '#ef4444', color: '#fff', opacity: recovering ? 0.6 : 1,
+                                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                            }}>
+                                {recovering ? <><FaSyncAlt size={11} style={{ animation: 'spin 1s linear infinite' }} /> Recovering...</> : <><FaMedkit size={11} /> Recover Funds</>}
+                            </button>
+                        </div>
+                    )}
+
+                    {!hasStuckFunds && (
+                        <div style={{ marginTop: '10px', fontSize: '0.8rem', color: '#22c55e', fontWeight: '500' }}>
+                            No stuck funds found in this pool.
+                        </div>
+                    )}
+                </div>
+            )}
+
+            <div style={{ padding: '12px', background: `${accentColor}08`, borderRadius: '10px', border: `1px solid ${accentColor}20` }}>
+                <div style={{ fontSize: '0.78rem', color: theme.colors.secondaryText, lineHeight: '1.6' }}>
+                    <strong style={{ color: theme.colors.primaryText }}>How funds can get stuck:</strong> When the bot performs a swap on ICPSwap, it first transfers tokens to the pool's subaccount, then calls the pool to execute the swap. If the swap call fails (e.g., due to slippage, a timeout, or pool availability), the transferred tokens remain in the pool's subaccount or deposited balance, waiting to be recovered.
+                </div>
+            </div>
+        </div>
+    );
 }
 
 export default function TradingBot() {
