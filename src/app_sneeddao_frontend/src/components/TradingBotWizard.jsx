@@ -368,6 +368,9 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
     const [fallbackToken, setFallbackToken] = useState('');
     const [showFallbackOption, setShowFallbackOption] = useState(false);
     const [sizeByOutput, setSizeByOutput] = useState(false);
+    const [enablePriceRange, setEnablePriceRange] = useState(false);
+    const [dcaMinPrice, setDcaMinPrice] = useState('');
+    const [dcaMaxPrice, setDcaMaxPrice] = useState('');
 
     const needsFallback = inputToken && outputToken && inputToken !== ICP_LEDGER && outputToken !== ICP_LEDGER;
     useEffect(() => {
@@ -606,6 +609,28 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
                                 )}
                             </div>
                         )}
+                        <div style={{ marginTop: '12px' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', marginBottom: enablePriceRange ? '10px' : 0 }}>
+                                <input type="checkbox" checked={enablePriceRange} onChange={e => { setEnablePriceRange(e.target.checked); if (!e.target.checked) { setDcaMinPrice(''); setDcaMaxPrice(''); } }} />
+                                <span style={{ fontSize: '0.82rem', fontWeight: '500', color: theme.colors.primaryText }}>Only trade within a price range (optional)</span>
+                            </label>
+                            {enablePriceRange && (
+                                <div style={{ padding: '12px', background: `${ACCENT}08`, borderRadius: '10px', border: `1px solid ${ACCENT}20` }}>
+                                    <p style={{ fontSize: '0.72rem', color: theme.colors.secondaryText, margin: '0 0 8px', lineHeight: '1.4' }}>
+                                        Only buy {outputSymbol} when the price is within this range (expressed in {inputSymbol} per {outputSymbol}).
+                                    </p>
+                                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                                        <AmountInput label={`Min price (${inputSymbol}/${outputSymbol})`} value={dcaMinPrice} onChange={setDcaMinPrice} theme={theme} placeholder="Buy above this price" />
+                                        <AmountInput label={`Max price (${inputSymbol}/${outputSymbol})`} value={dcaMaxPrice} onChange={setDcaMaxPrice} theme={theme} placeholder="Buy below this price" />
+                                    </div>
+                                    {dcaMinPrice && dcaMaxPrice && Number(dcaMinPrice) > 0 && Number(dcaMaxPrice) > 0 && (
+                                        <p style={{ fontSize: '0.72rem', color: theme.colors.secondaryText, margin: '8px 0 0', lineHeight: '1.4' }}>
+                                            Buy {outputSymbol} only when 1 {outputSymbol} costs between <strong style={{ color: ACCENT }}>{dcaMinPrice}</strong> and <strong style={{ color: ACCENT }}>{dcaMaxPrice}</strong> {inputSymbol}.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                         <div style={{ display: 'flex', gap: '10px', marginTop: '1.25rem', flexWrap: 'wrap' }}>
                             <button onClick={() => setStep(1)} style={btnSecondary(theme)}><FaArrowLeft size={11} /> Back</button>
                             <button onClick={() => setStep(3)} disabled={!canProceedStep2} style={btnPrimary(theme, canProceedStep2)}>
