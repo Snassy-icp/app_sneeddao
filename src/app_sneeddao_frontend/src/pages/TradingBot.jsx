@@ -7515,9 +7515,35 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
         }
     };
 
+    // DnD reorder: swap in local state immediately, persist to backend
+    const reorderTimeoutRef = useRef(null);
+    const handleReorderTokens = useCallback((fromIdx, toIdx) => {
+        setTokenRegistry(prev => {
+            const updated = [...prev];
+            const [moved] = updated.splice(fromIdx, 1);
+            updated.splice(toIdx, 0, moved);
+            return updated;
+        });
+        if (reorderTimeoutRef.current) clearTimeout(reorderTimeoutRef.current);
+        reorderTimeoutRef.current = setTimeout(async () => {
+            try {
+                const bot = await getReadyBotActor();
+                setTokenRegistry(current => {
+                    const ordered = current.map(t => {
+                        const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+                        return Principal.fromText(tid);
+                    });
+                    bot.reorderTokenRegistry(ordered).catch(e => console.warn('Failed to persist token order:', e));
+                    return current;
+                });
+            } catch (e) { console.warn('Failed to reorder tokens:', e); }
+        }, 600);
+    }, [getReadyBotActor]);
+
     if (loading) return <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText, padding: '16px 0' }}>Loading wallet data...</div>;
 
     return (
+        <DndProvider backend={HTML5Backend}>
         <div>
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
@@ -7575,7 +7601,7 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                                     symbol={_isPlaceholderSymbol(t.symbol) ? tokLabel(tid) : t.symbol}
                                     showRemove={showTokenManager}
                                     onRemove={() => handleRemoveToken(tid)}
-                                    onReorder={() => {}}
+                                    onReorder={handleReorderTokens}
                                     theme={theme}
                                     borderColor={borderColor}
                                     isPaused={pausedTokens.has(tid)}
@@ -8071,6 +8097,7 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                 )}
             </div>
         </div>
+        </DndProvider>
     );
 }
 

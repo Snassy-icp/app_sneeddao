@@ -353,7 +353,9 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
     const [maxSlippage, setMaxSlippage] = useState('2');
     const [maxImpact, setMaxImpact] = useState('3');
     const [fundAmount, setFundAmount] = useState('');
+    const [fundSource, setFundSource] = useState('wallet');
     const [walletBalance, setWalletBalance] = useState(null);
+    const [mainPurseBalance, setMainPurseBalance] = useState(null);
     const [inputMeta, setInputMeta] = useState(null);
     const [usePurse, setUsePurse] = useState(true);
     const [autoStart, setAutoStart] = useState(true);
@@ -381,6 +383,19 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
         })();
         return () => { cancelled = true; };
     }, [inputToken, identity]);
+
+    useEffect(() => {
+        if (!inputToken || !canisterId || !identity) { setMainPurseBalance(null); return; }
+        let cancelled = false;
+        (async () => {
+            try {
+                const ledger = createLedgerActor(inputToken, { agentOptions: { identity } });
+                const bal = await ledger.icrc1_balance_of({ owner: Principal.fromText(canisterId), subaccount: [] });
+                if (!cancelled) setMainPurseBalance(BigInt(bal));
+            } catch { if (!cancelled) setMainPurseBalance(null); }
+        })();
+        return () => { cancelled = true; };
+    }, [inputToken, canisterId, identity]);
 
     const inputSymbol = inputMeta?.symbol || getTokenMetadataSync(inputToken)?.symbol || '???';
     const outputSymbol = getTokenMetadataSync(outputToken)?.symbol || '???';
@@ -443,18 +458,20 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
             }
 
             if (fundAmount && Number(fundAmount) > 0) {
-                setDeployStep('Funding bot from wallet...');
                 const rawFund = BigInt(Math.floor(Number(fundAmount) * Math.pow(10, dec)));
-                const ledger = createLedgerActor(inputToken, { agentOptions: { identity } });
-                await ledger.icrc1_transfer({
-                    to: { owner: Principal.fromText(canisterId), subaccount: [] },
-                    amount: rawFund,
-                    fee: [], memo: [], from_subaccount: [], created_at_time: [],
-                });
+                if (fundSource === 'wallet') {
+                    setDeployStep('Funding bot from wallet...');
+                    const ledger = createLedgerActor(inputToken, { agentOptions: { identity } });
+                    await ledger.icrc1_transfer({
+                        to: { owner: Principal.fromText(canisterId), subaccount: [] },
+                        amount: rawFund,
+                        fee: [], memo: [], from_subaccount: [], created_at_time: [],
+                    });
+                }
                 if (usePurse) {
-                    setDeployStep('Funding chore purse...');
+                    setDeployStep(fundSource === 'purse' ? 'Moving from main purse to chore purse...' : 'Funding chore purse...');
                     const result = await bot.fundPurse(instId, Principal.fromText(inputToken), rawFund);
-                    if ('Err' in result) throw new Error('Fund purse failed: ' + result.Err);
+                    if ('Err' in result) throw new Error('Fund purse failed: ' + (typeof result.Err === 'string' ? result.Err : JSON.stringify(result.Err)));
                 }
             }
 
@@ -550,13 +567,31 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
                             Fund & Deploy
                         </h4>
                         <div style={{ padding: '12px', background: `${ACCENT}08`, borderRadius: '10px', border: `1px solid ${ACCENT}20`, marginBottom: '14px' }}>
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
+                                <button onClick={() => setFundSource('wallet')} style={{
+                                    padding: '5px 12px', fontSize: '0.78rem', borderRadius: '6px', border: `1px solid ${fundSource === 'wallet' ? ACCENT : theme.colors.border}`,
+                                    background: fundSource === 'wallet' ? `${ACCENT}18` : 'transparent', color: fundSource === 'wallet' ? ACCENT : theme.colors.secondaryText,
+                                    cursor: 'pointer', fontWeight: fundSource === 'wallet' ? '600' : '400',
+                                }}><FaWallet size={10} style={{ marginRight: 4 }} /> From Wallet</button>
+                                <button onClick={() => setFundSource('purse')} style={{
+                                    padding: '5px 12px', fontSize: '0.78rem', borderRadius: '6px', border: `1px solid ${fundSource === 'purse' ? ACCENT : theme.colors.border}`,
+                                    background: fundSource === 'purse' ? `${ACCENT}18` : 'transparent', color: fundSource === 'purse' ? ACCENT : theme.colors.secondaryText,
+                                    cursor: mainPurseBalance != null && mainPurseBalance > 0n ? 'pointer' : 'default', fontWeight: fundSource === 'purse' ? '600' : '400',
+                                    opacity: mainPurseBalance != null && mainPurseBalance > 0n ? 1 : 0.5,
+                                }} disabled={mainPurseBalance == null || mainPurseBalance <= 0n}><FaShieldAlt size={10} style={{ marginRight: 4 }} /> From Main Purse</button>
+                            </div>
                             <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, marginBottom: '8px' }}>
-                                Your wallet balance: <strong style={{ color: theme.colors.primaryText }}>{formatBal(walletBalance, inputDecimals)} {inputSymbol}</strong>
+                                {fundSource === 'wallet'
+                                    ? <>Wallet balance: <strong style={{ color: theme.colors.primaryText }}>{formatBal(walletBalance, inputDecimals)} {inputSymbol}</strong></>
+                                    : <>Main purse balance: <strong style={{ color: theme.colors.primaryText }}>{formatBal(mainPurseBalance, inputDecimals)} {inputSymbol}</strong></>}
                             </div>
                             <AmountInput label={`Fund bot with ${inputSymbol} (optional)`} value={fundAmount} onChange={setFundAmount} theme={theme} placeholder="0" />
-                            {walletBalance != null && fundAmount && Number(fundAmount) > 0 && BigInt(Math.floor(Number(fundAmount) * Math.pow(10, inputDecimals))) > walletBalance && (
-                                <div style={{ color: theme.colors.error || '#ef4444', fontSize: '0.78rem', marginTop: '6px' }}>Insufficient wallet balance</div>
-                            )}
+                            {(() => {
+                                const bal = fundSource === 'wallet' ? walletBalance : mainPurseBalance;
+                                return bal != null && fundAmount && Number(fundAmount) > 0 && BigInt(Math.floor(Number(fundAmount) * Math.pow(10, inputDecimals))) > bal
+                                    ? <div style={{ color: theme.colors.error || '#ef4444', fontSize: '0.78rem', marginTop: '6px' }}>Insufficient {fundSource === 'wallet' ? 'wallet' : 'main purse'} balance</div>
+                                    : null;
+                            })()}
                         </div>
                         <div style={{ padding: '12px', background: theme.colors.primaryBg, borderRadius: '10px', border: `1px solid ${theme.colors.border}`, marginBottom: '14px' }}>
                             <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>Options</div>
@@ -582,7 +617,7 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
                             <SummaryRow label="Pair" value={`${inputSymbol} → ${outputSymbol}`} theme={theme} />
                             <SummaryRow label="Trade size" value={`${tradeSize} ${inputSymbol}`} theme={theme} />
                             <SummaryRow label="Interval" value={`Every ${intervalMinutes} min`} theme={theme} />
-                            {fundAmount && Number(fundAmount) > 0 && <SummaryRow label="Funding" value={`${fundAmount} ${inputSymbol}`} theme={theme} />}
+                            {fundAmount && Number(fundAmount) > 0 && <SummaryRow label="Funding" value={`${fundAmount} ${inputSymbol} (from ${fundSource === 'wallet' ? 'wallet' : 'main purse'})`} theme={theme} />}
                             {budgetLimit && Number(budgetLimit) > 0 && <SummaryRow label="Budget limit" value={`${budgetLimit} ${inputSymbol}`} theme={theme} />}
                             <SummaryRow label="Purse" value={usePurse ? 'Isolated' : 'Shared (main)'} theme={theme} />
                             <SummaryRow label="Auto-start" value={autoStart ? 'Yes' : 'No'} theme={theme} />
@@ -622,7 +657,9 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
     const [stopLossMaxImpact, setStopLossMaxImpact] = useState('100');
     const [fundToken, setFundToken] = useState('');
     const [fundAmount, setFundAmount] = useState('');
+    const [fundSource, setFundSource] = useState('wallet');
     const [walletBalance, setWalletBalance] = useState(null);
+    const [mainPurseBalance, setMainPurseBalance] = useState(null);
     const [fundMeta, setFundMeta] = useState(null);
     const [usePurse, setUsePurse] = useState(true);
     const [autoStart, setAutoStart] = useState(true);
@@ -648,6 +685,19 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
         })();
         return () => { cancelled = true; };
     }, [fundToken, identity]);
+
+    useEffect(() => {
+        if (!fundToken || !canisterId || !identity) { setMainPurseBalance(null); return; }
+        let cancelled = false;
+        (async () => {
+            try {
+                const ledger = createLedgerActor(fundToken, { agentOptions: { identity } });
+                const bal = await ledger.icrc1_balance_of({ owner: Principal.fromText(canisterId), subaccount: [] });
+                if (!cancelled) setMainPurseBalance(BigInt(bal));
+            } catch { if (!cancelled) setMainPurseBalance(null); }
+        })();
+        return () => { cancelled = true; };
+    }, [fundToken, canisterId, identity]);
 
     const symA = getTokenMetadataSync(tokenA)?.symbol || '???';
     const symB = getTokenMetadataSync(tokenB)?.symbol || '???';
@@ -757,17 +807,19 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
             }
 
             if (fundAmount && Number(fundAmount) > 0 && fundToken) {
-                setDeployStep('Funding bot...');
                 const rawFund = BigInt(Math.floor(Number(fundAmount) * Math.pow(10, fundDecimals)));
-                const ledger = createLedgerActor(fundToken, { agentOptions: { identity } });
-                await ledger.icrc1_transfer({
-                    to: { owner: Principal.fromText(canisterId), subaccount: [] },
-                    amount: rawFund, fee: [], memo: [], from_subaccount: [], created_at_time: [],
-                });
+                if (fundSource === 'wallet') {
+                    setDeployStep('Funding bot from wallet...');
+                    const ledger = createLedgerActor(fundToken, { agentOptions: { identity } });
+                    await ledger.icrc1_transfer({
+                        to: { owner: Principal.fromText(canisterId), subaccount: [] },
+                        amount: rawFund, fee: [], memo: [], from_subaccount: [], created_at_time: [],
+                    });
+                }
                 if (usePurse) {
-                    setDeployStep('Funding chore purse...');
+                    setDeployStep(fundSource === 'purse' ? 'Moving from main purse to chore purse...' : 'Funding chore purse...');
                     const result = await bot.fundPurse(instId, Principal.fromText(fundToken), rawFund);
-                    if ('Err' in result) throw new Error('Fund purse failed: ' + result.Err);
+                    if ('Err' in result) throw new Error('Fund purse failed: ' + (typeof result.Err === 'string' ? result.Err : JSON.stringify(result.Err)));
                 }
             }
 
@@ -899,17 +951,38 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                             Fund & Deploy
                         </h4>
                         <div style={{ padding: '12px', background: `${ACCENT}08`, borderRadius: '10px', border: `1px solid ${ACCENT}20`, marginBottom: '14px' }}>
-                            <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, marginBottom: '8px' }}>
-                                Fund with:
-                                <select value={fundToken} onChange={e => setFundToken(e.target.value)} style={{ marginLeft: '8px', padding: '4px 8px', background: theme.colors.primaryBg, border: `1px solid ${theme.colors.border}`, borderRadius: '6px', color: theme.colors.primaryText, fontSize: '0.82rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '0.82rem', color: theme.colors.secondaryText }}>Fund with:</span>
+                                <select value={fundToken} onChange={e => setFundToken(e.target.value)} style={{ padding: '4px 8px', background: theme.colors.primaryBg, border: `1px solid ${theme.colors.border}`, borderRadius: '6px', color: theme.colors.primaryText, fontSize: '0.82rem' }}>
                                     {tokenA && <option value={tokenA}>{symA}</option>}
                                     {tokenB && <option value={tokenB}>{symB}</option>}
                                 </select>
                             </div>
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
+                                <button onClick={() => setFundSource('wallet')} style={{
+                                    padding: '5px 12px', fontSize: '0.78rem', borderRadius: '6px', border: `1px solid ${fundSource === 'wallet' ? ACCENT : theme.colors.border}`,
+                                    background: fundSource === 'wallet' ? `${ACCENT}18` : 'transparent', color: fundSource === 'wallet' ? ACCENT : theme.colors.secondaryText,
+                                    cursor: 'pointer', fontWeight: fundSource === 'wallet' ? '600' : '400',
+                                }}><FaWallet size={10} style={{ marginRight: 4 }} /> From Wallet</button>
+                                <button onClick={() => setFundSource('purse')} style={{
+                                    padding: '5px 12px', fontSize: '0.78rem', borderRadius: '6px', border: `1px solid ${fundSource === 'purse' ? ACCENT : theme.colors.border}`,
+                                    background: fundSource === 'purse' ? `${ACCENT}18` : 'transparent', color: fundSource === 'purse' ? ACCENT : theme.colors.secondaryText,
+                                    cursor: mainPurseBalance != null && mainPurseBalance > 0n ? 'pointer' : 'default', fontWeight: fundSource === 'purse' ? '600' : '400',
+                                    opacity: mainPurseBalance != null && mainPurseBalance > 0n ? 1 : 0.5,
+                                }} disabled={mainPurseBalance == null || mainPurseBalance <= 0n}><FaShieldAlt size={10} style={{ marginRight: 4 }} /> From Main Purse</button>
+                            </div>
                             <div style={{ fontSize: '0.78rem', color: theme.colors.mutedText, marginBottom: '8px' }}>
-                                Wallet balance: {formatBal(walletBalance, fundDecimals)} {fundSymbol}
+                                {fundSource === 'wallet'
+                                    ? <>Wallet balance: <strong style={{ color: theme.colors.primaryText }}>{formatBal(walletBalance, fundDecimals)} {fundSymbol}</strong></>
+                                    : <>Main purse balance: <strong style={{ color: theme.colors.primaryText }}>{formatBal(mainPurseBalance, fundDecimals)} {fundSymbol}</strong></>}
                             </div>
                             <AmountInput label={`Amount to fund (optional)`} value={fundAmount} onChange={setFundAmount} theme={theme} placeholder="0" />
+                            {(() => {
+                                const bal = fundSource === 'wallet' ? walletBalance : mainPurseBalance;
+                                return bal != null && fundAmount && Number(fundAmount) > 0 && BigInt(Math.floor(Number(fundAmount) * Math.pow(10, fundDecimals))) > bal
+                                    ? <div style={{ color: theme.colors.error || '#ef4444', fontSize: '0.78rem', marginTop: '6px' }}>Insufficient {fundSource === 'wallet' ? 'wallet' : 'main purse'} balance</div>
+                                    : null;
+                            })()}
                         </div>
                         <div style={{ padding: '12px', background: theme.colors.primaryBg, borderRadius: '10px', border: `1px solid ${theme.colors.border}`, marginBottom: '14px' }}>
                             <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>Options</div>
@@ -970,7 +1043,9 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
     const [maxImpact, setMaxImpact] = useState('3');
     const [fundTokenIdx, setFundTokenIdx] = useState(0);
     const [fundAmount, setFundAmount] = useState('');
+    const [fundSource, setFundSource] = useState('wallet');
     const [walletBalance, setWalletBalance] = useState(null);
+    const [mainPurseBalance, setMainPurseBalance] = useState(null);
     const [fundMeta, setFundMeta] = useState(null);
     const [usePurse, setUsePurse] = useState(true);
     const [autoStart, setAutoStart] = useState(true);
@@ -996,6 +1071,19 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
         })();
         return () => { cancelled = true; };
     }, [fundToken, identity]);
+
+    useEffect(() => {
+        if (!fundToken || !canisterId || !identity) { setMainPurseBalance(null); return; }
+        let cancelled = false;
+        (async () => {
+            try {
+                const ledger = createLedgerActor(fundToken, { agentOptions: { identity } });
+                const bal = await ledger.icrc1_balance_of({ owner: Principal.fromText(canisterId), subaccount: [] });
+                if (!cancelled) setMainPurseBalance(BigInt(bal));
+            } catch { if (!cancelled) setMainPurseBalance(null); }
+        })();
+        return () => { cancelled = true; };
+    }, [fundToken, canisterId, identity]);
 
     const totalPct = targets.reduce((sum, t) => sum + (parseFloat(t.targetPct) || 0), 0);
     const allTokensSet = targets.every(t => t.token && t.targetPct && Number(t.targetPct) > 0);
@@ -1056,17 +1144,19 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
             }
 
             if (fundAmount && Number(fundAmount) > 0 && fundToken) {
-                setDeployStep('Funding bot...');
                 const rawFund = BigInt(Math.floor(Number(fundAmount) * Math.pow(10, fundDecimals)));
-                const ledger = createLedgerActor(fundToken, { agentOptions: { identity } });
-                await ledger.icrc1_transfer({
-                    to: { owner: Principal.fromText(canisterId), subaccount: [] },
-                    amount: rawFund, fee: [], memo: [], from_subaccount: [], created_at_time: [],
-                });
+                if (fundSource === 'wallet') {
+                    setDeployStep('Funding bot from wallet...');
+                    const ledger = createLedgerActor(fundToken, { agentOptions: { identity } });
+                    await ledger.icrc1_transfer({
+                        to: { owner: Principal.fromText(canisterId), subaccount: [] },
+                        amount: rawFund, fee: [], memo: [], from_subaccount: [], created_at_time: [],
+                    });
+                }
                 if (usePurse) {
-                    setDeployStep('Funding chore purse...');
+                    setDeployStep(fundSource === 'purse' ? 'Moving from main purse to chore purse...' : 'Funding chore purse...');
                     const result = await bot.fundPurse(instId, Principal.fromText(fundToken), rawFund);
-                    if ('Err' in result) throw new Error('Fund purse failed: ' + result.Err);
+                    if ('Err' in result) throw new Error('Fund purse failed: ' + (typeof result.Err === 'string' ? result.Err : JSON.stringify(result.Err)));
                 }
             }
 
