@@ -2957,6 +2957,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                     txId = r.txId;
                                     destinationOwner = null;
                                 });
+                                adjustLastKnownBalance(intermediary, netReceived);
                                 netReceived
                             };
                             case (#Err(e)) {

@@ -8451,7 +8451,17 @@ function SwapProgressCard({ entry, isRunning, theme, accentColor, onDismiss }) {
     const inDec = entry?.inputDecimals ?? 8;
     const outDec = entry?.outputDecimals ?? 8;
     const isSkipped = !isRunning && entry?.status === 'Skipped';
-    const fmtAmt = (raw, dec) => raw != null ? (Number(raw) / Math.pow(10, dec)).toLocaleString(undefined, { maximumFractionDigits: Math.min(dec, 6) }) : '...';
+    const fmtAmt = (raw, dec) => {
+        if (raw == null) return '...';
+        const val = Number(raw) / Math.pow(10, dec);
+        if (val === 0) return '0';
+        const maxFrac = Math.min(dec, 6);
+        const formatted = val.toLocaleString(undefined, { maximumFractionDigits: maxFrac });
+        if (parseFloat(formatted.replace(/,/g, '')) === 0) {
+            return val.toLocaleString(undefined, { maximumSignificantDigits: 2 });
+        }
+        return formatted;
+    };
     const dexName = entry?.dexId != null ? (DEX_NAMES[Number(entry.dexId)] || `DEX #${entry.dexId}`) : null;
     const dexColor = entry?.dexId != null ? (DEX_COLORS[Number(entry.dexId)] || accentColor) : accentColor;
     const priceImpact = entry?.priceImpactBps != null ? (Number(entry.priceImpactBps) / 100).toFixed(2) : null;
