@@ -38,6 +38,8 @@ const getProxyLogoUrl = (canisterId) => `${LOGO_PROXY_BASE}/${canisterId}`;
  * - style: Additional styles for the container
  * - excludeTokens: Array of token principals to exclude from the list
  * - allowCustom: Allow manual ledger ID entry (default: false)
+ * - tokenSubset: Optional array of { ledger_id, symbol, name?, decimals?, fee? } objects.
+ *   When provided, only these tokens are shown instead of the full whitelist.
  */
 function TokenSelector({ 
     value, 
@@ -47,7 +49,8 @@ function TokenSelector({
     disabled = false,
     style = {},
     excludeTokens = EMPTY_EXCLUDE_TOKENS,
-    allowCustom = false
+    allowCustom = false,
+    tokenSubset,
 }) {
     const { theme } = useTheme();
     const { identity } = useAuth();
@@ -150,15 +153,39 @@ function TokenSelector({
         setCustomTokenInfo(null);
     }, [customTokenInfo, onChange, onSelectToken]);
 
-    // Use whitelist from context (single cache), filter excluded
+    // Stabilize tokenSubset by content to avoid infinite re-renders
+    const tokenSubsetKey = useMemo(
+        () => tokenSubset ? tokenSubset.map(t => (typeof t === 'string' ? t : (t.ledger_id?.toString?.() ?? String(t.ledger_id)))).join(',') : null,
+        [tokenSubset]
+    );
+
+    // Use tokenSubset if provided, otherwise fall back to whitelist from context
     useEffect(() => {
-        const filtered = whitelistFromContext.filter(
-            token => !excludeTokens.includes(token.ledger_id?.toString?.() ?? String(token.ledger_id))
-        );
-        setTokens(filtered);
-        setLoading(whitelistLoading);
+        if (tokenSubset) {
+            const normalized = tokenSubset.map(t => {
+                const id = typeof t === 'string' ? t : (t.ledger_id?.toString?.() ?? String(t.ledger_id));
+                if (typeof t === 'string') {
+                    return { ledger_id: id, symbol: id.slice(0, 5) + '..', name: 'Token', decimals: 8, fee: 0 };
+                }
+                return {
+                    ledger_id: id,
+                    symbol: t.symbol || id.slice(0, 5) + '..',
+                    name: t.name || t.symbol || 'Token',
+                    decimals: t.decimals ?? 8,
+                    fee: t.fee ?? 0,
+                };
+            }).filter(t => !excludeTokens.includes(t.ledger_id));
+            setTokens(normalized);
+            setLoading(false);
+        } else {
+            const filtered = whitelistFromContext.filter(
+                token => !excludeTokens.includes(token.ledger_id?.toString?.() ?? String(token.ledger_id))
+            );
+            setTokens(filtered);
+            setLoading(whitelistLoading);
+        }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [whitelistFromContext, excludeTokensKey, whitelistLoading]);
+    }, [whitelistFromContext, excludeTokensKey, whitelistLoading, tokenSubsetKey]);
 
     // Fetch logos: instant proxy URLs → cached logos → parallel canister fetch (capped concurrency)
     useEffect(() => {

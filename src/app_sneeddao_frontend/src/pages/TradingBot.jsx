@@ -4397,6 +4397,24 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
         return sub?.balances || [];
     }, [allBalances, selectedAccount]);
 
+    // Token subset for operation form: all balance tokens + all registered tokens
+    const opTokenSubset = React.useMemo(() => {
+        const seen = new Set();
+        const result = [];
+        for (const b of selectedBalances) {
+            const t = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+            if (!seen.has(t)) { seen.add(t); result.push({ ledger_id: t, symbol: getSymbol(t), name: getSymbol(t) }); }
+        }
+        for (const t of tokenRegistry) {
+            const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+            if (!seen.has(tid)) {
+                const sym = _isPlaceholderSymbol(t.symbol) ? getSymbol(tid) : t.symbol;
+                seen.add(tid); result.push({ ledger_id: tid, symbol: sym, name: sym });
+            }
+        }
+        return result;
+    }, [selectedBalances, tokenRegistry, tokenMeta]);
+
     const cardBg = theme.colors.cardGradient;
     const borderColor = theme.colors.border;
     const inputStyle = { padding: '6px 10px', borderRadius: '6px', border: `1px solid ${borderColor}`, background: theme.colors.primaryBg, color: theme.colors.primaryText, fontSize: '0.8rem', outline: 'none' };
@@ -4789,27 +4807,15 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
 
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
                             {/* Token selector */}
-                            <div style={{ minWidth: '140px' }}>
+                            <div style={{ minWidth: '180px' }}>
                                 <label style={{ fontSize: '0.68rem', color: theme.colors.mutedText, display: 'block', marginBottom: '3px' }}>Token</label>
-                                <select value={opToken} onChange={(e) => setOpToken(e.target.value)}
-                                    style={{ ...inputStyle, width: '100%' }}>
-                                    <option value="">Select token...</option>
-                                    {selectedBalances.map(b => {
-                                        const t = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
-                                        return <option key={t} value={t}>{getSymbol(t)}</option>;
-                                    })}
-                                    {/* Also show registered tokens not in balances */}
-                                    {tokenRegistry.filter(t => {
-                                        const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
-                                        return !selectedBalances.some(b => {
-                                            const bt = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
-                                            return bt === tid;
-                                        });
-                                    }).map(t => {
-                                        const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
-                                        return <option key={tid} value={tid}>{_isPlaceholderSymbol(t.symbol) ? getSymbol(tid) : t.symbol} (0)</option>;
-                                    })}
-                                </select>
+                                <TokenSelector
+                                    value={opToken}
+                                    onChange={setOpToken}
+                                    tokenSubset={activeOp === 'fund' ? undefined : opTokenSubset}
+                                    allowCustom={activeOp === 'fund'}
+                                    placeholder="Select token..."
+                                />
                             </div>
 
                             {/* Amount */}
@@ -7388,6 +7394,19 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
     const enabledPurses = allPurses.filter(p => p.enabled && p.balances.length > 0);
     const opTokenBalance = activeOp === 'fund' ? walletBalance : (opToken ? (mainBalances[opToken] || 0n) : null);
 
+    // Token subset for operation form (withdraw/send): all registered tokens
+    const walletOpTokenSubset = React.useMemo(() => {
+        const seen = new Set();
+        const result = [];
+        for (const e of mainAccountEntries) {
+            if (!seen.has(e.token)) { seen.add(e.token); result.push({ ledger_id: e.token, symbol: tokLabel(e.token), name: tokLabel(e.token) }); }
+        }
+        for (const tid of registeredTokenIds) {
+            if (!seen.has(tid)) { seen.add(tid); result.push({ ledger_id: tid, symbol: tokLabel(tid), name: tokLabel(tid) }); }
+        }
+        return result;
+    }, [mainAccountEntries, registeredTokenIds]);
+
     const handleExecuteOp = async () => {
         if (!opToken || !opAmount) return;
         setOpExecuting(true); setError(''); setSuccess('');
@@ -7829,25 +7848,13 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
                             <div style={{ minWidth: '180px' }}>
                                 <label style={{ fontSize: '0.68rem', color: theme.colors.mutedText, display: 'block', marginBottom: '3px' }}>Token</label>
-                                {activeOp === 'fund' ? (
-                                    <TokenSelector
-                                        value={opToken}
-                                        onChange={setOpToken}
-                                        onSelectToken={(data) => { setOpToken(data.ledger_id); }}
-                                        allowCustom={true}
-                                        placeholder="Search or paste ledger ID..."
-                                    />
-                                ) : (
-                                    <select value={opToken} onChange={(e) => setOpToken(e.target.value)} style={{ ...inputStyle, width: '100%' }}>
-                                        <option value="">Select token...</option>
-                                        {mainAccountEntries.map(e => (
-                                            <option key={e.token} value={e.token}>{tokLabel(e.token)}</option>
-                                        ))}
-                                        {registeredTokenIds.filter(tid => !mainAccountEntries.some(e => e.token === tid)).map(tid => (
-                                            <option key={tid} value={tid}>{tokLabel(tid)} (0)</option>
-                                        ))}
-                                    </select>
-                                )}
+                                <TokenSelector
+                                    value={opToken}
+                                    onChange={setOpToken}
+                                    tokenSubset={activeOp === 'fund' ? undefined : walletOpTokenSubset}
+                                    allowCustom={activeOp === 'fund'}
+                                    placeholder={activeOp === 'fund' ? 'Search or paste ledger ID...' : 'Select token...'}
+                                />
                             </div>
 
                             <div style={{ minWidth: '120px', flex: 1 }}>
@@ -8023,10 +8030,14 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
 
                                 {isFunding && (
                                     <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                        <select value={fundToken} onChange={e => setFundToken(e.target.value)} style={{ ...inputStyle, minWidth: '100px', fontSize: '0.78rem' }}>
-                                            <option value="">Token...</option>
-                                            {mainTokenIds.map(id => <option key={id} value={id}>{tokLabel(id)}</option>)}
-                                        </select>
+                                        <div style={{ minWidth: '140px' }}>
+                                            <TokenSelector
+                                                value={fundToken}
+                                                onChange={setFundToken}
+                                                tokenSubset={mainTokenIds.map(id => ({ ledger_id: id, symbol: tokLabel(id), name: tokLabel(id) }))}
+                                                placeholder="Token..."
+                                            />
+                                        </div>
                                         <input type="number" placeholder="Amount" value={fundAmount} onChange={e => setFundAmount(e.target.value)}
                                             style={{ ...inputStyle, width: '110px', fontSize: '0.78rem' }} step="any" min="0" />
                                         <button onClick={handleFundPurse} disabled={purseSaving || !fundToken || !fundAmount}
@@ -8038,10 +8049,14 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
 
                                 {isReclaiming && (
                                     <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                        <select value={reclaimToken} onChange={e => setReclaimToken(e.target.value)} style={{ ...inputStyle, minWidth: '100px', fontSize: '0.78rem' }}>
-                                            <option value="">Token...</option>
-                                            {purseTokenIds.map(id => <option key={id} value={id}>{tokLabel(id)}</option>)}
-                                        </select>
+                                        <div style={{ minWidth: '140px' }}>
+                                            <TokenSelector
+                                                value={reclaimToken}
+                                                onChange={setReclaimToken}
+                                                tokenSubset={purseTokenIds.map(id => ({ ledger_id: id, symbol: tokLabel(id), name: tokLabel(id) }))}
+                                                placeholder="Token..."
+                                            />
+                                        </div>
                                         <input type="number" placeholder="Amount" value={reclaimAmount} onChange={e => setReclaimAmount(e.target.value)}
                                             style={{ ...inputStyle, width: '110px', fontSize: '0.78rem' }} step="any" min="0" />
                                         <button onClick={handleReclaimPurse} disabled={purseSaving || !reclaimToken || !reclaimAmount}
@@ -8330,10 +8345,14 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
                     {/* Fund */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText, fontWeight: 500 }}>Fund:</span>
-                        <select value={fundToken} onChange={e => setFundToken(e.target.value)} style={inp({ minWidth: '100px' })}>
-                            <option value="">Token...</option>
-                            {mainTokenIds.map(id => <option key={id} value={id}>{tokLabel(id)}</option>)}
-                        </select>
+                        <div style={{ minWidth: '140px' }}>
+                            <TokenSelector
+                                value={fundToken}
+                                onChange={setFundToken}
+                                tokenSubset={mainTokenIds.map(id => ({ ledger_id: id, symbol: tokLabel(id), name: tokLabel(id) }))}
+                                placeholder="Token..."
+                            />
+                        </div>
                         <input type="number" placeholder="Amount" value={fundAmount} onChange={e => setFundAmount(e.target.value)} style={inp({ width: '110px' })} step="any" min="0" />
                         <button onClick={handleFund} disabled={saving || !fundToken || !fundAmount} style={btnSm({ color: accentColor, borderColor: accentColor })}>
                             <FaArrowDown size={10} /> Fund
@@ -8343,10 +8362,14 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
                     {/* Reclaim */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText, fontWeight: 500 }}>Reclaim:</span>
-                        <select value={reclaimToken} onChange={e => setReclaimToken(e.target.value)} style={inp({ minWidth: '100px' })}>
-                            <option value="">Token...</option>
-                            {purseTokenIds.map(id => <option key={id} value={id}>{tokLabel(id)}</option>)}
-                        </select>
+                        <div style={{ minWidth: '140px' }}>
+                            <TokenSelector
+                                value={reclaimToken}
+                                onChange={setReclaimToken}
+                                tokenSubset={purseTokenIds.map(id => ({ ledger_id: id, symbol: tokLabel(id), name: tokLabel(id) }))}
+                                placeholder="Token..."
+                            />
+                        </div>
                         <input type="number" placeholder="Amount" value={reclaimAmount} onChange={e => setReclaimAmount(e.target.value)} style={inp({ width: '110px' })} step="any" min="0" />
                         <button onClick={handleReclaim} disabled={saving || !reclaimToken || !reclaimAmount} style={btnSm({ color: '#e67e22', borderColor: '#e67e22' })}>
                             <FaArrowUp size={10} /> Reclaim
