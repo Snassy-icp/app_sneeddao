@@ -9471,7 +9471,7 @@ const LOG_LEVEL_PALETTE = { Error: '#ef4444', Warning: '#f59e0b', Info: '#6366f1
 
 function ChoreLogPanel({ instanceId, getReadyBotActor, theme, accentColor }) {
     const { identity } = useAuth();
-    const [tab, setTab] = useState('activity');
+    const [tab, setTab] = useState('trade');
     const [activityEntries, setActivityEntries] = useState([]);
     const [tradeEntries, setTradeEntries] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -9555,7 +9555,7 @@ function ChoreLogPanel({ instanceId, getReadyBotActor, theme, accentColor }) {
     return (
         <div style={{ padding: '4px 0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '10px', borderBottom: `1px solid ${borderColor}`, paddingBottom: '8px' }}>
-                {['activity', 'trade'].map(t => (
+                {['trade', 'activity'].map(t => (
                     <button key={t} onClick={() => setTab(t)} style={{
                         padding: '4px 14px', borderRadius: '6px 6px 0 0', border: 'none', cursor: 'pointer',
                         fontWeight: tab === t ? '600' : '400', fontSize: '0.78rem',

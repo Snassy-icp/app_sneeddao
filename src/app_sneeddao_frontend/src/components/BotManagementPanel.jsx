@@ -2619,11 +2619,27 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                                                             defaultValue={currentBest.value}
                                                                             style={{ ...inputStyle, width: '70px' }}
                                                                             id={`chore-interval-${chore.choreId}`}
+                                                                            onChange={() => {
+                                                                                const w = document.getElementById(`chore-interval-warn-${chore.choreId}`);
+                                                                                if (!w) return;
+                                                                                const v = parseFloat(document.getElementById(`chore-interval-${chore.choreId}`)?.value);
+                                                                                const u = document.getElementById(`chore-interval-unit-${chore.choreId}`)?.value || 'minutes';
+                                                                                const s = Math.round((v || 0) * (unitMultipliers[u] || 60));
+                                                                                w.style.display = (s > 0 && s < 300) ? 'block' : 'none';
+                                                                            }}
                                                                         />
                                                                         <select
                                                                             id={`chore-interval-unit-${chore.choreId}`}
                                                                             defaultValue={currentBest.unit}
                                                                             style={{ ...inputStyle, width: 'auto', padding: '4px 8px', cursor: 'pointer', appearance: 'auto' }}
+                                                                            onChange={() => {
+                                                                                const w = document.getElementById(`chore-interval-warn-${chore.choreId}`);
+                                                                                if (!w) return;
+                                                                                const v = parseFloat(document.getElementById(`chore-interval-${chore.choreId}`)?.value);
+                                                                                const u = document.getElementById(`chore-interval-unit-${chore.choreId}`)?.value || 'minutes';
+                                                                                const s = Math.round((v || 0) * (unitMultipliers[u] || 60));
+                                                                                w.style.display = (s > 0 && s < 300) ? 'block' : 'none';
+                                                                            }}
                                                                         >
                                                                             <option value="minutes">minutes</option>
                                                                             <option value="hours">hours</option>
@@ -2641,6 +2657,7 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                                                                 const totalSeconds = Math.round(val * multiplier);
                                                                                 if (!val || val <= 0 || totalSeconds < 60) { setChoreError('Interval must be at least 1 minute.'); return; }
                                                                                 if (totalSeconds > 365 * 86400) { setChoreError('Interval cannot exceed 365 days.'); return; }
+                                                                                if (totalSeconds < 300 && !window.confirm('Intervals shorter than 5 minutes may not give chores enough time to finish. Continue anyway?')) return;
                                                                                 // Also handle the optional max interval if the range section is open
                                                                                 const maxInput = document.getElementById(`chore-max-interval-${chore.choreId}`);
                                                                                 const maxUnitSelect = document.getElementById(`chore-max-interval-unit-${chore.choreId}`);
@@ -2668,6 +2685,14 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                                                                 finally { setSavingChore(false); }
                                                                             }}
                                                                         >Save</button>
+                                                                    </div>
+                                                                    <div id={`chore-interval-warn-${chore.choreId}`} style={{
+                                                                        display: intervalSeconds > 0 && intervalSeconds < 300 ? 'block' : 'none',
+                                                                        marginTop: '6px', padding: '6px 10px', borderRadius: '6px',
+                                                                        background: '#f59e0b12', border: '1px solid #f59e0b30',
+                                                                        fontSize: '0.75rem', color: '#f59e0b', lineHeight: '1.4',
+                                                                    }}>
+                                                                        Intervals shorter than 5 minutes may not give chores enough time to finish before the next run starts.
                                                                     </div>
 
                                                                     {/* Randomized range — collapsed by default, toggle to expand */}
