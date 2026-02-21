@@ -443,6 +443,10 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
     const [fTradeSizeDenom, setFTradeSizeDenom] = useState('');
     const [fPriceDenom, setFPriceDenom] = useState('');
     const [fBalanceDenom, setFBalanceDenom] = useState('');
+    const [fHaltAfterExec, setFHaltAfterExec] = useState(false);
+    const [fMaxCumulativeInput, setFMaxCumulativeInput] = useState('');
+    const [fMaxCumulativeOutput, setFMaxCumulativeOutput] = useState('');
+    const [fMaxExecutions, setFMaxExecutions] = useState('');
 
     // Collect all unique token principals from actions for metadata resolution
     const actionTokenIds = React.useMemo(() => {
@@ -553,6 +557,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         setFSourcePurse(''); setFTargetPurse('');
         setFPriceDirection('input_per_output');
         setFTradeSizeDenom(''); setFPriceDenom(''); setFBalanceDenom('');
+        setFHaltAfterExec(false); setFMaxCumulativeInput(''); setFMaxCumulativeOutput(''); setFMaxExecutions('');
         setShowConditions(false);
     };
 
@@ -614,6 +619,12 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         }
         setFSourcePurse(optVal(action.sourcePurseId) || '');
         setFTargetPurse(optVal(action.targetPurseId) || '');
+        setFHaltAfterExec(action.haltChoreAfterExecution || false);
+        const inputDec = getDecimals(inputStr);
+        const outputDec = action.outputToken?.length > 0 ? getDecimals(principalToStr(action.outputToken[0])) : 8;
+        setFMaxCumulativeInput(optVal(action.maxCumulativeInput) != null ? (Number(optVal(action.maxCumulativeInput)) / (10 ** inputDec)).toString() : '');
+        setFMaxCumulativeOutput(optVal(action.maxCumulativeOutput) != null ? (Number(optVal(action.maxCumulativeOutput)) / (10 ** outputDec)).toString() : '');
+        setFMaxExecutions(optVal(action.maxExecutions) != null ? Number(optVal(action.maxExecutions)).toString() : '');
         // Auto-expand conditions if any condition fields are set
         const hasConditions = optVal(action.minBalance) != null || optVal(action.maxBalance) != null ||
             optVal(action.minPrice) != null || optVal(action.maxPrice) != null ||
@@ -697,6 +708,10 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
             minFrequencySeconds: [],
             maxFrequencySeconds: [],
             tradeSizeDenominationToken: fTradeSizeDenom ? [Principal.fromText(fTradeSizeDenom)] : [],
+            haltChoreAfterExecution: fHaltAfterExec,
+            maxCumulativeInput: fMaxCumulativeInput ? [BigInt(Math.round(parseFloat(fMaxCumulativeInput) * (10 ** (fTradeSizeDenom ? getDecimals(fTradeSizeDenom) : getDecimals(fInputToken)))))] : [],
+            maxCumulativeOutput: fMaxCumulativeOutput ? [BigInt(Math.round(parseFloat(fMaxCumulativeOutput) * (10 ** (fOutputToken ? getDecimals(fOutputToken) : 8))))] : [],
+            maxExecutions: fMaxExecutions ? [BigInt(parseInt(fMaxExecutions))] : [],
         };
     };
 
@@ -1063,6 +1078,36 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                     )}
                 </div>
 
+                {/* Limits section */}
+                <div style={{ marginTop: '12px', borderTop: `1px solid ${theme.colors.border}`, paddingTop: '10px' }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: '500', color: accentColor, marginBottom: '8px' }}>Limits (optional)</div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', marginBottom: '10px' }}>
+                        <input type="checkbox" checked={fHaltAfterExec} onChange={e => setFHaltAfterExec(e.target.checked)} />
+                        <span style={{ fontSize: '0.8rem', color: theme.colors.primaryText }}>Halt chore after execution</span>
+                    </label>
+                    {fHaltAfterExec && (
+                        <div style={{ fontSize: '0.72rem', color: theme.colors.secondaryText, marginTop: '-6px', marginBottom: '8px', paddingLeft: '22px' }}>
+                            The chore will be stopped after this action executes successfully (e.g. stop-loss / stop-buy).
+                        </div>
+                    )}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px' }}>
+                        <div>
+                            <label style={labelStyle}>Max Cumulative Input{fInputToken ? ` (${getSymbol(fInputToken)})` : ''}</label>
+                            <input value={fMaxCumulativeInput} onChange={e => setFMaxCumulativeInput(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="e.g. 100 (budget)" />
+                        </div>
+                        {fActionType === ACTION_TYPE_TRADE && fOutputToken && (
+                            <div>
+                                <label style={labelStyle}>Max Cumulative Output{fOutputToken ? ` (${getSymbol(fOutputToken)})` : ''}</label>
+                                <input value={fMaxCumulativeOutput} onChange={e => setFMaxCumulativeOutput(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="e.g. 1000 (target)" />
+                            </div>
+                        )}
+                        <div>
+                            <label style={labelStyle}>Max Executions</label>
+                            <input value={fMaxExecutions} onChange={e => setFMaxExecutions(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" placeholder="e.g. 50" />
+                        </div>
+                    </div>
+                </div>
+
                 <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
                     <button onClick={handleSave} disabled={saving} style={{ ...buttonStyle, background: `linear-gradient(135deg, ${accentColor}, ${accentColor}cc)`, color: '#fff', border: 'none', opacity: saving ? 0.6 : 1 }}>
                         {isEditing ? <><FaSave style={{ marginRight: '4px', fontSize: '0.7rem' }} /> Save Changes</> : <><FaPlus style={{ marginRight: '4px', fontSize: '0.7rem' }} /> Add Action</>}
@@ -1194,6 +1239,36 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                             {action.lastExecutedAt?.length > 0 && (
                                                 <div><strong>Last run:</strong> {new Date(Number(action.lastExecutedAt[0]) / 1_000_000).toLocaleString()}</div>
                                             )}
+                                            {action.haltChoreAfterExecution && (
+                                                <div style={{ color: '#ef4444' }}><strong>Halt chore after execution</strong></div>
+                                            )}
+                                            {(() => {
+                                                const outDec = action.outputToken?.length > 0 ? getDecimals(action.outputToken[0]) : 8;
+                                                const outSym = action.outputToken?.length > 0 ? getSymbol(action.outputToken[0]) : '';
+                                                const cumIn = Number(action.cumulativeInputSpent || 0);
+                                                const cumOut = Number(action.cumulativeOutputReceived || 0);
+                                                const exCount = Number(action.executionCount || 0);
+                                                const maxIn = optVal(action.maxCumulativeInput);
+                                                const maxOut = optVal(action.maxCumulativeOutput);
+                                                const maxEx = optVal(action.maxExecutions);
+                                                const hasStats = maxIn != null || maxOut != null || maxEx != null || exCount > 0;
+                                                if (!hasStats) return null;
+                                                return <>
+                                                    {maxIn != null && <div><strong>Input budget:</strong> {formatTokenAmount(cumIn, inputDec)}/{formatTokenAmount(Number(maxIn), inputDec)} {inputSym}</div>}
+                                                    {maxOut != null && <div><strong>Output target:</strong> {formatTokenAmount(cumOut, outDec)}/{formatTokenAmount(Number(maxOut), outDec)} {outSym}</div>}
+                                                    {maxEx != null && <div><strong>Executions:</strong> {exCount}/{Number(maxEx)}</div>}
+                                                    {maxIn == null && maxOut == null && maxEx == null && exCount > 0 && <div><strong>Executions:</strong> {exCount}</div>}
+                                                    {exCount > 0 && (
+                                                        <div><button onClick={async () => {
+                                                            try {
+                                                                const bot = await getReadyBotActor();
+                                                                await bot.resetActionStats(instanceId, Number(action.id));
+                                                                loadActions();
+                                                            } catch (e) { setError(e.message); }
+                                                        }} style={{ ...secondaryButtonStyle, fontSize: '0.65rem', padding: '2px 6px' }}>Reset Stats</button></div>
+                                                    )}
+                                                </>;
+                                            })()}
                                         </div>
                                     )}
                                 </div>

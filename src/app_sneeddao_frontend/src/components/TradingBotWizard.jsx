@@ -357,6 +357,7 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
     const [inputMeta, setInputMeta] = useState(null);
     const [usePurse, setUsePurse] = useState(true);
     const [autoStart, setAutoStart] = useState(true);
+    const [budgetLimit, setBudgetLimit] = useState('');
     const [deploying, setDeploying] = useState(false);
     const [deployError, setDeployError] = useState('');
     const [deploySuccess, setDeploySuccess] = useState(false);
@@ -428,6 +429,9 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
                 maxSlippageBps: [Math.round(Number(maxSlippage) * 100)],
                 minFrequencySeconds: [], maxFrequencySeconds: [],
                 tradeSizeDenominationToken: [],
+                haltChoreAfterExecution: false,
+                maxCumulativeInput: budgetLimit && Number(budgetLimit) > 0 ? [BigInt(Math.floor(Number(budgetLimit) * Math.pow(10, inputDecimals)))] : [],
+                maxCumulativeOutput: [], maxExecutions: [],
             });
 
             setDeployStep('Setting chore interval...');
@@ -523,6 +527,14 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
                             The bot will swap <strong style={{ color: ACCENT }}>{tradeSize || '?'} {inputSymbol}</strong> for <strong style={{ color: ACCENT }}>{outputSymbol}</strong> every <strong>{intervalMinutes || '?'} minutes</strong>.
                         </p>
                         <RiskSettings maxSlippage={maxSlippage} onSlippageChange={setMaxSlippage} maxImpact={maxImpact} onImpactChange={setMaxImpact} theme={theme} />
+                        <div style={{ marginTop: '12px' }}>
+                            <AmountInput label={`Budget limit (${inputSymbol}, optional)`} value={budgetLimit} onChange={setBudgetLimit} theme={theme} placeholder="Stop after spending this much" />
+                            {budgetLimit && Number(budgetLimit) > 0 && (
+                                <p style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, margin: '4px 0 0' }}>
+                                    The chore will stop after spending a total of {budgetLimit} {inputSymbol}.
+                                </p>
+                            )}
+                        </div>
                         <div style={{ display: 'flex', gap: '10px', marginTop: '1.25rem', flexWrap: 'wrap' }}>
                             <button onClick={() => setStep(1)} style={btnSecondary(theme)}><FaArrowLeft size={11} /> Back</button>
                             <button onClick={() => setStep(3)} disabled={!canProceedStep2} style={btnPrimary(theme, canProceedStep2)}>
@@ -571,6 +583,7 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
                             <SummaryRow label="Trade size" value={`${tradeSize} ${inputSymbol}`} theme={theme} />
                             <SummaryRow label="Interval" value={`Every ${intervalMinutes} min`} theme={theme} />
                             {fundAmount && Number(fundAmount) > 0 && <SummaryRow label="Funding" value={`${fundAmount} ${inputSymbol}`} theme={theme} />}
+                            {budgetLimit && Number(budgetLimit) > 0 && <SummaryRow label="Budget limit" value={`${budgetLimit} ${inputSymbol}`} theme={theme} />}
                             <SummaryRow label="Purse" value={usePurse ? 'Isolated' : 'Shared (main)'} theme={theme} />
                             <SummaryRow label="Auto-start" value={autoStart ? 'Yes' : 'No'} theme={theme} />
                         </div>
@@ -690,6 +703,8 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                     maxSlippageBps: [Math.round(Number(stopLossMaxSlippage) * 100)],
                     minFrequencySeconds: [], maxFrequencySeconds: [],
                     tradeSizeDenominationToken: [],
+                    haltChoreAfterExecution: true,
+                    maxCumulativeInput: [], maxCumulativeOutput: [], maxExecutions: [],
                 });
             }
 
@@ -709,6 +724,8 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                 maxSlippageBps: [Math.round(Number(maxSlippage) * 100)],
                 minFrequencySeconds: [], maxFrequencySeconds: [],
                 tradeSizeDenominationToken: [],
+                haltChoreAfterExecution: false,
+                maxCumulativeInput: [], maxCumulativeOutput: [], maxExecutions: [],
             });
 
             setDeployStep('Adding sell-B range action...');
@@ -727,6 +744,8 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                 maxSlippageBps: [Math.round(Number(maxSlippage) * 100)],
                 minFrequencySeconds: [], maxFrequencySeconds: [],
                 tradeSizeDenominationToken: [],
+                haltChoreAfterExecution: false,
+                maxCumulativeInput: [], maxCumulativeOutput: [], maxExecutions: [],
             });
 
             setDeployStep('Setting chore interval...');

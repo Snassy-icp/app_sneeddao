@@ -2409,8 +2409,31 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     /// Execute a single trade action. Returns true if executed, false if skipped.
-    func executeTradeAction(action: T.ActionConfig, instanceId: Text): async* Bool {
+    func executeTradeAction(action: T.ActionConfig, instanceId: Text): async* (Bool, Nat, Nat) {
         let src = "chore:" # instanceId;
+
+        // Check cumulative limits (skip if already exhausted)
+        switch (action.maxCumulativeInput) {
+            case (?max) { if (action.cumulativeInputSpent >= max) {
+                logEngine.logDebug(src, "Action " # Nat.toText(action.id) # " skipped: cumulative input limit reached (" # Nat.toText(action.cumulativeInputSpent) # " >= " # Nat.toText(max) # ")", null, []);
+                return (false, 0, 0);
+            }};
+            case null {};
+        };
+        switch (action.maxCumulativeOutput) {
+            case (?max) { if (action.cumulativeOutputReceived >= max) {
+                logEngine.logDebug(src, "Action " # Nat.toText(action.id) # " skipped: cumulative output limit reached (" # Nat.toText(action.cumulativeOutputReceived) # " >= " # Nat.toText(max) # ")", null, []);
+                return (false, 0, 0);
+            }};
+            case null {};
+        };
+        switch (action.maxExecutions) {
+            case (?max) { if (action.executionCount >= max) {
+                logEngine.logDebug(src, "Action " # Nat.toText(action.id) # " skipped: execution limit reached (" # Nat.toText(action.executionCount) # " >= " # Nat.toText(max) # ")", null, []);
+                return (false, 0, 0);
+            }};
+            case null {};
+        };
 
         // Check frequency
         switch (action.minFrequencySeconds) {
@@ -2420,7 +2443,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         let elapsed = (Time.now() - lastTime) / 1_000_000_000;
                         if (elapsed < Int.abs(minFreq)) {
                             logEngine.logDebug(src, "Action " # Nat.toText(action.id) # " skipped: frequency limit (" # Nat.toText(Int.abs(elapsed)) # "s < " # Nat.toText(minFreq) # "s)", null, []);
-                            return false;
+                            return (false, 0, 0);
                         };
                     };
                     case null {};
@@ -2430,33 +2453,25 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
 
         switch (action.actionType) {
-            case (0) { // Trade
-                await* executeTradeSwap(action, instanceId)
-            };
-            case (1) { // Deposit
-                await* executeDeposit(action, instanceId)
-            };
-            case (2) { // Withdraw
-                await* executeWithdraw(action, instanceId)
-            };
-            case (3) { // Send
-                await* executeSend(action, instanceId)
-            };
+            case (0) { await* executeTradeSwap(action, instanceId) };
+            case (1) { await* executeDeposit(action, instanceId) };
+            case (2) { await* executeWithdraw(action, instanceId) };
+            case (3) { await* executeSend(action, instanceId) };
             case (_) {
                 logEngine.logError(src, "Unknown action type: " # Nat.toText(action.actionType), null, []);
-                false
+                (false, 0, 0)
             };
         }
     };
 
-    /// Execute a Trade action (action type 0).
-    func executeTradeSwap(action: T.ActionConfig, instanceId: Text): async* Bool {
+    /// Execute a Trade action (action type 0). Returns (executed, inputSpent, outputReceived).
+    func executeTradeSwap(action: T.ActionConfig, instanceId: Text): async* (Bool, Nat, Nat) {
         let src = "chore:" # instanceId;
         let outputToken = switch (action.outputToken) {
             case (?t) t;
             case null {
                 logEngine.logError(src, "Trade action " # Nat.toText(action.id) # " has no output token", null, []);
-                return false;
+                return (false, 0, 0);
             };
         };
 
@@ -2481,12 +2496,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         if (isTokenPausedOrFrozen(action.inputToken)) {
             logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: input token is paused/frozen globally", null, []);
             logSkip("Input token is paused/frozen", null, null);
-            return false;
+            return (false, 0, 0);
         };
         if (isTokenPausedOrFrozen(outputToken)) {
             logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: output token is paused/frozen globally", null, []);
             logSkip("Output token is paused/frozen", null, null);
-            return false;
+            return (false, 0, 0);
         };
 
         // Check input balance (optionally denominated in another token)
@@ -2500,7 +2515,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case null {
                         logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: no cached quote to convert balance to denomination token", null, []);
                         logSkip("No cached quote to convert balance to denomination token", null, null);
-                        return false;
+                        return (false, 0, 0);
                     };
                 };
             };
@@ -2510,7 +2525,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (?min) { if (balanceForComparison < min) {
                 logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: balance " # Nat.toText(balanceForComparison) # " < min " # Nat.toText(min), null, []);
                 logSkip("Balance " # Nat.toText(balanceForComparison) # " < min " # Nat.toText(min), null, null);
-                return false;
+                return (false, 0, 0);
             }};
             case null {};
         };
@@ -2518,7 +2533,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (?max) { if (balanceForComparison > max) {
                 logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: balance " # Nat.toText(balanceForComparison) # " > max " # Nat.toText(max), null, []);
                 logSkip("Balance " # Nat.toText(balanceForComparison) # " > max " # Nat.toText(max), null, null);
-                return false;
+                return (false, 0, 0);
             }};
             case null {};
         };
@@ -2532,7 +2547,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case null {
                         logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: no cached quote to convert trade size min from denomination token", null, []);
                         logSkip("No cached quote to convert trade size min from denomination token", null, null);
-                        return false;
+                        return (false, 0, 0);
                     };
                 };
                 let maxNative = switch (convertAmountViaCache(action.maxAmount, denomToken, action.inputToken)) {
@@ -2540,7 +2555,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case null {
                         logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: no cached quote to convert trade size max from denomination token", null, []);
                         logSkip("No cached quote to convert trade size max from denomination token", null, null);
-                        return false;
+                        return (false, 0, 0);
                     };
                 };
                 (minNative, maxNative)
@@ -2559,7 +2574,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         if (actualTradeSize < effectiveMinAmount) {
             logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: affordable amount " # Nat.toText(actualTradeSize) # " < min " # Nat.toText(effectiveMinAmount), null, []);
             logSkip("Affordable amount " # Nat.toText(actualTradeSize) # " < min " # Nat.toText(effectiveMinAmount), null, ?actualTradeSize);
-            return false;
+            return (false, 0, 0);
         };
 
         // Get quote — impact-aware selection when no preferred DEX
@@ -2604,7 +2619,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             let topQ = allQuotes[0];
                             logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: all " # Nat.toText(allQuotes.size()) # " DEX quotes exceed max impact " # Nat.toText(maxImpact) # " bps (best: DEX " # Nat.toText(topQ.dexId) # " at " # Nat.toText(topQ.priceImpactBps) # " bps)", null, []);
                             logSkip("All " # Nat.toText(allQuotes.size()) # " DEX quotes exceed max impact " # Nat.toText(maxImpact) # " bps (best: " # Nat.toText(topQ.priceImpactBps) # " bps)", ?topQ, ?actualTradeSize);
-                            return false;
+                            return (false, 0, 0);
                         };
                         null
                     };
@@ -2617,7 +2632,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case null {
                 logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: no quote available", null, []);
                 logSkip("No quote available from any DEX", null, ?actualTradeSize);
-                return false;
+                return (false, 0, 0);
             };
         };
 
@@ -2625,7 +2640,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         if (quote.priceImpactBps > maxImpact) {
             logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: price impact " # Nat.toText(quote.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps", null, []);
             logSkip("Price impact " # Nat.toText(quote.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps", ?quote, ?actualTradeSize);
-            return false;
+            return (false, 0, 0);
         };
 
         // Check price conditions.
@@ -2645,7 +2660,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                     case (?min) { if (currentPriceInDenom < min) {
                                         logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: denominated price " # Nat.toText(currentPriceInDenom) # " < min " # Nat.toText(min), null, []);
                                         logSkip("Price " # Nat.toText(currentPriceInDenom) # " < min " # Nat.toText(min), ?quote, ?actualTradeSize);
-                                        return false;
+                                        return (false, 0, 0);
                                     }};
                                     case null {};
                                 };
@@ -2653,7 +2668,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                     case (?max) { if (currentPriceInDenom > max) {
                                         logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: denominated price " # Nat.toText(currentPriceInDenom) # " > max " # Nat.toText(max), null, []);
                                         logSkip("Price " # Nat.toText(currentPriceInDenom) # " > max " # Nat.toText(max), ?quote, ?actualTradeSize);
-                                        return false;
+                                        return (false, 0, 0);
                                     }};
                                     case null {};
                                 };
@@ -2661,7 +2676,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             case null {
                                 logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: cannot convert output token price to denomination token (no direct or ICP-hop quote)", null, []);
                                 logSkip("Cannot convert output token price to denomination token", ?quote, ?actualTradeSize);
-                                return false;
+                                return (false, 0, 0);
                             };
                         };
                     };
@@ -2680,7 +2695,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             case (?min) { if (min * quote.spotPriceE8s > scale) {
                                 logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: price too low", null, []);
                                 logSkip("Price too low (below min price)", ?quote, ?actualTradeSize);
-                                return false;
+                                return (false, 0, 0);
                             }};
                             case null {};
                         };
@@ -2688,7 +2703,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             case (?max) { if (max * quote.spotPriceE8s < scale) {
                                 logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: price too high", null, []);
                                 logSkip("Price too high (above max price)", ?quote, ?actualTradeSize);
-                                return false;
+                                return (false, 0, 0);
                             }};
                             case null {};
                         };
@@ -2746,7 +2761,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     adjustChorePurseBalance(instanceId, action.inputToken, actualTradeSize, true);
                     adjustChorePurseBalance(instanceId, outputToken, netAmountOut, false);
                 };
-                true
+                (true, actualTradeSize, r.amountOut)
             };
             case (#Err(e)) {
                 logEngine.logError(src, "Trade " # Nat.toText(action.id) # " failed: " # e, null, [
@@ -2778,26 +2793,26 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 if (feeLost > 0 and isPurseEnabledForChore(instanceId)) {
                     adjustChorePurseBalance(instanceId, action.inputToken, feeLost, true);
                 };
-                false
+                (false, 0, 0)
             };
         };
     };
 
     /// Execute a Fund Purse action (action type 1) — pure bookkeeping, no on-chain transfer.
     /// Credits the target purse from the source purse (or main purse if sourcePurseId is null).
-    func executeDeposit(action: T.ActionConfig, instanceId: Text): async* Bool {
+    func executeDeposit(action: T.ActionConfig, instanceId: Text): async* (Bool, Nat, Nat) {
         let src = "chore:" # instanceId;
         let targetPurse = switch (action.targetPurseId) {
             case (?id) id;
             case null {
                 logEngine.logError(src, "Fund Purse action " # Nat.toText(action.id) # " has no target purse", null, []);
-                return false;
+                return (false, 0, 0);
             };
         };
 
         if (isTokenFrozen(action.inputToken)) {
             logEngine.logDebug(src, "Fund Purse " # Nat.toText(action.id) # " skipped: token is frozen globally", null, []);
-            return false;
+            return (false, 0, 0);
         };
 
         let onChain = await* getBalance(action.inputToken, null);
@@ -2814,12 +2829,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
 
         switch (action.minBalance) {
-            case (?min) { if (sourceBal < min) { return false } };
+            case (?min) { if (sourceBal < min) { return (false, 0, 0) } };
             case null {};
         };
 
         let amount = computeActionAmount(action, sourceBal, action.minAmount, Nat.min(action.maxAmount, sourceBal));
-        if (amount < action.minAmount or amount == 0) return false;
+        if (amount < action.minAmount or amount == 0) return (false, 0, 0);
 
         switch (action.sourcePurseId) {
             case (?spid) { adjustChorePurseBalance(spid, action.inputToken, amount, true) };
@@ -2846,34 +2861,34 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             txId = null;
             destinationOwner = null;
         });
-        true
+        (true, amount, 0)
     };
 
     /// Execute a Reclaim action (action type 2) — pure bookkeeping, no on-chain transfer.
     /// Debits the source purse and credits the main purse (or target purse).
-    func executeWithdraw(action: T.ActionConfig, instanceId: Text): async* Bool {
+    func executeWithdraw(action: T.ActionConfig, instanceId: Text): async* (Bool, Nat, Nat) {
         let src = "chore:" # instanceId;
         let sourcePurse = switch (action.sourcePurseId) {
             case (?id) id;
             case null {
                 logEngine.logError(src, "Reclaim action " # Nat.toText(action.id) # " has no source purse", null, []);
-                return false;
+                return (false, 0, 0);
             };
         };
 
         if (isTokenFrozen(action.inputToken)) {
             logEngine.logDebug(src, "Reclaim " # Nat.toText(action.id) # " skipped: token is frozen globally", null, []);
-            return false;
+            return (false, 0, 0);
         };
 
         let purseBal = getChorePurseBalance(sourcePurse, action.inputToken);
         switch (action.minBalance) {
-            case (?min) { if (purseBal < min) { return false } };
+            case (?min) { if (purseBal < min) { return (false, 0, 0) } };
             case null {};
         };
 
         let amount = computeActionAmount(action, purseBal, action.minAmount, Nat.min(action.maxAmount, purseBal));
-        if (amount < action.minAmount or amount == 0) return false;
+        if (amount < action.minAmount or amount == 0) return (false, 0, 0);
 
         adjustChorePurseBalance(sourcePurse, action.inputToken, amount, true);
         switch (action.targetPurseId) {
@@ -2900,24 +2915,24 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             txId = null;
             destinationOwner = null;
         });
-        true
+        (true, amount, 0)
     };
 
     /// Execute a Send action (action type 3) — on-chain transfer from main account.
     /// Debits source purse (if specified) or main purse.
-    func executeSend(action: T.ActionConfig, instanceId: Text): async* Bool {
+    func executeSend(action: T.ActionConfig, instanceId: Text): async* (Bool, Nat, Nat) {
         let src = "chore:" # instanceId;
         let destOwner = switch (action.destinationOwner) {
             case (?o) o;
             case null {
                 logEngine.logError(src, "Send action " # Nat.toText(action.id) # " has no destination", null, []);
-                return false;
+                return (false, 0, 0);
             };
         };
 
         if (isTokenFrozen(action.inputToken)) {
             logEngine.logDebug(src, "Send " # Nat.toText(action.id) # " skipped: token is frozen globally", null, []);
-            return false;
+            return (false, 0, 0);
         };
 
         let balance = await* getBalance(action.inputToken, null);
@@ -2934,7 +2949,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
 
         switch (action.minBalance) {
-            case (?min) { if (effectiveBal < min) { return false } };
+            case (?min) { if (effectiveBal < min) { return (false, 0, 0) } };
             case null {};
         };
 
@@ -2942,7 +2957,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         let cappedBal = Nat.min(effectiveBal, balance);
         let affordable = if (cappedBal > fee) { cappedBal - fee } else { 0 };
         let amount = computeActionAmount(action, effectiveBal, action.minAmount, Nat.min(action.maxAmount, affordable));
-        if (amount < action.minAmount or amount == 0) return false;
+        if (amount < action.minAmount or amount == 0) return (false, 0, 0);
 
         let result = await* transferTokens(
             action.inputToken,
@@ -2985,7 +3000,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 capitalDeployedIcpE8s -= icpVal;
                 capitalDeployedUsdE8s -= usdVal;
                 recordTokenOutflow(action.inputToken, amount);
-                true
+                (true, amount, 0)
             };
             case (#Err(e)) {
                 logEngine.logError(src, "Send " # Nat.toText(action.id) # " failed: " # debug_show(e), null, []);
@@ -3007,21 +3022,33 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     txId = null;
                     destinationOwner = ?destOwner;
                 });
-                false
+                (false, 0, 0)
             };
         };
     };
 
     // Update lastExecutedAt for an action in a list
-    func updateActionLastExecuted(instanceId: Text, actionId: Nat, isTradeChore: Bool) {
+    func updateActionStats(instanceId: Text, actionId: Nat, isTradeChore: Bool, inputSpent: Nat, outputReceived: Nat): { cumulativeInputSpent: Nat; cumulativeOutputReceived: Nat; executionCount: Nat } {
         let now = Time.now();
+        var newStats = { cumulativeInputSpent: Nat = 0; cumulativeOutputReceived: Nat = 0; executionCount: Nat = 0 };
         let actions = if (isTradeChore) { getTradeActionsForInstance(instanceId) }
                      else { getMoveFundsActionsForInstance(instanceId) };
         let updated = Array.map<T.ActionConfig, T.ActionConfig>(actions, func(a) {
-            if (a.id == actionId) { { a with lastExecutedAt = ?now } } else { a }
+            if (a.id == actionId) {
+                let s = {
+                    a with
+                    lastExecutedAt = ?now;
+                    cumulativeInputSpent = a.cumulativeInputSpent + inputSpent;
+                    cumulativeOutputReceived = a.cumulativeOutputReceived + outputReceived;
+                    executionCount = a.executionCount + 1;
+                };
+                newStats := { cumulativeInputSpent = s.cumulativeInputSpent; cumulativeOutputReceived = s.cumulativeOutputReceived; executionCount = s.executionCount };
+                s
+            } else { a }
         });
         if (isTradeChore) { setTradeActionsForInstance(instanceId, updated) }
         else { setMoveFundsActionsForInstance(instanceId, updated) };
+        newStats
     };
 
     // ============================================
@@ -4469,9 +4496,36 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     func _trade_makeTaskFn(action: T.ActionConfig, instanceId: Text, isTradeChore: Bool): () -> async BotChoreTypes.TaskAction {
         func(): async BotChoreTypes.TaskAction {
             try {
-                let executed = await* executeTradeAction(action, instanceId);
+                let (executed, inputSpent, outputReceived) = await* executeTradeAction(action, instanceId);
                 if (executed) {
-                    updateActionLastExecuted(instanceId, action.id, isTradeChore);
+                    let stats = updateActionStats(instanceId, action.id, isTradeChore, inputSpent, outputReceived);
+                    let src = "chore:" # instanceId;
+                    if (action.haltChoreAfterExecution) {
+                        logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " executed — halting chore (haltChoreAfterExecution)", null, []);
+                        choreEngine.stop(instanceId);
+                    } else {
+                        switch (action.maxCumulativeInput) {
+                            case (?max) { if (stats.cumulativeInputSpent >= max) {
+                                logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " cumulative input limit reached (" # Nat.toText(stats.cumulativeInputSpent) # "/" # Nat.toText(max) # ") — halting chore", null, []);
+                                choreEngine.stop(instanceId);
+                            }};
+                            case null {};
+                        };
+                        switch (action.maxCumulativeOutput) {
+                            case (?max) { if (stats.cumulativeOutputReceived >= max) {
+                                logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " cumulative output limit reached (" # Nat.toText(stats.cumulativeOutputReceived) # "/" # Nat.toText(max) # ") — halting chore", null, []);
+                                choreEngine.stop(instanceId);
+                            }};
+                            case null {};
+                        };
+                        switch (action.maxExecutions) {
+                            case (?max) { if (stats.executionCount >= max) {
+                                logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " execution limit reached (" # Nat.toText(stats.executionCount) # "/" # Nat.toText(max) # ") — halting chore", null, []);
+                                choreEngine.stop(instanceId);
+                            }};
+                            case null {};
+                        };
+                    };
                 };
                 #Done
             } catch (e) {
@@ -5845,7 +5899,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             minFrequencySeconds = config.minFrequencySeconds;
             maxFrequencySeconds = config.maxFrequencySeconds;
             tradeSizeDenominationToken = config.tradeSizeDenominationToken;
+            haltChoreAfterExecution = config.haltChoreAfterExecution;
+            maxCumulativeInput = config.maxCumulativeInput;
+            maxCumulativeOutput = config.maxCumulativeOutput;
+            maxExecutions = config.maxExecutions;
             lastExecutedAt = null;
+            cumulativeInputSpent = 0;
+            cumulativeOutputReceived = 0;
+            executionCount = 0;
         };
         setTradeActionsForInstance(instanceId, Array.append(getTradeActionsForInstance(instanceId), [action]));
         setTradeNextId(instanceId, nextId + 1);
@@ -5886,7 +5947,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     minFrequencySeconds = config.minFrequencySeconds;
                     maxFrequencySeconds = config.maxFrequencySeconds;
                     tradeSizeDenominationToken = config.tradeSizeDenominationToken;
-                    lastExecutedAt = a.lastExecutedAt; // Preserve runtime state
+                    haltChoreAfterExecution = config.haltChoreAfterExecution;
+                    maxCumulativeInput = config.maxCumulativeInput;
+                    maxCumulativeOutput = config.maxCumulativeOutput;
+                    maxExecutions = config.maxExecutions;
+                    lastExecutedAt = a.lastExecutedAt;
+                    cumulativeInputSpent = a.cumulativeInputSpent;
+                    cumulativeOutputReceived = a.cumulativeOutputReceived;
+                    executionCount = a.executionCount;
                 }
             } else { a }
         });
@@ -5965,7 +6033,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             minFrequencySeconds = config.minFrequencySeconds;
             maxFrequencySeconds = config.maxFrequencySeconds;
             tradeSizeDenominationToken = null;
+            haltChoreAfterExecution = config.haltChoreAfterExecution;
+            maxCumulativeInput = config.maxCumulativeInput;
+            maxCumulativeOutput = config.maxCumulativeOutput;
+            maxExecutions = config.maxExecutions;
             lastExecutedAt = null;
+            cumulativeInputSpent = 0;
+            cumulativeOutputReceived = 0;
+            executionCount = 0;
         };
         setMoveFundsActionsForInstance(instanceId, Array.append(getMoveFundsActionsForInstance(instanceId), [action]));
         setMoveFundsNextId(instanceId, nextId + 1);
@@ -5998,6 +6073,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     balanceDenominationToken = config.balanceDenominationToken;
                     minFrequencySeconds = config.minFrequencySeconds;
                     maxFrequencySeconds = config.maxFrequencySeconds;
+                    haltChoreAfterExecution = config.haltChoreAfterExecution;
+                    maxCumulativeInput = config.maxCumulativeInput;
+                    maxCumulativeOutput = config.maxCumulativeOutput;
+                    maxExecutions = config.maxExecutions;
                 }
             } else { a }
         });
@@ -6013,6 +6092,29 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             setMoveFundsActionsForInstance(instanceId, filtered);
             true
         } else { false }
+    };
+
+    public shared (msg) func resetActionStats(instanceId: Text, actionId: Nat): async Bool {
+        assertPermission(msg.caller, T.TradingPermission.ManageTrades);
+        var found = false;
+        let tradeActions = getTradeActionsForInstance(instanceId);
+        let updatedTrade = Array.map<T.ActionConfig, T.ActionConfig>(tradeActions, func(a) {
+            if (a.id == actionId) {
+                found := true;
+                { a with cumulativeInputSpent = 0; cumulativeOutputReceived = 0; executionCount = 0 }
+            } else { a }
+        });
+        if (found) {
+            setTradeActionsForInstance(instanceId, updatedTrade);
+        } else {
+            let mfActions = getMoveFundsActionsForInstance(instanceId);
+            let updatedMf = Array.map<T.ActionConfig, T.ActionConfig>(mfActions, func(a) {
+                if (a.id == actionId) { found := true; { a with cumulativeInputSpent = 0; cumulativeOutputReceived = 0; executionCount = 0 } } else { a }
+            });
+            if (found) { setMoveFundsActionsForInstance(instanceId, updatedMf) };
+        };
+        if (found) { logEngine.logInfo("api", "Reset stats for action " # Nat.toText(actionId) # " in " # instanceId, ?msg.caller, []) };
+        found
     };
 
     // ============================================

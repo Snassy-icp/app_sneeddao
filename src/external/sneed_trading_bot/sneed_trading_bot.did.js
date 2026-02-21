@@ -109,7 +109,14 @@ export const idlFactory = ({ IDL }) => {
         minFrequencySeconds: IDL.Opt(IDL.Nat),
         maxFrequencySeconds: IDL.Opt(IDL.Nat),
         tradeSizeDenominationToken: IDL.Opt(IDL.Principal),
+        haltChoreAfterExecution: IDL.Bool,
+        maxCumulativeInput: IDL.Opt(IDL.Nat),
+        maxCumulativeOutput: IDL.Opt(IDL.Nat),
+        maxExecutions: IDL.Opt(IDL.Nat),
         lastExecutedAt: IDL.Opt(IDL.Int),
+        cumulativeInputSpent: IDL.Nat,
+        cumulativeOutputReceived: IDL.Nat,
+        executionCount: IDL.Nat,
     });
 
     const ActionConfigInput = IDL.Record({
@@ -137,6 +144,10 @@ export const idlFactory = ({ IDL }) => {
         minFrequencySeconds: IDL.Opt(IDL.Nat),
         maxFrequencySeconds: IDL.Opt(IDL.Nat),
         tradeSizeDenominationToken: IDL.Opt(IDL.Principal),
+        haltChoreAfterExecution: IDL.Bool,
+        maxCumulativeInput: IDL.Opt(IDL.Nat),
+        maxCumulativeOutput: IDL.Opt(IDL.Nat),
+        maxExecutions: IDL.Opt(IDL.Nat),
     });
 
     // ==========================================
@@ -697,6 +708,7 @@ export const idlFactory = ({ IDL }) => {
         updateTradeAction: IDL.Func([IDL.Text, IDL.Nat, ActionConfigInput], [IDL.Bool], []),
         removeTradeAction: IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
         reorderTradeActions: IDL.Func([IDL.Text, IDL.Vec(IDL.Nat)], [IDL.Bool], []),
+        resetActionStats: IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
 
         // Move Funds Actions
         getMoveFundsActions: IDL.Func([IDL.Text], [IDL.Vec(ActionConfig)], ['query']),

@@ -373,8 +373,17 @@ module {
         // Trade size denomination (Trade only)
         tradeSizeDenominationToken: ?Principal;
 
+        // Post-execution behavior
+        haltChoreAfterExecution: Bool;   // If true, stop the chore after this action executes
+        maxCumulativeInput: ?Nat;        // Cumulative input budget; chore stops when reached
+        maxCumulativeOutput: ?Nat;       // Cumulative output budget; chore stops when reached
+        maxExecutions: ?Nat;             // Execution count cap; chore stops when reached
+
         // Runtime state
         lastExecutedAt: ?Int;
+        cumulativeInputSpent: Nat;
+        cumulativeOutputReceived: Nat;
+        executionCount: Nat;
     };
 
     /// Input type for creating/updating actions (no id or lastExecutedAt)
@@ -403,6 +412,10 @@ module {
         minFrequencySeconds: ?Nat;
         maxFrequencySeconds: ?Nat;
         tradeSizeDenominationToken: ?Principal;
+        haltChoreAfterExecution: Bool;
+        maxCumulativeInput: ?Nat;
+        maxCumulativeOutput: ?Nat;
+        maxExecutions: ?Nat;
     };
 
     // ============================================
