@@ -32,6 +32,7 @@ import BotIcon from '../components/BotIcon';
 import PrincipalInput from '../components/PrincipalInput';
 import TradingBotWizard, { WIZARD_SVG_URL } from '../components/TradingBotWizard';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
+import StatusLamp, { getChoreSummaryLamp, getSchedulerLampState, getConductorLampState, getTaskLampState, LAMP_COLORS } from '../components/ChoreStatusLamp';
 import priceService from '../services/PriceService';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -6790,9 +6791,144 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
 }
 
 // ============================================
+// Chores Overview Panel — bird's-eye view of all chore instances
+// ============================================
+const CHORE_TYPE_ICONS = { trade: '📈', rebalance: '⚖️', 'move-funds': '💸', 'distribute-funds': '📤', snapshot: '📊' };
+const CHORE_TYPE_LABELS_MAP = { trade: 'Trade', rebalance: 'Rebalance', 'move-funds': 'Move Funds', 'distribute-funds': 'Distribute', snapshot: 'Snapshot' };
+
+function ChoresOverviewPanel({ choreStatuses, cbEvents, theme, accentColor, onNavigateToChore }) {
+    if (!choreStatuses || choreStatuses.length === 0) {
+        return <div style={{ textAlign: 'center', padding: '24px', color: theme.colors.mutedText, fontSize: '0.85rem' }}>No chore instances found.</div>;
+    }
+
+    const fmtNextRun = (chore) => {
+        if (chore.nextScheduledRunAt?.length > 0) {
+            const ms = Number(chore.nextScheduledRunAt[0]) / 1_000_000;
+            if (ms > 0) {
+                const diff = ms - Date.now();
+                if (diff > 0 && diff < 86400000) {
+                    const min = Math.floor(diff / 60000);
+                    const sec = Math.floor((diff % 60000) / 1000);
+                    return min > 0 ? `${min}m ${sec}s` : `${sec}s`;
+                }
+                return new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            }
+        }
+        return '—';
+    };
+
+    const fmtLastRun = (chore) => {
+        if (chore.lastCompletedRunAt?.length > 0) {
+            const ms = Number(chore.lastCompletedRunAt[0]) / 1_000_000;
+            if (ms > 0) {
+                const ago = Date.now() - ms;
+                if (ago < 60000) return `${Math.floor(ago / 1000)}s ago`;
+                if (ago < 3600000) return `${Math.floor(ago / 60000)}m ago`;
+                if (ago < 86400000) return `${Math.floor(ago / 3600000)}h ago`;
+                return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            }
+        }
+        return '—';
+    };
+
+    const fmtInterval = (chore) => {
+        const s = Number(chore.intervalSeconds);
+        if (!s || s <= 0) return '—';
+        if (s < 60) return `${s}s`;
+        if (s < 3600) return `${Math.floor(s / 60)}m`;
+        if (s < 86400) return `${(s / 3600).toFixed(1)}h`;
+        return `${(s / 86400).toFixed(1)}d`;
+    };
+
+    const stateLabel = (chore) => {
+        if (!chore.enabled) return 'Stopped';
+        if (chore.paused) return 'Paused';
+        if (chore.stopRequested) return 'Stopping';
+        if (!('Idle' in chore.conductorStatus)) return 'Running';
+        if ('Scheduled' in chore.schedulerStatus) return 'Scheduled';
+        return 'Idle';
+    };
+
+    const byType = {};
+    for (const c of choreStatuses) {
+        const tid = c.choreTypeId || c.choreId;
+        if (!byType[tid]) byType[tid] = [];
+        byType[tid].push(c);
+    }
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {Object.entries(byType).map(([typeId, chores]) => (
+                <div key={typeId}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: '600', color: theme.colors.secondaryText, textTransform: 'uppercase', letterSpacing: '0.04em', padding: '6px 0 4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>{CHORE_TYPE_ICONS[typeId] || '⚙️'}</span>
+                        {CHORE_TYPE_LABELS_MAP[typeId] || typeId}
+                        <span style={{ fontWeight: '400', opacity: 0.6 }}>({chores.length})</span>
+                    </div>
+                    {chores.map(chore => {
+                        const summaryLamp = getChoreSummaryLamp(chore, cbEvents);
+                        const sLamp = getSchedulerLampState(chore, cbEvents);
+                        const cLamp = getConductorLampState(chore);
+                        const tLamp = getTaskLampState(chore);
+                        const state = stateLabel(chore);
+                        const isRunning = !('Idle' in chore.conductorStatus);
+                        const label = chore.instanceLabel || chore.choreName || chore.choreId;
+
+                        return (
+                            <div key={chore.choreId} onClick={() => onNavigateToChore && onNavigateToChore(typeId, chore.choreId)}
+                                style={{
+                                    padding: '10px 12px', borderRadius: '8px', cursor: 'pointer',
+                                    border: `1px solid ${theme.colors.border}`, background: theme.colors.primaryBg,
+                                    marginBottom: '4px', transition: 'border-color 0.15s',
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.borderColor = accentColor + '60'}
+                                onMouseLeave={e => e.currentTarget.style.borderColor = theme.colors.border}>
+                                {/* Top row: lamp, name, state badge */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                                    <StatusLamp state={summaryLamp} size={10} label={sLamp.label} />
+                                    <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.primaryText, flex: 1 }}>{label}</span>
+                                    <span style={{
+                                        fontSize: '0.68rem', fontWeight: '600', padding: '2px 8px', borderRadius: '4px',
+                                        background: isRunning ? '#22c55e18' : chore.enabled ? `${accentColor}12` : `${theme.colors.border}40`,
+                                        color: isRunning ? '#22c55e' : chore.enabled ? accentColor : theme.colors.mutedText,
+                                    }}>{state}</span>
+                                </div>
+                                {/* Detail row: lamps + timing */}
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '0.72rem', color: theme.colors.secondaryText }}>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }} title={sLamp.label}>
+                                        <StatusLamp state={sLamp.state} size={6} /> Sched
+                                    </span>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }} title={cLamp.label}>
+                                        <StatusLamp state={cLamp.state} size={6} /> Cond
+                                    </span>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }} title={tLamp.label}>
+                                        <StatusLamp state={tLamp.state} size={6} /> Task
+                                    </span>
+                                    <span style={{ marginLeft: 'auto', display: 'flex', gap: '12px' }}>
+                                        <span title="Interval">⏱ {fmtInterval(chore)}</span>
+                                        <span title="Next run">⏭ {fmtNextRun(chore)}</span>
+                                        <span title="Last run">✓ {fmtLastRun(chore)}</span>
+                                    </span>
+                                </div>
+                                {/* Runs count */}
+                                <div style={{ display: 'flex', gap: '12px', fontSize: '0.68rem', color: theme.colors.mutedText, marginTop: '4px' }}>
+                                    <span>Runs: {Number(chore.totalRunCount || 0)}</span>
+                                    {Number(chore.failedRunCount || 0) > 0 && <span style={{ color: '#ef4444' }}>Failed: {Number(chore.failedRunCount)}</span>}
+                                    {chore.currentTaskId?.[0] && <span style={{ color: accentColor }}>Task: {chore.currentTaskId[0]}</span>}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            ))}
+        </div>
+    );
+}
+
+// ============================================
 // Trading Bot Logs Section (combines trade log, portfolio snapshots, logging settings)
 // ============================================
-function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, identity }) {
+function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, identity, botPanelRef, cbEvents }) {
     const [activeTab, setActiveTab] = useState('wallet');
     const [choreStatuses, setChoreStatuses] = useState([]);
     const agentRef = useRef(null);
@@ -6824,6 +6960,13 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
         })();
     }, [getReadyBotActor]);
 
+    const handleNavigateToChore = useCallback((choreTypeId, choreInstanceId) => {
+        if (botPanelRef?.current?.navigateToChore) {
+            botPanelRef.current.navigateToChore(choreTypeId, choreInstanceId);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    }, [botPanelRef]);
+
     const tabStyle = (active) => ({
         padding: '6px 16px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: '500',
         borderBottom: `2px solid ${active ? accentColor : 'transparent'}`,
@@ -6835,6 +6978,9 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
         <div style={{ marginTop: '16px' }}>
             {/* Tab bar */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '12px', borderBottom: `1px solid ${theme.colors.border}`, paddingBottom: '0' }}>
+                <button onClick={() => setActiveTab('chores')} style={tabStyle(activeTab === 'chores')}>
+                    <FaRobot style={{ marginRight: '4px', fontSize: '0.75rem' }} />Chores
+                </button>
                 <button onClick={() => setActiveTab('wallet')} style={tabStyle(activeTab === 'wallet')}>
                     <FaWallet style={{ marginRight: '4px', fontSize: '0.75rem' }} />Wallet
                 </button>
@@ -6850,6 +6996,7 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
                 </button>
             </div>
 
+            {activeTab === 'chores' && <ChoresOverviewPanel choreStatuses={choreStatuses} cbEvents={cbEvents} theme={theme} accentColor={accentColor} onNavigateToChore={handleNavigateToChore} />}
             {activeTab === 'wallet' && <WalletPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} canisterId={canisterId} choreStatuses={choreStatuses} />}
             {activeTab === 'performance' && <PerformancePanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
             {activeTab === 'trade' && <TradeLogViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
@@ -10157,6 +10304,8 @@ export default function TradingBot() {
                             theme={theme}
                             accentColor={ACCENT}
                             identity={identity}
+                            botPanelRef={botPanelRef}
+                            cbEvents={cbEvents}
                         />
                     </>
                 )}
