@@ -5840,18 +5840,18 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 let depResult = await pool.deposit({ token = sorted0Text; amount = subBal0; fee = fee0 });
                 switch (depResult) {
                     case (#ok(_)) { logEngine.logInfo(src, "Deposited " # Nat.toText(subBal0) # " of token0 into pool", ?msg.caller, []) };
-                    case (#err(e)) { logEngine.logWarn(src, "Deposit token0 failed: " # T.icpSwapErrorToText(e), ?msg.caller, []) };
+                    case (#err(e)) { logEngine.logWarning(src, "Deposit token0 failed: " # T.icpSwapErrorToText(e), ?msg.caller, []) };
                 };
-            } catch (e) { logEngine.logWarn(src, "Deposit token0 exception: " # Error.message(e), ?msg.caller, []) };
+            } catch (e) { logEngine.logWarning(src, "Deposit token0 exception: " # Error.message(e), ?msg.caller, []) };
         };
         if (subBal1 > fee1) {
             try {
                 let depResult = await pool.deposit({ token = sorted1Text; amount = subBal1; fee = fee1 });
                 switch (depResult) {
                     case (#ok(_)) { logEngine.logInfo(src, "Deposited " # Nat.toText(subBal1) # " of token1 into pool", ?msg.caller, []) };
-                    case (#err(e)) { logEngine.logWarn(src, "Deposit token1 failed: " # T.icpSwapErrorToText(e), ?msg.caller, []) };
+                    case (#err(e)) { logEngine.logWarning(src, "Deposit token1 failed: " # T.icpSwapErrorToText(e), ?msg.caller, []) };
                 };
-            } catch (e) { logEngine.logWarn(src, "Deposit token1 exception: " # Error.message(e), ?msg.caller, []) };
+            } catch (e) { logEngine.logWarning(src, "Deposit token1 exception: " # Error.message(e), ?msg.caller, []) };
         };
 
         // Get unused balance (now includes anything we just deposited)
@@ -5874,10 +5874,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         logEngine.logInfo(src, "Recovered " # Nat.toText(amt) # " of " # sorted0Text, ?msg.caller, []);
                     };
                     case (#err(e)) {
-                        logEngine.logWarn(src, "Withdraw token0 failed: " # T.icpSwapErrorToText(e), ?msg.caller, []);
+                        logEngine.logWarning(src, "Withdraw token0 failed: " # T.icpSwapErrorToText(e), ?msg.caller, []);
                     };
                 };
-            } catch (e) { logEngine.logWarn(src, "Withdraw token0 exception: " # Error.message(e), ?msg.caller, []) };
+            } catch (e) { logEngine.logWarning(src, "Withdraw token0 exception: " # Error.message(e), ?msg.caller, []) };
         };
 
         // Withdraw token1
@@ -5890,10 +5890,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         logEngine.logInfo(src, "Recovered " # Nat.toText(amt) # " of " # sorted1Text, ?msg.caller, []);
                     };
                     case (#err(e)) {
-                        logEngine.logWarn(src, "Withdraw token1 failed: " # T.icpSwapErrorToText(e), ?msg.caller, []);
+                        logEngine.logWarning(src, "Withdraw token1 failed: " # T.icpSwapErrorToText(e), ?msg.caller, []);
                     };
                 };
-            } catch (e) { logEngine.logWarn(src, "Withdraw token1 exception: " # Error.message(e), ?msg.caller, []) };
+            } catch (e) { logEngine.logWarning(src, "Withdraw token1 exception: " # Error.message(e), ?msg.caller, []) };
         };
 
         if (recovered0 == 0 and recovered1 == 0 and bal0 == 0 and bal1 == 0) {
