@@ -8939,6 +8939,234 @@ function TradeFallbackPanel({ instanceId, getReadyBotActor, theme, accentColor, 
 }
 
 // ============================================
+// Per-chore collapsible log panel (Activity + Trade tabs)
+// ============================================
+const LOG_LEVEL_PALETTE = { Error: '#ef4444', Warning: '#f59e0b', Info: '#6366f1', Debug: '#8b5cf6', Trace: '#94a3b8' };
+
+function ChoreLogPanel({ instanceId, getReadyBotActor, theme, accentColor }) {
+    const { identity } = useAuth();
+    const [expanded, setExpanded] = useState(false);
+    const [tab, setTab] = useState('activity');
+    const [activityEntries, setActivityEntries] = useState([]);
+    const [tradeEntries, setTradeEntries] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [hasMore, setHasMore] = useState({ activity: false, trade: false });
+    const [pageSize] = useState(25);
+    const loadedRef = useRef({ activity: false, trade: false });
+
+    const optVal = (arr) => arr?.length > 0 ? arr[0] : null;
+
+    const allTokenIds = React.useMemo(() => {
+        const ids = new Set();
+        for (const e of tradeEntries) {
+            ids.add(typeof e.inputToken === 'string' ? e.inputToken : e.inputToken?.toText?.() || String(e.inputToken));
+            if (e.outputToken?.length > 0) ids.add(typeof e.outputToken[0] === 'string' ? e.outputToken[0] : e.outputToken[0]?.toText?.() || String(e.outputToken[0]));
+        }
+        return [...ids];
+    }, [tradeEntries]);
+    const tokenMeta = useTokenMetadata(allTokenIds, identity);
+    const toStr = (p) => typeof p === 'string' ? p : p?.toText?.() || String(p);
+    const getSym = (p) => { const k = toStr(p); return tokenMeta[k]?.symbol || shortPrincipal(k); };
+    const getDec = (p) => { const k = toStr(p); return tokenMeta[k]?.decimals ?? 8; };
+
+    const activityLimitRef = useRef(pageSize);
+
+    const loadActivity = useCallback(async (more) => {
+        setLoading(true);
+        setError('');
+        try {
+            const bot = await getReadyBotActor();
+            if (!bot) return;
+            if (more) activityLimitRef.current += pageSize;
+            else activityLimitRef.current = pageSize;
+            const filter = {
+                minLevel: [], source: ['chore:' + instanceId], caller: [],
+                fromTime: [], toTime: [], startId: [],
+                limit: [BigInt(activityLimitRef.current)],
+            };
+            const result = await bot.getLogs(filter);
+            setActivityEntries(result.entries || []);
+            setHasMore(h => ({ ...h, activity: result.hasMore }));
+            loadedRef.current.activity = true;
+        } catch (e) { setError(e.message || 'Failed to load activity log'); }
+        finally { setLoading(false); }
+    }, [getReadyBotActor, instanceId, pageSize]);
+
+    const loadTrades = useCallback(async (offset) => {
+        setLoading(true);
+        setError('');
+        try {
+            const bot = await getReadyBotActor();
+            if (!bot) return;
+            const q = {
+                startId: [], limit: [pageSize], offset: [offset || 0],
+                choreId: [instanceId], choreTypeId: [], actionType: [],
+                inputToken: [], outputToken: [], status: [],
+                fromTime: [], toTime: [],
+            };
+            const result = await bot.getTradeLog(q);
+            const entries = result.entries || [];
+            setTradeEntries(prev => offset > 0 ? [...prev, ...entries] : entries);
+            setHasMore(h => ({ ...h, trade: entries.length >= pageSize }));
+            loadedRef.current.trade = true;
+        } catch (e) { setError(e.message || 'Failed to load trade log'); }
+        finally { setLoading(false); }
+    }, [getReadyBotActor, instanceId, pageSize]);
+
+    useEffect(() => {
+        if (!expanded) return;
+        if (tab === 'activity' && !loadedRef.current.activity) loadActivity();
+        if (tab === 'trade' && !loadedRef.current.trade) loadTrades(0);
+    }, [expanded, tab]);
+
+    const handleRefresh = () => {
+        loadedRef.current[tab] = false;
+        if (tab === 'activity') { setActivityEntries([]); loadActivity(); }
+        else { setTradeEntries([]); loadTrades(0); }
+    };
+
+    const borderColor = theme.colors.border;
+
+    return (
+        <div style={{ marginTop: '10px', borderRadius: '10px', border: `1px solid ${borderColor}`, overflow: 'hidden' }}>
+            <button onClick={() => setExpanded(e => !e)} style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '10px 14px', background: theme.colors.primaryBg, border: 'none', cursor: 'pointer',
+                color: theme.colors.primaryText, fontSize: '0.82rem', fontWeight: '600',
+            }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FaChartLine size={12} color={accentColor} /> Chore Logs
+                </span>
+                {expanded ? <FaChevronUp size={10} /> : <FaChevronDown size={10} />}
+            </button>
+
+            {expanded && (
+                <div style={{ padding: '0 12px 12px', background: theme.colors.primaryBg }}>
+                    {/* Tabs + refresh */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '10px', borderBottom: `1px solid ${borderColor}`, paddingBottom: '8px' }}>
+                        {['activity', 'trade'].map(t => (
+                            <button key={t} onClick={() => setTab(t)} style={{
+                                padding: '4px 14px', borderRadius: '6px 6px 0 0', border: 'none', cursor: 'pointer',
+                                fontWeight: tab === t ? '600' : '400', fontSize: '0.78rem',
+                                color: tab === t ? accentColor : theme.colors.secondaryText,
+                                background: tab === t ? `${accentColor}12` : 'transparent',
+                                borderBottom: tab === t ? `2px solid ${accentColor}` : '2px solid transparent',
+                            }}>{t === 'activity' ? 'Activity Log' : 'Trade Log'}</button>
+                        ))}
+                        <button onClick={handleRefresh} disabled={loading} style={{
+                            marginLeft: 'auto', background: 'none', border: 'none', cursor: loading ? 'default' : 'pointer',
+                            color: accentColor, padding: '2px', display: 'flex', alignItems: 'center', opacity: loading ? 0.5 : 1,
+                        }} title="Refresh"><FaSyncAlt style={{ fontSize: '0.7rem', animation: loading ? 'spin 1s linear infinite' : 'none' }} /></button>
+                    </div>
+
+                    {error && <div style={{ padding: '6px 10px', background: '#ef444415', borderRadius: '6px', color: '#ef4444', fontSize: '0.75rem', marginBottom: '8px' }}>{error}</div>}
+
+                    {loading && (activityEntries.length === 0 && tradeEntries.length === 0) ? (
+                        <div style={{ textAlign: 'center', padding: '16px', color: theme.colors.secondaryText, fontSize: '0.8rem' }}>Loading...</div>
+                    ) : tab === 'activity' ? (
+                        /* ===== Activity Log Tab ===== */
+                        activityEntries.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '16px', color: theme.colors.mutedText, fontSize: '0.8rem' }}>No activity log entries for this chore.</div>
+                        ) : (
+                            <>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', maxHeight: '400px', overflowY: 'auto' }}>
+                                    {activityEntries.slice().reverse().map(entry => {
+                                        const levelKey = Object.keys(entry.level)[0];
+                                        const levelColor = LOG_LEVEL_PALETTE[levelKey] || '#6b7280';
+                                        const ts = new Date(Number(entry.timestamp) / 1_000_000);
+                                        const timeStr = ts.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                                        const dateStr = ts.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                                        return (
+                                            <div key={Number(entry.id)} style={{
+                                                display: 'flex', gap: '8px', padding: '4px 6px', borderRadius: '4px',
+                                                fontSize: '0.72rem', alignItems: 'flex-start',
+                                                background: levelKey === 'Error' ? '#ef444408' : levelKey === 'Warning' ? '#f59e0b08' : 'transparent',
+                                            }}>
+                                                <span style={{ color: levelColor, fontWeight: '700', fontSize: '0.65rem', minWidth: '14px', textAlign: 'center', marginTop: '1px' }}>
+                                                    {levelKey === 'Error' ? '✗' : levelKey === 'Warning' ? '!' : levelKey === 'Info' ? 'ℹ' : '·'}
+                                                </span>
+                                                <span style={{ color: theme.colors.mutedText, whiteSpace: 'nowrap', fontSize: '0.68rem' }}>{dateStr} {timeStr}</span>
+                                                <span style={{ color: theme.colors.primaryText, flex: 1, wordBreak: 'break-word', lineHeight: '1.4' }}>{entry.message}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                {hasMore.activity && (
+                                    <button onClick={() => loadActivity(true)} disabled={loading} style={{
+                                        display: 'block', margin: '8px auto 0', padding: '4px 16px', borderRadius: '6px',
+                                        border: `1px solid ${borderColor}`, background: 'transparent', color: theme.colors.secondaryText,
+                                        fontSize: '0.75rem', cursor: 'pointer',
+                                    }}>Load older</button>
+                                )}
+                            </>
+                        )
+                    ) : (
+                        /* ===== Trade Log Tab ===== */
+                        tradeEntries.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '16px', color: theme.colors.mutedText, fontSize: '0.8rem' }}>No trade log entries for this chore.</div>
+                        ) : (
+                            <>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '400px', overflowY: 'auto' }}>
+                                    {tradeEntries.map(e => {
+                                        const statusKey = Object.keys(e.status || {})[0] || 'Failed';
+                                        const statusColor = TRADE_STATUS_COLORS[statusKey] || '#6b7280';
+                                        const inputDec = getDec(e.inputToken);
+                                        const outputDec = e.outputToken?.length > 0 ? getDec(e.outputToken[0]) : 8;
+                                        const inSym = getSym(e.inputToken);
+                                        const outSym = e.outputToken?.length > 0 ? getSym(e.outputToken[0]) : '';
+                                        const ts = new Date(Number(e.timestamp) / 1_000_000);
+                                        const timeStr = ts.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                                        const dateStr = ts.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                                        const errMsg = optVal(e.errorMessage);
+                                        return (
+                                            <div key={Number(e.id)} style={{
+                                                padding: '8px 10px', borderRadius: '6px', fontSize: '0.75rem',
+                                                border: `1px solid ${statusColor}25`, background: `${statusColor}06`,
+                                            }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', flexWrap: 'wrap', gap: '4px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span style={{ fontWeight: '600', color: theme.colors.primaryText }}>#{Number(e.id)}</span>
+                                                        <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: '600', background: `${statusColor}20`, color: statusColor }}>{statusKey}</span>
+                                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>{ACTION_TYPE_LABELS[Number(e.actionType)] || `Type ${Number(e.actionType)}`}</span>
+                                                    </div>
+                                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.68rem' }}>{dateStr} {timeStr}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                    <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                                        <TokenIcon canisterId={toStr(e.inputToken)} size={15} />
+                                                        <span style={{ fontFamily: 'monospace' }}>{formatTokenAmount(e.inputAmount, inputDec)}</span> {inSym}
+                                                    </span>
+                                                    {outSym && <>
+                                                        <span style={{ color: theme.colors.mutedText }}>→</span>
+                                                        <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                                            <TokenIcon canisterId={toStr(e.outputToken[0])} size={15} />
+                                                            <span style={{ fontFamily: 'monospace' }}>{optVal(e.outputAmount) != null ? formatTokenAmount(optVal(e.outputAmount), outputDec) : '—'}</span> {outSym}
+                                                        </span>
+                                                    </>}
+                                                </div>
+                                                {errMsg && <div style={{ marginTop: '4px', color: '#ef4444', fontSize: '0.7rem', wordBreak: 'break-word' }}>{errMsg}</div>}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                {hasMore.trade && (
+                                    <button onClick={() => loadTrades(tradeEntries.length)} disabled={loading} style={{
+                                        display: 'block', margin: '8px auto 0', padding: '4px 16px', borderRadius: '6px',
+                                        border: `1px solid ${borderColor}`, background: 'transparent', color: theme.colors.secondaryText,
+                                        fontSize: '0.75rem', cursor: 'pointer',
+                                    }}>Load older</button>
+                                )}
+                            </>
+                        )
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ============================================
 // Custom chore configuration renderer (dispatches to real components)
 // ============================================
 function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, getReadyBotActor, theme, accentColor, cardStyle, inputStyle, buttonStyle, secondaryButtonStyle, canisterId }) {
@@ -8950,6 +9178,16 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
             theme={theme}
             accentColor={accentColor}
             canisterId={canisterId}
+        />
+    );
+
+    const choreLogPanel = (
+        <ChoreLogPanel
+            key={`log-${instanceId}`}
+            instanceId={instanceId}
+            getReadyBotActor={getReadyBotActor}
+            theme={theme}
+            accentColor={accentColor}
         />
     );
 
@@ -8983,6 +9221,7 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
                         title="Trade Actions"
                         description="Configure token swaps, deposits, withdrawals, and sends that execute when this chore fires. Each action can have conditions (balance thresholds, price ranges) and frequency limits."
                     />
+                    {choreLogPanel}
                 </>
             );
 
@@ -9002,6 +9241,7 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
                         secondaryButtonStyle={secondaryButtonStyle}
                         canisterId={canisterId}
                     />
+                    {choreLogPanel}
                 </>
             );
 
@@ -9026,6 +9266,7 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
                         title="Move Funds Actions"
                         description="Schedule fund purse, reclaim, and send operations between purses and external addresses."
                     />
+                    {choreLogPanel}
                 </>
             );
 
@@ -9043,18 +9284,22 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
                         buttonStyle={buttonStyle}
                         secondaryButtonStyle={secondaryButtonStyle}
                     />
+                    {choreLogPanel}
                 </>
             );
 
         case 'snapshot':
             return (
-                <SnapshotChoreConfigPanel
-                    key={instanceId}
-                    instanceId={instanceId}
-                    theme={theme}
-                    accentColor={accentColor}
-                    cardStyle={cardStyle}
-                />
+                <>
+                    <SnapshotChoreConfigPanel
+                        key={instanceId}
+                        instanceId={instanceId}
+                        theme={theme}
+                        accentColor={accentColor}
+                        cardStyle={cardStyle}
+                    />
+                    {choreLogPanel}
+                </>
             );
 
         default:
