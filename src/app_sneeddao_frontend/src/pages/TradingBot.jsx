@@ -8450,6 +8450,7 @@ function SwapProgressCard({ entry, isRunning, theme, accentColor, onDismiss }) {
     const outAmt = entry?.outputAmount != null ? entry.outputAmount : null;
     const inDec = entry?.inputDecimals ?? 8;
     const outDec = entry?.outputDecimals ?? 8;
+    const isSkipped = !isRunning && entry?.status === 'Skipped';
     const fmtAmt = (raw, dec) => raw != null ? (Number(raw) / Math.pow(10, dec)).toLocaleString(undefined, { maximumFractionDigits: Math.min(dec, 6) }) : '...';
     const dexName = entry?.dexId != null ? (DEX_NAMES[Number(entry.dexId)] || `DEX #${entry.dexId}`) : null;
     const dexColor = entry?.dexId != null ? (DEX_COLORS[Number(entry.dexId)] || accentColor) : accentColor;
@@ -8502,8 +8503,8 @@ function SwapProgressCard({ entry, isRunning, theme, accentColor, onDismiss }) {
                         <TokenIcon canisterId={entry?.inputToken} size={22} />
                         <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.primaryText }}>{inSym}</span>
                     </div>
-                    <div style={{ fontSize: '0.82rem', fontWeight: '600', color: '#ef4444', fontFamily: 'monospace' }}>
-                        {inAmt != null ? `−${fmtAmt(inAmt, inDec)}` : '...'}
+                    <div style={{ fontSize: '0.82rem', fontWeight: '600', color: isSkipped ? theme.colors.secondaryText : '#ef4444', fontFamily: 'monospace' }}>
+                        {inAmt != null ? `${isSkipped ? '' : '−'}${fmtAmt(inAmt, inDec)}` : '...'}
                     </div>
                 </div>
 
@@ -8511,7 +8512,9 @@ function SwapProgressCard({ entry, isRunning, theme, accentColor, onDismiss }) {
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 4px', flexShrink: 0 }}>
                     <div style={{
                         width: '40px', height: '2px', borderRadius: '1px', position: 'relative',
-                        background: `linear-gradient(to right, #ef4444, ${statusColor}, #22c55e)`,
+                        background: isSkipped
+                            ? `linear-gradient(to right, ${theme.colors.mutedText}40, #f59e0b, ${theme.colors.mutedText}40)`
+                            : `linear-gradient(to right, #ef4444, ${statusColor}, #22c55e)`,
                     }}>
                         {isRunning && (
                             <div className="swap-flow-dot" style={{
@@ -8530,8 +8533,8 @@ function SwapProgressCard({ entry, isRunning, theme, accentColor, onDismiss }) {
                         <TokenIcon canisterId={entry?.outputToken} size={22} />
                         <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.primaryText }}>{outSym}</span>
                     </div>
-                    <div style={{ fontSize: '0.82rem', fontWeight: '600', color: outAmt != null ? '#22c55e' : theme.colors.mutedText, fontFamily: 'monospace' }}>
-                        {outAmt != null ? `+${fmtAmt(outAmt, outDec)}` : isRunning ? '...' : '—'}
+                    <div style={{ fontSize: '0.82rem', fontWeight: '600', color: isSkipped ? theme.colors.secondaryText : outAmt != null ? '#22c55e' : theme.colors.mutedText, fontFamily: 'monospace' }}>
+                        {outAmt != null ? `${isSkipped ? '' : '+'}${fmtAmt(outAmt, outDec)}` : isRunning ? '...' : '—'}
                     </div>
                 </div>
             </div>
@@ -8592,6 +8595,7 @@ function parseTradeLogEntry(e) {
 function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
     const [swapResults, setSwapResults] = React.useState({});
     const [dismissed, setDismissed] = React.useState(new Set());
+    const [actionCache, setActionCache] = React.useState({});
     const fetchingRef = useRef(new Set());
     const botActorRef = useRef(getReadyBotActor);
     botActorRef.current = getReadyBotActor;
@@ -8612,6 +8616,28 @@ function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
                 const entries = result?.entries || [];
                 if (entries.length > 0) {
                     setSwapResults(prev => ({ ...prev, [fetchKey]: parseTradeLogEntry(entries[0]) }));
+                }
+            } catch { /* silently ignore */ }
+        })();
+    }, []);
+
+    const triggerActionFetch = useCallback((choreId) => {
+        const cacheKey = `actions:${choreId}`;
+        if (fetchingRef.current.has(cacheKey)) return;
+        fetchingRef.current.add(cacheKey);
+        (async () => {
+            try {
+                const bot = await botActorRef.current();
+                if (!bot) return;
+                const actions = await bot.getTradeActions(choreId);
+                if (actions?.length > 0) {
+                    const map = {};
+                    for (const a of actions) {
+                        const inTid = typeof a.inputToken === 'string' ? a.inputToken : a.inputToken?.toText?.() || String(a.inputToken);
+                        const outTid = a.outputToken?.[0] ? (typeof a.outputToken[0] === 'string' ? a.outputToken[0] : a.outputToken[0]?.toText?.() || String(a.outputToken[0])) : null;
+                        map[Number(a.id)] = { inputToken: inTid, outputToken: outTid };
+                    }
+                    setActionCache(prev => ({ ...prev, [choreId]: map }));
                 }
             } catch { /* silently ignore */ }
         })();
@@ -8640,7 +8666,34 @@ function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
             }
         }
 
-        const entry = swapResults[activeKey] || null;
+        let entry = swapResults[activeKey] || null;
+
+        // For running swaps without a log entry yet, resolve token info from the action config
+        if (!entry && isSwapRunning) {
+            if (!actionCache[choreId]) {
+                setTimeout(() => triggerActionFetch(choreId), 0);
+            } else {
+                // Parse action ID from task key: "trade-action-{instanceId}-{actionId}"
+                const actionIdMatch = currentTaskId.match(/-(\d+)$/);
+                const actionId = actionIdMatch ? Number(actionIdMatch[1]) : null;
+                const actionTokens = actionId != null ? actionCache[choreId][actionId] : null;
+                // Fall back to first action if we can't parse the ID
+                const tokens = actionTokens || Object.values(actionCache[choreId])[0];
+                if (tokens) {
+                    const inMeta = getTokenMetadataSync(tokens.inputToken);
+                    const outMeta = tokens.outputToken ? getTokenMetadataSync(tokens.outputToken) : null;
+                    entry = {
+                        inputToken: tokens.inputToken,
+                        outputToken: tokens.outputToken,
+                        inputSymbol: inMeta?.symbol || shortPrincipal(tokens.inputToken),
+                        outputSymbol: outMeta?.symbol || (tokens.outputToken ? shortPrincipal(tokens.outputToken) : '???'),
+                        inputDecimals: inMeta?.decimals ?? 8,
+                        outputDecimals: outMeta?.decimals ?? 8,
+                        inputAmount: null, outputAmount: null,
+                    };
+                }
+            }
+        }
 
         return (
             <SwapProgressCard
@@ -8651,7 +8704,7 @@ function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
                 onDismiss={() => setDismissed(prev => new Set(prev).add(activeKey))}
             />
         );
-    }, [swapResults, dismissed, theme, accentColor, triggerFetch]);
+    }, [swapResults, dismissed, actionCache, theme, accentColor, triggerFetch, triggerActionFetch]);
 
     return renderSwapCard;
 }
