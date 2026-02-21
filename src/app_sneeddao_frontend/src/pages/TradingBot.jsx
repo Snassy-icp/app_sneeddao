@@ -8646,21 +8646,23 @@ function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
     const renderSwapCard = useCallback((choreId, run, _chore) => {
         if (!run) return null;
 
+        const runStamp = run._condStartNs || run.conductorStartedAtMs || '';
+
         const currentTaskId = run.currentTask?.taskId;
         const isSwapRunning = currentTaskId && ACTIVE_SWAP_PATTERN.test(currentTaskId);
 
         const recentSwapTask = [...(run.completedTasks || [])].reverse()
             .find(t => ACTIVE_SWAP_PATTERN.test(t.taskId));
 
-        const activeKey = isSwapRunning ? `${choreId}:${currentTaskId}`
-            : recentSwapTask ? `${choreId}:${recentSwapTask.taskId}` : null;
+        const activeKey = isSwapRunning ? `${choreId}:${runStamp}:${currentTaskId}`
+            : recentSwapTask ? `${choreId}:${runStamp}:${recentSwapTask.taskId}` : null;
 
         if (!activeKey) return null;
         if (dismissed.has(activeKey)) return null;
 
         // Trigger async fetch for completed swap results (deferred to avoid render-time side effects)
         if (recentSwapTask) {
-            const fetchKey = `${choreId}:${recentSwapTask.taskId}`;
+            const fetchKey = `${choreId}:${runStamp}:${recentSwapTask.taskId}`;
             if (!swapResults[fetchKey] && !fetchingRef.current.has(fetchKey)) {
                 setTimeout(() => triggerFetch(fetchKey, choreId), 0);
             }
