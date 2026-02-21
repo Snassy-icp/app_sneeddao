@@ -2625,7 +2625,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case null {
                         if (allQuotes.size() > 0) {
                             let topQ = allQuotes[0];
-                            logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # ": direct quotes exceed max impact " # Nat.toText(maxImpact) # " bps (best: DEX " # Nat.toText(topQ.dexId) # " at " # Nat.toText(topQ.priceImpactBps) # " bps), will try fallback", null, []);
+                            logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # ": direct quotes exceed max impact " # Nat.toText(maxImpact) # " bps (best: DEX " # Nat.toText(topQ.dexId) # " at " # Nat.toText(topQ.priceImpactBps) # " bps), will try fallback", null, [
+                                ("bestDexId", Nat.toText(topQ.dexId)),
+                                ("bestImpactBps", Nat.toText(topQ.priceImpactBps)),
+                                ("maxImpactBps", Nat.toText(maxImpact)),
+                            ]);
+                        } else {
+                            logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # ": no direct quotes from any DEX for " # tokenLabel(action.inputToken) # " → " # tokenLabel(outputToken) # " (amount " # Nat.toText(actualTradeSize) # "), will try fallback", null, [
+                                ("inputToken", tokenLabel(action.inputToken)),
+                                ("outputToken", tokenLabel(outputToken)),
+                                ("amount", Nat.toText(actualTradeSize)),
+                            ]);
                         };
                         null
                     };
@@ -2804,16 +2814,19 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     let intLabel = tokenLabel(intermediary);
 
                     if (intermediary == action.inputToken or intermediary == outputToken) {
-                        logEngine.logTrace(src, "Skipping fallback via " # intLabel # ": same as input/output token", null, [
+                        logEngine.logInfo(src, "Fallback via " # intLabel # " skipped: same as input/output token", null, [
                             ("intermediary", intLabel),
+                            ("intermediaryId", Principal.toText(intermediary)),
                         ]);
                     } else if (isTokenPausedOrFrozen(intermediary)) {
-                        logEngine.logTrace(src, "Skipping fallback via " # intLabel # ": token is paused/frozen", null, [
+                        logEngine.logInfo(src, "Fallback via " # intLabel # " skipped: token is paused/frozen", null, [
                             ("intermediary", intLabel),
+                            ("intermediaryId", Principal.toText(intermediary)),
                         ]);
                     } else {
-                        logEngine.logDebug(src, "Trying fallback via " # intLabel # " — leg1: " # tokenLabel(action.inputToken) # " → " # intLabel # ", amount " # Nat.toText(actualTradeSize), null, [
+                        logEngine.logInfo(src, "Trying fallback via " # intLabel # " (" # Principal.toText(intermediary) # ") — leg1: " # tokenLabel(action.inputToken) # " → " # intLabel # ", amount " # Nat.toText(actualTradeSize), null, [
                             ("intermediary", intLabel),
+                            ("intermediaryId", Principal.toText(intermediary)),
                             ("leg", "1"),
                             ("amount", Nat.toText(actualTradeSize)),
                         ]);
@@ -2821,45 +2834,66 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         switch (leg1Opt) {
                             case (?q1) {
                                 if (q1.priceImpactBps > maxImpact) {
-                                    logEngine.logTrace(src, "Fallback via " # intLabel # " leg1 impact too high: " # Nat.toText(q1.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps", null, [
+                                    logEngine.logInfo(src, "Fallback via " # intLabel # " rejected: leg1 impact " # Nat.toText(q1.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps (expected output: " # Nat.toText(q1.expectedOutput) # ", dex: " # Nat.toText(q1.dexId) # ")", null, [
                                         ("intermediary", intLabel),
                                         ("leg", "1"),
                                         ("priceImpactBps", Nat.toText(q1.priceImpactBps)),
+                                        ("maxImpactBps", Nat.toText(maxImpact)),
+                                        ("dexId", Nat.toText(q1.dexId)),
                                     ]);
                                 } else {
+                                    logEngine.logInfo(src, "Fallback via " # intLabel # " leg1 OK: " # Nat.toText(q1.expectedOutput) # " " # intLabel # " (impact " # Nat.toText(q1.priceImpactBps) # " bps, dex " # Nat.toText(q1.dexId) # "), trying leg2", null, [
+                                        ("intermediary", intLabel),
+                                        ("leg1Output", Nat.toText(q1.expectedOutput)),
+                                        ("leg1ImpactBps", Nat.toText(q1.priceImpactBps)),
+                                        ("leg1DexId", Nat.toText(q1.dexId)),
+                                    ]);
                                     let leg2Opt = await* getBestQuote(intermediary, outputToken, q1.expectedOutput);
                                     switch (leg2Opt) {
                                         case (?q2) {
                                             if (q2.priceImpactBps > maxImpact) {
-                                                logEngine.logTrace(src, "Fallback via " # intLabel # " leg2 impact too high: " # Nat.toText(q2.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps", null, [
+                                                logEngine.logInfo(src, "Fallback via " # intLabel # " rejected: leg2 impact " # Nat.toText(q2.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps (expected output: " # Nat.toText(q2.expectedOutput) # ", dex: " # Nat.toText(q2.dexId) # ")", null, [
                                                     ("intermediary", intLabel),
                                                     ("leg", "2"),
                                                     ("priceImpactBps", Nat.toText(q2.priceImpactBps)),
+                                                    ("maxImpactBps", Nat.toText(maxImpact)),
+                                                    ("dexId", Nat.toText(q2.dexId)),
                                                 ]);
                                             } else {
                                                 chosenIntermediary := ?intermediary;
                                                 chosenLeg1 := ?q1;
                                                 chosenLeg2 := ?q2;
-                                                logEngine.logDebug(src, "Viable fallback route found via " # intLabel # " (leg1 impact: " # Nat.toText(q1.priceImpactBps) # " bps, leg2 impact: " # Nat.toText(q2.priceImpactBps) # " bps)", null, [
+                                                logEngine.logInfo(src, "Viable fallback route found via " # intLabel # " (leg1: " # Nat.toText(q1.expectedOutput) # " " # intLabel # " at " # Nat.toText(q1.priceImpactBps) # " bps on dex " # Nat.toText(q1.dexId) # ", leg2: " # Nat.toText(q2.expectedOutput) # " " # tokenLabel(outputToken) # " at " # Nat.toText(q2.priceImpactBps) # " bps on dex " # Nat.toText(q2.dexId) # ")", null, [
                                                     ("intermediary", intLabel),
+                                                    ("leg1Output", Nat.toText(q1.expectedOutput)),
                                                     ("leg1ImpactBps", Nat.toText(q1.priceImpactBps)),
+                                                    ("leg1DexId", Nat.toText(q1.dexId)),
+                                                    ("leg2Output", Nat.toText(q2.expectedOutput)),
                                                     ("leg2ImpactBps", Nat.toText(q2.priceImpactBps)),
+                                                    ("leg2DexId", Nat.toText(q2.dexId)),
                                                 ]);
                                             };
                                         };
                                         case null {
-                                            logEngine.logTrace(src, "Fallback via " # intLabel # " leg2: no quote for " # intLabel # " → " # tokenLabel(outputToken), null, [
+                                            logEngine.logInfo(src, "Fallback via " # intLabel # " rejected: no quote for leg2 " # intLabel # " → " # tokenLabel(outputToken) # " (amount " # Nat.toText(q1.expectedOutput) # ")", null, [
                                                 ("intermediary", intLabel),
                                                 ("leg", "2"),
+                                                ("leg1Output", Nat.toText(q1.expectedOutput)),
+                                                ("outputToken", tokenLabel(outputToken)),
+                                                ("outputTokenId", Principal.toText(outputToken)),
                                             ]);
                                         };
                                     };
                                 };
                             };
                             case null {
-                                logEngine.logTrace(src, "Fallback via " # intLabel # " leg1: no quote for " # tokenLabel(action.inputToken) # " → " # intLabel, null, [
+                                logEngine.logInfo(src, "Fallback via " # intLabel # " rejected: no quote for leg1 " # tokenLabel(action.inputToken) # " → " # intLabel # " (amount " # Nat.toText(actualTradeSize) # ")", null, [
                                     ("intermediary", intLabel),
+                                    ("intermediaryId", Principal.toText(intermediary)),
                                     ("leg", "1"),
+                                    ("inputToken", tokenLabel(action.inputToken)),
+                                    ("inputTokenId", Principal.toText(action.inputToken)),
+                                    ("amount", Nat.toText(actualTradeSize)),
                                 ]);
                             };
                         };
@@ -3070,12 +3104,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         }
                     };
                     case (_, _, _) {
-                        logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: no viable direct or fallback route for " # tokenLabel(action.inputToken) # " → " # tokenLabel(outputToken), null, [
+                        logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: no viable direct or fallback route for " # tokenLabel(action.inputToken) # " → " # tokenLabel(outputToken) # " (tried " # Nat.toText(fallbackTokens.size()) # " fallback token(s), tradeSize=" # Nat.toText(actualTradeSize) # ", maxImpact=" # Nat.toText(maxImpact) # " bps — see info logs above for per-token rejection details)", null, [
                             ("actionId", Nat.toText(action.id)),
                             ("inputToken", tokenLabel(action.inputToken)),
+                            ("inputTokenId", Principal.toText(action.inputToken)),
                             ("outputToken", tokenLabel(outputToken)),
+                            ("outputTokenId", Principal.toText(outputToken)),
+                            ("fallbackCount", Nat.toText(fallbackTokens.size())),
+                            ("tradeSize", Nat.toText(actualTradeSize)),
+                            ("maxImpactBps", Nat.toText(maxImpact)),
                         ]);
-                        logSkip("No viable direct or fallback route", null, ?actualTradeSize);
+                        logSkip("No viable direct or fallback route (tried " # Nat.toText(fallbackTokens.size()) # " fallback(s))", null, ?actualTradeSize);
                         (false, 0, 0)
                     };
                 }
