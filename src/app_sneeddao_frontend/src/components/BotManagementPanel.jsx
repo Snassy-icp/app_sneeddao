@@ -279,6 +279,16 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
     const [choreRunTracker, setChoreRunTracker] = useState({});
     const prevChoreSnapshotRef = useRef({});
     const [dismissedErrors, setDismissedErrors] = useState({});
+    const [dismissedBanners, setDismissedBanners] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('bot_dismissed_banners') || '{}'); } catch { return {}; }
+    });
+    const dismissBanner = useCallback((key) => {
+        setDismissedBanners(prev => {
+            const next = { ...prev, [key]: true };
+            try { localStorage.setItem('bot_dismissed_banners', JSON.stringify(next)); } catch {}
+            return next;
+        });
+    }, []);
     const [creatingInstance, setCreatingInstance] = useState(false);
     const [newInstanceLabel, setNewInstanceLabel] = useState('');
     const [renamingInstance, setRenamingInstance] = useState(null);
@@ -1874,11 +1884,17 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                 <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.secondaryText }}>Loading chore data...</div>
                             ) : (
                                 <>
-                                    <div style={{ ...cardStyle, background: `linear-gradient(135deg, ${accent}08, ${accentSec}05)`, border: `1px solid ${accent}20` }}>
-                                        <p style={{ margin: 0, fontSize: '0.85rem', color: theme.colors.secondaryText, lineHeight: '1.5' }}>
-                                            Bot Chores are automated tasks that run on a schedule. Enable a chore and set its interval — the bot handles the rest.
-                                        </p>
-                                    </div>
+                                    {!dismissedBanners['chores-intro'] && (
+                                        <div style={{ ...cardStyle, background: `linear-gradient(135deg, ${accent}08, ${accentSec}05)`, border: `1px solid ${accent}20`, display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                                            <p style={{ margin: 0, fontSize: '0.85rem', color: theme.colors.secondaryText, lineHeight: '1.5', flex: 1 }}>
+                                                Bot Chores are automated tasks that run on a schedule. Enable a chore and set its interval — the bot handles the rest.
+                                            </p>
+                                            <button onClick={() => dismissBanner('chores-intro')} title="Dismiss" style={{
+                                                background: 'none', border: 'none', cursor: 'pointer', color: theme.colors.mutedText,
+                                                padding: '2px', fontSize: '0.9rem', lineHeight: 1, flexShrink: 0, opacity: 0.6,
+                                            }}>×</button>
+                                        </div>
+                                    )}
 
                                     {choreError && <div style={{ ...cardStyle, background: `${theme.colors.error}15`, border: `1px solid ${theme.colors.error}30`, color: theme.colors.error, fontSize: '0.85rem' }}>{choreError}</div>}
                                     {choreSuccess && <div style={{ ...cardStyle, background: `${theme.colors.success || '#22c55e'}15`, border: `1px solid ${theme.colors.success || '#22c55e'}30`, color: theme.colors.success || '#22c55e', fontSize: '0.85rem' }}>{choreSuccess}</div>}
@@ -2102,9 +2118,15 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                                     return (
                                                         <div key={chore.choreId}>
                                                             {/* Description */}
-                                                            <div style={{ ...cardStyle, background: `linear-gradient(135deg, ${accent}06, ${accentSec}04)`, border: `1px solid ${accent}15` }}>
-                                                                <p style={{ margin: 0, fontSize: '0.85rem', color: theme.colors.secondaryText, lineHeight: '1.5' }}>{chore.choreDescription}</p>
-                                                            </div>
+                                                            {!dismissedBanners[`chore-desc-${chore.choreTypeId}`] && (
+                                                                <div style={{ ...cardStyle, background: `linear-gradient(135deg, ${accent}06, ${accentSec}04)`, border: `1px solid ${accent}15`, display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                                                                    <p style={{ margin: 0, fontSize: '0.85rem', color: theme.colors.secondaryText, lineHeight: '1.5', flex: 1 }}>{chore.choreDescription}</p>
+                                                                    <button onClick={() => dismissBanner(`chore-desc-${chore.choreTypeId}`)} title="Dismiss" style={{
+                                                                        background: 'none', border: 'none', cursor: 'pointer', color: theme.colors.mutedText,
+                                                                        padding: '2px', fontSize: '0.9rem', lineHeight: 1, flexShrink: 0, opacity: 0.6,
+                                                                    }}>×</button>
+                                                                </div>
+                                                            )}
 
                                                             {/* Status */}
                                                             <div style={cardStyle}>

@@ -6791,6 +6791,387 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
 }
 
 // ============================================
+// Bot Log Panel — standalone full bot log viewer
+// ============================================
+const BOT_LOG_LEVELS = ['Error', 'Warning', 'Info', 'Debug', 'Trace'];
+const BOT_LOG_LEVEL_COLORS = { Error: '#ef4444', Warning: '#f59e0b', Info: '#3b82f6', Debug: '#8b5cf6', Trace: '#6b7280' };
+const BOT_LOG_LEVEL_ORDER = { Error: 1, Warning: 2, Info: 3, Debug: 4, Trace: 5 };
+const BOT_LOG_SOURCES = ['api', 'permissions', 'chore', 'system', 'log'];
+const BOT_LOG_TOKEN_TAG_KEYS = new Set(['inputToken', 'outputToken', 'token', 'ledger', 'ledgerId', 'tokenId', 'sellTokenId', 'buyTokenId', 'denomToken']);
+const BOT_LOG_AMOUNT_TAG_KEYS = new Set([
+    'inputAmount', 'outputAmount', 'amount', 'fee', 'balance',
+    'tradeSize', 'tradeSizeUnits', 'sellBalance', 'overshootCap', 'targetReachUnits',
+    'effectiveTargetReach', 'maxAffordable', 'balanceDiv4', 'maxTradeUnits', 'minTradeUnits', 'resultTradeSize',
+    'buyBalance', 'expectedOutput',
+    'sellValue', 'buyValue', 'excessSellValue', 'deficitBuyValue', 'capDenomValue', 'totalValue',
+    'tradeSizeDenom', 'maxTradeDenom', 'minTradeDenom',
+    'cachedInputAmount', 'cachedExpectedOutput', 'spotPriceE8s',
+]);
+const BOT_LOG_AMOUNT_TO_TOKEN = {
+    inputAmount: 'inputToken', outputAmount: 'outputToken', amount: 'token', fee: 'inputToken', balance: 'token',
+    tradeSize: 'sellTokenId', tradeSizeUnits: 'sellTokenId', sellBalance: 'sellTokenId',
+    overshootCap: 'sellTokenId', targetReachUnits: 'sellTokenId', effectiveTargetReach: 'sellTokenId',
+    maxAffordable: 'sellTokenId', balanceDiv4: 'sellTokenId', maxTradeUnits: 'sellTokenId',
+    minTradeUnits: 'sellTokenId', resultTradeSize: 'sellTokenId',
+    buyBalance: 'buyTokenId', expectedOutput: 'buyTokenId',
+    sellValue: 'denomToken', buyValue: 'denomToken',
+    excessSellValue: 'denomToken', deficitBuyValue: 'denomToken', capDenomValue: 'denomToken', totalValue: 'denomToken',
+    tradeSizeDenom: 'denomToken', maxTradeDenom: 'denomToken', minTradeDenom: 'denomToken',
+    cachedInputAmount: 'inputToken', cachedExpectedOutput: 'outputToken',
+    spotPriceE8s: 'inputToken',
+};
+const BOT_LOG_BPS_TAG_KEYS = new Set([
+    'priceImpactBps', 'maxImpactBps', 'maxSlippageBps', 'slippageBps',
+    'sellDeviationBps', 'buyDeviationBps', 'combinedDeviationBps',
+    'currentBps', 'targetBps', 'thresholdBps', 'deviationBps',
+]);
+const fmtLogAmt = (raw, decimals = 8) => {
+    const n = Number(raw);
+    if (isNaN(n) || n === 0) return String(raw);
+    return (n / Math.pow(10, decimals)).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: Math.min(decimals, 8) });
+};
+const fmtBps = (v) => {
+    const n = Number(v);
+    if (isNaN(n)) return String(v);
+    return (n / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + '%';
+};
+
+function BotLogPanel({ getReadyBotActor, theme, accentColor }) {
+    const { identity } = useAuth();
+    const [entries, setEntries] = useState([]);
+    const [logConfig, setLogConfig] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [logFilter, setLogFilter] = useState({
+        minLevel: [], source: [], caller: [], fromTime: [], toTime: [], startId: [], limit: [50n],
+    });
+    const [hasMore, setHasMore] = useState(false);
+    const [totalMatching, setTotalMatching] = useState(0);
+    const [autoRefresh, setAutoRefresh] = useState(false);
+    const autoRefreshRef = useRef(null);
+
+    const allTokenIds = React.useMemo(() => {
+        const ids = new Set();
+        for (const e of entries) {
+            for (const [k, v] of e.tags) {
+                if (BOT_LOG_TOKEN_TAG_KEYS.has(k) && v && v.length > 10) ids.add(v);
+            }
+        }
+        return [...ids];
+    }, [entries]);
+    const tokenMeta = useTokenMetadata(allTokenIds, identity);
+
+    const loadLogs = useCallback(async (filterOverride, silent) => {
+        if (!silent) setLoading(true);
+        setError('');
+        try {
+            const bot = await getReadyBotActor();
+            if (!bot) return;
+            const f = filterOverride || logFilter;
+            const [result, config] = await Promise.all([bot.getLogs(f), bot.getLogConfig()]);
+            setEntries(result.entries || []);
+            setHasMore(result.hasMore);
+            setTotalMatching(Number(result.totalMatching));
+            setLogConfig(config);
+        } catch (e) { if (!silent) setError('Failed to load logs: ' + e.message); }
+        finally { if (!silent) setLoading(false); }
+    }, [getReadyBotActor, logFilter]);
+
+    useEffect(() => { loadLogs(); }, []);
+
+    useEffect(() => {
+        if (autoRefresh) {
+            autoRefreshRef.current = setInterval(() => loadLogs(undefined, true), 5000);
+        }
+        return () => { if (autoRefreshRef.current) clearInterval(autoRefreshRef.current); };
+    }, [autoRefresh, loadLogs]);
+
+    const selectedLevelKey = logFilter.minLevel.length > 0 ? Object.keys(logFilter.minLevel[0])[0] : null;
+    const selectedLevelNum = selectedLevelKey ? BOT_LOG_LEVEL_ORDER[selectedLevelKey] : null;
+    const pageSize = Number(logFilter.limit.length > 0 ? logFilter.limit[0] : 50n);
+    const isFirstPage = logFilter.startId.length === 0;
+
+    const cardStyle = { padding: '12px 14px', borderRadius: '10px', border: `1px solid ${theme.colors.border}`, marginBottom: '10px' };
+
+    return (
+        <div>
+            {loading && !entries.length ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.secondaryText }}>Loading log data...</div>
+            ) : (
+                <>
+                    <div style={{ ...cardStyle, background: `linear-gradient(135deg, ${accentColor}08, ${accentColor}05)`, border: `1px solid ${accentColor}20` }}>
+                        <p style={{ margin: 0, fontSize: '0.85rem', color: theme.colors.secondaryText, lineHeight: '1.5' }}>
+                            Bot Log records all activity — API calls, chore actions, permission changes, and errors.
+                            {logConfig && <> Currently storing <strong>{Number(logConfig.entryCount).toLocaleString()}</strong> of {Number(logConfig.maxEntries).toLocaleString()} max entries at <strong>{Object.keys(logConfig.logLevel)[0]}</strong> write level.</>}
+                        </p>
+                    </div>
+
+                    {error && <div style={{ ...cardStyle, background: '#ef444415', border: '1px solid #ef444430', color: '#ef4444', fontSize: '0.85rem' }}>{error}</div>}
+
+                    {/* Toolbar */}
+                    <div style={{ ...cardStyle, padding: '0.75rem 1rem' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>Show:</span>
+                            {BOT_LOG_LEVELS.map(lvl => {
+                                const lvlNum = BOT_LOG_LEVEL_ORDER[lvl];
+                                const isIncluded = selectedLevelNum !== null && lvlNum <= selectedLevelNum;
+                                const isThreshold = selectedLevelKey === lvl;
+                                const color = BOT_LOG_LEVEL_COLORS[lvl];
+                                return (
+                                    <button key={lvl} onClick={() => {
+                                        const nf = { ...logFilter, minLevel: isThreshold ? [] : [{ [lvl]: null }], startId: [] };
+                                        setLogFilter(nf); loadLogs(nf);
+                                    }} style={{
+                                        padding: '2px 10px', borderRadius: '12px', border: `1px solid ${isIncluded ? color : theme.colors.border}`,
+                                        background: isThreshold ? `${color}30` : isIncluded ? `${color}15` : 'transparent',
+                                        color: isIncluded ? color : theme.colors.secondaryText, fontSize: '0.75rem',
+                                        fontWeight: isIncluded ? '600' : '400', cursor: 'pointer',
+                                        opacity: selectedLevelNum !== null && !isIncluded ? 0.4 : 1,
+                                    }}>{lvl}{isThreshold ? '+' : ''}</button>
+                                );
+                            })}
+                            <div style={{ width: '1px', height: '16px', background: theme.colors.border, margin: '0 4px' }} />
+                            <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>Source:</span>
+                            {BOT_LOG_SOURCES.map(src => {
+                                const isActive = logFilter.source.length > 0 && logFilter.source[0] === src;
+                                return (
+                                    <button key={src} onClick={() => {
+                                        const nf = { ...logFilter, source: isActive ? [] : [src], startId: [] };
+                                        setLogFilter(nf); loadLogs(nf);
+                                    }} style={{
+                                        padding: '2px 10px', borderRadius: '12px', border: `1px solid ${isActive ? accentColor : theme.colors.border}`,
+                                        background: isActive ? `${accentColor}20` : 'transparent',
+                                        color: isActive ? accentColor : theme.colors.secondaryText, fontSize: '0.75rem',
+                                        fontWeight: isActive ? '600' : '400', cursor: 'pointer',
+                                    }}>{src}</button>
+                                );
+                            })}
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                            <button onClick={() => loadLogs()} disabled={loading} style={{
+                                padding: '4px 12px', borderRadius: '8px', border: `1px solid ${theme.colors.border}`,
+                                background: 'transparent', color: theme.colors.primaryText, fontSize: '0.8rem',
+                                cursor: 'pointer', opacity: loading ? 0.5 : 1,
+                            }}>{loading ? 'Loading...' : 'Refresh'}</button>
+                            <label style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={autoRefresh} onChange={e => setAutoRefresh(e.target.checked)} style={{ cursor: 'pointer' }} />
+                                Auto-refresh
+                            </label>
+                            <div style={{ width: '1px', height: '16px', background: theme.colors.border, margin: '0 2px' }} />
+                            <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>Per page:</span>
+                            <select value={pageSize} onChange={e => { const nf = { ...logFilter, limit: [BigInt(e.target.value)], startId: [] }; setLogFilter(nf); loadLogs(nf); }}
+                                style={{ padding: '3px 6px', borderRadius: '6px', border: `1px solid ${theme.colors.border}`, background: theme.colors.cardBackground || theme.colors.background, color: theme.colors.primaryText, fontSize: '0.8rem', cursor: 'pointer' }}>
+                                {[10, 25, 50, 100, 200].map(n => <option key={n} value={n}>{n}</option>)}
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Log entries */}
+                    {entries.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            {entries.slice().reverse().map(entry => {
+                                const levelKey = Object.keys(entry.level)[0];
+                                const levelColor = BOT_LOG_LEVEL_COLORS[levelKey] || '#6b7280';
+                                const ts = new Date(Number(entry.timestamp) / 1_000_000);
+                                const timeStr = ts.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+                                const tagMap = {};
+                                for (const [k, v] of entry.tags) tagMap[k] = v;
+
+                                let enhancedMsg = entry.message;
+                                enhancedMsg = enhancedMsg.replace(/\bdex (\d+)\b/gi, (_, id) => DEX_NAMES[id] || `DEX ${id}`);
+                                enhancedMsg = enhancedMsg.replace(/\b(\d+) bps\b/g, (_, n) => fmtBps(n));
+                                for (const [amtKey, tokKey] of Object.entries(BOT_LOG_AMOUNT_TO_TOKEN)) {
+                                    const rawVal = tagMap[amtKey];
+                                    if (!rawVal || rawVal === '0') continue;
+                                    const tokId = tokKey ? tagMap[tokKey] : null;
+                                    const dec = tokId && tokenMeta[tokId] ? tokenMeta[tokId].decimals : 8;
+                                    const sym = tokId && tokenMeta[tokId] ? tokenMeta[tokId].symbol : '';
+                                    const formatted = fmtLogAmt(rawVal, dec);
+                                    const re = new RegExp('\\b' + rawVal + '\\b');
+                                    if (re.test(enhancedMsg)) {
+                                        enhancedMsg = enhancedMsg.replace(re, formatted + (sym ? ` ${sym}` : ''));
+                                    }
+                                }
+
+                                const renderedTags = [];
+                                const skipKeys = new Set();
+                                if (tagMap.inputToken) {
+                                    const inId = tagMap.inputToken;
+                                    const outId = tagMap.outputToken;
+                                    const inMeta = tokenMeta[inId];
+                                    const outMeta = outId ? tokenMeta[outId] : null;
+                                    renderedTags.push(
+                                        <span key="token-pair" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '1px 8px', borderRadius: '4px', fontSize: '0.7rem', background: `${accentColor}12`, color: theme.colors.primaryText }}>
+                                            <TokenIcon canisterId={inId} size={14} />
+                                            <span style={{ fontWeight: 600 }}>{inMeta?.symbol || shortPrincipal(inId)}</span>
+                                            {outId && <>
+                                                <span style={{ color: theme.colors.mutedText, margin: '0 2px' }}>→</span>
+                                                <TokenIcon canisterId={outId} size={14} />
+                                                <span style={{ fontWeight: 600 }}>{outMeta?.symbol || shortPrincipal(outId)}</span>
+                                            </>}
+                                        </span>
+                                    );
+                                    skipKeys.add('inputToken');
+                                    if (outId) skipKeys.add('outputToken');
+                                }
+                                if (tagMap.inputAmount) {
+                                    const inId = tagMap.inputToken;
+                                    const outId = tagMap.outputToken;
+                                    const inDec = tokenMeta[inId]?.decimals ?? 8;
+                                    const inSym = tokenMeta[inId]?.symbol || '';
+                                    const outDec = outId ? (tokenMeta[outId]?.decimals ?? 8) : 8;
+                                    const outSym = outId ? (tokenMeta[outId]?.symbol || '') : '';
+                                    renderedTags.push(
+                                        <span key="amounts" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '1px 8px', borderRadius: '4px', fontSize: '0.7rem', background: `${theme.colors.border}60`, color: theme.colors.primaryText, fontFamily: 'monospace' }}>
+                                            {fmtLogAmt(tagMap.inputAmount, inDec)}{inSym ? ` ${inSym}` : ''}
+                                            {tagMap.outputAmount && <>
+                                                <span style={{ color: theme.colors.mutedText }}>→</span>
+                                                {fmtLogAmt(tagMap.outputAmount, outDec)}{outSym ? ` ${outSym}` : ''}
+                                            </>}
+                                        </span>
+                                    );
+                                    skipKeys.add('inputAmount');
+                                    skipKeys.add('outputAmount');
+                                }
+                                if (tagMap.dexId != null) {
+                                    renderedTags.push(
+                                        <span key="dex" style={{ padding: '1px 8px', borderRadius: '4px', fontSize: '0.7rem', background: `${theme.colors.border}60`, color: theme.colors.secondaryText }}>
+                                            {DEX_NAMES[tagMap.dexId] || `DEX ${tagMap.dexId}`}
+                                        </span>
+                                    );
+                                    skipKeys.add('dexId');
+                                }
+                                entry.tags.forEach(([k, v], i) => {
+                                    if (skipKeys.has(k)) return;
+                                    if (BOT_LOG_TOKEN_TAG_KEYS.has(k) && v && v.length > 10) {
+                                        const meta = tokenMeta[v];
+                                        renderedTags.push(
+                                            <span key={`t-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', background: `${theme.colors.border}60`, color: theme.colors.secondaryText }}>
+                                                <span style={{ opacity: 0.7 }}>{k}:</span>
+                                                <TokenIcon canisterId={v} size={13} />
+                                                <span>{meta?.symbol || shortPrincipal(v)}</span>
+                                            </span>
+                                        );
+                                    } else if (BOT_LOG_BPS_TAG_KEYS.has(k)) {
+                                        renderedTags.push(
+                                            <span key={`t-${i}`} style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', background: `${theme.colors.border}60`, color: theme.colors.secondaryText, fontFamily: 'monospace' }}>
+                                                <span style={{ opacity: 0.7 }}>{k.replace(/Bps$/, '')}:</span> {fmtBps(v)}
+                                            </span>
+                                        );
+                                    } else if (BOT_LOG_AMOUNT_TAG_KEYS.has(k)) {
+                                        const pairedKey = BOT_LOG_AMOUNT_TO_TOKEN[k];
+                                        const pairedId = pairedKey ? tagMap[pairedKey] : null;
+                                        const dec = pairedId && tokenMeta[pairedId] ? tokenMeta[pairedId].decimals : 8;
+                                        const sym = pairedId && tokenMeta[pairedId] ? tokenMeta[pairedId].symbol : '';
+                                        renderedTags.push(
+                                            <span key={`t-${i}`} style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', background: `${theme.colors.border}60`, color: theme.colors.secondaryText, fontFamily: 'monospace' }}>
+                                                <span style={{ opacity: 0.7 }}>{k}:</span> {fmtLogAmt(v, dec)}{sym ? ` ${sym}` : ''}
+                                            </span>
+                                        );
+                                    } else {
+                                        renderedTags.push(
+                                            <span key={`t-${i}`} style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', background: `${theme.colors.border}60`, color: theme.colors.secondaryText }}>
+                                                <span style={{ opacity: 0.7 }}>{k}:</span> {v}
+                                            </span>
+                                        );
+                                    }
+                                });
+
+                                return (
+                                    <div key={Number(entry.id)} style={{ display: 'flex', flexDirection: 'column', gap: '2px', padding: '8px 12px', background: theme.colors.cardBackground || theme.colors.background, borderLeft: `3px solid ${levelColor}`, borderRadius: '4px', fontSize: '0.8rem' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                            <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '600', background: `${levelColor}20`, color: levelColor, minWidth: '48px', textAlign: 'center' }}>{levelKey.toUpperCase()}</span>
+                                            <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', background: `${accentColor}15`, color: accentColor }}>{entry.source}</span>
+                                            <span style={{ color: theme.colors.primaryText, flex: 1 }}>{enhancedMsg}</span>
+                                            <span style={{ color: theme.colors.mutedText, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{timeStr}</span>
+                                            <span style={{ color: theme.colors.mutedText, fontSize: '0.65rem', opacity: 0.6 }}>#{Number(entry.id)}</span>
+                                        </div>
+                                        {renderedTags.length > 0 && (
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginLeft: '56px', alignItems: 'center' }}>
+                                                {renderedTags}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div style={{ ...cardStyle, textAlign: 'center', color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
+                            No log entries found{selectedLevelKey || logFilter.source.length > 0 ? ' matching the current filters' : ''}.
+                        </div>
+                    )}
+
+                    {/* Pagination */}
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', marginTop: '10px', flexWrap: 'wrap' }}>
+                        {!isFirstPage && (
+                            <button onClick={() => { const nf = { ...logFilter, startId: [] }; setLogFilter(nf); loadLogs(nf); }}
+                                style={{ padding: '6px 14px', borderRadius: '8px', border: `1px solid ${theme.colors.border}`, background: 'transparent', color: theme.colors.primaryText, fontSize: '0.8rem', cursor: 'pointer' }}>
+                                « Newest
+                            </button>
+                        )}
+                        {!isFirstPage && entries.length > 0 && (
+                            <button onClick={() => {
+                                const last = entries[entries.length - 1];
+                                const nf = { ...logFilter, startId: [BigInt(Number(last.id) + 1)] };
+                                setLogFilter(nf); loadLogs(nf);
+                            }} style={{ padding: '6px 14px', borderRadius: '8px', border: `1px solid ${theme.colors.border}`, background: 'transparent', color: theme.colors.primaryText, fontSize: '0.8rem', cursor: 'pointer' }}>
+                                ‹ Newer
+                            </button>
+                        )}
+                        {entries.length > 0 && Number(entries[0].id) > 0 && (
+                            <button onClick={() => {
+                                const first = entries[0];
+                                const nf = { ...logFilter, startId: [BigInt(Math.max(0, Number(first.id) - pageSize))] };
+                                setLogFilter(nf); loadLogs(nf);
+                            }} style={{ padding: '6px 14px', borderRadius: '8px', border: `1px solid ${theme.colors.border}`, background: 'transparent', color: theme.colors.primaryText, fontSize: '0.8rem', cursor: 'pointer' }}>
+                                Older »
+                            </button>
+                        )}
+                    </div>
+
+                    {logConfig && (
+                        <div style={{ textAlign: 'center', padding: '8px', fontSize: '0.7rem', color: theme.colors.mutedText }}>
+                            Showing {entries.length} of {totalMatching.toLocaleString()} matching · {Number(logConfig.entryCount).toLocaleString()} total stored · Max: {Number(logConfig.maxEntries).toLocaleString()}
+                        </div>
+                    )}
+                </>
+            )}
+        </div>
+    );
+}
+
+// ============================================
+// Logs Tab Panel — combines Bot Log, Trade Log, Portfolio Snapshots, Logging Settings
+// ============================================
+function LogsTabPanel({ getReadyBotActor, theme, accentColor, choreStatuses }) {
+    const [subTab, setSubTab] = useState('bot-log');
+
+    const subTabStyle = (active) => ({
+        padding: '5px 14px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: active ? '600' : '400',
+        color: active ? accentColor : theme.colors.secondaryText,
+        background: active ? `${accentColor}10` : 'transparent',
+        border: `1px solid ${active ? accentColor + '40' : theme.colors.border}`,
+        borderRadius: '16px', whiteSpace: 'nowrap',
+    });
+
+    return (
+        <div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '14px' }}>
+                <button onClick={() => setSubTab('bot-log')} style={subTabStyle(subTab === 'bot-log')}>Bot Log</button>
+                <button onClick={() => setSubTab('trade-log')} style={subTabStyle(subTab === 'trade-log')}>Trade Log</button>
+                <button onClick={() => setSubTab('snapshots')} style={subTabStyle(subTab === 'snapshots')}>Portfolio Snapshots</button>
+                <button onClick={() => setSubTab('settings')} style={subTabStyle(subTab === 'settings')}>Logging Settings</button>
+            </div>
+            {subTab === 'bot-log' && <BotLogPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
+            {subTab === 'trade-log' && <TradeLogViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
+            {subTab === 'snapshots' && <PortfolioSnapshotViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
+            {subTab === 'settings' && <LoggingSettingsPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}
+        </div>
+    );
+}
+
+// ============================================
 // Chores Overview Panel — bird's-eye view of all chore instances
 // ============================================
 const CHORE_TYPE_ICONS = { trade: '📈', rebalance: '⚖️', 'move-funds': '💸', 'distribute-funds': '📤', snapshot: '📊' };
@@ -6985,12 +7366,12 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
                     <FaWallet style={{ marginRight: '4px', fontSize: '0.75rem' }} />Wallet
                 </button>
                 <button onClick={() => setActiveTab('performance')} style={tabStyle(activeTab === 'performance')}>Performance</button>
-                <button onClick={() => setActiveTab('trade')} style={tabStyle(activeTab === 'trade')}>Trade Log</button>
-                <button onClick={() => setActiveTab('snapshots')} style={tabStyle(activeTab === 'snapshots')}>Portfolio Snapshots</button>
+                <button onClick={() => setActiveTab('logs')} style={tabStyle(activeTab === 'logs')}>
+                    <FaChartLine style={{ marginRight: '4px', fontSize: '0.75rem' }} />Logs
+                </button>
                 <button onClick={() => setActiveTab('circuit-breaker')} style={tabStyle(activeTab === 'circuit-breaker')}>
                     <FaShieldAlt style={{ marginRight: '4px', fontSize: '0.75rem' }} />Circuit Breaker
                 </button>
-                <button onClick={() => setActiveTab('settings')} style={tabStyle(activeTab === 'settings')}>Logging Settings</button>
                 <button onClick={() => setActiveTab('recovery')} style={tabStyle(activeTab === 'recovery')}>
                     <FaMedkit style={{ marginRight: '4px', fontSize: '0.75rem' }} />Recovery
                 </button>
@@ -6999,10 +7380,8 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
             {activeTab === 'chores' && <ChoresOverviewPanel choreStatuses={choreStatuses} cbEvents={cbEvents} theme={theme} accentColor={accentColor} onNavigateToChore={handleNavigateToChore} />}
             {activeTab === 'wallet' && <WalletPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} canisterId={canisterId} choreStatuses={choreStatuses} />}
             {activeTab === 'performance' && <PerformancePanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
-            {activeTab === 'trade' && <TradeLogViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
-            {activeTab === 'snapshots' && <PortfolioSnapshotViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
+            {activeTab === 'logs' && <LogsTabPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}
             {activeTab === 'circuit-breaker' && <CircuitBreakerPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}
-            {activeTab === 'settings' && <LoggingSettingsPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}
             {activeTab === 'recovery' && <RecoveryPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} canisterId={canisterId} />}
         </div>
     );
