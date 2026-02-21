@@ -7145,7 +7145,7 @@ function BotLogPanel({ getReadyBotActor, theme, accentColor }) {
 // Logs Tab Panel — combines Bot Log, Trade Log, Portfolio Snapshots, Logging Settings
 // ============================================
 function LogsTabPanel({ getReadyBotActor, theme, accentColor, choreStatuses }) {
-    const [subTab, setSubTab] = useState('bot-log');
+    const [subTab, setSubTab] = useState('trade-log');
 
     const subTabStyle = (active) => ({
         padding: '5px 14px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: active ? '600' : '400',
@@ -7158,9 +7158,9 @@ function LogsTabPanel({ getReadyBotActor, theme, accentColor, choreStatuses }) {
     return (
         <div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '14px' }}>
-                <button onClick={() => setSubTab('bot-log')} style={subTabStyle(subTab === 'bot-log')}>Bot Log</button>
                 <button onClick={() => setSubTab('trade-log')} style={subTabStyle(subTab === 'trade-log')}>Trade Log</button>
                 <button onClick={() => setSubTab('snapshots')} style={subTabStyle(subTab === 'snapshots')}>Portfolio Snapshots</button>
+                <button onClick={() => setSubTab('bot-log')} style={subTabStyle(subTab === 'bot-log')}>Bot Log</button>
                 <button onClick={() => setSubTab('settings')} style={subTabStyle(subTab === 'settings')}>Logging Settings</button>
             </div>
             {subTab === 'bot-log' && <BotLogPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
