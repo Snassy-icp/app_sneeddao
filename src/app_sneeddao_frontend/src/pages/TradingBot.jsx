@@ -1570,32 +1570,38 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
 
     useEffect(() => { loadData(); }, [loadData]);
 
-    // --- Frontend-only balance fetching (direct to ledger canisters) ---
+    // --- Balance fetching: uses chore purse if enabled, otherwise main purse ---
     const fetchBalances = useCallback(async () => {
-        if (!canisterId || targetTokenIds.length === 0) return;
-        const key = `${canisterId}:${targetTokenIds.join(',')}`;
+        if (targetTokenIds.length === 0) return;
+        const key = `${instanceId}:${targetTokenIds.join(',')}`;
         if (key === balanceFetchRef.current && Object.keys(tokenBalances).length > 0) return;
         balanceFetchRef.current = key;
         setBalancesLoading(true);
         try {
-            const { HttpAgent } = await import('@dfinity/agent');
-            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
-            const agent = HttpAgent.createSync({ identity, host });
-            if (isLocal) await agent.fetchRootKey();
-            const botPrincipal = Principal.fromText(canisterId);
+            const bot = await getReadyBotActor();
+            if (!bot) return;
+            const purseEnabled = await bot.isPurseEnabled(instanceId);
             const results = {};
-            await Promise.all(targetTokenIds.map(async (tid) => {
-                try {
-                    const ledgerActor = createLedgerActor(tid, { agent });
-                    const bal = await ledgerActor.icrc1_balance_of({ owner: botPrincipal, subaccount: [] });
-                    results[tid] = BigInt(bal);
-                } catch (_) { results[tid] = 0n; }
-            }));
+            if (purseEnabled) {
+                const balances = await bot.getPurseBalances(instanceId);
+                for (const b of balances) {
+                    const tok = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+                    results[tok] = BigInt(b.balance);
+                }
+            } else {
+                const balances = await bot.getMainPurseBalances();
+                for (const b of balances) {
+                    const tok = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+                    results[tok] = BigInt(b.balance);
+                }
+            }
+            for (const tid of targetTokenIds) {
+                if (!(tid in results)) results[tid] = 0n;
+            }
             setTokenBalances(results);
         } catch (e) { console.warn('Failed to fetch rebalance balances:', e); }
         finally { setBalancesLoading(false); }
-    }, [canisterId, targetTokenIds, identity]);
+    }, [instanceId, targetTokenIds, getReadyBotActor]);
 
     // --- Frontend-only price fetching (via PriceService) ---
     const fetchPrices = useCallback(async () => {
@@ -1613,12 +1619,12 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
     }, [denomKey, targetTokenIds]);
 
     // Auto-fetch balances + prices when targets are known
-    useEffect(() => { if (targetTokenIds.length > 0 && canisterId) fetchBalances(); }, [fetchBalances]);
+    useEffect(() => { if (targetTokenIds.length > 0) fetchBalances(); }, [fetchBalances]);
     useEffect(() => { if (targetTokenIds.length > 0 && denomKey) fetchPrices(); }, [fetchPrices]);
 
     // Auto-refresh every 30s
     useEffect(() => {
-        if (targetTokenIds.length === 0 || !canisterId) return;
+        if (targetTokenIds.length === 0) return;
         refreshTimerRef.current = setInterval(() => {
             balanceFetchRef.current = ''; // force re-fetch
             priceFetchRef.current = '';
@@ -1626,7 +1632,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
             fetchPrices();
         }, 30_000);
         return () => clearInterval(refreshTimerRef.current);
-    }, [fetchBalances, fetchPrices, targetTokenIds, canisterId]);
+    }, [fetchBalances, fetchPrices, targetTokenIds]);
 
     // Compute portfolio status from balances + prices + targets
     const portfolioStatus = React.useMemo(() => {
