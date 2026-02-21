@@ -8396,7 +8396,8 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                                     <PieChart segments={pieSegments} label="Main Account" theme={theme} />
                                 </div>
                             )}
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', minWidth: denomToken ? '520px' : '320px' }}>
                                 <thead>
                                     <tr style={{ color: theme.colors.mutedText, textAlign: 'left' }}>
                                         <th style={{ padding: '4px 8px' }}>Token</th>
@@ -8498,6 +8499,7 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                                     )}
                                 </tbody>
                             </table>
+                            </div>
                         </>
                     );
                 })()}
@@ -8633,7 +8635,8 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                 {mainPurseEntries.length === 0 ? (
                     <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, fontStyle: 'italic' }}>No token balances detected.</div>
                 ) : (
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '360px' }}>
                         <thead>
                             <tr style={rowBorder}>
                                 <th style={thStyle}>Token</th>
@@ -8659,6 +8662,7 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                             })}
                         </tbody>
                     </table>
+                    </div>
                 )}
             </div>
 
