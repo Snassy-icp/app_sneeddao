@@ -7018,6 +7018,10 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
     const [reclaimAmount, setReclaimAmount] = useState('');
     const [purseSaving, setPurseSaving] = useState(false);
 
+    // Token registration
+    const [addTokenValue, setAddTokenValue] = useState('');
+    const [addingToken, setAddingToken] = useState(false);
+    const [showTokenManager, setShowTokenManager] = useState(false);
     // Denomination selector for value display
     const [denomToken, setDenomToken] = useState(CKUSDC_LEDGER);
     const [denomPrices, setDenomPrices] = useState({});
@@ -7170,6 +7174,70 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
         return () => { cancelled = true; };
     }, [denomToken, tokenRegistry]);
 
+    // Token registry handlers
+    const handleAddToken = async (tokenData) => {
+        if (!addTokenValue) return;
+        setAddingToken(true); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            const cached = getTokenMetadataSync(addTokenValue);
+            const entry = {
+                ledgerCanisterId: Principal.fromText(addTokenValue),
+                symbol: tokenData?.symbol || cached?.symbol || '???',
+                decimals: tokenData?.decimals ?? cached?.decimals ?? 8,
+                fee: BigInt(tokenData?.fee ?? cached?.fee ?? 10000),
+            };
+            await bot.addToken(entry);
+            setAddTokenValue('');
+            setSuccess(`Token ${entry.symbol} registered.`);
+            await loadData();
+        } catch (e) { setError('Failed to add token: ' + e.message); }
+        finally { setAddingToken(false); }
+    };
+
+    const handleRemoveToken = async (ledgerId) => {
+        setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            const p = typeof ledgerId === 'string' ? Principal.fromText(ledgerId) : ledgerId;
+            await bot.removeToken(p);
+            setSuccess('Token removed.');
+            await loadData();
+        } catch (e) { setError('Failed to remove token: ' + e.message); }
+    };
+
+    // Auto-register a token if not already in the registry
+    const ensureTokenRegistered = async (tokenId) => {
+        const isRegistered = tokenRegistry.some(t => {
+            const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+            return tid === tokenId;
+        });
+        if (isRegistered) return;
+        const bot = await getReadyBotActor();
+        const cached = getTokenMetadataSync(tokenId);
+        await bot.addToken({
+            ledgerCanisterId: Principal.fromText(tokenId),
+            symbol: cached?.symbol || '???',
+            decimals: cached?.decimals ?? 8,
+            fee: BigInt(cached?.fee ?? 10000),
+        });
+    };
+
+    // Fetch user wallet balance when fund mode is active
+    const [walletBalance, setWalletBalance] = useState(null);
+    useEffect(() => {
+        if (activeOp !== 'fund' || !opToken || !identity) { setWalletBalance(null); return; }
+        let cancelled = false;
+        (async () => {
+            try {
+                const ledger = createLedgerActor(opToken, { agentOptions: { identity } });
+                const bal = await ledger.icrc1_balance_of({ owner: identity.getPrincipal(), subaccount: [] });
+                if (!cancelled) setWalletBalance(bal);
+            } catch { if (!cancelled) setWalletBalance(null); }
+        })();
+        return () => { cancelled = true; };
+    }, [activeOp, opToken, identity]);
+
     const handleScanForTokens = async () => {
         if (scanning) return;
         setScanning(true); setError(''); setSuccess('');
@@ -7318,7 +7386,7 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
     });
 
     const enabledPurses = allPurses.filter(p => p.enabled && p.balances.length > 0);
-    const opTokenBalance = opToken ? (mainBalances[opToken] || 0n) : null;
+    const opTokenBalance = activeOp === 'fund' ? walletBalance : (opToken ? (mainBalances[opToken] || 0n) : null);
 
     const handleExecuteOp = async () => {
         if (!opToken || !opAmount) return;
@@ -7330,7 +7398,27 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
             if (amount <= 0n) { setError('Amount must be greater than 0'); setOpExecuting(false); return; }
             const tokenPrincipal = Principal.fromText(opToken);
 
-            if (activeOp === 'withdraw') {
+            if (activeOp === 'fund') {
+                // ICRC-1 transfer from user wallet to bot's main account, auto-register token
+                await ensureTokenRegistered(opToken);
+                const botPrincipal = Principal.fromText(canisterId);
+                const ledgerActor = createLedgerActor(opToken, { agentOptions: { identity } });
+                const result = await ledgerActor.icrc1_transfer({
+                    to: { owner: botPrincipal, subaccount: [] },
+                    amount,
+                    fee: [],
+                    memo: [],
+                    from_subaccount: [],
+                    created_at_time: [],
+                });
+                if ('Ok' in result) {
+                    setSuccess(`Funded ${opAmount} ${tokLabel(opToken)} to Main Account. Block: ${result.Ok.toString()}`);
+                    setActiveOp(null); setOpAmount(''); setOpToken('');
+                    loadData();
+                } else {
+                    setError('Fund failed: ' + JSON.stringify(result.Err));
+                }
+            } else if (activeOp === 'withdraw') {
                 const userPrincipal = identity.getPrincipal();
                 const result = await bot.withdrawToken(tokenPrincipal, amount, { owner: userPrincipal, subaccount: [] });
                 if ('Ok' in result) {
@@ -7443,6 +7531,65 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
 
             {error && <div style={{ padding: '8px 12px', background: '#ef444415', border: '1px solid #ef444430', borderRadius: '8px', color: '#ef4444', fontSize: '0.8rem', marginBottom: '10px' }}>{error}</div>}
             {success && <div style={{ padding: '8px 12px', background: '#22c55e15', border: '1px solid #22c55e30', borderRadius: '8px', color: '#22c55e', fontSize: '0.8rem', marginBottom: '10px' }}>{success}</div>}
+
+            {/* ── Registered Tokens ── */}
+            <div style={{ padding: '12px', background: cardBg, borderRadius: '10px', border: `1px solid ${borderColor}`, marginBottom: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.85rem', color: theme.colors.primaryText, fontWeight: '600' }}>
+                        Registered Tokens ({tokenRegistry.length})
+                    </h4>
+                    <button onClick={() => setShowTokenManager(!showTokenManager)} style={btnStyle}>
+                        {showTokenManager ? 'Hide' : 'Manage'}
+                    </button>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: showTokenManager ? '10px' : '0' }}>
+                    {tokenRegistry.length === 0 ? (
+                        <div style={{ color: theme.colors.mutedText, fontSize: '0.78rem', padding: '4px 0' }}>No tokens registered. Add tokens or scan for tokens with balances.</div>
+                    ) : (
+                        tokenRegistry.map((t, idx) => {
+                            const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+                            return (
+                                <DraggableTokenChip
+                                    key={tid}
+                                    tid={tid}
+                                    index={idx}
+                                    symbol={_isPlaceholderSymbol(t.symbol) ? tokLabel(tid) : t.symbol}
+                                    showRemove={showTokenManager}
+                                    onRemove={() => handleRemoveToken(tid)}
+                                    onReorder={() => {}}
+                                    theme={theme}
+                                    borderColor={borderColor}
+                                    isPaused={pausedTokens.has(tid)}
+                                    isFrozen={frozenTokens.has(tid)}
+                                />
+                            );
+                        })
+                    )}
+                </div>
+                {showTokenManager && (
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-end' }}>
+                        <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '3px' }}>Add Token</label>
+                            <TokenSelector
+                                value={addTokenValue}
+                                onChange={setAddTokenValue}
+                                onSelectToken={(data) => {
+                                    setAddTokenValue(data.ledger_id);
+                                    handleAddToken(data);
+                                }}
+                                allowCustom={true}
+                                placeholder="Search or paste ledger ID..."
+                            />
+                        </div>
+                        {addTokenValue && (
+                            <button onClick={() => handleAddToken(null)} disabled={addingToken}
+                                style={{ ...btnStyle, opacity: addingToken ? 0.6 : 1, whiteSpace: 'nowrap', marginBottom: '1px' }}>
+                                <FaPlus style={{ fontSize: '0.6rem', marginRight: '3px' }} />{addingToken ? 'Adding...' : 'Add'}
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
 
             {/* ── Main Account (on-chain balances) ── */}
             <div style={{ padding: '12px', background: cardBg, borderRadius: '10px', border: `1px solid ${borderColor}`, marginBottom: '14px' }}>
@@ -7651,8 +7798,12 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                     </div>
                 )}
 
-                {/* Withdraw / Send buttons */}
+                {/* Fund / Withdraw / Send buttons */}
                 <div style={{ marginTop: '10px', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button onClick={() => { setActiveOp(activeOp === 'fund' ? null : 'fund'); setOpToken(''); setOpAmount(''); }}
+                        style={{ ...btnStyle, background: activeOp === 'fund' ? `${accentColor}15` : 'none', borderColor: activeOp === 'fund' ? accentColor : `${accentColor}40`, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <FaDownload style={{ fontSize: '0.6rem' }} /> Fund
+                    </button>
                     <button onClick={() => { setActiveOp(activeOp === 'withdraw' ? null : 'withdraw'); setOpToken(''); setOpAmount(''); }}
                         style={{ ...btnStyle, background: activeOp === 'withdraw' ? `${accentColor}15` : 'none', borderColor: activeOp === 'withdraw' ? accentColor : `${accentColor}40`, display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <FaWallet style={{ fontSize: '0.6rem' }} /> Withdraw
@@ -7667,23 +7818,36 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                 {activeOp && (
                     <div style={{ marginTop: '10px', padding: '12px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${borderColor}` }}>
                         <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>
+                            {activeOp === 'fund' && <>Fund from Wallet</>}
                             {activeOp === 'withdraw' && <>Withdraw to Your Wallet</>}
                             {activeOp === 'send' && <>Send to External Account</>}
-                            <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginLeft: '8px' }}>(from Main Account)</span>
+                            <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginLeft: '8px' }}>
+                                {activeOp === 'fund' ? '(to Main Account)' : '(from Main Account)'}
+                            </span>
                         </div>
 
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                            <div style={{ minWidth: '140px' }}>
+                            <div style={{ minWidth: '180px' }}>
                                 <label style={{ fontSize: '0.68rem', color: theme.colors.mutedText, display: 'block', marginBottom: '3px' }}>Token</label>
-                                <select value={opToken} onChange={(e) => setOpToken(e.target.value)} style={{ ...inputStyle, width: '100%' }}>
-                                    <option value="">Select token...</option>
-                                    {mainAccountEntries.map(e => (
-                                        <option key={e.token} value={e.token}>{tokLabel(e.token)}</option>
-                                    ))}
-                                    {registeredTokenIds.filter(tid => !mainAccountEntries.some(e => e.token === tid)).map(tid => (
-                                        <option key={tid} value={tid}>{tokLabel(tid)} (0)</option>
-                                    ))}
-                                </select>
+                                {activeOp === 'fund' ? (
+                                    <TokenSelector
+                                        value={opToken}
+                                        onChange={setOpToken}
+                                        onSelectToken={(data) => { setOpToken(data.ledger_id); }}
+                                        allowCustom={true}
+                                        placeholder="Search or paste ledger ID..."
+                                    />
+                                ) : (
+                                    <select value={opToken} onChange={(e) => setOpToken(e.target.value)} style={{ ...inputStyle, width: '100%' }}>
+                                        <option value="">Select token...</option>
+                                        {mainAccountEntries.map(e => (
+                                            <option key={e.token} value={e.token}>{tokLabel(e.token)}</option>
+                                        ))}
+                                        {registeredTokenIds.filter(tid => !mainAccountEntries.some(e => e.token === tid)).map(tid => (
+                                            <option key={tid} value={tid}>{tokLabel(tid)} (0)</option>
+                                        ))}
+                                    </select>
+                                )}
                             </div>
 
                             <div style={{ minWidth: '120px', flex: 1 }}>
@@ -7691,7 +7855,7 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                                     Amount
                                     {opToken && opTokenBalance != null && (
                                         <span style={{ marginLeft: '6px', color: theme.colors.secondaryText }}>
-                                            (bal: {formatTokenAmount(opTokenBalance, tokDecimals(opToken))})
+                                            ({activeOp === 'fund' ? 'wallet' : 'bal'}: {formatTokenAmount(opTokenBalance, tokDecimals(opToken))})
                                         </span>
                                     )}
                                 </label>
@@ -7728,6 +7892,12 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                             )}
                         </div>
 
+                        {activeOp === 'fund' && identity && (
+                            <div style={{ marginTop: '6px', fontSize: '0.72rem', color: theme.colors.secondaryText }}>
+                                From your wallet: <span style={{ fontFamily: 'monospace', color: accentColor }}>{identity.getPrincipal().toText()}</span>
+                            </div>
+                        )}
+
                         {activeOp === 'withdraw' && identity && (
                             <div style={{ marginTop: '6px', fontSize: '0.72rem', color: theme.colors.secondaryText }}>
                                 Destination: <span style={{ fontFamily: 'monospace', color: accentColor }}>{identity.getPrincipal().toText()}</span>
@@ -7741,7 +7911,10 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                                     opacity: (opExecuting || !opToken || !opAmount) ? 0.5 : 1,
                                     background: `${accentColor}15`, borderColor: accentColor,
                                 }}>
-                                {opExecuting ? 'Executing...' : (activeOp === 'withdraw' ? 'Withdraw' : 'Send')}
+                                {opExecuting ? 'Executing...' : (
+                                    activeOp === 'fund' ? 'Fund' :
+                                    activeOp === 'withdraw' ? 'Withdraw' : 'Send'
+                                )}
                             </button>
                             <button onClick={() => setActiveOp(null)} style={{ ...btnStyle, color: theme.colors.mutedText, borderColor: borderColor }}>
                                 Cancel
