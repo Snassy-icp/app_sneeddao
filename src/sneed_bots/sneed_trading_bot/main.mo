@@ -2470,6 +2470,46 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         }
     };
 
+    private func updateActionWatermark(instanceId: Text, actionId: Nat, watermarkE8s: Nat) {
+        var found = false;
+        let tradeActions = getTradeActionsForInstance(instanceId);
+        let updated = Array.map<T.ActionConfig, T.ActionConfig>(tradeActions, func(a) {
+            if (a.id == actionId) {
+                found := true;
+                { a with trailingStopWatermarkE8s = ?watermarkE8s }
+            } else { a }
+        });
+        if (found) {
+            setTradeActionsForInstance(instanceId, updated);
+        } else {
+            let mfActions = getMoveFundsActionsForInstance(instanceId);
+            let updatedMf = Array.map<T.ActionConfig, T.ActionConfig>(mfActions, func(a) {
+                if (a.id == actionId) { found := true; { a with trailingStopWatermarkE8s = ?watermarkE8s } } else { a }
+            });
+            if (found) { setMoveFundsActionsForInstance(instanceId, updatedMf) };
+        };
+    };
+
+    private func clearActionWatermark(instanceId: Text, actionId: Nat) {
+        var found = false;
+        let tradeActions = getTradeActionsForInstance(instanceId);
+        let updated = Array.map<T.ActionConfig, T.ActionConfig>(tradeActions, func(a) {
+            if (a.id == actionId) {
+                found := true;
+                { a with trailingStopWatermarkE8s = null }
+            } else { a }
+        });
+        if (found) {
+            setTradeActionsForInstance(instanceId, updated);
+        } else {
+            let mfActions = getMoveFundsActionsForInstance(instanceId);
+            let updatedMf = Array.map<T.ActionConfig, T.ActionConfig>(mfActions, func(a) {
+                if (a.id == actionId) { found := true; { a with trailingStopWatermarkE8s = null } } else { a }
+            });
+            if (found) { setMoveFundsActionsForInstance(instanceId, updatedMf) };
+        };
+    };
+
     /// Execute a Trade action (action type 0). Returns (executed, inputSpent, outputReceived).
     func executeTradeSwap(action: T.ActionConfig, instanceId: Text): async* (Bool, Nat, Nat) {
         let src = "chore:" # instanceId;
@@ -2581,6 +2621,57 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # " skipped: affordable amount " # Nat.toText(actualTradeSize) # " < min " # Nat.toText(effectiveMinAmount) # " (balance=" # Nat.toText(effectiveBal) # ", fee=" # Nat.toText(inputFee) # ")", null, []);
             logSkip("Affordable amount " # Nat.toText(actualTradeSize) # " < min " # Nat.toText(effectiveMinAmount), null, ?actualTradeSize);
             return (false, 0, 0);
+        };
+
+        // --- Trailing stop / take profit check ---
+        switch (action.trailingStopBps) {
+            case (?thresholdBps) {
+                let isStopLoss = switch (action.trailingStopDirection) {
+                    case (?1) false; // take profit
+                    case _ true;     // default: stop loss
+                };
+                let cachedQ = getCachedQuote(action.inputToken, outputToken);
+                switch (cachedQ) {
+                    case (?cq) {
+                        let currentPrice = cq.spotPriceE8s;
+                        if (currentPrice == 0) {
+                            logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # " trailing stop: cached price is 0, skipping check", null, []);
+                        } else {
+                            let existingWatermark = switch (action.trailingStopWatermarkE8s) {
+                                case (?w) if (w > 0) w else currentPrice;
+                                case null currentPrice;
+                            };
+                            let newWatermark = if (isStopLoss) {
+                                Nat.max(existingWatermark, currentPrice)
+                            } else {
+                                Nat.min(existingWatermark, currentPrice)
+                            };
+                            updateActionWatermark(instanceId, action.id, newWatermark);
+
+                            let triggered = if (isStopLoss) {
+                                currentPrice * 10000 < newWatermark * (10000 - thresholdBps)
+                            } else {
+                                currentPrice * 10000 > newWatermark * (10000 + thresholdBps)
+                            };
+                            let dirLabel = if (isStopLoss) "stop loss" else "take profit";
+                            if (not triggered) {
+                                let pctFromWM = if (newWatermark > 0) {
+                                    let diff = if (currentPrice > newWatermark) { currentPrice - newWatermark } else { newWatermark - currentPrice };
+                                    Nat.toText(diff * 10000 / newWatermark)
+                                } else { "?" };
+                                logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # " trailing " # dirLabel # " not triggered: price=" # Nat.toText(currentPrice) # " watermark=" # Nat.toText(newWatermark) # " threshold=" # Nat.toText(thresholdBps) # "bps distance=" # pctFromWM # "bps", null, []);
+                                logSkip("Trailing " # dirLabel # " not triggered (price " # Nat.toText(currentPrice) # ", watermark " # Nat.toText(newWatermark) # ", threshold " # Nat.toText(thresholdBps) # " bps)", null, ?actualTradeSize);
+                                return (false, 0, 0);
+                            };
+                            logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # " trailing " # dirLabel # " TRIGGERED: price=" # Nat.toText(currentPrice) # " watermark=" # Nat.toText(newWatermark) # " threshold=" # Nat.toText(thresholdBps) # "bps", null, []);
+                        };
+                    };
+                    case null {
+                        logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # " trailing stop: no cached quote for " # tokenLabel(action.inputToken) # " → " # tokenLabel(outputToken) # ", skipping check", null, []);
+                    };
+                };
+            };
+            case null {};
         };
 
         // Get quote — impact-aware selection when no preferred DEX
@@ -2757,6 +2848,16 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         if (isPurseEnabledForChore(instanceId)) {
                             adjustChorePurseBalance(instanceId, action.inputToken, actualTradeSize, true);
                             adjustChorePurseBalance(instanceId, outputToken, netAmountOut, false);
+                        };
+                        switch (action.trailingStopBps) {
+                            case (?_) {
+                                let shouldReset = switch (action.trailingStopResetOnExec) {
+                                    case (?1) false; // 1 = never reset
+                                    case _ true;     // null or 0 = reset
+                                };
+                                if (shouldReset) { clearActionWatermark(instanceId, action.id) };
+                            };
+                            case null {};
                         };
                         (true, actualTradeSize, r.amountOut)
                     };
@@ -3067,6 +3168,16 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                 if (isPurseEnabledForChore(instanceId)) {
                                     adjustChorePurseBalance(instanceId, action.inputToken, actualTradeSize, true);
                                     adjustChorePurseBalance(instanceId, outputToken, netAmountOut, false);
+                                };
+                                switch (action.trailingStopBps) {
+                                    case (?_) {
+                                        let shouldReset = switch (action.trailingStopResetOnExec) {
+                                            case (?1) false;
+                                            case _ true;
+                                        };
+                                        if (shouldReset) { clearActionWatermark(instanceId, action.id) };
+                                    };
+                                    case null {};
                                 };
                                 (true, actualTradeSize, r.amountOut)
                             };
@@ -6343,6 +6454,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             minFrequencySeconds = config.minFrequencySeconds;
             maxFrequencySeconds = config.maxFrequencySeconds;
             tradeSizeDenominationToken = config.tradeSizeDenominationToken;
+            trailingStopBps = config.trailingStopBps;
+            trailingStopDirection = config.trailingStopDirection;
+            trailingStopResetOnExec = config.trailingStopResetOnExec;
             haltChoreAfterExecution = config.haltChoreAfterExecution;
             maxCumulativeInput = config.maxCumulativeInput;
             maxCumulativeOutput = config.maxCumulativeOutput;
@@ -6351,6 +6465,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             cumulativeInputSpent = 0;
             cumulativeOutputReceived = 0;
             executionCount = 0;
+            trailingStopWatermarkE8s = null;
         };
         setTradeActionsForInstance(instanceId, Array.append(getTradeActionsForInstance(instanceId), [action]));
         setTradeNextId(instanceId, nextId + 1);
@@ -6391,6 +6506,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     minFrequencySeconds = config.minFrequencySeconds;
                     maxFrequencySeconds = config.maxFrequencySeconds;
                     tradeSizeDenominationToken = config.tradeSizeDenominationToken;
+                    trailingStopBps = config.trailingStopBps;
+                    trailingStopDirection = config.trailingStopDirection;
+                    trailingStopResetOnExec = config.trailingStopResetOnExec;
                     haltChoreAfterExecution = config.haltChoreAfterExecution;
                     maxCumulativeInput = config.maxCumulativeInput;
                     maxCumulativeOutput = config.maxCumulativeOutput;
@@ -6399,6 +6517,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     cumulativeInputSpent = a.cumulativeInputSpent;
                     cumulativeOutputReceived = a.cumulativeOutputReceived;
                     executionCount = a.executionCount;
+                    trailingStopWatermarkE8s = a.trailingStopWatermarkE8s;
                 }
             } else { a }
         });
@@ -6488,6 +6607,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             minFrequencySeconds = config.minFrequencySeconds;
             maxFrequencySeconds = config.maxFrequencySeconds;
             tradeSizeDenominationToken = null;
+            trailingStopBps = null;
+            trailingStopDirection = null;
+            trailingStopResetOnExec = null;
             haltChoreAfterExecution = config.haltChoreAfterExecution;
             maxCumulativeInput = config.maxCumulativeInput;
             maxCumulativeOutput = config.maxCumulativeOutput;
@@ -6496,6 +6618,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             cumulativeInputSpent = 0;
             cumulativeOutputReceived = 0;
             executionCount = 0;
+            trailingStopWatermarkE8s = null;
         };
         setMoveFundsActionsForInstance(instanceId, Array.append(getMoveFundsActionsForInstance(instanceId), [action]));
         setMoveFundsNextId(instanceId, nextId + 1);
@@ -6556,7 +6679,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         let updatedTrade = Array.map<T.ActionConfig, T.ActionConfig>(tradeActions, func(a) {
             if (a.id == actionId) {
                 found := true;
-                { a with cumulativeInputSpent = 0; cumulativeOutputReceived = 0; executionCount = 0 }
+                { a with cumulativeInputSpent = 0; cumulativeOutputReceived = 0; executionCount = 0; trailingStopWatermarkE8s = null }
             } else { a }
         });
         if (found) {
@@ -6564,7 +6687,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         } else {
             let mfActions = getMoveFundsActionsForInstance(instanceId);
             let updatedMf = Array.map<T.ActionConfig, T.ActionConfig>(mfActions, func(a) {
-                if (a.id == actionId) { found := true; { a with cumulativeInputSpent = 0; cumulativeOutputReceived = 0; executionCount = 0 } } else { a }
+                if (a.id == actionId) { found := true; { a with cumulativeInputSpent = 0; cumulativeOutputReceived = 0; executionCount = 0; trailingStopWatermarkE8s = null } } else { a }
             });
             if (found) { setMoveFundsActionsForInstance(instanceId, updatedMf) };
         };

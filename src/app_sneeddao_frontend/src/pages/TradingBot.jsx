@@ -464,6 +464,9 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
     const [fSizeByOutput, setFSizeByOutput] = useState(false);
     const [fPriceDenom, setFPriceDenom] = useState('');
     const [fBalanceDenom, setFBalanceDenom] = useState('');
+    const [fTrailingStopBps, setFTrailingStopBps] = useState('');
+    const [fTrailingStopDirection, setFTrailingStopDirection] = useState(0); // 0=stop loss, 1=take profit
+    const [fTrailingStopResetOnExec, setFTrailingStopResetOnExec] = useState(0); // 0=reset, 1=never
     const [fHaltAfterExec, setFHaltAfterExec] = useState(false);
     const [fMaxCumulativeInput, setFMaxCumulativeInput] = useState('');
     const [fMaxCumulativeOutput, setFMaxCumulativeOutput] = useState('');
@@ -578,6 +581,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         setFSourcePurse(''); setFTargetPurse('');
         setFPriceDirection('input_per_output');
         setFTradeSizeDenom(''); setFSizeByOutput(false); setFPriceDenom(''); setFBalanceDenom('');
+        setFTrailingStopBps(''); setFTrailingStopDirection(0); setFTrailingStopResetOnExec(0);
         setFHaltAfterExec(false); setFMaxCumulativeInput(''); setFMaxCumulativeOutput(''); setFMaxExecutions('');
         setShowConditions(false);
     };
@@ -649,11 +653,16 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         setFMaxCumulativeInput(optVal(action.maxCumulativeInput) != null ? (Number(optVal(action.maxCumulativeInput)) / (10 ** inputDec)).toString() : '');
         setFMaxCumulativeOutput(optVal(action.maxCumulativeOutput) != null ? (Number(optVal(action.maxCumulativeOutput)) / (10 ** outputDec)).toString() : '');
         setFMaxExecutions(optVal(action.maxExecutions) != null ? Number(optVal(action.maxExecutions)).toString() : '');
+        // Trailing stop fields
+        const tsBps = optVal(action.trailingStopBps);
+        setFTrailingStopBps(tsBps != null ? String(Number(tsBps) / 100) : '');
+        setFTrailingStopDirection(optVal(action.trailingStopDirection) != null ? Number(optVal(action.trailingStopDirection)) : 0);
+        setFTrailingStopResetOnExec(optVal(action.trailingStopResetOnExec) != null ? Number(optVal(action.trailingStopResetOnExec)) : 0);
         // Auto-expand conditions if any condition fields are set
         const hasConditions = optVal(action.minBalance) != null || optVal(action.maxBalance) != null ||
             optVal(action.minPrice) != null || optVal(action.maxPrice) != null ||
             optVal(action.maxPriceImpactBps) != null || optVal(action.maxSlippageBps) != null ||
-            bDenom || pDenom;
+            bDenom || pDenom || tsBps != null;
         setShowConditions(hasConditions);
         setFormMode({ id: Number(action.id) });
         setError(''); setSuccess('');
@@ -732,6 +741,9 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
             minFrequencySeconds: [],
             maxFrequencySeconds: [],
             tradeSizeDenominationToken: fTradeSizeDenom ? [Principal.fromText(fTradeSizeDenom)] : [],
+            trailingStopBps: fTrailingStopBps ? [BigInt(Math.round(Number(fTrailingStopBps) * 100))] : [],
+            trailingStopDirection: fTrailingStopBps ? [BigInt(fTrailingStopDirection)] : [],
+            trailingStopResetOnExec: fTrailingStopBps ? [BigInt(fTrailingStopResetOnExec)] : [],
             haltChoreAfterExecution: fHaltAfterExec,
             maxCumulativeInput: fMaxCumulativeInput ? [BigInt(Math.round(parseFloat(fMaxCumulativeInput) * (10 ** (fTradeSizeDenom ? getDecimals(fTradeSizeDenom) : getDecimals(fInputToken)))))] : [],
             maxCumulativeOutput: fMaxCumulativeOutput ? [BigInt(Math.round(parseFloat(fMaxCumulativeOutput) * (10 ** (fOutputToken ? getDecimals(fOutputToken) : 8))))] : [],
@@ -1123,6 +1135,52 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                     <label style={labelStyle}>Max Slippage (%)</label>
                                     <input value={fMaxSlippageBps} onChange={(e) => setFMaxSlippageBps(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="e.g. 0.5 = 0.5%" />
                                 </div>
+                                {/* Trailing Stop section */}
+                                <div style={{ gridColumn: '1 / -1', borderTop: `1px solid ${theme.colors.border}20`, margin: '4px 0' }} />
+                                <div style={{ gridColumn: '1 / -1' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', marginBottom: '6px' }}>
+                                        <input type="checkbox" checked={!!fTrailingStopBps} onChange={e => { if (!e.target.checked) setFTrailingStopBps(''); else setFTrailingStopBps('5'); }} />
+                                        <span style={{ fontSize: '0.8rem', color: theme.colors.primaryText, fontWeight: '500' }}>Trailing Stop</span>
+                                    </label>
+                                    {!!fTrailingStopBps && (
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px', paddingLeft: '22px' }}>
+                                            <div>
+                                                <label style={labelStyle}>Mode</label>
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <button type="button" onClick={() => setFTrailingStopDirection(0)}
+                                                        style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 10px', background: fTrailingStopDirection === 0 ? accentColor : 'transparent', color: fTrailingStopDirection === 0 ? '#fff' : theme.colors.primaryText }}>
+                                                        Stop Loss
+                                                    </button>
+                                                    <button type="button" onClick={() => setFTrailingStopDirection(1)}
+                                                        style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 10px', background: fTrailingStopDirection === 1 ? accentColor : 'transparent', color: fTrailingStopDirection === 1 ? '#fff' : theme.colors.primaryText }}>
+                                                        Take Profit
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label style={labelStyle}>Threshold (%)</label>
+                                                <input value={fTrailingStopBps} onChange={(e) => setFTrailingStopBps(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal"
+                                                    placeholder={fTrailingStopDirection === 0 ? 'e.g. 5 = sell when 5% below peak' : 'e.g. 3 = buy when 3% above trough'} />
+                                            </div>
+                                            <div>
+                                                <label style={labelStyle}>Reset after execution</label>
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <button type="button" onClick={() => setFTrailingStopResetOnExec(0)}
+                                                        style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 10px', background: fTrailingStopResetOnExec === 0 ? accentColor : 'transparent', color: fTrailingStopResetOnExec === 0 ? '#fff' : theme.colors.primaryText }}>
+                                                        Yes
+                                                    </button>
+                                                    <button type="button" onClick={() => setFTrailingStopResetOnExec(1)}
+                                                        style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 10px', background: fTrailingStopResetOnExec === 1 ? accentColor : 'transparent', color: fTrailingStopResetOnExec === 1 ? '#fff' : theme.colors.primaryText }}>
+                                                        No
+                                                    </button>
+                                                </div>
+                                                <div style={{ fontSize: '0.65rem', color: theme.colors.secondaryText, marginTop: '3px' }}>
+                                                    {fTrailingStopResetOnExec === 0 ? 'Watermark resets after each trade, tracking starts fresh' : 'Watermark keeps tracking from the all-time peak/trough'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </>)}
                         </div>
                     )}
@@ -1296,6 +1354,23 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                             })()}
                                             {optVal(action.maxPriceImpactBps) != null && <div><strong>Max Impact:</strong> {(Number(optVal(action.maxPriceImpactBps)) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</div>}
                                             {optVal(action.maxSlippageBps) != null && <div><strong>Max Slippage:</strong> {(Number(optVal(action.maxSlippageBps)) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</div>}
+                                            {optVal(action.trailingStopBps) != null && (() => {
+                                                const tsDir = optVal(action.trailingStopDirection);
+                                                const isTP = tsDir != null && Number(tsDir) === 1;
+                                                const tsPct = (Number(optVal(action.trailingStopBps)) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 });
+                                                const resetMode = optVal(action.trailingStopResetOnExec);
+                                                const resets = resetMode == null || Number(resetMode) === 0;
+                                                const wm = optVal(action.trailingStopWatermarkE8s);
+                                                const outKey = action.outputToken?.length > 0 ? (typeof action.outputToken[0] === 'string' ? action.outputToken[0] : action.outputToken[0]?.toText?.() || String(action.outputToken[0])) : '';
+                                                const outS = outKey ? getSymbol(outKey) : 'Output';
+                                                return <>
+                                                    <div style={{ color: isTP ? '#22c55e' : '#ef4444' }}>
+                                                        <strong>Trailing {isTP ? 'take profit' : 'stop loss'}:</strong> {tsPct}% from {isTP ? 'trough' : 'peak'}
+                                                    </div>
+                                                    {wm != null && Number(wm) > 0 && <div><strong>{isTP ? 'Trough' : 'Peak'}:</strong> {(Number(wm) / 1e8).toLocaleString(undefined, { maximumSignificantDigits: 6 })} {inputSym}/{outS}</div>}
+                                                    <div style={{ fontSize: '0.7rem', color: theme.colors.secondaryText }}>{resets ? 'Resets after trade' : 'Never resets'}</div>
+                                                </>;
+                                            })()}
                                             {action.lastExecutedAt?.length > 0 && (
                                                 <div><strong>Last run:</strong> {new Date(Number(action.lastExecutedAt[0]) / 1_000_000).toLocaleString()}</div>
                                             )}

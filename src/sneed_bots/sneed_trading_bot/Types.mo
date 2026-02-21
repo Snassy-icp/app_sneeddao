@@ -393,6 +393,11 @@ module {
         // Trade size denomination (Trade only)
         tradeSizeDenominationToken: ?Principal;
 
+        // Trailing stop / take profit (Trade only)
+        trailingStopBps: ?Nat;           // Threshold in basis points (null = disabled, 500 = 5%)
+        trailingStopDirection: ?Nat;     // 0 = stop loss (drop from peak), 1 = take profit (rise from trough)
+        trailingStopResetOnExec: ?Nat;   // 0 = reset watermark after execution (default), 1 = never reset
+
         // Post-execution behavior
         haltChoreAfterExecution: Bool;   // If true, stop the chore after this action executes
         maxCumulativeInput: ?Nat;        // Cumulative input budget; chore stops when reached
@@ -404,6 +409,7 @@ module {
         cumulativeInputSpent: Nat;
         cumulativeOutputReceived: Nat;
         executionCount: Nat;
+        trailingStopWatermarkE8s: ?Nat;  // Tracked peak (stop loss) or trough (take profit) price
     };
 
     /// Input type for creating/updating actions (no id or lastExecutedAt)
@@ -432,6 +438,9 @@ module {
         minFrequencySeconds: ?Nat;
         maxFrequencySeconds: ?Nat;
         tradeSizeDenominationToken: ?Principal;
+        trailingStopBps: ?Nat;
+        trailingStopDirection: ?Nat;
+        trailingStopResetOnExec: ?Nat;
         haltChoreAfterExecution: Bool;
         maxCumulativeInput: ?Nat;
         maxCumulativeOutput: ?Nat;

@@ -109,6 +109,9 @@ export const idlFactory = ({ IDL }) => {
         minFrequencySeconds: IDL.Opt(IDL.Nat),
         maxFrequencySeconds: IDL.Opt(IDL.Nat),
         tradeSizeDenominationToken: IDL.Opt(IDL.Principal),
+        trailingStopBps: IDL.Opt(IDL.Nat),
+        trailingStopDirection: IDL.Opt(IDL.Nat),
+        trailingStopResetOnExec: IDL.Opt(IDL.Nat),
         haltChoreAfterExecution: IDL.Bool,
         maxCumulativeInput: IDL.Opt(IDL.Nat),
         maxCumulativeOutput: IDL.Opt(IDL.Nat),
@@ -117,6 +120,7 @@ export const idlFactory = ({ IDL }) => {
         cumulativeInputSpent: IDL.Nat,
         cumulativeOutputReceived: IDL.Nat,
         executionCount: IDL.Nat,
+        trailingStopWatermarkE8s: IDL.Opt(IDL.Nat),
     });
 
     const ActionConfigInput = IDL.Record({
@@ -144,6 +148,9 @@ export const idlFactory = ({ IDL }) => {
         minFrequencySeconds: IDL.Opt(IDL.Nat),
         maxFrequencySeconds: IDL.Opt(IDL.Nat),
         tradeSizeDenominationToken: IDL.Opt(IDL.Principal),
+        trailingStopBps: IDL.Opt(IDL.Nat),
+        trailingStopDirection: IDL.Opt(IDL.Nat),
+        trailingStopResetOnExec: IDL.Opt(IDL.Nat),
         haltChoreAfterExecution: IDL.Bool,
         maxCumulativeInput: IDL.Opt(IDL.Nat),
         maxCumulativeOutput: IDL.Opt(IDL.Nat),

@@ -682,7 +682,7 @@ const PrincipalInput = ({
             )}
             
             {/* Dropdown - rendered via portal to ensure it's above everything (show even when no matches so user can change filters) */}
-            {showDropdown && inputValue.trim() && ReactDOM.createPortal(
+            {showDropdown && inputValue.trim() && !isValid && ReactDOM.createPortal(
                 <div
                     ref={dropdownRef}
                     style={{
