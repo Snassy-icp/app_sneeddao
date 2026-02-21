@@ -49,6 +49,23 @@ const tradingBotStyles = `
 }
 .trading-bot-float { animation: tradingFloat 3s ease-in-out infinite; }
 .trading-bot-fade-in { animation: fadeInUp 0.5s ease-out forwards; }
+@keyframes swapPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+@keyframes swapFlowDot {
+    0% { transform: translateX(-8px); opacity: 0; }
+    30% { opacity: 1; }
+    70% { opacity: 1; }
+    100% { transform: translateX(8px); opacity: 0; }
+}
+@keyframes swapSlideIn {
+    from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.swap-card-enter { animation: swapSlideIn 0.3s ease-out forwards; }
+.swap-pulse { animation: swapPulse 1.5s ease-in-out infinite; }
+.swap-flow-dot { animation: swapFlowDot 1.2s ease-in-out infinite; }
 `;
 
 // Trading bot accent colors — green/teal for trading
@@ -8416,6 +8433,230 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
 }
 
 // ============================================
+// Swap Progress Card — beautiful live visualization of swaps
+// ============================================
+const DEX_NAMES = { 0: 'ICPSwap', 1: 'KongSwap' };
+const DEX_COLORS = { 0: '#3b82f6', 1: '#f59e0b' };
+
+function SwapProgressCard({ entry, isRunning, theme, accentColor, onDismiss }) {
+    if (!entry && !isRunning) return null;
+
+    const cardBorder = isRunning ? `${accentColor}50` : entry?.status === 'Success' ? '#22c55e40' : entry?.status === 'Failed' ? '#ef444440' : `${theme.colors.border}`;
+    const cardGlow = isRunning ? `${accentColor}12` : entry?.status === 'Success' ? '#22c55e08' : entry?.status === 'Failed' ? '#ef444408' : theme.colors.cardBg;
+
+    const inSym = entry?.inputSymbol || '???';
+    const outSym = entry?.outputSymbol || '???';
+    const inAmt = entry?.inputAmount != null ? entry.inputAmount : null;
+    const outAmt = entry?.outputAmount != null ? entry.outputAmount : null;
+    const inDec = entry?.inputDecimals ?? 8;
+    const outDec = entry?.outputDecimals ?? 8;
+    const fmtAmt = (raw, dec) => raw != null ? (Number(raw) / Math.pow(10, dec)).toLocaleString(undefined, { maximumFractionDigits: Math.min(dec, 6) }) : '...';
+    const dexName = entry?.dexId != null ? (DEX_NAMES[Number(entry.dexId)] || `DEX #${entry.dexId}`) : null;
+    const dexColor = entry?.dexId != null ? (DEX_COLORS[Number(entry.dexId)] || accentColor) : accentColor;
+    const priceImpact = entry?.priceImpactBps != null ? (Number(entry.priceImpactBps) / 100).toFixed(2) : null;
+    const slippage = entry?.slippageBps != null ? (Number(entry.slippageBps) / 100).toFixed(2) : null;
+    const priceE8s = entry?.priceE8s;
+    const priceStr = priceE8s != null ? (Number(priceE8s) / 1e8).toLocaleString(undefined, { maximumFractionDigits: 8 }) : null;
+
+    const statusColor = isRunning ? accentColor : entry?.status === 'Success' ? '#22c55e' : entry?.status === 'Failed' ? '#ef4444' : '#f59e0b';
+    const statusLabel = isRunning ? 'Swapping...' : entry?.status || 'Unknown';
+    const statusIcon = isRunning ? '⟳' : entry?.status === 'Success' ? '✓' : entry?.status === 'Failed' ? '✗' : '⊘';
+
+    return (
+        <div className="swap-card-enter" style={{
+            marginTop: '8px', marginBottom: '6px', padding: '12px',
+            background: cardGlow, border: `1px solid ${cardBorder}`,
+            borderRadius: '10px', position: 'relative', overflow: 'hidden',
+        }}>
+            {onDismiss && (
+                <button onClick={onDismiss} style={{
+                    position: 'absolute', top: '6px', right: '8px', background: 'none',
+                    border: 'none', cursor: 'pointer', color: theme.colors.mutedText,
+                    fontSize: '0.85rem', padding: '2px 4px', lineHeight: 1,
+                }} title="Dismiss">×</button>
+            )}
+
+            {/* Status badge */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+                <span className={isRunning ? 'swap-pulse' : ''} style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 20, height: 20, borderRadius: '50%',
+                    background: `${statusColor}20`, color: statusColor,
+                    fontSize: '0.75rem', fontWeight: '700',
+                }}>{statusIcon}</span>
+                <span style={{ fontSize: '0.78rem', fontWeight: '600', color: statusColor }}>{statusLabel}</span>
+                {dexName && (
+                    <span style={{
+                        marginLeft: 'auto', fontSize: '0.68rem', padding: '2px 8px',
+                        borderRadius: '4px', background: `${dexColor}15`, color: dexColor,
+                        fontWeight: '600', border: `1px solid ${dexColor}30`,
+                    }}>{dexName}</span>
+                )}
+            </div>
+
+            {/* Token flow */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', marginBottom: '10px' }}>
+                {/* Input */}
+                <div style={{ textAlign: 'center', flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', marginBottom: '3px' }}>
+                        <TokenIcon canisterId={entry?.inputToken} size={22} />
+                        <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.primaryText }}>{inSym}</span>
+                    </div>
+                    <div style={{ fontSize: '0.82rem', fontWeight: '600', color: '#ef4444', fontFamily: 'monospace' }}>
+                        {inAmt != null ? `−${fmtAmt(inAmt, inDec)}` : '...'}
+                    </div>
+                </div>
+
+                {/* Arrow */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 4px', flexShrink: 0 }}>
+                    <div style={{
+                        width: '40px', height: '2px', borderRadius: '1px', position: 'relative',
+                        background: `linear-gradient(to right, #ef4444, ${statusColor}, #22c55e)`,
+                    }}>
+                        {isRunning && (
+                            <div className="swap-flow-dot" style={{
+                                position: 'absolute', top: '-2px', left: '50%',
+                                width: '6px', height: '6px', borderRadius: '50%',
+                                background: accentColor,
+                            }} />
+                        )}
+                    </div>
+                    <span style={{ fontSize: '0.65rem', color: theme.colors.mutedText, marginTop: '2px' }}>→</span>
+                </div>
+
+                {/* Output */}
+                <div style={{ textAlign: 'center', flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', marginBottom: '3px' }}>
+                        <TokenIcon canisterId={entry?.outputToken} size={22} />
+                        <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.primaryText }}>{outSym}</span>
+                    </div>
+                    <div style={{ fontSize: '0.82rem', fontWeight: '600', color: outAmt != null ? '#22c55e' : theme.colors.mutedText, fontFamily: 'monospace' }}>
+                        {outAmt != null ? `+${fmtAmt(outAmt, outDec)}` : isRunning ? '...' : '—'}
+                    </div>
+                </div>
+            </div>
+
+            {/* Details row */}
+            {(priceStr || priceImpact || slippage) && (
+                <div style={{
+                    display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: 'center',
+                    fontSize: '0.7rem', color: theme.colors.secondaryText,
+                    paddingTop: '8px', borderTop: `1px solid ${theme.colors.border}30`,
+                }}>
+                    {priceStr && (
+                        <span>Price: <strong style={{ color: theme.colors.primaryText }}>{priceStr}</strong> <span style={{ opacity: 0.7 }}>{outSym}/{inSym}</span></span>
+                    )}
+                    {priceImpact && (
+                        <span>Impact: <strong style={{ color: Number(priceImpact) > 1 ? '#f59e0b' : theme.colors.primaryText }}>{priceImpact}%</strong></span>
+                    )}
+                    {slippage && (
+                        <span>Slippage: <strong style={{ color: Number(slippage) > 2 ? '#f59e0b' : theme.colors.primaryText }}>{slippage}%</strong></span>
+                    )}
+                </div>
+            )}
+
+            {/* Error message */}
+            {entry?.errorMessage && (
+                <div style={{
+                    marginTop: '8px', padding: '6px 10px', fontSize: '0.72rem',
+                    background: '#ef444410', borderRadius: '6px', border: '1px solid #ef444425',
+                    color: '#ef4444', wordBreak: 'break-word',
+                }}>{entry.errorMessage}</div>
+            )}
+        </div>
+    );
+}
+
+// ============================================
+// Swap card renderer hook — detects swap tasks from run data and fetches trade log results
+// ============================================
+const ACTIVE_SWAP_PATTERN = /^trade-action-|^rebalance-exec-/;
+
+function parseTradeLogEntry(e) {
+    const inTid = typeof e.inputToken === 'string' ? e.inputToken : e.inputToken?.toText?.() || String(e.inputToken);
+    const outTid = e.outputToken?.[0] ? (typeof e.outputToken[0] === 'string' ? e.outputToken[0] : e.outputToken[0]?.toText?.() || String(e.outputToken[0])) : null;
+    const inMeta = getTokenMetadataSync(inTid);
+    const outMeta = outTid ? getTokenMetadataSync(outTid) : null;
+    const status = Object.keys(e.status)[0] || 'Unknown';
+    return {
+        inputToken: inTid, outputToken: outTid,
+        inputSymbol: inMeta?.symbol || '???', outputSymbol: outMeta?.symbol || '???',
+        inputDecimals: inMeta?.decimals ?? 8, outputDecimals: outMeta?.decimals ?? 8,
+        inputAmount: e.inputAmount, outputAmount: e.outputAmount?.[0] ?? null,
+        priceE8s: e.priceE8s?.[0] ?? null, priceImpactBps: e.priceImpactBps?.[0] ?? null,
+        slippageBps: e.slippageBps?.[0] ?? null, dexId: e.dexId?.[0] ?? null,
+        status, errorMessage: e.errorMessage?.[0] || null, timestamp: e.timestamp,
+    };
+}
+
+function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
+    const [swapResults, setSwapResults] = React.useState({});
+    const [dismissed, setDismissed] = React.useState(new Set());
+    const fetchingRef = useRef(new Set());
+    const botActorRef = useRef(getReadyBotActor);
+    botActorRef.current = getReadyBotActor;
+
+    const triggerFetch = useCallback((fetchKey, choreId) => {
+        if (fetchingRef.current.has(fetchKey)) return;
+        fetchingRef.current.add(fetchKey);
+        (async () => {
+            try {
+                const bot = await botActorRef.current();
+                if (!bot) return;
+                const result = await bot.getTradeLog({
+                    startId: [], limit: [3], offset: [0],
+                    choreId: [choreId], choreTypeId: [],
+                    actionType: [], inputToken: [], outputToken: [],
+                    status: [], fromTime: [], toTime: [],
+                });
+                const entries = result?.entries || [];
+                if (entries.length > 0) {
+                    setSwapResults(prev => ({ ...prev, [fetchKey]: parseTradeLogEntry(entries[0]) }));
+                }
+            } catch { /* silently ignore */ }
+        })();
+    }, []);
+
+    const renderSwapCard = useCallback((choreId, run, _chore) => {
+        if (!run) return null;
+
+        const currentTaskId = run.currentTask?.taskId;
+        const isSwapRunning = currentTaskId && ACTIVE_SWAP_PATTERN.test(currentTaskId);
+
+        const recentSwapTask = [...(run.completedTasks || [])].reverse()
+            .find(t => ACTIVE_SWAP_PATTERN.test(t.taskId));
+
+        const activeKey = isSwapRunning ? `${choreId}:${currentTaskId}`
+            : recentSwapTask ? `${choreId}:${recentSwapTask.taskId}` : null;
+
+        if (!activeKey) return null;
+        if (dismissed.has(activeKey)) return null;
+
+        // Trigger async fetch for completed swap results (deferred to avoid render-time side effects)
+        if (recentSwapTask) {
+            const fetchKey = `${choreId}:${recentSwapTask.taskId}`;
+            if (!swapResults[fetchKey] && !fetchingRef.current.has(fetchKey)) {
+                setTimeout(() => triggerFetch(fetchKey, choreId), 0);
+            }
+        }
+
+        const entry = swapResults[activeKey] || null;
+
+        return (
+            <SwapProgressCard
+                entry={entry}
+                isRunning={isSwapRunning}
+                theme={theme}
+                accentColor={accentColor}
+                onDismiss={() => setDismissed(prev => new Set(prev).add(activeKey))}
+            />
+        );
+    }, [swapResults, dismissed, theme, accentColor, triggerFetch]);
+
+    return renderSwapCard;
+}
+
+// ============================================
 // Custom chore configuration renderer (dispatches to real components)
 // ============================================
 function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, getReadyBotActor, theme, accentColor, cardStyle, inputStyle, buttonStyle, secondaryButtonStyle, canisterId }) {
@@ -8832,6 +9073,8 @@ export default function TradingBot() {
         wizardActorRef.current = actor;
         return actor;
     }, [canisterId, identity]);
+
+    const renderSwapCard = useSwapCardRenderer(getWizardBotActor, theme, ACCENT);
 
     useEffect(() => {
         wizardActorRef.current = null;
@@ -9326,6 +9569,7 @@ export default function TradingBot() {
                             permissionDescriptions={PERMISSION_DESCRIPTIONS}
                             multiInstanceChoreTypes={MULTI_INSTANCE_CHORE_TYPES}
                             renderChoreConfig={renderTradingBotChoreConfig}
+                            renderSwapCard={renderSwapCard}
                             identity={identity}
                             isAuthenticated={isAuthenticated}
                             extraInfoContent={<DexSettingsPanel canisterId={canisterId} createBotActor={createBotActor} identity={identity} />}

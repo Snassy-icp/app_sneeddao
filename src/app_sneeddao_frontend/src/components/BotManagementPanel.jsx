@@ -208,6 +208,7 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
     permissionDescriptions: permDescsProp = {},
     multiInstanceChoreTypes = [],
     renderChoreConfig,
+    renderSwapCard,
     identity,
     isAuthenticated,
     extraInfoContent,
@@ -2324,6 +2325,9 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                                                                     </span>
                                                                                 </div>
                                                                             )}
+
+                                                                            {/* Swap card overlay */}
+                                                                            {renderSwapCard && renderSwapCard(chore.choreId, run, chore)}
 
                                                                             {/* Completed tasks (expandable) */}
                                                                             {run.completedTasks.length > 0 && (
