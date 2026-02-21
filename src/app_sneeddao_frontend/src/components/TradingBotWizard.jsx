@@ -1272,20 +1272,41 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
                             Fund & Deploy
                         </h4>
                         <div style={{ padding: '12px', background: `${ACCENT}08`, borderRadius: '10px', border: `1px solid ${ACCENT}20`, marginBottom: '14px' }}>
-                            <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, marginBottom: '8px' }}>
-                                Fund with:
-                                <select value={fundTokenIdx} onChange={e => setFundTokenIdx(Number(e.target.value))} style={{ marginLeft: '8px', padding: '4px 8px', background: theme.colors.primaryBg, border: `1px solid ${theme.colors.border}`, borderRadius: '6px', color: theme.colors.primaryText, fontSize: '0.82rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '0.82rem', color: theme.colors.secondaryText }}>Fund with:</span>
+                                <select value={fundTokenIdx} onChange={e => setFundTokenIdx(Number(e.target.value))} style={{ padding: '4px 8px', background: theme.colors.primaryBg, border: `1px solid ${theme.colors.border}`, borderRadius: '6px', color: theme.colors.primaryText, fontSize: '0.82rem' }}>
                                     {targets.map((t, i) => t.token && (
                                         <option key={i} value={i}>{getTokenMetadataSync(t.token)?.symbol || t.token.slice(0, 8)}</option>
                                     ))}
                                 </select>
                             </div>
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
+                                <button onClick={() => setFundSource('wallet')} style={{
+                                    padding: '5px 12px', fontSize: '0.78rem', borderRadius: '6px', border: `1px solid ${fundSource === 'wallet' ? ACCENT : theme.colors.border}`,
+                                    background: fundSource === 'wallet' ? `${ACCENT}18` : 'transparent', color: fundSource === 'wallet' ? ACCENT : theme.colors.secondaryText,
+                                    cursor: 'pointer', fontWeight: fundSource === 'wallet' ? '600' : '400',
+                                }}><FaWallet size={10} style={{ marginRight: 4 }} /> From Wallet</button>
+                                <button onClick={() => setFundSource('purse')} style={{
+                                    padding: '5px 12px', fontSize: '0.78rem', borderRadius: '6px', border: `1px solid ${fundSource === 'purse' ? ACCENT : theme.colors.border}`,
+                                    background: fundSource === 'purse' ? `${ACCENT}18` : 'transparent', color: fundSource === 'purse' ? ACCENT : theme.colors.secondaryText,
+                                    cursor: mainPurseBalance != null && mainPurseBalance > 0n ? 'pointer' : 'default', fontWeight: fundSource === 'purse' ? '600' : '400',
+                                    opacity: mainPurseBalance != null && mainPurseBalance > 0n ? 1 : 0.5,
+                                }} disabled={mainPurseBalance == null || mainPurseBalance <= 0n}><FaShieldAlt size={10} style={{ marginRight: 4 }} /> From Main Purse</button>
+                            </div>
                             {fundToken && (
                                 <div style={{ fontSize: '0.78rem', color: theme.colors.mutedText, marginBottom: '8px' }}>
-                                    Wallet balance: {formatBal(walletBalance, fundDecimals)} {fundSymbol}
+                                    {fundSource === 'wallet'
+                                        ? <>Wallet balance: <strong style={{ color: theme.colors.primaryText }}>{formatBal(walletBalance, fundDecimals)} {fundSymbol}</strong></>
+                                        : <>Main purse balance: <strong style={{ color: theme.colors.primaryText }}>{formatBal(mainPurseBalance, fundDecimals)} {fundSymbol}</strong></>}
                                 </div>
                             )}
                             <AmountInput label="Amount to fund (optional)" value={fundAmount} onChange={setFundAmount} theme={theme} placeholder="0" />
+                            {(() => {
+                                const bal = fundSource === 'wallet' ? walletBalance : mainPurseBalance;
+                                return bal != null && fundAmount && Number(fundAmount) > 0 && BigInt(Math.floor(Number(fundAmount) * Math.pow(10, fundDecimals))) > bal
+                                    ? <div style={{ color: theme.colors.error || '#ef4444', fontSize: '0.78rem', marginTop: '6px' }}>Insufficient {fundSource === 'wallet' ? 'wallet' : 'main purse'} balance</div>
+                                    : null;
+                            })()}
                         </div>
                         <div style={{ padding: '12px', background: theme.colors.primaryBg, borderRadius: '10px', border: `1px solid ${theme.colors.border}`, marginBottom: '14px' }}>
                             <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>Options</div>
