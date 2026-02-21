@@ -2421,21 +2421,21 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         // Check cumulative limits (skip if already exhausted)
         switch (action.maxCumulativeInput) {
             case (?max) { if (action.cumulativeInputSpent >= max) {
-                logEngine.logDebug(src, "Action " # Nat.toText(action.id) # " skipped: cumulative input limit reached (" # Nat.toText(action.cumulativeInputSpent) # " >= " # Nat.toText(max) # ")", null, []);
+                logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " skipped: cumulative input limit reached (" # Nat.toText(action.cumulativeInputSpent) # " >= " # Nat.toText(max) # ")", null, []);
                 return (false, 0, 0);
             }};
             case null {};
         };
         switch (action.maxCumulativeOutput) {
             case (?max) { if (action.cumulativeOutputReceived >= max) {
-                logEngine.logDebug(src, "Action " # Nat.toText(action.id) # " skipped: cumulative output limit reached (" # Nat.toText(action.cumulativeOutputReceived) # " >= " # Nat.toText(max) # ")", null, []);
+                logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " skipped: cumulative output limit reached (" # Nat.toText(action.cumulativeOutputReceived) # " >= " # Nat.toText(max) # ")", null, []);
                 return (false, 0, 0);
             }};
             case null {};
         };
         switch (action.maxExecutions) {
             case (?max) { if (action.executionCount >= max) {
-                logEngine.logDebug(src, "Action " # Nat.toText(action.id) # " skipped: execution limit reached (" # Nat.toText(action.executionCount) # " >= " # Nat.toText(max) # ")", null, []);
+                logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " skipped: execution limit reached (" # Nat.toText(action.executionCount) # " >= " # Nat.toText(max) # ")", null, []);
                 return (false, 0, 0);
             }};
             case null {};
@@ -2448,7 +2448,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case (?lastTime) {
                         let elapsed = (Time.now() - lastTime) / 1_000_000_000;
                         if (elapsed < Int.abs(minFreq)) {
-                            logEngine.logDebug(src, "Action " # Nat.toText(action.id) # " skipped: frequency limit (" # Nat.toText(Int.abs(elapsed)) # "s < " # Nat.toText(minFreq) # "s)", null, []);
+                            logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " skipped: frequency limit (" # Nat.toText(Int.abs(elapsed)) # "s < " # Nat.toText(minFreq) # "s)", null, []);
                             return (false, 0, 0);
                         };
                     };
@@ -2500,12 +2500,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
         // Global pause/freeze check — paused or frozen tokens cannot be traded
         if (isTokenPausedOrFrozen(action.inputToken)) {
-            logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: input token is paused/frozen globally", null, []);
+            logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # " skipped: input token is paused/frozen globally", null, []);
             logSkip("Input token is paused/frozen", null, null);
             return (false, 0, 0);
         };
         if (isTokenPausedOrFrozen(outputToken)) {
-            logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: output token is paused/frozen globally", null, []);
+            logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # " skipped: output token is paused/frozen globally", null, []);
             logSkip("Output token is paused/frozen", null, null);
             return (false, 0, 0);
         };
@@ -2529,7 +2529,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
         switch (action.minBalance) {
             case (?min) { if (balanceForComparison < min) {
-                logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: balance " # Nat.toText(balanceForComparison) # " < min " # Nat.toText(min), null, []);
+                logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # " skipped: balance " # Nat.toText(balanceForComparison) # " < min " # Nat.toText(min), null, []);
                 logSkip("Balance " # Nat.toText(balanceForComparison) # " < min " # Nat.toText(min), null, null);
                 return (false, 0, 0);
             }};
@@ -2537,7 +2537,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
         switch (action.maxBalance) {
             case (?max) { if (balanceForComparison > max) {
-                logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: balance " # Nat.toText(balanceForComparison) # " > max " # Nat.toText(max), null, []);
+                logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # " skipped: balance " # Nat.toText(balanceForComparison) # " > max " # Nat.toText(max), null, []);
                 logSkip("Balance " # Nat.toText(balanceForComparison) # " > max " # Nat.toText(max), null, null);
                 return (false, 0, 0);
             }};
@@ -2578,7 +2578,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         let actualTradeSize = Nat.min(tradeSize, maxAffordable);
 
         if (actualTradeSize < effectiveMinAmount) {
-            logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: affordable amount " # Nat.toText(actualTradeSize) # " < min " # Nat.toText(effectiveMinAmount), null, []);
+            logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # " skipped: affordable amount " # Nat.toText(actualTradeSize) # " < min " # Nat.toText(effectiveMinAmount) # " (balance=" # Nat.toText(effectiveBal) # ", fee=" # Nat.toText(inputFee) # ")", null, []);
             logSkip("Affordable amount " # Nat.toText(actualTradeSize) # " < min " # Nat.toText(effectiveMinAmount), null, ?actualTradeSize);
             return (false, 0, 0);
         };
