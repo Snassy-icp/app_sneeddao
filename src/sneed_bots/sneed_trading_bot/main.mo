@@ -54,6 +54,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // Trade Chore: per-instance action lists
     var tradeChoreActions: [(Text, [T.ActionConfig])] = [];
     var tradeChoreNextActionId: [(Text, Nat)] = [];
+    var tradeChoreFallbackRouteTokens: [(Text, [Principal])] = [];
 
     // Rebalance Chore: per-instance settings
     var rebalanceTargets: [(Text, [T.RebalanceTarget])] = [];
@@ -205,6 +206,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
     func setTradeNextId(instanceId: Text, n: Nat) {
         tradeChoreNextActionId := setInMap(tradeChoreNextActionId, instanceId, n)
+    };
+    func getTradeFallbackTokens(instanceId: Text): [Principal] {
+        let configured = getFromMap(tradeChoreFallbackRouteTokens, instanceId, []);
+        if (configured.size() > 0) { configured }
+        else { [Principal.fromText(T.ICP_LEDGER)] }
     };
 
     // Move funds actions helpers
@@ -2582,10 +2588,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (?m) m;
             case null { defaultMaxPriceImpactBps };
         };
+        let slippage = switch (action.maxSlippageBps) {
+            case (?s) s;
+            case null { defaultSlippageBps };
+        };
 
-        let quoteOpt: ?T.SwapQuote = switch (action.preferredDex) {
+        // --- Try direct quote ---
+        let directQuoteOpt: ?T.SwapQuote = switch (action.preferredDex) {
             case (?dexId) {
-                // User specified a DEX — always get a fresh quote for the actual trade size
                 if (dexId == T.DexId.ICPSwap) {
                     await* getICPSwapQuote(action.inputToken, outputToken, actualTradeSize)
                 } else if (dexId == T.DexId.KongSwap) {
@@ -2593,7 +2603,6 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 } else { null }
             };
             case null {
-                // No preferred DEX — get all quotes, pick best that passes impact check
                 let allQuotes = await* getAllQuotes(action.inputToken, outputToken, actualTradeSize);
                 var best: ?T.SwapQuote = null;
                 for (q in allQuotes.vals()) {
@@ -2614,12 +2623,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         ?b
                     };
                     case null {
-                        // All quotes exceeded impact — log the best one for context
                         if (allQuotes.size() > 0) {
                             let topQ = allQuotes[0];
-                            logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: all " # Nat.toText(allQuotes.size()) # " DEX quotes exceed max impact " # Nat.toText(maxImpact) # " bps (best: DEX " # Nat.toText(topQ.dexId) # " at " # Nat.toText(topQ.priceImpactBps) # " bps)", null, []);
-                            logSkip("All " # Nat.toText(allQuotes.size()) # " DEX quotes exceed max impact " # Nat.toText(maxImpact) # " bps (best: " # Nat.toText(topQ.priceImpactBps) # " bps)", ?topQ, ?actualTradeSize);
-                            return (false, 0, 0);
+                            logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # ": direct quotes exceed max impact " # Nat.toText(maxImpact) # " bps (best: DEX " # Nat.toText(topQ.dexId) # " at " # Nat.toText(topQ.priceImpactBps) # " bps), will try fallback", null, []);
                         };
                         null
                     };
@@ -2627,173 +2633,452 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             };
         };
 
-        let quote = switch (quoteOpt) {
-            case (?q) q;
-            case null {
-                logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: no quote available", null, []);
-                logSkip("No quote available from any DEX", null, ?actualTradeSize);
-                return (false, 0, 0);
+        // Discard quotes exceeding impact (covers preferred-DEX path)
+        let usableDirectQuote: ?T.SwapQuote = switch (directQuoteOpt) {
+            case (?q) { if (q.priceImpactBps <= maxImpact) { ?q } else { null } };
+            case null { null };
+        };
+
+        // Price conditions check, returns ?errorReason (null = pass).
+        // effectiveSpotE8s: "output per input" scaled by output decimals.
+        func checkTradePriceConditions(effectiveSpotE8s: Nat): ?Text {
+            switch (action.minPrice, action.maxPrice) {
+                case (null, null) { null };
+                case (_, _) {
+                    switch (action.priceDenominationToken) {
+                        case (?denomToken) {
+                            let outMeta = getCachedMeta(outputToken);
+                            let outDec: Nat = switch (outMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
+                            let oneOutputUnit = 10 ** outDec;
+                            switch (convertAmountViaCache(oneOutputUnit, outputToken, denomToken)) {
+                                case (?currentPriceInDenom) {
+                                    switch (action.minPrice) {
+                                        case (?min) { if (currentPriceInDenom < min) {
+                                            return ?("Denominated price " # Nat.toText(currentPriceInDenom) # " < min " # Nat.toText(min));
+                                        }};
+                                        case null {};
+                                    };
+                                    switch (action.maxPrice) {
+                                        case (?max) { if (currentPriceInDenom > max) {
+                                            return ?("Denominated price " # Nat.toText(currentPriceInDenom) # " > max " # Nat.toText(max));
+                                        }};
+                                        case null {};
+                                    };
+                                    null
+                                };
+                                case null {
+                                    ?("Cannot convert output token price to denomination token")
+                                };
+                            };
+                        };
+                        case null {
+                            let inMeta = getCachedMeta(action.inputToken);
+                            let outMeta = getCachedMeta(outputToken);
+                            let inDec: Nat = switch (inMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
+                            let outDec: Nat = switch (outMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
+                            let scale = 10 ** (inDec + outDec);
+                            switch (action.minPrice) {
+                                case (?min) { if (min * effectiveSpotE8s > scale) {
+                                    return ?("Price too low (below min price)");
+                                }};
+                                case null {};
+                            };
+                            switch (action.maxPrice) {
+                                case (?max) { if (max * effectiveSpotE8s < scale) {
+                                    return ?("Price too high (above max price)");
+                                }};
+                                case null {};
+                            };
+                            null
+                        };
+                    };
+                };
             };
         };
 
-        // Safety check: verify impact for preferred-DEX path
-        if (quote.priceImpactBps > maxImpact) {
-            logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: price impact " # Nat.toText(quote.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps", null, []);
-            logSkip("Price impact " # Nat.toText(quote.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps", ?quote, ?actualTradeSize);
-            return (false, 0, 0);
-        };
+        switch (usableDirectQuote) {
+            case (?quote) {
+                // ===== DIRECT ROUTE =====
+                switch (checkTradePriceConditions(quote.spotPriceE8s)) {
+                    case (?reason) {
+                        logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: " # reason, null, []);
+                        logSkip(reason, ?quote, ?actualTradeSize);
+                        return (false, 0, 0);
+                    };
+                    case null {};
+                };
 
-        // Check price conditions.
-        switch (action.minPrice, action.maxPrice) {
-            case (null, null) {};
-            case (_, _) {
-                switch (action.priceDenominationToken) {
-                    case (?denomToken) {
-                        // Denominated price: stored as humanDenomPerOutput * 10^denomDecimals.
-                        // Convert 1 whole output token to denomination units via cache (supports two-hop via ICP).
-                        let outMeta = getCachedMeta(outputToken);
-                        let outDec: Nat = switch (outMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
-                        let oneOutputUnit = 10 ** outDec;
-                        switch (convertAmountViaCache(oneOutputUnit, outputToken, denomToken)) {
-                            case (?currentPriceInDenom) {
-                                switch (action.minPrice) {
-                                    case (?min) { if (currentPriceInDenom < min) {
-                                        logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: denominated price " # Nat.toText(currentPriceInDenom) # " < min " # Nat.toText(min), null, []);
-                                        logSkip("Price " # Nat.toText(currentPriceInDenom) # " < min " # Nat.toText(min), ?quote, ?actualTradeSize);
-                                        return (false, 0, 0);
-                                    }};
-                                    case null {};
-                                };
-                                switch (action.maxPrice) {
-                                    case (?max) { if (currentPriceInDenom > max) {
-                                        logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: denominated price " # Nat.toText(currentPriceInDenom) # " > max " # Nat.toText(max), null, []);
-                                        logSkip("Price " # Nat.toText(currentPriceInDenom) # " > max " # Nat.toText(max), ?quote, ?actualTradeSize);
-                                        return (false, 0, 0);
-                                    }};
-                                    case null {};
+                let preSwapLastKnown = balance;
+                setLastKnownBalance(action.inputToken, if (balance > actualTradeSize) { balance - actualTradeSize } else { 0 });
+
+                let result = await* executeSwap(quote, slippage);
+
+                switch (result) {
+                    case (#Ok(r)) {
+                        logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # " executed: " # Nat.toText(actualTradeSize) # " -> " # Nat.toText(r.amountOut) # " via DEX " # Nat.toText(quote.dexId), null, [
+                            ("actionId", Nat.toText(action.id)),
+                            ("inputToken", Principal.toText(action.inputToken)),
+                            ("outputToken", Principal.toText(outputToken)),
+                            ("inputAmount", Nat.toText(actualTradeSize)),
+                            ("outputAmount", Nat.toText(r.amountOut)),
+                            ("dexId", Nat.toText(quote.dexId)),
+                        ]);
+                        let logId = appendTradeLog({
+                            choreId = ?instanceId;
+                            choreTypeId = getInstanceTypeId(instanceId);
+                            actionId = ?action.id;
+                            actionType = 0;
+                            inputToken = action.inputToken;
+                            outputToken = ?outputToken;
+                            inputAmount = actualTradeSize;
+                            outputAmount = ?r.amountOut;
+                            priceE8s = ?quote.spotPriceE8s;
+                            priceImpactBps = ?quote.priceImpactBps;
+                            slippageBps = ?slippage;
+                            dexId = ?quote.dexId;
+                            status = #Success;
+                            errorMessage = null;
+                            txId = r.txId;
+                            destinationOwner = null;
+                        });
+                        _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
+                        let netAmountOut = if (r.amountOut > quote.outputFeesTotal) { r.amountOut - quote.outputFeesTotal } else { 0 };
+                        adjustLastKnownBalance(outputToken, netAmountOut);
+                        if (isPurseEnabledForChore(instanceId)) {
+                            adjustChorePurseBalance(instanceId, action.inputToken, actualTradeSize, true);
+                            adjustChorePurseBalance(instanceId, outputToken, netAmountOut, false);
+                        };
+                        (true, actualTradeSize, r.amountOut)
+                    };
+                    case (#Err(e)) {
+                        logEngine.logError(src, "Trade " # Nat.toText(action.id) # " failed: " # e, null, [
+                            ("actionId", Nat.toText(action.id)),
+                            ("error", e),
+                        ]);
+                        let logId = appendTradeLog({
+                            choreId = ?instanceId;
+                            choreTypeId = getInstanceTypeId(instanceId);
+                            actionId = ?action.id;
+                            actionType = 0;
+                            inputToken = action.inputToken;
+                            outputToken = ?outputToken;
+                            inputAmount = actualTradeSize;
+                            outputAmount = null;
+                            priceE8s = ?quote.spotPriceE8s;
+                            priceImpactBps = ?quote.priceImpactBps;
+                            slippageBps = ?slippage;
+                            dexId = ?quote.dexId;
+                            status = #Failed;
+                            errorMessage = ?e;
+                            txId = null;
+                            destinationOwner = null;
+                        });
+                        _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
+                        let feeLost = quote.inputFeesTotal;
+                        setLastKnownBalance(action.inputToken, if (preSwapLastKnown > feeLost) { preSwapLastKnown - feeLost } else { 0 });
+                        if (feeLost > 0 and isPurseEnabledForChore(instanceId)) {
+                            adjustChorePurseBalance(instanceId, action.inputToken, feeLost, true);
+                        };
+                        (false, 0, 0)
+                    };
+                }
+            };
+            case null {
+                // ===== FALLBACK ROUTING (input → intermediary → output) =====
+                let fallbackTokens = getTradeFallbackTokens(instanceId);
+
+                logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # ": no viable direct route for " # tokenLabel(action.inputToken) # " → " # tokenLabel(outputToken) # ", trying fallback routes (" # Nat.toText(fallbackTokens.size()) # " candidates)", null, [
+                    ("inputToken", tokenLabel(action.inputToken)),
+                    ("outputToken", tokenLabel(outputToken)),
+                    ("fallbackCount", Nat.toText(fallbackTokens.size())),
+                ]);
+
+                // Phase 1: Find a viable fallback route (quotes only)
+                var chosenIntermediary: ?Principal = null;
+                var chosenLeg1: ?T.SwapQuote = null;
+                var chosenLeg2: ?T.SwapQuote = null;
+                var routeIdx: Nat = 0;
+                while (chosenIntermediary == null and routeIdx < fallbackTokens.size()) {
+                    let intermediary = fallbackTokens[routeIdx];
+                    routeIdx += 1;
+                    let intLabel = tokenLabel(intermediary);
+
+                    if (intermediary == action.inputToken or intermediary == outputToken) {
+                        logEngine.logTrace(src, "Skipping fallback via " # intLabel # ": same as input/output token", null, [
+                            ("intermediary", intLabel),
+                        ]);
+                    } else if (isTokenPausedOrFrozen(intermediary)) {
+                        logEngine.logTrace(src, "Skipping fallback via " # intLabel # ": token is paused/frozen", null, [
+                            ("intermediary", intLabel),
+                        ]);
+                    } else {
+                        logEngine.logDebug(src, "Trying fallback via " # intLabel # " — leg1: " # tokenLabel(action.inputToken) # " → " # intLabel # ", amount " # Nat.toText(actualTradeSize), null, [
+                            ("intermediary", intLabel),
+                            ("leg", "1"),
+                            ("amount", Nat.toText(actualTradeSize)),
+                        ]);
+                        let leg1Opt = await* getBestQuote(action.inputToken, intermediary, actualTradeSize);
+                        switch (leg1Opt) {
+                            case (?q1) {
+                                if (q1.priceImpactBps > maxImpact) {
+                                    logEngine.logTrace(src, "Fallback via " # intLabel # " leg1 impact too high: " # Nat.toText(q1.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps", null, [
+                                        ("intermediary", intLabel),
+                                        ("leg", "1"),
+                                        ("priceImpactBps", Nat.toText(q1.priceImpactBps)),
+                                    ]);
+                                } else {
+                                    let leg2Opt = await* getBestQuote(intermediary, outputToken, q1.expectedOutput);
+                                    switch (leg2Opt) {
+                                        case (?q2) {
+                                            if (q2.priceImpactBps > maxImpact) {
+                                                logEngine.logTrace(src, "Fallback via " # intLabel # " leg2 impact too high: " # Nat.toText(q2.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps", null, [
+                                                    ("intermediary", intLabel),
+                                                    ("leg", "2"),
+                                                    ("priceImpactBps", Nat.toText(q2.priceImpactBps)),
+                                                ]);
+                                            } else {
+                                                chosenIntermediary := ?intermediary;
+                                                chosenLeg1 := ?q1;
+                                                chosenLeg2 := ?q2;
+                                                logEngine.logDebug(src, "Viable fallback route found via " # intLabel # " (leg1 impact: " # Nat.toText(q1.priceImpactBps) # " bps, leg2 impact: " # Nat.toText(q2.priceImpactBps) # " bps)", null, [
+                                                    ("intermediary", intLabel),
+                                                    ("leg1ImpactBps", Nat.toText(q1.priceImpactBps)),
+                                                    ("leg2ImpactBps", Nat.toText(q2.priceImpactBps)),
+                                                ]);
+                                            };
+                                        };
+                                        case null {
+                                            logEngine.logTrace(src, "Fallback via " # intLabel # " leg2: no quote for " # intLabel # " → " # tokenLabel(outputToken), null, [
+                                                ("intermediary", intLabel),
+                                                ("leg", "2"),
+                                            ]);
+                                        };
+                                    };
                                 };
                             };
                             case null {
-                                logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: cannot convert output token price to denomination token (no direct or ICP-hop quote)", null, []);
-                                logSkip("Cannot convert output token price to denomination token", ?quote, ?actualTradeSize);
-                                return (false, 0, 0);
+                                logEngine.logTrace(src, "Fallback via " # intLabel # " leg1: no quote for " # tokenLabel(action.inputToken) # " → " # intLabel, null, [
+                                    ("intermediary", intLabel),
+                                    ("leg", "1"),
+                                ]);
                             };
                         };
                     };
-                    case null {
-                        // Native price: stored as humanInputPerOutput * 10^inputDecimals.
-                        // spotPriceE8s is "output per input": humanOutputPerInput * 10^outputDecimals.
-                        // Cross-multiplication:
-                        //   minPrice <= actualIPO  ⟺  minPrice * spot <= 10^(inDec + outDec)
-                        //   actualIPO <= maxPrice  ⟺  10^(inDec + outDec) <= maxPrice * spot
-                        let inMeta = getCachedMeta(action.inputToken);
-                        let outMeta = getCachedMeta(outputToken);
-                        let inDec: Nat = switch (inMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
-                        let outDec: Nat = switch (outMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
-                        let scale = 10 ** (inDec + outDec);
-                        switch (action.minPrice) {
-                            case (?min) { if (min * quote.spotPriceE8s > scale) {
-                                logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: price too low", null, []);
-                                logSkip("Price too low (below min price)", ?quote, ?actualTradeSize);
+                };
+
+                switch (chosenIntermediary, chosenLeg1, chosenLeg2) {
+                    case (?intermediary, ?leg1Quote, ?leg2Quote) {
+                        let intLabel = tokenLabel(intermediary);
+                        let routeLabel = tokenLabel(action.inputToken) # "→" # intLabel # "→" # tokenLabel(outputToken);
+
+                        // Phase 2: Check price conditions using composed effective spot price
+                        let intMeta = getCachedMeta(intermediary);
+                        let intDec: Nat = switch (intMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
+                        let effectiveSpot = (leg1Quote.spotPriceE8s * leg2Quote.spotPriceE8s) / (10 ** intDec);
+
+                        switch (checkTradePriceConditions(effectiveSpot)) {
+                            case (?reason) {
+                                logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " fallback via " # intLabel # " skipped: " # reason, null, []);
+                                logSkip(reason # " (fallback via " # intLabel # ")", null, ?actualTradeSize);
                                 return (false, 0, 0);
-                            }};
+                            };
                             case null {};
                         };
-                        switch (action.maxPrice) {
-                            case (?max) { if (max * quote.spotPriceE8s < scale) {
-                                logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: price too high", null, []);
-                                logSkip("Price too high (above max price)", ?quote, ?actualTradeSize);
+
+                        // Phase 3: Execute leg 1 (input → intermediary)
+                        logEngine.logDebug(src, "Executing " # routeLabel # " leg1: " # tokenLabel(action.inputToken) # " → " # intLabel # " on dex " # Nat.toText(leg1Quote.dexId) # " amount " # Nat.toText(actualTradeSize), null, [
+                            ("leg", "1"),
+                            ("dexId", Nat.toText(leg1Quote.dexId)),
+                            ("tradeSize", Nat.toText(actualTradeSize)),
+                            ("expectedOutput", Nat.toText(leg1Quote.expectedOutput)),
+                            ("slippageBps", Nat.toText(slippage)),
+                        ]);
+                        let preSwapBalance = balance;
+                        setLastKnownBalance(action.inputToken, if (balance > actualTradeSize) { balance - actualTradeSize } else { 0 });
+
+                        let leg1Result = await* executeSwap(leg1Quote, slippage);
+                        let intermediaryReceived = switch (leg1Result) {
+                            case (#Ok(r)) {
+                                let netReceived = if (r.amountOut > leg1Quote.outputFeesTotal) { r.amountOut - leg1Quote.outputFeesTotal } else { 0 };
+                                logEngine.logTrace(src, routeLabel # " leg1 OK: received " # Nat.toText(r.amountOut) # " " # intLabel # " (net " # Nat.toText(netReceived) # ")", null, [
+                                    ("leg", "1"),
+                                    ("amountOut", Nat.toText(r.amountOut)),
+                                    ("netAmountOut", Nat.toText(netReceived)),
+                                ]);
+                                ignore appendTradeLog({
+                                    choreId = ?instanceId;
+                                    choreTypeId = getInstanceTypeId(instanceId);
+                                    actionId = ?action.id;
+                                    actionType = 0;
+                                    inputToken = action.inputToken;
+                                    outputToken = ?intermediary;
+                                    inputAmount = actualTradeSize;
+                                    outputAmount = ?r.amountOut;
+                                    priceE8s = ?leg1Quote.spotPriceE8s;
+                                    priceImpactBps = ?leg1Quote.priceImpactBps;
+                                    slippageBps = ?slippage;
+                                    dexId = ?leg1Quote.dexId;
+                                    status = #Success;
+                                    errorMessage = null;
+                                    txId = r.txId;
+                                    destinationOwner = null;
+                                });
+                                netReceived
+                            };
+                            case (#Err(e)) {
+                                logEngine.logError(src, "Trade " # Nat.toText(action.id) # " " # routeLabel # " leg1 failed: " # e, null, [
+                                    ("route", routeLabel),
+                                    ("leg", "1"),
+                                    ("error", e),
+                                ]);
+                                let logId = appendTradeLog({
+                                    choreId = ?instanceId;
+                                    choreTypeId = getInstanceTypeId(instanceId);
+                                    actionId = ?action.id;
+                                    actionType = 0;
+                                    inputToken = action.inputToken;
+                                    outputToken = ?intermediary;
+                                    inputAmount = actualTradeSize;
+                                    outputAmount = null;
+                                    priceE8s = ?leg1Quote.spotPriceE8s;
+                                    priceImpactBps = ?leg1Quote.priceImpactBps;
+                                    slippageBps = ?slippage;
+                                    dexId = ?leg1Quote.dexId;
+                                    status = #Failed;
+                                    errorMessage = ?(routeLabel # " leg1: " # e);
+                                    txId = null;
+                                    destinationOwner = null;
+                                });
+                                _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
+                                let feeLost = leg1Quote.inputFeesTotal;
+                                setLastKnownBalance(action.inputToken, if (preSwapBalance > feeLost) { preSwapBalance - feeLost } else { 0 });
+                                if (feeLost > 0 and isPurseEnabledForChore(instanceId)) {
+                                    adjustChorePurseBalance(instanceId, action.inputToken, feeLost, true);
+                                };
                                 return (false, 0, 0);
-                            }};
-                            case null {};
+                            };
                         };
+
+                        // Phase 4: Execute leg 2 (intermediary → output) with fresh quote
+                        logEngine.logDebug(src, "Fetching fresh leg2 quote: " # intLabel # " → " # tokenLabel(outputToken) # " amount " # Nat.toText(intermediaryReceived), null, [
+                            ("leg", "2-fresh"),
+                            ("intermediaryReceived", Nat.toText(intermediaryReceived)),
+                            ("outputToken", tokenLabel(outputToken)),
+                        ]);
+                        let leg2FreshQuoteOpt = await* getBestQuote(intermediary, outputToken, intermediaryReceived);
+                        let leg2FreshQuote = switch (leg2FreshQuoteOpt) {
+                            case (?q) {
+                                logEngine.logTrace(src, "Fresh leg2 quote: " # Nat.toText(q.expectedOutput) # " " # tokenLabel(outputToken) # " (dex " # Nat.toText(q.dexId) # ", impact " # Nat.toText(q.priceImpactBps) # " bps)", null, [
+                                    ("leg", "2-fresh"),
+                                    ("expectedOutput", Nat.toText(q.expectedOutput)),
+                                    ("dexId", Nat.toText(q.dexId)),
+                                    ("priceImpactBps", Nat.toText(q.priceImpactBps)),
+                                ]);
+                                q
+                            };
+                            case null {
+                                logEngine.logError(src, "Trade " # Nat.toText(action.id) # " " # routeLabel # ": leg1 succeeded (" # Nat.toText(intermediaryReceived) # " " # intLabel # ") but no quote for leg2 (" # intLabel # " stuck in canister)", null, [
+                                    ("intermediaryReceived", Nat.toText(intermediaryReceived)),
+                                    ("intermediary", intLabel),
+                                ]);
+                                return (false, 0, 0);
+                            };
+                        };
+
+                        let preSwapIntBalance = switch (getLastKnownBalance(intermediary)) { case (?v) v; case null 0 };
+                        setLastKnownBalance(intermediary, if (preSwapIntBalance > intermediaryReceived) { preSwapIntBalance - intermediaryReceived } else { 0 });
+
+                        logEngine.logDebug(src, "Executing " # routeLabel # " leg2: " # intLabel # " → " # tokenLabel(outputToken) # " on dex " # Nat.toText(leg2FreshQuote.dexId) # " amount " # Nat.toText(intermediaryReceived), null, [
+                            ("leg", "2"),
+                            ("dexId", Nat.toText(leg2FreshQuote.dexId)),
+                            ("intermediaryAmount", Nat.toText(intermediaryReceived)),
+                            ("expectedOutput", Nat.toText(leg2FreshQuote.expectedOutput)),
+                            ("slippageBps", Nat.toText(slippage)),
+                        ]);
+                        let leg2Result = await* executeSwap(leg2FreshQuote, slippage);
+                        switch (leg2Result) {
+                            case (#Ok(r)) {
+                                logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # " fallback complete: " # Nat.toText(actualTradeSize) # " " # tokenLabel(action.inputToken) # " → " # Nat.toText(intermediaryReceived) # " " # intLabel # " → " # Nat.toText(r.amountOut) # " " # tokenLabel(outputToken), null, [
+                                    ("actionId", Nat.toText(action.id)),
+                                    ("inputToken", Principal.toText(action.inputToken)),
+                                    ("outputToken", Principal.toText(outputToken)),
+                                    ("intermediary", intLabel),
+                                    ("sellAmount", Nat.toText(actualTradeSize)),
+                                    ("intermediaryAmount", Nat.toText(intermediaryReceived)),
+                                    ("buyAmount", Nat.toText(r.amountOut)),
+                                    ("route", routeLabel),
+                                ]);
+                                let logId = appendTradeLog({
+                                    choreId = ?instanceId;
+                                    choreTypeId = getInstanceTypeId(instanceId);
+                                    actionId = ?action.id;
+                                    actionType = 0;
+                                    inputToken = intermediary;
+                                    outputToken = ?outputToken;
+                                    inputAmount = intermediaryReceived;
+                                    outputAmount = ?r.amountOut;
+                                    priceE8s = ?leg2FreshQuote.spotPriceE8s;
+                                    priceImpactBps = ?leg2FreshQuote.priceImpactBps;
+                                    slippageBps = ?slippage;
+                                    dexId = ?leg2FreshQuote.dexId;
+                                    status = #Success;
+                                    errorMessage = null;
+                                    txId = r.txId;
+                                    destinationOwner = null;
+                                });
+                                _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
+                                let netAmountOut = if (r.amountOut > leg2FreshQuote.outputFeesTotal) { r.amountOut - leg2FreshQuote.outputFeesTotal } else { 0 };
+                                adjustLastKnownBalance(outputToken, netAmountOut);
+                                if (isPurseEnabledForChore(instanceId)) {
+                                    adjustChorePurseBalance(instanceId, action.inputToken, actualTradeSize, true);
+                                    adjustChorePurseBalance(instanceId, outputToken, netAmountOut, false);
+                                };
+                                (true, actualTradeSize, r.amountOut)
+                            };
+                            case (#Err(e)) {
+                                logEngine.logError(src, "Trade " # Nat.toText(action.id) # " " # routeLabel # " leg2 failed: " # e, null, [
+                                    ("route", routeLabel),
+                                    ("leg", "2"),
+                                    ("error", e),
+                                ]);
+                                let logId = appendTradeLog({
+                                    choreId = ?instanceId;
+                                    choreTypeId = getInstanceTypeId(instanceId);
+                                    actionId = ?action.id;
+                                    actionType = 0;
+                                    inputToken = intermediary;
+                                    outputToken = ?outputToken;
+                                    inputAmount = intermediaryReceived;
+                                    outputAmount = null;
+                                    priceE8s = ?leg2FreshQuote.spotPriceE8s;
+                                    priceImpactBps = ?leg2FreshQuote.priceImpactBps;
+                                    slippageBps = ?slippage;
+                                    dexId = ?leg2FreshQuote.dexId;
+                                    status = #Failed;
+                                    errorMessage = ?(routeLabel # " leg2: " # e);
+                                    txId = null;
+                                    destinationOwner = null;
+                                });
+                                _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
+                                let intFeeLost = leg2FreshQuote.inputFeesTotal;
+                                setLastKnownBalance(intermediary, if (preSwapIntBalance > intFeeLost) { preSwapIntBalance - intFeeLost } else { 0 });
+                                if (intFeeLost > 0 and isPurseEnabledForChore(instanceId)) {
+                                    adjustChorePurseBalance(instanceId, action.inputToken, intFeeLost, true);
+                                };
+                                (false, 0, 0)
+                            };
+                        }
                     };
-                };
-            };
-        };
-
-        // Execute the swap
-        let slippage = switch (action.maxSlippageBps) {
-            case (?s) s;
-            case null { defaultSlippageBps };
-        };
-
-        // Pre-adjust lastKnown for input token before the swap so any concurrent
-        // reconciliation during the await doesn't flag a false outflow.
-        let preSwapLastKnown = balance;
-        setLastKnownBalance(action.inputToken, if (balance > actualTradeSize) { balance - actualTradeSize } else { 0 });
-
-        let result = await* executeSwap(quote, slippage);
-
-        switch (result) {
-            case (#Ok(r)) {
-                logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # " executed: " # Nat.toText(actualTradeSize) # " -> " # Nat.toText(r.amountOut) # " via DEX " # Nat.toText(quote.dexId), null, [
-                    ("actionId", Nat.toText(action.id)),
-                    ("inputToken", Principal.toText(action.inputToken)),
-                    ("outputToken", Principal.toText(outputToken)),
-                    ("inputAmount", Nat.toText(actualTradeSize)),
-                    ("outputAmount", Nat.toText(r.amountOut)),
-                    ("dexId", Nat.toText(quote.dexId)),
-                ]);
-                let logId = appendTradeLog({
-                    choreId = ?instanceId;
-                    choreTypeId = getInstanceTypeId(instanceId);
-                    actionId = ?action.id;
-                    actionType = 0;
-                    inputToken = action.inputToken;
-                    outputToken = ?outputToken;
-                    inputAmount = actualTradeSize;
-                    outputAmount = ?r.amountOut;
-                    priceE8s = ?quote.spotPriceE8s;
-                    priceImpactBps = ?quote.priceImpactBps;
-                    slippageBps = ?slippage;
-                    dexId = ?quote.dexId;
-                    status = #Success;
-                    errorMessage = null;
-                    txId = r.txId;
-                    destinationOwner = null;
-                });
-                _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
-                // Finalize lastKnown: input already pre-adjusted, now add the output
-                let netAmountOut = if (r.amountOut > quote.outputFeesTotal) { r.amountOut - quote.outputFeesTotal } else { 0 };
-                adjustLastKnownBalance(outputToken, netAmountOut);
-                if (isPurseEnabledForChore(instanceId)) {
-                    adjustChorePurseBalance(instanceId, action.inputToken, actualTradeSize, true);
-                    adjustChorePurseBalance(instanceId, outputToken, netAmountOut, false);
-                };
-                (true, actualTradeSize, r.amountOut)
-            };
-            case (#Err(e)) {
-                logEngine.logError(src, "Trade " # Nat.toText(action.id) # " failed: " # e, null, [
-                    ("actionId", Nat.toText(action.id)),
-                    ("error", e),
-                ]);
-                let logId = appendTradeLog({
-                    choreId = ?instanceId;
-                    choreTypeId = getInstanceTypeId(instanceId);
-                    actionId = ?action.id;
-                    actionType = 0;
-                    inputToken = action.inputToken;
-                    outputToken = ?outputToken;
-                    inputAmount = actualTradeSize;
-                    outputAmount = null;
-                    priceE8s = ?quote.spotPriceE8s;
-                    priceImpactBps = ?quote.priceImpactBps;
-                    slippageBps = ?slippage;
-                    dexId = ?quote.dexId;
-                    status = #Failed;
-                    errorMessage = ?e;
-                    txId = null;
-                    destinationOwner = null;
-                });
-                _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
-                // On failure the DEX refunds input tokens — restore lastKnown, minus any lost fees
-                let feeLost = quote.inputFeesTotal;
-                setLastKnownBalance(action.inputToken, if (preSwapLastKnown > feeLost) { preSwapLastKnown - feeLost } else { 0 });
-                if (feeLost > 0 and isPurseEnabledForChore(instanceId)) {
-                    adjustChorePurseBalance(instanceId, action.inputToken, feeLost, true);
-                };
-                (false, 0, 0)
+                    case (_, _, _) {
+                        logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: no viable direct or fallback route for " # tokenLabel(action.inputToken) # " → " # tokenLabel(outputToken), null, [
+                            ("actionId", Nat.toText(action.id)),
+                            ("inputToken", tokenLabel(action.inputToken)),
+                            ("outputToken", tokenLabel(outputToken)),
+                        ]);
+                        logSkip("No viable direct or fallback route", null, ?actualTradeSize);
+                        (false, 0, 0)
+                    };
+                }
             };
         };
     };
@@ -6110,6 +6395,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             setTradeActionsForInstance(instanceId, Buffer.toArray(reordered));
             true
         } else { false }
+    };
+
+    public shared query (msg) func getTradeFallbackRouteTokens(instanceId: Text): async [Principal] {
+        assertPermission(msg.caller, T.TradingPermission.ManageTrades);
+        getTradeFallbackTokens(instanceId)
+    };
+
+    public shared (msg) func setTradeFallbackRouteTokens(instanceId: Text, tokens: [Principal]): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageTrades);
+        tradeChoreFallbackRouteTokens := setInMap(tradeChoreFallbackRouteTokens, instanceId, tokens);
+        logEngine.logInfo("api", "Set trade fallback route tokens for " # instanceId # ": " # Nat.toText(tokens.size()) # " tokens", ?msg.caller, []);
     };
 
     // ============================================

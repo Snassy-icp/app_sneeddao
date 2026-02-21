@@ -365,6 +365,19 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
     const [deploySuccess, setDeploySuccess] = useState(false);
     const [deployStep, setDeployStep] = useState('');
     const [deployedInstanceId, setDeployedInstanceId] = useState(null);
+    const [fallbackToken, setFallbackToken] = useState('');
+    const [showFallbackOption, setShowFallbackOption] = useState(false);
+
+    const needsFallback = inputToken && outputToken && inputToken !== ICP_LEDGER && outputToken !== ICP_LEDGER;
+    useEffect(() => {
+        if (needsFallback) {
+            setShowFallbackOption(true);
+            if (!fallbackToken) setFallbackToken(ICP_LEDGER);
+        } else {
+            setShowFallbackOption(false);
+            setFallbackToken('');
+        }
+    }, [inputToken, outputToken]);
 
     useEffect(() => {
         if (!inputToken || !identity) { setWalletBalance(null); setInputMeta(null); return; }
@@ -451,6 +464,11 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
 
             setDeployStep('Setting chore interval...');
             await bot.setChoreInterval(instId, Number(intervalMinutes) * 60);
+
+            if (fallbackToken) {
+                setDeployStep('Setting fallback route token...');
+                await bot.setTradeFallbackRouteTokens(instId, [Principal.fromText(fallbackToken)]);
+            }
 
             if (usePurse) {
                 setDeployStep('Enabling chore purse...');
@@ -552,6 +570,25 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
                                 </p>
                             )}
                         </div>
+                        {showFallbackOption && (
+                            <div style={{ marginTop: '12px', padding: '12px', background: `#f59e0b08`, borderRadius: '10px', border: '1px solid #f59e0b25' }}>
+                                <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '4px' }}>
+                                    <FaExchangeAlt size={11} color="#f59e0b" style={{ marginRight: 6 }} />
+                                    Fallback Route Token
+                                </div>
+                                <p style={{ fontSize: '0.72rem', color: theme.colors.secondaryText, margin: '0 0 8px', lineHeight: '1.4' }}>
+                                    Neither {inputSymbol} nor {outputSymbol} is ICP. If the direct pair has no pool or thin liquidity, the bot will route through a fallback token.
+                                </p>
+                                <div style={{ minWidth: '180px', maxWidth: '280px' }}>
+                                    <TokenSelector value={fallbackToken} onChange={setFallbackToken} onSelectToken={cacheTokenFromSelector} placeholder="Select fallback token..." excludeTokens={[inputToken, outputToken].filter(Boolean)} />
+                                </div>
+                                {fallbackToken && (
+                                    <p style={{ fontSize: '0.72rem', color: theme.colors.mutedText, margin: '6px 0 0', lineHeight: '1.3' }}>
+                                        Route: {inputSymbol} → {getTokenMetadataSync(fallbackToken)?.symbol || '???'} → {outputSymbol}
+                                    </p>
+                                )}
+                            </div>
+                        )}
                         <div style={{ display: 'flex', gap: '10px', marginTop: '1.25rem', flexWrap: 'wrap' }}>
                             <button onClick={() => setStep(1)} style={btnSecondary(theme)}><FaArrowLeft size={11} /> Back</button>
                             <button onClick={() => setStep(3)} disabled={!canProceedStep2} style={btnPrimary(theme, canProceedStep2)}>
@@ -617,6 +654,7 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
                             <SummaryRow label="Pair" value={`${inputSymbol} → ${outputSymbol}`} theme={theme} />
                             <SummaryRow label="Trade size" value={`${tradeSize} ${inputSymbol}`} theme={theme} />
                             <SummaryRow label="Interval" value={`Every ${intervalMinutes} min`} theme={theme} />
+                            {fallbackToken && <SummaryRow label="Fallback route" value={`via ${getTokenMetadataSync(fallbackToken)?.symbol || '???'}`} theme={theme} />}
                             {fundAmount && Number(fundAmount) > 0 && <SummaryRow label="Funding" value={`${fundAmount} ${inputSymbol} (from ${fundSource === 'wallet' ? 'wallet' : 'main purse'})`} theme={theme} />}
                             {budgetLimit && Number(budgetLimit) > 0 && <SummaryRow label="Budget limit" value={`${budgetLimit} ${inputSymbol}`} theme={theme} />}
                             <SummaryRow label="Purse" value={usePurse ? 'Isolated' : 'Shared (main)'} theme={theme} />
@@ -667,6 +705,19 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
     const [deployError, setDeployError] = useState('');
     const [deploySuccess, setDeploySuccess] = useState(false);
     const [deployStep, setDeployStep] = useState('');
+    const [fallbackToken, setFallbackToken] = useState('');
+    const [showFallbackOption, setShowFallbackOption] = useState(false);
+
+    const needsFallback = tokenA && tokenB && tokenA !== ICP_LEDGER && tokenB !== ICP_LEDGER;
+    useEffect(() => {
+        if (needsFallback) {
+            setShowFallbackOption(true);
+            if (!fallbackToken) setFallbackToken(ICP_LEDGER);
+        } else {
+            setShowFallbackOption(false);
+            setFallbackToken('');
+        }
+    }, [tokenA, tokenB]);
 
     useEffect(() => { if (tokenA) setFundToken(tokenA); }, [tokenA]);
 
@@ -801,6 +852,11 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
             setDeployStep('Setting chore interval...');
             await bot.setChoreInterval(instId, Number(intervalMinutes) * 60);
 
+            if (fallbackToken) {
+                setDeployStep('Setting fallback route token...');
+                await bot.setTradeFallbackRouteTokens(instId, [Principal.fromText(fallbackToken)]);
+            }
+
             if (usePurse) {
                 setDeployStep('Enabling chore purse...');
                 await bot.enablePurse(instId);
@@ -910,6 +966,25 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                         <div style={{ marginBottom: '12px' }}>
                             <RiskSettings maxSlippage={maxSlippage} onSlippageChange={setMaxSlippage} maxImpact={maxImpact} onImpactChange={setMaxImpact} theme={theme} />
                         </div>
+                        {showFallbackOption && (
+                            <div style={{ marginBottom: '12px', padding: '12px', background: `#f59e0b08`, borderRadius: '10px', border: '1px solid #f59e0b25' }}>
+                                <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '4px' }}>
+                                    <FaExchangeAlt size={11} color="#f59e0b" style={{ marginRight: 6 }} />
+                                    Fallback Route Token
+                                </div>
+                                <p style={{ fontSize: '0.72rem', color: theme.colors.secondaryText, margin: '0 0 8px', lineHeight: '1.4' }}>
+                                    Neither {symA} nor {symB} is ICP. If direct pairs have no pool or thin liquidity, the bot will route through a fallback token.
+                                </p>
+                                <div style={{ minWidth: '180px', maxWidth: '280px' }}>
+                                    <TokenSelector value={fallbackToken} onChange={setFallbackToken} onSelectToken={cacheTokenFromSelector} placeholder="Select fallback token..." excludeTokens={[tokenA, tokenB].filter(Boolean)} />
+                                </div>
+                                {fallbackToken && (
+                                    <p style={{ fontSize: '0.72rem', color: theme.colors.mutedText, margin: '6px 0 0', lineHeight: '1.3' }}>
+                                        Fallback: {symA} → {getTokenMetadataSync(fallbackToken)?.symbol || '???'} → {symB} (and reverse)
+                                    </p>
+                                )}
+                            </div>
+                        )}
                         <div style={{ padding: '12px', background: enableStopLoss ? '#ef444410' : theme.colors.primaryBg, borderRadius: '10px', border: `1px solid ${enableStopLoss ? '#ef444430' : theme.colors.border}`, marginBottom: '4px' }}>
                             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '600', color: theme.colors.primaryText }}>
                                 <input type="checkbox" checked={enableStopLoss} onChange={e => setEnableStopLoss(e.target.checked)} />
@@ -1011,6 +1086,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                             <SummaryRow label={`Sell ${symB} range`} value={`${sellBMinPrice} – ${sellBMaxPrice} ${symB}`} theme={theme} />
                             <SummaryRow label={`Sell ${symB} size`} value={`${tradeSizeB} ${symB}`} theme={theme} />
                             <SummaryRow label="Interval" value={`Every ${intervalMinutes} min`} theme={theme} />
+                            {fallbackToken && <SummaryRow label="Fallback route" value={`via ${getTokenMetadataSync(fallbackToken)?.symbol || '???'}`} theme={theme} />}
                             {enableStopLoss && <>
                                 <SummaryRow label="Stop loss" value={`Sell all ${stopLossSellToken === 'A' ? symA : symB} below ${stopLossPrice} ${symB}`} theme={theme} />
                                 <SummaryRow label="Stop loss tolerances" value={`${stopLossMaxSlippage}% slippage, ${stopLossMaxImpact}% impact`} theme={theme} />

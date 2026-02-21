@@ -708,6 +708,8 @@ export const idlFactory = ({ IDL }) => {
         updateTradeAction: IDL.Func([IDL.Text, IDL.Nat, ActionConfigInput], [IDL.Bool], []),
         removeTradeAction: IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
         reorderTradeActions: IDL.Func([IDL.Text, IDL.Vec(IDL.Nat)], [IDL.Bool], []),
+        getTradeFallbackRouteTokens: IDL.Func([IDL.Text], [IDL.Vec(IDL.Principal)], ['query']),
+        setTradeFallbackRouteTokens: IDL.Func([IDL.Text, IDL.Vec(IDL.Principal)], [], []),
         resetActionStats: IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
 
         // Move Funds Actions

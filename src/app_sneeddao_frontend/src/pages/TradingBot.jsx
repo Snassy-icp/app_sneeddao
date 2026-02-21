@@ -8657,6 +8657,108 @@ function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
 }
 
 // ============================================
+// Trade Fallback Route Tokens Panel
+// ============================================
+function TradeFallbackPanel({ instanceId, getReadyBotActor, theme, accentColor, secondaryButtonStyle }) {
+    const { identity } = useAuth();
+    const [tokens, setTokens] = useState(null);
+    const [saving, setSaving] = useState(false);
+
+    const load = useCallback(async () => {
+        try {
+            const bot = await getReadyBotActor();
+            const result = await bot.getTradeFallbackRouteTokens(instanceId);
+            setTokens(result);
+        } catch { setTokens([]); }
+    }, [instanceId, getReadyBotActor]);
+
+    useEffect(() => { load(); }, [load]);
+
+    const save = async (newTokens) => {
+        setSaving(true);
+        try {
+            const bot = await getReadyBotActor();
+            await bot.setTradeFallbackRouteTokens(instanceId, newTokens);
+            setTokens(newTokens);
+        } catch { /* ignore */ }
+        setSaving(false);
+    };
+
+    const getSymbol = (p) => {
+        const k = typeof p === 'string' ? p : p?.toText?.() || String(p);
+        const m = getTokenMetadataSync(k);
+        return m?.symbol || shortPrincipal(k);
+    };
+
+    if (tokens === null) return null;
+
+    return (
+        <div style={{ marginBottom: '12px', padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '4px' }}>Fallback Route Tokens</div>
+            <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, marginBottom: '6px', lineHeight: '1.4' }}>
+                When a direct swap has no liquidity or high price impact, trade actions route through these intermediary tokens in order.
+            </div>
+            {tokens.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '6px' }}>
+                    {tokens.map((ft, i) => {
+                        const ftKey = typeof ft === 'string' ? ft : ft?.toText?.() || String(ft);
+                        return (
+                            <div key={ftKey} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', background: `${accentColor}08`, borderRadius: '6px', border: `1px solid ${theme.colors.border}` }}>
+                                <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '500', width: '16px', textAlign: 'center' }}>{i + 1}.</span>
+                                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                    <TokenIcon canisterId={ftKey} size={16} />
+                                    <span style={{ fontSize: '0.78rem', color: theme.colors.primaryText, fontWeight: '500' }}>{getSymbol(ft)}</span>
+                                </div>
+                                {i > 0 && (
+                                    <button onClick={() => {
+                                        const arr = [...tokens];
+                                        [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]];
+                                        save(arr);
+                                    }} disabled={saving} style={{ ...secondaryButtonStyle, fontSize: '0.55rem', padding: '1px 4px' }} title="Move up">▲</button>
+                                )}
+                                {i < tokens.length - 1 && (
+                                    <button onClick={() => {
+                                        const arr = [...tokens];
+                                        [arr[i], arr[i + 1]] = [arr[i + 1], arr[i]];
+                                        save(arr);
+                                    }} disabled={saving} style={{ ...secondaryButtonStyle, fontSize: '0.55rem', padding: '1px 4px' }} title="Move down">▼</button>
+                                )}
+                                <button onClick={() => {
+                                    save(tokens.filter((_, j) => j !== i));
+                                }} disabled={saving} style={{ ...secondaryButtonStyle, fontSize: '0.55rem', padding: '1px 4px', color: '#ef4444', borderColor: '#ef444440' }} title="Remove">
+                                    <FaTrash style={{ fontSize: '0.5rem' }} />
+                                </button>
+                            </div>
+                        );
+                    })}
+                </div>
+            ) : (
+                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '6px', fontStyle: 'italic' }}>
+                    Default: ICP only
+                </div>
+            )}
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'flex-end' }}>
+                <div style={{ flex: 1 }}>
+                    <TokenSelector
+                        value=""
+                        onChange={(v) => {
+                            if (!v) return;
+                            const existing = tokens.map(ft => typeof ft === 'string' ? ft : ft?.toText?.() || String(ft));
+                            if (existing.includes(v)) return;
+                            save([...tokens, Principal.fromText(v)]);
+                        }}
+                        onSelectToken={(meta) => { if (meta?.canisterId) setTokenMetadataManual(typeof meta.canisterId === 'string' ? meta.canisterId : meta.canisterId.toText(), meta); }}
+                        allowCustom={true}
+                        placeholder="Add fallback token..."
+                        style={{ fontSize: '0.7rem' }}
+                    />
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ============================================
 // Custom chore configuration renderer (dispatches to real components)
 // ============================================
 function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, getReadyBotActor, theme, accentColor, cardStyle, inputStyle, buttonStyle, secondaryButtonStyle, canisterId }) {
@@ -8676,6 +8778,13 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
             return (
                 <>
                     {pursePanel}
+                    <TradeFallbackPanel
+                        instanceId={instanceId}
+                        getReadyBotActor={getReadyBotActor}
+                        theme={theme}
+                        accentColor={accentColor}
+                        secondaryButtonStyle={secondaryButtonStyle}
+                    />
                     <ActionListPanel
                         key={instanceId}
                         instanceId={instanceId}
