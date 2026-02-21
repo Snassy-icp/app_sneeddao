@@ -9345,6 +9345,7 @@ export default function TradingBot() {
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
     const { principalNames, principalNicknames, fetchAllNames } = useNaming();
+    const { whitelistedTokens } = useWhitelistTokens();
     const [cbEvents, setCbEvents] = useState(null);
     const [controllers, setControllers] = useState([]);
     const [showWizard, setShowWizard] = useState(false);
@@ -9379,12 +9380,52 @@ export default function TradingBot() {
                 if (!cancelled) {
                     const found = registry.length > 0;
                     setHasTokens(found);
-                    if (!found) setShowWizard(true);
+                    if (!found) {
+                        setShowWizard(true);
+                        // Fire-and-forget background token scan
+                        if (whitelistedTokens?.length > 0) {
+                            (async () => {
+                                try {
+                                    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                                    const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
+                                    const agent = HttpAgent.createSync({ identity, host });
+                                    if (isLocal) await agent.fetchRootKey();
+                                    const botPrincipal = Principal.fromText(canisterId);
+                                    const CONCURRENCY = 8;
+                                    const queue = [...whitelistedTokens];
+                                    const workers = [];
+                                    for (let i = 0; i < Math.min(CONCURRENCY, queue.length); i++) {
+                                        workers.push((async () => {
+                                            while (queue.length > 0) {
+                                                if (cancelled) return;
+                                                const item = queue.shift();
+                                                if (!item) break;
+                                                try {
+                                                    const tid = item.ledger_id?.toString?.() ?? String(item.ledger_id);
+                                                    const ledgerActor = createLedgerActor(tid, { agent });
+                                                    const balance = await ledgerActor.icrc1_balance_of({ owner: botPrincipal, subaccount: [] });
+                                                    if (BigInt(balance) > 0n) {
+                                                        await bot.addToken({
+                                                            ledgerCanisterId: Principal.fromText(tid),
+                                                            symbol: item.symbol || '???',
+                                                            decimals: item.decimals ?? 8,
+                                                            fee: BigInt(item.fee ?? 10000),
+                                                        });
+                                                    }
+                                                } catch (_) {}
+                                            }
+                                        })());
+                                    }
+                                    await Promise.all(workers);
+                                } catch (_) {}
+                            })();
+                        }
+                    }
                 }
             } catch (_) { if (!cancelled) setHasTokens(null); }
         })();
         return () => { cancelled = true; };
-    }, [isAuthenticated, canisterId, identity, getWizardBotActor]);
+    }, [isAuthenticated, canisterId, identity, getWizardBotActor, whitelistedTokens]);
 
     // Naming state
     const [showNamingSection, setShowNamingSection] = useState(false);
