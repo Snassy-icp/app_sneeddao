@@ -1896,8 +1896,18 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                         </div>
                                     )}
 
-                                    {choreError && <div style={{ ...cardStyle, background: `${theme.colors.error}15`, border: `1px solid ${theme.colors.error}30`, color: theme.colors.error, fontSize: '0.85rem' }}>{choreError}</div>}
-                                    {choreSuccess && <div style={{ ...cardStyle, background: `${theme.colors.success || '#22c55e'}15`, border: `1px solid ${theme.colors.success || '#22c55e'}30`, color: theme.colors.success || '#22c55e', fontSize: '0.85rem' }}>{choreSuccess}</div>}
+                                    {choreError && (
+                                        <div style={{ ...cardStyle, background: `${theme.colors.error}15`, border: `1px solid ${theme.colors.error}30`, color: theme.colors.error, fontSize: '0.85rem', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                                            <span style={{ flex: 1 }}>{choreError}</span>
+                                            <button onClick={() => setChoreError('')} title="Dismiss" style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.colors.error, padding: '2px', fontSize: '0.9rem', lineHeight: 1, flexShrink: 0, opacity: 0.7 }}>×</button>
+                                        </div>
+                                    )}
+                                    {choreSuccess && (
+                                        <div style={{ ...cardStyle, background: `${(theme.colors.success || '#22c55e')}15`, border: `1px solid ${(theme.colors.success || '#22c55e')}30`, color: theme.colors.success || '#22c55e', fontSize: '0.85rem', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                                            <span style={{ flex: 1 }}>{choreSuccess}</span>
+                                            <button onClick={() => setChoreSuccess('')} title="Dismiss" style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.colors.success || '#22c55e', padding: '2px', fontSize: '0.9rem', lineHeight: 1, flexShrink: 0, opacity: 0.7 }}>×</button>
+                                        </div>
+                                    )}
 
                                     {/* Schedule Overview */}
                                     {choreStatuses.length > 0 && (() => {
@@ -2818,8 +2828,18 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                             );
                                         })()}
 
-                                        {logError && <div style={{ ...cardStyle, background: `${theme.colors.error}15`, border: `1px solid ${theme.colors.error}30`, color: theme.colors.error, fontSize: '0.85rem' }}>{logError}</div>}
-                                        {logSuccess && <div style={{ ...cardStyle, background: `${theme.colors.success || '#22c55e'}15`, border: `1px solid ${theme.colors.success || '#22c55e'}30`, color: theme.colors.success || '#22c55e', fontSize: '0.85rem' }}>{logSuccess}</div>}
+                                        {logError && (
+                                            <div style={{ ...cardStyle, background: `${theme.colors.error}15`, border: `1px solid ${theme.colors.error}30`, color: theme.colors.error, fontSize: '0.85rem', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                                                <span style={{ flex: 1 }}>{logError}</span>
+                                                <button onClick={() => setLogError('')} title="Dismiss" style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.colors.error, padding: '2px', fontSize: '0.9rem', lineHeight: 1, flexShrink: 0, opacity: 0.7 }}>×</button>
+                                            </div>
+                                        )}
+                                        {logSuccess && (
+                                            <div style={{ ...cardStyle, background: `${(theme.colors.success || '#22c55e')}15`, border: `1px solid ${(theme.colors.success || '#22c55e')}30`, color: theme.colors.success || '#22c55e', fontSize: '0.85rem', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                                                <span style={{ flex: 1 }}>{logSuccess}</span>
+                                                <button onClick={() => setLogSuccess('')} title="Dismiss" style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.colors.success || '#22c55e', padding: '2px', fontSize: '0.9rem', lineHeight: 1, flexShrink: 0, opacity: 0.7 }}>×</button>
+                                            </div>
+                                        )}
 
                                         {/* Toolbar */}
                                         <div style={{ ...cardStyle, padding: '0.75rem 1rem' }}>
