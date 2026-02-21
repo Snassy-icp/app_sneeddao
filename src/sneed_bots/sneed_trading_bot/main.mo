@@ -2623,6 +2623,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             return (false, 0, 0);
         };
 
+        if (actualTradeSize == 0) {
+            logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # " skipped: trade size is 0 (balance=" # Nat.toText(effectiveBal) # ")", null, []);
+            logSkip("Trade size is 0", null, ?0);
+            return (false, 0, 0);
+        };
+
         // --- Trailing stop / take profit check ---
         switch (action.trailingStopBps) {
             case (?thresholdBps) {
@@ -2669,6 +2675,79 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case null {
                         logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # " trailing stop: no cached quote for " # tokenLabel(action.inputToken) # " → " # tokenLabel(outputToken) # ", skipping check", null, []);
                     };
+                };
+            };
+            case null {};
+        };
+
+        // Price conditions check, returns ?errorReason (null = pass).
+        // effectiveSpotE8s: "output per input" scaled by output decimals.
+        func checkTradePriceConditions(effectiveSpotE8s: Nat): ?Text {
+            switch (action.minPrice, action.maxPrice) {
+                case (null, null) { null };
+                case (_, _) {
+                    switch (action.priceDenominationToken) {
+                        case (?denomToken) {
+                            let outMeta = getCachedMeta(outputToken);
+                            let outDec: Nat = switch (outMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
+                            let oneOutputUnit = 10 ** outDec;
+                            switch (convertAmountViaCache(oneOutputUnit, outputToken, denomToken)) {
+                                case (?currentPriceInDenom) {
+                                    switch (action.minPrice) {
+                                        case (?min) { if (currentPriceInDenom < min) {
+                                            return ?("Denominated price " # Nat.toText(currentPriceInDenom) # " < min " # Nat.toText(min));
+                                        }};
+                                        case null {};
+                                    };
+                                    switch (action.maxPrice) {
+                                        case (?max) { if (currentPriceInDenom > max) {
+                                            return ?("Denominated price " # Nat.toText(currentPriceInDenom) # " > max " # Nat.toText(max));
+                                        }};
+                                        case null {};
+                                    };
+                                    null
+                                };
+                                case null {
+                                    ?("Cannot convert output token price to denomination token")
+                                };
+                            };
+                        };
+                        case null {
+                            let inMeta = getCachedMeta(action.inputToken);
+                            let outMeta = getCachedMeta(outputToken);
+                            let inDec: Nat = switch (inMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
+                            let outDec: Nat = switch (outMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
+                            let scale = 10 ** (inDec + outDec);
+                            switch (action.minPrice) {
+                                case (?min) { if (min * effectiveSpotE8s > scale) {
+                                    return ?("Price too low (below min price)");
+                                }};
+                                case null {};
+                            };
+                            switch (action.maxPrice) {
+                                case (?max) { if (max * effectiveSpotE8s < scale) {
+                                    return ?("Price too high (above max price)");
+                                }};
+                                case null {};
+                            };
+                            null
+                        };
+                    };
+                };
+            };
+        };
+
+        // Early price condition check using cached data (denomination-token path
+        // doesn't need a live quote, so we can skip before fetching quotes).
+        switch (action.priceDenominationToken) {
+            case (?_) {
+                switch (checkTradePriceConditions(0)) {
+                    case (?reason) {
+                        logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # " skipped (price condition): " # reason, null, []);
+                        logSkip(reason, null, ?actualTradeSize);
+                        return (false, 0, 0);
+                    };
+                    case null {};
                 };
             };
             case null {};
@@ -2738,63 +2817,6 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         let usableDirectQuote: ?T.SwapQuote = switch (directQuoteOpt) {
             case (?q) { if (q.priceImpactBps <= maxImpact) { ?q } else { null } };
             case null { null };
-        };
-
-        // Price conditions check, returns ?errorReason (null = pass).
-        // effectiveSpotE8s: "output per input" scaled by output decimals.
-        func checkTradePriceConditions(effectiveSpotE8s: Nat): ?Text {
-            switch (action.minPrice, action.maxPrice) {
-                case (null, null) { null };
-                case (_, _) {
-                    switch (action.priceDenominationToken) {
-                        case (?denomToken) {
-                            let outMeta = getCachedMeta(outputToken);
-                            let outDec: Nat = switch (outMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
-                            let oneOutputUnit = 10 ** outDec;
-                            switch (convertAmountViaCache(oneOutputUnit, outputToken, denomToken)) {
-                                case (?currentPriceInDenom) {
-                                    switch (action.minPrice) {
-                                        case (?min) { if (currentPriceInDenom < min) {
-                                            return ?("Denominated price " # Nat.toText(currentPriceInDenom) # " < min " # Nat.toText(min));
-                                        }};
-                                        case null {};
-                                    };
-                                    switch (action.maxPrice) {
-                                        case (?max) { if (currentPriceInDenom > max) {
-                                            return ?("Denominated price " # Nat.toText(currentPriceInDenom) # " > max " # Nat.toText(max));
-                                        }};
-                                        case null {};
-                                    };
-                                    null
-                                };
-                                case null {
-                                    ?("Cannot convert output token price to denomination token")
-                                };
-                            };
-                        };
-                        case null {
-                            let inMeta = getCachedMeta(action.inputToken);
-                            let outMeta = getCachedMeta(outputToken);
-                            let inDec: Nat = switch (inMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
-                            let outDec: Nat = switch (outMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
-                            let scale = 10 ** (inDec + outDec);
-                            switch (action.minPrice) {
-                                case (?min) { if (min * effectiveSpotE8s > scale) {
-                                    return ?("Price too low (below min price)");
-                                }};
-                                case null {};
-                            };
-                            switch (action.maxPrice) {
-                                case (?max) { if (max * effectiveSpotE8s < scale) {
-                                    return ?("Price too high (above max price)");
-                                }};
-                                case null {};
-                            };
-                            null
-                        };
-                    };
-                };
-            };
         };
 
         switch (usableDirectQuote) {

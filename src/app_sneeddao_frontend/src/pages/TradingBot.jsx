@@ -8628,7 +8628,7 @@ function SwapProgressCard({ entry, isRunning, theme, accentColor, onDismiss }) {
                         <TokenIcon canisterId={entry?.inputToken} size={22} />
                         <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.primaryText }}>{inSym}</span>
                     </div>
-                    <div style={{ fontSize: '0.82rem', fontWeight: '600', color: isSkipped ? theme.colors.secondaryText : '#ef4444', fontFamily: 'monospace' }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: '600', color: isSkipped ? theme.colors.secondaryText : theme.colors.primaryText, fontFamily: 'monospace' }}>
                         {inAmt != null ? `${isSkipped ? '' : '−'}${fmtAmt(inAmt, inDec)}` : '...'}
                     </div>
                 </div>
@@ -8639,7 +8639,7 @@ function SwapProgressCard({ entry, isRunning, theme, accentColor, onDismiss }) {
                         width: '40px', height: '2px', borderRadius: '1px', position: 'relative',
                         background: isSkipped
                             ? `linear-gradient(to right, ${theme.colors.mutedText}40, #f59e0b, ${theme.colors.mutedText}40)`
-                            : `linear-gradient(to right, #ef4444, ${statusColor}, #22c55e)`,
+                            : `linear-gradient(to right, ${theme.colors.secondaryText}, ${statusColor}, #22c55e)`,
                     }}>
                         {isRunning && (
                             <div className="swap-flow-dot" style={{

@@ -448,6 +448,8 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
             setDeployStep('Adding trade action...');
             const sizeDec = sizeByOutput ? outDec : dec;
             const rawSize = BigInt(Math.floor(Number(tradeSize) * Math.pow(10, sizeDec)));
+            const toRawPrice = (p) => BigInt(Math.floor(Number(p) * Math.pow(10, dec)));
+            const hasPriceRange = enablePriceRange && (dcaMinPrice || dcaMaxPrice);
             await bot.addTradeAction(instId, {
                 actionType: 0, enabled: true,
                 inputToken: Principal.fromText(inputToken),
@@ -457,7 +459,9 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
                 preferredDex: [], sourcePurseId: [], targetPurseId: [],
                 destinationOwner: [], destinationSubaccount: [],
                 minBalance: [], maxBalance: [], balanceDenominationToken: [],
-                minPrice: [], maxPrice: [], priceDenominationToken: [],
+                minPrice: hasPriceRange && dcaMinPrice && Number(dcaMinPrice) > 0 ? [toRawPrice(dcaMinPrice)] : [],
+                maxPrice: hasPriceRange && dcaMaxPrice && Number(dcaMaxPrice) > 0 ? [toRawPrice(dcaMaxPrice)] : [],
+                priceDenominationToken: hasPriceRange ? [Principal.fromText(inputToken)] : [],
                 maxPriceImpactBps: [Math.round(Number(maxImpact) * 100)],
                 maxSlippageBps: [Math.round(Number(maxSlippage) * 100)],
                 minFrequencySeconds: [], maxFrequencySeconds: [],
@@ -696,6 +700,7 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
                             <SummaryRow label="Pair" value={`${inputSymbol} → ${outputSymbol}`} theme={theme} />
                             <SummaryRow label="Trade size" value={sizeByOutput ? `Buy ${tradeSize} ${outputSymbol}` : `Spend ${tradeSize} ${inputSymbol}`} theme={theme} />
                             <SummaryRow label="Interval" value={`Every ${intervalMinutes} min`} theme={theme} />
+                            {enablePriceRange && (dcaMinPrice || dcaMaxPrice) && <SummaryRow label="Price range" value={`${dcaMinPrice || '—'} – ${dcaMaxPrice || '—'} ${inputSymbol}/${outputSymbol}`} theme={theme} />}
                             {fallbackToken && <SummaryRow label="Fallback route" value={`via ${getTokenMetadataSync(fallbackToken)?.symbol || '???'}`} theme={theme} />}
                             {fundAmount && Number(fundAmount) > 0 && <SummaryRow label="Funding" value={`${fundAmount} ${inputSymbol} (from ${fundSource === 'wallet' ? 'wallet' : 'main purse'})`} theme={theme} />}
                             {budgetLimit && Number(budgetLimit) > 0 && <SummaryRow label="Budget limit" value={`${budgetLimit} ${inputSymbol}`} theme={theme} />}
