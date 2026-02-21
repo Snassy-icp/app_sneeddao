@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
+import { useWalletLayout } from '../contexts/WalletLayoutContext';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getTokenLogo } from '../utils/TokenUtils';
 import { Principal } from '@dfinity/principal';
@@ -55,6 +56,8 @@ function TokenSelector({
     const { theme } = useTheme();
     const { identity } = useAuth();
     const { whitelistedTokens: whitelistFromContext, loading: whitelistLoading } = useWhitelistTokens();
+    const walletLayoutCtx = useWalletLayout();
+    const walletTokenOrder = walletLayoutCtx?.layout?.tokens;
     
     // Stabilize excludeTokens by content so callers passing inline arrays don't cause infinite re-renders
     const excludeTokensKey = useMemo(() => excludeTokens.join(','), [excludeTokens]);
@@ -305,22 +308,36 @@ function TokenSelector({
         return () => { isMounted = false; };
     }, [tokens, identity]);
 
-    // Filter tokens based on search term (exclude failed tokens)
+    // Filter tokens based on search term (exclude failed tokens), sorted by wallet layout then alphabetically
     const filteredTokens = useMemo(() => {
-        // Filter out failed tokens
         const validTokens = tokensWithLogos.filter(token => !token.failed);
 
-        if (!searchTerm.trim()) {
-            return validTokens;
-        }
+        const matched = !searchTerm.trim()
+            ? validTokens
+            : (() => {
+                const lowerSearch = searchTerm.toLowerCase();
+                return validTokens.filter(token =>
+                    token.symbol.toLowerCase().includes(lowerSearch) ||
+                    token.name.toLowerCase().includes(lowerSearch) ||
+                    token.ledger_id.toString().toLowerCase().includes(lowerSearch)
+                );
+            })();
 
-        const lowerSearch = searchTerm.toLowerCase();
-        return validTokens.filter(token => 
-            token.symbol.toLowerCase().includes(lowerSearch) ||
-            token.name.toLowerCase().includes(lowerSearch) ||
-            token.ledger_id.toString().toLowerCase().includes(lowerSearch)
-        );
-    }, [tokensWithLogos, searchTerm]);
+        if (!walletTokenOrder || walletTokenOrder.length === 0) {
+            return [...matched].sort((a, b) => a.symbol.localeCompare(b.symbol));
+        }
+        const orderMap = new Map(walletTokenOrder.map((id, i) => [id, i]));
+        return [...matched].sort((a, b) => {
+            const idA = a.ledger_id.toString();
+            const idB = b.ledger_id.toString();
+            const inLayoutA = orderMap.has(idA);
+            const inLayoutB = orderMap.has(idB);
+            if (inLayoutA && inLayoutB) return orderMap.get(idA) - orderMap.get(idB);
+            if (inLayoutA) return -1;
+            if (inLayoutB) return 1;
+            return a.symbol.localeCompare(b.symbol);
+        });
+    }, [tokensWithLogos, searchTerm, walletTokenOrder]);
 
     // Find selected token
     const selectedToken = tokensWithLogos.find(
