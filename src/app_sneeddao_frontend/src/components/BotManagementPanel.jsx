@@ -2247,30 +2247,34 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                                                     );
                                                                 })()}
 
-                                                                {/* Conductor run tracker + swap card */}
+                                                                {/* Conductor run tracker + swap card — stable placeholder */}
                                                                 {(() => {
                                                                     const run = choreRunTracker[chore.choreId];
-                                                                    if (!run) return null;
+                                                                    const hasRun = !!run;
                                                                     void choreTickNow;
                                                                     const elapsedStr = (startMs, endMs) => { if (!startMs) return '< 0:01'; const end = endMs || Date.now(); const sec = Math.max(0, Math.floor((end - startMs) / 1000)); const h = Math.floor(sec / 3600); const m = Math.floor((sec % 3600) / 60); const s = sec % 60; return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`; };
                                                                     const dotStyle = (color) => ({ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 });
                                                                     const rowBase = { display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 8px', borderRadius: '5px', fontSize: '0.78rem' };
                                                                     return (
-                                                                        <div style={{ marginTop: '8px', padding: '8px', background: run.isRunning ? `${accent}06` : theme.colors.primaryBg, border: `1px solid ${run.isRunning ? accent + '30' : theme.colors.border}`, borderRadius: '8px', fontSize: '0.78rem', color: theme.colors.primaryText }}>
-                                                                            <div style={{ ...rowBase, background: run.isRunning ? `${accent}10` : theme.colors.primaryBg, border: `1px solid ${run.isRunning ? accent + '20' : theme.colors.border}`, marginBottom: run.currentTask ? '4px' : 0 }}>
-                                                                                <span style={dotStyle(run.isRunning ? accent : '#22c55e')} />
-                                                                                <span style={{ color: theme.colors.secondaryText, fontSize: '0.75rem' }}>Conductor</span>
-                                                                                <span style={{ flex: 1 }} />
-                                                                                <span style={{ fontFamily: 'monospace', fontWeight: '600', fontSize: '0.78rem', color: run.isRunning ? accent : theme.colors.primaryText }}>{elapsedStr(run.conductorStartedAtMs, run.conductorEndedAtMs)}</span>
-                                                                            </div>
-                                                                            {run.currentTask && (
-                                                                                <div style={{ ...rowBase, background: `${accent}10`, border: `1px solid ${accent}20` }}>
-                                                                                    <span style={dotStyle(accent)} />
-                                                                                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.74rem' }} title={run.currentTask.taskId}>{run.currentTask.taskId}</span>
-                                                                                    <span style={{ fontFamily: 'monospace', fontWeight: '500', color: accent, fontSize: '0.76rem' }}>{elapsedStr(run.currentTask.startedAtMs, null)}</span>
+                                                                        <div style={{ overflow: 'hidden', transition: 'max-height 0.35s ease-out, opacity 0.25s ease-out, margin-top 0.35s ease-out', maxHeight: hasRun ? 500 : 0, opacity: hasRun ? 1 : 0, marginTop: hasRun ? 8 : 0 }}>
+                                                                            {hasRun && (
+                                                                                <div style={{ padding: '8px', background: run.isRunning ? `${accent}06` : theme.colors.primaryBg, border: `1px solid ${run.isRunning ? accent + '30' : theme.colors.border}`, borderRadius: '8px', fontSize: '0.78rem', color: theme.colors.primaryText }}>
+                                                                                    <div style={{ ...rowBase, background: run.isRunning ? `${accent}10` : theme.colors.primaryBg, border: `1px solid ${run.isRunning ? accent + '20' : theme.colors.border}`, marginBottom: run.currentTask ? '4px' : 0 }}>
+                                                                                        <span style={dotStyle(run.isRunning ? accent : '#22c55e')} />
+                                                                                        <span style={{ color: theme.colors.secondaryText, fontSize: '0.75rem' }}>Conductor</span>
+                                                                                        <span style={{ flex: 1 }} />
+                                                                                        <span style={{ fontFamily: 'monospace', fontWeight: '600', fontSize: '0.78rem', color: run.isRunning ? accent : theme.colors.primaryText }}>{elapsedStr(run.conductorStartedAtMs, run.conductorEndedAtMs)}</span>
+                                                                                    </div>
+                                                                                    {run.currentTask && (
+                                                                                        <div style={{ ...rowBase, background: `${accent}10`, border: `1px solid ${accent}20` }}>
+                                                                                            <span style={dotStyle(accent)} />
+                                                                                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.74rem' }} title={run.currentTask.taskId}>{run.currentTask.taskId}</span>
+                                                                                            <span style={{ fontFamily: 'monospace', fontWeight: '500', color: accent, fontSize: '0.76rem' }}>{elapsedStr(run.currentTask.startedAtMs, null)}</span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {renderSwapCard && renderSwapCard(chore.choreId, run, chore)}
                                                                                 </div>
                                                                             )}
-                                                                            {renderSwapCard && renderSwapCard(chore.choreId, run, chore)}
                                                                         </div>
                                                                     );
                                                                 })()}
