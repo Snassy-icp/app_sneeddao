@@ -693,14 +693,16 @@ function HelpTradingBot() {
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}><strong style={styles.strong}>Token Metadata Refresh:</strong> Updates symbol, decimals, and fee information for all registered tokens</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Price Fetch:</strong> Fetches fresh price quotes for all registered token pairs, building price history and daily candles</li>
-                            <li style={styles.listItem}><strong style={styles.strong}>Balance Snapshots:</strong> Records balances of all registered tokens across the bot's account</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Balance Snapshots:</strong> Records balances of all registered tokens across the bot's main account</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Per-Purse Snapshots:</strong> Also captures a separate snapshot for every enabled chore purse, using the purse's virtual balance and cached prices. This powers per-purse performance tracking in the Performance tab</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Daily Archive:</strong> Finalizes the previous day's OHLC summaries for portfolio value and individual token prices</li>
                         </ul>
                     </div>
                     <div style={styles.tipBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0, fontSize: '0.85rem' }}>
-                            <strong style={styles.strong}>Tip:</strong> Start a snapshot chore early — the portfolio value charts and price
-                            history in the management UI are built from this data. Running snapshots every hour is a good default.
+                            <strong style={styles.strong}>Tip:</strong> Start a snapshot chore early — the portfolio value charts, per-purse
+                            performance data, and price history in the management UI are all built from snapshot data. Running
+                            snapshots every hour is a good default.
                         </p>
                     </div>
                 </div>
@@ -743,11 +745,63 @@ function HelpTradingBot() {
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}>Token balances with ICP and USD values</li>
                             <li style={styles.listItem}>Main purse vs. chore purse breakdown</li>
-                            <li style={styles.listItem}>Portfolio value chart over time (from snapshot data)</li>
-                            <li style={styles.listItem}>Price charts for individual token pairs</li>
                             <li style={styles.listItem}>Deposit, withdraw, and send operations</li>
-                            <li style={styles.listItem}>Capital tracking with net inflows/outflows and P&amp;L</li>
+                            <li style={styles.listItem}>Fund purses directly from your connected wallet</li>
                         </ul>
+                    </div>
+                </div>
+
+                {/* Performance */}
+                <div style={styles.section} className="trading-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#06b6d4')}>
+                            <FaChartArea size={20} color="#06b6d4" />
+                        </div>
+                        <h2 style={styles.subheading}>Performance Tab</h2>
+                    </div>
+                    <p style={styles.paragraph}>
+                        The Performance tab gives you a comprehensive view of how your bot and individual purses are performing
+                        over time. All data is built from periodic snapshots taken by the Snapshot chore.
+                    </p>
+
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaChartArea size={14} color="#06b6d4" />
+                            Whole Account View
+                        </h4>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}><strong style={styles.strong}>Portfolio Value:</strong> Current total value of all tokens in the bot (ICP and USD)</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Net Capital Deployed:</strong> Total capital deposited minus withdrawals — tracks your cost basis</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Trading P&amp;L:</strong> Current portfolio value minus net capital deployed, with absolute and percentage display</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Equity Curve:</strong> Detailed area chart of portfolio value over time, or daily OHLC candlestick view</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Capital Flows:</strong> Per-token breakdown of total inflows and outflows</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Price History:</strong> Detailed and daily OHLC price charts for each token pair</li>
+                        </ul>
+                    </div>
+
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaWallet size={14} color="#f59e0b" />
+                            Per-Purse Performance
+                        </h4>
+                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>
+                            Use the <strong style={styles.strong}>Scope</strong> selector at the top of the Performance tab to switch
+                            between viewing the whole account or an individual chore's purse. When a purse is selected:
+                        </p>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}><strong style={styles.strong}>Purse Value:</strong> Current total value of all tokens in the selected purse</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Purse Change:</strong> Gain/loss from the first recorded snapshot to the latest — shows how much the purse has grown or shrunk over its lifetime</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Value Chart:</strong> Detailed area chart of the purse's value over time</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Token Holdings:</strong> Table showing every token in the purse with its current balance, ICP value, and USD value (from the latest snapshot)</li>
+                        </ul>
+                    </div>
+
+                    <div style={styles.tipBox}>
+                        <p style={{ ...styles.paragraph, marginBottom: 0, fontSize: '0.85rem' }}>
+                            <strong style={styles.strong}>Tip:</strong> Per-purse performance lets you evaluate each strategy independently.
+                            For example, see how your DCA chore is performing separately from your range-trade chore, even though
+                            they share the same bot canister.
+                        </p>
                     </div>
                 </div>
 
@@ -806,6 +860,18 @@ function HelpTradingBot() {
 
                     <div style={styles.featureCard}>
                         <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaBullseye size={14} color="#3b82f6" />
+                            Condition Types
+                        </h4>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}><strong style={styles.strong}>Price:</strong> Monitor a token pair's price — trigger on greater/less than, inside/outside range, or percentage change over a time window</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Balance:</strong> Monitor a specific token balance in the bot</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Value:</strong> Monitor portfolio value from a source — a specific token, all tokens in a chore's purse, or all tokens in the account. Supports the same operators as price conditions</li>
+                        </ul>
+                    </div>
+
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
                             <FaExclamationTriangle size={14} color="#f59e0b" />
                             Available Actions
                         </h4>
@@ -813,16 +879,32 @@ function HelpTradingBot() {
                             <li style={styles.listItem}><strong style={styles.strong}>Pause token in rebalance portfolio</strong> — exclude a token from rebalancing</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Pause/freeze token globally</strong> — prevent all trades involving that token</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Pause/stop a specific chore</strong> — halt one chore instance</li>
-                            <li style={styles.listItem}><strong style={styles.strong}>Stop all chores by type</strong> — halt all instances of a chore type</li>
-                            <li style={styles.listItem}><strong style={styles.strong}>Stop ALL chores</strong> — emergency halt of all bot activity</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Pause/stop all chores by type</strong> — halt all instances of a chore type</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Pause/stop ALL chores</strong> — emergency halt of all bot activity</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Start a specific chore</strong> — resume a stopped/paused chore</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Start all chores by type</strong> — resume all instances of a chore type</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Start ALL chores</strong> — resume all stopped/paused chores</li>
                         </ul>
                     </div>
 
                     <div style={styles.tipBox}>
-                        <p style={{ ...styles.paragraph, marginBottom: 0, fontSize: '0.85rem' }}>
-                            <strong style={styles.strong}>Example Rule:</strong> "If ckBTC drops more than 10% in 1 hour,
+                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem', fontSize: '0.85rem' }}>
+                            <strong style={styles.strong}>Example — Emergency Halt:</strong> "If ckBTC drops more than 10% in 1 hour,
                             pause all rebalance chores." This prevents the bot from selling into a crash. Affected chores stay
-                            paused until you manually resume them.
+                            paused until you manually resume them or another circuit breaker rule starts them.
+                        </p>
+                        <p style={{ ...styles.paragraph, marginBottom: 0, fontSize: '0.85rem' }}>
+                            <strong style={styles.strong}>Example — Cross-Chore Orchestration:</strong> "If portfolio value drops below
+                            $500, stop the rebalancer and start an exit-strategy trade chore on the same purse." The start actions
+                            let circuit breakers switch between strategies automatically.
+                        </p>
+                    </div>
+
+                    <div style={styles.infoBox}>
+                        <p style={{ ...styles.paragraph, marginBottom: 0, fontSize: '0.85rem' }}>
+                            <strong style={styles.strong}>Chore selection:</strong> When configuring circuit breaker actions, chores are
+                            shown by their friendly names. If two chores share the same name, the chore ID is also displayed for
+                            disambiguation. Each chore's ID is visible in the compact status bar of its card for easy cross-referencing.
                         </p>
                     </div>
                 </div>
