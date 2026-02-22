@@ -2487,6 +2487,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     /// Create a level-3 task function that takes a portfolio snapshot for given tokens.
     /// Used as before/after trade snapshot tasks in the chore pipeline.
+    /// Also captures a purse snapshot for the chore's effective purse (if any).
     func _makeSnapshotTaskFn(tokens: [Principal], phase: T.SnapshotPhase, instanceId: Text, actionId: Nat): () -> async BotChoreTypes.TaskAction {
         func(): async BotChoreTypes.TaskAction {
             try {
@@ -2512,6 +2513,26 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     totalValueDenomE8s = null;
                     tokens = snaps;
                 });
+
+                // Also capture a purse snapshot for the chore's effective purse
+                switch (getEffectivePurseId(instanceId)) {
+                    case (?purseId) {
+                        let purseSnaps = buildPurseTokenSnapshots(purseId);
+                        if (purseSnaps.size() > 0) {
+                            let purseIcp = Array.foldLeft<T.TokenSnapshot, Nat>(purseSnaps, 0, func(acc, s) { acc + (switch (s.valueIcpE8s) { case (?v) v; case null 0 }) });
+                            let purseUsd = Array.foldLeft<T.TokenSnapshot, Nat>(purseSnaps, 0, func(acc, s) { acc + (switch (s.valueUsdE8s) { case (?v) v; case null 0 }) });
+                            ignore appendPurseSnapshot(purseId, {
+                                trigger = trigger;
+                                choreId = ?instanceId;
+                                totalValueIcpE8s = ?purseIcp;
+                                totalValueUsdE8s = ?purseUsd;
+                                tokens = purseSnaps;
+                            });
+                        };
+                    };
+                    case null {};
+                };
+
                 #Done
             } catch (e) {
                 logEngine.logWarning("chore:" # instanceId, "Snapshot failed: " # Error.message(e), null, []);
@@ -2584,6 +2605,26 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         tokens = [snap];
                     });
                 };
+
+                // Also capture a purse snapshot for the chore's effective purse
+                switch (getEffectivePurseId(instanceId)) {
+                    case (?purseId) {
+                        let purseSnaps = buildPurseTokenSnapshots(purseId);
+                        if (purseSnaps.size() > 0) {
+                            let purseIcp = Array.foldLeft<T.TokenSnapshot, Nat>(purseSnaps, 0, func(acc, s) { acc + (switch (s.valueIcpE8s) { case (?v) v; case null 0 }) });
+                            let purseUsd = Array.foldLeft<T.TokenSnapshot, Nat>(purseSnaps, 0, func(acc, s) { acc + (switch (s.valueUsdE8s) { case (?v) v; case null 0 }) });
+                            ignore appendPurseSnapshot(purseId, {
+                                trigger = triggerPrefix # " " # phaseLabel;
+                                choreId = ?instanceId;
+                                totalValueIcpE8s = ?purseIcp;
+                                totalValueUsdE8s = ?purseUsd;
+                                tokens = purseSnaps;
+                            });
+                        };
+                    };
+                    case null {};
+                };
+
                 #Done
             } catch (e) {
                 logEngine.logWarning("chore:" # instanceId, "Account snapshot failed: " # Error.message(e), null, []);
@@ -4810,6 +4851,26 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     totalValueDenomE8s = null;
                     tokens = snaps;
                 });
+
+                // Also capture a purse snapshot for the chore's effective purse
+                switch (getEffectivePurseId(instanceId)) {
+                    case (?purseId) {
+                        let purseSnaps = buildPurseTokenSnapshots(purseId);
+                        if (purseSnaps.size() > 0) {
+                            let purseIcp = Array.foldLeft<T.TokenSnapshot, Nat>(purseSnaps, 0, func(acc, s) { acc + (switch (s.valueIcpE8s) { case (?v) v; case null 0 }) });
+                            let purseUsd = Array.foldLeft<T.TokenSnapshot, Nat>(purseSnaps, 0, func(acc, s) { acc + (switch (s.valueUsdE8s) { case (?v) v; case null 0 }) });
+                            ignore appendPurseSnapshot(purseId, {
+                                trigger = trigger;
+                                choreId = ?instanceId;
+                                totalValueIcpE8s = ?purseIcp;
+                                totalValueUsdE8s = ?purseUsd;
+                                tokens = purseSnaps;
+                            });
+                        };
+                    };
+                    case null {};
+                };
+
                 #Done
             } catch (e) {
                 logEngine.logWarning("chore:" # instanceId, "Rebalance snapshot failed: " # Error.message(e), null, []);
