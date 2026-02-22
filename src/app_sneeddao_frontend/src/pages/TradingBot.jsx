@@ -9123,26 +9123,85 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                                     <FaWallet style={{ color: accentColor, fontSize: '0.7rem' }} />
                                     {choreLabel(chore.instanceId)}
                                 </h5>
-                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                    <thead>
-                                        <tr style={rowBorder}>
-                                            <th style={thStyle}>Token</th>
-                                            <th style={thStyleR}>Balance</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {chore.balances.filter(b => Number(b.balance) > 0).map((b, i) => {
-                                            const tok = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
-                                            const dec = tokDecimals(tok);
-                                            return (
+                                {(() => {
+                                    const denomSym = denomToken ? tokLabel(denomToken) : '';
+                                    const denomSign = getCurrencySign(denomToken);
+                                    let totalPurseValue = 0;
+                                    let hasAnyValue = false;
+                                    const purseRows = chore.balances.filter(b => Number(b.balance) > 0).map((b) => {
+                                        const tok = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+                                        const dec = tokDecimals(tok);
+                                        const humanBal = Number(b.balance) / (10 ** dec);
+                                        const price = denomPrices[tok];
+                                        let denomValue = null;
+                                        if (denomToken && price != null && price > 0) {
+                                            denomValue = humanBal * price;
+                                            totalPurseValue += denomValue;
+                                            hasAnyValue = true;
+                                        }
+                                        return { tok, dec, balance: b.balance, humanBal, price, denomValue };
+                                    });
+                                    return (
+                                    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: denomToken ? '420px' : '260px' }}>
+                                        <thead>
+                                            <tr style={rowBorder}>
+                                                <th style={thStyle}>Token</th>
+                                                <th style={thStyleR}>Balance</th>
+                                                {denomToken && <th style={thStyleR}>Price ({denomSign || denomSym})</th>}
+                                                {denomToken && <th style={thStyleR}>{denomSign ? `Value (${denomSign})` : `Value (${denomSym})`}</th>}
+                                                {denomToken && hasAnyValue && <th style={thStyleR}>%</th>}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {purseRows.map(({ tok, dec, balance, price, denomValue }, i) => (
                                                 <tr key={i} style={rowBorder}>
-                                                    <td style={tdStyle}>{tokLabel(tok)}</td>
-                                                    <td style={tdStyleR}>{fmtBal(b.balance, dec)}</td>
+                                                    <td style={tdStyle}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <TokenIcon canisterId={tok} size={16} />
+                                                            {tokLabel(tok)}
+                                                        </div>
+                                                    </td>
+                                                    <td style={tdStyleR}>{fmtBal(balance, dec)}</td>
+                                                    {denomToken && (
+                                                        <td style={{ ...tdStyleR, color: price != null ? theme.colors.secondaryText : theme.colors.mutedText, fontSize: '0.75rem' }}>
+                                                            {tok === denomToken ? '1.00' : (price != null
+                                                                ? formatDenomAmount(price, denomToken, denomSym)
+                                                                : (loadingPrices ? '...' : '—'))}
+                                                        </td>
+                                                    )}
+                                                    {denomToken && (
+                                                        <td style={{ ...tdStyleR, color: denomValue != null ? theme.colors.primaryText : theme.colors.mutedText, fontSize: '0.78rem' }}>
+                                                            {denomValue != null
+                                                                ? formatDenomAmount(denomValue, denomToken, denomSym)
+                                                                : (loadingPrices ? '...' : '—')}
+                                                        </td>
+                                                    )}
+                                                    {denomToken && hasAnyValue && (
+                                                        <td style={{ ...tdStyleR, fontSize: '0.75rem', color: denomValue != null && totalPurseValue > 0 ? accentColor : theme.colors.mutedText }}>
+                                                            {denomValue != null && totalPurseValue > 0
+                                                                ? ((denomValue / totalPurseValue) * 100).toFixed(1) + '%'
+                                                                : '—'}
+                                                        </td>
+                                                    )}
                                                 </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
+                                            ))}
+                                            {denomToken && hasAnyValue && (
+                                                <tr style={{ borderTop: `2px solid ${borderColor}40` }}>
+                                                    <td style={{ ...tdStyle, fontWeight: '700' }}>Total</td>
+                                                    <td />
+                                                    {denomToken && <td />}
+                                                    <td style={{ ...tdStyleR, fontWeight: '700', color: accentColor, fontSize: '0.85rem' }}>
+                                                        {formatDenomAmount(totalPurseValue, denomToken, denomSym)}
+                                                    </td>
+                                                    <td style={{ ...tdStyleR, fontWeight: '600', color: accentColor, fontSize: '0.75rem' }}>100%</td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                    </div>
+                                    );
+                                })()}
 
                                 {/* Fund / Reclaim / Withdraw controls */}
                                 <div style={{ marginTop: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
