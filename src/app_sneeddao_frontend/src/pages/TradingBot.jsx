@@ -8976,6 +8976,11 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
+    // Cross-chore purse sharing
+    const [tradingPurseId, setTradingPurseIdState] = useState(null);
+    const [otherPurseChores, setOtherPurseChores] = useState([]);
+    const [choreLabels, setChoreLabels] = useState({});
+    const [refPurseBalances, setRefPurseBalances] = useState([]);
 
     const cardSt = { background: theme.colors.cardBg, border: `1px solid ${theme.colors.border}`, borderRadius: '8px', padding: '14px', marginBottom: '10px' };
     const btnSm = (extra = {}) => ({
@@ -9017,14 +9022,38 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
         setError(null);
         try {
             const actor = await getReadyBotActor();
-            const [allPurses, regTokens] = await Promise.all([
+            const [allPurses, regTokens, tpId, choreStatuses] = await Promise.all([
                 actor.getAllPurseAllocations(),
                 actor.getTokenRegistry ? actor.getTokenRegistry() : [],
+                actor.getTradingPurseId ? actor.getTradingPurseId(instanceId) : [],
+                actor.getChoreStatuses ? actor.getChoreStatuses() : [],
             ]);
             setRegisteredTokenIds(regTokens.map(t => {
                 const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
                 return tid;
             }));
+
+            // Trading purse override
+            const tpVal = Array.isArray(tpId) ? (tpId.length > 0 ? tpId[0] : null) : tpId;
+            setTradingPurseIdState(tpVal);
+
+            // Build chore label map and list of other purse-enabled chores
+            const labels = {};
+            for (const c of choreStatuses) {
+                labels[c.choreId] = c.instanceLabel && c.instanceLabel !== c.choreName
+                    ? `${c.choreName} — ${c.instanceLabel}` : (c.instanceLabel || c.choreName || c.choreId);
+            }
+            setChoreLabels(labels);
+            const others = allPurses.filter(p => p.enabled && p.instanceId !== instanceId);
+            setOtherPurseChores(others.map(p => p.instanceId));
+
+            // If referencing another purse, show its balances
+            if (tpVal) {
+                const refPurse = allPurses.find(p => p.instanceId === tpVal);
+                setRefPurseBalances((refPurse?.balances || []).filter(b => Number(b.balance) > 0));
+            } else {
+                setRefPurseBalances([]);
+            }
 
             const myPurse = allPurses.find(p => p.instanceId === instanceId);
             const enabled = myPurse?.enabled ?? false;

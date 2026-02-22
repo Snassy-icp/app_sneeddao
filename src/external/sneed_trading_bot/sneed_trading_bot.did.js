@@ -832,6 +832,11 @@ export const idlFactory = ({ IDL }) => {
         getMainPurseBalance: IDL.Func([IDL.Principal], [MainPurseBalance], []),
         fundPurse: IDL.Func([IDL.Text, IDL.Principal, IDL.Nat], [PurseResult], []),
         reclaimFromPurse: IDL.Func([IDL.Text, IDL.Principal, IDL.Nat], [PurseResult], []),
+
+        // Cross-chore purse sharing
+        setTradingPurseId: IDL.Func([IDL.Text, IDL.Opt(IDL.Text)], [PurseResult], []),
+        getTradingPurseId: IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], ['query']),
+        getResolvedPurseId: IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], ['query']),
     });
 };
 
