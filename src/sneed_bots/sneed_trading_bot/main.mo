@@ -2203,9 +2203,20 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     /// Update or create the daily price candle for a cached quote.
+    /// Normalizes price direction: the canonical input is the lexicographically
+    /// smaller principal (matching the pairKey convention).
     func updateDailyPriceCandle(key: Text, cached: T.CachedPrice) {
-        let price = cached.quote.spotPriceE8s;
-        if (price == 0) return;
+        let rawPrice = cached.quote.spotPriceE8s;
+        if (rawPrice == 0) return;
+
+        // Determine if the quote direction matches the canonical key direction
+        let a = Principal.toText(cached.inputToken);
+        let b = Principal.toText(cached.outputToken);
+        let isCanonical = a < b;
+        // If canonical, price is already "output per input" in the right direction.
+        // If inverted, we need to flip: price = 1e16 / rawPrice (1e8 * 1e8 to maintain E8s scale).
+        let price = if (isCanonical) { rawPrice }
+                    else { if (rawPrice > 0) { 10_000_000_000_000_000 / rawPrice } else { 0 } };
 
         let date = utcDayStart(cached.fetchedAt);
 
@@ -2224,10 +2235,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         });
 
         if (not found) {
+            let canonicalInput = if (isCanonical) cached.inputToken else cached.outputToken;
+            let canonicalOutput = if (isCanonical) cached.outputToken else cached.inputToken;
             dailyPriceCandles := Array.append(dailyPriceCandles, [{
                 pairKey = key;
-                inputToken = cached.inputToken;
-                outputToken = cached.outputToken;
+                inputToken = canonicalInput;
+                outputToken = canonicalOutput;
                 date = date;
                 openE8s = price;
                 highE8s = price;

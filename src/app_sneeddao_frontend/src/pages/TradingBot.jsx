@@ -5743,11 +5743,17 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
     // Default to first pair if none selected
     const activePair = selectedPricepair || (pairOptions.length > 0 ? pairOptions[0].key : null);
 
-    // Build chart data for the selected pair
+    // Get the pair info for display
+    const activePairInfo = pairOptions.find(p => p.key === activePair);
+
+    // Build chart data for the selected pair.
+    // Since both directions (A→B and B→A) share the same normalized key,
+    // we pick a canonical direction from the active pair info and invert
+    // entries that were stored in the opposite direction.
     const chartData = React.useMemo(() => {
-        if (!activePair) return [];
+        if (!activePair || !activePairInfo) return [];
+        const canonicalInput = activePairInfo.inputPrincipal;
         const entries = historyByPair.get(activePair) || [];
-        // Also append the current lastKnown price for this pair
         const currentEntry = lastKnownPrices.find(([k]) => k === activePair);
         const allEntries = currentEntry ? [...entries, currentEntry[1]] : entries;
 
@@ -5756,21 +5762,20 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
             const q = entry.quote;
             const inputAmt = Number(q.inputAmount);
             const outputAmt = Number(q.expectedOutput);
-            // Price: how much output per 1 unit of input
-            const price = inputAmt > 0 ? outputAmt / inputAmt : 0;
-            // Spot price from the quote
+            const entryInput = entry.inputToken?.toText?.() || entry.inputToken?.toString?.() || '';
+            const sameDirection = entryInput === canonicalInput;
+            const price = sameDirection
+                ? (inputAmt > 0 ? outputAmt / inputAmt : 0)
+                : (outputAmt > 0 ? inputAmt / outputAmt : 0);
             const spotPrice = Number(q.spotPriceE8s) / 1e8;
             return {
                 time: ts,
                 label: new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
                 price: price,
-                spotPrice: spotPrice > 0 ? spotPrice : null,
+                spotPrice: spotPrice > 0 ? (sameDirection ? spotPrice : (spotPrice > 0 ? 1 / spotPrice : null)) : null,
             };
         });
-    }, [activePair, historyByPair, lastKnownPrices]);
-
-    // Get the pair info for display
-    const activePairInfo = pairOptions.find(p => p.key === activePair);
+    }, [activePair, activePairInfo, historyByPair, lastKnownPrices]);
 
     // Overall price stats
     const priceStats = React.useMemo(() => {
