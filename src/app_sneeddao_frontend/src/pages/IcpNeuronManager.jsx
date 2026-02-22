@@ -31,6 +31,7 @@ import StatusLamp, {
     getSchedulerLampState, getConductorLampState, getTaskLampState,
     summarizeLampStates, getChoreSummaryLamp, getAllChoresSummaryLamp, getSummaryLabel
 } from '../components/ChoreStatusLamp';
+import BotEventPanel from '../components/BotEventPanel';
 
 // Custom CSS for animations
 const customStyles = `
@@ -1597,6 +1598,8 @@ function IcpNeuronManager() {
         'ConfigureCollectMaturity': 'Configure Collect Maturity',
         'ConfigureDistribution': 'Configure Distribution',
         'ViewChores': 'View Chores',
+        'ManageEvents': 'Manage Events',
+        'ViewEvents': 'View Events',
     };
 
     // Known descriptions for permission keys (empty string for unknown permissions)
@@ -1627,6 +1630,8 @@ function IcpNeuronManager() {
         'ConfigureCollectMaturity': 'Set the maturity collection threshold and destination account',
         'ConfigureDistribution': 'Add, edit, and remove distribution lists (controls where funds are sent)',
         'ViewChores': 'View bot chore statuses, configurations, and settings',
+        'ManageEvents': 'Configure event subscriptions, reaction rules, and emission settings',
+        'ViewEvents': 'View event types, listeners, subscriptions, and logs',
     };
 
     // Get human-readable label for a permission key (dynamic: falls back to splitting CamelCase)
@@ -3582,6 +3587,11 @@ function IcpNeuronManager() {
                                     {hasPermission('ViewLogs') && (
                                     <button style={tabStyle(canisterActiveTab === 'log')} onClick={() => setCanisterActiveTab('log')}>
                                         Log
+                                    </button>
+                                    )}
+                                    {(hasPermission('ViewEvents') || hasPermission('ManageEvents')) && (
+                                    <button style={tabStyle(canisterActiveTab === 'events')} onClick={() => setCanisterActiveTab('events')}>
+                                        Events
                                     </button>
                                     )}
                                 </div>
@@ -7280,6 +7290,17 @@ function IcpNeuronManager() {
                         </div>
                             );
                         })()}
+
+                        {/* Events Tab */}
+                        {canisterActiveTab === 'events' && (
+                            <BotEventPanel
+                                canisterId={canisterId}
+                                identity={identity}
+                                theme={theme}
+                                accentColor={neuronPrimary}
+                                hasPermission={hasPermission}
+                            />
+                        )}
 
                                 </div>
                             )}

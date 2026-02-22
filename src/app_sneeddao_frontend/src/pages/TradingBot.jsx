@@ -124,6 +124,8 @@ const PERMISSION_LABELS = {
     'ManageSnapshotChore': 'Manage Snapshot Chore',
     'ManageCircuitBreaker': 'Manage Circuit Breaker',
     'ManagePurses': 'Manage Purses',
+    'ManageEvents': 'Manage Events',
+    'ViewEvents': 'View Events',
 };
 
 const PERMISSION_DESCRIPTIONS = {
@@ -147,6 +149,8 @@ const PERMISSION_DESCRIPTIONS = {
     'ManageSnapshotChore': 'Start/stop/pause/resume/trigger snapshot chore',
     'ManageCircuitBreaker': 'Configure circuit breaker rules and conditions',
     'ManagePurses': 'Enable/disable chore purses, fund and reclaim operations',
+    'ManageEvents': 'Configure event subscriptions, reaction rules, and emission settings',
+    'ViewEvents': 'View event types, listeners, subscriptions, and logs',
 };
 
 // Chore types that support multiple instances

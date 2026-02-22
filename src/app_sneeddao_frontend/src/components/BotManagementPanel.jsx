@@ -38,6 +38,7 @@ import { getNeuronManagerSettings, getCyclesColor } from '../utils/NeuronManager
 import { FaRobot, FaChevronUp, FaChevronDown, FaShieldAlt, FaGasPump, FaTrash, FaStop } from 'react-icons/fa';
 import TokenIcon from './TokenIcon';
 import ConfirmDialog from './ConfirmDialog';
+import BotEventPanel from './BotEventPanel';
 import { getTokenMetadataSync, fetchAndCacheTokenMetadata } from '../hooks/useTokenCache';
 import StatusLamp, {
     LAMP_OFF, LAMP_OK, LAMP_ACTIVE, LAMP_WARN, LAMP_ERROR, LAMP_CB,
@@ -1456,6 +1457,9 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                         {hasPermission('ViewLogs') && (
                             <button style={tabStyle(activeTab === 'log')} onClick={() => setActiveTab('log')}>Log</button>
                         )}
+                        {(hasPermission('ViewEvents') || hasPermission('ManageEvents')) && (
+                            <button style={tabStyle(activeTab === 'events')} onClick={() => setActiveTab('events')}>Events</button>
+                        )}
                     </div>
 
                     {/* ==================== INFO TAB ==================== */}
@@ -2674,6 +2678,17 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                             </div>
                         );
                     })()}
+
+                    {/* ==================== EVENTS TAB ==================== */}
+                    {activeTab === 'events' && (
+                        <BotEventPanel
+                            canisterId={canisterId}
+                            identity={identity}
+                            theme={theme}
+                            accentColor={accent}
+                            hasPermission={hasPermission}
+                        />
+                    )}
                 </div>
             )}
         </div>
