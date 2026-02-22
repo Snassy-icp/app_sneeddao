@@ -146,9 +146,15 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     var chorePurseEnabled: [(Text, Bool)] = [];
     var chorePurseBalances: [(Text, [(Text, Nat)])] = [];
 
+    // Cross-chore purse sharing: maps instanceId → purseId of another chore to trade from
+    var choreTradingPurseId: [(Text, Text)] = [];
+
     // ============================================
     // TRANSIENT CACHES (cleared on canister upgrade)
     // ============================================
+
+    // Purse locks: prevents concurrent trades on the same purse across await boundaries
+    transient var _purseLocks: [(Text, Text)] = [];
 
     // Circuit Breaker: per-chore abort signal set by CB evaluation
     transient var _cbAbortChore: [(Text, Bool)] = [];
@@ -553,6 +559,42 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         false
     };
 
+    /// Get the configured trading purse override for a chore instance.
+    func getChoreTradingPurseId(instanceId: Text): ?Text {
+        for ((k, v) in choreTradingPurseId.vals()) {
+            if (k == instanceId) return ?v;
+        };
+        null
+    };
+
+    /// Resolve which purse a chore should trade from.
+    /// Returns ?purseId if trading from a specific purse, or null for the main purse.
+    /// Priority: tradingPurseId override > own purse if enabled > null (main purse).
+    func getEffectivePurseId(instanceId: Text): ?Text {
+        switch (getChoreTradingPurseId(instanceId)) {
+            case (?targetId) { ?targetId };
+            case null {
+                if (isPurseEnabledForChore(instanceId)) { ?instanceId }
+                else { null }
+            };
+        }
+    };
+
+    /// Try to acquire a lock on a purse for the duration of a trade.
+    /// Returns true if the lock was acquired, false if the purse is already locked.
+    func tryLockPurse(purseId: Text, instanceId: Text): Bool {
+        for ((pid, _) in _purseLocks.vals()) {
+            if (pid == purseId) return false;
+        };
+        _purseLocks := Array.append(_purseLocks, [(purseId, instanceId)]);
+        true
+    };
+
+    /// Release a purse lock after a trade completes (success or failure).
+    func unlockPurse(purseId: Text) {
+        _purseLocks := Array.filter<(Text, Text)>(_purseLocks, func((pid, _)) { pid != purseId });
+    };
+
     func getChorePurseBalance(instanceId: Text, token: Principal): Nat {
         let key = balanceKey(token);
         for ((cid, entries) in chorePurseBalances.vals()) {
@@ -621,15 +663,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     /// Get the effective balance a chore should use for trading decisions.
-    /// For chores with their own purse: returns min(purseBalance, onChainBalance).
-    /// For chores on the main purse: returns min(mainPurseBalance, onChainBalance).
+    /// Resolves the effective purse (own, another chore's, or main) via getEffectivePurseId.
     func getEffectiveBalance(instanceId: Text, token: Principal, onChainBalance: Nat): Nat {
-        if (isPurseEnabledForChore(instanceId)) {
-            let purse = getChorePurseBalance(instanceId, token);
-            Nat.min(purse, onChainBalance)
-        } else {
-            let main = computeMainPurseBalance(token, onChainBalance);
-            Nat.min(main.balance, onChainBalance)
+        switch (getEffectivePurseId(instanceId)) {
+            case (?purseId) {
+                let purse = getChorePurseBalance(purseId, token);
+                Nat.min(purse, onChainBalance)
+            };
+            case null {
+                let main = computeMainPurseBalance(token, onChainBalance);
+                Nat.min(main.balance, onChainBalance)
+            };
         }
     };
 
@@ -2458,7 +2502,19 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case null {};
         };
 
-        switch (action.actionType) {
+        // Acquire purse lock to prevent concurrent trades on the same purse
+        let effectivePurseId = getEffectivePurseId(instanceId);
+        switch (effectivePurseId) {
+            case (?pid) {
+                if (not tryLockPurse(pid, instanceId)) {
+                    logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " skipped: purse " # pid # " is locked by another chore", null, []);
+                    return (false, 0, 0);
+                };
+            };
+            case null {};
+        };
+
+        let result = switch (action.actionType) {
             case (0) { await* executeTradeSwap(action, instanceId) };
             case (1) { await* executeDeposit(action, instanceId) };
             case (2) { await* executeWithdraw(action, instanceId) };
@@ -2467,7 +2523,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 logEngine.logError(src, "Unknown action type: " # Nat.toText(action.actionType), null, []);
                 (false, 0, 0)
             };
-        }
+        };
+
+        switch (effectivePurseId) {
+            case (?pid) { unlockPurse(pid) };
+            case null {};
+        };
+
+        result
     };
 
     private func updateActionWatermark(instanceId: Text, actionId: Nat, watermarkE8s: Nat) {
@@ -2867,9 +2930,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
                         let netAmountOut = if (r.amountOut > quote.outputFeesTotal) { r.amountOut - quote.outputFeesTotal } else { 0 };
                         adjustLastKnownBalance(outputToken, netAmountOut);
-                        if (isPurseEnabledForChore(instanceId)) {
-                            adjustChorePurseBalance(instanceId, action.inputToken, actualTradeSize, true);
-                            adjustChorePurseBalance(instanceId, outputToken, netAmountOut, false);
+                        switch (getEffectivePurseId(instanceId)) {
+                            case (?purseId) {
+                                adjustChorePurseBalance(purseId, action.inputToken, actualTradeSize, true);
+                                adjustChorePurseBalance(purseId, outputToken, netAmountOut, false);
+                            };
+                            case null {};
                         };
                         switch (action.trailingStopBps) {
                             case (?_) {
@@ -2909,8 +2975,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
                         let feeLost = quote.inputFeesTotal;
                         setLastKnownBalance(action.inputToken, if (preSwapLastKnown > feeLost) { preSwapLastKnown - feeLost } else { 0 });
-                        if (feeLost > 0 and isPurseEnabledForChore(instanceId)) {
-                            adjustChorePurseBalance(instanceId, action.inputToken, feeLost, true);
+                        switch (if (feeLost > 0) { getEffectivePurseId(instanceId) } else { null }) {
+                            case (?purseId) { adjustChorePurseBalance(purseId, action.inputToken, feeLost, true) };
+                            case null {};
                         };
                         (false, 0, 0)
                     };
@@ -3110,8 +3177,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                 _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
                                 let feeLost = leg1Quote.inputFeesTotal;
                                 setLastKnownBalance(action.inputToken, if (preSwapBalance > feeLost) { preSwapBalance - feeLost } else { 0 });
-                                if (feeLost > 0 and isPurseEnabledForChore(instanceId)) {
-                                    adjustChorePurseBalance(instanceId, action.inputToken, feeLost, true);
+                                switch (if (feeLost > 0) { getEffectivePurseId(instanceId) } else { null }) {
+                                    case (?purseId) { adjustChorePurseBalance(purseId, action.inputToken, feeLost, true) };
+                                    case null {};
                                 };
                                 return (false, 0, 0);
                             };
@@ -3187,9 +3255,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                 _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
                                 let netAmountOut = if (r.amountOut > leg2FreshQuote.outputFeesTotal) { r.amountOut - leg2FreshQuote.outputFeesTotal } else { 0 };
                                 adjustLastKnownBalance(outputToken, netAmountOut);
-                                if (isPurseEnabledForChore(instanceId)) {
-                                    adjustChorePurseBalance(instanceId, action.inputToken, actualTradeSize, true);
-                                    adjustChorePurseBalance(instanceId, outputToken, netAmountOut, false);
+                                switch (getEffectivePurseId(instanceId)) {
+                                    case (?purseId) {
+                                        adjustChorePurseBalance(purseId, action.inputToken, actualTradeSize, true);
+                                        adjustChorePurseBalance(purseId, outputToken, netAmountOut, false);
+                                    };
+                                    case null {};
                                 };
                                 switch (action.trailingStopBps) {
                                     case (?_) {
@@ -3230,8 +3301,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                 _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
                                 let intFeeLost = leg2FreshQuote.inputFeesTotal;
                                 setLastKnownBalance(intermediary, if (preSwapIntBalance > intFeeLost) { preSwapIntBalance - intFeeLost } else { 0 });
-                                if (intFeeLost > 0 and isPurseEnabledForChore(instanceId)) {
-                                    adjustChorePurseBalance(instanceId, action.inputToken, intFeeLost, true);
+                                switch (if (intFeeLost > 0) { getEffectivePurseId(instanceId) } else { null }) {
+                                    case (?purseId) { adjustChorePurseBalance(purseId, action.inputToken, intFeeLost, true) };
+                                    case null {};
                                 };
                                 (false, 0, 0)
                             };
@@ -3449,8 +3521,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 switch (action.sourcePurseId) {
                     case (?spid) { adjustChorePurseBalance(spid, action.inputToken, amount + fee, true) };
                     case null {
-                        if (isPurseEnabledForChore(instanceId)) {
-                            adjustChorePurseBalance(instanceId, action.inputToken, amount + fee, true);
+                        switch (getEffectivePurseId(instanceId)) {
+                            case (?purseId) { adjustChorePurseBalance(purseId, action.inputToken, amount + fee, true) };
+                            case null {};
                         };
                     };
                 };
@@ -3581,9 +3654,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 // Finalize lastKnown: sell already pre-adjusted, now add the output
                 let netAmountOut = if (r.amountOut > quote.outputFeesTotal) { r.amountOut - quote.outputFeesTotal } else { 0 };
                 adjustLastKnownBalance(buyToken.token, netAmountOut);
-                if (isPurseEnabledForChore(instanceId)) {
-                    adjustChorePurseBalance(instanceId, sellToken.token, tradeSize, true);
-                    adjustChorePurseBalance(instanceId, buyToken.token, netAmountOut, false);
+                switch (getEffectivePurseId(instanceId)) {
+                    case (?purseId) {
+                        adjustChorePurseBalance(purseId, sellToken.token, tradeSize, true);
+                        adjustChorePurseBalance(purseId, buyToken.token, netAmountOut, false);
+                    };
+                    case null {};
                 };
                 true
             };
@@ -3619,8 +3695,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 // On failure: restore lastKnown, minus any lost fees
                 let feeLost = quote.inputFeesTotal;
                 setLastKnownBalance(sellToken.token, if (preSwapSellBalance > feeLost) { preSwapSellBalance - feeLost } else { 0 });
-                if (feeLost > 0 and isPurseEnabledForChore(instanceId)) {
-                    adjustChorePurseBalance(instanceId, sellToken.token, feeLost, true);
+                switch (if (feeLost > 0) { getEffectivePurseId(instanceId) } else { null }) {
+                    case (?purseId) { adjustChorePurseBalance(purseId, sellToken.token, feeLost, true) };
+                    case null {};
                 };
                 false
             };
@@ -4378,8 +4455,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 // On failure: restore lastKnown, minus any lost fees
                 let feeLost1 = leg1Quote.inputFeesTotal;
                 setLastKnownBalance(sellToken.token, if (preSwapSellBalance > feeLost1) { preSwapSellBalance - feeLost1 } else { 0 });
-                if (feeLost1 > 0 and isPurseEnabledForChore(instanceId)) {
-                    adjustChorePurseBalance(instanceId, sellToken.token, feeLost1, true);
+                switch (if (feeLost1 > 0) { getEffectivePurseId(instanceId) } else { null }) {
+                    case (?purseId) { adjustChorePurseBalance(purseId, sellToken.token, feeLost1, true) };
+                    case null {};
                 };
                 return false;
             };
@@ -4406,9 +4484,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         });
         // Finalize lastKnown after leg 1: sell already pre-adjusted, now add the intermediary
         adjustLastKnownBalance(intermediary, intermediaryReceived);
-        if (isPurseEnabledForChore(instanceId)) {
-            adjustChorePurseBalance(instanceId, sellToken.token, tradeSize, true);
-            adjustChorePurseBalance(instanceId, intermediary, intermediaryReceived, false);
+        switch (getEffectivePurseId(instanceId)) {
+            case (?purseId) {
+                adjustChorePurseBalance(purseId, sellToken.token, tradeSize, true);
+                adjustChorePurseBalance(purseId, intermediary, intermediaryReceived, false);
+            };
+            case null {};
         };
 
         // Phase 4: Execute leg 2 (intermediary → buy) with fresh quote
@@ -4492,9 +4573,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 // Finalize lastKnown after leg 2: intermediary already pre-adjusted, now add the output
                 let netAmountOut2 = if (r.amountOut > leg2FreshQuote.outputFeesTotal) { r.amountOut - leg2FreshQuote.outputFeesTotal } else { 0 };
                 adjustLastKnownBalance(buyToken.token, netAmountOut2);
-                if (isPurseEnabledForChore(instanceId)) {
-                    adjustChorePurseBalance(instanceId, intermediary, intermediaryReceived, true);
-                    adjustChorePurseBalance(instanceId, buyToken.token, netAmountOut2, false);
+                switch (getEffectivePurseId(instanceId)) {
+                    case (?purseId) {
+                        adjustChorePurseBalance(purseId, intermediary, intermediaryReceived, true);
+                        adjustChorePurseBalance(purseId, buyToken.token, netAmountOut2, false);
+                    };
+                    case null {};
                 };
                 true
             };
@@ -4530,8 +4614,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 // On leg2 failure: restore intermediary lastKnown, minus any lost fees
                 let intFeeLost = leg2FreshQuote.inputFeesTotal;
                 setLastKnownBalance(intermediary, if (preSwapIntBalance > intFeeLost) { preSwapIntBalance - intFeeLost } else { 0 });
-                if (intFeeLost > 0 and isPurseEnabledForChore(instanceId)) {
-                    adjustChorePurseBalance(instanceId, intermediary, intFeeLost, true);
+                switch (if (intFeeLost > 0) { getEffectivePurseId(instanceId) } else { null }) {
+                    case (?purseId) { adjustChorePurseBalance(purseId, intermediary, intFeeLost, true) };
+                    case null {};
                 };
                 false
             };
@@ -4589,12 +4674,21 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     func _df_makeTaskFn(list: DistributionTypes.DistributionList, instanceId: Text): () -> async BotChoreTypes.TaskAction {
         func(): async BotChoreTypes.TaskAction {
+            let lockPurseId = switch (list.sourcePurseId) {
+                case (?spid) { ?spid };
+                case null { getEffectivePurseId(instanceId) };
+            };
+            switch (lockPurseId) {
+                case (?pid) { if (not tryLockPurse(pid, instanceId)) { return #Done } };
+                case null {};
+            };
             try {
                 let src = "chore:" # instanceId;
                 let tok = list.tokenLedgerCanisterId;
 
                 if (isTokenFrozen(tok)) {
                     logEngine.logDebug(src, "Distribution list " # list.name # " skipped: token is frozen globally", null, []);
+                    switch (lockPurseId) { case (?pid) { unlockPurse(pid) }; case null {} };
                     return #Done;
                 };
 
@@ -4617,6 +4711,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 };
 
                 if (effectiveBal < list.thresholdAmount) {
+                    switch (lockPurseId) { case (?pid) { unlockPurse(pid) }; case null {} };
                     return #Done;
                 };
 
@@ -4708,8 +4803,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     switch (list.sourcePurseId) {
                         case (?spid) { adjustChorePurseBalance(spid, tok, totalOnChainSpent, true) };
                         case null {
-                            if (isPurseEnabledForChore(instanceId)) {
-                                adjustChorePurseBalance(instanceId, tok, totalOnChainSpent, true);
+                            switch (getEffectivePurseId(instanceId)) {
+                                case (?purseId) { adjustChorePurseBalance(purseId, tok, totalOnChainSpent, true) };
+                                case null {};
                             };
                         };
                     };
@@ -4727,8 +4823,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     logEngine.logInfo(src, "Distribution list " # list.name # ": distributed " # Nat.toText(totalDist) # " of " # tokenLabel(tok) # " (" # Nat.toText(totalPurseDistributed) # " to purses, " # Nat.toText(totalExternalDistributed) # " external)", null, []);
                 };
 
+                switch (lockPurseId) { case (?pid) { unlockPurse(pid) }; case null {} };
                 #Done
             } catch (e) {
+                switch (lockPurseId) { case (?pid) { unlockPurse(pid) }; case null {} };
                 #Error("Distribution failed: " # Error.message(e))
             }
         }
@@ -5549,8 +5647,19 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             };
                             // No CB rules → proceed to rebalance directly
                             let taskFn = func(): async BotChoreTypes.TaskAction {
-                                try { ignore await* executeRebalance(instanceId); #Done }
-                                catch (e) { #Error("Rebalance failed: " # Error.message(e)) }
+                                let epid = getEffectivePurseId(instanceId);
+                                switch (epid) {
+                                    case (?pid) { if (not tryLockPurse(pid, instanceId)) { return #Done } };
+                                    case null {};
+                                };
+                                try {
+                                    ignore await* executeRebalance(instanceId);
+                                    switch (epid) { case (?pid) { unlockPurse(pid) }; case null {} };
+                                    #Done
+                                } catch (e) {
+                                    switch (epid) { case (?pid) { unlockPurse(pid) }; case null {} };
+                                    #Error("Rebalance failed: " # Error.message(e))
+                                }
                             };
                             choreEngine.setPendingTask(instanceId, "rebalance-exec-" # Nat.toText(Int.abs(Time.now())), taskFn);
                             return #ContinueIn(15);
@@ -5566,8 +5675,19 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             };
                             logEngine.logInfo(src, "Circuit breaker check passed", null, []);
                             let taskFn = func(): async BotChoreTypes.TaskAction {
-                                try { ignore await* executeRebalance(instanceId); #Done }
-                                catch (e) { #Error("Rebalance failed: " # Error.message(e)) }
+                                let epid = getEffectivePurseId(instanceId);
+                                switch (epid) {
+                                    case (?pid) { if (not tryLockPurse(pid, instanceId)) { return #Done } };
+                                    case null {};
+                                };
+                                try {
+                                    ignore await* executeRebalance(instanceId);
+                                    switch (epid) { case (?pid) { unlockPurse(pid) }; case null {} };
+                                    #Done
+                                } catch (e) {
+                                    switch (epid) { case (?pid) { unlockPurse(pid) }; case null {} };
+                                    #Error("Rebalance failed: " # Error.message(e))
+                                }
                             };
                             choreEngine.setPendingTask(instanceId, "rebalance-exec-" # Nat.toText(Int.abs(Time.now())), taskFn);
                             return #ContinueIn(15);
@@ -6870,6 +6990,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         if (ok) {
             chorePurseEnabled := Array.filter<(Text, Bool)>(chorePurseEnabled, func((k, _)) { k != instanceId });
             chorePurseBalances := Array.filter<(Text, [(Text, Nat)])>(chorePurseBalances, func((k, _)) { k != instanceId });
+            // Remove this chore's override AND any chores pointing to the deleted chore's purse
+            choreTradingPurseId := Array.filter<(Text, Text)>(choreTradingPurseId, func((k, v)) { k != instanceId and v != instanceId });
         };
         ok
     };
@@ -7410,6 +7532,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     public shared (msg) func disablePurse(instanceId: Text): async { #Ok; #Err: Text } {
         assertPermission(msg.caller, T.TradingPermission.ManagePurses);
+        // Cannot disable if another chore references this purse
+        for ((k, v) in choreTradingPurseId.vals()) {
+            if (v == instanceId) {
+                return #Err("Purse is referenced by chore " # k # " as its trading purse. Remove that reference first.");
+            };
+        };
         // Purse must be empty (all balances zero) before disabling
         for ((cid, entries) in chorePurseBalances.vals()) {
             if (cid == instanceId) {
@@ -7532,6 +7660,45 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         adjustChorePurseBalance(instanceId, token, amount, true);
         logEngine.logInfo("api", "Reclaimed " # Nat.toText(amount) # " of " # tokenLabel(token) # " from purse " # instanceId, ?msg.caller, []);
         #Ok
+    };
+
+    // ============================================
+    // CROSS-CHORE PURSE SHARING API
+    // ============================================
+
+    /// Set or clear the trading purse override for a chore instance.
+    /// When set, this chore will trade from the specified chore's purse instead of its own or the main purse.
+    public shared (msg) func setTradingPurseId(instanceId: Text, purseId: ?Text): async { #Ok; #Err: Text } {
+        assertPermission(msg.caller, T.TradingPermission.ManagePurses);
+        switch (purseId) {
+            case (?pid) {
+                if (pid == instanceId) {
+                    return #Err("A chore cannot reference its own purse as a trading purse override. Enable the chore's own purse instead.");
+                };
+                if (not isPurseEnabledForChore(pid)) {
+                    return #Err("Target purse " # pid # " is not enabled. Enable it first.");
+                };
+                choreTradingPurseId := setInMap(choreTradingPurseId, instanceId, pid);
+                logEngine.logInfo("api", "Set trading purse for " # instanceId # " → " # pid, ?msg.caller, []);
+            };
+            case null {
+                choreTradingPurseId := Array.filter<(Text, Text)>(choreTradingPurseId, func((k, _)) { k != instanceId });
+                logEngine.logInfo("api", "Cleared trading purse override for " # instanceId, ?msg.caller, []);
+            };
+        };
+        #Ok
+    };
+
+    /// Get the trading purse override for a chore instance (null = no override).
+    public shared query (msg) func getTradingPurseId(instanceId: Text): async ?Text {
+        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
+        getChoreTradingPurseId(instanceId)
+    };
+
+    /// Get the fully resolved effective purse ID for a chore (null = main purse).
+    public shared query (msg) func getResolvedPurseId(instanceId: Text): async ?Text {
+        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
+        getEffectivePurseId(instanceId)
     };
 
 };
