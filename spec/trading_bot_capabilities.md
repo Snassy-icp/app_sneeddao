@@ -231,21 +231,25 @@ A virtual accounting layer that tracks per-chore token balances, enabling comple
 - **Main Purse**: computed balance = on-chain balance minus all chore purse allocations. Chores without their own purse share the main purse.
 - **Fund**: move tokens from main purse into a chore's purse (bookkeeping only, no on-chain transfer)
 - **Reclaim**: move tokens from a chore's purse back to main purse
+- **Trading Purse Override**: a chore can be configured to trade from another chore's purse, enabling multi-strategy compositions (e.g., a stop-loss chore guarding a range-trader's purse)
 
 ### 9.2 Features
 
 - New chore instances have purses enabled by default
-- Purse can be disabled only when all balances are zero (must reclaim first)
+- Purse can be disabled only when all balances are zero and no other chore references it
 - Overcommit detection: warns if chore purse sum exceeds on-chain balance
 - Detected inflows/outflows automatically adjust the main purse
 - Complete accounting identity: `on-chain = main purse + Σ chore purses`
 - Non-negative chore purse balances enforced (operations that would underflow are rejected)
+- **Cross-chore purse sharing**: any chore can trade from another chore's purse via `setTradingPurseId`
+- **Purse locks with TTL**: concurrent trades on the same shared purse are serialized via a lock with 5-minute auto-expiry
 
 ### 9.3 Integration
 
 - All chore types (Trade, Rebalance, Move Funds, Distribute) respect purse boundaries
-- Swap results (input deducted, output credited) tracked precisely in the executing chore's purse
+- Swap results (input deducted, output credited) tracked precisely in the **effective** purse (own, referenced, or main)
 - On-chain sufficiency verified before every actual transfer
+- Purse resolution priority: trading purse override > own purse > main purse
 
 ---
 
@@ -451,7 +455,7 @@ Fine-grained, role-based access control for delegated bot management.
 - **Token Registry management**: add/remove tokens, reorder, refresh metadata, pause/freeze controls
 - **DEX Settings**: enable/disable DEXes, slippage/price impact defaults
 - **Trade Log viewer**: filterable, paginated trade history
-- **Purse management**: per-chore purse balances, fund/reclaim controls, overcommit warnings
+- **Purse management**: per-chore purse balances, fund/reclaim controls, overcommit warnings, cross-chore purse sharing dropdown
 - **Chore health indicators**: three-level status lamp system (Scheduler/Conductor/Task) with color-coded health states (Off, OK, Active, Overdue, Error) and worst-wins rollup
 
 ### 17.4 Status Lamp System

@@ -863,6 +863,11 @@ getMainPurseBalance(token: Principal) : async { balance: Nat; overcommitted: Boo
 fundPurse(instanceId: Text, token: Principal, amount: Nat) : async { #Ok; #Err: Text }
 reclaimFromPurse(instanceId: Text, token: Principal, amount: Nat) : async { #Ok; #Err: Text }
 manualSend(token: Principal, to: Account, amount: Nat, sourcePurseId: ?Text) : async { #Ok: Nat; #Err: Text }
+
+// Cross-chore purse sharing
+setTradingPurseId(instanceId: Text, purseId: ?Text) : async { #Ok; #Err: Text }
+getTradingPurseId(instanceId: Text) : async ?Text            // Raw override (null = no override)
+getResolvedPurseId(instanceId: Text) : async ?Text           // Fully resolved: override > own purse > null (main)
 ```
 
 ### Trade Log
@@ -949,8 +954,9 @@ The term **"Purse"** is deliberately chosen to avoid overloading "Account" (ICRC
 | **Main Purse** | The default purse holding all on-chain funds not allocated to any chore-specific purse. Its balance is always **computed**: `main purse = on-chain balance − Σ chore purse balances`. Chores without their own purse share the main purse. Detected inflows and outflows are automatically reflected in the main purse. |
 | **Fund** | Move tokens from a source purse (or main purse) into a target chore's purse. No on-chain transfer occurs — this is purely bookkeeping. |
 | **Reclaim** | Move tokens from a chore's purse back to a target purse (or main purse). No on-chain transfer occurs. |
+| **Trading Purse Override** | A setting that makes a chore trade from **another chore's purse** instead of its own or the main purse. Used for multi-strategy compositions (e.g., a stop-loss chore guarding a range-trader's purse). |
 
-Every token in the on-chain account is accounted for: it belongs either to the **main purse** or to a **chore's purse**. No chore can ever access another chore's funds.
+Every token in the on-chain account is accounted for: it belongs either to the **main purse** or to a **chore's purse**. Multiple chores can share the same purse via the trading purse override.
 
 ### Which Chores Get Purses
 
@@ -966,6 +972,9 @@ Every token in the on-chain account is accounted for: it belongs either to the *
 |---|---|---|---|
 | **Disabled** (default for existing chores) | **Main purse** balance (shared with other purse-disabled chores) | Go to / come from the main purse | N/A |
 | **Enabled** (default for new chores) | **Chore's own purse** balance only | Go to / come from the main purse (user must Fund) | Available |
+| **Trading purse override set** | **Referenced chore's purse** balance | Post-trade adjustments applied to the referenced purse | Own purse managed separately (if enabled) |
+
+The **trading purse override** takes highest priority: if set, the chore trades from the referenced purse regardless of whether its own purse is enabled. If not set, the chore uses its own purse (if enabled) or the main purse.
 
 When no chore-specific purses exist (or none are funded), the main purse equals the full on-chain balance, so the system behaves identically to the pre-purse era.
 
@@ -974,6 +983,10 @@ When no chore-specific purses exist (or none are funded), the main purse equals 
 ```motoko
 var chorePurseEnabled: [(Text, Bool)]                     // instanceId → enabled
 var chorePurseBalances: [(Text, [(Text, Nat)])]           // instanceId → [(balanceKey, amount)]
+var choreTradingPurseId: [(Text, Text)]                   // instanceId → purseId (cross-chore override)
+
+// Transient (cleared on canister upgrade):
+transient var _purseLocks: [(Text, Text, Int)]            // purseId → (lockingInstanceId, lockTimeNanos)
 ```
 
 The `balanceKey` is simply the token principal as text: `"<tokenPrincipal>"`. There are no subaccounts.
@@ -1012,19 +1025,26 @@ No ICRC-1 transfer occurs. The chore's purse shrinks and the main purse grows.
 
 ### Integration with Trade Chores
 
-#### Helper: `getEffectiveBalance(instanceId, token)`
+#### Helper: `getEffectivePurseId(instanceId)` and `getEffectiveBalance(instanceId, token)`
 
-A single internal helper resolves the balance a chore should use:
+Two internal helpers resolve which purse a chore trades from and the corresponding balance:
 
 ```
-if chorePurseEnabled(instanceId):
-    return chorePurseBalance(instanceId, token)
-else:
-    return mainPurseBalance(token)
-      // = on-chain balance − Σ all chore purse balances for this token
+getEffectivePurseId(instanceId):
+    if choreTradingPurseId(instanceId) is set:
+        return that purseId                      // Cross-chore override (highest priority)
+    else if chorePurseEnabled(instanceId):
+        return instanceId                        // Own purse
+    else:
+        return null                              // Main purse
+
+getEffectiveBalance(instanceId, token):
+    match getEffectivePurseId(instanceId):
+        ?purseId → min(chorePurseBalance(purseId, token), onChainBalance)
+        null     → min(mainPurseBalance(token), onChainBalance)
 ```
 
-This helper is used in all chore execution paths.
+These helpers are used in all chore execution paths (trade, rebalance, send, distribution).
 
 #### Trade Action (actionType 0 — Swap)
 
@@ -1034,11 +1054,11 @@ This helper is used in all chore execution paths.
 4. **Affordable cap**: `maxAffordable = min(effectiveBalance, on-chain balance) − fees × 3`. The on-chain check is a safety guard since the actual ICRC-1 transfer comes from the main account.
 5. **Pre-swap**: Adjust `lastKnownBalance` for input token to prevent false outflow detection during the swap.
 6. **Swap execution**: No change — the swap still happens from the main account via `executeSwap`.
-7. **Post-swap success (chore has its own purse)**:
-   - Decrease chore purse balance for `inputToken` by `(inputAmount + inputFeesTotal)`
-   - Increase chore purse balance for `outputToken` by `(amountOut − outputFeesTotal)`
+7. **Post-swap success (chore has an effective purse — own, or referenced via trading purse override)**:
+   - Decrease the effective purse balance for `inputToken` by `(inputAmount + inputFeesTotal)`
+   - Increase the effective purse balance for `outputToken` by `(amountOut − outputFeesTotal)`
 8. **Post-swap success (chore uses main purse)**: No explicit purse update needed. The computed main purse reflects on-chain changes.
-9. **Post-swap failure**: Restore `lastKnownBalance` pre-adjustment. If fees were lost, adjust purse accordingly.
+9. **Post-swap failure**: Restore `lastKnownBalance` pre-adjustment. If fees were lost, adjust the effective purse accordingly.
 
 #### Fund Purse Action (actionType 1)
 
@@ -1055,7 +1075,7 @@ Bookkeeping only: move tokens from source chore's purse to target purse or main 
 
 ### Integration with Rebalancer
 
-The rebalancer uses `getEffectiveBalance` for all token balance reads. A rebalancer with its own purse rebalances *its own allocated funds*; a rebalancer on the main purse rebalances the shared main purse funds.
+The rebalancer uses `getEffectiveBalance` for all token balance reads. A rebalancer with its own purse (or a trading purse override) rebalances the funds in its effective purse; a rebalancer on the main purse rebalances the shared main purse funds.
 
 ### Inflow/Outflow Detection & Reconciliation
 
@@ -1074,11 +1094,12 @@ The existing `reconcileBalance` function operates on **on-chain balances** only.
 
 #### Disabling
 - **All purse balances must be 0** — the user must Reclaim all funds first.
-- If any purse balance is non-zero, the disable operation fails with an error.
+- **No other chore may reference this purse** via a trading purse override. Remove the override first.
+- If either condition is not met, the disable operation fails with an error.
 
 ### Chore Deletion
 
-When a chore instance is deleted, its purse entries are simply removed from `chorePurseEnabled` and `chorePurseBalances`. Since the main purse is computed (`on-chain − Σ chore purses`), deleting a chore's purse entries automatically returns those funds to the main purse.
+When a chore instance is deleted, its purse entries are removed from `chorePurseEnabled`, `chorePurseBalances`, and `choreTradingPurseId`. Any other chores whose `choreTradingPurseId` pointed to the deleted chore also have their override cleared. Since the main purse is computed (`on-chain − Σ chore purses`), deleting a chore's purse entries automatically returns those funds to the main purse.
 
 ### Main Purse Balance
 
@@ -1094,6 +1115,62 @@ main purse = on-chain balance − Σ (chore purse balances for ALL chores for th
 ### Fast Purse Loading
 
 `getAllPurseAllocations()` is a fast **query** method that returns all purse balance data without making any inter-canister calls. The frontend uses this combined with on-chain balance data from the Wallet tab to compute main purse balances client-side, avoiding slow per-purse loading.
+
+### Cross-Chore Purse Sharing
+
+A chore can be configured to trade from **another chore's purse** instead of its own or the main purse. This enables multi-strategy compositions where multiple chores operate on the same pool of funds.
+
+#### Motivation
+
+A common pattern is pairing a primary trading strategy with a guardian:
+
+- **Range trader** (runs every 60 min, has its own purse with funds)
+- **Stop-loss** (runs every 10 min, no own purse — trades from the range trader's purse)
+
+Without purse sharing, the stop-loss would need its own purse, requiring the user to split funds between the two chores and manually rebalance them. With purse sharing, the stop-loss directly monitors and trades from the range trader's purse.
+
+#### Configuration
+
+```
+setTradingPurseId(instanceId, ?purseId):
+  - ?purseId = set override (must point to an existing enabled purse; cannot be self)
+  - null     = clear override (revert to default behavior)
+```
+
+#### Resolution Priority
+
+When determining which purse a chore trades from:
+
+1. **Trading purse override** (`choreTradingPurseId`) — highest priority
+2. **Own purse** (if enabled via `chorePurseEnabled`)
+3. **Main purse** — default
+
+This is implemented by `getEffectivePurseId(instanceId)`, which returns `?Text` — the purse instance ID to use, or `null` for the main purse.
+
+#### Purse Locks (Concurrency Safety)
+
+When two chores share the same purse, concurrent trades could lead to inconsistent accounting (both read the same balance, both trade, the second purse adjustment underflows). A lightweight **purse lock** prevents this:
+
+- Before executing a trade (or rebalance, distribution), the chore acquires a lock on its effective purse.
+- If the lock is already held by another chore, the trade is **skipped** — the chore will retry at its next scheduled interval.
+- After the trade completes (success or failure), the lock is released.
+- Locks have a **5-minute TTL**: stale locks from trapped `await` calls are automatically evicted, making the system self-healing with no manual intervention.
+- Locks are **transient** (stored in `transient var`), so they are also cleared on canister upgrade.
+
+#### Validation & Safety
+
+- A chore cannot reference its own purse as a trading purse override (use `enablePurse` instead).
+- The target purse must be enabled before it can be referenced.
+- A purse cannot be disabled while another chore references it.
+- When a chore is deleted, all trading purse overrides pointing to it are also cleared.
+
+#### Example Setup
+
+1. Create trade chore `range-trader`, enable its purse, fund it with 100 ICP.
+2. Create trade chore `stop-loss` (purse disabled — it doesn't need its own).
+3. Call `setTradingPurseId("stop-loss", ?"range-trader")`.
+4. `stop-loss` now reads from and writes to `range-trader`'s purse.
+5. If both fire simultaneously, the purse lock ensures only one executes — the other skips and retries next cycle.
 
 ### API
 
@@ -1112,6 +1189,11 @@ getMainPurseBalance(token: Principal) : async { balance: Nat; overcommitted: Boo
 fundPurse(instanceId: Text, token: Principal, amount: Nat) : async { #Ok; #Err: Text }
 reclaimFromPurse(instanceId: Text, token: Principal, amount: Nat) : async { #Ok; #Err: Text }
 manualSend(token: Principal, to: Account, amount: Nat, sourcePurseId: ?Text) : async { #Ok: Nat; #Err: Text }
+
+// Cross-chore purse sharing
+setTradingPurseId(instanceId: Text, purseId: ?Text) : async { #Ok; #Err: Text }
+getTradingPurseId(instanceId: Text) : async ?Text
+getResolvedPurseId(instanceId: Text) : async ?Text
 ```
 
 ### Permission
