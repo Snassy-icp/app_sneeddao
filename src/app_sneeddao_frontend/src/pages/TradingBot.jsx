@@ -10353,7 +10353,185 @@ function ChoreConfigTabs({ tabs, theme, accentColor }) {
 // ============================================
 // Custom chore configuration renderer (dispatches to real components)
 // ============================================
-function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, getReadyBotActor, theme, accentColor, cardStyle, inputStyle, buttonStyle, secondaryButtonStyle, canisterId }) {
+function ControlTabPanel({ chore, controlTabContent: ct, getReadyBotActor, theme, accentColor, cardStyle, inputStyle, buttonStyle, secondaryButtonStyle, savingChore, setSavingChore, choreError, setChoreError, choreSuccess, setChoreSuccess, loadChoreData }) {
+    if (!ct) return null;
+    const { schedulerLamp, conductorLamp, taskLamp, isStopped, isPaused, isEnabled, isRunning, intervalSeconds, maxIntervalSeconds, hasRange, fmtInt, fmtTime, bestUnit, currentBest, unitMultipliers, choreRunTracker, choreTickNow, startChorePolling, confirmingDelete, setConfirmingDelete, dismissedErrors, setDismissedErrors, renderSwapCard } = ct;
+    const accent = accentColor;
+    const LAMP_COLORS = { idle: theme.colors.secondaryText, active: '#22c55e', busy: '#f59e0b', error: '#ef4444' };
+    return (<>
+        {/* Status Grid */}
+        <div style={cardStyle}>
+            <h3 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: '600' }}>Status</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px' }}>
+                <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}`, minHeight: '52px' }}>
+                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>State</div>
+                    <div style={{ fontSize: '0.9rem', fontWeight: '600', color: isStopped ? theme.colors.secondaryText : isPaused ? '#f59e0b' : '#22c55e' }}>
+                        {isStopped ? 'Stopped' : isPaused ? 'Paused' : 'Running'}
+                    </div>
+                </div>
+                {[['Scheduler', schedulerLamp], ['Conductor', conductorLamp], ['Task', taskLamp]].map(([name, lamp]) => (
+                    <div key={name} style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}`, minHeight: '52px' }}>
+                        <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>{name}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ width: 10, height: 10, borderRadius: '50%', display: 'inline-block', background: LAMP_COLORS[lamp.state] || theme.colors.secondaryText }} />
+                            <span style={{ fontSize: '0.9rem', color: LAMP_COLORS[lamp.state] || theme.colors.secondaryText, fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }} title={lamp.label}>{lamp.label}</span>
+                        </div>
+                    </div>
+                ))}
+                <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Interval</div>
+                    <div style={{ fontSize: '0.9rem', color: theme.colors.primaryText, fontWeight: '500' }}>{hasRange ? `${fmtInt(intervalSeconds)}–${fmtInt(maxIntervalSeconds)}` : fmtInt(intervalSeconds)}</div>
+                </div>
+                <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Next Scheduled Run</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <div style={{ fontSize: '0.85rem', color: theme.colors.primaryText, fontWeight: '500' }}>{fmtTime(chore.nextScheduledRunAt)}</div>
+                        {chore.enabled && (
+                            <button style={{ background: 'none', border: `1px solid ${theme.colors.border}`, borderRadius: '4px', fontSize: '0.65rem', color: theme.colors.secondaryText, cursor: 'pointer', padding: '2px 6px' }} title="Set next scheduled run time"
+                                onClick={() => { const el = document.getElementById(`next-run-picker-${chore.choreId}`); if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none'; }}>Set</button>
+                        )}
+                    </div>
+                    {chore.enabled && (
+                        <div id={`next-run-picker-${chore.choreId}`} style={{ display: 'none', marginTop: '6px', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <input type="datetime-local" id={`next-run-input-${chore.choreId}`} style={{ ...inputStyle, fontSize: '0.75rem', width: '200px' }}
+                                defaultValue={(() => { const ns = chore.nextScheduledRunAt?.length > 0 ? Number(chore.nextScheduledRunAt[0]) : Date.now() * 1_000_000; const d = new Date(ns / 1_000_000); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; })()} />
+                            <button style={{ ...buttonStyle, fontSize: '0.7rem', padding: '4px 10px', background: `${accent}10`, color: accent, border: `1px solid ${accent}25` }} disabled={savingChore}
+                                onClick={async () => { const input = document.getElementById(`next-run-input-${chore.choreId}`); if (!input?.value) return; const tsNanos = BigInt(new Date(input.value).getTime()) * 1_000_000n; setSavingChore(true); setChoreError(''); try { const bot = await getReadyBotActor(); await bot.setChoreNextRun(chore.choreId, tsNanos); setChoreSuccess('Next run time updated.'); const el = document.getElementById(`next-run-picker-${chore.choreId}`); if (el) el.style.display = 'none'; await loadChoreData(); } catch (err) { setChoreError('Failed to set next run: ' + err.message); } finally { setSavingChore(false); } }}>Save</button>
+                        </div>
+                    )}
+                </div>
+                <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Last Completed</div>
+                    <div style={{ fontSize: '0.85rem', color: theme.colors.primaryText, fontWeight: '500' }}>{fmtTime(chore.lastCompletedRunAt)}</div>
+                </div>
+                <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Runs (Success / Fail)</div>
+                    <div style={{ fontSize: '0.9rem', color: theme.colors.primaryText, fontWeight: '500' }}>{Number(chore.totalSuccessCount)} / {Number(chore.totalFailureCount)}</div>
+                </div>
+            </div>
+
+            {/* Conductor run card (full detail) */}
+            {(() => {
+                const run = choreRunTracker[chore.choreId];
+                if (!run) return null;
+                void choreTickNow;
+                const elapsedStr = (startMs, endMs) => { if (!startMs) return '< 0:01'; const end = endMs || Date.now(); const sec = Math.max(0, Math.floor((end - startMs) / 1000)); const h = Math.floor(sec / 3600); const m = Math.floor((sec % 3600) / 60); const s = sec % 60; return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`; };
+                const timeStr = (ms) => ms ? new Date(ms).toLocaleTimeString() : '--:--';
+                const dotStyle = (color) => ({ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 });
+                const rowBase = { display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 8px', borderRadius: '5px', fontSize: '0.78rem' };
+                return (
+                    <div style={{ marginTop: '10px', padding: '10px', background: run.isRunning ? `${accent}06` : theme.colors.primaryBg, border: `1px solid ${run.isRunning ? accent + '30' : theme.colors.border}`, borderRadius: '8px', fontSize: '0.8rem', color: theme.colors.primaryText }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                            <strong style={{ fontSize: '0.82rem' }}>{run.isRunning ? 'Conductor Running' : 'Last Conductor Run'}</strong>
+                            <span style={{ fontSize: '0.72rem', color: theme.colors.secondaryText }}>{timeStr(run.conductorStartedAtMs)}{run.conductorEndedAtMs ? ` → ${timeStr(run.conductorEndedAtMs)}` : ''}</span>
+                        </div>
+                        <div style={{ ...rowBase, background: run.isRunning ? `${accent}10` : theme.colors.primaryBg, border: `1px solid ${run.isRunning ? accent + '20' : theme.colors.border}`, marginBottom: '5px' }}>
+                            <span style={dotStyle(run.isRunning ? accent : '#22c55e')} /><span style={{ color: theme.colors.secondaryText, minWidth: 62 }}>Conductor</span><span style={{ flex: 1 }} /><span style={{ fontFamily: 'monospace', fontWeight: '600', fontSize: '0.8rem', color: run.isRunning ? accent : theme.colors.primaryText }}>{elapsedStr(run.conductorStartedAtMs, run.conductorEndedAtMs)}</span>
+                        </div>
+                        {run.currentTask && (<div style={{ ...rowBase, background: `${accent}10`, border: `1px solid ${accent}20`, marginBottom: '5px' }}><span style={dotStyle(accent)} /><span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.76rem' }} title={run.currentTask.taskId}>{run.currentTask.taskId}</span><span style={{ fontFamily: 'monospace', fontWeight: '500', color: accent, fontSize: '0.78rem' }}>{elapsedStr(run.currentTask.startedAtMs, null)}</span></div>)}
+                        {renderSwapCard && renderSwapCard(chore.choreId, run, chore)}
+                        {run.completedTasks.length > 0 && (
+                            <details style={{ marginTop: '4px' }}><summary style={{ cursor: 'pointer', fontSize: '0.73rem', color: theme.colors.secondaryText, userSelect: 'none', padding: '3px 0' }}>{run.completedTasks.length} completed task{run.completedTasks.length !== 1 ? 's' : ''}</summary>
+                                <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                    {[...run.completedTasks].reverse().map((t, i) => (<div key={i} style={{ ...rowBase, background: theme.colors.primaryBg, border: `1px solid ${theme.colors.border}`, fontSize: '0.73rem' }}><span style={dotStyle(t.succeeded === false ? (theme.colors.error || '#ef4444') : '#22c55e')} /><span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.taskId + (t.error ? ' — ' + t.error : '')}>{t.taskId}</span><span style={{ fontFamily: 'monospace', color: theme.colors.secondaryText, fontSize: '0.72rem' }}>{elapsedStr(t.startedAtMs, t.endedAtMs)}</span></div>))}
+                                </div>
+                            </details>
+                        )}
+                    </div>
+                );
+            })()}
+        </div>
+
+        {/* Controls */}
+        <div style={cardStyle}>
+            <h3 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: '600' }}>Controls</h3>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+                {isStopped && (<div style={{ display: 'inline-flex', position: 'relative' }}>
+                    <button style={{ ...buttonStyle, background: `linear-gradient(135deg, ${accent}, ${accent}cc)`, color: '#fff', border: 'none', borderRadius: '8px 0 0 8px', opacity: savingChore ? 0.6 : 1 }} disabled={savingChore}
+                        onClick={async () => { setSavingChore(true); setChoreError(''); setChoreSuccess(''); try { const bot = await getReadyBotActor(); await bot.startChore(chore.choreId); setChoreSuccess('Chore started!'); await loadChoreData(); startChorePolling(); } catch (err) { setChoreError('Failed to start: ' + err.message); } finally { setSavingChore(false); } }}>Start</button>
+                    <button style={{ ...buttonStyle, background: `linear-gradient(135deg, ${accent}, ${accent}cc)`, color: '#fff', border: 'none', borderLeft: '1px solid rgba(255,255,255,0.3)', borderRadius: '0 8px 8px 0', padding: '0.4rem 0.45rem', minWidth: 'unset', opacity: savingChore ? 0.6 : 1 }} disabled={savingChore} title="Schedule start"
+                        onClick={() => { const el = document.getElementById(`schedule-start-panel-${chore.choreId}`); if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none'; }}><span style={{ fontSize: '0.6rem' }}>&#9660;</span></button>
+                </div>)}
+                {isEnabled && !isPaused && (<button style={{ ...buttonStyle, background: '#f59e0b15', color: '#f59e0b', border: '1px solid #f59e0b40', opacity: savingChore ? 0.6 : 1 }} disabled={savingChore}
+                    onClick={async () => { setSavingChore(true); setChoreError(''); setChoreSuccess(''); try { const bot = await getReadyBotActor(); await bot.pauseChore(chore.choreId); setChoreSuccess('Paused.'); await loadChoreData(); } catch (err) { setChoreError('Failed: ' + err.message); } finally { setSavingChore(false); } }}>Pause</button>)}
+                {isPaused && (<button style={{ ...buttonStyle, background: `linear-gradient(135deg, ${accent}, ${accent}cc)`, color: '#fff', border: 'none', opacity: savingChore ? 0.6 : 1 }} disabled={savingChore}
+                    onClick={async () => { setSavingChore(true); setChoreError(''); setChoreSuccess(''); try { const bot = await getReadyBotActor(); await bot.resumeChore(chore.choreId); setChoreSuccess('Resumed!'); await loadChoreData(); startChorePolling(); } catch (err) { setChoreError('Failed: ' + err.message); } finally { setSavingChore(false); } }}>Resume</button>)}
+                {isEnabled && (<button style={{ ...buttonStyle, background: `${theme.colors.error || '#ef4444'}15`, color: theme.colors.error || '#ef4444', border: `1px solid ${theme.colors.error || '#ef4444'}30`, opacity: savingChore ? 0.6 : 1 }} disabled={savingChore}
+                    onClick={async () => { setSavingChore(true); setChoreError(''); setChoreSuccess(''); try { const bot = await getReadyBotActor(); await bot.stopChore(chore.choreId); setChoreSuccess('Stopped.'); await loadChoreData(); } catch (err) { setChoreError('Failed: ' + err.message); } finally { setSavingChore(false); } }}>Stop</button>)}
+                {!isRunning && (<button style={{ ...buttonStyle, background: `${accent}15`, color: accent, border: `1px solid ${accent}30`, opacity: savingChore ? 0.6 : 1 }} disabled={savingChore}
+                    onClick={async () => { setSavingChore(true); setChoreError(''); setChoreSuccess(''); try { const bot = await getReadyBotActor(); await bot.triggerChore(chore.choreId); setChoreSuccess(isStopped ? 'Triggered once.' : 'Triggered!'); await loadChoreData(); startChorePolling(); } catch (err) { setChoreError('Failed: ' + err.message); } finally { setSavingChore(false); } }}>{isStopped ? 'Run Once' : 'Run Now'}</button>)}
+                {isStopped && (confirmingDelete === chore.choreId ? (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 10px', background: '#ef444412', borderRadius: '8px', border: '1px solid #ef444430' }}>
+                        <span style={{ fontSize: '0.75rem', color: '#ef4444' }}>Delete?</span>
+                        <button style={{ ...buttonStyle, fontSize: '0.7rem', padding: '2px 8px', background: '#ef4444', color: '#fff', border: 'none' }} disabled={savingChore}
+                            onClick={async () => { setSavingChore(true); setChoreError(''); setChoreSuccess(''); try { const bot = await getReadyBotActor(); const ok = await bot.deleteChoreInstance(chore.choreId); if (ok) setChoreSuccess('Deleted.'); else setChoreError('Failed.'); setConfirmingDelete(null); await loadChoreData(); } catch (err) { setChoreError('Failed: ' + err.message); } finally { setSavingChore(false); } }}>Confirm</button>
+                        <button style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '2px 8px' }} onClick={() => setConfirmingDelete(null)}>Cancel</button>
+                    </div>
+                ) : (<button style={{ ...buttonStyle, background: '#ef444410', color: '#ef4444', border: '1px solid #ef444425', opacity: savingChore ? 0.6 : 1, display: 'inline-flex', alignItems: 'center', gap: '4px' }} disabled={savingChore}
+                    onClick={() => setConfirmingDelete(chore.choreId)}><FaTrash style={{ fontSize: '0.6rem' }} /> Delete</button>)
+                )}
+            </div>
+
+            {isStopped && (<div id={`schedule-start-panel-${chore.choreId}`} style={{ display: 'none', marginTop: '8px', padding: '10px', background: `${accent}06`, border: `1px solid ${accent}20`, borderRadius: '8px', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, marginRight: '4px' }}>Schedule first run at:</span>
+                <input type="datetime-local" id={`schedule-start-input-${chore.choreId}`} style={{ ...inputStyle, fontSize: '0.8rem', padding: '0.35rem 0.5rem', width: 'auto' }} />
+                <button style={{ ...buttonStyle, background: `linear-gradient(135deg, ${accent}, ${accent}cc)`, color: '#fff', border: 'none', fontSize: '0.8rem', opacity: savingChore ? 0.6 : 1 }} disabled={savingChore}
+                    onClick={async () => { const input = document.getElementById(`schedule-start-input-${chore.choreId}`); if (!input?.value) { setChoreError('Pick a time.'); return; } const sel = new Date(input.value).getTime(); if (sel <= Date.now()) { setChoreError('Must be in the future.'); return; } const tsNanos = BigInt(sel) * 1_000_000n; setSavingChore(true); setChoreError(''); setChoreSuccess(''); try { const bot = await getReadyBotActor(); await bot.scheduleStartChore(chore.choreId, tsNanos); setChoreSuccess('Scheduled!'); const el = document.getElementById(`schedule-start-panel-${chore.choreId}`); if (el) el.style.display = 'none'; await loadChoreData(); startChorePolling(); } catch (err) { setChoreError('Failed: ' + err.message); } finally { setSavingChore(false); } }}>Confirm</button>
+                <button style={{ ...buttonStyle, background: 'transparent', color: theme.colors.secondaryText, border: `1px solid ${theme.colors.border}`, fontSize: '0.8rem' }}
+                    onClick={() => { const el = document.getElementById(`schedule-start-panel-${chore.choreId}`); if (el) el.style.display = 'none'; }}>Cancel</button>
+            </div>)}
+
+            <div style={{ marginTop: '8px' }}>
+                <label style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '6px' }}>Frequency:</label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.8rem', color: theme.colors.secondaryText }}>Every</span>
+                    <input type="text" inputMode="numeric" defaultValue={currentBest.value} style={{ ...inputStyle, width: '70px' }} id={`chore-interval-${chore.choreId}`}
+                        onChange={() => { const w = document.getElementById(`chore-interval-warn-${chore.choreId}`); if (!w) return; const v = parseFloat(document.getElementById(`chore-interval-${chore.choreId}`)?.value); const u = document.getElementById(`chore-interval-unit-${chore.choreId}`)?.value || 'minutes'; const s = Math.round((v || 0) * (unitMultipliers[u] || 60)); w.style.display = (s > 0 && s < 300) ? 'block' : 'none'; }} />
+                    <select id={`chore-interval-unit-${chore.choreId}`} defaultValue={currentBest.unit} style={{ ...inputStyle, width: 'auto', padding: '4px 8px', cursor: 'pointer', appearance: 'auto' }}
+                        onChange={() => { const w = document.getElementById(`chore-interval-warn-${chore.choreId}`); if (!w) return; const v = parseFloat(document.getElementById(`chore-interval-${chore.choreId}`)?.value); const u = document.getElementById(`chore-interval-unit-${chore.choreId}`)?.value || 'minutes'; const s = Math.round((v || 0) * (unitMultipliers[u] || 60)); w.style.display = (s > 0 && s < 300) ? 'block' : 'none'; }}>
+                        <option value="minutes">minutes</option><option value="hours">hours</option><option value="days">days</option>
+                    </select>
+                    <button style={{ ...buttonStyle, background: `${accent}10`, color: accent, border: `1px solid ${accent}25`, opacity: savingChore ? 0.6 : 1 }} disabled={savingChore}
+                        onClick={async () => {
+                            const valInput = document.getElementById(`chore-interval-${chore.choreId}`); const unitSelect = document.getElementById(`chore-interval-unit-${chore.choreId}`);
+                            const val = parseFloat(valInput?.value); const unit = unitSelect?.value || 'days'; const multiplier = unitMultipliers[unit] || 86400; const totalSeconds = Math.round(val * multiplier);
+                            if (!val || val <= 0 || totalSeconds < 60) { setChoreError('Interval must be at least 1 minute.'); return; }
+                            if (totalSeconds > 365 * 86400) { setChoreError('Interval cannot exceed 365 days.'); return; }
+                            if (totalSeconds < 300 && !window.confirm('Intervals < 5 min may not give chores enough time. Continue?')) return;
+                            const maxInput = document.getElementById(`chore-max-interval-${chore.choreId}`); const maxUnitSelect = document.getElementById(`chore-max-interval-unit-${chore.choreId}`);
+                            let maxSeconds = null;
+                            if (maxInput && maxUnitSelect) { const maxVal = parseFloat(maxInput.value?.trim()); if (maxVal && maxVal > 0) { const maxMult = unitMultipliers[maxUnitSelect.value] || 86400; maxSeconds = Math.round(maxVal * maxMult); if (maxSeconds <= totalSeconds) { setChoreError('Max must be > base interval.'); return; } if (maxSeconds > 365 * 86400) { setChoreError('Max cannot exceed 365 days.'); return; } } }
+                            setSavingChore(true); setChoreError(''); setChoreSuccess('');
+                            try { const bot = await getReadyBotActor(); await bot.setChoreInterval(chore.choreId, BigInt(totalSeconds)); await bot.setChoreMaxInterval(chore.choreId, maxSeconds !== null ? [BigInt(maxSeconds)] : []); setChoreSuccess(maxSeconds !== null ? `Interval: ${fmtInt(totalSeconds)}–${fmtInt(maxSeconds)}` : `Interval: ${fmtInt(totalSeconds)}`); await loadChoreData(); } catch (err) { setChoreError('Failed: ' + err.message); } finally { setSavingChore(false); }
+                        }}>Save</button>
+                </div>
+                <div id={`chore-interval-warn-${chore.choreId}`} style={{ display: intervalSeconds > 0 && intervalSeconds < 300 ? 'block' : 'none', marginTop: '6px', padding: '6px 10px', borderRadius: '6px', background: '#f59e0b12', border: '1px solid #f59e0b30', fontSize: '0.75rem', color: '#f59e0b', lineHeight: '1.4' }}>
+                    Intervals shorter than 5 minutes may not give chores enough time to finish before the next run starts.
+                </div>
+                <div style={{ marginTop: '6px' }}>
+                    <button style={{ background: 'none', border: 'none', padding: 0, fontSize: '0.7rem', color: theme.colors.mutedText, cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
+                        onClick={() => { const el = document.getElementById(`chore-range-panel-${chore.choreId}`); if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none'; }}>
+                        {hasRange ? `Randomized range active (up to ${fmtInt(maxIntervalSeconds)}) — edit` : 'Randomize interval...'}
+                    </button>
+                    <div id={`chore-range-panel-${chore.choreId}`} style={{ display: hasRange ? 'flex' : 'none', marginTop: '6px', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>Max:</span>
+                        <input type="text" inputMode="numeric" defaultValue={maxIntervalSeconds != null ? bestUnit(maxIntervalSeconds).value : ''} placeholder="none" style={{ ...inputStyle, width: '70px', fontSize: '0.8rem' }} id={`chore-max-interval-${chore.choreId}`} title="Optional max interval" />
+                        <select id={`chore-max-interval-unit-${chore.choreId}`} defaultValue={maxIntervalSeconds != null ? bestUnit(maxIntervalSeconds).unit : currentBest.unit} style={{ ...inputStyle, width: 'auto', padding: '4px 8px', fontSize: '0.8rem', cursor: 'pointer', appearance: 'auto' }}>
+                            <option value="minutes">minutes</option><option value="hours">hours</option><option value="days">days</option>
+                        </select>
+                        <span style={{ fontSize: '0.65rem', color: theme.colors.mutedText }}>(clear to disable)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </>);
+}
+
+function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, getReadyBotActor, savingChore, setSavingChore, choreError, setChoreError, choreSuccess, setChoreSuccess, loadChoreData, theme, accentColor, cardStyle, inputStyle, buttonStyle, secondaryButtonStyle, canisterId, controlTabContent }) {
+    const controlTab = { key: 'control', label: 'Control', content: (
+        <ControlTabPanel key={`ctrl-${instanceId}`} chore={chore} controlTabContent={controlTabContent} getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} cardStyle={cardStyle} inputStyle={inputStyle} buttonStyle={buttonStyle} secondaryButtonStyle={secondaryButtonStyle} savingChore={savingChore} setSavingChore={setSavingChore} choreError={choreError} setChoreError={setChoreError} choreSuccess={choreSuccess} setChoreSuccess={setChoreSuccess} loadChoreData={loadChoreData} />
+    )};
+
     const logTab = { key: 'logs', label: 'Logs', content: (
         <ChoreLogPanel key={`log-${instanceId}`} instanceId={instanceId} getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />
     )};
@@ -10366,6 +10544,7 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
         case 'trade':
             return (
                 <ChoreConfigTabs key={instanceId} theme={theme} accentColor={accentColor} tabs={[
+                    controlTab,
                     { key: 'actions', label: 'Actions', content: (
                         <ActionListPanel
                             instanceId={instanceId} getReadyBotActor={getReadyBotActor}
@@ -10388,6 +10567,7 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
         case 'rebalance':
             return (
                 <ChoreConfigTabs key={instanceId} theme={theme} accentColor={accentColor} tabs={[
+                    controlTab,
                     { key: 'config', label: 'Config', content: (
                         <RebalancerConfigPanel
                             instanceId={instanceId} getReadyBotActor={getReadyBotActor}
@@ -10404,6 +10584,7 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
         case 'move-funds':
             return (
                 <ChoreConfigTabs key={instanceId} theme={theme} accentColor={accentColor} tabs={[
+                    controlTab,
                     { key: 'actions', label: 'Actions', content: (
                         <ActionListPanel
                             instanceId={instanceId} getReadyBotActor={getReadyBotActor}
@@ -10422,6 +10603,7 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
         case 'distribute-funds':
             return (
                 <ChoreConfigTabs key={instanceId} theme={theme} accentColor={accentColor} tabs={[
+                    controlTab,
                     { key: 'config', label: 'Config', content: (
                         <DistributionConfigPanel
                             instanceId={instanceId} getReadyBotActor={getReadyBotActor}
@@ -10436,6 +10618,7 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
         case 'snapshot':
             return (
                 <ChoreConfigTabs key={instanceId} theme={theme} accentColor={accentColor} tabs={[
+                    controlTab,
                     { key: 'config', label: 'Config', content: (
                         <SnapshotChoreConfigPanel instanceId={instanceId} theme={theme} accentColor={accentColor} cardStyle={cardStyle} />
                     )},
