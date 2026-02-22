@@ -786,6 +786,8 @@ export const idlFactory = ({ IDL }) => {
             perToken: IDL.Vec(IDL.Tuple(IDL.Text, IDL.Record({ totalInflowNative: IDL.Nat, totalOutflowNative: IDL.Nat }))),
         })], ['query']),
         clearPortfolioSnapshots: IDL.Func([], [], []),
+        getPursePortfolioSnapshots: IDL.Func([IDL.Text, PortfolioSnapshotQuery], [PortfolioSnapshotResult], ['query']),
+        listPurseSnapshotPurses: IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
 
         // Logging Settings
         getLoggingSettings: IDL.Func([], [LoggingSettings], ['query']),

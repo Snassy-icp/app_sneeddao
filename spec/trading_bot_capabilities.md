@@ -163,7 +163,7 @@ A dedicated chore for continuous data collection even when trading chores are in
 
 - **Phase 0**: Refresh token metadata for all registered tokens
 - **Phase 1**: Fetch prices for all registered token pairs
-- **Phase 2**: Take balance snapshots for all tokens across main account
+- **Phase 2**: Take balance snapshots for all tokens across main account and all enabled chore purses
 - **Phase 3**: Archive daily summaries (OHLC aggregation)
 
 ### 7.2 Purpose
@@ -364,6 +364,7 @@ Built-in backend DEX aggregator for quoting and executing swaps:
 - Before/after snapshots around trades
 - Linked to trade log entries
 - Configurable max entries (circular buffer, default: 5,000)
+- **Per-purse snapshots**: separate snapshot entries for each enabled chore purse, using the purse's virtual balance accounting and cached prices. Stored in a dedicated `purseSnapshots` variable with its own configurable max entries (default: 10,000). Queryable by purse ID via `getPursePortfolioSnapshots`.
 
 ### 14.4 Daily OHLC Aggregation
 
@@ -451,7 +452,7 @@ Fine-grained, role-based access control for delegated bot management.
 ### 17.3 Trading-Bot-Specific UI
 
 - **Portfolio overview**: token balances with USD/ICP values, main purse vs. chore purse breakdown
-- **Portfolio value chart**: area chart of portfolio value over time (detailed snapshots + daily OHLC)
+- **Portfolio value chart**: area chart of portfolio value over time (detailed snapshots + daily OHLC), with per-purse scope selector
 - **Price charts**: per-token-pair price history and daily OHLC candles
 - **Trade Chore configuration**: action list with drag-and-drop reordering, per-action forms for all parameters
 - **Rebalancer configuration**: target allocation management, portfolio status visualization with current vs. target allocations, deviation indicators

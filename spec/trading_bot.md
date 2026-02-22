@@ -673,7 +673,7 @@ When `choreInstanceId` is set, the distribution credits the target chore's purse
 
 ## 10. Snapshot Chore
 
-Takes periodic portfolio snapshots for historical tracking. Snapshot chores do **not** have their own purses.
+Takes periodic portfolio snapshots for historical tracking. Snapshot chores do **not** have their own purses. In addition to the main account snapshot, the snapshot chore also captures per-purse snapshots for every enabled chore purse, using cached prices and the chore's virtual balance accounting.
 
 Chore type ID: `"snapshot"`
 
@@ -747,6 +747,11 @@ var circuitBreakerMaxLogEntries: Nat
 var chorePurseEnabled: [(Text, Bool)]                     // instanceId → enabled
 var chorePurseBalances: [(Text, [(Text, Nat)])]           // instanceId → [(balanceKey, amount)]
 // balanceKey format: "<tokenPrincipal>" (main account only, no subaccount component)
+
+// Per-purse portfolio snapshots
+var purseSnapshots: [(Text, PortfolioSnapshot)]           // (purseId, snapshot) pairs
+var purseSnapshotNextId: Nat
+var purseSnapshotMaxEntries: Nat
 ```
 
 ---

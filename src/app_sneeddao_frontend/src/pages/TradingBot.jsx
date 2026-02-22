@@ -5215,7 +5215,7 @@ function DexSettingsPanel({ canisterId, createBotActor, identity }) {
 // ============================================
 // Performance Panel — Equity Curve + P&L Summary + Per-Token Flows
 // ============================================
-function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
+function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses }) {
     const [snapshots, setSnapshots] = useState([]);
     const [capitalFlows, setCapitalFlows] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -5228,13 +5228,18 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
     const [selectedPricepair, setSelectedPricePair] = useState(null);
     const [dailyPortfolioSummaries, setDailyPortfolioSummaries] = useState([]);
     const [dailyPriceCandles, setDailyPriceCandles] = useState([]);
+    const [selectedPurse, setSelectedPurse] = useState('__account__'); // '__account__' = whole account
+    const [pursePurses, setPursePurses] = useState([]); // list of purse IDs that have snapshots
+    const [purseSnapshots, setPurseSnapshots] = useState([]);
+    const [purseLoading, setPurseLoading] = useState(false);
+
     const loadData = useCallback(async () => {
         setLoading(true);
         setError('');
         try {
             const bot = await getReadyBotActor();
             if (!bot) return;
-            const [snapResult, flows, registry, prices, history, dailyPortfolio, dailyPrices] = await Promise.all([
+            const [snapResult, flows, registry, prices, history, dailyPortfolio, dailyPrices, pursesWithSnaps] = await Promise.all([
                 bot.getPortfolioSnapshots({ startId: [], limit: [500], tradeLogId: [], phase: [{ After: null }], fromTime: [], toTime: [] }),
                 bot.getCapitalFlows(),
                 bot.getTokenRegistry ? bot.getTokenRegistry() : Promise.resolve([]),
@@ -5242,6 +5247,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
                 bot.getPriceHistory ? bot.getPriceHistory({ pairKey: [], limit: [5000], offset: [] }) : Promise.resolve({ entries: [], totalCount: 0n }),
                 bot.getDailyPortfolioSummaries ? bot.getDailyPortfolioSummaries({ fromDate: [], toDate: [], limit: [1000], offset: [] }) : Promise.resolve({ entries: [], totalCount: 0n }),
                 bot.getDailyPriceCandles ? bot.getDailyPriceCandles({ pairKey: [], fromDate: [], toDate: [], limit: [1000], offset: [] }) : Promise.resolve({ entries: [], totalCount: 0n }),
+                bot.listPurseSnapshotPurses ? bot.listPurseSnapshotPurses() : Promise.resolve([]),
             ]);
             setSnapshots(snapResult.entries);
             setCapitalFlows(flows);
@@ -5250,6 +5256,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
             setPriceHistory(history.entries);
             setDailyPortfolioSummaries(dailyPortfolio.entries || []);
             setDailyPriceCandles(dailyPrices.entries || []);
+            setPursePurses(pursesWithSnaps || []);
         } catch (err) {
             setError('Failed to load performance data: ' + err.message);
         } finally {
@@ -5257,13 +5264,36 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
         }
     }, [getReadyBotActor]);
 
+    // Load purse-specific snapshots when a purse is selected
+    useEffect(() => {
+        if (selectedPurse === '__account__') { setPurseSnapshots([]); return; }
+        let cancelled = false;
+        (async () => {
+            setPurseLoading(true);
+            try {
+                const bot = await getReadyBotActor();
+                if (!bot || cancelled) return;
+                const result = await bot.getPursePortfolioSnapshots(selectedPurse, { startId: [], limit: [500], tradeLogId: [], phase: [], fromTime: [], toTime: [] });
+                if (!cancelled) setPurseSnapshots(result.entries || []);
+            } catch (e) { if (!cancelled) setPurseSnapshots([]); }
+            finally { if (!cancelled) setPurseLoading(false); }
+        })();
+        return () => { cancelled = true; };
+    }, [selectedPurse, getReadyBotActor]);
+
+    const purseLabel = useCallback((purseId) => {
+        const cs = choreStatuses?.find(c => c.choreId === purseId);
+        return cs?.instanceLabel || cs?.choreName || purseId;
+    }, [choreStatuses]);
+
     useEffect(() => { loadData(); }, [loadData]);
 
     const optVal = (arr) => (arr?.length > 0 ? arr[0] : null);
 
     // Build chart data from After-phase snapshots (detailed view)
+    const activeSnapshots = selectedPurse === '__account__' ? snapshots : purseSnapshots;
     const chartData = React.useMemo(() => {
-        return snapshots
+        return activeSnapshots
             .filter(s => Object.keys(s.phase || {})[0] === 'After')
             .sort((a, b) => Number(a.timestamp) - Number(b.timestamp))
             .map(s => {
@@ -5278,7 +5308,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
                 };
             })
             .filter(d => (denomination === 'icp' ? d.icp != null : d.usd != null));
-    }, [snapshots, denomination]);
+    }, [activeSnapshots, denomination]);
 
     // Build daily OHLC chart data for portfolio value
     const dailyChartData = React.useMemo(() => {
@@ -5392,13 +5422,39 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
     if (loading) return <div style={{ padding: '20px', color: theme.colors.secondaryText, textAlign: 'center' }}>Loading performance data...</div>;
     if (error) return <div style={{ padding: '20px', color: '#ef4444' }}>{error}</div>;
 
+    const isPurseView = selectedPurse !== '__account__';
+
     return (
         <div>
+            {/* Scope selector: whole account vs purse */}
+            {pursePurses.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText, fontWeight: 500 }}>Scope:</span>
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                        <button onClick={() => setSelectedPurse('__account__')} style={{
+                            padding: '4px 12px', fontSize: '0.75rem', fontWeight: '500', cursor: 'pointer',
+                            borderRadius: '5px', border: `1px solid ${!isPurseView ? accentColor : theme.colors.border}`,
+                            background: !isPurseView ? accentColor + '22' : 'transparent',
+                            color: !isPurseView ? accentColor : theme.colors.secondaryText,
+                        }}>Whole Account</button>
+                        {pursePurses.map(pid => (
+                            <button key={pid} onClick={() => { setSelectedPurse(pid); setEquityView('detailed'); }} style={{
+                                padding: '4px 12px', fontSize: '0.75rem', fontWeight: '500', cursor: 'pointer',
+                                borderRadius: '5px', border: `1px solid ${selectedPurse === pid ? accentColor : theme.colors.border}`,
+                                background: selectedPurse === pid ? accentColor + '22' : 'transparent',
+                                color: selectedPurse === pid ? accentColor : theme.colors.secondaryText,
+                            }}>{purseLabel(pid)}</button>
+                        ))}
+                    </div>
+                    {purseLoading && <span style={{ fontSize: '0.72rem', color: theme.colors.secondaryText }}>Loading...</span>}
+                </div>
+            )}
+
             {/* P&L Summary Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
                 {/* Portfolio Value */}
                 <div style={cardStyle}>
-                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Portfolio Value</div>
+                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>{isPurseView ? 'Purse Value' : 'Portfolio Value'}</div>
                     <div style={{ fontSize: '1.2rem', fontWeight: '700', color: theme.colors.text }}>
                         {formatNum(latestValueIcp, 'icp')}
                     </div>
@@ -5406,36 +5462,66 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
                         {formatNum(latestValueUsd, 'usd')}
                     </div>
                 </div>
-                {/* Net Capital Deployed */}
-                <div style={cardStyle}>
-                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Net Capital Deployed</div>
-                    <div style={{ fontSize: '1.2rem', fontWeight: '700', color: theme.colors.text }}>
-                        {formatNum(capitalIcp, 'icp')}
+                {!isPurseView ? <>
+                    {/* Net Capital Deployed */}
+                    <div style={cardStyle}>
+                        <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Net Capital Deployed</div>
+                        <div style={{ fontSize: '1.2rem', fontWeight: '700', color: theme.colors.text }}>
+                            {formatNum(capitalIcp, 'icp')}
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>
+                            {formatNum(capitalUsd, 'usd')}
+                        </div>
                     </div>
-                    <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>
-                        {formatNum(capitalUsd, 'usd')}
+                    {/* Trading P&L */}
+                    <div style={cardStyle}>
+                        <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Trading P&L</div>
+                        <div style={{ fontSize: '1.2rem', fontWeight: '700', color: pnlColor(pnlIcp) }}>
+                            {pnlIcp != null ? (pnlIcp >= 0 ? '+' : '-') : ''}{formatNum(pnlIcp, 'icp')}
+                            {pnlPctIcp != null && <span style={{ fontSize: '0.8rem', marginLeft: '6px' }}>({pnlPctIcp >= 0 ? '+' : ''}{pnlPctIcp.toFixed(1)}%)</span>}
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: pnlColor(pnlUsd) }}>
+                            {pnlUsd != null ? (pnlUsd >= 0 ? '+' : '-') : ''}{formatNum(pnlUsd, 'usd')}
+                            {pnlPctUsd != null && <span style={{ fontSize: '0.8rem', marginLeft: '6px' }}>({pnlPctUsd >= 0 ? '+' : ''}{pnlPctUsd.toFixed(1)}%)</span>}
+                        </div>
                     </div>
-                </div>
-                {/* Trading P&L */}
-                <div style={cardStyle}>
-                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Trading P&L</div>
-                    <div style={{ fontSize: '1.2rem', fontWeight: '700', color: pnlColor(pnlIcp) }}>
-                        {pnlIcp != null ? (pnlIcp >= 0 ? '+' : '-') : ''}{formatNum(pnlIcp, 'icp')}
-                        {pnlPctIcp != null && <span style={{ fontSize: '0.8rem', marginLeft: '6px' }}>({pnlPctIcp >= 0 ? '+' : ''}{pnlPctIcp.toFixed(1)}%)</span>}
-                    </div>
-                    <div style={{ fontSize: '0.85rem', color: pnlColor(pnlUsd) }}>
-                        {pnlUsd != null ? (pnlUsd >= 0 ? '+' : '-') : ''}{formatNum(pnlUsd, 'usd')}
-                        {pnlPctUsd != null && <span style={{ fontSize: '0.8rem', marginLeft: '6px' }}>({pnlPctUsd >= 0 ? '+' : ''}{pnlPctUsd.toFixed(1)}%)</span>}
-                    </div>
-                </div>
+                </> : <>
+                    {/* Purse Change (first vs latest snapshot) */}
+                    {(() => {
+                        const first = chartData.length > 0 ? chartData[0] : null;
+                        const last = chartData.length > 1 ? chartData[chartData.length - 1] : null;
+                        const changeIcp = (first?.icp != null && last?.icp != null) ? last.icp - first.icp : null;
+                        const changeUsd = (first?.usd != null && last?.usd != null) ? last.usd - first.usd : null;
+                        const pctIcp = (changeIcp != null && first.icp && first.icp !== 0) ? (changeIcp / Math.abs(first.icp)) * 100 : null;
+                        const pctUsd = (changeUsd != null && first.usd && first.usd !== 0) ? (changeUsd / Math.abs(first.usd)) * 100 : null;
+                        return <>
+                            <div style={cardStyle}>
+                                <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>First Snapshot Value</div>
+                                <div style={{ fontSize: '1.2rem', fontWeight: '700', color: theme.colors.text }}>{first ? formatNum(first.icp, 'icp') : '—'}</div>
+                                <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>{first ? formatNum(first.usd, 'usd') : '—'}</div>
+                            </div>
+                            <div style={cardStyle}>
+                                <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Purse Change</div>
+                                <div style={{ fontSize: '1.2rem', fontWeight: '700', color: pnlColor(changeIcp) }}>
+                                    {changeIcp != null ? (changeIcp >= 0 ? '+' : '-') : ''}{formatNum(changeIcp, 'icp')}
+                                    {pctIcp != null && <span style={{ fontSize: '0.8rem', marginLeft: '6px' }}>({pctIcp >= 0 ? '+' : ''}{pctIcp.toFixed(1)}%)</span>}
+                                </div>
+                                <div style={{ fontSize: '0.85rem', color: pnlColor(changeUsd) }}>
+                                    {changeUsd != null ? (changeUsd >= 0 ? '+' : '-') : ''}{formatNum(changeUsd, 'usd')}
+                                    {pctUsd != null && <span style={{ fontSize: '0.8rem', marginLeft: '6px' }}>({pctUsd >= 0 ? '+' : ''}{pctUsd.toFixed(1)}%)</span>}
+                                </div>
+                            </div>
+                        </>;
+                    })()}
+                </>}
             </div>
 
             {/* Equity Curve Chart */}
             <div style={{ ...cardStyle, padding: '16px 12px 8px 0' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingLeft: '16px', flexWrap: 'wrap', gap: '8px' }}>
-                    <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.text }}>Equity Curve</span>
+                    <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.text }}>{isPurseView ? 'Purse Value' : 'Equity Curve'}</span>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
-                        {['detailed', 'daily'].map(v => (
+                        {(isPurseView ? ['detailed'] : ['detailed', 'daily']).map(v => (
                             <button key={v} onClick={() => setEquityView(v)} style={{
                                 padding: '3px 10px', fontSize: '0.72rem', fontWeight: '500', cursor: 'pointer',
                                 borderRadius: '4px', border: `1px solid ${equityView === v ? accentColor : theme.colors.border}`,
@@ -5471,14 +5557,16 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
                                 <Tooltip
                                     contentStyle={{ background: theme.colors.surface, border: `1px solid ${theme.colors.border}`, borderRadius: '8px', fontSize: '0.82rem' }}
                                     labelStyle={{ color: theme.colors.text }}
-                                    formatter={(v) => [denomination === 'usd' ? '$' + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2 }) : Number(v).toLocaleString(undefined, { minimumFractionDigits: 4 }) + ' ICP', 'Portfolio Value']}
+                                    formatter={(v) => [denomination === 'usd' ? '$' + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2 }) : Number(v).toLocaleString(undefined, { minimumFractionDigits: 4 }) + ' ICP', isPurseView ? 'Purse Value' : 'Portfolio Value']}
                                 />
                                 <Area type="monotone" dataKey={denomination} stroke={accentColor} fill="url(#equityGrad)" strokeWidth={2} dot={false} />
                             </AreaChart>
                         </ResponsiveContainer>
                     ) : (
                         <div style={{ textAlign: 'center', padding: '40px 20px', color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
-                            {chartData.length === 0 ? 'No snapshot data yet. Equity curve will appear after the bot runs and takes portfolio snapshots.' : 'At least 2 snapshots are needed to draw the equity curve.'}
+                            {chartData.length === 0
+                                ? (isPurseView ? 'No purse snapshot data yet. Data will appear after the snapshot chore runs.' : 'No snapshot data yet. Equity curve will appear after the bot runs and takes portfolio snapshots.')
+                                : 'At least 2 snapshots are needed to draw the equity curve.'}
                         </div>
                     )
                 ) : (
@@ -5513,8 +5601,56 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
                 )}
             </div>
 
+            {/* Purse Token Holdings (from latest purse snapshot) */}
+            {isPurseView && (() => {
+                const latestPurseSnap = purseSnapshots.length > 0
+                    ? purseSnapshots.sort((a, b) => Number(b.timestamp) - Number(a.timestamp))[0]
+                    : null;
+                if (!latestPurseSnap?.tokens?.length) return null;
+                return (
+                    <div style={cardStyle}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.text, marginBottom: '10px' }}>Purse Token Holdings</div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                            <thead>
+                                <tr style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                    <th style={{ textAlign: 'left', padding: '6px 8px', color: theme.colors.secondaryText, fontWeight: '500' }}>Token</th>
+                                    <th style={{ textAlign: 'right', padding: '6px 8px', color: theme.colors.secondaryText, fontWeight: '500' }}>Balance</th>
+                                    <th style={{ textAlign: 'right', padding: '6px 8px', color: theme.colors.secondaryText, fontWeight: '500' }}>Value (ICP)</th>
+                                    <th style={{ textAlign: 'right', padding: '6px 8px', color: theme.colors.secondaryText, fontWeight: '500' }}>Value (USD)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {latestPurseSnap.tokens.map((tok, i) => {
+                                    const dec = Number(tok.decimals || 8);
+                                    const bal = Number(tok.balance) / (10 ** dec);
+                                    const vIcp = tok.valueIcpE8s?.length > 0 ? Number(tok.valueIcpE8s[0]) / 1e8 : null;
+                                    const vUsd = tok.valueUsdE8s?.length > 0 ? Number(tok.valueUsdE8s[0]) / 1e8 : null;
+                                    return (
+                                        <tr key={i} style={{ borderBottom: `1px solid ${theme.colors.border}22` }}>
+                                            <td style={{ padding: '6px 8px', color: theme.colors.text, fontWeight: '500' }}>{tok.symbol || '?'}</td>
+                                            <td style={{ padding: '6px 8px', textAlign: 'right', color: theme.colors.text, fontFamily: 'monospace' }}>
+                                                {bal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: Math.min(dec, 6) })}
+                                            </td>
+                                            <td style={{ padding: '6px 8px', textAlign: 'right', color: theme.colors.text }}>
+                                                {vIcp != null ? vIcp.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '—'}
+                                            </td>
+                                            <td style={{ padding: '6px 8px', textAlign: 'right', color: theme.colors.text }}>
+                                                {vUsd != null ? '$' + vUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                        <div style={{ fontSize: '0.68rem', color: theme.colors.secondaryText, marginTop: '6px', textAlign: 'right' }}>
+                            Snapshot: {new Date(Number(latestPurseSnap.timestamp) / 1_000_000).toLocaleString()}
+                        </div>
+                    </div>
+                );
+            })()}
+
             {/* Per-Token Capital Flows */}
-            {capitalFlows?.perToken?.length > 0 && (
+            {!isPurseView && capitalFlows?.perToken?.length > 0 && (
                 <div style={cardStyle}>
                     <div style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.text, marginBottom: '10px' }}>Capital Flows by Token</div>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
@@ -7416,7 +7552,7 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
 
             {activeTab === 'chores' && <ChoresOverviewPanel choreStatuses={choreStatuses} cbEvents={cbEvents} theme={theme} accentColor={accentColor} onNavigateToChore={handleNavigateToChore} />}
             {activeTab === 'wallet' && <WalletPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} canisterId={canisterId} choreStatuses={choreStatuses} />}
-            {activeTab === 'performance' && <PerformancePanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
+            {activeTab === 'performance' && <PerformancePanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}
             {activeTab === 'logs' && <LogsTabPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}
             {activeTab === 'circuit-breaker' && <CircuitBreakerPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}
             {activeTab === 'recovery' && <RecoveryPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} canisterId={canisterId} />}

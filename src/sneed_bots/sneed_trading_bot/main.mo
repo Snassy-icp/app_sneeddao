@@ -87,6 +87,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     var portfolioSnapshots: [T.PortfolioSnapshot] = [];
     var portfolioSnapshotNextId: Nat = 0;
 
+    // Per-purse snapshot log: (purseId, snapshot) pairs
+    var purseSnapshots: [(Text, T.PortfolioSnapshot)] = [];
+    var purseSnapshotNextId: Nat = 0;
+    var purseSnapshotMaxEntries: Nat = 10_000;
+
     // Logging Settings (master)
     var loggingSettings: T.LoggingSettings = {
         tradeLogEnabled = true;
@@ -2393,6 +2398,91 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             });
         };
         Buffer.toArray(snaps)
+    };
+
+    /// Build token snapshots for a specific chore purse (synchronous balance lookup).
+    /// Uses the same cached prices as takeTokenSnapshots.
+    func buildPurseTokenSnapshots(purseId: Text): [T.TokenSnapshot] {
+        let icpToken = Principal.fromText(T.ICP_LEDGER);
+        let ckusdcToken = Principal.fromText(T.CKUSDC_LEDGER);
+
+        let icpPriceUsdE6: ?Nat = switch (getCachedQuote(icpToken, ckusdcToken)) {
+            case (?q) { if (q.inputAmount > 0) { ?((q.expectedOutput * 100_000_000) / q.inputAmount) } else { null } };
+            case null { null };
+        };
+
+        let snaps = Buffer.Buffer<T.TokenSnapshot>(8);
+        for ((cid, entries) in chorePurseBalances.vals()) {
+            if (cid == purseId) {
+                for ((key, balance) in entries.vals()) {
+                    if (balance == 0) { /* skip zero balances */ } else {
+                        switch (parseBalanceKey(key)) {
+                            case (?token) {
+                                let meta = getCachedMeta(token);
+                                let symbol = switch (meta) { case (?m) m.symbol; case null { switch (getTokenInfo(token)) { case (?i) i.symbol; case null "?" } } };
+                                let decimals: Nat8 = switch (meta) { case (?m) m.decimals; case null { switch (getTokenInfo(token)) { case (?i) i.decimals; case null 8 } } };
+                                let decNat = Nat8.toNat(decimals);
+                                let scale = 10 ** decNat;
+
+                                let priceIcpE8s: ?Nat = if (token == icpToken) { ?scale }
+                                else {
+                                    switch (getCachedQuote(token, icpToken)) {
+                                        case (?q) { if (q.inputAmount > 0) { ?((q.expectedOutput * scale) / q.inputAmount) } else { null } };
+                                        case null { null };
+                                    };
+                                };
+                                let valueIcpE8s: ?Nat = switch (priceIcpE8s) { case (?p) { ?((balance * p) / scale) }; case null { null } };
+                                let priceUsdE8s: ?Nat = if (token == ckusdcToken) { ?scale }
+                                else {
+                                    switch (priceIcpE8s, icpPriceUsdE6) {
+                                        case (?icpP, ?usdRate) { ?((icpP * usdRate) / 1_000_000) };
+                                        case (_, _) { null };
+                                    };
+                                };
+                                let valueUsdE8s: ?Nat = switch (priceUsdE8s) { case (?p) { ?((balance * p) / scale) }; case null { null } };
+
+                                snaps.add({
+                                    token = token; symbol = symbol; decimals = decimals; balance = balance;
+                                    priceIcpE8s = priceIcpE8s; priceUsdE8s = priceUsdE8s; priceDenomE8s = null;
+                                    valueIcpE8s = valueIcpE8s; valueUsdE8s = valueUsdE8s; valueDenomE8s = null;
+                                });
+                            };
+                            case null {};
+                        };
+                    };
+                };
+            };
+        };
+        Buffer.toArray(snaps)
+    };
+
+    /// Append a purse snapshot. Returns the snapshot ID.
+    func appendPurseSnapshot(purseId: Text, entry: {
+        trigger: Text; choreId: ?Text;
+        totalValueIcpE8s: ?Nat; totalValueUsdE8s: ?Nat;
+        tokens: [T.TokenSnapshot];
+    }): Nat {
+        let id = purseSnapshotNextId;
+        purseSnapshotNextId += 1;
+        let full: T.PortfolioSnapshot = {
+            id = id; timestamp = Time.now(); trigger = entry.trigger;
+            tradeLogId = null; phase = #After; choreId = entry.choreId;
+            denominationToken = null;
+            totalValueIcpE8s = entry.totalValueIcpE8s; totalValueUsdE8s = entry.totalValueUsdE8s;
+            totalValueDenomE8s = null; tokens = entry.tokens;
+        };
+        let buf = Buffer.fromArray<(Text, T.PortfolioSnapshot)>(purseSnapshots);
+        buf.add((purseId, full));
+        if (buf.size() > purseSnapshotMaxEntries) {
+            let excess = buf.size() - purseSnapshotMaxEntries : Nat;
+            let trimmed = Buffer.Buffer<(Text, T.PortfolioSnapshot)>(purseSnapshotMaxEntries);
+            var i = excess;
+            while (i < buf.size()) { trimmed.add(buf.get(i)); i += 1 };
+            purseSnapshots := Buffer.toArray(trimmed);
+        } else {
+            purseSnapshots := Buffer.toArray(buf);
+        };
+        id
     };
 
     /// Create a level-3 task function that takes a portfolio snapshot for given tokens.
@@ -5246,7 +5336,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // SNAPSHOT CHORE HELPERS
     // ============================================
 
-    /// Balance snapshot task: takes snapshots of all registered tokens across main and all named subaccounts.
+    /// Balance snapshot task: takes snapshots of all registered tokens across main account and all enabled purses.
     func _snap_makeBalanceTaskFn(instanceId: Text): () -> async BotChoreTypes.TaskAction {
         func(): async BotChoreTypes.TaskAction {
             try {
@@ -5268,6 +5358,24 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     totalValueDenomE8s = null;
                     tokens = mainSnaps;
                 });
+
+                // Per-purse snapshots (uses cached prices from the main snapshot above)
+                for ((purseId, enabled) in chorePurseEnabled.vals()) {
+                    if (enabled) {
+                        let purseSnaps = buildPurseTokenSnapshots(purseId);
+                        if (purseSnaps.size() > 0) {
+                            let purseIcp = Array.foldLeft<T.TokenSnapshot, Nat>(purseSnaps, 0, func(acc, s) { acc + (switch (s.valueIcpE8s) { case (?v) v; case null 0 }) });
+                            let purseUsd = Array.foldLeft<T.TokenSnapshot, Nat>(purseSnaps, 0, func(acc, s) { acc + (switch (s.valueUsdE8s) { case (?v) v; case null 0 }) });
+                            ignore appendPurseSnapshot(purseId, {
+                                trigger = "Purse snapshot";
+                                choreId = ?purseId;
+                                totalValueIcpE8s = ?purseIcp;
+                                totalValueUsdE8s = ?purseUsd;
+                                tokens = purseSnaps;
+                            });
+                        };
+                    };
+                };
 
                 #Done
             } catch (e) {
@@ -7274,6 +7382,37 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         assertPermission(msg.caller, T.TradingPermission.ManageLogs);
         portfolioSnapshots := [];
         logEngine.logInfo("portfolio-log", "Portfolio snapshot log cleared", ?msg.caller, []);
+    };
+
+    public shared query (msg) func getPursePortfolioSnapshots(purseId: Text, q: T.PortfolioSnapshotQuery): async T.PortfolioSnapshotResult {
+        assertPermission(msg.caller, T.TradingPermission.ViewLogs);
+        let limit = switch (q.limit) { case (?l) l; case null 500 };
+        let buf = Buffer.Buffer<T.PortfolioSnapshot>(limit);
+        for ((pid, snap) in purseSnapshots.vals()) {
+            if (pid == purseId) {
+                var keep = true;
+                switch (q.fromTime) { case (?t) { if (snap.timestamp < t) keep := false }; case null {} };
+                switch (q.toTime) { case (?t) { if (snap.timestamp > t) keep := false }; case null {} };
+                switch (q.startId) { case (?s) { if (snap.id < s) keep := false }; case null {} };
+                if (keep) buf.add(snap);
+            };
+        };
+        let totalCount = buf.size();
+        let page = if (totalCount <= limit) { Buffer.toArray(buf) } else {
+            Array.tabulate<T.PortfolioSnapshot>(limit, func(i) { buf.get(i) })
+        };
+        { entries = page; totalCount = totalCount; hasMore = totalCount > limit }
+    };
+
+    public shared query (msg) func listPurseSnapshotPurses(): async [Text] {
+        assertPermission(msg.caller, T.TradingPermission.ViewLogs);
+        let seen = Buffer.Buffer<Text>(8);
+        for ((pid, _) in purseSnapshots.vals()) {
+            var found = false;
+            for (s in seen.vals()) { if (s == pid) found := true };
+            if (not found) seen.add(pid);
+        };
+        Buffer.toArray(seen)
     };
 
     // ============================================
