@@ -1433,6 +1433,16 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
 // PIE CHART — pure SVG donut chart
 // ============================================
 const CHART_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#3b82f6', '#ec4899', '#8b5cf6', '#14b8a6', '#f97316', '#06b6d4', '#84cc16', '#e11d48'];
+const _tokenColorMap = new Map();
+let _nextColorIdx = 0;
+function getTokenColor(tokenId) {
+    if (!tokenId) return CHART_COLORS[0];
+    if (!_tokenColorMap.has(tokenId)) {
+        _tokenColorMap.set(tokenId, CHART_COLORS[_nextColorIdx % CHART_COLORS.length]);
+        _nextColorIdx++;
+    }
+    return _tokenColorMap.get(tokenId);
+}
 function PieChart({ segments, size = 140, thickness = 32, label, theme }) {
     const r = (size - thickness) / 2;
     const cx = size / 2;
@@ -1658,7 +1668,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
     const targetSegments = React.useMemo(() =>
         targets.map((t, i) => {
             const tid = typeof t.token === 'string' ? t.token : t.token?.toText?.() || String(t.token);
-            return { label: getSymbol(tid), value: Number(t.targetBps), color: CHART_COLORS[i % CHART_COLORS.length] };
+            return { label: getSymbol(tid), value: Number(t.targetBps), color: getTokenColor(tid) };
         }),
     [targets, tokenMeta]);
 
@@ -1668,7 +1678,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
         return editingTargets.map((t, i) => ({
             label: t.token ? getSymbol(t.token) : `Token ${i + 1}`,
             value: Math.max(0, (parseFloat(t.targetBps) || 0) * 100),
-            color: CHART_COLORS[i % CHART_COLORS.length],
+            color: t.token ? getTokenColor(t.token) : CHART_COLORS[i % CHART_COLORS.length],
         }));
     }, [editingTargets, tokenMeta]);
 
@@ -1796,8 +1806,8 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
 
     const currentSegments = React.useMemo(() => {
         if (!portfolioStatus) return [];
-        return portfolioStatus.tokens.map((tok, i) => ({
-            label: tok.symbol, value: tok.currentBps, color: CHART_COLORS[i % CHART_COLORS.length],
+        return portfolioStatus.tokens.map((tok) => ({
+            label: tok.symbol, value: tok.currentBps, color: getTokenColor(tok.tid),
         }));
     }, [portfolioStatus]);
 
@@ -2038,7 +2048,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                         return (
                                             <div key={tid} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${isPaused ? '#f59e0b40' : theme.colors.border}`, opacity: isPaused ? 0.6 : 1 }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: CHART_COLORS[i % CHART_COLORS.length], flexShrink: 0 }} />
+                                                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: getTokenColor(tid), flexShrink: 0 }} />
                                                     <span style={{ fontSize: '0.8rem', color: theme.colors.primaryText, fontWeight: '500' }}>{getTokenLabel(t.token)}</span>
                                                     {isPaused && <span style={{ fontSize: '0.6rem', color: '#f59e0b', fontWeight: '600', padding: '1px 5px', background: '#f59e0b15', borderRadius: '4px', border: '1px solid #f59e0b30' }}>PAUSED</span>}
                                                 </div>
@@ -2108,7 +2118,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                                 setEditingTargets(arr);
                                             }} theme={theme}>
                                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
-                                                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: CHART_COLORS[i % CHART_COLORS.length], flexShrink: 0 }} />
+                                                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: t.token ? getTokenColor(t.token) : CHART_COLORS[i % CHART_COLORS.length], flexShrink: 0 }} />
                                                     <div style={{ flex: 1 }}>
                                                         <TokenSelector
                                                             value={t.token}
@@ -2138,7 +2148,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                                         value={pct}
                                                         onChange={(e) => setLinkedTarget(i, parseFloat(e.target.value))}
                                                         disabled={!!t.locked}
-                                                        style={{ flex: 1, accentColor: CHART_COLORS[i % CHART_COLORS.length], cursor: t.locked ? 'not-allowed' : 'pointer', height: '6px', opacity: t.locked ? 0.5 : 1 }}
+                                                        style={{ flex: 1, accentColor: t.token ? getTokenColor(t.token) : CHART_COLORS[i % CHART_COLORS.length], cursor: t.locked ? 'not-allowed' : 'pointer', height: '6px', opacity: t.locked ? 0.5 : 1 }}
                                                     />
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
                                                         <input
@@ -2226,7 +2236,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                                 <tr key={i} style={{ borderTop: `1px solid ${theme.colors.border}`, opacity: isPaused ? 0.5 : 1 }}>
                                                     <td style={{ padding: '6px 10px', color: theme.colors.primaryText }}>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: CHART_COLORS[i % CHART_COLORS.length], flexShrink: 0 }} />
+                                                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: getTokenColor(tok.tid), flexShrink: 0 }} />
                                                             {tok.symbol}
                                                             {isPaused && <span style={{ fontSize: '0.55rem', color: '#f59e0b', fontWeight: '600' }}>PAUSED</span>}
                                                         </div>
@@ -4785,8 +4795,8 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                     });
 
                     // Build pie chart segments from denom values
-                    const pieSegments = hasAnyDenomValue ? rows.filter(r => r.denomValue != null && r.denomValue > 0).map((r, i) => ({
-                        label: getSymbol(r.tid), value: r.denomValue, color: CHART_COLORS[i % CHART_COLORS.length],
+                    const pieSegments = hasAnyDenomValue ? rows.filter(r => r.denomValue != null && r.denomValue > 0).map((r) => ({
+                        label: getSymbol(r.tid), value: r.denomValue, color: getTokenColor(r.tid),
                     })) : [];
 
                     const colCount = (denomToken ? (hasAnyDenomValue ? 5 : 4) : 2) + 1; // +1 for Status column
@@ -8514,8 +8524,8 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                         return { tid: e.token, dec, humanBal, balance: e.balance, denomValue, price };
                     });
 
-                    const pieSegments = hasAnyDenomValue ? rows.filter(r => r.denomValue != null && r.denomValue > 0).map((r, i) => ({
-                        label: tokLabel(r.tid), value: r.denomValue, color: CHART_COLORS[i % CHART_COLORS.length],
+                    const pieSegments = hasAnyDenomValue ? rows.filter(r => r.denomValue != null && r.denomValue > 0).map((r) => ({
+                        label: tokLabel(r.tid), value: r.denomValue, color: getTokenColor(r.tid),
                     })) : [];
 
                     const colCount = (denomToken ? (hasAnyDenomValue ? 5 : 4) : 2) + 1;
@@ -9385,6 +9395,10 @@ const DEX_NAMES = { 0: 'ICPSwap', 1: 'KongSwap' };
 const DEX_COLORS = { 0: '#3b82f6', 1: '#f59e0b' };
 
 function SwapProgressCard({ entry, isRunning, theme, accentColor, onDismiss }) {
+    const mountedRef = useRef(false);
+    const isFirstRender = !mountedRef.current;
+    useEffect(() => { mountedRef.current = true; }, []);
+
     if (!entry && !isRunning) return null;
 
     const cardBorder = isRunning ? `${accentColor}50` : entry?.status === 'Success' ? '#22c55e40' : entry?.status === 'Failed' ? '#ef444440' : `${theme.colors.border}`;
@@ -9419,8 +9433,44 @@ function SwapProgressCard({ entry, isRunning, theme, accentColor, onDismiss }) {
     const statusLabel = isRunning ? 'Swapping...' : entry?.status || 'Unknown';
     const statusIcon = isRunning ? '⟳' : entry?.status === 'Success' ? '✓' : entry?.status === 'Failed' ? '✗' : '⊘';
 
+    const isInfoSkip = isSkipped && !entry?.outputToken && (inAmt == null || Number(inAmt) === 0);
+
+    if (isInfoSkip) {
+        return (
+            <div style={{
+                marginTop: '8px', marginBottom: '6px', padding: '10px 14px',
+                background: theme.colors.cardBg, border: `1px solid ${theme.colors.border}`,
+                borderRadius: '10px', position: 'relative',
+            }}>
+                {onDismiss && (
+                    <button onClick={onDismiss} style={{
+                        position: 'absolute', top: '6px', right: '8px', background: 'none',
+                        border: 'none', cursor: 'pointer', color: theme.colors.mutedText,
+                        fontSize: '0.85rem', padding: '2px 4px', lineHeight: 1,
+                    }} title="Dismiss">×</button>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        width: 20, height: 20, borderRadius: '50%',
+                        background: `${statusColor}20`, color: statusColor,
+                        fontSize: '0.75rem', fontWeight: '700',
+                    }}>⊘</span>
+                    <span style={{ fontSize: '0.78rem', fontWeight: '600', color: statusColor }}>Skipped</span>
+                </div>
+                {entry?.errorMessage && (
+                    <div style={{
+                        marginTop: '6px', padding: '6px 10px', fontSize: '0.75rem',
+                        background: `${statusColor}08`, borderRadius: '6px', border: `1px solid ${statusColor}20`,
+                        color: theme.colors.secondaryText, lineHeight: 1.4,
+                    }}>{entry.errorMessage}</div>
+                )}
+            </div>
+        );
+    }
+
     return (
-        <div className="swap-card-enter" style={{
+        <div className={isFirstRender ? 'swap-card-enter' : undefined} style={{
             marginTop: '8px', marginBottom: '6px', padding: '12px',
             background: cardGlow, border: `1px solid ${cardBorder}`,
             borderRadius: '10px', position: 'relative', overflow: 'hidden',
