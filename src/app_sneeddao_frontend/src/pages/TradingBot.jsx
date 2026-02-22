@@ -5714,13 +5714,14 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
         return cached?.symbol || principalText.slice(0, 8) + '..';
     };
 
-    // Build pair options from lastKnownPrices
+    // Build pair options from lastKnownPrices, excluding self-pairs (e.g. SNEED/SNEED)
     const pairOptions = React.useMemo(() => {
         return lastKnownPrices.map(([key, cached]) => {
             const inpText = cached.inputToken?.toText?.() || cached.inputToken?.toString?.() || '';
             const outText = cached.outputToken?.toText?.() || cached.outputToken?.toString?.() || '';
             return { key, inputSymbol: sym(inpText), outputSymbol: sym(outText), inputPrincipal: inpText, outputPrincipal: outText, cached };
-        }).sort((a, b) => (a.inputSymbol + a.outputSymbol).localeCompare(b.inputSymbol + b.outputSymbol));
+        }).filter(p => p.inputPrincipal !== p.outputPrincipal)
+          .sort((a, b) => (a.inputSymbol + a.outputSymbol).localeCompare(b.inputSymbol + b.outputSymbol));
     }, [lastKnownPrices, tokenRegistry, symbolMap]);
 
     // Group price history by pair key
