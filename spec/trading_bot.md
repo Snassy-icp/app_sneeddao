@@ -1267,6 +1267,336 @@ The Circuit Breaker tab provides:
 
 ---
 
+## 18. Inter-Bot Event System
+
+### Overview
+
+The **Event System** enables loosely-coupled communication between bot canisters. A bot emits events at key operational points (trades, circuit breaker triggers, neuron operations, etc.), and other bots — or the same bot — can register as listeners and execute configurable **reaction actions** when those events arrive.
+
+The system is built as shared infrastructure (`BotEventTypes.mo` + `BotEventEngine.mo`) following the same reusable pattern as Botkeys, Bot Chores, and Botlog.
+
+### Architecture
+
+Each bot plays two roles:
+
+- **Source** (emitter): Emits events, manages listener registrations, delivers events to listeners.
+- **Listener** (receiver): Subscribes to events from other bots (or itself), stores reaction rules, executes actions when events arrive.
+
+```
+Source Bot                                Listener Bot
+┌──────────────────────────┐              ┌───────────────────────────────┐
+│  emitEvent() at key      │              │  eventSubscriptions (stable)  │
+│  points in code          │              │  eventReactionRules (stable)  │
+│          │               │              │           │                   │
+│          ▼               │              │  onBotEvent(event)            │
+│  eventDeliveryQueue      │              │    → match reaction rules     │
+│  (transient)             │  inter-      │    → check conditions         │
+│          │               │  canister    │    → check cooldown           │
+│  delivery timer ─────────┼──────────────┼──► execute action             │
+│  (demand-driven)         │   call       │                               │
+│                          │              │                               │
+│  eventListenerRegs       │              │                               │
+│  (stable)                │              │                               │
+└──────────────────────────┘              └───────────────────────────────┘
+```
+
+### Design Principles
+
+- **Loose coupling**: The source bot has no knowledge of listener bot interfaces. It calls a generic `onBotEvent` endpoint.
+- **Demand-driven delivery**: Events go into a transient queue. A timer is set only when the first event is queued; it self-chains until the queue drains, then stops. Zero cost when idle.
+- **Self-event optimization**: When a bot listens to its own events, reactions are processed immediately inline — no inter-canister call.
+- **Double permission check**: Botkey permissions are checked both at listener registration time and before each event delivery (handles revoked permissions).
+- **No enums in stable vars**: All event type IDs, action IDs, condition operators, etc. are stored as Nat.
+- **Event data as tags**: `[(Text, Text)]` key-value pairs, same pattern as Botlog tags.
+
+### Permission System
+
+#### New Shared Base Permissions (0–99)
+
+| ID | Variant | Description |
+|----|---------|-------------|
+| 5  | `#ManageEvents` | Full control over event system: manage listener registrations, subscriptions, and reaction rules |
+| 6  | `#ViewEvents` | View event listeners, subscriptions, reaction rules, and event logs |
+
+These permissions control **managing the event system configuration itself**. They do NOT bypass per-feature permission checks — a principal still needs `ViewPortfolio`/`ViewNeuron`/`ViewChores` to access the corresponding event data.
+
+#### Event-to-Permission Mapping
+
+Each event type maps to an existing Botkey permission on the source bot. A listener must hold that permission to register for (and receive) the event:
+
+| Event Range | Required Botkey on Source Bot |
+|-------------|------------------------------|
+| Shared events (0–19) | `ViewChores` (2) |
+| Staking bot events (100–199) | `ViewNeuron` (116) |
+| Trading bot events (200–299) | `ViewPortfolio` (200) |
+
+### Event Type IDs
+
+Event type IDs follow the same range convention as permission IDs. Stored as Nat, never as enums in stable vars.
+
+#### Shared Base Events (0–99)
+
+| ID | Name | Description | Key Data Fields |
+|----|------|-------------|-----------------|
+| 0  | `ChoreStarted` | A chore was started | choreId, choreTypeId |
+| 1  | `ChoreStopped` | A chore was stopped | choreId, choreTypeId |
+| 2  | `ChorePaused` | A chore was paused | choreId, choreTypeId |
+| 3  | `ChoreResumed` | A chore was resumed | choreId, choreTypeId |
+| 4  | `ChoreRunCompleted` | A single chore run finished successfully | choreId, choreTypeId |
+| 5  | `ChoreRunFailed` | A single chore run failed | choreId, choreTypeId, error |
+| 6  | `ChoreHalted` | Chore auto-halted by limit/halt flag | choreId, reason |
+| 10 | `DistributionExecuted` | Distribution list completed | listId, listName, token, totalDistributed |
+| 11 | `DistributionFailed` | Distribution failed | listId, listName, error |
+
+#### Staking Bot Events (100–199)
+
+| ID  | Name | Description | Key Data Fields |
+|-----|------|-------------|-----------------|
+| 100 | `NeuronStaked` | New neuron created/staked | neuronId, amountE8s |
+| 101 | `NeuronDisbursed` | Neuron fully disbursed | neuronId, amountE8s, destination |
+| 102 | `NeuronSplit` | Neuron split into two | sourceNeuronId, newNeuronId, amountE8s |
+| 103 | `NeuronsMerged` | Neurons merged | targetNeuronId, sourceNeuronId |
+| 110 | `DissolvingStarted` | Neuron dissolving began | neuronId |
+| 111 | `DissolvingStopped` | Neuron re-locked | neuronId |
+| 112 | `DissolveDelayChanged` | Dissolve delay modified | neuronId, delaySeconds |
+| 120 | `MaturityCollected` | Maturity disbursed | neuronId, amountE8s, destination |
+| 121 | `MaturityStaked` | Maturity staked | neuronId, percentage |
+| 122 | `MaturitySpawned` | Maturity spawned to new neuron | neuronId, newNeuronId, percentage |
+| 123 | `MaturityMerged` | Maturity merged into stake | neuronId, percentage |
+| 130 | `StakeRefreshed` | Stake refreshed (ICP claimed) | neuronId |
+| 131 | `StakeIncreased` | Additional ICP staked | neuronId, amountE8s |
+| 140 | `VoteCast` | Vote submitted | neuronId, proposalId, vote |
+| 141 | `FolloweesConfirmed` | Followees re-confirmed | neuronId, topicCount |
+| 150 | `HotKeyAdded` | NNS hotkey added | neuronId, principal |
+| 151 | `HotKeyRemoved` | NNS hotkey removed | neuronId, principal |
+| 160 | `IcpWithdrawn` | ICP withdrawn from canister | amountE8s, destination |
+| 161 | `TokenWithdrawn` | Token withdrawn from canister | token, amount, destination |
+
+#### Trading Bot Events (200–299)
+
+| ID  | Name | Description | Key Data Fields |
+|-----|------|-------------|-----------------|
+| 200 | `TradeExecuted` | Swap successfully executed | choreInstanceId, inputToken, outputToken, inputAmount, outputAmount, dexId |
+| 201 | `TradeSkipped` | Trade action skipped (conditions unmet) | choreInstanceId, actionId, reason |
+| 202 | `TradeFailed` | Swap attempt failed | choreInstanceId, inputToken, outputToken, error |
+| 210 | `CircuitBreakerTriggered` | CB rule fired | ruleId, ruleName, actionsTaken |
+| 211 | `CircuitBreakerEnabled` | Global CB enabled | — |
+| 212 | `CircuitBreakerDisabled` | Global CB disabled | — |
+| 220 | `TokenPaused` | Token paused globally | token |
+| 221 | `TokenUnpaused` | Token unpaused | token |
+| 222 | `TokenFrozen` | Token frozen globally | token |
+| 223 | `TokenUnfrozen` | Token unfrozen | token |
+| 230 | `RebalanceExecuted` | Rebalance trade executed | choreInstanceId, inputToken, outputToken, inputAmount, outputAmount |
+| 231 | `RebalanceSkipped` | No rebalance needed | choreInstanceId, reason |
+| 240 | `PurseFunded` | Tokens moved to chore purse | instanceId, token, amount |
+| 241 | `PurseReclaimed` | Tokens reclaimed from purse | instanceId, token, amount |
+| 242 | `SendExecuted` | Tokens sent externally | token, amount, destination |
+| 243 | `SendFailed` | External send failed | token, error |
+| 250 | `InflowDetected` | Unexpected inflow detected | token, amount |
+| 251 | `OutflowDetected` | Unexpected outflow detected | token, amount |
+| 252 | `OvercommitDetected` | Main purse overcommitted | token |
+| 260 | `SnapshotTaken` | Portfolio snapshot taken | choreInstanceId |
+| 270 | `CumulativeLimitReached` | Action hit cumulative budget | choreInstanceId, actionId, limitType |
+
+### Reaction Action IDs
+
+Actions a bot can take in response to an event. Stored as Nat. Parameters passed as `[(Text, Text)]` key-value pairs.
+
+#### Shared Base Actions (0–99)
+
+| ID | Name | Parameters | Required Permission (on self) |
+|----|------|-----------|-------------------------------|
+| 0  | `StartChore` | choreId | (manage permission for chore type) |
+| 1  | `StopChore` | choreId | (manage permission for chore type) |
+| 2  | `PauseChore` | choreId | (manage permission for chore type) |
+| 3  | `ResumeChore` | choreId | (manage permission for chore type) |
+| 4  | `TriggerChore` | choreId | (manage permission for chore type) |
+| 5  | `StopAllChores` | — | (any manage chore permission) |
+
+#### Staking Bot Actions (100–199)
+
+| ID  | Name | Parameters | Required Permission |
+|-----|------|-----------|---------------------|
+| 100 | `StartDissolving` | neuronId (optional, null=all) | ConfigureDissolveState (100) |
+| 101 | `StopDissolving` | neuronId (optional) | ConfigureDissolveState (100) |
+| 102 | `DisburseNeuron` | neuronId (optional), toAccount (optional) | Disburse (103) |
+| 103 | `StakeMaturity` | neuronId (optional), percentage | StakeMaturity (107) |
+| 104 | `DisburseMaturity` | neuronId (optional), percentage, toAccount (optional) | DisburseMaturity (106) |
+| 105 | `RefreshStake` | neuronId (optional) | StakeNeuron (111) |
+| 106 | `IncreaseStake` | neuronId (optional), amountE8s | StakeNeuron (111) |
+
+#### Trading Bot Actions (200–299)
+
+| ID  | Name | Parameters | Required Permission |
+|-----|------|-----------|---------------------|
+| 200 | `PauseTokenGlobally` | token | ManageTokenRegistry (207) |
+| 201 | `FreezeTokenGlobally` | token | ManageTokenRegistry (207) |
+| 202 | `UnpauseToken` | token | ManageTokenRegistry (207) |
+| 203 | `UnfreezeToken` | token | ManageTokenRegistry (207) |
+| 204 | `EnableCircuitBreakers` | — | ManageCircuitBreaker (213) |
+| 205 | `DisableCircuitBreakers` | — | ManageCircuitBreaker (213) |
+| 206 | `FundPurse` | instanceId, token, amount | ManagePurses (214) |
+| 207 | `ReclaimFromPurse` | instanceId, token, amount | ManagePurses (214) |
+| 208 | `ManualSend` | token, toOwner, toSubaccount, amount, sourcePurseId | WithdrawFunds (209) |
+
+### Data Model
+
+#### Wire Format (inter-canister)
+
+```
+BotEvent = {
+    sourceCanisterId: Principal;
+    eventTypeId: Nat;
+    timestamp: Int;
+    data: [(Text, Text)];
+    eventId: Nat;
+};
+```
+
+#### Source Side (stored on the emitting bot)
+
+```
+EventListenerRegistration = {
+    id: Nat;
+    listenerCanisterId: Principal;
+    eventTypeIds: [Nat];
+    registeredAt: Int;
+    enabled: Bool;
+};
+```
+
+#### Listener Side (stored on the receiving bot)
+
+```
+EventSubscription = {
+    id: Nat;
+    sourceBotCanisterId: Principal;
+    eventTypeIds: [Nat];
+    registrationId: ?Nat;     // ID on source bot (for unregistration)
+    enabled: Bool;
+    createdAt: Int;
+};
+
+EventReactionRule = {
+    id: Nat;
+    name: Text;
+    enabled: Bool;
+    subscriptionId: Nat;      // Which subscription this rule applies to
+    eventTypeId: Nat;         // Which event triggers this rule
+    reactionActionId: Nat;    // What action to take
+    actionParams: [(Text, Text)];
+    conditions: [EventCondition];
+    cooldownSeconds: ?Nat;
+    lastTriggeredAt: ?Int;    // Runtime state
+    triggerCount: Nat;        // Runtime state
+};
+
+EventCondition = {
+    dataKey: Text;            // Key in event's data tags
+    operator: Nat;            // 0=equals, 1=notEquals, 2=contains, 3=greaterThan, 4=lessThan
+    value: Text;              // Compared as text; numeric parsing for > and <
+};
+```
+
+#### Condition Operators
+
+| Nat | Operator | Description |
+|-----|----------|-------------|
+| 0 | `equals` | Exact text match |
+| 1 | `notEquals` | Not equal |
+| 2 | `contains` | Substring match |
+| 3 | `greaterThan` | Numeric comparison (parsed from text) |
+| 4 | `lessThan` | Numeric comparison (parsed from text) |
+
+### Stable Variables
+
+Source side:
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `eventListenerRegistrations` | `[EventListenerRegistration]` | Registered external listeners |
+| `eventListenerNextId` | `Nat` | Auto-increment for registration IDs |
+| `eventEmissionEnabled` | `Bool` | Global on/off for event emission |
+| `eventLog` | `[BotEvent]` | Circular buffer of emitted events (audit) |
+| `eventLogNextId` | `Nat` | Auto-increment for event IDs |
+| `eventLogMaxEntries` | `Nat` | Max event log size (default: 500) |
+
+Listener side:
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `eventSubscriptions` | `[EventSubscription]` | Subscriptions to other bots' events |
+| `eventSubscriptionNextId` | `Nat` | Auto-increment for subscription IDs |
+| `eventReactionRules` | `[EventReactionRule]` | Reaction rules (event → action mappings) |
+| `eventReactionNextId` | `Nat` | Auto-increment for reaction rule IDs |
+| `eventReactionLog` | `[EventReactionLogEntry]` | Audit trail of executed reactions |
+| `eventReactionLogNextId` | `Nat` | Auto-increment for reaction log IDs |
+| `eventReactionLogMaxEntries` | `Nat` | Max reaction log size (default: 500) |
+
+### Delivery Mechanism
+
+1. `emitEvent(eventTypeId, data)` is called at key points in bot code.
+2. Event is added to the `eventLog` circular buffer.
+3. For each matching self-listener (same canister): reactions are processed immediately inline.
+4. For external listeners: event is added to the transient `_eventDeliveryQueue`.
+5. If no delivery timer is running, a 2-second timer is set.
+6. The delivery timer processes queued events:
+   a. For each pending delivery, re-check Botkey permission for the listener.
+   b. If permission still valid, call `onBotEvent` on the listener canister.
+   c. Log delivery success/failure.
+7. If queue still has items, re-schedule timer. Otherwise, timer stops.
+
+### API — Source Side
+
+```motoko
+registerEventListener(req: RegisterListenerRequest) : async { #Ok: Nat; #Err: Text }
+unregisterEventListener(listenerId: Nat) : async ()
+getEventListeners() : async [EventListenerRegistration]
+setEventEmissionEnabled(enabled: Bool) : async ()
+getEventLog(query: EventLogQuery) : async EventLogResult
+getEventTypes() : async [(Nat, Text)]   // List all event types this bot emits
+```
+
+### API — Listener Side
+
+```motoko
+addEventSubscription(sourceBotId: Principal, eventTypeIds: [Nat]) : async { #Ok: Nat; #Err: Text }
+removeEventSubscription(id: Nat) : async ()
+getEventSubscriptions() : async [EventSubscription]
+addEventReaction(input: EventReactionRuleInput) : async Nat
+updateEventReaction(id: Nat, input: EventReactionRuleInput) : async ()
+removeEventReaction(id: Nat) : async ()
+getEventReactions() : async [EventReactionRule]
+getEventReactionLog(query: EventReactionLogQuery) : async EventReactionLogResult
+getAvailableReactionActions() : async [(Nat, Text)]   // List all actions this bot supports
+onBotEvent(event: BotEvent) : async { #Ok; #Err: Text }   // Called by source bots
+```
+
+### Registration Flow
+
+1. User adds the listener bot's canister principal as a Botkey on the source bot, granting it appropriate view permission (e.g., `#ViewPortfolio`).
+2. User calls `addEventSubscription` on the listener bot, specifying the source bot and desired events.
+3. The listener bot calls `registerEventListener` on the source bot.
+4. Source bot checks Botkeys: does the listener's principal have the required permission for each requested event type?
+5. If approved, registration is stored; the registration ID is returned and saved in the subscription.
+6. User then adds reaction rules on the listener bot: "When event X arrives, execute action Y with params Z."
+
+### Example Use Cases
+
+**Staking bot dissolves neurons when trading bot circuit breaker fires:**
+1. Give staking bot's PID `#ViewPortfolio` (200) on trading bot.
+2. On staking bot: `addEventSubscription(tradingBotPID, [210])` (CircuitBreakerTriggered).
+3. On staking bot: `addEventReaction({ subscriptionId, eventTypeId: 210, reactionActionId: 100, actionParams: [], ... })` (StartDissolving).
+4. When trading bot CB fires → event 210 emitted → delivered to staking bot → staking bot starts dissolving.
+
+**Trading bot distributes incoming ICP from staking bot:**
+1. Give trading bot's PID `#ViewChores` (2) on staking bot.
+2. On trading bot: `addEventSubscription(stakingBotPID, [10])` (DistributionExecuted).
+3. On trading bot: `addEventReaction({ subscriptionId, eventTypeId: 10, reactionActionId: 4, actionParams: [("choreId", "distribute-funds-1")], ... })` (TriggerChore).
+4. When staking bot distributes ICP → event 10 emitted → delivered to trading bot → trading bot triggers its distribute-funds chore.
+
+---
+
 ## Appendix A: Numeric Action Type Map
 
 | Nat | ActionType Variant |

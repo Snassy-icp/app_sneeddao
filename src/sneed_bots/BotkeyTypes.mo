@@ -33,6 +33,8 @@ module {
         public let ViewChores: Nat = 2;
         public let ViewLogs: Nat = 3;
         public let ManageLogs: Nat = 4;
+        public let ManageEvents: Nat = 5;
+        public let ViewEvents: Nat = 6;
     };
 
     /// Info about a botkey principal and their permissions (for API responses).

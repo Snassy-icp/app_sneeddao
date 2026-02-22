@@ -20,6 +20,9 @@ import BotChoreEngine "../BotChoreEngine";
 import BotLogTypes "../BotLogTypes";
 import BotLogEngine "../BotLogEngine";
 import DistributionTypes "../DistributionTypes";
+import BotEventTypes "../BotEventTypes";
+import BotEventEngine "../BotEventEngine";
+import Error "mo:base/Error";
 
 // This is the actual canister that gets deployed for each user
 // No constructor arguments needed - access control uses IC canister controllers
@@ -64,6 +67,23 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     var botLogNextId: Nat = 0;
     var botLogLevel: Nat = 3; // Info (default)
     var botLogMaxEntries: Nat = 10_000;
+
+    // Event System — Source side
+    var eventListenerRegistrations: [BotEventTypes.EventListenerRegistration] = [];
+    var eventListenerNextId: Nat = 1;
+    var eventEmissionEnabled: Bool = true;
+    var eventLog: [BotEventTypes.BotEvent] = [];
+    var eventLogNextId: Nat = 0;
+    var eventLogMaxEntries: Nat = 500;
+
+    // Event System — Listener side
+    var eventSubscriptions: [BotEventTypes.EventSubscription] = [];
+    var eventSubscriptionNextId: Nat = 1;
+    var eventReactionRules: [BotEventTypes.EventReactionRule] = [];
+    var eventReactionNextId: Nat = 1;
+    var eventReactionLog: [BotEventTypes.EventReactionLogEntry] = [];
+    var eventReactionLogNextId: Nat = 0;
+    var eventReactionLogMaxEntries: Nat = 500;
 
     // ============================================
     // PER-INSTANCE SETTINGS HELPERS
@@ -115,6 +135,8 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         (2,   #ViewChores),
         (3,   #ViewLogs),
         (4,   #ManageLogs),
+        (5,   #ManageEvents),
+        (6,   #ViewEvents),
         // ICP Staking Bot permissions (range 100–199)
         (100, #ConfigureDissolveState),
         (101, #Vote),
@@ -150,6 +172,8 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             case (#ViewChores) { 2 };
             case (#ViewLogs) { 3 };
             case (#ManageLogs) { 4 };
+            case (#ManageEvents) { 5 };
+            case (#ViewEvents) { 6 };
             // ICP Staking Bot permissions (range 100–199)
             case (#ConfigureDissolveState) { 100 };
             case (#Vote) { 101 };
@@ -186,6 +210,8 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             case (2)   { ?#ViewChores };
             case (3)   { ?#ViewLogs };
             case (4)   { ?#ManageLogs };
+            case (5)   { ?#ManageEvents };
+            case (6)   { ?#ViewEvents };
             // ICP Staking Bot permissions (range 100–199)
             case (100) { ?#ConfigureDissolveState };
             case (101) { ?#Vote };
@@ -259,13 +285,42 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         });
     });
 
-    // Mutable state for chore closures (transient, reset on upgrade)
-    // -- Refresh Stake chore state --
-    transient var _rs_neurons: [T.NeuronId] = [];
-    transient var _rs_index: Nat = 0;
-    // -- Confirm Following chore state --
-    transient var _cf_neurons: [T.NeuronId] = [];
-    transient var _cf_index: Nat = 0;
+    // ============================================
+    // INTER-BOT EVENT SYSTEM
+    // ============================================
+
+    transient let STAKING_EVENT_PERM_MAP: BotEventTypes.EventPermissionMap = [
+        // Shared base events → ViewChores (2)
+        (BotEventTypes.BaseEvent.ChoreStarted, 2),
+        (BotEventTypes.BaseEvent.ChoreStopped, 2),
+        (BotEventTypes.BaseEvent.ChorePaused, 2),
+        (BotEventTypes.BaseEvent.ChoreResumed, 2),
+        (BotEventTypes.BaseEvent.ChoreRunCompleted, 2),
+        (BotEventTypes.BaseEvent.ChoreRunFailed, 2),
+        (BotEventTypes.BaseEvent.ChoreHalted, 2),
+        (BotEventTypes.BaseEvent.DistributionExecuted, 2),
+        (BotEventTypes.BaseEvent.DistributionFailed, 2),
+        // Staking bot events → ViewNeuron (116)
+        (T.StakingEvent.NeuronStaked, T.NeuronPermission.ViewNeuron),
+        (T.StakingEvent.NeuronDisbursed, T.NeuronPermission.ViewNeuron),
+        (T.StakingEvent.NeuronSplit, T.NeuronPermission.ViewNeuron),
+        (T.StakingEvent.NeuronsMerged, T.NeuronPermission.ViewNeuron),
+        (T.StakingEvent.DissolvingStarted, T.NeuronPermission.ViewNeuron),
+        (T.StakingEvent.DissolvingStopped, T.NeuronPermission.ViewNeuron),
+        (T.StakingEvent.DissolveDelayChanged, T.NeuronPermission.ViewNeuron),
+        (T.StakingEvent.MaturityCollected, T.NeuronPermission.ViewNeuron),
+        (T.StakingEvent.MaturityStaked, T.NeuronPermission.ViewNeuron),
+        (T.StakingEvent.MaturitySpawned, T.NeuronPermission.ViewNeuron),
+        (T.StakingEvent.MaturityMerged, T.NeuronPermission.ViewNeuron),
+        (T.StakingEvent.StakeRefreshed, T.NeuronPermission.ViewNeuron),
+        (T.StakingEvent.StakeIncreased, T.NeuronPermission.ViewNeuron),
+        (T.StakingEvent.VoteCast, T.NeuronPermission.ViewNeuron),
+        (T.StakingEvent.FolloweesConfirmed, T.NeuronPermission.ViewNeuron),
+        (T.StakingEvent.HotKeyAdded, T.NeuronPermission.ViewNeuron),
+        (T.StakingEvent.HotKeyRemoved, T.NeuronPermission.ViewNeuron),
+        (T.StakingEvent.IcpWithdrawn, T.NeuronPermission.ViewNeuron),
+        (T.StakingEvent.TokenWithdrawn, T.NeuronPermission.ViewNeuron),
+    ];
 
     // Convenience wrappers that close over hotkeyPermissions state
     func callerHasPermission(caller: Principal, permissionId: Nat): Bool {
@@ -275,6 +330,100 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     func assertPermission(caller: Principal, permissionId: Nat) {
         permEngine.assertPermission(caller, permissionId, hotkeyPermissions)
     };
+
+    // Late-bound reaction executor: set to full implementation after all internal functions are defined
+    transient var _reactionExecutor: ?((Nat, [(Text, Text)], BotEventTypes.BotEvent) -> async { #Ok; #Err: Text }) = null;
+
+    func stakingReactionDispatch(actionId: Nat, params: [(Text, Text)], _event: BotEventTypes.BotEvent): async { #Ok; #Err: Text } {
+        switch (_reactionExecutor) {
+            case (?exec) { await exec(actionId, params, _event) };
+            case null {
+                let getParam = func(key: Text): ?Text {
+                    for ((k, v) in params.vals()) { if (k == key) return ?v };
+                    null
+                };
+                if (actionId == BotEventTypes.BaseAction.StartChore) {
+                    switch (getParam("choreId")) {
+                        case (?cid) { choreEngine.start<system>(cid); #Ok };
+                        case null { #Err("Missing choreId param") };
+                    }
+                } else if (actionId == BotEventTypes.BaseAction.StopChore) {
+                    switch (getParam("choreId")) {
+                        case (?cid) { choreEngine.stop(cid); #Ok };
+                        case null { #Err("Missing choreId param") };
+                    }
+                } else if (actionId == BotEventTypes.BaseAction.PauseChore) {
+                    switch (getParam("choreId")) {
+                        case (?cid) { choreEngine.pause(cid); #Ok };
+                        case null { #Err("Missing choreId param") };
+                    }
+                } else if (actionId == BotEventTypes.BaseAction.ResumeChore) {
+                    switch (getParam("choreId")) {
+                        case (?cid) { choreEngine.resume<system>(cid); #Ok };
+                        case null { #Err("Missing choreId param") };
+                    }
+                } else if (actionId == BotEventTypes.BaseAction.TriggerChore) {
+                    switch (getParam("choreId")) {
+                        case (?cid) { choreEngine.trigger<system>(cid); #Ok };
+                        case null { #Err("Missing choreId param") };
+                    }
+                } else if (actionId == BotEventTypes.BaseAction.StopAllChores) {
+                    choreEngine.stopAllChores();
+                    #Ok
+                } else {
+                    #Err("Unknown action ID: " # Nat.toText(actionId))
+                }
+            };
+        }
+    };
+
+    transient let eventEngine = BotEventEngine.Engine({
+        sourceState = {
+            getListeners = func(): [BotEventTypes.EventListenerRegistration] { eventListenerRegistrations };
+            setListeners = func(l: [BotEventTypes.EventListenerRegistration]): () { eventListenerRegistrations := l };
+            getNextListenerId = func(): Nat { eventListenerNextId };
+            setNextListenerId = func(n: Nat): () { eventListenerNextId := n };
+            getEmissionEnabled = func(): Bool { eventEmissionEnabled };
+            setEmissionEnabled = func(b: Bool): () { eventEmissionEnabled := b };
+            getEventLog = func(): [BotEventTypes.BotEvent] { eventLog };
+            setEventLog = func(l: [BotEventTypes.BotEvent]): () { eventLog := l };
+            getEventLogNextId = func(): Nat { eventLogNextId };
+            setEventLogNextId = func(n: Nat): () { eventLogNextId := n };
+            getEventLogMaxEntries = func(): Nat { eventLogMaxEntries };
+        };
+        listenerState = {
+            getSubscriptions = func(): [BotEventTypes.EventSubscription] { eventSubscriptions };
+            setSubscriptions = func(s: [BotEventTypes.EventSubscription]): () { eventSubscriptions := s };
+            getNextSubscriptionId = func(): Nat { eventSubscriptionNextId };
+            setNextSubscriptionId = func(n: Nat): () { eventSubscriptionNextId := n };
+            getReactions = func(): [BotEventTypes.EventReactionRule] { eventReactionRules };
+            setReactions = func(r: [BotEventTypes.EventReactionRule]): () { eventReactionRules := r };
+            getNextReactionId = func(): Nat { eventReactionNextId };
+            setNextReactionId = func(n: Nat): () { eventReactionNextId := n };
+            getReactionLog = func(): [BotEventTypes.EventReactionLogEntry] { eventReactionLog };
+            setReactionLog = func(l: [BotEventTypes.EventReactionLogEntry]): () { eventReactionLog := l };
+            getReactionLogNextId = func(): Nat { eventReactionLogNextId };
+            setReactionLogNextId = func(n: Nat): () { eventReactionLogNextId := n };
+            getReactionLogMaxEntries = func(): Nat { eventReactionLogMaxEntries };
+        };
+        permissionChecker = func(principal: Principal, permId: Nat): Bool {
+            callerHasPermission(principal, permId)
+        };
+        eventPermissionMap = STAKING_EVENT_PERM_MAP;
+        reactionExecutor = stakingReactionDispatch;
+        selfCanisterId = Principal.fromActor(this);
+        log = ?(func(level: Text, source: Text, message: Text, tags: [(Text, Text)]): () {
+            logEngine.logInfo(source, message, null, tags);
+        });
+    });
+
+    // Mutable state for chore closures (transient, reset on upgrade)
+    // -- Refresh Stake chore state --
+    transient var _rs_neurons: [T.NeuronId] = [];
+    transient var _rs_index: Nat = 0;
+    // -- Confirm Following chore state --
+    transient var _cf_neurons: [T.NeuronId] = [];
+    transient var _cf_index: Nat = 0;
 
     // Map a chore instance ID to its per-type manage permission ID.
     // Resolves instanceId -> typeId -> permission.
@@ -802,7 +951,14 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
-        await configureNeuron(neuronId, #StartDissolving({}));
+        let result = await configureNeuron(neuronId, #StartDissolving({}));
+        switch (result) {
+            case (#Ok) {
+                eventEngine.emitEvent<system>(T.StakingEvent.DissolvingStarted, [("neuronId", Nat64.toText(neuronId.id))]);
+            };
+            case _ {};
+        };
+        result
     };
 
     public shared ({ caller }) func stopDissolving(neuronId: T.NeuronId): async T.OperationResult {
@@ -813,7 +969,14 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
-        await configureNeuron(neuronId, #StopDissolving({}));
+        let result = await configureNeuron(neuronId, #StopDissolving({}));
+        switch (result) {
+            case (#Ok) {
+                eventEngine.emitEvent<system>(T.StakingEvent.DissolvingStopped, [("neuronId", Nat64.toText(neuronId.id))]);
+            };
+            case _ {};
+        };
+        result
     };
 
     // ============================================
@@ -1522,6 +1685,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         assertPermission(caller, choreManagePermission(choreId));
         logEngine.logInfo("api", "startChore", ?caller, [("choreId", choreId)]);
         choreEngine.start<system>(choreId);
+        eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.ChoreStarted, [("choreId", choreId)]);
     };
 
     // Schedule-start a chore: enable it and schedule the first run at a specific time, without running immediately
@@ -1536,6 +1700,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         assertPermission(caller, choreManagePermission(choreId));
         logEngine.logInfo("api", "pauseChore", ?caller, [("choreId", choreId)]);
         choreEngine.pause(choreId);
+        eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.ChorePaused, [("choreId", choreId)]);
     };
 
     // Resume a paused chore: re-activate preserved schedule (Paused → Running)
@@ -1543,6 +1708,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         assertPermission(caller, choreManagePermission(choreId));
         logEngine.logInfo("api", "resumeChore", ?caller, [("choreId", choreId)]);
         choreEngine.resume<system>(choreId);
+        eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.ChoreResumed, [("choreId", choreId)]);
     };
 
     // Change the schedule interval for a chore (in seconds)
@@ -1585,6 +1751,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         assertPermission(caller, choreManagePermission(choreId));
         logEngine.logInfo("api", "stopChore", ?caller, [("choreId", choreId)]);
         choreEngine.stop(choreId);
+        eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.ChoreStopped, [("choreId", choreId)]);
     };
 
     // Stop all running chores (requires all per-chore manage permissions)
@@ -2449,6 +2616,69 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // Register chores and start timers.
     // This runs on every canister start (first deploy + upgrades) because
     // it's inside a transient let expression.
+    // Late-bind the full reaction executor now that configureNeuron/listNeuronsInternal are defined
+    transient let _eventInit: () = do {
+        _reactionExecutor := ?(func(actionId: Nat, params: [(Text, Text)], _event: BotEventTypes.BotEvent): async { #Ok; #Err: Text } {
+            let getParam = func(key: Text): ?Text {
+                for ((k, v) in params.vals()) { if (k == key) return ?v };
+                null
+            };
+            if (actionId == BotEventTypes.BaseAction.StartChore) {
+                switch (getParam("choreId")) {
+                    case (?cid) { choreEngine.start<system>(cid); #Ok };
+                    case null { #Err("Missing choreId param") };
+                }
+            } else if (actionId == BotEventTypes.BaseAction.StopChore) {
+                switch (getParam("choreId")) {
+                    case (?cid) { choreEngine.stop(cid); #Ok };
+                    case null { #Err("Missing choreId param") };
+                }
+            } else if (actionId == BotEventTypes.BaseAction.PauseChore) {
+                switch (getParam("choreId")) {
+                    case (?cid) { choreEngine.pause(cid); #Ok };
+                    case null { #Err("Missing choreId param") };
+                }
+            } else if (actionId == BotEventTypes.BaseAction.ResumeChore) {
+                switch (getParam("choreId")) {
+                    case (?cid) { choreEngine.resume<system>(cid); #Ok };
+                    case null { #Err("Missing choreId param") };
+                }
+            } else if (actionId == BotEventTypes.BaseAction.TriggerChore) {
+                switch (getParam("choreId")) {
+                    case (?cid) { choreEngine.trigger<system>(cid); #Ok };
+                    case null { #Err("Missing choreId param") };
+                }
+            } else if (actionId == BotEventTypes.BaseAction.StopAllChores) {
+                choreEngine.stopAllChores();
+                #Ok
+            } else if (actionId == T.StakingAction.StartDissolving) {
+                try {
+                    let neurons = await listNeuronsInternal();
+                    for (neuron in neurons.vals()) {
+                        switch (neuron.id) {
+                            case (?nid) { ignore await configureNeuron(nid, #StartDissolving({})) };
+                            case null {};
+                        };
+                    };
+                    #Ok
+                } catch (e) { #Err(Error.message(e)) }
+            } else if (actionId == T.StakingAction.StopDissolving) {
+                try {
+                    let neurons = await listNeuronsInternal();
+                    for (neuron in neurons.vals()) {
+                        switch (neuron.id) {
+                            case (?nid) { ignore await configureNeuron(nid, #StopDissolving({})) };
+                            case null {};
+                        };
+                    };
+                    #Ok
+                } catch (e) { #Err(Error.message(e)) }
+            } else {
+                #Err("Unknown action ID: " # Nat.toText(actionId))
+            }
+        });
+    };
+
     transient let _choreInit: () = do {
         // --- Chore: Confirm Following ---
         choreEngine.registerChore({
@@ -2662,6 +2892,114 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // Resume timers after upgrade (transient engine is fresh, stable state is loaded)
     system func postupgrade() {
         choreEngine.resumeTimers<system>();
+    };
+
+    // ============================================
+    // EVENT SYSTEM — SOURCE SIDE API
+    // ============================================
+
+    public shared ({ caller }) func registerEventListener(req: BotEventTypes.RegisterListenerRequest): async { #Ok: Nat; #Err: Text } {
+        eventEngine.registerListener(caller, req)
+    };
+
+    public shared ({ caller }) func unregisterEventListener(listenerId: Nat): async () {
+        eventEngine.unregisterListener(caller, listenerId)
+    };
+
+    public shared query ({ caller }) func getEventListeners(): async [BotEventTypes.EventListenerRegistration] {
+        assertPermission(caller, T.NeuronPermission.ViewEvents);
+        eventEngine.getListeners()
+    };
+
+    public shared ({ caller }) func setEventEmissionEnabled(enabled: Bool): async () {
+        assertPermission(caller, T.NeuronPermission.ManageEvents);
+        eventEngine.setEmissionEnabled(enabled);
+    };
+
+    public shared query ({ caller }) func getEventLog(filter: BotEventTypes.EventLogQuery): async BotEventTypes.EventLogResult {
+        assertPermission(caller, T.NeuronPermission.ViewEvents);
+        eventEngine.queryEventLog(filter)
+    };
+
+    public shared query ({ caller }) func getEventTypes(): async [(Nat, Text)] {
+        assertPermission(caller, T.NeuronPermission.ViewEvents);
+        [
+            (0, "ChoreStarted"), (1, "ChoreStopped"), (2, "ChorePaused"), (3, "ChoreResumed"),
+            (4, "ChoreRunCompleted"), (5, "ChoreRunFailed"), (6, "ChoreHalted"),
+            (10, "DistributionExecuted"), (11, "DistributionFailed"),
+            (100, "NeuronStaked"), (101, "NeuronDisbursed"), (102, "NeuronSplit"), (103, "NeuronsMerged"),
+            (110, "DissolvingStarted"), (111, "DissolvingStopped"), (112, "DissolveDelayChanged"),
+            (120, "MaturityCollected"), (121, "MaturityStaked"), (122, "MaturitySpawned"), (123, "MaturityMerged"),
+            (130, "StakeRefreshed"), (131, "StakeIncreased"),
+            (140, "VoteCast"), (141, "FolloweesConfirmed"),
+            (150, "HotKeyAdded"), (151, "HotKeyRemoved"),
+            (160, "IcpWithdrawn"), (161, "TokenWithdrawn"),
+        ]
+    };
+
+    // ============================================
+    // EVENT SYSTEM — LISTENER SIDE API
+    // ============================================
+
+    public shared ({ caller }) func addEventSubscription(sourceBotId: Principal, eventTypeIds: [Nat]): async { #Ok: Nat; #Err: Text } {
+        assertPermission(caller, T.NeuronPermission.ManageEvents);
+        await eventEngine.addSubscription({ sourceBotCanisterId = sourceBotId; eventTypeIds = eventTypeIds })
+    };
+
+    public shared ({ caller }) func removeEventSubscription(id: Nat): async () {
+        assertPermission(caller, T.NeuronPermission.ManageEvents);
+        await eventEngine.removeSubscription(id);
+    };
+
+    public shared query ({ caller }) func getEventSubscriptions(): async [BotEventTypes.EventSubscription] {
+        assertPermission(caller, T.NeuronPermission.ViewEvents);
+        eventEngine.getSubscriptions()
+    };
+
+    public shared ({ caller }) func addEventReaction(input: BotEventTypes.EventReactionRuleInput): async Nat {
+        assertPermission(caller, T.NeuronPermission.ManageEvents);
+        switch (eventEngine.addReaction(input)) {
+            case (#Ok(id)) { id };
+            case (#Err(msg)) { Debug.trap(msg) };
+        }
+    };
+
+    public shared ({ caller }) func updateEventReaction(id: Nat, input: BotEventTypes.EventReactionRuleInput): async () {
+        assertPermission(caller, T.NeuronPermission.ManageEvents);
+        switch (eventEngine.updateReaction(id, input)) {
+            case (#Ok) {};
+            case (#Err(msg)) { Debug.trap(msg) };
+        }
+    };
+
+    public shared ({ caller }) func removeEventReaction(id: Nat): async () {
+        assertPermission(caller, T.NeuronPermission.ManageEvents);
+        eventEngine.removeReaction(id);
+    };
+
+    public shared query ({ caller }) func getEventReactions(): async [BotEventTypes.EventReactionRule] {
+        assertPermission(caller, T.NeuronPermission.ViewEvents);
+        eventEngine.getReactions()
+    };
+
+    public shared query ({ caller }) func getEventReactionLog(filter: BotEventTypes.EventReactionLogQuery): async BotEventTypes.EventReactionLogResult {
+        assertPermission(caller, T.NeuronPermission.ViewEvents);
+        eventEngine.queryReactionLog(filter)
+    };
+
+    public shared query ({ caller }) func getAvailableReactionActions(): async [(Nat, Text)] {
+        assertPermission(caller, T.NeuronPermission.ViewEvents);
+        [
+            (0, "StartChore"), (1, "StopChore"), (2, "PauseChore"), (3, "ResumeChore"),
+            (4, "TriggerChore"), (5, "StopAllChores"),
+            (100, "StartDissolving"), (101, "StopDissolving"), (102, "DisburseNeuron"),
+            (103, "StakeMaturity"), (104, "DisburseMaturity"),
+            (105, "RefreshStake"), (106, "IncreaseStake"),
+        ]
+    };
+
+    public shared ({ caller }) func onBotEvent(event: BotEventTypes.BotEvent): async { #Ok; #Err: Text } {
+        await eventEngine.handleIncomingEvent(caller, event)
     };
 };
 

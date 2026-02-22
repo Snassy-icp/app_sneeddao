@@ -832,6 +832,8 @@ module {
         #ViewChores;              // View bot chore statuses and configurations
         #ViewLogs;                // Read log entries and configuration
         #ManageLogs;              // Set log level, clear logs
+        #ManageEvents;            // Manage event listeners, subscriptions, reaction rules
+        #ViewEvents;              // View event configuration and logs
         // --- ICP Staking Bot permissions (IDs 100+) ---
         #ConfigureDissolveState;  // Start/stop dissolving, set dissolve delay
         #Vote;                    // Vote on proposals, refresh voting power
@@ -872,6 +874,8 @@ module {
         public let ViewChores: Nat = BotkeyTypes.BasePermission.ViewChores;               // 2
         public let ViewLogs: Nat = BotkeyTypes.BasePermission.ViewLogs;                   // 3
         public let ManageLogs: Nat = BotkeyTypes.BasePermission.ManageLogs;               // 4
+        public let ManageEvents: Nat = BotkeyTypes.BasePermission.ManageEvents;           // 5
+        public let ViewEvents: Nat = BotkeyTypes.BasePermission.ViewEvents;               // 6
         // ICP Staking Bot permissions (range 100–199)
         public let ConfigureDissolveState: Nat = 100;
         public let Vote: Nat = 101;
@@ -901,6 +905,40 @@ module {
     // Info about a botkey principal and their permissions (for API responses)
     // Uses the generic base type from BotkeyTypes, specialized to our NeuronPermissionType.
     public type HotkeyPermissionInfo = BotkeyTypes.BotkeyPermissionInfo<NeuronPermissionType>;
+
+    /// Staking bot event type IDs (range 100–199).
+    public module StakingEvent {
+        public let NeuronStaked: Nat          = 100;
+        public let NeuronDisbursed: Nat       = 101;
+        public let NeuronSplit: Nat           = 102;
+        public let NeuronsMerged: Nat         = 103;
+        public let DissolvingStarted: Nat     = 110;
+        public let DissolvingStopped: Nat     = 111;
+        public let DissolveDelayChanged: Nat  = 112;
+        public let MaturityCollected: Nat     = 120;
+        public let MaturityStaked: Nat        = 121;
+        public let MaturitySpawned: Nat       = 122;
+        public let MaturityMerged: Nat        = 123;
+        public let StakeRefreshed: Nat        = 130;
+        public let StakeIncreased: Nat        = 131;
+        public let VoteCast: Nat              = 140;
+        public let FolloweesConfirmed: Nat    = 141;
+        public let HotKeyAdded: Nat           = 150;
+        public let HotKeyRemoved: Nat         = 151;
+        public let IcpWithdrawn: Nat          = 160;
+        public let TokenWithdrawn: Nat        = 161;
+    };
+
+    /// Staking bot reaction action IDs (range 100–199).
+    public module StakingAction {
+        public let StartDissolving: Nat   = 100;
+        public let StopDissolving: Nat    = 101;
+        public let DisburseNeuron: Nat    = 102;
+        public let StakeMaturity: Nat     = 103;
+        public let DisburseMaturity: Nat  = 104;
+        public let RefreshStake: Nat      = 105;
+        public let IncreaseStake: Nat     = 106;
+    };
 
     public let CURRENT_VERSION: Version = {
         major = 0;

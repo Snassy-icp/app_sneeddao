@@ -496,6 +496,8 @@ module {
         #ViewChores;                // 2: View chore statuses
         #ViewLogs;                  // 3: Read log entries
         #ManageLogs;                // 4: Set log level, clear logs
+        #ManageEvents;              // 5: Manage event listeners, subscriptions, reaction rules
+        #ViewEvents;                // 6: View event configuration and logs
         // --- Trading Bot permissions (IDs 200+) ---
         #ViewPortfolio;             // 200: View balances, portfolio state
         #ManageTrades;              // 202: Configure trade chore actions
@@ -523,6 +525,8 @@ module {
         public let ViewChores: Nat = BotkeyTypes.BasePermission.ViewChores;               // 2
         public let ViewLogs: Nat = BotkeyTypes.BasePermission.ViewLogs;                   // 3
         public let ManageLogs: Nat = BotkeyTypes.BasePermission.ManageLogs;               // 4
+        public let ManageEvents: Nat = BotkeyTypes.BasePermission.ManageEvents;           // 5
+        public let ViewEvents: Nat = BotkeyTypes.BasePermission.ViewEvents;               // 6
         // Trading Bot permissions (range 200–299)
         public let ViewPortfolio: Nat = 200;
         public let ManageTrades: Nat = 202;
@@ -538,6 +542,45 @@ module {
         public let ManageSnapshotChore: Nat = 212;
         public let ManageCircuitBreaker: Nat = 213;
         public let ManagePurses: Nat = 214;
+    };
+
+    /// Trading bot event type IDs (range 200–299).
+    /// Stored as Nat, never as enums in stable vars.
+    public module TradingEvent {
+        public let TradeExecuted: Nat            = 200;
+        public let TradeSkipped: Nat             = 201;
+        public let TradeFailed: Nat              = 202;
+        public let CircuitBreakerTriggered: Nat  = 210;
+        public let CircuitBreakerEnabled: Nat    = 211;
+        public let CircuitBreakerDisabled: Nat   = 212;
+        public let TokenPaused: Nat              = 220;
+        public let TokenUnpaused: Nat            = 221;
+        public let TokenFrozen: Nat              = 222;
+        public let TokenUnfrozen: Nat            = 223;
+        public let RebalanceExecuted: Nat        = 230;
+        public let RebalanceSkipped: Nat         = 231;
+        public let PurseFunded: Nat              = 240;
+        public let PurseReclaimed: Nat           = 241;
+        public let SendExecuted: Nat             = 242;
+        public let SendFailed: Nat               = 243;
+        public let InflowDetected: Nat           = 250;
+        public let OutflowDetected: Nat          = 251;
+        public let OvercommitDetected: Nat       = 252;
+        public let SnapshotTaken: Nat            = 260;
+        public let CumulativeLimitReached: Nat   = 270;
+    };
+
+    /// Trading bot reaction action IDs (range 200–299).
+    public module TradingAction {
+        public let PauseTokenGlobally: Nat    = 200;
+        public let FreezeTokenGlobally: Nat   = 201;
+        public let UnpauseToken: Nat          = 202;
+        public let UnfreezeToken: Nat         = 203;
+        public let EnableCircuitBreakers: Nat = 204;
+        public let DisableCircuitBreakers: Nat = 205;
+        public let FundPurse: Nat             = 206;
+        public let ReclaimFromPurse: Nat      = 207;
+        public let ManualSend: Nat            = 208;
     };
 
     /// Info about a botkey principal and their permissions (for API responses).

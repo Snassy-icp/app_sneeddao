@@ -19,6 +19,8 @@ import BotChoreEngine "../BotChoreEngine";
 import BotLogTypes "../BotLogTypes";
 import BotLogEngine "../BotLogEngine";
 import DistributionTypes "../DistributionTypes";
+import BotEventTypes "../BotEventTypes";
+import BotEventEngine "../BotEventEngine";
 
 /// Sneed Trading Bot — autonomous token trading canister.
 ///
@@ -153,6 +155,23 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     // Cross-chore purse sharing: maps instanceId → purseId of another chore to trade from
     var choreTradingPurseId: [(Text, Text)] = [];
+
+    // Event System — Source side (who is listening to this bot)
+    var eventListenerRegistrations: [BotEventTypes.EventListenerRegistration] = [];
+    var eventListenerNextId: Nat = 1;
+    var eventEmissionEnabled: Bool = true;
+    var eventLog: [BotEventTypes.BotEvent] = [];
+    var eventLogNextId: Nat = 0;
+    var eventLogMaxEntries: Nat = 500;
+
+    // Event System — Listener side (what events from other bots we react to)
+    var eventSubscriptions: [BotEventTypes.EventSubscription] = [];
+    var eventSubscriptionNextId: Nat = 1;
+    var eventReactionRules: [BotEventTypes.EventReactionRule] = [];
+    var eventReactionNextId: Nat = 1;
+    var eventReactionLog: [BotEventTypes.EventReactionLogEntry] = [];
+    var eventReactionLogNextId: Nat = 0;
+    var eventReactionLogMaxEntries: Nat = 500;
 
     // ============================================
     // TRANSIENT CACHES (cleared on canister upgrade)
@@ -289,6 +308,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         (2,   #ViewChores),
         (3,   #ViewLogs),
         (4,   #ManageLogs),
+        (5,   #ManageEvents),
+        (6,   #ViewEvents),
         // Trading Bot permissions (200–299)
         (200, #ViewPortfolio),
         (202, #ManageTrades),
@@ -313,6 +334,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (#ViewChores) { 2 };
             case (#ViewLogs) { 3 };
             case (#ManageLogs) { 4 };
+            case (#ManageEvents) { 5 };
+            case (#ViewEvents) { 6 };
             case (#ViewPortfolio) { 200 };
             case (#ManageTrades) { 202 };
             case (#ManageRebalancer) { 203 };
@@ -337,6 +360,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (2)   { ?#ViewChores };
             case (3)   { ?#ViewLogs };
             case (4)   { ?#ManageLogs };
+            case (5)   { ?#ManageEvents };
+            case (6)   { ?#ViewEvents };
             case (200) { ?#ViewPortfolio };
             case (202) { ?#ManageTrades };
             case (203) { ?#ManageRebalancer };
@@ -418,6 +443,177 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 case (#Warning) { logEngine.logWarning(source, message, null, tags) };
                 case (#Error) { logEngine.logError(source, message, null, tags) };
             };
+        });
+    });
+
+    // ============================================
+    // INTER-BOT EVENT SYSTEM
+    // ============================================
+
+    // Trading bot event permission map: event type ID → required Botkey permission ID
+    transient let TRADING_EVENT_PERM_MAP: BotEventTypes.EventPermissionMap = [
+        // Shared base events → ViewChores (2)
+        (BotEventTypes.BaseEvent.ChoreStarted, 2),
+        (BotEventTypes.BaseEvent.ChoreStopped, 2),
+        (BotEventTypes.BaseEvent.ChorePaused, 2),
+        (BotEventTypes.BaseEvent.ChoreResumed, 2),
+        (BotEventTypes.BaseEvent.ChoreRunCompleted, 2),
+        (BotEventTypes.BaseEvent.ChoreRunFailed, 2),
+        (BotEventTypes.BaseEvent.ChoreHalted, 2),
+        (BotEventTypes.BaseEvent.DistributionExecuted, 2),
+        (BotEventTypes.BaseEvent.DistributionFailed, 2),
+        // Trading bot events → ViewPortfolio (200)
+        (T.TradingEvent.TradeExecuted, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.TradeSkipped, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.TradeFailed, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.CircuitBreakerTriggered, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.CircuitBreakerEnabled, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.CircuitBreakerDisabled, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.TokenPaused, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.TokenUnpaused, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.TokenFrozen, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.TokenUnfrozen, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.RebalanceExecuted, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.RebalanceSkipped, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.PurseFunded, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.PurseReclaimed, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.SendExecuted, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.SendFailed, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.InflowDetected, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.OutflowDetected, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.OvercommitDetected, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.SnapshotTaken, T.TradingPermission.ViewPortfolio),
+        (T.TradingEvent.CumulativeLimitReached, T.TradingPermission.ViewPortfolio),
+    ];
+
+    // Trading bot reaction action executor
+    func tradingReactionExecutor(actionId: Nat, params: [(Text, Text)], event: BotEventTypes.BotEvent): async { #Ok; #Err: Text } {
+        let getParam = func(key: Text): ?Text {
+            for ((k, v) in params.vals()) { if (k == key) return ?v };
+            null
+        };
+
+        // Shared base actions (0-99)
+        if (actionId == BotEventTypes.BaseAction.StartChore) {
+            switch (getParam("choreId")) {
+                case (?cid) { choreEngine.start<system>(cid); #Ok };
+                case null { #Err("Missing choreId param") };
+            }
+        } else if (actionId == BotEventTypes.BaseAction.StopChore) {
+            switch (getParam("choreId")) {
+                case (?cid) { choreEngine.stop(cid); #Ok };
+                case null { #Err("Missing choreId param") };
+            }
+        } else if (actionId == BotEventTypes.BaseAction.PauseChore) {
+            switch (getParam("choreId")) {
+                case (?cid) { choreEngine.pause(cid); #Ok };
+                case null { #Err("Missing choreId param") };
+            }
+        } else if (actionId == BotEventTypes.BaseAction.ResumeChore) {
+            switch (getParam("choreId")) {
+                case (?cid) { choreEngine.resume<system>(cid); #Ok };
+                case null { #Err("Missing choreId param") };
+            }
+        } else if (actionId == BotEventTypes.BaseAction.TriggerChore) {
+            switch (getParam("choreId")) {
+                case (?cid) { choreEngine.trigger<system>(cid); #Ok };
+                case null { #Err("Missing choreId param") };
+            }
+        } else if (actionId == BotEventTypes.BaseAction.StopAllChores) {
+            choreEngine.stopAllChores();
+            #Ok
+        }
+        // Trading bot actions (200-299)
+        else if (actionId == T.TradingAction.PauseTokenGlobally) {
+            switch (getParam("token")) {
+                case (?t) {
+                    let token = Principal.fromText(t);
+                    switch (Array.find<Principal>(pausedTokens, func(p: Principal): Bool { Principal.equal(p, token) })) {
+                        case null { pausedTokens := Array.append(pausedTokens, [token]) };
+                        case _ {};
+                    };
+                    #Ok
+                };
+                case null { #Err("Missing token param") };
+            }
+        } else if (actionId == T.TradingAction.FreezeTokenGlobally) {
+            switch (getParam("token")) {
+                case (?t) {
+                    let token = Principal.fromText(t);
+                    switch (Array.find<Principal>(frozenTokens, func(p: Principal): Bool { Principal.equal(p, token) })) {
+                        case null { frozenTokens := Array.append(frozenTokens, [token]) };
+                        case _ {};
+                    };
+                    #Ok
+                };
+                case null { #Err("Missing token param") };
+            }
+        } else if (actionId == T.TradingAction.UnpauseToken) {
+            switch (getParam("token")) {
+                case (?t) {
+                    let token = Principal.fromText(t);
+                    pausedTokens := Array.filter<Principal>(pausedTokens, func(p) { not Principal.equal(p, token) });
+                    #Ok
+                };
+                case null { #Err("Missing token param") };
+            }
+        } else if (actionId == T.TradingAction.UnfreezeToken) {
+            switch (getParam("token")) {
+                case (?t) {
+                    let token = Principal.fromText(t);
+                    frozenTokens := Array.filter<Principal>(frozenTokens, func(p) { not Principal.equal(p, token) });
+                    #Ok
+                };
+                case null { #Err("Missing token param") };
+            }
+        } else if (actionId == T.TradingAction.EnableCircuitBreakers) {
+            circuitBreakerEnabled := true;
+            #Ok
+        } else if (actionId == T.TradingAction.DisableCircuitBreakers) {
+            circuitBreakerEnabled := false;
+            #Ok
+        } else {
+            #Err("Unknown action ID: " # Nat.toText(actionId))
+        }
+    };
+
+    transient let eventEngine = BotEventEngine.Engine({
+        sourceState = {
+            getListeners = func(): [BotEventTypes.EventListenerRegistration] { eventListenerRegistrations };
+            setListeners = func(l: [BotEventTypes.EventListenerRegistration]): () { eventListenerRegistrations := l };
+            getNextListenerId = func(): Nat { eventListenerNextId };
+            setNextListenerId = func(n: Nat): () { eventListenerNextId := n };
+            getEmissionEnabled = func(): Bool { eventEmissionEnabled };
+            setEmissionEnabled = func(b: Bool): () { eventEmissionEnabled := b };
+            getEventLog = func(): [BotEventTypes.BotEvent] { eventLog };
+            setEventLog = func(l: [BotEventTypes.BotEvent]): () { eventLog := l };
+            getEventLogNextId = func(): Nat { eventLogNextId };
+            setEventLogNextId = func(n: Nat): () { eventLogNextId := n };
+            getEventLogMaxEntries = func(): Nat { eventLogMaxEntries };
+        };
+        listenerState = {
+            getSubscriptions = func(): [BotEventTypes.EventSubscription] { eventSubscriptions };
+            setSubscriptions = func(s: [BotEventTypes.EventSubscription]): () { eventSubscriptions := s };
+            getNextSubscriptionId = func(): Nat { eventSubscriptionNextId };
+            setNextSubscriptionId = func(n: Nat): () { eventSubscriptionNextId := n };
+            getReactions = func(): [BotEventTypes.EventReactionRule] { eventReactionRules };
+            setReactions = func(r: [BotEventTypes.EventReactionRule]): () { eventReactionRules := r };
+            getNextReactionId = func(): Nat { eventReactionNextId };
+            setNextReactionId = func(n: Nat): () { eventReactionNextId := n };
+            getReactionLog = func(): [BotEventTypes.EventReactionLogEntry] { eventReactionLog };
+            setReactionLog = func(l: [BotEventTypes.EventReactionLogEntry]): () { eventReactionLog := l };
+            getReactionLogNextId = func(): Nat { eventReactionLogNextId };
+            setReactionLogNextId = func(n: Nat): () { eventReactionLogNextId := n };
+            getReactionLogMaxEntries = func(): Nat { eventReactionLogMaxEntries };
+        };
+        permissionChecker = func(principal: Principal, permId: Nat): Bool {
+            callerHasPermission(principal, permId)
+        };
+        eventPermissionMap = TRADING_EVENT_PERM_MAP;
+        reactionExecutor = tradingReactionExecutor;
+        selfCanisterId = Principal.fromActor(this);
+        log = ?(func(level: Text, source: Text, message: Text, tags: [(Text, Text)]): () {
+            logEngine.logInfo(source, message, null, tags);
         });
     });
 
@@ -1295,7 +1491,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     /// Main circuit breaker evaluation — runs all enabled rules.
     /// Called from chore conductors before trade/rebalance execution.
-    func evaluateCircuitBreakerRules(choreId: Text): () {
+    func evaluateCircuitBreakerRules<system>(choreId: Text): () {
         if (not circuitBreakerEnabled) return;
 
         for (rule in circuitBreakerRules.vals()) {
@@ -1337,6 +1533,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     };
                     appendCBEvent(event);
                     logEngine.logWarning("circuit-breaker", "Rule '" # rule.name # "' triggered: " # Text.join(", ", actionDescs.vals()), null, []);
+                    eventEngine.emitEvent<system>(T.TradingEvent.CircuitBreakerTriggered, [
+                        ("ruleId", Nat.toText(rule.id)),
+                        ("ruleName", rule.name),
+                        ("actionsTaken", Text.join(", ", actionDescs.vals())),
+                    ]);
                 };
             };
         };
@@ -5594,7 +5795,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         if (circuitBreakerEnabled and circuitBreakerRules.size() > 0) {
                             let cbTaskKey = "trade-cb-check-" # instanceId;
                             let cbTaskFn = func(): async BotChoreTypes.TaskAction {
-                                evaluateCircuitBreakerRules(instanceId);
+                                evaluateCircuitBreakerRules<system>(instanceId);
                                 #Done
                             };
                             choreEngine.setPendingTask(instanceId, cbTaskKey, cbTaskFn);
@@ -5631,7 +5832,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             if (circuitBreakerEnabled and circuitBreakerRules.size() > 0) {
                                 let cbTaskKey = "trade-cb-check-" # instanceId;
                                 let cbTaskFn = func(): async BotChoreTypes.TaskAction {
-                                    evaluateCircuitBreakerRules(instanceId);
+                                    evaluateCircuitBreakerRules<system>(instanceId);
                                     #Done
                                 };
                                 choreEngine.setPendingTask(instanceId, cbTaskKey, cbTaskFn);
@@ -5648,7 +5849,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             if (circuitBreakerEnabled and circuitBreakerRules.size() > 0) {
                                 let cbTaskKey = "trade-cb-check-" # instanceId;
                                 let cbTaskFn = func(): async BotChoreTypes.TaskAction {
-                                    evaluateCircuitBreakerRules(instanceId);
+                                    evaluateCircuitBreakerRules<system>(instanceId);
                                     #Done
                                 };
                                 choreEngine.setPendingTask(instanceId, cbTaskKey, cbTaskFn);
@@ -5893,7 +6094,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             if (circuitBreakerEnabled and circuitBreakerRules.size() > 0) {
                                 let cbTaskKey = "rebal-cb-check-" # instanceId;
                                 let cbTaskFn = func(): async BotChoreTypes.TaskAction {
-                                    evaluateCircuitBreakerRules(instanceId);
+                                    evaluateCircuitBreakerRules<system>(instanceId);
                                     #Done
                                 };
                                 choreEngine.setPendingTask(instanceId, cbTaskKey, cbTaskFn);
@@ -6401,6 +6602,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         if (Array.find<Principal>(pausedTokens, func(t) { t == token }) == null) {
             pausedTokens := Array.append(pausedTokens, [token]);
             logEngine.logInfo("api", "Paused token: " # Principal.toText(token), ?msg.caller, []);
+            eventEngine.emitEvent<system>(T.TradingEvent.TokenPaused, [("token", Principal.toText(token))]);
         };
     };
 
@@ -6408,6 +6610,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         assertPermission(msg.caller, T.TradingPermission.ManageTokenRegistry);
         pausedTokens := Array.filter<Principal>(pausedTokens, func(t) { t != token });
         logEngine.logInfo("api", "Unpaused token: " # Principal.toText(token), ?msg.caller, []);
+        eventEngine.emitEvent<system>(T.TradingEvent.TokenUnpaused, [("token", Principal.toText(token))]);
     };
 
     public shared (msg) func freezeToken(token: Principal): async () {
@@ -6415,6 +6618,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         if (Array.find<Principal>(frozenTokens, func(t) { t == token }) == null) {
             frozenTokens := Array.append(frozenTokens, [token]);
             logEngine.logInfo("api", "Frozen token: " # Principal.toText(token), ?msg.caller, []);
+            eventEngine.emitEvent<system>(T.TradingEvent.TokenFrozen, [("token", Principal.toText(token))]);
         };
     };
 
@@ -6422,6 +6626,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         assertPermission(msg.caller, T.TradingPermission.ManageTokenRegistry);
         frozenTokens := Array.filter<Principal>(frozenTokens, func(t) { t != token });
         logEngine.logInfo("api", "Unfrozen token: " # Principal.toText(token), ?msg.caller, []);
+        eventEngine.emitEvent<system>(T.TradingEvent.TokenUnfrozen, [("token", Principal.toText(token))]);
     };
 
     // ============================================
@@ -7265,6 +7470,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         assertPermission(msg.caller, choreManagePermission(choreId));
         choreEngine.start<system>(choreId);
         logEngine.logInfo("api", "Started chore: " # choreId, ?msg.caller, []);
+        eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.ChoreStarted, [("choreId", choreId)]);
     };
 
     public shared (msg) func scheduleStartChore(choreId: Text, timestampNanos: Int): async () {
@@ -7277,18 +7483,21 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         assertPermission(msg.caller, choreManagePermission(choreId));
         choreEngine.pause(choreId);
         logEngine.logInfo("api", "Paused chore: " # choreId, ?msg.caller, []);
+        eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.ChorePaused, [("choreId", choreId)]);
     };
 
     public shared (msg) func resumeChore(choreId: Text): async () {
         assertPermission(msg.caller, choreManagePermission(choreId));
         choreEngine.resume<system>(choreId);
         logEngine.logInfo("api", "Resumed chore: " # choreId, ?msg.caller, []);
+        eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.ChoreResumed, [("choreId", choreId)]);
     };
 
     public shared (msg) func stopChore(choreId: Text): async () {
         assertPermission(msg.caller, choreManagePermission(choreId));
         choreEngine.stop(choreId);
         logEngine.logInfo("api", "Stopped chore: " # choreId, ?msg.caller, []);
+        eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.ChoreStopped, [("choreId", choreId)]);
     };
 
     public shared (msg) func stopAllChores(): async () {
@@ -7746,6 +7955,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         assertPermission(msg.caller, T.TradingPermission.ManageCircuitBreaker);
         circuitBreakerEnabled := enabled;
         logEngine.logInfo("api", "Circuit breaker " # (if (enabled) "enabled" else "disabled"), ?msg.caller, []);
+        eventEngine.emitEvent<system>(
+            if (enabled) T.TradingEvent.CircuitBreakerEnabled else T.TradingEvent.CircuitBreakerDisabled,
+            []
+        );
     };
 
     public shared query (msg) func getCircuitBreakerLog(q: T.CBLogQuery): async T.CBLogResult {
@@ -7985,6 +8198,115 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     public shared query (msg) func getResolvedPurseId(instanceId: Text): async ?Text {
         assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
         getEffectivePurseId(instanceId)
+    };
+
+    // ============================================
+    // EVENT SYSTEM — SOURCE SIDE API
+    // ============================================
+
+    public shared ({ caller }) func registerEventListener(req: BotEventTypes.RegisterListenerRequest): async { #Ok: Nat; #Err: Text } {
+        eventEngine.registerListener(caller, req)
+    };
+
+    public shared ({ caller }) func unregisterEventListener(listenerId: Nat): async () {
+        eventEngine.unregisterListener(caller, listenerId)
+    };
+
+    public shared query ({ caller }) func getEventListeners(): async [BotEventTypes.EventListenerRegistration] {
+        assertPermission(caller, T.TradingPermission.ViewEvents);
+        eventEngine.getListeners()
+    };
+
+    public shared ({ caller }) func setEventEmissionEnabled(enabled: Bool): async () {
+        assertPermission(caller, T.TradingPermission.ManageEvents);
+        eventEngine.setEmissionEnabled(enabled);
+    };
+
+    public shared query ({ caller }) func getEventLog(filter: BotEventTypes.EventLogQuery): async BotEventTypes.EventLogResult {
+        assertPermission(caller, T.TradingPermission.ViewEvents);
+        eventEngine.queryEventLog(filter)
+    };
+
+    public shared query ({ caller }) func getEventTypes(): async [(Nat, Text)] {
+        assertPermission(caller, T.TradingPermission.ViewEvents);
+        [
+            (0, "ChoreStarted"), (1, "ChoreStopped"), (2, "ChorePaused"), (3, "ChoreResumed"),
+            (4, "ChoreRunCompleted"), (5, "ChoreRunFailed"), (6, "ChoreHalted"),
+            (10, "DistributionExecuted"), (11, "DistributionFailed"),
+            (200, "TradeExecuted"), (201, "TradeSkipped"), (202, "TradeFailed"),
+            (210, "CircuitBreakerTriggered"), (211, "CircuitBreakerEnabled"), (212, "CircuitBreakerDisabled"),
+            (220, "TokenPaused"), (221, "TokenUnpaused"), (222, "TokenFrozen"), (223, "TokenUnfrozen"),
+            (230, "RebalanceExecuted"), (231, "RebalanceSkipped"),
+            (240, "PurseFunded"), (241, "PurseReclaimed"), (242, "SendExecuted"), (243, "SendFailed"),
+            (250, "InflowDetected"), (251, "OutflowDetected"), (252, "OvercommitDetected"),
+            (260, "SnapshotTaken"), (270, "CumulativeLimitReached"),
+        ]
+    };
+
+    // ============================================
+    // EVENT SYSTEM — LISTENER SIDE API
+    // ============================================
+
+    public shared ({ caller }) func addEventSubscription(sourceBotId: Principal, eventTypeIds: [Nat]): async { #Ok: Nat; #Err: Text } {
+        assertPermission(caller, T.TradingPermission.ManageEvents);
+        await eventEngine.addSubscription({ sourceBotCanisterId = sourceBotId; eventTypeIds = eventTypeIds })
+    };
+
+    public shared ({ caller }) func removeEventSubscription(id: Nat): async () {
+        assertPermission(caller, T.TradingPermission.ManageEvents);
+        await eventEngine.removeSubscription(id);
+    };
+
+    public shared query ({ caller }) func getEventSubscriptions(): async [BotEventTypes.EventSubscription] {
+        assertPermission(caller, T.TradingPermission.ViewEvents);
+        eventEngine.getSubscriptions()
+    };
+
+    public shared ({ caller }) func addEventReaction(input: BotEventTypes.EventReactionRuleInput): async Nat {
+        assertPermission(caller, T.TradingPermission.ManageEvents);
+        switch (eventEngine.addReaction(input)) {
+            case (#Ok(id)) { id };
+            case (#Err(msg)) { Debug.trap(msg) };
+        }
+    };
+
+    public shared ({ caller }) func updateEventReaction(id: Nat, input: BotEventTypes.EventReactionRuleInput): async () {
+        assertPermission(caller, T.TradingPermission.ManageEvents);
+        switch (eventEngine.updateReaction(id, input)) {
+            case (#Ok) {};
+            case (#Err(msg)) { Debug.trap(msg) };
+        }
+    };
+
+    public shared ({ caller }) func removeEventReaction(id: Nat): async () {
+        assertPermission(caller, T.TradingPermission.ManageEvents);
+        eventEngine.removeReaction(id);
+    };
+
+    public shared query ({ caller }) func getEventReactions(): async [BotEventTypes.EventReactionRule] {
+        assertPermission(caller, T.TradingPermission.ViewEvents);
+        eventEngine.getReactions()
+    };
+
+    public shared query ({ caller }) func getEventReactionLog(filter: BotEventTypes.EventReactionLogQuery): async BotEventTypes.EventReactionLogResult {
+        assertPermission(caller, T.TradingPermission.ViewEvents);
+        eventEngine.queryReactionLog(filter)
+    };
+
+    public shared query ({ caller }) func getAvailableReactionActions(): async [(Nat, Text)] {
+        assertPermission(caller, T.TradingPermission.ViewEvents);
+        [
+            (0, "StartChore"), (1, "StopChore"), (2, "PauseChore"), (3, "ResumeChore"),
+            (4, "TriggerChore"), (5, "StopAllChores"),
+            (200, "PauseTokenGlobally"), (201, "FreezeTokenGlobally"),
+            (202, "UnpauseToken"), (203, "UnfreezeToken"),
+            (204, "EnableCircuitBreakers"), (205, "DisableCircuitBreakers"),
+            (206, "FundPurse"), (207, "ReclaimFromPurse"), (208, "ManualSend"),
+        ]
+    };
+
+    public shared ({ caller }) func onBotEvent(event: BotEventTypes.BotEvent): async { #Ok; #Err: Text } {
+        await eventEngine.handleIncomingEvent(caller, event)
     };
 
 };
