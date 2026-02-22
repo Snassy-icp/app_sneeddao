@@ -263,7 +263,7 @@ An automated safety system that can pause or stop bot activities when configurab
 - Top-level operator per rule: AND (all conditions must be true) or OR (any condition triggers)
 - **Condition types**:
   - **Price**: monitor a token pair's spot price
-  - **Value**: monitor the total value of tokens (specific token, all tokens in a rebalancer, or all tokens in an account)
+  - **Value**: monitor the total value of tokens (specific token, all tokens in a chore's purse, or all tokens in an account)
   - **Balance**: monitor a specific token's balance in a specific purse or the main account
   - **AND/OR groups**: nested logical groups of conditions for complex expressions
 

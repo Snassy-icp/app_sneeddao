@@ -1052,11 +1052,21 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         case null {};
                     };
                 };
-                case (1) { // RebalChoreTokens
+                case (1) { // AllTokensInPurse
                     switch (src.choreInstanceId) {
                         case (?cid) {
-                            let targets = getRebalTargets(cid);
-                            for (t in targets.vals()) { addUnique(t.token, ?cid) };
+                            for ((pid, entries) in chorePurseBalances.vals()) {
+                                if (pid == cid) {
+                                    for ((key, bal) in entries.vals()) {
+                                        if (bal > 0) {
+                                            switch (parseBalanceKey(key)) {
+                                                case (?tok) { addUnique(tok, ?cid) };
+                                                case null {};
+                                            };
+                                        };
+                                    };
+                                };
+                            };
                         };
                         case null {};
                     };
@@ -1341,10 +1351,21 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 for (src in cond.valueSources.vals()) {
                     switch (src.sourceType) {
                         case (0) { switch (src.token) { case (?t) addUnique(t); case null {} } };
-                        case (1) {
+                        case (1) { // AllTokensInPurse
                             switch (src.choreInstanceId) {
                                 case (?cid) {
-                                    for (tgt in getRebalTargets(cid).vals()) { addUnique(tgt.token) };
+                                    for ((pid, entries) in chorePurseBalances.vals()) {
+                                        if (pid == cid) {
+                                            for ((key, bal) in entries.vals()) {
+                                                if (bal > 0) {
+                                                    switch (parseBalanceKey(key)) {
+                                                        case (?tok) { addUnique(tok) };
+                                                        case null {};
+                                                    };
+                                                };
+                                            };
+                                        };
+                                    };
                                 };
                                 case null {};
                             };
@@ -1451,15 +1472,29 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         for (src in cond.valueSources.vals()) {
             switch (src.sourceType) {
                 case (0) { switch (src.token) { case (?t) addUnique(t); case null {} } };
-                case (1) {
+                case (1) { // AllTokensInPurse
                     switch (src.choreInstanceId) {
-                        case (?cid) { for (tgt in getRebalTargets(cid).vals()) { addUnique(tgt.token) } };
+                        case (?cid) {
+                            for ((pid, entries) in chorePurseBalances.vals()) {
+                                if (pid == cid) {
+                                    for ((key, bal) in entries.vals()) {
+                                        if (bal > 0) {
+                                            switch (parseBalanceKey(key)) {
+                                                case (?tok) { addUnique(tok) };
+                                                case null {};
+                                            };
+                                        };
+                                    };
+                                };
+                            };
+                        };
                         case null {};
                     };
                 };
                 case (2) { for (e in tokenRegistry.vals()) { addUnique(e.ledgerCanisterId) } };
                 case _ {};
             };
+
         };
         Buffer.toArray(buf)
     };

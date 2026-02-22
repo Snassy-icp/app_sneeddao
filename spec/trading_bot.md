@@ -110,7 +110,7 @@ The circuit breaker is an automated safety system that can pause or stop bot act
 - **Conditions**: Three types — Price (token pair), Value (sum of multiple sources), Balance (specific token in account/purse).
 - **Operators**: Greater than, Less than, Inside range, Outside range, Percentage change.
 - **Percentage Change**: Compares current value against historical data from a specified lookback period. Supports up/down/either direction.
-- **Value Sources**: Specific token in account, all tokens in a rebalancing chore, all tokens in an account. Multiple sources are de-duplicated by token and summed.
+- **Value Sources**: Specific token in account, all tokens in a chore's purse, all tokens in an account. Multiple sources are de-duplicated by token and summed.
 - **Balance Sources**: Purse-aware. Can reference:
   - **Full on-chain balance** of the main account (actual ICRC-1 balance).
   - **Main purse balance** (on-chain minus all chore purse allocations).
@@ -136,7 +136,7 @@ If any rule triggers, the current chore run is aborted (returns `#Done`), and th
 // Condition types: 0=price, 1=value, 2=balance
 // Operators: 0=greaterThan, 1=lessThan, 2=insideRange, 3=outsideRange, 4=percentChange
 // Change directions: 0=up, 1=down, 2=either
-// Value source types: 0=specificToken, 1=rebalChoreTokens, 2=allTokensInAccount
+// Value source types: 0=specificToken, 1=allTokensInPurse, 2=allTokensInAccount
 // Action types: 0=pauseTokenInRebalChore, 1=pauseTokenGlobally, 2=freezeTokenGlobally,
 //   3=stopChore, 4=pauseChore, 5=stopAllChoresByType, 6=pauseAllChoresByType,
 //   7=stopAllChores, 8=pauseAllChores, 9=startChore, 10=startAllChoresByType,

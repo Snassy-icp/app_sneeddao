@@ -893,7 +893,7 @@ module {
 
     /// Source of value for a value condition (type 1).
     public type CBValueSource = {
-        sourceType: Nat;        // 0=specificToken, 1=rebalChoreTokens, 2=allTokensInAccount
+        sourceType: Nat;        // 0=specificToken, 1=allTokensInPurse, 2=allTokensInAccount
         token: ?Principal;      // for type 0
         choreInstanceId: ?Text; // for types 0, 1, 2
     };

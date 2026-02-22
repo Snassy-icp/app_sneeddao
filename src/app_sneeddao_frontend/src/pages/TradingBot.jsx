@@ -5836,7 +5836,7 @@ const CB_CHANGE_DIRS = [
 ];
 const CB_VALUE_SRC_TYPES = [
     { value: 0, label: 'Specific token' },
-    { value: 1, label: 'All tokens in rebalance portfolio' },
+    { value: 1, label: 'All tokens in purse' },
     { value: 2, label: 'All tokens in account' },
 ];
 const CB_ACTION_TYPES = [
@@ -6239,8 +6239,8 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                 return <span key={i}>{sep}{tkn(tok)}{' in '}{acctLabel(cid)}</span>;
             }
             if (st === 1) {
-                const cid = vs.choreInstanceId?.[0] || vs.choreInstanceId;
-                return <span key={i}>{sep}{kw('portfolio', theme.colors.secondaryText)} {val(`"${choreInstanceLabel(cid)}"`)}</span>;
+                const cid = vs.choreInstanceId?.[0] || vs.choreInstanceId || '';
+                return <span key={i}>{sep}{kw('all tokens in', theme.colors.secondaryText)} {acctLabel(cid)}</span>;
             }
             if (st === 2) {
                 const cid = vs.choreInstanceId?.[0] || vs.choreInstanceId || '';
@@ -6502,9 +6502,8 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                                 {vs.sourceType === 1 && (
                                     <select value={vs.choreInstanceId} onChange={e => update({ valueSources: cond.valueSources.map((s, j) => j === vi ? { ...s, choreInstanceId: e.target.value } : s) })}
                                         style={sel({ minWidth: '180px', fontSize: '0.8rem' })}>
-                                        <option value="">Select portfolio...</option>
-                                        {choreInstances.filter(([, info]) => info.typeId === 'rebalance').map(([id, info]) => (
-                                            <option key={id} value={id}>{choreOptionLabel(id, info)}</option>))}
+                                        <option value="">Select purse...</option>
+                                        {accountOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                                     </select>
                                 )}
                                 {vs.sourceType === 2 && (
