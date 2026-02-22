@@ -7709,6 +7709,8 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
     const [withdrawAmount, setWithdrawAmount] = useState('');
     const [purseSaving, setPurseSaving] = useState(false);
     const [reclaimingAll, setReclaimingAll] = useState(false);
+    const [fundSourceBalance, setFundSourceBalance] = useState(null);
+    const [fundBalanceLoading, setFundBalanceLoading] = useState(false);
 
     // Token registration
     const [addTokenValue, setAddTokenValue] = useState('');
@@ -8346,6 +8348,28 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
         }, 600);
     }, [getReadyBotActor]);
 
+    useEffect(() => {
+        if (!fundToken || fundSource !== 'wallet') { setFundSourceBalance(null); setFundBalanceLoading(false); return; }
+        if (!identity) { setFundSourceBalance(null); return; }
+        const tokId = typeof fundToken === 'string' ? fundToken : fundToken?.toText?.() || '';
+        let cancelled = false;
+        setFundBalanceLoading(true);
+        (async () => {
+            try {
+                const { HttpAgent } = await import('@dfinity/agent');
+                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
+                const agent = HttpAgent.createSync({ identity, host });
+                if (isLocal) await agent.fetchRootKey();
+                const ledger = createLedgerActor(tokId, { agent });
+                const bal = BigInt(await ledger.icrc1_balance_of({ owner: identity.getPrincipal(), subaccount: [] }));
+                if (!cancelled) setFundSourceBalance(bal);
+            } catch { if (!cancelled) setFundSourceBalance(null); }
+            finally { if (!cancelled) setFundBalanceLoading(false); }
+        })();
+        return () => { cancelled = true; };
+    }, [fundToken, fundSource, identity]);
+
     if (loading) return <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText, padding: '16px 0' }}>Loading wallet data...</div>;
 
     return (
@@ -8882,9 +8906,9 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                                     </button>
                                 </div>
 
-                                {isFunding && (
+                                {isFunding && (<>
                                     <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                        <select value={fundSource} onChange={e => { setFundSource(e.target.value); setFundToken(''); setFundAmount(''); }}
+                                        <select value={fundSource} onChange={e => { setFundSource(e.target.value); setFundToken(''); setFundAmount(''); setFundSourceBalance(null); }}
                                             style={{ ...inputStyle, width: 'auto', padding: '3px 6px', fontSize: '0.72rem' }}>
                                             <option value="main">Main Purse</option>
                                             <option value="wallet">My Wallet</option>
@@ -8893,7 +8917,11 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                                             <TokenSelector
                                                 value={fundToken}
                                                 onChange={v => { setFundToken(v); setFundAmount(''); }}
-                                                tokenSubset={(fundSource === 'wallet' ? allRegTokenIds : mainTokenIds).map(id => ({ ledger_id: id, symbol: tokLabel(id), name: tokLabel(id) }))}
+                                                onSelectToken={cacheTokenMeta}
+                                                {...(fundSource === 'wallet'
+                                                    ? {}
+                                                    : { tokenSubset: mainTokenIds.map(id => ({ ledger_id: id, symbol: tokLabel(id), name: tokLabel(id) })) }
+                                                )}
                                                 placeholder="Token..."
                                             />
                                         </div>
@@ -8905,7 +8933,28 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                                             {purseSaving ? 'Funding...' : 'Fund'}
                                         </button>
                                     </div>
-                                )}
+                                    {fundToken && (() => {
+                                        const displayBal = fundSource === 'wallet' ? fundSourceBalance : (() => {
+                                            const tid = typeof fundToken === 'string' ? fundToken : fundToken?.toText?.() || '';
+                                            const e = mainPurseEntries.find(x => x.token === tid);
+                                            return e ? BigInt(e.balance) : 0n;
+                                        })();
+                                        const isLoading = fundSource === 'wallet' && fundBalanceLoading;
+                                        return (
+                                            <div style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, marginTop: '4px', paddingLeft: '2px' }}>
+                                                {isLoading ? 'Fetching balance...' : displayBal != null ? (
+                                                    <span>
+                                                        {fundSource === 'wallet' ? 'Wallet' : 'Main purse'} balance:{' '}
+                                                        <span style={{ fontFamily: 'monospace', color: theme.colors.primaryText, fontWeight: 500 }}>
+                                                            {fmtBal(displayBal, tokDecimals(fundToken))}
+                                                        </span>
+                                                        {' '}{tokLabel(fundToken)}
+                                                    </span>
+                                                ) : null}
+                                            </div>
+                                        );
+                                    })()}
+                                </>)}
 
                                 {isReclaiming && (
                                     <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
@@ -8976,6 +9025,8 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
+    const [fundSourceBalance, setFundSourceBalance] = useState(null);
+    const [fundBalanceLoading, setFundBalanceLoading] = useState(false);
     // Cross-chore purse sharing
     const [tradingPurseId, setTradingPurseIdState] = useState(null);
     const [otherPurseChores, setOtherPurseChores] = useState([]);
@@ -9285,6 +9336,28 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
         }
     };
 
+    useEffect(() => {
+        if (!fundToken || fundSource !== 'wallet') { setFundSourceBalance(null); setFundBalanceLoading(false); return; }
+        if (!identity) { setFundSourceBalance(null); return; }
+        const tokId = typeof fundToken === 'string' ? fundToken : fundToken?.toText?.() || '';
+        let cancelled = false;
+        setFundBalanceLoading(true);
+        (async () => {
+            try {
+                const { HttpAgent } = await import('@dfinity/agent');
+                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
+                const agent = HttpAgent.createSync({ identity, host });
+                if (isLocal) await agent.fetchRootKey();
+                const ledger = createLedgerActor(tokId, { agent });
+                const bal = BigInt(await ledger.icrc1_balance_of({ owner: identity.getPrincipal(), subaccount: [] }));
+                if (!cancelled) setFundSourceBalance(bal);
+            } catch { if (!cancelled) setFundSourceBalance(null); }
+            finally { if (!cancelled) setFundBalanceLoading(false); }
+        })();
+        return () => { cancelled = true; };
+    }, [fundToken, fundSource, identity]);
+
     if (loading) return <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, padding: '8px 0' }}>Loading purse...</div>;
 
     // Gather all tokens from main purse for fund dropdown
@@ -9425,9 +9498,9 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
                     )}
 
                     {/* Fund */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: fundToken ? '4px' : '8px', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText, fontWeight: 500 }}>Fund from:</span>
-                        <select value={fundSource} onChange={e => { setFundSource(e.target.value); setFundToken(''); setFundAmount(''); }} style={inp({ width: 'auto', padding: '4px 8px', fontSize: '0.76rem' })}>
+                        <select value={fundSource} onChange={e => { setFundSource(e.target.value); setFundToken(''); setFundAmount(''); setFundSourceBalance(null); }} style={inp({ width: 'auto', padding: '4px 8px', fontSize: '0.76rem' })}>
                             <option value="main">Main Purse</option>
                             <option value="wallet">My Wallet</option>
                         </select>
@@ -9435,7 +9508,11 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
                             <TokenSelector
                                 value={fundToken}
                                 onChange={v => { setFundToken(v); setFundAmount(''); }}
-                                tokenSubset={(fundSource === 'wallet' ? registeredTokenIds : mainTokenIds).map(id => ({ ledger_id: id, symbol: tokLabel(id), name: tokLabel(id) }))}
+                                onSelectToken={cacheTokenMeta}
+                                {...(fundSource === 'wallet'
+                                    ? {}
+                                    : { tokenSubset: mainTokenIds.map(id => ({ ledger_id: id, symbol: tokLabel(id), name: tokLabel(id) })) }
+                                )}
                                 placeholder="Token..."
                             />
                         </div>
@@ -9445,6 +9522,30 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
                             {saving ? '...' : <><FaArrowDown size={10} /> Fund</>}
                         </button>
                     </div>
+                    {fundToken && (() => {
+                        const displayBal = fundSource === 'wallet' ? fundSourceBalance : (() => {
+                            const tid = typeof fundToken === 'string' ? fundToken : fundToken?.toText?.() || '';
+                            const e = mainPurseBalances.find(b => {
+                                const p = typeof b.token === 'string' ? b.token : b.token?.toText?.() || '';
+                                return p === tid;
+                            });
+                            return e ? BigInt(e.balance) : 0n;
+                        })();
+                        const isLoading = fundSource === 'wallet' && fundBalanceLoading;
+                        return (
+                            <div style={{ fontSize: '0.72rem', color: theme.colors.secondaryText, marginBottom: '8px', paddingLeft: '2px' }}>
+                                {isLoading ? 'Fetching balance...' : displayBal != null ? (
+                                    <span>
+                                        {fundSource === 'wallet' ? 'Wallet' : 'Main purse'} balance:{' '}
+                                        <span style={{ fontFamily: 'monospace', color: theme.colors.primaryText, fontWeight: 500 }}>
+                                            {fmtBal(displayBal, tokDecimals(fundToken))}
+                                        </span>
+                                        {' '}{tokLabel(fundToken)}
+                                    </span>
+                                ) : null}
+                            </div>
+                        );
+                    })()}
 
                     {/* Reclaim to main purse */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>

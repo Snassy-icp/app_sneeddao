@@ -428,6 +428,32 @@ function HelpTradingBot() {
                         </p>
                     </div>
 
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaExchangeAlt size={14} color="#f59e0b" />
+                            Cross-Chore Purse Sharing
+                        </h4>
+                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>
+                            A chore can be configured to trade from <strong style={styles.strong}>another chore's purse</strong> instead of
+                            its own or the main purse. This enables multi-strategy compositions where multiple chores operate on the
+                            same pool of funds.
+                        </p>
+                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>
+                            <strong style={styles.strong}>Example:</strong> Pair a range-trader (runs every 60 min, has its own funded purse)
+                            with a stop-loss chore (runs every 10 min, trading from the range-trader's purse). The stop-loss monitors
+                            the same funds and can sell if the price drops — no need to split funds between the two chores.
+                        </p>
+                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>
+                            Set the override in the <strong style={styles.strong}>Purse</strong> tab of any chore using the
+                            "Trade from" dropdown. Select another chore's purse, and all trades by this chore will read from
+                            and write to that purse.
+                        </p>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}><strong style={styles.strong}>Purse Lock:</strong> If two chores share a purse and both try to trade at the same time, a lock ensures only one executes — the other skips and retries next cycle. Locks auto-expire after 5 minutes.</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Safety:</strong> The target purse must be enabled. You can't disable a purse while another chore references it. Deleting a chore clears all references to its purse.</li>
+                        </ul>
+                    </div>
+
                     <div style={styles.warningBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0, fontSize: '0.85rem' }}>
                             <strong style={styles.strong}>Overcommit Detection:</strong> If you allocate more to chore purses than the bot
