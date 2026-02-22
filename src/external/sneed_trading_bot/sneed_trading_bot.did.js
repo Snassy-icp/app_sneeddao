@@ -839,6 +839,12 @@ export const idlFactory = ({ IDL }) => {
         setTradingPurseId: IDL.Func([IDL.Text, IDL.Opt(IDL.Text)], [PurseResult], []),
         getTradingPurseId: IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], ['query']),
         getResolvedPurseId: IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], ['query']),
+
+        // Pool recovery
+        recoverPoolFunds: IDL.Func([IDL.Principal, IDL.Principal], [IDL.Variant({
+            Ok: IDL.Record({ recovered0: IDL.Nat, recovered1: IDL.Nat }),
+            Err: IDL.Text,
+        })], []),
     });
 };
 
