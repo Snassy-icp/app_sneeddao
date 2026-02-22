@@ -9394,12 +9394,44 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
 const DEX_NAMES = { 0: 'ICPSwap', 1: 'KongSwap' };
 const DEX_COLORS = { 0: '#3b82f6', 1: '#f59e0b' };
 
-function SwapProgressCard({ entry, isRunning, theme, accentColor, onDismiss }) {
+const SwapProgressCard = React.memo(function SwapProgressCard({ entry, isRunning, theme, accentColor, onDismiss, taskType, pending }) {
     const mountedRef = useRef(false);
     const isFirstRender = !mountedRef.current;
     useEffect(() => { mountedRef.current = true; }, []);
 
-    if (!entry && !isRunning) return null;
+    if (!entry && !isRunning && !pending) return null;
+
+    const isRebalancer = taskType === 'rebalance';
+
+    // When running/pending with no token info yet, show a compact status
+    if ((isRunning || pending) && !entry) {
+        return (
+            <div className={isFirstRender ? 'swap-card-enter' : undefined} style={{
+                marginTop: '8px', marginBottom: '6px', padding: '10px 14px',
+                background: `${accentColor}08`, border: `1px solid ${accentColor}30`,
+                borderRadius: '10px', position: 'relative',
+            }}>
+                {onDismiss && (
+                    <button onClick={onDismiss} style={{
+                        position: 'absolute', top: '6px', right: '8px', background: 'none',
+                        border: 'none', cursor: 'pointer', color: theme.colors.mutedText,
+                        fontSize: '0.85rem', padding: '2px 4px', lineHeight: 1,
+                    }} title="Dismiss">×</button>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className="swap-pulse" style={{
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        width: 20, height: 20, borderRadius: '50%',
+                        background: `${accentColor}20`, color: accentColor,
+                        fontSize: '0.75rem', fontWeight: '700',
+                    }}>⟳</span>
+                    <span style={{ fontSize: '0.78rem', fontWeight: '600', color: accentColor }}>
+                        {pending && !isRunning ? 'Loading result…' : isRebalancer ? 'Evaluating portfolio…' : 'Preparing swap…'}
+                    </span>
+                </div>
+            </div>
+        );
+    }
 
     const cardBorder = isRunning ? `${accentColor}50` : entry?.status === 'Success' ? '#22c55e40' : entry?.status === 'Failed' ? '#ef444440' : `${theme.colors.border}`;
     const cardGlow = isRunning ? `${accentColor}12` : entry?.status === 'Success' ? '#22c55e08' : entry?.status === 'Failed' ? '#ef444408' : theme.colors.cardBg;
@@ -9430,7 +9462,7 @@ function SwapProgressCard({ entry, isRunning, theme, accentColor, onDismiss }) {
     const priceStr = priceE8s != null ? (Number(priceE8s) / 1e8).toLocaleString(undefined, { maximumFractionDigits: 8 }) : null;
 
     const statusColor = isRunning ? accentColor : entry?.status === 'Success' ? '#22c55e' : entry?.status === 'Failed' ? '#ef4444' : '#f59e0b';
-    const statusLabel = isRunning ? 'Swapping...' : entry?.status || 'Unknown';
+    const statusLabel = isRunning ? (isRebalancer ? 'Rebalancing...' : 'Swapping...') : entry?.status || 'Unknown';
     const statusIcon = isRunning ? '⟳' : entry?.status === 'Success' ? '✓' : entry?.status === 'Failed' ? '✗' : '⊘';
 
     const isInfoSkip = isSkipped && !entry?.outputToken && (inAmt == null || Number(inAmt) === 0);
@@ -9574,7 +9606,23 @@ function SwapProgressCard({ entry, isRunning, theme, accentColor, onDismiss }) {
             )}
         </div>
     );
-}
+}, (prev, next) => {
+    if (prev.isRunning !== next.isRunning) return false;
+    if (prev.pending !== next.pending) return false;
+    if (prev.accentColor !== next.accentColor) return false;
+    if (prev.theme !== next.theme) return false;
+    if (prev.taskType !== next.taskType) return false;
+    if (prev.entry === next.entry) return true;
+    if (!prev.entry && !next.entry) return true;
+    if (!prev.entry || !next.entry) return false;
+    return prev.entry.status === next.entry.status
+        && prev.entry.inputAmount === next.entry.inputAmount
+        && prev.entry.outputAmount === next.entry.outputAmount
+        && prev.entry.inputSymbol === next.entry.inputSymbol
+        && prev.entry.outputSymbol === next.entry.outputSymbol
+        && prev.entry.errorMessage === next.entry.errorMessage
+        && prev.entry.isEstimate === next.entry.isEstimate;
+});
 
 // ============================================
 // Swap card renderer hook — detects swap tasks from run data and fetches trade log results
@@ -9623,7 +9671,12 @@ function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
                 });
                 const entries = result?.entries || [];
                 if (entries.length > 0) {
-                    setSwapResults(prev => ({ ...prev, [fetchKey]: parseTradeLogEntry(entries[0]) }));
+                    const parsed = parseTradeLogEntry(entries[0]);
+                    setSwapResults(prev => {
+                        const existing = prev[fetchKey];
+                        if (existing && existing.status === parsed.status && existing.inputAmount === parsed.inputAmount && existing.outputAmount === parsed.outputAmount) return prev;
+                        return { ...prev, [fetchKey]: parsed };
+                    });
                     if (pollTimerRef.current[fetchKey]) { clearTimeout(pollTimerRef.current[fetchKey]); delete pollTimerRef.current[fetchKey]; }
                 } else if (poll) {
                     fetchingRef.current.delete(fetchKey);
@@ -9658,7 +9711,10 @@ function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
                             maxAmount: a.maxAmount != null ? Number(a.maxAmount) : null,
                         };
                     }
-                    setActionCache(prev => ({ ...prev, [choreId]: map }));
+                    setActionCache(prev => {
+                        try { if (JSON.stringify(prev[choreId]) === JSON.stringify(map)) return prev; } catch {}
+                        return { ...prev, [choreId]: map };
+                    });
                 }
             } catch { /* silently ignore */ }
         })();
@@ -9681,7 +9737,6 @@ function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
         if (!activeKey) return null;
         if (dismissed.has(activeKey)) return null;
 
-        // Trigger async fetch for completed swap results (deferred to avoid render-time side effects)
         if (recentSwapTask) {
             const fetchKey = `${choreId}:${runStamp}:${recentSwapTask.taskId}`;
             if (!swapResults[fetchKey] && !fetchingRef.current.has(fetchKey)) {
@@ -9691,7 +9746,6 @@ function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
 
         let entry = swapResults[activeKey] || null;
 
-        // For running swaps, resolve token info + amounts from the action config
         if (isSwapRunning) {
             if (!actionCache[choreId]) {
                 setTimeout(() => triggerActionFetch(choreId), 0);
@@ -9724,19 +9778,24 @@ function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
                     }
                 }
             }
-            // Poll trade log during active swap to pick up result as soon as it's written
             const runningFetchKey = `${choreId}:${runStamp}:${currentTaskId}`;
             if (!swapResults[runningFetchKey]) {
                 setTimeout(() => triggerFetch(runningFetchKey, choreId, true), 0);
             }
         }
 
+        const resolvedTaskId = isSwapRunning ? currentTaskId : recentSwapTask?.taskId;
+        const taskType = resolvedTaskId?.startsWith('rebalance-') ? 'rebalance' : 'trade';
+        const isPending = !isSwapRunning && recentSwapTask && !entry;
+
         return (
             <SwapProgressCard
                 entry={entry}
                 isRunning={isSwapRunning}
+                pending={isPending}
                 theme={theme}
                 accentColor={accentColor}
+                taskType={taskType}
                 onDismiss={() => setDismissed(prev => new Set(prev).add(activeKey))}
             />
         );

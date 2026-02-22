@@ -605,7 +605,10 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                 const bot = await getReadyBotActor();
                 if (!bot) return;
                 const statuses = await bot.getChoreStatuses();
-                setChoreStatuses(statuses);
+                setChoreStatuses(prev => {
+                    try { if (JSON.stringify(prev) === JSON.stringify(statuses)) return prev; } catch {}
+                    return statuses;
+                });
                 // Stop polling when no chore is actively running
                 const anyActive = statuses.some(s => {
                     const cond = s.conductorStatus && Object.keys(s.conductorStatus)[0];
@@ -874,7 +877,10 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                         const bot = await getReadyBotActor();
                         if (bot) {
                             const statuses = await bot.getChoreStatuses();
-                            setChoreStatuses(statuses);
+                            setChoreStatuses(prev => {
+                                try { if (JSON.stringify(prev) === JSON.stringify(statuses)) return prev; } catch {}
+                                return statuses;
+                            });
                         }
                     } catch { /* Silently ignore */ }
                 }, 3000);
