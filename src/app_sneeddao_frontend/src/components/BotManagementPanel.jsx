@@ -35,8 +35,9 @@ import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/P
 import PrincipalInput from './PrincipalInput';
 import TokenSelector from './TokenSelector';
 import { getNeuronManagerSettings, getCyclesColor } from '../utils/NeuronManagerSettings';
-import { FaRobot, FaChevronUp, FaChevronDown, FaShieldAlt, FaGasPump, FaTrash } from 'react-icons/fa';
+import { FaRobot, FaChevronUp, FaChevronDown, FaShieldAlt, FaGasPump, FaTrash, FaStop } from 'react-icons/fa';
 import TokenIcon from './TokenIcon';
+import ConfirmDialog from './ConfirmDialog';
 import { getTokenMetadataSync, fetchAndCacheTokenMetadata } from '../hooks/useTokenCache';
 import StatusLamp, {
     LAMP_OFF, LAMP_OK, LAMP_ACTIVE, LAMP_WARN, LAMP_ERROR, LAMP_CB,
@@ -272,6 +273,8 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
     const [choreError, setChoreError] = useState('');
     const [choreSuccess, setChoreSuccess] = useState('');
     const [savingChore, setSavingChore] = useState(false);
+    const [stoppingAll, setStoppingAll] = useState(false);
+    const [showStopAllDialog, setShowStopAllDialog] = useState(false);
     const [choreActiveTab, setChoreActiveTab] = useState(null);
     const [choreActiveInstance, setChoreActiveInstance] = useState(null);
     const [choreTickNow, setChoreTickNow] = useState(Date.now());
@@ -624,6 +627,20 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
             if (chorePollingRef.current) clearInterval(chorePollingRef.current);
         };
     }, []);
+
+    const handleStopAllChores = useCallback(async () => {
+        setShowStopAllDialog(false);
+        setStoppingAll(true);
+        try {
+            const bot = await getReadyBotActor();
+            await bot.stopAllChores();
+            await loadChoreData(true);
+        } catch (e) {
+            console.error('Failed to stop all chores', e);
+        } finally {
+            setStoppingAll(false);
+        }
+    }, [getReadyBotActor, loadChoreData]);
 
     // Load log data
     const loadLogData = useCallback(async (filterOverride, silent) => {
@@ -1293,6 +1310,18 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
 
     return (
         <div style={{ marginBottom: '1.25rem' }}>
+            {/* Stop All Chores Confirmation */}
+            <ConfirmDialog
+                isOpen={showStopAllDialog}
+                onClose={() => setShowStopAllDialog(false)}
+                onConfirm={handleStopAllChores}
+                title="Stop All Chores"
+                message="This will stop all running chores and clear their schedules. You can restart them individually later."
+                type="warning"
+                confirmText="Stop All"
+                confirmVariant="danger"
+            />
+
             {/* Top-Up Success Dialog */}
             {topUpSuccessDialog && (
                 <div style={{
@@ -1367,6 +1396,26 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                     label={getSummaryLabel(getChoreSummaryLamp(chore, cbEvents), chore.choreName)} />
                             ))}
                             <span style={{ marginLeft: '2px' }}>Chores</span>
+                        </span>
+                    )}
+                    {choreStatuses.some(c => c.enabled) && (
+                        <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => { e.stopPropagation(); setShowStopAllDialog(true); }}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); setShowStopAllDialog(true); } }}
+                            style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                padding: '4px 10px', borderRadius: '8px',
+                                background: `${theme.colors.error || '#ef4444'}12`,
+                                color: theme.colors.error || '#ef4444',
+                                fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer',
+                                border: `1px solid ${theme.colors.error || '#ef4444'}30`,
+                                opacity: stoppingAll ? 0.5 : 1,
+                            }}
+                            title="Stop all running chores"
+                        >
+                            <FaStop size={8} /> {stoppingAll ? 'Stopping...' : 'Stop All'}
                         </span>
                     )}
                 </div>
