@@ -5230,6 +5230,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
     const [dailyPriceCandles, setDailyPriceCandles] = useState([]);
     const [selectedPurse, setSelectedPurse] = useState('__account__'); // '__account__' = whole account
     const [enabledPurses, setEnabledPurses] = useState([]); // purse IDs with enabled purses
+    const [purseAllocations, setPurseAllocations] = useState([]); // full allocation data per purse
     const [purseSnapshots, setPurseSnapshots] = useState([]);
     const [purseLoading, setPurseLoading] = useState(false);
 
@@ -5256,7 +5257,9 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
             setPriceHistory(history.entries);
             setDailyPortfolioSummaries(dailyPortfolio.entries || []);
             setDailyPriceCandles(dailyPrices.entries || []);
-            setEnabledPurses((purseAllocs || []).filter(p => p.enabled).map(p => p.instanceId));
+            const allocs = (purseAllocs || []).filter(p => p.enabled);
+            setEnabledPurses(allocs.map(p => p.instanceId));
+            setPurseAllocations(allocs);
         } catch (err) {
             setError('Failed to load performance data: ' + err.message);
         } finally {
@@ -5290,15 +5293,41 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
 
     const optVal = (arr) => (arr?.length > 0 ? arr[0] : null);
 
-    // Build chart data from After-phase snapshots using carry-forward math.
-    // Sparse snapshots (e.g. trade snapshots with only 2 tokens) are filled in
-    // by carrying forward the last-known value for tokens not present in that
-    // snapshot. This avoids spikes from partial portfolio valuations.
-    const activeSnapshots = selectedPurse === '__account__' ? snapshots : purseSnapshots;
+    // Build chart data using carry-forward math.
+    // - Account view: uses account snapshots; sparse trade snapshots carry
+    //   forward values for tokens not present.
+    // - Purse view with purse snapshots: uses dedicated purse snapshots.
+    // - Purse view fallback: reconstructs from account snapshots by extracting
+    //   only the purse's tokens, scaled by the purse/account balance ratio.
+    const isPurse = selectedPurse !== '__account__';
+    const hasPurseSnaps = isPurse && purseSnapshots.length > 0;
+
+    const selectedPurseAlloc = React.useMemo(() => {
+        if (!isPurse) return null;
+        return purseAllocations.find(p => p.instanceId === selectedPurse) || null;
+    }, [isPurse, selectedPurse, purseAllocations]);
+
     const chartData = React.useMemo(() => {
-        const afterSnaps = activeSnapshots
+        const sourceSnaps = hasPurseSnaps ? purseSnapshots : snapshots;
+        const afterSnaps = sourceSnaps
             .filter(s => Object.keys(s.phase || {})[0] === 'After')
             .sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
+
+        // For purse fallback: build a set of purse tokens and a ratio map
+        // (purseBalance / accountBalance) to estimate the purse's share.
+        let purseTokenSet = null;
+        let purseBalanceMap = null;
+        if (isPurse && !hasPurseSnaps && selectedPurseAlloc?.balances?.length) {
+            purseTokenSet = new Set();
+            purseBalanceMap = new Map();
+            for (const b of selectedPurseAlloc.balances) {
+                const key = b.token?.toText?.() || b.token?.toString?.() || '';
+                if (key) {
+                    purseTokenSet.add(key);
+                    purseBalanceMap.set(key, Number(b.balance));
+                }
+            }
+        }
 
         const lastKnownIcp = new Map();
         const lastKnownUsd = new Map();
@@ -5308,10 +5337,23 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
             for (const t of tokens) {
                 const key = t.token?.toText?.() || t.token?.toString?.() || '';
                 if (!key) continue;
+                // In purse fallback, skip tokens not belonging to the purse
+                if (purseTokenSet && !purseTokenSet.has(key)) continue;
+
                 const vIcp = optVal(t.valueIcpE8s);
                 const vUsd = optVal(t.valueUsdE8s);
-                if (vIcp != null) lastKnownIcp.set(key, Number(vIcp));
-                if (vUsd != null) lastKnownUsd.set(key, Number(vUsd));
+
+                if (purseBalanceMap) {
+                    // Scale by purse/account balance ratio
+                    const accountBal = Number(t.balance);
+                    const purseBal = purseBalanceMap.get(key) || 0;
+                    const ratio = accountBal > 0 ? purseBal / accountBal : 0;
+                    if (vIcp != null) lastKnownIcp.set(key, Number(vIcp) * ratio);
+                    if (vUsd != null) lastKnownUsd.set(key, Number(vUsd) * ratio);
+                } else {
+                    if (vIcp != null) lastKnownIcp.set(key, Number(vIcp));
+                    if (vUsd != null) lastKnownUsd.set(key, Number(vUsd));
+                }
             }
             let totalIcp = 0;
             let totalUsd = 0;
@@ -5326,7 +5368,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
                 usd: totalUsd > 0 ? totalUsd / 1e8 : null,
             };
         }).filter(d => (denomination === 'icp' ? d.icp != null : d.usd != null));
-    }, [activeSnapshots, denomination]);
+    }, [snapshots, purseSnapshots, hasPurseSnaps, isPurse, selectedPurseAlloc, denomination]);
 
     // Build daily OHLC chart data for portfolio value
     const dailyChartData = React.useMemo(() => {
@@ -5440,7 +5482,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
     if (loading) return <div style={{ padding: '20px', color: theme.colors.secondaryText, textAlign: 'center' }}>Loading performance data...</div>;
     if (error) return <div style={{ padding: '20px', color: '#ef4444' }}>{error}</div>;
 
-    const isPurseView = selectedPurse !== '__account__';
+    const isPurseView = isPurse;
 
     return (
         <div>
@@ -5537,7 +5579,12 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
             {/* Equity Curve Chart */}
             <div style={{ ...cardStyle, padding: '16px 12px 8px 0' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingLeft: '16px', flexWrap: 'wrap', gap: '8px' }}>
-                    <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.text }}>{isPurseView ? 'Purse Value' : 'Equity Curve'}</span>
+                    <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.text }}>
+                        {isPurseView ? 'Purse Value' : 'Equity Curve'}
+                        {isPurseView && !hasPurseSnaps && chartData.length > 0 && (
+                            <span style={{ fontSize: '0.68rem', fontWeight: '400', color: theme.colors.secondaryText, marginLeft: '8px' }}>(estimated from account data)</span>
+                        )}
+                    </span>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
                         {(isPurseView ? ['detailed'] : ['detailed', 'daily']).map(v => (
                             <button key={v} onClick={() => setEquityView(v)} style={{
@@ -5583,7 +5630,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
                     ) : (
                         <div style={{ textAlign: 'center', padding: '40px 20px', color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
                             {chartData.length === 0
-                                ? (isPurseView ? 'No purse snapshot data yet. Data will appear after the snapshot chore runs.' : 'No snapshot data yet. Equity curve will appear after the bot runs and takes portfolio snapshots.')
+                                ? (isPurseView ? 'No data yet. Purse performance will appear after the chore runs trades or snapshots.' : 'No snapshot data yet. Equity curve will appear after the bot runs and takes portfolio snapshots.')
                                 : 'At least 2 snapshots are needed to draw the equity curve.'}
                         </div>
                     )
@@ -5619,12 +5666,36 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
                 )}
             </div>
 
-            {/* Purse Token Holdings (from latest purse snapshot) */}
+            {/* Purse Token Holdings (from latest purse snapshot, or from current allocation as fallback) */}
             {isPurseView && (() => {
                 const latestPurseSnap = purseSnapshots.length > 0
-                    ? purseSnapshots.sort((a, b) => Number(b.timestamp) - Number(a.timestamp))[0]
+                    ? [...purseSnapshots].sort((a, b) => Number(b.timestamp) - Number(a.timestamp))[0]
                     : null;
-                if (!latestPurseSnap?.tokens?.length) return null;
+                // Fallback: build token rows from current purse allocation + token registry info
+                let tokenRows = [];
+                let sourceLabel = null;
+                if (latestPurseSnap?.tokens?.length) {
+                    tokenRows = latestPurseSnap.tokens;
+                    sourceLabel = `Snapshot: ${new Date(Number(latestPurseSnap.timestamp) / 1_000_000).toLocaleString()}`;
+                } else if (selectedPurseAlloc?.balances?.length) {
+                    tokenRows = selectedPurseAlloc.balances.map(b => {
+                        const key = b.token?.toText?.() || b.token?.toString?.() || '';
+                        const regEntry = tokenRegistry.find(e => {
+                            const ek = e.ledgerCanisterId?.toText?.() || e.ledgerCanisterId?.toString?.() || '';
+                            return ek === key;
+                        });
+                        return {
+                            token: b.token,
+                            symbol: regEntry?.symbol || '?',
+                            decimals: regEntry?.decimals ?? 8,
+                            balance: b.balance,
+                            valueIcpE8s: [],
+                            valueUsdE8s: [],
+                        };
+                    });
+                    sourceLabel = 'Current purse balances';
+                }
+                if (tokenRows.length === 0) return null;
                 return (
                     <div style={cardStyle}>
                         <div style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.text, marginBottom: '10px' }}>Purse Token Holdings</div>
@@ -5638,7 +5709,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
                                 </tr>
                             </thead>
                             <tbody>
-                                {latestPurseSnap.tokens.map((tok, i) => {
+                                {tokenRows.map((tok, i) => {
                                     const dec = Number(tok.decimals || 8);
                                     const bal = Number(tok.balance) / (10 ** dec);
                                     const vIcp = tok.valueIcpE8s?.length > 0 ? Number(tok.valueIcpE8s[0]) / 1e8 : null;
@@ -5660,9 +5731,11 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
                                 })}
                             </tbody>
                         </table>
-                        <div style={{ fontSize: '0.68rem', color: theme.colors.secondaryText, marginTop: '6px', textAlign: 'right' }}>
-                            Snapshot: {new Date(Number(latestPurseSnap.timestamp) / 1_000_000).toLocaleString()}
-                        </div>
+                        {sourceLabel && (
+                            <div style={{ fontSize: '0.68rem', color: theme.colors.secondaryText, marginTop: '6px', textAlign: 'right' }}>
+                                {sourceLabel}
+                            </div>
+                        )}
                     </div>
                 );
             })()}
