@@ -2163,7 +2163,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     func updateDailyPortfolioSummary(snapshot: T.PortfolioSnapshot) {
         let icpVal = switch (snapshot.totalValueIcpE8s) { case (?v) v; case null 0 };
         let usdVal = switch (snapshot.totalValueUsdE8s) { case (?v) v; case null 0 };
-        if (icpVal == 0 and usdVal == 0) return; // No value data, skip
+        if (icpVal == 0 and usdVal == 0) return;
+        // Skip sparse snapshots (e.g. trade-only with 2 tokens) so they don't
+        // distort daily OHLC with partial portfolio values.
+        if (snapshot.tokens.size() < tokenRegistry.size() and tokenRegistry.size() > 1) return;
 
         let date = utcDayStart(snapshot.timestamp);
 

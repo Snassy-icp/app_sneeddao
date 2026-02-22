@@ -5290,24 +5290,42 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
 
     const optVal = (arr) => (arr?.length > 0 ? arr[0] : null);
 
-    // Build chart data from After-phase snapshots (detailed view)
+    // Build chart data from After-phase snapshots using carry-forward math.
+    // Sparse snapshots (e.g. trade snapshots with only 2 tokens) are filled in
+    // by carrying forward the last-known value for tokens not present in that
+    // snapshot. This avoids spikes from partial portfolio valuations.
     const activeSnapshots = selectedPurse === '__account__' ? snapshots : purseSnapshots;
     const chartData = React.useMemo(() => {
-        return activeSnapshots
+        const afterSnaps = activeSnapshots
             .filter(s => Object.keys(s.phase || {})[0] === 'After')
-            .sort((a, b) => Number(a.timestamp) - Number(b.timestamp))
-            .map(s => {
-                const ts = Number(s.timestamp) / 1_000_000; // ns -> ms
-                const icpVal = optVal(s.totalValueIcpE8s);
-                const usdVal = optVal(s.totalValueUsdE8s);
-                return {
-                    time: ts,
-                    label: new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
-                    icp: icpVal != null ? Number(icpVal) / 1e8 : null,
-                    usd: usdVal != null ? Number(usdVal) / 1e8 : null,
-                };
-            })
-            .filter(d => (denomination === 'icp' ? d.icp != null : d.usd != null));
+            .sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
+
+        const lastKnownIcp = new Map();
+        const lastKnownUsd = new Map();
+
+        return afterSnaps.map(s => {
+            const tokens = s.tokens || [];
+            for (const t of tokens) {
+                const key = t.token?.toText?.() || t.token?.toString?.() || '';
+                if (!key) continue;
+                const vIcp = optVal(t.valueIcpE8s);
+                const vUsd = optVal(t.valueUsdE8s);
+                if (vIcp != null) lastKnownIcp.set(key, Number(vIcp));
+                if (vUsd != null) lastKnownUsd.set(key, Number(vUsd));
+            }
+            let totalIcp = 0;
+            let totalUsd = 0;
+            for (const v of lastKnownIcp.values()) totalIcp += v;
+            for (const v of lastKnownUsd.values()) totalUsd += v;
+
+            const ts = Number(s.timestamp) / 1_000_000;
+            return {
+                time: ts,
+                label: new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+                icp: totalIcp > 0 ? totalIcp / 1e8 : null,
+                usd: totalUsd > 0 ? totalUsd / 1e8 : null,
+            };
+        }).filter(d => (denomination === 'icp' ? d.icp != null : d.usd != null));
     }, [activeSnapshots, denomination]);
 
     // Build daily OHLC chart data for portfolio value
