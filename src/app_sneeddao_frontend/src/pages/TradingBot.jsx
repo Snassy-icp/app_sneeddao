@@ -9225,6 +9225,22 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
         }
     };
 
+    const handleSetTradingPurse = async (newPurseId) => {
+        setSaving(true); setError(null); setSuccess(null);
+        try {
+            const actor = await getReadyBotActor();
+            const optVal = newPurseId ? [newPurseId] : [];
+            const result = await actor.setTradingPurseId(instanceId, optVal);
+            if (result && 'Err' in result) { setError(result.Err); return; }
+            setSuccess(newPurseId ? `Now trading from ${choreLabels[newPurseId] || newPurseId}'s purse` : 'Trading purse override cleared');
+            await loadData();
+        } catch (e) {
+            setError(e?.message || String(e));
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const handleMaxFund = async () => {
         if (!fundToken) return;
         const dec = tokDecimals(fundToken);
@@ -9292,6 +9308,60 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
 
             {error && <div style={{ color: '#e74c3c', fontSize: '0.8rem', marginBottom: '8px' }}>{error}</div>}
             {success && <div style={{ color: '#27ae60', fontSize: '0.8rem', marginBottom: '8px' }}>{success}</div>}
+
+            {/* Trading Purse Override */}
+            {(otherPurseChores.length > 0 || tradingPurseId) && (
+                <div style={{ marginBottom: '12px', padding: '10px 12px', background: `${accentColor}08`, border: `1px solid ${accentColor}20`, borderRadius: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText, fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <FaExchangeAlt size={11} style={{ color: accentColor }} /> Trade from:
+                        </span>
+                        <select
+                            value={tradingPurseId || ''}
+                            onChange={e => handleSetTradingPurse(e.target.value || null)}
+                            disabled={saving}
+                            style={inp({ width: 'auto', padding: '4px 8px', fontSize: '0.78rem', minWidth: '180px' })}
+                        >
+                            <option value="">— {purseEnabled ? 'Own purse' : 'Main purse'} (default) —</option>
+                            {otherPurseChores.map(cid => (
+                                <option key={cid} value={cid}>{choreLabels[cid] || cid}</option>
+                            ))}
+                        </select>
+                        {tradingPurseId && (
+                            <span style={{ fontSize: '0.72rem', color: accentColor, fontStyle: 'italic' }}>
+                                Trades will use {choreLabels[tradingPurseId] || tradingPurseId}'s purse
+                            </span>
+                        )}
+                    </div>
+                    {/* Show referenced purse balances */}
+                    {tradingPurseId && refPurseBalances.length > 0 && (
+                        <div style={{ marginTop: '8px' }}>
+                            <div style={{ fontSize: '0.72rem', color: theme.colors.secondaryText, fontWeight: 500, marginBottom: '3px' }}>
+                                {choreLabels[tradingPurseId] || tradingPurseId}'s purse balances:
+                            </div>
+                            <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse' }}>
+                                <tbody>
+                                    {refPurseBalances.map((b, i) => {
+                                        const p = typeof b.token === 'string' ? b.token : b.token?.toText?.() || b.token?.toString?.() || '';
+                                        const dec = tokDecimals(p);
+                                        return (
+                                            <tr key={i} style={{ borderBottom: `1px solid ${theme.colors.border}22` }}>
+                                                <td style={{ padding: '2px 8px', color: theme.colors.primaryText }}>{tokLabel(p)}</td>
+                                                <td style={{ padding: '2px 8px', textAlign: 'right', color: theme.colors.primaryText, fontFamily: 'monospace' }}>{fmtBal(b.balance, dec)}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                    {tradingPurseId && refPurseBalances.length === 0 && (
+                        <div style={{ marginTop: '6px', fontSize: '0.72rem', color: theme.colors.secondaryText, fontStyle: 'italic' }}>
+                            Referenced purse is empty
+                        </div>
+                    )}
+                </div>
+            )}
 
             {purseEnabled && (
                 <>
