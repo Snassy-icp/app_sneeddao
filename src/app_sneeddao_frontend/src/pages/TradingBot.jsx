@@ -60,11 +60,11 @@ const tradingBotStyles = `
     70% { opacity: 1; }
     100% { transform: translateX(8px); opacity: 0; }
 }
-@keyframes swapSlideIn {
-    from { opacity: 0; transform: translateY(-8px) scale(0.98); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
+@keyframes swapRevealHeight {
+    from { max-height: 0; opacity: 0; }
+    to { max-height: 250px; opacity: 1; }
 }
-.swap-card-enter { animation: swapSlideIn 0.3s ease-out forwards; }
+.swap-card-reveal { animation: swapRevealHeight 0.35s ease-out forwards; overflow: hidden; }
 .swap-pulse { animation: swapPulse 1.5s ease-in-out infinite; }
 .swap-flow-dot { animation: swapFlowDot 1.2s ease-in-out infinite; }
 `;
@@ -9594,19 +9594,17 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
 const DEX_NAMES = { 0: 'ICPSwap', 1: 'KongSwap' };
 const DEX_COLORS = { 0: '#3b82f6', 1: '#f59e0b' };
 
-const SwapProgressCard = React.memo(function SwapProgressCard({ entry, isRunning, theme, accentColor, onDismiss, taskType, pending }) {
-    const mountedRef = useRef(false);
-    const isFirstRender = !mountedRef.current;
-    useEffect(() => { mountedRef.current = true; }, []);
-
-    if (!entry && !isRunning && !pending) return null;
+const SwapProgressCard = React.memo(function SwapProgressCard({ entry, isRunning: isRunningProp, theme, accentColor, onDismiss, taskType, pending }) {
+    if (!entry && !isRunningProp && !pending) return null;
 
     const isRebalancer = taskType === 'rebalance';
+    // Once we have a terminal result, stop showing the "running" state even if conductor hasn't moved on
+    const isRunning = isRunningProp && !(entry?.status === 'Skipped' || entry?.status === 'Success' || entry?.status === 'Failed');
 
     // When running/pending with no token info yet, show a compact status
     if ((isRunning || pending) && !entry) {
         return (
-            <div className={isFirstRender ? 'swap-card-enter' : undefined} style={{
+            <div style={{
                 marginTop: '8px', marginBottom: '6px', padding: '10px 14px',
                 background: `${accentColor}08`, border: `1px solid ${accentColor}30`,
                 borderRadius: '10px', position: 'relative',
@@ -9702,7 +9700,7 @@ const SwapProgressCard = React.memo(function SwapProgressCard({ entry, isRunning
     }
 
     return (
-        <div className={isFirstRender ? 'swap-card-enter' : undefined} style={{
+        <div style={{
             marginTop: '8px', marginBottom: '6px', padding: '12px',
             background: cardGlow, border: `1px solid ${cardBorder}`,
             borderRadius: '10px', position: 'relative', overflow: 'hidden',
@@ -9989,15 +9987,17 @@ function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
         const isPending = !isSwapRunning && recentSwapTask && !entry;
 
         return (
-            <SwapProgressCard
-                entry={entry}
-                isRunning={isSwapRunning}
-                pending={isPending}
-                theme={theme}
-                accentColor={accentColor}
-                taskType={taskType}
-                onDismiss={() => setDismissed(prev => new Set(prev).add(activeKey))}
-            />
+            <div className="swap-card-reveal" key={activeKey}>
+                <SwapProgressCard
+                    entry={entry}
+                    isRunning={isSwapRunning}
+                    pending={isPending}
+                    theme={theme}
+                    accentColor={accentColor}
+                    taskType={taskType}
+                    onDismiss={() => setDismissed(prev => new Set(prev).add(activeKey))}
+                />
+            </div>
         );
     }, [swapResults, dismissed, actionCache, theme, accentColor, triggerFetch, triggerActionFetch]);
 
