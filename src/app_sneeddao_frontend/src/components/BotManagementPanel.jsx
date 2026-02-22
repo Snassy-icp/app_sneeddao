@@ -2210,6 +2210,11 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                                                     <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>
                                                                         {Number(chore.totalSuccessCount)}✓ {Number(chore.totalFailureCount)}✗
                                                                     </span>
+                                                                    <span style={{ color: theme.colors.border, fontSize: '0.55rem' }}>●</span>
+                                                                    <span title={`Chore ID: ${chore.choreId}\nClick to copy`} onClick={() => { navigator.clipboard?.writeText(chore.choreId); }}
+                                                                        style={{ fontSize: '0.68rem', fontFamily: 'monospace', color: theme.colors.secondaryText, opacity: 0.6, cursor: 'pointer', userSelect: 'all' }}>
+                                                                        {chore.choreId}
+                                                                    </span>
                                                                     <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                                                                         {isStopped && (
                                                                             <button style={{ ...buttonStyle, fontSize: '0.72rem', padding: '3px 10px', background: `linear-gradient(135deg, ${accent}, ${accentSec})`, color: '#fff', border: 'none', opacity: savingChore ? 0.6 : 1 }} disabled={savingChore}

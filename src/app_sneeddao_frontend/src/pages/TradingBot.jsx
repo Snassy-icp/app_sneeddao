@@ -5937,9 +5937,29 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
     };
     const choreInstanceLabel = (instanceId) => {
         if (!instanceId) return '?';
+        const cs = choreStatuses?.find(c => c.choreId === instanceId);
+        if (cs) return cs.instanceLabel || cs.choreName || instanceId;
         const inst = choreInstances.find(([id]) => id === instanceId);
         return inst ? (inst[1].label || inst[0]) : instanceId;
     };
+
+    const choreOptionLabel = React.useMemo(() => {
+        const labelCounts = {};
+        for (const [id, info] of choreInstances) {
+            const cs = choreStatuses?.find(c => c.choreId === id);
+            const friendly = cs?.instanceLabel || cs?.choreName || info.label || id;
+            labelCounts[friendly] = (labelCounts[friendly] || 0) + 1;
+        }
+        return (id, info) => {
+            const cs = choreStatuses?.find(c => c.choreId === id);
+            const friendly = cs?.instanceLabel || cs?.choreName || info.label || id;
+            const typeName = info.typeId === 'trade' ? 'Trade' : info.typeId === 'rebalance' ? 'Rebalance'
+                : info.typeId === 'move-funds' ? 'Move Funds' : info.typeId === 'distribute-funds' ? 'Distribute'
+                : info.typeId === 'snapshot' ? 'Snapshot' : info.typeId;
+            if (labelCounts[friendly] > 1) return `${friendly} [${id}] (${typeName})`;
+            return `${friendly} (${typeName})`;
+        };
+    }, [choreInstances, choreStatuses]);
     const toTokenUnits = (e8sStr, decimals) => {
         if (!e8sStr && e8sStr !== 0) return '';
         const v = Number(e8sStr);
@@ -6484,7 +6504,7 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                                         style={sel({ minWidth: '180px', fontSize: '0.8rem' })}>
                                         <option value="">Select portfolio...</option>
                                         {choreInstances.filter(([, info]) => info.typeId === 'rebalance').map(([id, info]) => (
-                                            <option key={id} value={id}>{info.label || id}</option>))}
+                                            <option key={id} value={id}>{choreOptionLabel(id, info)}</option>))}
                                     </select>
                                 )}
                                 {vs.sourceType === 2 && (
@@ -6663,7 +6683,7 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                                             style={sel({ marginTop: '4px', minWidth: '180px' })}>
                                             <option value="">Select chore...</option>
                                             {choreInstances.filter(([, info]) => act.actionType === 0 ? info.typeId === 'rebalance' : true)
-                                                .map(([id, info]) => <option key={id} value={id}>{info.label || id} ({info.typeId})</option>)}
+                                                .map(([id, info]) => <option key={id} value={id}>{choreOptionLabel(id, info)}</option>)}
                                         </select>
                                     </div>
                                 )}
