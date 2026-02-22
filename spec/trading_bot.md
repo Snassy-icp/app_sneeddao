@@ -115,8 +115,9 @@ The circuit breaker is an automated safety system that can pause or stop bot act
   - **Full on-chain balance** of the main account (actual ICRC-1 balance).
   - **Main purse balance** (on-chain minus all chore purse allocations).
   - **A specific chore's purse balance**.
-- **Actions**: Pause token in rebal chore, pause/freeze token globally, stop/pause chore, stop/pause all chores by type, stop/pause all chores.
-- **Manual Reset**: When a circuit breaker triggers, affected chores/tokens remain paused/stopped until manually resumed by the user.
+- **Actions**: Pause token in rebal chore, pause/freeze token globally, stop/pause/start chore, stop/pause/start all chores by type, stop/pause/start all chores.
+- **Start Actions**: Start actions enable stopped chores or resume paused ones. The actual timer scheduling is deferred to the next conductor tick via the choreEngine's `queueStart` mechanism (since circuit breaker evaluation runs in a context without timer capabilities). This means a started chore will begin within seconds of the circuit breaker triggering.
+- **Manual Reset**: When a circuit breaker triggers, affected chores/tokens remain paused/stopped until manually resumed by the user (or by a circuit breaker start action).
 - **Event Log**: All trigger events are recorded with timestamps, rule info, condition summaries, and actions taken.
 
 #### Pipeline Integration
@@ -138,7 +139,8 @@ If any rule triggers, the current chore run is aborted (returns `#Done`), and th
 // Value source types: 0=specificToken, 1=rebalChoreTokens, 2=allTokensInAccount
 // Action types: 0=pauseTokenInRebalChore, 1=pauseTokenGlobally, 2=freezeTokenGlobally,
 //   3=stopChore, 4=pauseChore, 5=stopAllChoresByType, 6=pauseAllChoresByType,
-//   7=stopAllChores, 8=pauseAllChores
+//   7=stopAllChores, 8=pauseAllChores, 9=startChore, 10=startAllChoresByType,
+//   11=startAllChores
 ```
 
 See `Types.mo` for full type definitions: `CircuitBreakerCondition`, `CircuitBreakerActionConfig`, `CircuitBreakerRule`, `CircuitBreakerEvent`, `CBValueSource`, `CBLogQuery`, `CBLogResult`.

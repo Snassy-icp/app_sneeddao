@@ -886,6 +886,9 @@ module {
         public let PauseAllChoresByType: Nat = 6;
         public let StopAllChores: Nat = 7;
         public let PauseAllChores: Nat = 8;
+        public let StartChore: Nat = 9;
+        public let StartAllChoresByType: Nat = 10;
+        public let StartAllChores: Nat = 11;
     };
 
     /// Source of value for a value condition (type 1).
@@ -938,6 +941,9 @@ module {
         // 6: pauseAllChoresByType     (needs choreTypeId)
         // 7: stopAllChores
         // 8: pauseAllChores
+        // 9: startChore               (needs choreInstanceId) — starts stopped or resumes paused
+        // 10: startAllChoresByType    (needs choreTypeId)
+        // 11: startAllChores
 
         token: ?Principal;
         choreInstanceId: ?Text;

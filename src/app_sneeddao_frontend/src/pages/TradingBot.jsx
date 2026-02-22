@@ -5849,6 +5849,9 @@ const CB_ACTION_TYPES = [
     { value: 6, label: 'Pause all chores by type' },
     { value: 7, label: 'Stop ALL chores' },
     { value: 8, label: 'Pause ALL chores' },
+    { value: 9, label: 'Start chore' },
+    { value: 10, label: 'Start all chores by type' },
+    { value: 11, label: 'Start ALL chores' },
 ];
 const CB_CHORE_TYPES = [
     { value: 'trade', label: 'Trade' },
@@ -6338,6 +6341,9 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
             case 6: return <>{kw('PAUSE', '#e67e22')} all {val(choreTypeName)} chores</>;
             case 7: return <>{kw('STOP ALL', '#e74c3c')} chores</>;
             case 8: return <>{kw('PAUSE ALL', '#e67e22')} chores</>;
+            case 9: return <>{kw('START', '#27ae60')} chore {val(`"${choreLabel}"`)}</>;
+            case 10: return <>{kw('START', '#27ae60')} all {val(choreTypeName)} chores</>;
+            case 11: return <>{kw('START ALL', '#27ae60')} chores</>;
             default: return '?';
         }
     };
@@ -6650,7 +6656,7 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                                             allowCustom placeholder="Select token..." style={{ marginTop: '4px' }} />
                                     </div>
                                 )}
-                                {[0, 3, 4].includes(act.actionType) && (
+                                {[0, 3, 4, 9].includes(act.actionType) && (
                                     <div>
                                         <div style={label}>Chore</div>
                                         <select value={act.choreInstanceId} onChange={e => setEditingRule(r => ({ ...r, actions: r.actions.map((a, i) => i === ai ? { ...a, choreInstanceId: e.target.value } : a) }))}
@@ -6661,7 +6667,7 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                                         </select>
                                     </div>
                                 )}
-                                {[5, 6].includes(act.actionType) && (
+                                {[5, 6, 10].includes(act.actionType) && (
                                     <div>
                                         <div style={label}>Chore type</div>
                                         <select value={act.choreTypeId} onChange={e => setEditingRule(r => ({ ...r, actions: r.actions.map((a, i) => i === ai ? { ...a, choreTypeId: e.target.value } : a) }))}

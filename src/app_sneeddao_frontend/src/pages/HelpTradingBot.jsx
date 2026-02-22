@@ -800,7 +800,7 @@ function HelpTradingBot() {
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}><strong style={styles.strong}>Conditions:</strong> What to monitor — price, balance, or portfolio value with operators like greater/less than, inside/outside range, or percentage change over time</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Logic:</strong> AND (all conditions must be true) or OR (any condition triggers)</li>
-                            <li style={styles.listItem}><strong style={styles.strong}>Actions:</strong> What happens — pause/stop a specific chore, pause/stop all chores of a type, freeze a token, or halt everything</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Actions:</strong> What happens — pause/stop/start a specific chore, pause/stop/start all chores of a type, freeze a token, or halt everything. Start actions enable cross-chore orchestration (e.g. stop a rebalancer and start an exit strategy chore)</li>
                         </ul>
                     </div>
 
@@ -964,8 +964,9 @@ function HelpTradingBot() {
                     <p style={styles.paragraph}>
                         A <strong style={styles.strong}>trailing stop</strong> is a condition on an individual trade action — when triggered,
                         it executes that specific trade (e.g. sell the token). A <strong style={styles.strong}>circuit breaker</strong> is a
-                        safety system that pauses or stops chores entirely — it doesn't execute trades, it prevents them.
-                        Use trailing stops for automated sell/buy decisions and circuit breakers for emergency risk management.
+                        safety system that can pause, stop, or start chores — it orchestrates which chores are active.
+                        Use trailing stops for automated sell/buy decisions and circuit breakers for risk management and cross-chore orchestration
+                        (e.g. stop a rebalancer and start an exit strategy chore against the same purse).
                     </p>
 
                     <h4 style={styles.subsubheading}>Is my configuration preserved during upgrades?</h4>

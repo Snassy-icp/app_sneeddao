@@ -61,6 +61,10 @@ module {
         /// Tiny re-entrancy guard for conductor ticks, keyed by choreId.
         var conductorTickInFlight: [(Text, Bool)] = [];
 
+        /// Chores queued for start by non-<system> code (e.g. circuit breaker actions).
+        /// Processed on the next conductorTick which has <system> capability.
+        var _pendingStarts: [Text] = [];
+
         // ============================================
         // LOGGING HELPER
         // ============================================
@@ -368,6 +372,8 @@ module {
         /// - Restarts schedulers for enabled chores.
         /// - Restarts conductors that were active when the canister was stopped.
         public func resumeTimers<system>() {
+            processPendingStarts<system>();
+
             let instances = stateAccessor.getInstances();
             for ((choreId, _info) in instances.vals()) {
 
@@ -709,6 +715,49 @@ module {
             scheduleConductorTick<system>(choreId, 0);
         };
 
+        /// Queue a chore to be started on the next conductor tick (which has <system>).
+        /// Use this from contexts that lack <system> capability (e.g. circuit breaker actions).
+        /// The chore config is updated immediately; timer scheduling is deferred.
+        public func queueStart(choreId: Text) {
+            updateConfig(choreId, func(c: BotChoreTypes.ChoreConfig): BotChoreTypes.ChoreConfig {
+                { c with enabled = true; paused = false }
+            });
+            updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
+                { s with stopRequested = false }
+            });
+            _pendingStarts := Array.append(_pendingStarts, [choreId]);
+        };
+
+        /// Process any queued starts. Called from <system> contexts (conductorTick).
+        func processPendingStarts<system>() {
+            if (_pendingStarts.size() == 0) return;
+            let pending = _pendingStarts;
+            _pendingStarts := [];
+            for (cid in pending.vals()) {
+                let state = getStateOrDefault(cid);
+                // Start scheduler if not already scheduled
+                switch (state.schedulerTimerId) {
+                    case null { startScheduler<system>(cid) };
+                    case _ {};
+                };
+                // Start conductor if not already running
+                if (not state.conductorActive) {
+                    updateState(cid, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
+                        {
+                            s with
+                            conductorActive = true;
+                            conductorStartedAt = ?Time.now();
+                            conductorInvocationCount = 0;
+                            lastCompletedTaskId = null;
+                            lastTaskSucceeded = null;
+                            lastTaskError = null;
+                        }
+                    });
+                    scheduleConductorTick<system>(cid, 0);
+                };
+            };
+        };
+
         /// Set the next scheduled run time for a chore. Reschedules the scheduler timer.
         /// The chore must be enabled. For paused chores, the time is stored but the
         /// scheduler is not started (it will be armed when the chore is resumed).
@@ -990,6 +1039,8 @@ module {
         /// 4. Start pending task (if any)
         /// 5. Finalize run state based on conductor action
         func conductorTickBody<system>(choreId: Text): async* () {
+            processPendingStarts<system>();
+
             let state = getStateOrDefault(choreId);
 
             // 0. Check stop/active flags BEFORE doing work.

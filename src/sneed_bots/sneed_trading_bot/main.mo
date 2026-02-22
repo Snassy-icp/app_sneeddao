@@ -911,6 +911,34 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 };
                 "Paused all chores (" # Nat.toText(allInstances.size()) # ")"
             };
+            case (9) { // StartChore (start stopped or resume paused)
+                switch (action.choreInstanceId) {
+                    case (?cid) {
+                        choreEngine.queueStart(cid);
+                        "Started chore: " # cid
+                    };
+                    case null { "StartChore: missing choreInstanceId" };
+                };
+            };
+            case (10) { // StartAllChoresByType
+                switch (action.choreTypeId) {
+                    case (?tid) {
+                        let instances = choreEngine.listInstances(?tid);
+                        for ((iid, _) in instances.vals()) {
+                            choreEngine.queueStart(iid);
+                        };
+                        "Started all " # tid # " chores (" # Nat.toText(instances.size()) # ")"
+                    };
+                    case null { "StartAllChoresByType: missing choreTypeId" };
+                };
+            };
+            case (11) { // StartAllChores
+                let allInstances = choreEngine.listInstances(null);
+                for ((iid, _) in allInstances.vals()) {
+                    choreEngine.queueStart(iid);
+                };
+                "Started all chores (" # Nat.toText(allInstances.size()) # ")"
+            };
             case _ { "Unknown action type: " # Nat.toText(action.actionType) };
         }
     };

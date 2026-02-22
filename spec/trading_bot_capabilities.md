@@ -281,12 +281,18 @@ An automated safety system that can pause or stop bot activities when configurab
 - Stop or pause a specific chore instance
 - Stop or pause all chores of a specific type
 - Stop or pause ALL chores (emergency halt)
+- **Start a specific chore instance** (starts stopped chores, resumes paused ones)
+- **Start all chores of a specific type**
+- **Start ALL chores**
+
+Start actions enable powerful cross-chore orchestration — for example, a circuit breaker can stop a rebalancer and simultaneously start an exit strategy chore that trades against the same purse.
 
 ### 10.4 Integration
 
 - Evaluated once per chore run, before trade execution
 - Trade and rebalance chore pipelines augment their price/metadata fetch phases with circuit breaker data requirements
-- Manual reset required: affected chores/tokens stay paused/stopped until the user explicitly resumes
+- Start actions use deferred scheduling (queued and processed on the next conductor tick within seconds) since circuit breaker evaluation runs in a context without direct timer capabilities
+- Manual reset required for pause/stop actions: affected chores/tokens stay paused/stopped until manually resumed or started by another circuit breaker rule
 
 ### 10.5 Event Log
 
