@@ -154,7 +154,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // ============================================
 
     // Purse locks: prevents concurrent trades on the same purse across await boundaries
-    transient var _purseLocks: [(Text, Text)] = [];
+    // Stores (purseId, lockingInstanceId, lockTimeNanos). Locks older than 5 min are treated as stale.
+    transient var _purseLocks: [(Text, Text, Int)] = [];
 
     // Circuit Breaker: per-chore abort signal set by CB evaluation
     transient var _cbAbortChore: [(Text, Bool)] = [];
@@ -580,19 +581,25 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         }
     };
 
+    let PURSE_LOCK_TTL_NANOS: Int = 5 * 60 * 1_000_000_000; // 5 minutes
+
     /// Try to acquire a lock on a purse for the duration of a trade.
     /// Returns true if the lock was acquired, false if the purse is already locked.
+    /// Stale locks (older than 5 min) are automatically evicted.
     func tryLockPurse(purseId: Text, instanceId: Text): Bool {
-        for ((pid, _) in _purseLocks.vals()) {
+        let now = Time.now();
+        // Evict stale locks
+        _purseLocks := Array.filter<(Text, Text, Int)>(_purseLocks, func((_, _, t)) { (now - t) < PURSE_LOCK_TTL_NANOS });
+        for ((pid, _, _) in _purseLocks.vals()) {
             if (pid == purseId) return false;
         };
-        _purseLocks := Array.append(_purseLocks, [(purseId, instanceId)]);
+        _purseLocks := Array.append(_purseLocks, [(purseId, instanceId, now)]);
         true
     };
 
     /// Release a purse lock after a trade completes (success or failure).
     func unlockPurse(purseId: Text) {
-        _purseLocks := Array.filter<(Text, Text)>(_purseLocks, func((pid, _)) { pid != purseId });
+        _purseLocks := Array.filter<(Text, Text, Int)>(_purseLocks, func((pid, _, _)) { pid != purseId });
     };
 
     func getChorePurseBalance(instanceId: Text, token: Principal): Nat {
