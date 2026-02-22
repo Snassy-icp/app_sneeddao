@@ -5229,7 +5229,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
     const [dailyPortfolioSummaries, setDailyPortfolioSummaries] = useState([]);
     const [dailyPriceCandles, setDailyPriceCandles] = useState([]);
     const [selectedPurse, setSelectedPurse] = useState('__account__'); // '__account__' = whole account
-    const [pursePurses, setPursePurses] = useState([]); // list of purse IDs that have snapshots
+    const [enabledPurses, setEnabledPurses] = useState([]); // purse IDs with enabled purses
     const [purseSnapshots, setPurseSnapshots] = useState([]);
     const [purseLoading, setPurseLoading] = useState(false);
 
@@ -5239,7 +5239,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
         try {
             const bot = await getReadyBotActor();
             if (!bot) return;
-            const [snapResult, flows, registry, prices, history, dailyPortfolio, dailyPrices, pursesWithSnaps] = await Promise.all([
+            const [snapResult, flows, registry, prices, history, dailyPortfolio, dailyPrices, purseAllocs] = await Promise.all([
                 bot.getPortfolioSnapshots({ startId: [], limit: [500], tradeLogId: [], phase: [{ After: null }], fromTime: [], toTime: [] }),
                 bot.getCapitalFlows(),
                 bot.getTokenRegistry ? bot.getTokenRegistry() : Promise.resolve([]),
@@ -5247,7 +5247,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
                 bot.getPriceHistory ? bot.getPriceHistory({ pairKey: [], limit: [5000], offset: [] }) : Promise.resolve({ entries: [], totalCount: 0n }),
                 bot.getDailyPortfolioSummaries ? bot.getDailyPortfolioSummaries({ fromDate: [], toDate: [], limit: [1000], offset: [] }) : Promise.resolve({ entries: [], totalCount: 0n }),
                 bot.getDailyPriceCandles ? bot.getDailyPriceCandles({ pairKey: [], fromDate: [], toDate: [], limit: [1000], offset: [] }) : Promise.resolve({ entries: [], totalCount: 0n }),
-                bot.listPurseSnapshotPurses ? bot.listPurseSnapshotPurses() : Promise.resolve([]),
+                bot.getAllPurseAllocations ? bot.getAllPurseAllocations() : Promise.resolve([]),
             ]);
             setSnapshots(snapResult.entries);
             setCapitalFlows(flows);
@@ -5256,7 +5256,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
             setPriceHistory(history.entries);
             setDailyPortfolioSummaries(dailyPortfolio.entries || []);
             setDailyPriceCandles(dailyPrices.entries || []);
-            setPursePurses(pursesWithSnaps || []);
+            setEnabledPurses((purseAllocs || []).filter(p => p.enabled).map(p => p.instanceId));
         } catch (err) {
             setError('Failed to load performance data: ' + err.message);
         } finally {
@@ -5427,7 +5427,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
     return (
         <div>
             {/* Scope selector: whole account vs purse */}
-            {pursePurses.length > 0 && (
+            {enabledPurses.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText, fontWeight: 500 }}>Scope:</span>
                     <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
@@ -5437,7 +5437,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
                             background: !isPurseView ? accentColor + '22' : 'transparent',
                             color: !isPurseView ? accentColor : theme.colors.secondaryText,
                         }}>Whole Account</button>
-                        {pursePurses.map(pid => (
+                        {enabledPurses.map(pid => (
                             <button key={pid} onClick={() => { setSelectedPurse(pid); setEquityView('detailed'); }} style={{
                                 padding: '4px 12px', fontSize: '0.75rem', fontWeight: '500', cursor: 'pointer',
                                 borderRadius: '5px', border: `1px solid ${selectedPurse === pid ? accentColor : theme.colors.border}`,
