@@ -10360,6 +10360,13 @@ function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
 
         let entry = showCard ? (swapResults[activeKey] || null) : null;
 
+        // Discard stale entries from a previous run
+        if (entry && !isSwapRunning && entry.timestamp && runStamp) {
+            const entryNs = BigInt(entry.timestamp);
+            const runNs = BigInt(runStamp);
+            if (entryNs < runNs) entry = null;
+        }
+
         if (showCard && isSwapRunning) {
             if (!actionCache[choreId]) {
                 setTimeout(() => triggerActionFetch(choreId), 0);
