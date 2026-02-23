@@ -25,7 +25,9 @@ import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/P
 import { useNaming } from '../NamingContext';
 import ConfirmDialog from './ConfirmDialog';
 import TokenSelector from './TokenSelector';
+import PrincipalInput from './PrincipalInput';
 import { getTokenMetadataSync } from '../hooks/useTokenCache';
+import { useWalletOptional } from '../contexts/WalletContext';
 
 const CONDITION_OPS = [
     { id: 0, label: 'Equals' },
@@ -131,6 +133,24 @@ function shortPrincipal(p) {
 
 export default function BotEventPanel({ canisterId, identity, theme, accentColor, hasPermission, choreStatuses, tokenRegistryEntries }) {
     const { principalNames, principalNicknames } = useNaming();
+    const walletCtx = useWalletOptional();
+    const knownBots = React.useMemo(() => {
+        if (!walletCtx) return [];
+        const { allBotEntries = [], appInfoMap = {} } = walletCtx;
+        const seen = new Set();
+        return allBotEntries
+            .filter(e => {
+                const cid = typeof e.canisterId === 'string' ? e.canisterId : e.canisterId?.toString?.() || '';
+                if (!cid || seen.has(cid)) return false;
+                seen.add(cid);
+                return true;
+            })
+            .map(e => {
+                const cid = typeof e.canisterId === 'string' ? e.canisterId : e.canisterId?.toString?.() || '';
+                const appInfo = e.resolvedAppId ? appInfoMap[e.resolvedAppId] : null;
+                return { canisterId: cid, appName: appInfo?.name || e.resolvedAppId || null };
+            });
+    }, [walletCtx]);
     const accent = accentColor;
     const canManage = hasPermission('ManageEvents');
     const canView = hasPermission('ViewEvents') || canManage;
