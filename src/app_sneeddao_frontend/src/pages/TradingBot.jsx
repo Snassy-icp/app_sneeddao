@@ -428,16 +428,16 @@ const parseTokenAmount = (humanStr, decimals) => {
 // ============================================
 function ChoreCumulativeSummary({ choreId, chore, getReadyBotActor, accentColor, theme, identity }) {
     const [actions, setActions] = useState(null);
-    const fetchedRef = useRef(null);
     const optVal = (arr) => arr?.length > 0 ? arr[0] : null;
 
     const choreType = chore?.choreTypeId || chore?.choreId || '';
     const fetchFn = (choreType === 'move-funds') ? 'getMoveFundsActions'
         : (choreType === 'trade' || choreType === 'rebalance') ? 'getTradeActions' : null;
 
+    const runCount = Number(chore?.totalSuccessCount || 0) + Number(chore?.totalFailureCount || 0);
+
     useEffect(() => {
-        if (!fetchFn || fetchedRef.current === choreId) return;
-        fetchedRef.current = choreId;
+        if (!fetchFn) return;
         (async () => {
             try {
                 const bot = await getReadyBotActor();
@@ -446,7 +446,7 @@ function ChoreCumulativeSummary({ choreId, chore, getReadyBotActor, accentColor,
                 setActions(acts || []);
             } catch { setActions([]); }
         })();
-    }, [choreId, fetchFn, getReadyBotActor]);
+    }, [choreId, fetchFn, getReadyBotActor, runCount]);
 
     const tokenIds = React.useMemo(() => {
         if (!actions) return [];
