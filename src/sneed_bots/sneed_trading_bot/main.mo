@@ -865,7 +865,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (?entry) { entry.symbol };
             case null {
                 let t = Principal.toText(token);
-                if (t.size() > 10) { Text.fromIter(Text.toIter(t).take(10)) } else { t }
+                if (t.size() <= 12) { t } else {
+                    var result = "";
+                    var count : Nat = 0;
+                    for (c in t.chars()) {
+                        if (count < 10) {
+                            result #= Text.fromChar(c);
+                            count += 1;
+                        };
+                    };
+                    result
+                }
             };
         }
     };
