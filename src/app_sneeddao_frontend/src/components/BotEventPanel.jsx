@@ -271,6 +271,8 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
 
     const [eventTypesCollapsed, setEventTypesCollapsed] = useState(true);
     const [actionsCollapsed, setActionsCollapsed] = useState(true);
+    const [eventLogCollapsed, setEventLogCollapsed] = useState(false);
+    const [reactionLogCollapsed, setReactionLogCollapsed] = useState(false);
 
     // ==========================================
     // STYLES
@@ -854,11 +856,12 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
 
                     {/* Event Log */}
                     <div style={cardStyle}>
-                        <div style={{ ...sectionTitle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>Emitted Events Log</span>
-                            {eventLogTotal > 0 && <span style={{ fontSize: '0.72rem', color: theme.colors.mutedText, fontWeight: 400 }}>{eventLogTotal} total</span>}
+                        <div style={{ ...sectionTitle, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none', marginBottom: eventLogCollapsed ? 0 : '10px' }}
+                            onClick={() => setEventLogCollapsed(c => !c)}>
+                            <span>Emitted Events Log {eventLogTotal > 0 && <span style={{ fontSize: '0.72rem', color: theme.colors.mutedText, fontWeight: 400 }}>({eventLogTotal})</span>}</span>
+                            <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, transition: 'transform 0.2s', display: 'inline-block', transform: eventLogCollapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}>&#9660;</span>
                         </div>
-                        {eventLog.length === 0 ? (
+                        {!eventLogCollapsed && (eventLog.length === 0 ? (
                             <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>No events emitted yet.</div>
                         ) : (
                             <div style={{ overflowX: 'auto' }}>
@@ -911,7 +914,7 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                     </div>
                                 )}
                             </div>
-                        )}
+                        ))}
                     </div>
                 </div>
             )}
@@ -1675,11 +1678,12 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
 
                     {/* Reaction Log */}
                     <div style={cardStyle}>
-                        <div style={{ ...sectionTitle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>Reaction Log</span>
-                            {reactionLogTotal > 0 && <span style={{ fontSize: '0.72rem', color: theme.colors.mutedText, fontWeight: 400 }}>{reactionLogTotal} total</span>}
+                        <div style={{ ...sectionTitle, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none', marginBottom: reactionLogCollapsed ? 0 : '10px' }}
+                            onClick={() => setReactionLogCollapsed(c => !c)}>
+                            <span>Reaction Log {reactionLogTotal > 0 && <span style={{ fontSize: '0.72rem', color: theme.colors.mutedText, fontWeight: 400 }}>({reactionLogTotal})</span>}</span>
+                            <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, transition: 'transform 0.2s', display: 'inline-block', transform: reactionLogCollapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}>&#9660;</span>
                         </div>
-                        {reactionLog.length === 0 ? (
+                        {!reactionLogCollapsed && (reactionLog.length === 0 ? (
                             <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>No reactions triggered yet.</div>
                         ) : (
                             <div style={{ overflowX: 'auto' }}>
@@ -1735,7 +1739,7 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                     </div>
                                 )}
                             </div>
-                        )}
+                        ))}
                     </div>
                 </div>
             )}
