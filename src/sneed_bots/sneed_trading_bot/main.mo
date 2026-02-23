@@ -2594,6 +2594,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             portfolioSnapshots := Buffer.toArray(buf);
         };
         updateDailyPortfolioSummary(full);
+        eventEngine.queueEvent(T.TradingEvent.SnapshotTaken, [
+            ("snapshotId", Nat.toText(id)),
+            ("trigger", entry.trigger),
+            ("choreId", switch (entry.choreId) { case (?c) c; case null "" }),
+        ]);
         ?id
     };
 
@@ -2954,6 +2959,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         switch (action.maxCumulativeInput) {
             case (?max) { if (action.cumulativeInputSpent >= max) {
                 logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " skipped: cumulative input limit reached (" # Nat.toText(action.cumulativeInputSpent) # " >= " # Nat.toText(max) # ")", null, []);
+                eventEngine.emitEvent<system>(T.TradingEvent.CumulativeLimitReached, [
+                    ("choreId", instanceId), ("actionId", Nat.toText(action.id)),
+                    ("limitType", "input"), ("current", Nat.toText(action.cumulativeInputSpent)), ("max", Nat.toText(max)),
+                ]);
                 return (false, 0, 0);
             }};
             case null {};
@@ -2961,6 +2970,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         switch (action.maxCumulativeOutput) {
             case (?max) { if (action.cumulativeOutputReceived >= max) {
                 logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " skipped: cumulative output limit reached (" # Nat.toText(action.cumulativeOutputReceived) # " >= " # Nat.toText(max) # ")", null, []);
+                eventEngine.emitEvent<system>(T.TradingEvent.CumulativeLimitReached, [
+                    ("choreId", instanceId), ("actionId", Nat.toText(action.id)),
+                    ("limitType", "output"), ("current", Nat.toText(action.cumulativeOutputReceived)), ("max", Nat.toText(max)),
+                ]);
                 return (false, 0, 0);
             }};
             case null {};
@@ -3087,6 +3100,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 errorMessage = ?reason;
                 txId = null; destinationOwner = null;
             });
+            eventEngine.queueEvent(T.TradingEvent.TradeSkipped, [
+                ("choreId", instanceId),
+                ("actionId", Nat.toText(action.id)),
+                ("reason", reason),
+            ]);
         };
 
         // Global pause/freeze check — paused or frozen tokens cannot be traded
@@ -3435,6 +3453,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             };
                             case null {};
                         };
+                        eventEngine.emitEvent<system>(T.TradingEvent.TradeExecuted, [
+                            ("choreId", instanceId),
+                            ("actionId", Nat.toText(action.id)),
+                            ("inputToken", Principal.toText(action.inputToken)),
+                            ("outputToken", Principal.toText(outputToken)),
+                            ("inputAmount", Nat.toText(actualTradeSize)),
+                            ("outputAmount", Nat.toText(r.amountOut)),
+                        ]);
                         (true, actualTradeSize, r.amountOut)
                     };
                     case (#Err(e)) {
@@ -3467,6 +3493,13 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             case (?purseId) { adjustChorePurseBalance(purseId, action.inputToken, feeLost, true) };
                             case null {};
                         };
+                        eventEngine.emitEvent<system>(T.TradingEvent.TradeFailed, [
+                            ("choreId", instanceId),
+                            ("actionId", Nat.toText(action.id)),
+                            ("inputToken", Principal.toText(action.inputToken)),
+                            ("outputToken", Principal.toText(outputToken)),
+                            ("error", e),
+                        ]);
                         (false, 0, 0)
                     };
                 }
@@ -3669,6 +3702,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                     case (?purseId) { adjustChorePurseBalance(purseId, action.inputToken, feeLost, true) };
                                     case null {};
                                 };
+                                eventEngine.emitEvent<system>(T.TradingEvent.TradeFailed, [
+                                    ("choreId", instanceId), ("actionId", Nat.toText(action.id)),
+                                    ("inputToken", Principal.toText(action.inputToken)),
+                                    ("outputToken", Principal.toText(outputToken)),
+                                    ("error", routeLabel # " leg1: " # e),
+                                ]);
                                 return (false, 0, 0);
                             };
                         };
@@ -3760,6 +3799,13 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                     };
                                     case null {};
                                 };
+                                eventEngine.emitEvent<system>(T.TradingEvent.TradeExecuted, [
+                                    ("choreId", instanceId), ("actionId", Nat.toText(action.id)),
+                                    ("inputToken", Principal.toText(action.inputToken)),
+                                    ("outputToken", Principal.toText(outputToken)),
+                                    ("inputAmount", Nat.toText(actualTradeSize)),
+                                    ("outputAmount", Nat.toText(r.amountOut)),
+                                ]);
                                 (true, actualTradeSize, r.amountOut)
                             };
                             case (#Err(e)) {
@@ -3793,6 +3839,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                     case (?purseId) { adjustChorePurseBalance(purseId, action.inputToken, intFeeLost, true) };
                                     case null {};
                                 };
+                                eventEngine.emitEvent<system>(T.TradingEvent.TradeFailed, [
+                                    ("choreId", instanceId), ("actionId", Nat.toText(action.id)),
+                                    ("inputToken", Principal.toText(action.inputToken)),
+                                    ("outputToken", Principal.toText(outputToken)),
+                                    ("error", routeLabel # " leg2: " # e),
+                                ]);
                                 (false, 0, 0)
                             };
                         }
@@ -3879,6 +3931,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             txId = null;
             destinationOwner = null;
         });
+        eventEngine.emitEvent<system>(T.TradingEvent.PurseFunded, [
+            ("choreId", instanceId), ("token", Principal.toText(action.inputToken)),
+            ("amount", Nat.toText(amount)), ("purseId", targetPurse),
+        ]);
         (true, amount, 0)
     };
 
@@ -3933,6 +3989,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             txId = null;
             destinationOwner = null;
         });
+        eventEngine.emitEvent<system>(T.TradingEvent.PurseReclaimed, [
+            ("choreId", instanceId), ("token", Principal.toText(action.inputToken)),
+            ("amount", Nat.toText(amount)), ("purseId", sourcePurse),
+        ]);
         (true, amount, 0)
     };
 
@@ -4019,6 +4079,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 capitalDeployedIcpE8s -= icpVal;
                 capitalDeployedUsdE8s -= usdVal;
                 recordTokenOutflow(action.inputToken, amount);
+                eventEngine.emitEvent<system>(T.TradingEvent.SendExecuted, [
+                    ("choreId", instanceId), ("token", Principal.toText(action.inputToken)),
+                    ("amount", Nat.toText(amount)), ("to", Principal.toText(destOwner)),
+                ]);
                 (true, amount, 0)
             };
             case (#Err(e)) {
@@ -4041,6 +4105,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     txId = null;
                     destinationOwner = ?destOwner;
                 });
+                eventEngine.emitEvent<system>(T.TradingEvent.SendFailed, [
+                    ("choreId", instanceId), ("token", Principal.toText(action.inputToken)),
+                    ("amount", Nat.toText(amount)), ("to", Principal.toText(destOwner)),
+                    ("error", debug_show(e)),
+                ]);
                 (false, 0, 0)
             };
         };
@@ -4149,6 +4218,13 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     };
                     case null {};
                 };
+                eventEngine.emitEvent<system>(T.TradingEvent.RebalanceExecuted, [
+                    ("choreId", instanceId),
+                    ("inputToken", Principal.toText(sellToken.token)),
+                    ("outputToken", Principal.toText(buyToken.token)),
+                    ("inputAmount", Nat.toText(tradeSize)),
+                    ("outputAmount", Nat.toText(r.amountOut)),
+                ]);
                 true
             };
             case (#Err(e)) {
@@ -4180,13 +4256,18 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     destinationOwner = null;
                 });
                 _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
-                // On failure: restore lastKnown, minus any lost fees
                 let feeLost = quote.inputFeesTotal;
                 setLastKnownBalance(sellToken.token, if (preSwapSellBalance > feeLost) { preSwapSellBalance - feeLost } else { 0 });
                 switch (if (feeLost > 0) { getEffectivePurseId(instanceId) } else { null }) {
                     case (?purseId) { adjustChorePurseBalance(purseId, sellToken.token, feeLost, true) };
                     case null {};
                 };
+                eventEngine.emitEvent<system>(T.TradingEvent.TradeFailed, [
+                    ("choreId", instanceId),
+                    ("inputToken", Principal.toText(sellToken.token)),
+                    ("outputToken", Principal.toText(buyToken.token)),
+                    ("error", e),
+                ]);
                 false
             };
         };
@@ -4218,6 +4299,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 txId = null;
                 destinationOwner = null;
             });
+            eventEngine.emitEvent<system>(T.TradingEvent.RebalanceSkipped, [("choreId", instanceId), ("reason", "No targets configured")]);
             return false;
         };
 
@@ -4243,6 +4325,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 txId = null;
                 destinationOwner = null;
             });
+            eventEngine.emitEvent<system>(T.TradingEvent.RebalanceSkipped, [("choreId", instanceId), ("reason", "All targets are paused")]);
             return false;
         };
         let activeTotalBps = Array.foldLeft<T.RebalanceTarget, Nat>(activeTargets, 0, func(acc, t) { acc + t.targetBps });
@@ -4389,6 +4472,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 txId = null;
                 destinationOwner = null;
             });
+            eventEngine.emitEvent<system>(T.TradingEvent.RebalanceSkipped, [("choreId", instanceId), ("reason", "Portfolio value is 0")]);
             return false;
         };
 
@@ -4471,6 +4555,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 destinationOwner = null;
             });
             _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
+            eventEngine.emitEvent<system>(T.TradingEvent.RebalanceSkipped, [("choreId", instanceId), ("reason", skipMsg)]);
             return false;
         };
 
@@ -4680,6 +4765,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 destinationOwner = null;
             });
             _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
+            eventEngine.emitEvent<system>(T.TradingEvent.RebalanceSkipped, [
+                ("choreId", instanceId),
+                ("reason", "Trade value below minimum"),
+                ("token", Principal.toText(sellToken.token)),
+            ]);
             return false;
         };
 
@@ -4866,6 +4956,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     destinationOwner = null;
                 });
                 _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
+                eventEngine.emitEvent<system>(T.TradingEvent.RebalanceSkipped, [
+                    ("choreId", instanceId), ("reason", reason),
+                    ("token", Principal.toText(sellToken.token)),
+                ]);
                 return false;
             };
             case (?p) p;
@@ -4947,6 +5041,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case (?purseId) { adjustChorePurseBalance(purseId, sellToken.token, feeLost1, true) };
                     case null {};
                 };
+                eventEngine.emitEvent<system>(T.TradingEvent.TradeFailed, [
+                    ("choreId", instanceId),
+                    ("inputToken", Principal.toText(sellToken.token)),
+                    ("outputToken", Principal.toText(buyToken.token)),
+                    ("error", routeLabel # " leg1: " # e),
+                ]);
                 return false;
             };
         };
@@ -5068,6 +5168,13 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     };
                     case null {};
                 };
+                eventEngine.emitEvent<system>(T.TradingEvent.RebalanceExecuted, [
+                    ("choreId", instanceId),
+                    ("inputToken", Principal.toText(sellToken.token)),
+                    ("outputToken", Principal.toText(buyToken.token)),
+                    ("inputAmount", Nat.toText(tradeSize)),
+                    ("outputAmount", Nat.toText(r.amountOut)),
+                ]);
                 true
             };
             case (#Err(e)) {
@@ -5106,6 +5213,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case (?purseId) { adjustChorePurseBalance(purseId, intermediary, intFeeLost, true) };
                     case null {};
                 };
+                eventEngine.emitEvent<system>(T.TradingEvent.TradeFailed, [
+                    ("choreId", instanceId),
+                    ("inputToken", Principal.toText(sellToken.token)),
+                    ("outputToken", Principal.toText(buyToken.token)),
+                    ("error", routeLabel # " leg2: " # e),
+                ]);
                 false
             };
         };
@@ -5571,6 +5684,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         switch (action.maxCumulativeInput) {
                             case (?max) { if (stats.cumulativeInputSpent >= max) {
                                 logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " cumulative input limit reached (" # Nat.toText(stats.cumulativeInputSpent) # "/" # Nat.toText(max) # ") — halting chore", null, []);
+                                eventEngine.emitEvent<system>(T.TradingEvent.CumulativeLimitReached, [
+                                    ("choreId", instanceId), ("actionId", Nat.toText(action.id)),
+                                    ("limitType", "input"), ("current", Nat.toText(stats.cumulativeInputSpent)), ("max", Nat.toText(max)),
+                                ]);
                                 choreEngine.stop(instanceId);
                             }};
                             case null {};
@@ -5578,6 +5695,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         switch (action.maxCumulativeOutput) {
                             case (?max) { if (stats.cumulativeOutputReceived >= max) {
                                 logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " cumulative output limit reached (" # Nat.toText(stats.cumulativeOutputReceived) # "/" # Nat.toText(max) # ") — halting chore", null, []);
+                                eventEngine.emitEvent<system>(T.TradingEvent.CumulativeLimitReached, [
+                                    ("choreId", instanceId), ("actionId", Nat.toText(action.id)),
+                                    ("limitType", "output"), ("current", Nat.toText(stats.cumulativeOutputReceived)), ("max", Nat.toText(max)),
+                                ]);
                                 choreEngine.stop(instanceId);
                             }};
                             case null {};
@@ -5591,8 +5712,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         };
                     };
                 };
+                eventEngine.flushDeliveryQueue<system>();
                 #Done
             } catch (e) {
+                eventEngine.flushDeliveryQueue<system>();
                 #Error("Action " # Nat.toText(action.id) # " failed: " # Error.message(e))
             }
         }
@@ -5725,9 +5848,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     };
                 };
 
+                eventEngine.flushDeliveryQueue<system>();
                 #Done
             } catch (e) {
                 logEngine.logWarning("chore:" # instanceId, "Balance snapshot failed: " # Error.message(e), null, []);
+                eventEngine.flushDeliveryQueue<system>();
                 #Done
             }
         }
@@ -6181,9 +6306,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                 try {
                                     ignore await* executeRebalance(instanceId);
                                     switch (epid) { case (?pid) { unlockPurse(pid) }; case null {} };
+                                    eventEngine.flushDeliveryQueue<system>();
                                     #Done
                                 } catch (e) {
                                     switch (epid) { case (?pid) { unlockPurse(pid) }; case null {} };
+                                    eventEngine.flushDeliveryQueue<system>();
                                     #Error("Rebalance failed: " # Error.message(e))
                                 }
                             };
@@ -6209,9 +6336,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                 try {
                                     ignore await* executeRebalance(instanceId);
                                     switch (epid) { case (?pid) { unlockPurse(pid) }; case null {} };
+                                    eventEngine.flushDeliveryQueue<system>();
                                     #Done
                                 } catch (e) {
                                     switch (epid) { case (?pid) { unlockPurse(pid) }; case null {} };
+                                    eventEngine.flushDeliveryQueue<system>();
                                     #Error("Rebalance failed: " # Error.message(e))
                                 }
                             };

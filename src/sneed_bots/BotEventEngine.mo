@@ -98,11 +98,28 @@ module {
         // SOURCE SIDE: EVENT EMISSION
         // ============================================
 
+        /// Queue an event without kicking the delivery timer.
+        /// Use from contexts without `system` capability; the timer will be
+        /// kicked the next time `emitEvent<system>` runs or `flushDeliveryQueue<system>` is called.
+        public func queueEvent(eventTypeId: Nat, data: [(Text, Text)]) {
+            if (not srcState.getEmissionEnabled()) return;
+            _queueEventInternal(eventTypeId, data);
+        };
+
         /// Emit an event. Adds to the event log, queues deliveries for all
         /// matching listeners, and kicks off the delivery timer if needed.
         public func emitEvent<system>(eventTypeId: Nat, data: [(Text, Text)]) {
             if (not srcState.getEmissionEnabled()) return;
+            _queueEventInternal(eventTypeId, data);
+            kickDeliveryTimer<system>();
+        };
 
+        /// Kick the delivery timer (call from a `<system>` context after queueEvent calls).
+        public func flushDeliveryQueue<system>() {
+            kickDeliveryTimer<system>();
+        };
+
+        func _queueEventInternal(eventTypeId: Nat, data: [(Text, Text)]) {
             let eventId = srcState.getEventLogNextId();
             srcState.setEventLogNextId(eventId + 1);
 
@@ -127,8 +144,6 @@ module {
                     });
                 };
             };
-
-            kickDeliveryTimer<system>();
         };
 
         func addToEventLog(event: BotEventTypes.BotEvent) {
