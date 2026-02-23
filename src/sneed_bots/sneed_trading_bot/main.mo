@@ -5311,12 +5311,21 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 q
             };
             case null {
-                logEngine.logError(src, "Rebalance " # routeLabel # ": leg1 succeeded (" # Nat.toText(intermediaryReceived) # " " # intLabel # ") but no quote for leg2 " # intLabel # " → " # tokenLabel(buyToken.token) # " (" # intLabel # " stuck in canister)", null, [
+                let errMsg = routeLabel # ": leg1 succeeded (" # Nat.toText(intermediaryReceived) # " " # intLabel # ") but no quote for leg2 (" # intLabel # " stuck in canister)";
+                logEngine.logError(src, "Rebalance " # errMsg, null, [
                     ("intermediaryReceived", Nat.toText(intermediaryReceived)),
                     ("intermediary", intLabel),
                     ("buyToken", tokenLabel(buyToken.token)),
                     ("buyTokenId", Principal.toText(buyToken.token)),
                 ]);
+                ignore appendTradeLog({
+                    choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = null;
+                    actionType = 0; inputToken = sellToken.token; outputToken = ?buyToken.token;
+                    inputAmount = tradeAmount; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Failed; errorMessage = ?errMsg;
+                    txId = null; destinationOwner = null;
+                });
                 return false;
             };
         };
@@ -5973,6 +5982,15 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 eventEngine.flushDeliveryQueue<system>();
                 #Done
             } catch (e) {
+                ignore appendTradeLog({
+                    choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                    actionType = action.actionType;
+                    inputToken = action.inputToken; outputToken = action.outputToken;
+                    inputAmount = 0; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Failed; errorMessage = ?("Unexpected: " # Error.message(e));
+                    txId = null; destinationOwner = null;
+                });
                 eventEngine.flushDeliveryQueue<system>();
                 #Error("Action " # Nat.toText(action.id) # " failed: " # Error.message(e))
             }
@@ -6568,6 +6586,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                     #Done
                                 } catch (e) {
                                     switch (epid) { case (?pid) { unlockPurse(pid) }; case null {} };
+                                    ignore appendTradeLog({
+                                        choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = null;
+                                        actionType = 0; inputToken = getRebalDenomToken(instanceId); outputToken = null;
+                                        inputAmount = 0; outputAmount = null;
+                                        priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                                        status = #Failed; errorMessage = ?("Unexpected: " # Error.message(e));
+                                        txId = null; destinationOwner = null;
+                                    });
                                     eventEngine.flushDeliveryQueue<system>();
                                     #Error("Rebalance failed: " # Error.message(e))
                                 }
@@ -6598,6 +6624,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                     #Done
                                 } catch (e) {
                                     switch (epid) { case (?pid) { unlockPurse(pid) }; case null {} };
+                                    ignore appendTradeLog({
+                                        choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = null;
+                                        actionType = 0; inputToken = getRebalDenomToken(instanceId); outputToken = null;
+                                        inputAmount = 0; outputAmount = null;
+                                        priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                                        status = #Failed; errorMessage = ?("Unexpected: " # Error.message(e));
+                                        txId = null; destinationOwner = null;
+                                    });
                                     eventEngine.flushDeliveryQueue<system>();
                                     #Error("Rebalance failed: " # Error.message(e))
                                 }
