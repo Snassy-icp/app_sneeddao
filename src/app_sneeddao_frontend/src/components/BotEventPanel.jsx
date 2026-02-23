@@ -31,6 +31,83 @@ const CONDITION_OPS = [
     { id: 4, label: 'Less Than' },
 ];
 
+const ACTION_PARAM_HINTS = {
+    0:   [{ key: 'choreId', hint: 'Chore instance ID', required: true }],
+    1:   [{ key: 'choreId', hint: 'Chore instance ID', required: true }],
+    2:   [{ key: 'choreId', hint: 'Chore instance ID', required: true }],
+    3:   [{ key: 'choreId', hint: 'Chore instance ID', required: true }],
+    4:   [{ key: 'choreId', hint: 'Chore instance ID', required: true }],
+    5:   [],
+    100: [],
+    101: [],
+    102: [],
+    103: [],
+    104: [],
+    105: [],
+    106: [],
+    200: [{ key: 'token', hint: 'Token ledger canister ID (principal)', required: true }],
+    201: [{ key: 'token', hint: 'Token ledger canister ID (principal)', required: true }],
+    202: [{ key: 'token', hint: 'Token ledger canister ID (principal)', required: true }],
+    203: [{ key: 'token', hint: 'Token ledger canister ID (principal)', required: true }],
+    204: [],
+    205: [],
+    206: [{ key: 'choreId', hint: 'Chore instance ID', required: true }, { key: 'token', hint: 'Token ledger canister ID', required: true }, { key: 'amount', hint: 'Amount (e8s)', required: true }],
+    207: [{ key: 'choreId', hint: 'Chore instance ID', required: true }, { key: 'token', hint: 'Token ledger canister ID', required: true }, { key: 'amount', hint: 'Amount (e8s)', required: true }],
+    208: [{ key: 'token', hint: 'Token ledger canister ID', required: true }, { key: 'to', hint: 'Destination principal', required: true }, { key: 'amount', hint: 'Amount (e8s)', required: true }],
+};
+
+const EVENT_DATA_KEYS = {
+    0:   [{ key: 'choreId', hint: 'Chore instance ID' }],
+    1:   [{ key: 'choreId', hint: 'Chore instance ID' }],
+    2:   [{ key: 'choreId', hint: 'Chore instance ID' }],
+    3:   [{ key: 'choreId', hint: 'Chore instance ID' }],
+    4:   [{ key: 'choreId', hint: 'Chore instance ID' }],
+    5:   [{ key: 'choreId', hint: 'Chore instance ID' }],
+    6:   [{ key: 'choreId', hint: 'Chore instance ID' }],
+    10:  [{ key: 'listId', hint: 'Distribution list ID' }, { key: 'listName', hint: 'Distribution list name' }],
+    11:  [{ key: 'listId', hint: 'Distribution list ID' }, { key: 'error', hint: 'Error message' }],
+    100: [{ key: 'neuronId', hint: 'Neuron ID' }],
+    101: [{ key: 'neuronId', hint: 'Neuron ID' }],
+    102: [{ key: 'neuronId', hint: 'Neuron ID' }],
+    103: [{ key: 'neuronId', hint: 'Neuron ID' }],
+    110: [{ key: 'neuronId', hint: 'Neuron ID' }],
+    111: [{ key: 'neuronId', hint: 'Neuron ID' }],
+    112: [{ key: 'neuronId', hint: 'Neuron ID' }, { key: 'delaySeconds', hint: 'New dissolve delay' }],
+    120: [{ key: 'neuronId', hint: 'Neuron ID' }],
+    121: [{ key: 'neuronId', hint: 'Neuron ID' }],
+    122: [{ key: 'neuronId', hint: 'Neuron ID' }],
+    123: [{ key: 'neuronId', hint: 'Neuron ID' }],
+    130: [{ key: 'neuronId', hint: 'Neuron ID' }],
+    131: [{ key: 'neuronId', hint: 'Neuron ID' }, { key: 'amount', hint: 'Amount (e8s)' }],
+    140: [{ key: 'neuronId', hint: 'Neuron ID' }, { key: 'proposalId', hint: 'Proposal ID' }],
+    141: [{ key: 'neuronId', hint: 'Neuron ID' }],
+    150: [{ key: 'neuronId', hint: 'Neuron ID' }, { key: 'hotkey', hint: 'Hotkey principal' }],
+    151: [{ key: 'neuronId', hint: 'Neuron ID' }, { key: 'hotkey', hint: 'Hotkey principal' }],
+    160: [{ key: 'amount', hint: 'Amount (e8s)' }, { key: 'to', hint: 'Destination' }],
+    161: [{ key: 'token', hint: 'Token canister ID' }, { key: 'amount', hint: 'Amount' }],
+    200: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'token', hint: 'Token traded' }],
+    201: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'reason', hint: 'Skip reason' }],
+    202: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'error', hint: 'Error message' }],
+    210: [{ key: 'ruleId', hint: 'Circuit breaker rule ID' }, { key: 'ruleName', hint: 'Rule name' }, { key: 'actionsTaken', hint: 'Actions taken' }],
+    211: [],
+    212: [],
+    220: [{ key: 'token', hint: 'Token canister ID' }],
+    221: [{ key: 'token', hint: 'Token canister ID' }],
+    222: [{ key: 'token', hint: 'Token canister ID' }],
+    223: [{ key: 'token', hint: 'Token canister ID' }],
+    230: [{ key: 'choreId', hint: 'Chore instance ID' }],
+    231: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'reason', hint: 'Skip reason' }],
+    240: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'token', hint: 'Token' }, { key: 'amount', hint: 'Amount' }],
+    241: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'token', hint: 'Token' }, { key: 'amount', hint: 'Amount' }],
+    242: [{ key: 'token', hint: 'Token' }, { key: 'to', hint: 'Destination' }, { key: 'amount', hint: 'Amount' }],
+    243: [{ key: 'token', hint: 'Token' }, { key: 'error', hint: 'Error message' }],
+    250: [{ key: 'token', hint: 'Token' }, { key: 'amount', hint: 'Amount' }],
+    251: [{ key: 'token', hint: 'Token' }, { key: 'amount', hint: 'Amount' }],
+    252: [{ key: 'token', hint: 'Token' }, { key: 'shortfall', hint: 'Shortfall amount' }],
+    260: [{ key: 'choreId', hint: 'Chore instance ID' }],
+    270: [{ key: 'token', hint: 'Token' }, { key: 'choreId', hint: 'Chore instance ID' }],
+};
+
 const opLabel = (id) => CONDITION_OPS.find(o => o.id === Number(id))?.label || `Op ${id}`;
 
 function formatTimestamp(ns) {
@@ -93,8 +170,10 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
 
     // Add subscription form
     const [newSubBotId, setNewSubBotId] = useState('');
-    const [newSubEventTypes, setNewSubEventTypes] = useState('');
     const [addingSub, setAddingSub] = useState(false);
+    const [sourceEventTypes, setSourceEventTypes] = useState(null); // fetched from source bot
+    const [sourceEventTypesLoading, setSourceEventTypesLoading] = useState(false);
+    const [selectedSourceEvents, setSelectedSourceEvents] = useState(new Set());
 
     // Add/edit reaction form
     const [showReactionForm, setShowReactionForm] = useState(false);
@@ -246,18 +325,46 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
     // ==========================================
     // LISTENER ACTIONS
     // ==========================================
+    const fetchSourceEventTypes = useCallback(async (botIdText) => {
+        if (!botIdText.trim()) { setSourceEventTypes(null); return; }
+        setSourceEventTypesLoading(true);
+        setSourceEventTypes(null);
+        setSelectedSourceEvents(new Set());
+        try {
+            Principal.fromText(botIdText.trim()); // validate
+            const agent = HttpAgent.createSync({ identity, host: 'https://icp-api.io' });
+            const sourceActor = Actor.createActor(botEventIdlFactory, { agent, canisterId: botIdText.trim() });
+            const types = await sourceActor.getEventTypes();
+            setSourceEventTypes(types.map(([id, name]) => ({ id: Number(id), name })));
+        } catch (e) {
+            setSourceEventTypes([]);
+            setListenerError('Could not fetch event types from source bot: ' + (e.message || String(e)));
+        } finally {
+            setSourceEventTypesLoading(false);
+        }
+    }, [identity]);
+
+    const toggleSourceEvent = (id) => {
+        setSelectedSourceEvents(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
+    };
+
     const addSubscription = useCallback(async () => {
         setAddingSub(true);
         setListenerError('');
         try {
             const principal = Principal.fromText(newSubBotId.trim());
-            const ids = newSubEventTypes.split(',').map(s => BigInt(s.trim())).filter(n => n >= 0n);
-            if (ids.length === 0) throw new Error('Enter at least one event type ID');
+            const ids = Array.from(selectedSourceEvents).map(n => BigInt(n));
+            if (ids.length === 0) throw new Error('Select at least one event type');
             const actor = await getActor();
             const result = await actor.addEventSubscription(principal, ids);
             if ('Err' in result) throw new Error(result.Err);
             setNewSubBotId('');
-            setNewSubEventTypes('');
+            setSourceEventTypes(null);
+            setSelectedSourceEvents(new Set());
             setListenerSuccess('Subscription added (ID: ' + Number(result.Ok) + ')');
             setTimeout(() => setListenerSuccess(''), 3000);
             await loadListenerData(true);
@@ -266,7 +373,7 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
         } finally {
             setAddingSub(false);
         }
-    }, [getActor, newSubBotId, newSubEventTypes, loadListenerData]);
+    }, [getActor, newSubBotId, selectedSourceEvents, loadListenerData]);
 
     const removeSubscription = useCallback(async (id) => {
         setRemovingSub(id);
@@ -447,15 +554,36 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                         <tr>
                                             <th style={headerCellStyle}>ID</th>
                                             <th style={{ ...headerCellStyle, textAlign: 'left' }}>Name</th>
+                                            <th style={{ ...headerCellStyle, textAlign: 'left' }}>Data Keys</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {eventTypes.map(t => (
-                                            <tr key={t.id}>
-                                                <td style={{ ...cellStyle, fontFamily: 'monospace', width: '60px' }}>{t.id}</td>
-                                                <td style={cellStyle}>{t.name}</td>
-                                            </tr>
-                                        ))}
+                                        {eventTypes.map(t => {
+                                            const keys = EVENT_DATA_KEYS[t.id] || [];
+                                            return (
+                                                <tr key={t.id}>
+                                                    <td style={{ ...cellStyle, fontFamily: 'monospace', width: '60px' }}>{t.id}</td>
+                                                    <td style={cellStyle}>{t.name}</td>
+                                                    <td style={cellStyle}>
+                                                        {keys.length > 0 ? (
+                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                                                                {keys.map(k => (
+                                                                    <span key={k.key} title={k.hint} style={{
+                                                                        fontSize: '0.68rem', padding: '1px 5px', borderRadius: '3px',
+                                                                        background: `${accent}10`, border: `1px solid ${accent}25`,
+                                                                        fontFamily: 'monospace', color: theme.colors.primaryText,
+                                                                    }}>
+                                                                        {k.key}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <span style={{ color: theme.colors.mutedText, fontSize: '0.68rem' }}>—</span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
@@ -672,22 +800,96 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                         {/* Add subscription form */}
                         {canManage && (
                             <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: '12px' }}>
-                                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: theme.colors.primaryText, marginBottom: '8px' }}>Add Subscription</div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '8px', alignItems: 'end' }}>
-                                    <div>
-                                        <label style={labelStyle}>Source Bot Canister ID</label>
-                                        <input style={inputStyle} value={newSubBotId} onChange={e => setNewSubBotId(e.target.value)}
-                                            placeholder="aaaaa-aa" />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Event Type IDs (comma-separated)</label>
-                                        <input style={inputStyle} value={newSubEventTypes} onChange={e => setNewSubEventTypes(e.target.value)}
-                                            placeholder="0, 1, 210" />
-                                    </div>
-                                    <button style={btnStyle} onClick={addSubscription} disabled={addingSub || !newSubBotId.trim()}>
-                                        {addingSub ? 'Adding...' : 'Add'}
+                                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: theme.colors.primaryText, marginBottom: '10px' }}>Add Subscription</div>
+
+                                {/* Quick-pick: self or enter canister ID */}
+                                <label style={labelStyle}>Source Bot</label>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap' }}>
+                                    <button style={{
+                                        ...btnSecondary, fontSize: '0.78rem', padding: '6px 14px',
+                                        ...(newSubBotId === canisterId ? { borderColor: accent, color: accent, background: `${accent}10` } : {}),
+                                    }}
+                                        onClick={() => { setNewSubBotId(canisterId); fetchSourceEventTypes(canisterId); }}>
+                                        This bot (self)
                                     </button>
+                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.78rem' }}>or</span>
+                                    <div style={{ flex: 1, minWidth: '200px' }}>
+                                        <input style={inputStyle} value={newSubBotId === canisterId ? '' : newSubBotId}
+                                            onChange={e => { setNewSubBotId(e.target.value); setSourceEventTypes(null); setSelectedSourceEvents(new Set()); }}
+                                            onBlur={e => { if (e.target.value.trim() && e.target.value.trim() !== canisterId) fetchSourceEventTypes(e.target.value); }}
+                                            placeholder="Paste another bot's canister ID" />
+                                    </div>
                                 </div>
+
+                                {/* Loading state */}
+                                {sourceEventTypesLoading && (
+                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', padding: '12px', textAlign: 'center' }}>
+                                        Fetching event types from source bot...
+                                    </div>
+                                )}
+
+                                {/* Event type checklist */}
+                                {sourceEventTypes !== null && !sourceEventTypesLoading && (
+                                    <div style={{ marginBottom: '12px' }}>
+                                        {sourceEventTypes.length === 0 ? (
+                                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', padding: '12px', background: theme.colors.secondaryBg, borderRadius: '8px', textAlign: 'center' }}>
+                                                No event types found. This bot may not support the event system or hasn't been upgraded yet.
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                                    <label style={{ ...labelStyle, marginBottom: 0 }}>
+                                                        Select events to listen to
+                                                        {selectedSourceEvents.size > 0 && (
+                                                            <span style={{ marginLeft: '6px', color: accent, fontWeight: 600 }}>
+                                                                ({selectedSourceEvents.size} selected)
+                                                            </span>
+                                                        )}
+                                                    </label>
+                                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                                        <button style={{ ...btnSecondary, fontSize: '0.7rem', padding: '2px 8px' }}
+                                                            onClick={() => setSelectedSourceEvents(new Set(sourceEventTypes.map(t => t.id)))}>
+                                                            All
+                                                        </button>
+                                                        <button style={{ ...btnSecondary, fontSize: '0.7rem', padding: '2px 8px' }}
+                                                            onClick={() => setSelectedSourceEvents(new Set())}>
+                                                            None
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div style={{
+                                                    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '2px',
+                                                    padding: '8px', background: theme.colors.secondaryBg, borderRadius: '8px',
+                                                    border: `1px solid ${theme.colors.border}`, maxHeight: '220px', overflowY: 'auto',
+                                                }}>
+                                                    {sourceEventTypes.map(t => (
+                                                        <label key={t.id} style={{
+                                                            display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer',
+                                                            fontSize: '0.8rem', color: theme.colors.primaryText, padding: '5px 8px',
+                                                            borderRadius: '6px', transition: 'background 0.15s',
+                                                            background: selectedSourceEvents.has(t.id) ? `${accent}12` : 'transparent',
+                                                            border: selectedSourceEvents.has(t.id) ? `1px solid ${accent}40` : '1px solid transparent',
+                                                        }}>
+                                                            <input type="checkbox" checked={selectedSourceEvents.has(t.id)}
+                                                                onChange={() => toggleSourceEvent(t.id)}
+                                                                style={{ accentColor: accent }} />
+                                                            <span style={{ flex: 1 }}>{t.name}</span>
+                                                            <span style={{ fontFamily: 'monospace', fontSize: '0.68rem', color: theme.colors.mutedText }}>#{t.id}</span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Subscribe button */}
+                                {sourceEventTypes !== null && sourceEventTypes.length > 0 && (
+                                    <button style={{ ...btnStyle, width: '100%', padding: '10px' }} onClick={addSubscription}
+                                        disabled={addingSub || selectedSourceEvents.size === 0}>
+                                        {addingSub ? 'Subscribing...' : `Subscribe to ${selectedSourceEvents.size} event${selectedSourceEvents.size !== 1 ? 's' : ''}`}
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>
@@ -814,7 +1016,15 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                     <div>
                                         <label style={labelStyle}>Reaction Action</label>
                                         <select style={inputStyle} value={reactionForm.reactionActionId}
-                                            onChange={e => setReactionForm(f => ({ ...f, reactionActionId: e.target.value }))}>
+                                            onChange={e => {
+                                                const actionId = e.target.value;
+                                                const hints = actionId !== '' ? (ACTION_PARAM_HINTS[Number(actionId)] || []) : [];
+                                                setReactionForm(f => ({
+                                                    ...f,
+                                                    reactionActionId: actionId,
+                                                    actionParams: hints.map(h => ({ key: h.key, value: '' })),
+                                                }));
+                                            }}>
                                             <option value="">Select action...</option>
                                             {availableActions.map(a => (
                                                 <option key={a.id} value={a.id}>{a.name} (#{a.id})</option>
@@ -843,27 +1053,83 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                             + Add
                                         </button>
                                     </div>
-                                    {reactionForm.actionParams.map((p, i) => (
-                                        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '6px', marginBottom: '4px' }}>
-                                            <input style={{ ...inputStyle, fontSize: '0.78rem' }} value={p.key} placeholder="Key"
-                                                onChange={e => {
-                                                    const params = [...reactionForm.actionParams];
-                                                    params[i] = { ...params[i], key: e.target.value };
-                                                    setReactionForm(f => ({ ...f, actionParams: params }));
-                                                }} />
-                                            <input style={{ ...inputStyle, fontSize: '0.78rem' }} value={p.value} placeholder="Value"
-                                                onChange={e => {
-                                                    const params = [...reactionForm.actionParams];
-                                                    params[i] = { ...params[i], value: e.target.value };
-                                                    setReactionForm(f => ({ ...f, actionParams: params }));
-                                                }} />
-                                            <button style={{ ...btnDanger, fontSize: '0.72rem', padding: '2px 8px' }}
-                                                onClick={() => setReactionForm(f => ({ ...f, actionParams: f.actionParams.filter((_, j) => j !== i) }))}>
-                                                ×
-                                            </button>
+                                    {reactionForm.reactionActionId !== '' && reactionForm.actionParams.length === 0 && (ACTION_PARAM_HINTS[Number(reactionForm.reactionActionId)] || []).length === 0 && (
+                                        <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, fontStyle: 'italic', padding: '6px 0' }}>
+                                            No parameters needed for this action.
                                         </div>
-                                    ))}
+                                    )}
+                                    {reactionForm.actionParams.map((p, i) => {
+                                        const hints = ACTION_PARAM_HINTS[Number(reactionForm.reactionActionId)] || [];
+                                        const hint = hints.find(h => h.key === p.key);
+                                        return (
+                                            <div key={i} style={{ marginBottom: '4px' }}>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '6px' }}>
+                                                    <input style={{ ...inputStyle, fontSize: '0.78rem' }} value={p.key} placeholder="Key"
+                                                        onChange={e => {
+                                                            const params = [...reactionForm.actionParams];
+                                                            params[i] = { ...params[i], key: e.target.value };
+                                                            setReactionForm(f => ({ ...f, actionParams: params }));
+                                                        }} />
+                                                    <input style={{ ...inputStyle, fontSize: '0.78rem' }} value={p.value}
+                                                        placeholder={hint ? hint.hint : 'Value'}
+                                                        onChange={e => {
+                                                            const params = [...reactionForm.actionParams];
+                                                            params[i] = { ...params[i], value: e.target.value };
+                                                            setReactionForm(f => ({ ...f, actionParams: params }));
+                                                        }} />
+                                                    <button style={{ ...btnDanger, fontSize: '0.72rem', padding: '2px 8px' }}
+                                                        onClick={() => setReactionForm(f => ({ ...f, actionParams: f.actionParams.filter((_, j) => j !== i) }))}>
+                                                        ×
+                                                    </button>
+                                                </div>
+                                                {hint && (
+                                                    <div style={{ fontSize: '0.68rem', color: theme.colors.mutedText, marginTop: '1px', marginLeft: '2px' }}>
+                                                        {hint.required ? 'Required' : 'Optional'} — {hint.hint}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
+
+                                {/* Event data key hints */}
+                                {reactionForm.eventTypeId !== '' && (() => {
+                                    const keys = EVENT_DATA_KEYS[Number(reactionForm.eventTypeId)];
+                                    if (!keys) return null;
+                                    if (keys.length === 0) return (
+                                        <div style={{
+                                            fontSize: '0.72rem', color: theme.colors.mutedText, fontStyle: 'italic',
+                                            padding: '6px 10px', marginBottom: '10px',
+                                            background: theme.colors.secondaryBg, borderRadius: '6px',
+                                            border: `1px solid ${theme.colors.border}`,
+                                        }}>
+                                            This event type emits no data keys.
+                                        </div>
+                                    );
+                                    return (
+                                        <div style={{
+                                            padding: '8px 10px', marginBottom: '10px',
+                                            background: theme.colors.secondaryBg, borderRadius: '6px',
+                                            border: `1px solid ${theme.colors.border}`,
+                                        }}>
+                                            <div style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, marginBottom: '5px', fontWeight: 600 }}>
+                                                Available data keys for conditions:
+                                            </div>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                                {keys.map(k => (
+                                                    <span key={k.key} title={k.hint} style={{
+                                                        fontSize: '0.72rem', padding: '2px 8px', borderRadius: '4px',
+                                                        background: `${accent}12`, border: `1px solid ${accent}30`,
+                                                        fontFamily: 'monospace', color: theme.colors.primaryText,
+                                                        cursor: 'default',
+                                                    }}>
+                                                        {k.key}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
 
                                 {/* Conditions */}
                                 <div style={{ marginBottom: '14px' }}>
@@ -874,14 +1140,31 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                             + Add
                                         </button>
                                     </div>
-                                    {reactionForm.conditions.map((c, i) => (
+                                    {reactionForm.conditions.map((c, i) => {
+                                        const evtKeys = reactionForm.eventTypeId !== '' ? (EVENT_DATA_KEYS[Number(reactionForm.eventTypeId)] || []) : [];
+                                        const useSelect = evtKeys.length > 0;
+                                        return (
                                         <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto', gap: '6px', marginBottom: '4px' }}>
-                                            <input style={{ ...inputStyle, fontSize: '0.78rem' }} value={c.dataKey} placeholder="Data key"
-                                                onChange={e => {
-                                                    const conds = [...reactionForm.conditions];
-                                                    conds[i] = { ...conds[i], dataKey: e.target.value };
-                                                    setReactionForm(f => ({ ...f, conditions: conds }));
-                                                }} />
+                                            {useSelect ? (
+                                                <select style={{ ...inputStyle, fontSize: '0.78rem' }} value={c.dataKey}
+                                                    onChange={e => {
+                                                        const conds = [...reactionForm.conditions];
+                                                        conds[i] = { ...conds[i], dataKey: e.target.value };
+                                                        setReactionForm(f => ({ ...f, conditions: conds }));
+                                                    }}>
+                                                    <option value="">Select key...</option>
+                                                    {evtKeys.map(k => (
+                                                        <option key={k.key} value={k.key}>{k.key}</option>
+                                                    ))}
+                                                </select>
+                                            ) : (
+                                                <input style={{ ...inputStyle, fontSize: '0.78rem' }} value={c.dataKey} placeholder="Data key"
+                                                    onChange={e => {
+                                                        const conds = [...reactionForm.conditions];
+                                                        conds[i] = { ...conds[i], dataKey: e.target.value };
+                                                        setReactionForm(f => ({ ...f, conditions: conds }));
+                                                    }} />
+                                            )}
                                             <select style={{ ...inputStyle, fontSize: '0.78rem', width: 'auto' }} value={c.operator}
                                                 onChange={e => {
                                                     const conds = [...reactionForm.conditions];
@@ -903,7 +1186,8 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                                 ×
                                             </button>
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
 
                                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
@@ -922,16 +1206,27 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                         {availableActions.length === 0 ? (
                             <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>No actions available.</div>
                         ) : (
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                {availableActions.map(a => (
-                                    <span key={a.id} style={{
-                                        fontSize: '0.75rem', padding: '3px 10px', borderRadius: '6px',
-                                        background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`,
-                                        color: theme.colors.primaryText,
-                                    }}>
-                                        <strong style={{ fontFamily: 'monospace' }}>#{a.id}</strong> {a.name}
-                                    </span>
-                                ))}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                {availableActions.map(a => {
+                                    const hints = ACTION_PARAM_HINTS[a.id] || [];
+                                    return (
+                                        <div key={a.id} style={{
+                                            display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap',
+                                            fontSize: '0.75rem', padding: '4px 10px', borderRadius: '6px',
+                                            background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`,
+                                            color: theme.colors.primaryText,
+                                        }}>
+                                            <span><strong style={{ fontFamily: 'monospace' }}>#{a.id}</strong> {a.name}</span>
+                                            {hints.length > 0 ? (
+                                                <span style={{ fontSize: '0.68rem', color: theme.colors.mutedText }}>
+                                                    params: {hints.map(h => h.key + (h.required ? '*' : '')).join(', ')}
+                                                </span>
+                                            ) : (
+                                                <span style={{ fontSize: '0.68rem', color: theme.colors.mutedText, fontStyle: 'italic' }}>no params</span>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>

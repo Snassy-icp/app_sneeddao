@@ -126,3 +126,75 @@ Example:
 
 shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this {
     // ============================================
+
+
+## ICP Staking Bot: distributionSettings migration
+
+### Context
+
+The `DistributionTypes.DistributionList` type was extended with new fields (`sourcePurseId`, `amountMode`, `balancePercent`, `minDistributionAmount`) as part of the distribution chore purse enhancements. The staking bot's `distributionSettings` stable variable uses this type:
+
+```motoko
+var distributionSettings: [(Text, { lists: [DistributionTypes.DistributionList]; nextListId: Nat })] = [];
+```
+
+If the staking bot was deployed before these fields were added, upgrading requires a migration expression.
+
+### Migration expression
+
+Place this immediately before the `persistent actor class` declaration in `main.mo`:
+
+```motoko
+(with migration = func (old : {
+    var distributionSettings : [(Text, {
+        lists : [{
+            id : Nat;
+            name : Text;
+            tokenLedgerCanisterId : Principal;
+            thresholdAmount : Nat;
+            maxDistributionAmount : Nat;
+            targets : [DistributionTypes.DistributionTarget];
+        }];
+        nextListId : Nat;
+    })]
+}) : {
+    var distributionSettings : [(Text, {
+        lists : [DistributionTypes.DistributionList];
+        nextListId : Nat;
+    })]
+} {
+    {
+        var distributionSettings = Array.map<
+            (Text, { lists : [{ id : Nat; name : Text; tokenLedgerCanisterId : Principal; thresholdAmount : Nat; maxDistributionAmount : Nat; targets : [DistributionTypes.DistributionTarget] }]; nextListId : Nat }),
+            (Text, { lists : [DistributionTypes.DistributionList]; nextListId : Nat })
+        >(
+            old.distributionSettings,
+            func ((instanceId, ds)) {
+                (instanceId, {
+                    lists = Array.map(ds.lists, func (l : { id : Nat; name : Text; tokenLedgerCanisterId : Principal; thresholdAmount : Nat; maxDistributionAmount : Nat; targets : [DistributionTypes.DistributionTarget] }) : DistributionTypes.DistributionList {
+                        {
+                            id = l.id;
+                            name = l.name;
+                            tokenLedgerCanisterId = l.tokenLedgerCanisterId;
+                            thresholdAmount = l.thresholdAmount;
+                            maxDistributionAmount = l.maxDistributionAmount;
+                            targets = l.targets;
+                            sourcePurseId = null;
+                            amountMode = 0;
+                            balancePercent = null;
+                            minDistributionAmount = 0;
+                        }
+                    });
+                    nextListId = ds.nextListId;
+                })
+            }
+        );
+    }
+})
+```
+
+### Notes
+
+- This migration is only needed if deploying to a canister that was deployed BEFORE the distribution purse enhancements were added.
+- The event system changes (BotEventTypes, BotEventEngine) do NOT cause this issue. All event stable vars use only `Nat`, `Text`, `Int`, `Bool`, `Principal` with no variant types.
+- After a successful upgrade with this migration, the migration expression can be removed in the next release.
