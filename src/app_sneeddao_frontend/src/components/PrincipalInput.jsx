@@ -695,7 +695,7 @@ const PrincipalInput = ({
                         borderRadius: '8px',
                         maxHeight: '300px',
                         overflowY: 'auto',
-                        zIndex: 99999,
+                        zIndex: 200000,
                         boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
                     }}
                 >
@@ -957,25 +957,13 @@ const PrincipalInput = ({
                                     <label style={{ display: 'block', fontSize: '0.8rem', color: theme.colors.mutedText, marginBottom: '0.4rem', fontWeight: '500' }}>
                                         Principal
                                     </label>
-                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                        <input
-                                            type="text"
+                                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                        <PrincipalInput
                                             value={dialogPrincipal}
-                                            onChange={(e) => handleDialogPrincipalChange(e.target.value)}
-                                            placeholder="e.g. ryjl3-tyaaa-aaaaa-aaaba-cai"
-                                            style={{
-                                                flex: 1,
-                                                padding: '0.65rem 0.9rem',
-                                                borderRadius: '8px',
-                                                border: `1px solid ${theme.colors.border}`,
-                                                background: theme.colors.primaryBg,
-                                                color: theme.colors.primaryText,
-                                                fontSize: '0.9rem',
-                                                fontFamily: 'monospace',
-                                                outline: 'none'
-                                            }}
-                                            onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
-                                            onBlur={(e) => e.target.style.borderColor = theme.colors.border}
+                                            onChange={handleDialogPrincipalChange}
+                                            placeholder="Enter principal or search by name"
+                                            isAuthenticated={isAuthenticated}
+                                            style={{ flex: 1, maxWidth: 'none' }}
                                         />
                                         <button
                                             onClick={() => handleCopy(dialogPrincipal, 'principal')}
@@ -987,7 +975,8 @@ const PrincipalInput = ({
                                                 background: theme.colors.primaryBg,
                                                 color: copiedField === 'principal' ? theme.colors.accent : theme.colors.mutedText,
                                                 cursor: dialogPrincipal ? 'pointer' : 'not-allowed',
-                                                opacity: dialogPrincipal ? 1 : 0.5
+                                                opacity: dialogPrincipal ? 1 : 0.5,
+                                                flexShrink: 0
                                             }}
                                             title="Copy principal"
                                         >
