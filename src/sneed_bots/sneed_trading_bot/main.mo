@@ -5351,7 +5351,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 ignore appendTradeLog({
                     choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = null;
                     actionType = 0; inputToken = sellToken.token; outputToken = ?buyToken.token;
-                    inputAmount = tradeAmount; outputAmount = null;
+                    inputAmount = tradeSize; outputAmount = null;
                     priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
                     status = #Failed; errorMessage = ?errMsg;
                     txId = null; destinationOwner = null;
