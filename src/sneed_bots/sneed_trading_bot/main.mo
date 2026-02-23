@@ -3051,7 +3051,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case (?lastTime) {
                         let elapsed = (Time.now() - lastTime) / 1_000_000_000;
                         if (elapsed < Int.abs(minFreq)) {
-                            logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " skipped: frequency limit (" # Nat.toText(Int.abs(elapsed)) # "s < " # Nat.toText(minFreq) # "s)", null, []);
+                            let reason = "Frequency limit (" # Nat.toText(Int.abs(elapsed)) # "s < " # Nat.toText(minFreq) # "s)";
+                            logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " skipped: " # reason, null, []);
+                            ignore appendTradeLog({
+                                choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                                actionType = action.actionType;
+                                inputToken = action.inputToken; outputToken = action.outputToken;
+                                inputAmount = 0; outputAmount = null;
+                                priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                                status = #Skipped; errorMessage = ?reason;
+                                txId = null; destinationOwner = null;
+                            });
                             return (false, 0, 0);
                         };
                     };
@@ -3066,7 +3076,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         switch (effectivePurseId) {
             case (?pid) {
                 if (not tryLockPurse(pid, instanceId)) {
-                    logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " skipped: purse " # pid # " is locked by another chore", null, []);
+                    let reason = "Purse " # pid # " is locked by another chore";
+                    logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " skipped: " # reason, null, []);
+                    ignore appendTradeLog({
+                        choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                        actionType = action.actionType;
+                        inputToken = action.inputToken; outputToken = action.outputToken;
+                        inputAmount = 0; outputAmount = null;
+                        priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                        status = #Skipped; errorMessage = ?reason;
+                        txId = null; destinationOwner = null;
+                    });
                     return (false, 0, 0);
                 };
             };
@@ -3139,6 +3159,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (?t) t;
             case null {
                 logEngine.logError(src, "Trade action " # Nat.toText(action.id) # " has no output token", null, []);
+                ignore appendTradeLog({
+                    choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                    actionType = 0; inputToken = action.inputToken; outputToken = null;
+                    inputAmount = 0; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Skipped; errorMessage = ?"No output token configured";
+                    txId = null; destinationOwner = null;
+                });
                 return (false, 0, 0);
             };
         };
@@ -3760,6 +3788,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                     case (?purseId) { adjustChorePurseBalance(purseId, action.inputToken, feeLost, true) };
                                     case null {};
                                 };
+                                ignore appendTradeLog({
+                                    choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                                    actionType = 0; inputToken = action.inputToken; outputToken = ?outputToken;
+                                    inputAmount = actualTradeSize; outputAmount = null;
+                                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                                    status = #Failed; errorMessage = ?(routeLabel # " leg1: " # e);
+                                    txId = null; destinationOwner = null;
+                                });
                                 eventEngine.emitEvent<system>(T.TradingEvent.TradeFailed, [
                                     ("choreId", instanceId), ("actionId", Nat.toText(action.id)),
                                     ("inputToken", Principal.toText(action.inputToken)),
@@ -3788,10 +3824,19 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                 q
                             };
                             case null {
-                                logEngine.logError(src, "Trade " # Nat.toText(action.id) # " " # routeLabel # ": leg1 succeeded (" # Nat.toText(intermediaryReceived) # " " # intLabel # ") but no quote for leg2 (" # intLabel # " stuck in canister)", null, [
+                                let errMsg = routeLabel # ": leg1 succeeded (" # Nat.toText(intermediaryReceived) # " " # intLabel # ") but no quote for leg2 (" # intLabel # " stuck in canister)";
+                                logEngine.logError(src, "Trade " # Nat.toText(action.id) # " " # errMsg, null, [
                                     ("intermediaryReceived", Nat.toText(intermediaryReceived)),
                                     ("intermediary", intLabel),
                                 ]);
+                                ignore appendTradeLog({
+                                    choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                                    actionType = 0; inputToken = action.inputToken; outputToken = ?outputToken;
+                                    inputAmount = actualTradeSize; outputAmount = null;
+                                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                                    status = #Failed; errorMessage = ?errMsg;
+                                    txId = null; destinationOwner = null;
+                                });
                                 return (false, 0, 0);
                             };
                         };
@@ -3934,12 +3979,28 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (?id) id;
             case null {
                 logEngine.logError(src, "Fund Purse action " # Nat.toText(action.id) # " has no target purse", null, []);
+                ignore appendTradeLog({
+                    choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                    actionType = 1; inputToken = action.inputToken; outputToken = null;
+                    inputAmount = 0; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Skipped; errorMessage = ?"No target purse configured";
+                    txId = null; destinationOwner = null;
+                });
                 return (false, 0, 0);
             };
         };
 
         if (isTokenFrozen(action.inputToken)) {
             logEngine.logDebug(src, "Fund Purse " # Nat.toText(action.id) # " skipped: token is frozen globally", null, []);
+            ignore appendTradeLog({
+                choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                actionType = 1; inputToken = action.inputToken; outputToken = null;
+                inputAmount = 0; outputAmount = null;
+                priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                status = #Skipped; errorMessage = ?"Token is frozen globally";
+                txId = null; destinationOwner = null;
+            });
             return (false, 0, 0);
         };
 
@@ -3957,12 +4018,32 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
 
         switch (action.minBalance) {
-            case (?min) { if (sourceBal < min) { return (false, 0, 0) } };
+            case (?min) { if (sourceBal < min) {
+                ignore appendTradeLog({
+                    choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                    actionType = 1; inputToken = action.inputToken; outputToken = null;
+                    inputAmount = 0; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Skipped; errorMessage = ?("Source balance " # Nat.toText(sourceBal) # " < min " # Nat.toText(min));
+                    txId = null; destinationOwner = null;
+                });
+                return (false, 0, 0);
+            } };
             case null {};
         };
 
         let amount = computeActionAmount(action, sourceBal, action.minAmount, Nat.min(action.maxAmount, sourceBal));
-        if (amount < action.minAmount or amount == 0) return (false, 0, 0);
+        if (amount < action.minAmount or amount == 0) {
+            ignore appendTradeLog({
+                choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                actionType = 1; inputToken = action.inputToken; outputToken = null;
+                inputAmount = 0; outputAmount = null;
+                priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                status = #Skipped; errorMessage = ?("Amount " # Nat.toText(amount) # " below minimum " # Nat.toText(action.minAmount));
+                    txId = null; destinationOwner = null;
+                });
+                return (false, 0, 0);
+        };
 
         switch (action.sourcePurseId) {
             case (?spid) { adjustChorePurseBalance(spid, action.inputToken, amount, true) };
@@ -4004,23 +4085,59 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (?id) id;
             case null {
                 logEngine.logError(src, "Reclaim action " # Nat.toText(action.id) # " has no source purse", null, []);
+                ignore appendTradeLog({
+                    choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                    actionType = 2; inputToken = action.inputToken; outputToken = null;
+                    inputAmount = 0; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Skipped; errorMessage = ?"No source purse configured";
+                    txId = null; destinationOwner = null;
+                });
                 return (false, 0, 0);
             };
         };
 
         if (isTokenFrozen(action.inputToken)) {
             logEngine.logDebug(src, "Reclaim " # Nat.toText(action.id) # " skipped: token is frozen globally", null, []);
+            ignore appendTradeLog({
+                choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                actionType = 2; inputToken = action.inputToken; outputToken = null;
+                inputAmount = 0; outputAmount = null;
+                priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                status = #Skipped; errorMessage = ?"Token is frozen globally";
+                txId = null; destinationOwner = null;
+            });
             return (false, 0, 0);
         };
 
         let purseBal = getChorePurseBalance(sourcePurse, action.inputToken);
         switch (action.minBalance) {
-            case (?min) { if (purseBal < min) { return (false, 0, 0) } };
+            case (?min) { if (purseBal < min) {
+                ignore appendTradeLog({
+                    choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                    actionType = 2; inputToken = action.inputToken; outputToken = null;
+                    inputAmount = 0; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Skipped; errorMessage = ?("Purse balance " # Nat.toText(purseBal) # " < min " # Nat.toText(min));
+                    txId = null; destinationOwner = null;
+                });
+                return (false, 0, 0);
+            } };
             case null {};
         };
 
         let amount = computeActionAmount(action, purseBal, action.minAmount, Nat.min(action.maxAmount, purseBal));
-        if (amount < action.minAmount or amount == 0) return (false, 0, 0);
+        if (amount < action.minAmount or amount == 0) {
+            ignore appendTradeLog({
+                choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                actionType = 2; inputToken = action.inputToken; outputToken = null;
+                inputAmount = 0; outputAmount = null;
+                priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                status = #Skipped; errorMessage = ?("Amount " # Nat.toText(amount) # " below minimum " # Nat.toText(action.minAmount));
+                txId = null; destinationOwner = null;
+            });
+            return (false, 0, 0);
+        };
 
         adjustChorePurseBalance(sourcePurse, action.inputToken, amount, true);
         switch (action.targetPurseId) {
@@ -4062,12 +4179,28 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (?o) o;
             case null {
                 logEngine.logError(src, "Send action " # Nat.toText(action.id) # " has no destination", null, []);
+                ignore appendTradeLog({
+                    choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                    actionType = 3; inputToken = action.inputToken; outputToken = null;
+                    inputAmount = 0; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Skipped; errorMessage = ?"No destination configured";
+                    txId = null; destinationOwner = null;
+                });
                 return (false, 0, 0);
             };
         };
 
         if (isTokenFrozen(action.inputToken)) {
             logEngine.logDebug(src, "Send " # Nat.toText(action.id) # " skipped: token is frozen globally", null, []);
+            ignore appendTradeLog({
+                choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                actionType = 3; inputToken = action.inputToken; outputToken = null;
+                inputAmount = 0; outputAmount = null;
+                priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                status = #Skipped; errorMessage = ?"Token is frozen globally";
+                txId = null; destinationOwner = null;
+            });
             return (false, 0, 0);
         };
 
@@ -4085,7 +4218,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
 
         switch (action.minBalance) {
-            case (?min) { if (effectiveBal < min) { return (false, 0, 0) } };
+            case (?min) { if (effectiveBal < min) {
+                ignore appendTradeLog({
+                    choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                    actionType = 3; inputToken = action.inputToken; outputToken = null;
+                    inputAmount = 0; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Skipped; errorMessage = ?("Balance " # Nat.toText(effectiveBal) # " < min " # Nat.toText(min));
+                    txId = null; destinationOwner = null;
+                });
+                return (false, 0, 0);
+            } };
             case null {};
         };
 
@@ -4093,7 +4236,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         let cappedBal = Nat.min(effectiveBal, balance);
         let affordable = if (cappedBal > fee) { cappedBal - fee } else { 0 };
         let amount = computeActionAmount(action, effectiveBal, action.minAmount, Nat.min(action.maxAmount, affordable));
-        if (amount < action.minAmount or amount == 0) return (false, 0, 0);
+        if (amount < action.minAmount or amount == 0) {
+            ignore appendTradeLog({
+                choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                actionType = 3; inputToken = action.inputToken; outputToken = null;
+                inputAmount = 0; outputAmount = null;
+                priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                status = #Skipped; errorMessage = ?("Amount " # Nat.toText(amount) # " below minimum " # Nat.toText(action.minAmount));
+                txId = null; destinationOwner = null;
+            });
+            return (false, 0, 0);
+        };
 
         let result = await* transferTokens(
             action.inputToken,
