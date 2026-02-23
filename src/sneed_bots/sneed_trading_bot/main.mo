@@ -859,6 +859,102 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         Array.find<T.TokenRegistryEntry>(tokenRegistry, func(e) { e.ledgerCanisterId == token })
     };
 
+    /// Get token symbol from registry, falling back to a short principal fragment.
+    func tokenSymbolOrId(token: Principal): Text {
+        switch (getTokenInfo(token)) {
+            case (?entry) { entry.symbol };
+            case null {
+                let t = Principal.toText(token);
+                if (t.size() > 10) { Text.fromIter(Text.toIter(t).take(10)) } else { t }
+            };
+        }
+    };
+
+    /// Generate a unique action key within a set of existing actions.
+    func generateActionKey(config: T.ActionConfigInput, existing: [T.ActionConfig]): Text {
+        let base = switch (config.actionType) {
+            case (0) { "trade-" # tokenSymbolOrId(config.inputToken) # "-" # (switch (config.outputToken) { case (?out) { tokenSymbolOrId(out) }; case null { "?" } }) };
+            case (1) { "fund-" # tokenSymbolOrId(config.inputToken) };
+            case (2) { "reclaim-" # tokenSymbolOrId(config.inputToken) };
+            case (3) { "send-" # tokenSymbolOrId(config.inputToken) };
+            case _ { "action-" # tokenSymbolOrId(config.inputToken) };
+        };
+        var candidate = base;
+        var suffix: Nat = 2;
+        label uniqueLoop loop {
+            let c = candidate;
+            let collision = Array.find<T.ActionConfig>(existing, func(a) { a.key == c });
+            switch (collision) {
+                case null { break uniqueLoop };
+                case (?_) {
+                    candidate := base # "-" # Nat.toText(suffix);
+                    suffix += 1;
+                };
+            };
+        };
+        candidate
+    };
+
+    /// Check that an action key is unique within a set of actions (excluding a specific id for updates).
+    func assertKeyUnique(key: Text, actions: [T.ActionConfig], excludeId: ?Nat) {
+        for (a in actions.vals()) {
+            if (a.key == key) {
+                switch (excludeId) {
+                    case (?eid) { if (a.id != eid) { Debug.trap("Duplicate action key: " # key) } };
+                    case null { Debug.trap("Duplicate action key: " # key) };
+                };
+            };
+        };
+    };
+
+    /// Assign auto-generated keys to actions that have empty keys (for migration).
+    func migrateActionKeys(actions: [T.ActionConfig]): [T.ActionConfig] {
+        let buf = Buffer.Buffer<T.ActionConfig>(actions.size());
+        for (a in actions.vals()) {
+            if (a.key == "") {
+                let tempInput: T.ActionConfigInput = {
+                    key = "";
+                    actionType = a.actionType;
+                    enabled = a.enabled;
+                    inputToken = a.inputToken;
+                    outputToken = a.outputToken;
+                    minAmount = a.minAmount;
+                    maxAmount = a.maxAmount;
+                    amountMode = a.amountMode;
+                    balancePercent = a.balancePercent;
+                    preferredDex = a.preferredDex;
+                    sourcePurseId = a.sourcePurseId;
+                    targetPurseId = a.targetPurseId;
+                    destinationOwner = a.destinationOwner;
+                    destinationSubaccount = a.destinationSubaccount;
+                    minBalance = a.minBalance;
+                    maxBalance = a.maxBalance;
+                    balanceDenominationToken = a.balanceDenominationToken;
+                    minPrice = a.minPrice;
+                    maxPrice = a.maxPrice;
+                    priceDenominationToken = a.priceDenominationToken;
+                    maxPriceImpactBps = a.maxPriceImpactBps;
+                    maxSlippageBps = a.maxSlippageBps;
+                    minFrequencySeconds = a.minFrequencySeconds;
+                    maxFrequencySeconds = a.maxFrequencySeconds;
+                    tradeSizeDenominationToken = a.tradeSizeDenominationToken;
+                    trailingStopBps = a.trailingStopBps;
+                    trailingStopDirection = a.trailingStopDirection;
+                    trailingStopResetOnExec = a.trailingStopResetOnExec;
+                    haltChoreAfterExecution = a.haltChoreAfterExecution;
+                    maxCumulativeInput = a.maxCumulativeInput;
+                    maxCumulativeOutput = a.maxCumulativeOutput;
+                    maxExecutions = a.maxExecutions;
+                };
+                let generated = generateActionKey(tempInput, Buffer.toArray(buf));
+                buf.add({ a with key = generated });
+            } else {
+                buf.add(a);
+            };
+        };
+        Buffer.toArray(buf)
+    };
+
     /// Check if a token is paused or frozen globally (should not be traded).
     func isTokenPausedOrFrozen(token: Principal): Bool {
         Array.find<Principal>(pausedTokens, func(t) { t == token }) != null
@@ -6999,6 +7095,22 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     system func postupgrade() {
+        // Migrate any keyless actions to have auto-generated keys
+        tradeChoreActions := Array.map<(Text, [T.ActionConfig]), (Text, [T.ActionConfig])>(tradeChoreActions, func((id, actions)) {
+            let needsMigration = Array.find<T.ActionConfig>(actions, func(a) { a.key == "" });
+            switch (needsMigration) {
+                case (?_) { (id, migrateActionKeys(actions)) };
+                case null { (id, actions) };
+            };
+        });
+        moveFundsActions := Array.map<(Text, [T.ActionConfig]), (Text, [T.ActionConfig])>(moveFundsActions, func((id, actions)) {
+            let needsMigration = Array.find<T.ActionConfig>(actions, func(a) { a.key == "" });
+            switch (needsMigration) {
+                case (?_) { (id, migrateActionKeys(actions)) };
+                case null { (id, actions) };
+            };
+        });
+
         choreEngine.resumeTimers<system>();
         _restartOneOffQueueIfNeeded<system>();
     };
@@ -7989,9 +8101,15 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     public shared (msg) func addTradeAction(instanceId: Text, config: T.ActionConfigInput): async Nat {
         assertPermission(msg.caller, T.TradingPermission.ManageTrades);
+        let existing = getTradeActionsForInstance(instanceId);
         let nextId = getTradeNextId(instanceId);
+        let actionKey = if (config.key == "") { generateActionKey(config, existing) } else {
+            assertKeyUnique(config.key, existing, null);
+            config.key
+        };
         let action: T.ActionConfig = {
             id = nextId;
+            key = actionKey;
             actionType = config.actionType;
             enabled = config.enabled;
             inputToken = config.inputToken;
@@ -8029,21 +8147,31 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             executionCount = 0;
             trailingStopWatermarkE8s = null;
         };
-        setTradeActionsForInstance(instanceId, Array.append(getTradeActionsForInstance(instanceId), [action]));
+        setTradeActionsForInstance(instanceId, Array.append(existing, [action]));
         setTradeNextId(instanceId, nextId + 1);
-        logEngine.logInfo("api", "Added trade action " # Nat.toText(nextId) # " to instance " # instanceId, ?msg.caller, []);
+        logEngine.logInfo("api", "Added trade action " # Nat.toText(nextId) # " (key=" # actionKey # ") to instance " # instanceId, ?msg.caller, []);
         nextId
     };
 
     public shared (msg) func updateTradeAction(instanceId: Text, id: Nat, config: T.ActionConfigInput): async Bool {
         assertPermission(msg.caller, T.TradingPermission.ManageTrades);
         let actions = getTradeActionsForInstance(instanceId);
+        let actionKey = if (config.key == "") {
+            switch (Array.find<T.ActionConfig>(actions, func(a) { a.id == id })) {
+                case (?existing) { existing.key };
+                case null { "" };
+            };
+        } else {
+            assertKeyUnique(config.key, actions, ?id);
+            config.key
+        };
         var found = false;
         let updated = Array.map<T.ActionConfig, T.ActionConfig>(actions, func(a) {
             if (a.id == id) {
                 found := true;
                 {
                     id = id;
+                    key = actionKey;
                     actionType = config.actionType;
                     enabled = config.enabled;
                     inputToken = config.inputToken;
@@ -8085,7 +8213,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         });
         if (found) {
             setTradeActionsForInstance(instanceId, updated);
-            logEngine.logInfo("api", "Updated trade action " # Nat.toText(id), ?msg.caller, []);
+            logEngine.logInfo("api", "Updated trade action " # Nat.toText(id) # " (key=" # actionKey # ")", ?msg.caller, []);
         };
         found
     };
@@ -8140,15 +8268,20 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     public shared (msg) func addMoveFundsAction(instanceId: Text, config: T.ActionConfigInput): async Nat {
         assertPermission(msg.caller, T.TradingPermission.ManageTrades);
-        // Validate: only action types 1, 2, 3 allowed
         if (config.actionType == 0) { Debug.trap("Trade actions not allowed in Move Funds chore") };
+        let existing = getMoveFundsActionsForInstance(instanceId);
         let nextId = getMoveFundsNextId(instanceId);
+        let actionKey = if (config.key == "") { generateActionKey(config, existing) } else {
+            assertKeyUnique(config.key, existing, null);
+            config.key
+        };
         let action: T.ActionConfig = {
             id = nextId;
+            key = actionKey;
             actionType = config.actionType;
             enabled = config.enabled;
             inputToken = config.inputToken;
-            outputToken = null; // No trading
+            outputToken = null;
             minAmount = config.minAmount;
             maxAmount = config.maxAmount;
             amountMode = config.amountMode;
@@ -8182,9 +8315,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             executionCount = 0;
             trailingStopWatermarkE8s = null;
         };
-        setMoveFundsActionsForInstance(instanceId, Array.append(getMoveFundsActionsForInstance(instanceId), [action]));
+        setMoveFundsActionsForInstance(instanceId, Array.append(existing, [action]));
         setMoveFundsNextId(instanceId, nextId + 1);
-        logEngine.logInfo("api", "Added move-funds action " # Nat.toText(nextId), ?msg.caller, []);
+        logEngine.logInfo("api", "Added move-funds action " # Nat.toText(nextId) # " (key=" # actionKey # ")", ?msg.caller, []);
         nextId
     };
 
@@ -8192,11 +8325,21 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         assertPermission(msg.caller, T.TradingPermission.ManageTrades);
         if (config.actionType == 0) { Debug.trap("Trade actions not allowed in Move Funds chore") };
         let actions = getMoveFundsActionsForInstance(instanceId);
+        let actionKey = if (config.key == "") {
+            switch (Array.find<T.ActionConfig>(actions, func(a) { a.id == id })) {
+                case (?existing) { existing.key };
+                case null { "" };
+            };
+        } else {
+            assertKeyUnique(config.key, actions, ?id);
+            config.key
+        };
         var found = false;
         let updated = Array.map<T.ActionConfig, T.ActionConfig>(actions, func(a) {
             if (a.id == id) {
                 found := true;
                 { a with
+                    key = actionKey;
                     actionType = config.actionType;
                     enabled = config.enabled;
                     inputToken = config.inputToken;

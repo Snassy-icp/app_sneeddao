@@ -23,7 +23,8 @@ import { createActor as createBotActor } from 'external/sneed_trading_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { decodeIcrcAccount, encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { computeAccountId } from '../utils/PrincipalUtils';
-import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay, FaArrowUp, FaArrowDown, FaPaperPlane, FaExchangeAlt, FaWallet, FaShieldAlt, FaToggleOn, FaToggleOff, FaCopy, FaDownload, FaArrowRight, FaChevronDown, FaChevronUp, FaTag, FaGlobe, FaEyeSlash, FaRobot, FaMedkit } from 'react-icons/fa';
+import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay, FaArrowUp, FaArrowDown, FaPaperPlane, FaExchangeAlt, FaWallet, FaShieldAlt, FaToggleOn, FaToggleOff, FaCopy, FaDownload, FaArrowRight, FaChevronDown, FaChevronUp, FaTag, FaGlobe, FaEyeSlash, FaRobot, FaMedkit, FaCode } from 'react-icons/fa';
+import TradingBotDSLPanel from '../components/TradingBotDSLPanel';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createIcpSwapFactoryActor, canisterId as icpSwapFactoryCanisterId } from 'external/icp_swap_factory';
 import { principalToSubaccount } from '../services/dex/types';
@@ -767,7 +768,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
             optVal(action.maxPriceImpactBps) != null || optVal(action.maxSlippageBps) != null ||
             bDenom || pDenom || tsBps != null;
         setShowConditions(hasConditions);
-        setFormMode({ id: Number(action.id) });
+        setFormMode({ id: Number(action.id), key: action.key || '' });
         setError(''); setSuccess('');
     };
 
@@ -784,6 +785,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         const balanceDecimals = fBalanceDenom ? getDecimals(fBalanceDenom) : inputDecimals;
         const priceDecimals = fPriceDenom ? getDecimals(fPriceDenom) : inputDecimals;
         return {
+            key: formMode !== 'add' && formMode?.key ? formMode.key : '',
             actionType: BigInt(fActionType),
             enabled: fEnabled,
             inputToken: Principal.fromText(fInputToken),
@@ -910,6 +912,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         try {
             const bot = await getReadyBotActor();
             const updated = {
+                key: action.key || '',
                 actionType: action.actionType,
                 enabled: !action.enabled,
                 inputToken: action.inputToken,
@@ -934,6 +937,13 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                 minFrequencySeconds: action.minFrequencySeconds?.length > 0 ? action.minFrequencySeconds : [],
                 maxFrequencySeconds: action.maxFrequencySeconds?.length > 0 ? action.maxFrequencySeconds : [],
                 tradeSizeDenominationToken: action.tradeSizeDenominationToken?.length > 0 ? action.tradeSizeDenominationToken : [],
+                trailingStopBps: action.trailingStopBps?.length > 0 ? action.trailingStopBps : [],
+                trailingStopDirection: action.trailingStopDirection?.length > 0 ? action.trailingStopDirection : [],
+                trailingStopResetOnExec: action.trailingStopResetOnExec?.length > 0 ? action.trailingStopResetOnExec : [],
+                haltChoreAfterExecution: action.haltChoreAfterExecution || false,
+                maxCumulativeInput: action.maxCumulativeInput?.length > 0 ? action.maxCumulativeInput : [],
+                maxCumulativeOutput: action.maxCumulativeOutput?.length > 0 ? action.maxCumulativeOutput : [],
+                maxExecutions: action.maxExecutions?.length > 0 ? action.maxExecutions : [],
             };
             await bot[updateFn](instanceId, action.id, updated);
             setSuccess(`Action ${action.enabled ? 'disabled' : 'enabled'}.`);
@@ -1374,7 +1384,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                                         <div>
                                             <span style={{ fontSize: '0.8rem', fontWeight: '600', color: theme.colors.primaryText }}>
-                                                #{Number(action.id)} — {ACTION_TYPE_LABELS[Number(action.actionType)] || `Type ${Number(action.actionType)}`}
+                                                {action.key ? `"${action.key}"` : `#${Number(action.id)}`} — {ACTION_TYPE_LABELS[Number(action.actionType)] || `Type ${Number(action.actionType)}`}
                                             </span>
                                             <span style={{ marginLeft: '8px', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: action.enabled ? '#22c55e20' : '#6b728020', color: action.enabled ? '#22c55e' : '#6b7280' }}>
                                                 {action.enabled ? 'Enabled' : 'Disabled'}
@@ -7754,6 +7764,9 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
                 <button onClick={() => setActiveTab('recovery')} style={tabStyle(activeTab === 'recovery')}>
                     <FaMedkit style={{ marginRight: '4px', fontSize: '0.75rem' }} />Recovery
                 </button>
+                <button onClick={() => setActiveTab('script')} style={tabStyle(activeTab === 'script')}>
+                    <FaCode style={{ marginRight: '4px', fontSize: '0.75rem' }} />Script
+                </button>
             </div>
 
             {activeTab === 'chores' && <ChoresOverviewPanel choreStatuses={choreStatuses} cbEvents={cbEvents} theme={theme} accentColor={accentColor} onNavigateToChore={handleNavigateToChore} />}
@@ -7763,6 +7776,7 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
             {activeTab === 'circuit-breaker' && <CircuitBreakerPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}
             {activeTab === 'quick-trade' && <QuickTradePanel canisterId={canisterId} createBotActor={createBotActorFn} identity={identity} tokenRegistry={tokenRegistry} choreInstances={choreInstances} />}
             {activeTab === 'recovery' && <RecoveryPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} canisterId={canisterId} />}
+            {activeTab === 'script' && <TradingBotDSLPanel canisterId={canisterId} getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
         </div>
     );
 }

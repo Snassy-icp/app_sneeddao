@@ -86,6 +86,7 @@ export const idlFactory = ({ IDL }) => {
     // ==========================================
     const ActionConfig = IDL.Record({
         id: IDL.Nat,
+        key: IDL.Text,
         actionType: IDL.Nat,
         enabled: IDL.Bool,
         inputToken: IDL.Principal,
@@ -125,6 +126,7 @@ export const idlFactory = ({ IDL }) => {
     });
 
     const ActionConfigInput = IDL.Record({
+        key: IDL.Text,
         actionType: IDL.Nat,
         enabled: IDL.Bool,
         inputToken: IDL.Principal,

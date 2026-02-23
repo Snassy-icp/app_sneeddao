@@ -1815,6 +1815,617 @@ The trading bot page includes a **Quick Trade** panel (visible when the user has
 
 ---
 
+## 18. Configuration DSL
+
+### Overview
+
+The Configuration DSL ("SneedScript") is a human-readable domain-specific language for declaratively configuring the trading bot. It provides two complementary capabilities:
+
+1. **Serialization (Export)**: Produces a complete, human-readable text snapshot of the bot's current configuration and key runtime stats.
+2. **DSL Programs (Import)**: Accepts a text program of idempotent configuration statements that resolve into a list of canister operations for review and execution.
+
+Both serialization and DSL parsing happen entirely in the frontend (no Motoko changes needed for the DSL itself). The serialization queries the canister for all configuration state and stitches it into a valid DSL document, enriched with stats as comments.
+
+### Workflow
+
+The primary use case is LLM-assisted configuration:
+
+1. **Export**: User clicks "Export" → frontend queries all bot state → produces DSL text.
+2. **Prompt**: User pastes the DSL text + their trading objectives into an LLM.
+3. **Generate**: LLM produces a DSL program with the desired changes.
+4. **Parse**: User pastes the DSL program into the frontend editor → parser produces an AST.
+5. **Resolve**: Resolver maps AST statements → ordered list of canister operations, diffing against current state where possible.
+6. **Review**: User sees every operation that will be executed, with human-readable descriptions.
+7. **Execute**: User approves → operations execute sequentially against the canister.
+
+### Backend Change: Action Key Field
+
+To support idempotent `ensure`/`remove` on trade actions and move-funds actions (which lack a natural key), add a `key: Text` field to `ActionConfig` and `ActionConfigInput`.
+
+**Auto-generation**: When `key` is empty on `addTradeAction` / `addMoveFundsAction`, the canister generates one from the action properties: `"trade-ICP-SNEED"`, `"fund-ICP"`, `"reclaim-SNEED"`, `"send-ICP"`. On collision within the same chore instance, append `-2`, `-3`, etc.
+
+**Uniqueness**: Enforced within the chore instance scope. The `addTradeAction`/`updateTradeAction`/`addMoveFundsAction`/`updateMoveFundsAction` endpoints reject duplicate keys within the same instance.
+
+**Migration**: Existing keyless actions receive auto-generated keys on the next `postupgrade`.
+
+### DSL Syntax
+
+#### Comments
+
+Lines starting with `#` are comments. They are ignored by the parser but are used extensively in the serialized export to embed read-only stats.
+
+```
+# This is a comment
+# Balance: 125.50 ICP | Price: $12.34 USD
+```
+
+#### Literals
+
+| Type | Examples | Notes |
+|------|----------|-------|
+| Integer | `100`, `10_000_000` | Underscores ignored |
+| Decimal | `1.5`, `0.0001` | Converted to raw units using token decimals |
+| Amount | `1.5 ICP`, `0.0001 SNEED` | Decimal + token symbol → raw units |
+| Basis points | `100 bps`, `500 bps` | Passed as-is (already Nat) |
+| Duration | `300s`, `5m`, `1h` | Converted to seconds |
+| Boolean | `true`, `false` | |
+| String | `"hello"` | Double-quoted |
+| Principal | `"ryjl3-tyaaa-aaaaa-aaaba-cai"` | Double-quoted, validated |
+| None | `none` | Represents null/absent optional value |
+| List | `[ICP, SNEED, ckUSDC]` | Square brackets, comma-separated |
+
+#### Token References
+
+Tokens are referenced by symbol (unquoted identifier) or by explicit principal (quoted string).
+
+```
+ICP                                    # Symbol lookup from token registry
+"ryjl3-tyaaa-aaaaa-aaaba-cai"        # Explicit principal
+```
+
+**Resolution rules** (in order):
+1. If only one token with that symbol is registered to the bot → use it.
+2. If multiple registered tokens share the symbol → error (require explicit principal).
+3. If no registered token matches but exactly one is known from the metadata cache → use it (for `ensure token` statements that are about to register it).
+4. Otherwise → error.
+
+#### Statements
+
+There are four statement types:
+
+**`ensure`** — Idempotent upsert. If the entity exists (matched by key), update it. If not, create it.
+
+```
+ensure <entity_type> <key> [in <scope>] {
+  <property>: <value>
+  ...
+}
+```
+
+**`remove`** — Idempotent delete. If the entity exists, remove it. If not, no-op.
+
+```
+remove <entity_type> <key> [from <scope>]
+```
+
+**`set`** — Set a specific value. Idempotent (setting to current value is a no-op).
+
+```
+set <target> <property>: <value>
+```
+
+**`submit`** — Imperative action (not idempotent). Used for quick trades, withdrawals, fund/reclaim operations.
+
+```
+submit <action_type> {
+  <property>: <value>
+  ...
+}
+```
+
+### Entity Reference
+
+#### token
+
+Key: token symbol or principal.
+
+```
+ensure token ICP {
+  ledger: "ryjl3-tyaaa-aaaaa-aaaba-cai"
+  symbol: "ICP"
+  decimals: 8
+  fee: 0.0001 ICP
+}
+
+remove token SNEED
+
+set token ICP paused: true
+set token ICP frozen: true
+set token ICP paused: false
+set token ICP frozen: false
+```
+
+The `ensure` resolves to `addToken` if not in registry, or no-op if already registered with matching properties. `remove` resolves to `removeToken`. Pause/freeze `set` statements resolve to `pauseToken`/`unpauseToken`/`freezeToken`/`unfreezeToken`.
+
+#### chore
+
+Key: chore instance ID (string).
+
+```
+ensure chore "trade-1" {
+  type: trade
+  label: "Main Trading Chore"
+}
+
+set chore "trade-1" interval: 300s
+set chore "trade-1" max_interval: 600s
+set chore "trade-1" task_timeout: 120s
+set chore "trade-1" status: running
+set chore "trade-1" status: paused
+set chore "trade-1" status: stopped
+
+remove chore "trade-1"
+```
+
+`ensure` resolves to `createChoreInstance` if not found, or `renameChoreInstance` if label changed. `set status` resolves to `startChore`/`pauseChore`/`resumeChore`/`stopChore` depending on current state. `remove` resolves to `deleteChoreInstance`.
+
+#### action
+
+Key: action key (string), scoped to a chore instance. Used for both trade chore actions and move-funds chore actions.
+
+```
+ensure action "buy-sneed-dip" in "trade-1" {
+  type: trade
+  enabled: true
+  input: ICP
+  output: SNEED
+  min_amount: 0.1 ICP
+  max_amount: 1.0 ICP
+  amount_mode: range
+  balance_percent: none
+  preferred_dex: auto
+  min_balance: 5.0 ICP
+  max_balance: none
+  balance_denomination: ICP
+  min_price: none
+  max_price: 0.001 ICP
+  price_denomination: ICP
+  max_price_impact: 300 bps
+  max_slippage: 100 bps
+  min_frequency: 300s
+  max_frequency: 600s
+  trade_size_denomination: ICP
+  trailing_stop: 500 bps
+  trailing_stop_direction: stop_loss
+  trailing_stop_reset: on_exec
+  halt_chore_after: false
+  max_cumulative_input: 100.0 ICP
+  max_cumulative_output: none
+  max_executions: 50
+}
+
+ensure action "fund-trade-purse" in "mover-1" {
+  type: fund_purse
+  enabled: true
+  input: ICP
+  target_purse: "trade-1"
+  min_amount: 1.0 ICP
+  max_amount: 5.0 ICP
+}
+
+remove action "buy-sneed-dip" from "trade-1"
+```
+
+The resolver determines whether the scope is a trade chore or move-funds chore from the chore's type and uses the corresponding API (`addTradeAction`/`updateTradeAction` or `addMoveFundsAction`/`updateMoveFundsAction`). Matching is by the `key` field.
+
+When creating a new action, the DSL key becomes the action's `key` field. When updating, the resolver matches by key and uses the existing numeric `id`.
+
+`reset_stats action "buy-sneed-dip" in "trade-1"` can be used to reset cumulative stats (`resetActionStats`).
+
+#### rebalance_target
+
+Key: token symbol/principal, scoped to a rebalance chore instance.
+
+```
+ensure rebalance_target ICP in "rebalance-1" {
+  target: 5000 bps
+  paused: false
+}
+
+remove rebalance_target SNEED from "rebalance-1"
+```
+
+Since rebalance targets are set as a complete list (`setRebalanceTargets`), the resolver collects all `ensure`/`remove` target statements for the same instance, diffs against current targets, and emits a single `setRebalanceTargets` call.
+
+#### rebalance settings
+
+Set-only (no ensure/remove — these are scalar settings, not entities).
+
+```
+set rebalance "rebalance-1" denomination: ICP
+set rebalance "rebalance-1" max_trade_size: 10.0 ICP
+set rebalance "rebalance-1" min_trade_size: 0.1 ICP
+set rebalance "rebalance-1" threshold: 500 bps
+set rebalance "rebalance-1" max_slippage: 100 bps
+set rebalance "rebalance-1" max_price_impact: 300 bps
+set rebalance "rebalance-1" fallback_route_tokens: [ICP, ckUSDC]
+```
+
+Each `set` resolves to the corresponding setter (`setRebalanceDenominationToken`, etc.). The resolver skips calls where the value already matches current state.
+
+#### distribution
+
+Key: distribution list name, scoped to a distribute-funds chore instance.
+
+```
+ensure distribution "team-pay" in "dist-1" {
+  token: ICP
+  threshold: 1.0 ICP
+  max_amount: 10.0 ICP
+  min_amount: 0.5 ICP
+  amount_mode: range
+  balance_percent: none
+  source_purse: none
+  targets: [
+    { account: "aaaaa-bbbbb-ccccc-ddddd-cai", share: 5000 bps }
+    { account: "eeeee-fffff-ggggg-hhhhh-cai", share: 3000 bps }
+    { purse: "trade-1", share: 2000 bps }
+  ]
+}
+
+remove distribution "team-pay" from "dist-1"
+```
+
+Matched by name. `ensure` resolves to `addDistributionList` or `updateDistributionList`. `remove` resolves to `removeDistributionList`.
+
+#### circuit_breaker
+
+Key: rule name.
+
+```
+set circuit_breaker_enabled: true
+
+ensure circuit_breaker "crash-protection" {
+  enabled: true
+  when ALL {
+    price ICP/ckUSDC < 5.0 ckUSDC
+    balance ICP in main > 10.0 ICP
+  }
+  then {
+    stop chore "trade-1"
+    freeze token SNEED
+  }
+}
+
+ensure circuit_breaker "whale-alert" {
+  enabled: true
+  when ANY {
+    balance ICP in "trade-1" < 1.0 ICP
+    value ALL in main denominated_in ICP < 50.0 ICP
+  }
+  then {
+    pause all chores
+  }
+}
+
+remove circuit_breaker "crash-protection"
+```
+
+Condition syntax within `when ALL { ... }` / `when ANY { ... }` blocks:
+
+| Condition | Syntax |
+|-----------|--------|
+| Price threshold | `price TOKEN1/TOKEN2 <OP> <amount>` |
+| Balance threshold | `balance TOKEN in <purse> <OP> <amount>` |
+| Value threshold | `value <sources> denominated_in TOKEN <OP> <amount>` |
+| Percent change | `price TOKEN1/TOKEN2 changed <dir> <bps> in <duration>` |
+| Nested AND | `ALL { ... }` |
+| Nested OR | `ANY { ... }` |
+
+Operators: `>`, `<`, `in_range(<min>, <max>)`, `outside_range(<min>, <max>)`.
+Purse references: `main`, `"chore-id"`, or `__main__` (full on-chain).
+Value sources: `TOKEN in <purse>`, `ALL in <purse>`, `ALL in account`.
+Change directions: `up`, `down`, `either`.
+
+Action syntax within `then { ... }` blocks:
+
+| Action | Syntax |
+|--------|--------|
+| Stop chore | `stop chore "id"` |
+| Pause chore | `pause chore "id"` |
+| Start chore | `start chore "id"` |
+| Stop all by type | `stop all TYPE chores` |
+| Pause all by type | `pause all TYPE chores` |
+| Start all by type | `start all TYPE chores` |
+| Stop all | `stop all chores` |
+| Pause all | `pause all chores` |
+| Pause token in rebal | `pause token TOKEN in "rebal-id"` |
+| Pause token globally | `pause token TOKEN` |
+| Freeze token | `freeze token TOKEN` |
+
+Matched by `name`. `ensure` resolves to `addCircuitBreakerRule` or `updateCircuitBreakerRule`. `remove` resolves to `removeCircuitBreakerRule`.
+
+#### DEX settings
+
+Set-only.
+
+```
+set dex ICPSwap enabled: true
+set dex KongSwap enabled: false
+set default_slippage: 100 bps
+set default_max_price_impact: 300 bps
+```
+
+#### Purse management
+
+```
+set purse "trade-1" enabled: true
+set purse "trade-1" enabled: false
+set purse "trade-1" trading_purse: "rebalance-1"
+set purse "trade-1" trading_purse: none
+```
+
+`set purse ... enabled: true` → `enablePurse`. `set purse ... enabled: false` → `disablePurse`. `set purse ... trading_purse` → `setTradingPurseId`.
+
+Fund and reclaim are imperative:
+
+```
+submit fund_purse { purse: "trade-1", token: ICP, amount: 5.0 ICP }
+submit reclaim { purse: "trade-1", token: ICP, amount: 2.0 ICP }
+```
+
+#### Event system
+
+**Subscriptions** — keyed by source bot principal (one subscription per source bot):
+
+```
+ensure event_subscription to "aaaaa-bbbbb-ccccc-ddddd-cai" {
+  event_types: [ChoreStarted, ChoreStopped, TradeExecuted]
+}
+
+remove event_subscription to "aaaaa-bbbbb-ccccc-ddddd-cai"
+```
+
+The resolver looks up existing subscriptions by source principal. If found, updates event types via `updateEventSubscription`. If not, creates via `addEventSubscription`. Remove calls `removeEventSubscription`.
+
+**Reactions** — keyed by rule name:
+
+```
+ensure event_reaction "stop-on-staker-fail" {
+  enabled: true
+  subscription: "aaaaa-bbbbb-ccccc-ddddd-cai"
+  event_type: ChoreRunFailed
+  action: stop_chore
+  action_params: {
+    choreInstanceId: "trade-1"
+  }
+  conditions: [
+    { key: "choreId", op: equals, value: "unstake" }
+  ]
+  cooldown: 300s
+}
+
+remove event_reaction "stop-on-staker-fail"
+```
+
+`subscription` references a subscription by its source bot principal. The resolver maps this to the numeric subscription ID. Matched by `name`. `ensure` resolves to `addEventReaction` or `updateEventReaction`. `remove` resolves to `removeEventReaction`.
+
+**Event emission**:
+
+```
+set event_emission: true
+set event_emission: false
+```
+
+#### Logging settings
+
+```
+set logging trade_log: true
+set logging portfolio_log: true
+set logging max_trade_log_entries: 10000
+set logging max_portfolio_log_entries: 5000
+
+set chore_logging "trade-1" trade_log: true
+set chore_logging "trade-1" portfolio_log: false
+
+remove chore_logging "trade-1"
+```
+
+`set logging` resolves to `setLoggingSettings`. `set chore_logging` resolves to `setChoreLoggingOverride`. `remove chore_logging` resolves to `removeChoreLoggingOverride`.
+
+#### Price and metadata settings
+
+```
+set price_staleness: 300s
+set metadata_staleness: 3600s
+set price_history_max_size: 5000
+```
+
+#### Fallback route tokens
+
+```
+set trade "trade-1" fallback_route_tokens: [ICP, ckUSDC]
+```
+
+Resolves to `setTradeFallbackRouteTokens`.
+
+### Imperative Operations (submit)
+
+#### Quick trade
+
+```
+submit trade {
+  input: ICP
+  output: SNEED
+  amount: 1.5 ICP
+  min_output: none
+  slippage: 100 bps
+  max_price_impact: 300 bps
+  dex: auto
+  source_purse: none
+}
+```
+
+Resolves to `submitOneOffTrade`.
+
+#### Withdraw
+
+```
+submit withdraw {
+  token: ICP
+  to: "aaaaa-bbbbb-ccccc-ddddd-cai"
+  amount: 10.0 ICP
+}
+```
+
+Resolves to `withdrawToken`.
+
+#### Send
+
+```
+submit send {
+  token: ICP
+  to: "aaaaa-bbbbb-ccccc-ddddd-cai"
+  amount: 5.0 ICP
+  source_purse: "trade-1"
+}
+```
+
+Resolves to `manualSend`.
+
+### Serialization (Export)
+
+The serializer runs entirely in the frontend. It queries all relevant canister endpoints and produces a valid DSL document that, if executed against an empty bot, would recreate the current configuration.
+
+Read-only stats (balances, execution counts, prices, timestamps) appear as `#` comments above the relevant blocks, providing context to the LLM without affecting parseability.
+
+**Export structure** (in order):
+
+```
+# ==========================================
+# Sneed Trading Bot Configuration Export
+# Exported: <timestamp>
+# Canister: <principal>
+# Version: <major>.<minor>.<patch>
+# ==========================================
+
+# ---- Token Registry ----
+# <per-token: balance, price, paused/frozen status>
+ensure token ... { ... }
+
+# ---- DEX Settings ----
+set dex ...
+set default_slippage: ...
+set default_max_price_impact: ...
+
+# ---- Global Settings ----
+set circuit_breaker_enabled: ...
+set price_staleness: ...
+set metadata_staleness: ...
+set event_emission: ...
+
+# ---- Logging ----
+set logging ...
+
+# ---- Chore Instances ----
+# <per-chore: status, run stats, next run>
+ensure chore ... { ... }
+set chore ... interval: ...
+set chore ... status: ...
+
+# ---- Trade Actions (per trade chore) ----
+# <per-action: execution count, cumulative amounts, last exec time>
+ensure action ... in ... { ... }
+
+# ---- Move Funds Actions (per move-funds chore) ----
+ensure action ... in ... { ... }
+
+# ---- Rebalance Configuration (per rebalance chore) ----
+set rebalance ... denomination: ...
+# ... other settings ...
+ensure rebalance_target ... in ... { ... }
+
+# ---- Distribution Lists (per distribute-funds chore) ----
+ensure distribution ... in ... { ... }
+
+# ---- Circuit Breaker Rules ----
+ensure circuit_breaker ... { ... }
+
+# ---- Purse Configuration ----
+# <per-purse: balances>
+set purse ... enabled: ...
+
+# ---- Event System ----
+ensure event_subscription ... { ... }
+ensure event_reaction ... { ... }
+
+# ---- Per-Chore Logging Overrides ----
+set chore_logging ... ...
+```
+
+**Queries made by the serializer** (all read-only):
+
+- `getTokenRegistry()`, `getPausedTokens()`, `getFrozenTokens()`
+- `getEnabledDexes()`, `getSupportedDexes()`
+- `getCircuitBreakerEnabled()`, `getCircuitBreakerRules()`
+- `getChoreStatuses()`, `listChoreInstances()`
+- `getTradeActions(id)`, `getMoveFundsActions(id)` (per chore)
+- `getTradeFallbackRouteTokens(id)` (per trade chore)
+- `getRebalanceSettings(id)`, `getRebalanceTargets(id)` (per rebalance chore)
+- `getDistributionLists(id)` (per distribute-funds chore)
+- `getAllPurseAllocations()`, `getMainPurseBalances()`
+- `getTradingPurseId(id)` (per chore)
+- `getEventSubscriptions()`, `getEventReactions()`
+- `getLoggingSettings()`, `getChoreLoggingOverrides()`
+- `getLastKnownPrices()`, `getPriceStaleness()`, `getMetadataStaleness()`
+- `getPriceHistoryMaxSize()`
+
+Stats included as comments (enrichment queries):
+
+- `getCapitalFlows()` — capital deployed, per-token flows
+- `getTradeLogStats()` — total trade entries
+- `getLastKnownPrices()` — current price for each token pair
+
+### Resolver
+
+The resolver takes the parsed AST and the current bot state (fetched at resolve time) and produces an ordered list of operations. Each operation is a record:
+
+```javascript
+{
+  type: "call",                     // or "no-op" for unchanged state
+  method: "addTradeAction",         // canister method name
+  args: [...],                      // method arguments
+  description: "Add trade action 'buy-sneed-dip' to chore 'trade-1'",
+  category: "trade_actions",        // for grouping in the review UI
+  sourceStatement: { line: 42, ... } // back-reference to DSL source
+}
+```
+
+**Resolver behaviors**:
+
+- **Idempotent skipping**: If `ensure` would result in no changes (all properties match current state), emit a `no-op` operation instead of a call. Show these as "already up to date" in the review UI.
+- **Statement ordering**: `ensure token` statements are processed first (tokens must exist before referencing them). Then chore instances, then actions/targets/settings, then circuit breakers, then event system. `submit` statements go last.
+- **Rebalance target batching**: All `ensure rebalance_target` and `remove rebalance_target` for the same instance are batched into a single `setRebalanceTargets` call.
+- **Validation**: The resolver validates token references, chore instance references, and key uniqueness before producing operations. Errors are reported with line numbers.
+
+### Frontend Implementation
+
+The DSL feature is implemented as a new **"Script"** tab in the trading bot page, available to users with appropriate permissions. Components:
+
+1. **Editor panel**: Text editor (monospace, syntax-highlighted) for writing/pasting DSL programs.
+2. **Export button**: Queries all state and populates the editor with the serialized export.
+3. **Parse button**: Parses the editor contents and shows the resolved operation list.
+4. **Operation review panel**: Shows each resolved operation with description, category, and current→new value diffs. No-ops shown as greyed out. User can toggle individual operations on/off.
+5. **Execute button**: Runs the approved operations sequentially, showing progress and results.
+
+The implementation lives in:
+- `src/app_sneeddao_frontend/src/dsl/parser.js` — Tokenizer + recursive descent parser
+- `src/app_sneeddao_frontend/src/dsl/serializer.js` — State-to-DSL-text serializer
+- `src/app_sneeddao_frontend/src/dsl/resolver.js` — AST-to-operations resolver
+- `src/app_sneeddao_frontend/src/components/TradingBotDSLPanel.jsx` — UI component
+
+---
+
 ## Appendix A: Numeric Action Type Map
 
 | Nat | ActionType Variant |

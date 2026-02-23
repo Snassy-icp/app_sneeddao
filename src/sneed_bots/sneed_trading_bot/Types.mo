@@ -345,6 +345,7 @@ module {
     /// This avoids enum variants in stable storage.
     public type ActionConfig = {
         id: Nat;
+        key: Text;                          // Unique-within-chore human-readable key for DSL idempotency
         actionType: Nat;                    // 0=Trade, 1=FundPurse, 2=Reclaim, 3=Send
         enabled: Bool;
 
@@ -414,6 +415,7 @@ module {
 
     /// Input type for creating/updating actions (no id or lastExecutedAt)
     public type ActionConfigInput = {
+        key: Text;                          // Unique-within-chore key; empty = auto-generate
         actionType: Nat;
         enabled: Bool;
         inputToken: Principal;
