@@ -57,8 +57,8 @@ const ACTION_PARAM_HINTS = {
     203: [{ key: 'token', hint: 'Token ledger canister ID (principal)', required: true }],
     204: [],
     205: [],
-    206: [{ key: 'choreId', hint: 'Chore instance ID', required: true }, { key: 'token', hint: 'Token ledger canister ID', required: true }, { key: 'amount', hint: 'Amount in token units', required: true }],
-    207: [{ key: 'choreId', hint: 'Chore instance ID', required: true }, { key: 'token', hint: 'Token ledger canister ID', required: true }, { key: 'amount', hint: 'Amount in token units', required: true }],
+    206: [{ key: 'choreId', hint: 'Target purse (chore instance)', required: true, isPurse: true }, { key: 'token', hint: 'Token ledger canister ID', required: true }, { key: 'amount', hint: 'Amount in token units', required: true }],
+    207: [{ key: 'choreId', hint: 'Source purse (chore instance)', required: true, isPurse: true }, { key: 'token', hint: 'Token ledger canister ID', required: true }, { key: 'amount', hint: 'Amount in token units', required: true }],
     208: [{ key: 'token', hint: 'Token ledger canister ID', required: true }, { key: 'to', hint: 'Destination account (principal or ICRC-1 account)', required: true }, { key: 'amount', hint: 'Amount in token units', required: true }],
 };
 
@@ -1391,11 +1391,12 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                         };
 
                                         let valueInput;
+                                        const isPurseParam = hint?.isPurse;
                                         if (p.key === 'choreId' && choreStatuses && choreStatuses.length > 0) {
                                             valueInput = (
                                                 <select style={{ ...inputStyle, fontSize: '0.78rem' }} value={p.value}
                                                     onChange={e => updateParamValue(e.target.value)}>
-                                                    <option value="">Select chore...</option>
+                                                    <option value="">{isPurseParam ? 'Select purse...' : 'Select chore...'}</option>
                                                     {choreStatuses.map(cs => {
                                                         const cId = cs.choreId || cs.id || '';
                                                         const cName = cs.instanceLabel || cs.choreName || cs.name || cId;
