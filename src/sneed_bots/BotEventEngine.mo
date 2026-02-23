@@ -109,7 +109,10 @@ module {
         /// Emit an event. Adds to the event log, queues deliveries for all
         /// matching listeners, and kicks off the delivery timer if needed.
         public func emitEvent<system>(eventTypeId: Nat, data: [(Text, Text)]) {
-            if (not srcState.getEmissionEnabled()) return;
+            if (not srcState.getEmissionEnabled()) {
+                emitLog("Trace", "emitEvent: emission disabled, dropping eventTypeId=" # Nat.toText(eventTypeId), []);
+                return;
+            };
             _queueEventInternal(eventTypeId, data);
             kickDeliveryTimer<system>();
         };
@@ -134,6 +137,7 @@ module {
             addToEventLog(event);
 
             let listeners = srcState.getListeners();
+            var matchedCount: Nat = 0;
             for (reg in listeners.vals()) {
                 if (not reg.enabled) { /* skip disabled */ }
                 else if (not arrayContainsNat(reg.eventTypeIds, eventTypeId)) { /* skip non-matching */ }
@@ -142,8 +146,10 @@ module {
                         event = event;
                         listenerCanisterId = reg.listenerCanisterId;
                     });
+                    matchedCount += 1;
                 };
             };
+            emitLog("Trace", "Event queued: typeId=" # Nat.toText(eventTypeId) # " id=" # Nat.toText(eventId) # " listeners=" # Nat.toText(listeners.size()) # " matched=" # Nat.toText(matchedCount) # " queueLen=" # Nat.toText(deliveryQueue.size()), []);
         };
 
         func addToEventLog(event: BotEventTypes.BotEvent) {
@@ -310,6 +316,7 @@ module {
         func processDeliveryBatch(): async () {
             let batchSize = Nat.min(deliveryQueue.size(), 10);
             if (batchSize == 0) return;
+            emitLog("Trace", "Delivery batch: processing " # Nat.toText(batchSize) # " of " # Nat.toText(deliveryQueue.size()) # " queued", []);
 
             let batch = Buffer.Buffer<BotEventTypes.PendingEventDelivery>(batchSize);
             var i: Nat = 0;
@@ -321,7 +328,9 @@ module {
             };
 
             for (delivery in batch.vals()) {
-                if (Principal.equal(delivery.listenerCanisterId, selfPrincipal)) {
+                let isSelf = Principal.equal(delivery.listenerCanisterId, selfPrincipal);
+                emitLog("Trace", "Delivering eventId=" # Nat.toText(delivery.event.eventId) # " typeId=" # Nat.toText(delivery.event.eventTypeId) # " to " # (if isSelf "self" else Principal.toText(delivery.listenerCanisterId)), []);
+                if (isSelf) {
                     await handleIncomingEventInternal(delivery.event);
                 } else if (not hasPermissionForEvent(delivery.listenerCanisterId, delivery.event.eventTypeId)) {
                     emitLog("Warning", "Skipping delivery: permission revoked for " # Principal.toText(delivery.listenerCanisterId),
@@ -606,14 +615,26 @@ module {
         func handleIncomingEventInternal(event: BotEventTypes.BotEvent): async () {
             let reactions = lsnState.getReactions();
             let now = Time.now();
+            emitLog("Trace", "handleIncomingEvent: eventTypeId=" # Nat.toText(event.eventTypeId) # " eventId=" # Nat.toText(event.eventId) # " rules=" # Nat.toText(reactions.size()), []);
 
             for (rule in reactions.vals()) {
-                if (not rule.enabled) { /* skip */ }
-                else if (rule.eventTypeId != event.eventTypeId) { /* skip */ }
-                else if (not subscriptionMatchesSource(rule.subscriptionId, event.sourceCanisterId)) { /* skip */ }
-                else if (not evaluateConditions(rule.conditions, event.data)) { /* skip */ }
-                else if (isOnCooldown(rule, now)) { /* skip */ }
+                if (not rule.enabled) {
+                    emitLog("Trace", "Rule " # Nat.toText(rule.id) # " '" # rule.name # "': skip (disabled)", []);
+                }
+                else if (rule.eventTypeId != event.eventTypeId) {
+                    emitLog("Trace", "Rule " # Nat.toText(rule.id) # " '" # rule.name # "': skip (eventType " # Nat.toText(rule.eventTypeId) # " != " # Nat.toText(event.eventTypeId) # ")", []);
+                }
+                else if (not subscriptionMatchesSource(rule.subscriptionId, event.sourceCanisterId)) {
+                    emitLog("Trace", "Rule " # Nat.toText(rule.id) # " '" # rule.name # "': skip (subscription " # Nat.toText(rule.subscriptionId) # " does not match source)", []);
+                }
+                else if (not evaluateConditions(rule.conditions, event.data)) {
+                    emitLog("Trace", "Rule " # Nat.toText(rule.id) # " '" # rule.name # "': skip (conditions not met)", []);
+                }
+                else if (isOnCooldown(rule, now)) {
+                    emitLog("Trace", "Rule " # Nat.toText(rule.id) # " '" # rule.name # "': skip (cooldown)", []);
+                }
                 else {
+                    emitLog("Info", "Rule " # Nat.toText(rule.id) # " '" # rule.name # "' MATCHED eventId=" # Nat.toText(event.eventId) # " — executing actionId=" # Nat.toText(rule.reactionActionId), []);
                     let success = await executeReaction(rule, event);
                     updateReactionRuntimeState(rule.id, now, success);
                     logReaction(rule, event, success);
