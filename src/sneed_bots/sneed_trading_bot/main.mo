@@ -3270,7 +3270,42 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         let inputFee = try { (await* getTokenInfoOrFetch(action.inputToken)).fee } catch (_) { 0 };
         let cappedBal = Nat.min(effectiveBal, balance);
         let maxAffordable = if (cappedBal > inputFee * 3) { cappedBal - inputFee * 3 } else { 0 };
-        let actualTradeSize = Nat.min(tradeSize, maxAffordable);
+        let rawTradeSize = Nat.min(tradeSize, maxAffordable);
+
+        // Cap to remaining cumulative input budget when applicable.
+        // If remaining budget < min trade size, treat as limit effectively reached.
+        // If remaining budget >= min but < calculated trade, cap the trade to finish the budget.
+        let (actualTradeSize, cappedByCumulativeInput, cumulativeRemaining) = switch (action.maxCumulativeInput) {
+            case (?max) {
+                let remaining = if (max > action.cumulativeInputSpent) { max - action.cumulativeInputSpent } else { 0 };
+                if (rawTradeSize > remaining) { (remaining, true, remaining) } else { (rawTradeSize, false, remaining) }
+            };
+            case null { (rawTradeSize, false, 0) };
+        };
+
+        if (cappedByCumulativeInput and actualTradeSize < effectiveMinAmount) {
+            switch (action.maxCumulativeInput) {
+                case (?max) {
+                    let reason = "Cumulative input limit effectively reached: remaining " # Nat.toText(cumulativeRemaining) # " < min trade " # Nat.toText(effectiveMinAmount) # " (" # Nat.toText(action.cumulativeInputSpent) # "/" # Nat.toText(max) # ")";
+                    logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " skipped: " # reason, null, []);
+                    ignore appendTradeLog({
+                        choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                        actionType = action.actionType;
+                        inputToken = action.inputToken; outputToken = action.outputToken;
+                        inputAmount = 0; outputAmount = null;
+                        priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                        status = #Skipped; errorMessage = ?reason;
+                        txId = null; destinationOwner = null;
+                    });
+                    eventEngine.emitEvent<system>(T.TradingEvent.CumulativeLimitReached, [
+                        ("choreId", instanceId), ("actionId", Nat.toText(action.id)),
+                        ("limitType", "input"), ("current", Nat.toText(action.cumulativeInputSpent)), ("max", Nat.toText(max)),
+                    ]);
+                };
+                case null {};
+            };
+            return (false, 0, 0);
+        };
 
         if (actualTradeSize < effectiveMinAmount) {
             logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # " skipped: affordable amount " # Nat.toText(actualTradeSize) # " < min " # Nat.toText(effectiveMinAmount) # " (balance=" # Nat.toText(effectiveBal) # ", fee=" # Nat.toText(inputFee) # ")", null, []);
@@ -5937,20 +5972,28 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                       else { getMoveFundsActionsForInstance(instanceId) };
         if (actions.size() == 0) return false;
         for (a in actions.vals()) {
-            let inputExhausted = switch (a.maxCumulativeInput) {
-                case (?max) { a.cumulativeInputSpent >= max };
-                case null false;
+            if (not a.enabled) { /* skip disabled actions */ } else {
+                let inputExhausted = switch (a.maxCumulativeInput) {
+                    case (?max) {
+                        if (a.cumulativeInputSpent >= max) true
+                        else {
+                            let remaining = max - a.cumulativeInputSpent;
+                            remaining < a.minAmount
+                        }
+                    };
+                    case null false;
+                };
+                let outputExhausted = switch (a.maxCumulativeOutput) {
+                    case (?max) { a.cumulativeOutputReceived >= max };
+                    case null false;
+                };
+                let execsExhausted = switch (a.maxExecutions) {
+                    case (?max) { a.executionCount >= max };
+                    case null false;
+                };
+                let hasAnyLimit = a.maxCumulativeInput != null or a.maxCumulativeOutput != null or a.maxExecutions != null;
+                if (not hasAnyLimit or not (inputExhausted or outputExhausted or execsExhausted)) return false;
             };
-            let outputExhausted = switch (a.maxCumulativeOutput) {
-                case (?max) { a.cumulativeOutputReceived >= max };
-                case null false;
-            };
-            let execsExhausted = switch (a.maxExecutions) {
-                case (?max) { a.executionCount >= max };
-                case null false;
-            };
-            let hasAnyLimit = a.maxCumulativeInput != null or a.maxCumulativeOutput != null or a.maxExecutions != null;
-            if (not hasAnyLimit or not (inputExhausted or outputExhausted or execsExhausted)) return false;
         };
         true
     };
