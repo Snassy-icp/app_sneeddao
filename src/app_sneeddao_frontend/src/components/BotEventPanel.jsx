@@ -63,15 +63,18 @@ const ACTION_PARAM_HINTS = {
 };
 
 const EVENT_DATA_KEYS = {
+    // Base chore events
     0:   [{ key: 'choreId', hint: 'Chore instance ID' }],
     1:   [{ key: 'choreId', hint: 'Chore instance ID' }],
     2:   [{ key: 'choreId', hint: 'Chore instance ID' }],
     3:   [{ key: 'choreId', hint: 'Chore instance ID' }],
     4:   [{ key: 'choreId', hint: 'Chore instance ID' }],
-    5:   [{ key: 'choreId', hint: 'Chore instance ID' }],
+    5:   [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'error', hint: 'Error message' }],
     6:   [{ key: 'choreId', hint: 'Chore instance ID' }],
-    10:  [{ key: 'listId', hint: 'Distribution list ID' }, { key: 'listName', hint: 'Distribution list name' }],
-    11:  [{ key: 'listId', hint: 'Distribution list ID' }, { key: 'error', hint: 'Error message' }],
+    // Distribution events
+    10:  [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'list', hint: 'Distribution list name' }, { key: 'amount', hint: 'Amount distributed' }, { key: 'targets', hint: 'Number of targets' }, { key: 'ledger', hint: 'Token ledger canister ID' }],
+    11:  [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'list', hint: 'Distribution list name' }, { key: 'succeeded', hint: 'Successful transfers' }, { key: 'failed', hint: 'Failed transfers' }, { key: 'ledger', hint: 'Token ledger canister ID' }],
+    // Staking bot events
     100: [{ key: 'neuronId', hint: 'Neuron ID' }],
     101: [{ key: 'neuronId', hint: 'Neuron ID' }],
     102: [{ key: 'neuronId', hint: 'Neuron ID' }],
@@ -91,27 +94,42 @@ const EVENT_DATA_KEYS = {
     151: [{ key: 'neuronId', hint: 'Neuron ID' }, { key: 'hotkey', hint: 'Hotkey principal' }],
     160: [{ key: 'amount', hint: 'Amount (e8s)' }, { key: 'to', hint: 'Destination' }],
     161: [{ key: 'token', hint: 'Token canister ID' }, { key: 'amount', hint: 'Amount' }],
-    200: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'token', hint: 'Token traded' }],
-    201: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'reason', hint: 'Skip reason' }],
-    202: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'error', hint: 'Error message' }],
+    // TradeExecuted
+    200: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'actionId', hint: 'Action ID' }, { key: 'inputToken', hint: 'Input token canister ID' }, { key: 'outputToken', hint: 'Output token canister ID' }, { key: 'inputAmount', hint: 'Input amount' }, { key: 'outputAmount', hint: 'Output amount' }],
+    // TradeSkipped
+    201: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'actionId', hint: 'Action ID' }, { key: 'reason', hint: 'Skip reason' }],
+    // TradeFailed
+    202: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'actionId', hint: 'Action ID' }, { key: 'inputToken', hint: 'Input token canister ID' }, { key: 'outputToken', hint: 'Output token canister ID' }, { key: 'error', hint: 'Error message' }],
+    // CircuitBreakerTriggered / Enabled / Disabled
     210: [{ key: 'ruleId', hint: 'Circuit breaker rule ID' }, { key: 'ruleName', hint: 'Rule name' }, { key: 'actionsTaken', hint: 'Actions taken' }],
     211: [],
     212: [],
+    // Token pause/freeze
     220: [{ key: 'token', hint: 'Token canister ID' }],
     221: [{ key: 'token', hint: 'Token canister ID' }],
     222: [{ key: 'token', hint: 'Token canister ID' }],
     223: [{ key: 'token', hint: 'Token canister ID' }],
-    230: [{ key: 'choreId', hint: 'Chore instance ID' }],
-    231: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'reason', hint: 'Skip reason' }],
-    240: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'token', hint: 'Token' }, { key: 'amount', hint: 'Amount' }],
-    241: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'token', hint: 'Token' }, { key: 'amount', hint: 'Amount' }],
-    242: [{ key: 'token', hint: 'Token' }, { key: 'to', hint: 'Destination' }, { key: 'amount', hint: 'Amount' }],
-    243: [{ key: 'token', hint: 'Token' }, { key: 'error', hint: 'Error message' }],
-    250: [{ key: 'token', hint: 'Token' }, { key: 'amount', hint: 'Amount' }],
-    251: [{ key: 'token', hint: 'Token' }, { key: 'amount', hint: 'Amount' }],
-    252: [{ key: 'token', hint: 'Token' }, { key: 'shortfall', hint: 'Shortfall amount' }],
-    260: [{ key: 'choreId', hint: 'Chore instance ID' }],
-    270: [{ key: 'token', hint: 'Token' }, { key: 'choreId', hint: 'Chore instance ID' }],
+    // RebalanceExecuted
+    230: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'inputToken', hint: 'Sell token canister ID' }, { key: 'outputToken', hint: 'Buy token canister ID' }, { key: 'inputAmount', hint: 'Input amount' }, { key: 'outputAmount', hint: 'Output amount' }],
+    // RebalanceSkipped
+    231: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'reason', hint: 'Skip reason' }, { key: 'token', hint: 'Token (if applicable)' }],
+    // PurseFunded
+    240: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'token', hint: 'Token canister ID' }, { key: 'amount', hint: 'Amount' }, { key: 'purseId', hint: 'Target purse ID' }],
+    // PurseReclaimed
+    241: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'token', hint: 'Token canister ID' }, { key: 'amount', hint: 'Amount' }, { key: 'purseId', hint: 'Source purse ID' }],
+    // SendExecuted
+    242: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'token', hint: 'Token canister ID' }, { key: 'amount', hint: 'Amount' }, { key: 'to', hint: 'Destination' }],
+    // SendFailed
+    243: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'token', hint: 'Token canister ID' }, { key: 'amount', hint: 'Amount' }, { key: 'to', hint: 'Destination' }, { key: 'error', hint: 'Error message' }],
+    // InflowDetected / OutflowDetected
+    250: [{ key: 'token', hint: 'Token canister ID' }, { key: 'amount', hint: 'Amount' }],
+    251: [{ key: 'token', hint: 'Token canister ID' }, { key: 'amount', hint: 'Amount' }],
+    // OvercommitDetected
+    252: [{ key: 'token', hint: 'Token canister ID' }, { key: 'onChainBalance', hint: 'On-chain balance' }, { key: 'allocatedTotal', hint: 'Total allocated to purses' }],
+    // SnapshotTaken
+    260: [{ key: 'snapshotId', hint: 'Snapshot ID' }, { key: 'trigger', hint: 'Trigger source' }, { key: 'choreId', hint: 'Chore instance ID (if applicable)' }],
+    // CumulativeLimitReached
+    270: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'actionId', hint: 'Action ID' }, { key: 'limitType', hint: 'Limit type (input/output)' }, { key: 'current', hint: 'Current cumulative amount' }, { key: 'max', hint: 'Maximum allowed' }],
 };
 
 const opLabel = (id) => CONDITION_OPS.find(o => o.id === Number(id))?.label || `Op ${id}`;
