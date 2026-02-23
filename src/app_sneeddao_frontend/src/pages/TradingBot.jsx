@@ -7684,7 +7684,7 @@ function ChoresOverviewPanel({ choreStatuses, cbEvents, theme, accentColor, onNa
 // ============================================
 // Trading Bot Logs Section (combines trade log, portfolio snapshots, logging settings)
 // ============================================
-function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, identity, botPanelRef, cbEvents }) {
+function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, identity, botPanelRef, cbEvents, tokenRegistry, choreInstances }) {
     const [activeTab, setActiveTab] = useState('wallet');
     const [choreStatuses, setChoreStatuses] = useState([]);
     const agentRef = useRef(null);
@@ -7747,6 +7747,9 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
                 <button onClick={() => setActiveTab('circuit-breaker')} style={tabStyle(activeTab === 'circuit-breaker')}>
                     <FaShieldAlt style={{ marginRight: '4px', fontSize: '0.75rem' }} />Circuit Breaker
                 </button>
+                <button onClick={() => setActiveTab('quick-trade')} style={tabStyle(activeTab === 'quick-trade')}>
+                    <FaExchangeAlt style={{ marginRight: '4px', fontSize: '0.75rem' }} />Quick Trade
+                </button>
                 <button onClick={() => setActiveTab('recovery')} style={tabStyle(activeTab === 'recovery')}>
                     <FaMedkit style={{ marginRight: '4px', fontSize: '0.75rem' }} />Recovery
                 </button>
@@ -7757,6 +7760,7 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
             {activeTab === 'performance' && <PerformancePanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}
             {activeTab === 'logs' && <LogsTabPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}
             {activeTab === 'circuit-breaker' && <CircuitBreakerPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}
+            {activeTab === 'quick-trade' && <QuickTradePanel canisterId={canisterId} createBotActor={createBotActorFn} identity={identity} tokenRegistry={tokenRegistry} choreInstances={choreInstances} />}
             {activeTab === 'recovery' && <RecoveryPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} canisterId={canisterId} />}
         </div>
     );
@@ -11090,7 +11094,6 @@ function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identit
     const [success, setSuccess] = useState('');
     const [queue, setQueue] = useState([]);
     const [loadingQueue, setLoadingQueue] = useState(false);
-    const [expanded, setExpanded] = useState(true);
     const actorRef = useRef(null);
     const pollRef = useRef(null);
 
@@ -11211,14 +11214,6 @@ function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identit
         } catch (e) { setError(e.message); }
     };
 
-    const cardStyle = {
-        background: theme.colors.cardGradient,
-        borderRadius: '12px',
-        border: `1px solid ${theme.colors.border}`,
-        padding: '16px 20px',
-        marginBottom: '16px',
-    };
-
     const inputStyle = {
         background: theme.colors.secondaryBg,
         border: `1px solid ${theme.colors.border}`,
@@ -11247,25 +11242,8 @@ function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identit
     const pendingOrProcessing = queue.filter(e => Number(e.status) <= 1);
 
     return (
-        <div style={cardStyle}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: expanded ? '14px' : 0 }}
-                onClick={() => setExpanded(v => !v)}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <FaExchangeAlt size={14} color={ACCENT} />
-                    <span style={{ fontWeight: 600, color: theme.colors.primaryText, fontSize: '0.95rem' }}>Quick Trade</span>
-                    {pendingOrProcessing.length > 0 && (
-                        <span style={{ background: ACCENT, color: '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '0.7rem', fontWeight: 700 }}>
-                            {pendingOrProcessing.length}
-                        </span>
-                    )}
-                </div>
-                {expanded ? <FaChevronUp size={12} color={theme.colors.mutedText} /> : <FaChevronDown size={12} color={theme.colors.mutedText} />}
-            </div>
-
-            {expanded && (
-                <div>
-                    {/* Form */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+        <div style={{ marginTop: '8px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
                         <div>
                             <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px', display: 'block' }}>Input Token</label>
                             <TokenSelector value={inputToken} onChange={setInputToken} tokenSubset={tokenSubset} excludeTokens={outputToken ? [outputToken] : []} disabled={submitting} />
@@ -11377,8 +11355,6 @@ function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identit
                             </div>
                         </div>
                     )}
-                </div>
-            )}
         </div>
     );
 }
@@ -12240,13 +12216,6 @@ export default function TradingBot() {
                             preferredChoreTypeOrder={['rebalance', 'trade', 'move-funds', 'distribute-funds', 'snapshot']}
                             hideLogTab
                         />
-                        <QuickTradePanel
-                            canisterId={canisterId}
-                            createBotActor={createBotActor}
-                            identity={identity}
-                            tokenRegistry={tokenRegistry}
-                            choreInstances={choreInstances}
-                        />
                         <TradingBotLogs
                             canisterId={canisterId}
                             createBotActorFn={createBotActor}
@@ -12255,6 +12224,8 @@ export default function TradingBot() {
                             identity={identity}
                             botPanelRef={botPanelRef}
                             cbEvents={cbEvents}
+                            tokenRegistry={tokenRegistry}
+                            choreInstances={choreInstances}
                         />
                     </>
                 )}
