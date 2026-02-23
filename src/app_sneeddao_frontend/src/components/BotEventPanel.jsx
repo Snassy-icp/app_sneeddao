@@ -875,7 +875,7 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {eventLog.map(e => (
+                                        {[...eventLog].reverse().map(e => (
                                             <tr key={Number(e.eventId)}>
                                                 <td style={{ ...cellStyle, fontFamily: 'monospace', width: '50px' }}>{Number(e.eventId)}</td>
                                                 <td style={cellStyle}>
@@ -1700,7 +1700,7 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {reactionLog.map(r => (
+                                        {[...reactionLog].reverse().map(r => (
                                             <tr key={Number(r.id)}>
                                                 <td style={{ ...cellStyle, fontFamily: 'monospace', width: '40px' }}>{Number(r.id)}</td>
                                                 <td style={cellStyle}>
