@@ -142,18 +142,28 @@ If the staking bot was deployed before these fields were added, upgrading requir
 
 ### Migration expression
 
-Place this immediately before the `persistent actor class` declaration in `main.mo`:
+Place this immediately before the `persistent actor class` declaration in `main.mo`.
+
+**Important:** The migration domain must EXACTLY match the deployed stable types. Use
+`dfx canister metadata <canister> motoko:stable-types --network <network>` to get the exact
+deployed type signatures. Key differences from the current types:
+- Old `DistributionList` had `sourceSubaccount : ?Blob` (now replaced by `sourcePurseId : ?Text`)
+- Old `DistributionTarget` did not have `choreInstanceId : ?Text`
 
 ```motoko
 (with migration = func (old : {
     var distributionSettings : [(Text, {
         lists : [{
             id : Nat;
-            name : Text;
-            tokenLedgerCanisterId : Principal;
-            thresholdAmount : Nat;
             maxDistributionAmount : Nat;
-            targets : [DistributionTypes.DistributionTarget];
+            name : Text;
+            sourceSubaccount : ?Blob;
+            targets : [{
+                account : { owner : Principal; subaccount : ?Blob };
+                basisPoints : ?Nat;
+            }];
+            thresholdAmount : Nat;
+            tokenLedgerCanisterId : Principal;
         }];
         nextListId : Nat;
     })]
@@ -163,22 +173,28 @@ Place this immediately before the `persistent actor class` declaration in `main.
         nextListId : Nat;
     })]
 } {
+    type OldTarget = { account : { owner : Principal; subaccount : ?Blob }; basisPoints : ?Nat };
+    type OldList = { id : Nat; maxDistributionAmount : Nat; name : Text; sourceSubaccount : ?Blob; targets : [OldTarget]; thresholdAmount : Nat; tokenLedgerCanisterId : Principal };
+    type OldSettings = (Text, { lists : [OldList]; nextListId : Nat });
     {
-        var distributionSettings = Array.map<
-            (Text, { lists : [{ id : Nat; name : Text; tokenLedgerCanisterId : Principal; thresholdAmount : Nat; maxDistributionAmount : Nat; targets : [DistributionTypes.DistributionTarget] }]; nextListId : Nat }),
-            (Text, { lists : [DistributionTypes.DistributionList]; nextListId : Nat })
-        >(
+        var distributionSettings = Array.map<OldSettings, (Text, { lists : [DistributionTypes.DistributionList]; nextListId : Nat })>(
             old.distributionSettings,
             func ((instanceId, ds)) {
                 (instanceId, {
-                    lists = Array.map(ds.lists, func (l : { id : Nat; name : Text; tokenLedgerCanisterId : Principal; thresholdAmount : Nat; maxDistributionAmount : Nat; targets : [DistributionTypes.DistributionTarget] }) : DistributionTypes.DistributionList {
+                    lists = Array.map<OldList, DistributionTypes.DistributionList>(ds.lists, func (l) {
                         {
                             id = l.id;
                             name = l.name;
                             tokenLedgerCanisterId = l.tokenLedgerCanisterId;
                             thresholdAmount = l.thresholdAmount;
                             maxDistributionAmount = l.maxDistributionAmount;
-                            targets = l.targets;
+                            targets = Array.map<OldTarget, DistributionTypes.DistributionTarget>(l.targets, func (t) {
+                                {
+                                    account = t.account;
+                                    basisPoints = t.basisPoints;
+                                    choreInstanceId = null;
+                                }
+                            });
                             sourcePurseId = null;
                             amountMode = 0;
                             balancePercent = null;
@@ -196,5 +212,6 @@ Place this immediately before the `persistent actor class` declaration in `main.
 ### Notes
 
 - This migration is only needed if deploying to a canister that was deployed BEFORE the distribution purse enhancements were added.
+- The migration domain must EXACTLY match the old deployed types — use `dfx canister metadata` to verify. Even one missing or extra field will cause the stable compatibility check to fail with "data loss."
 - The event system changes (BotEventTypes, BotEventEngine) do NOT cause this issue. All event stable vars use only `Nat`, `Text`, `Int`, `Bool`, `Principal` with no variant types.
 - After a successful upgrade with this migration, the migration expression can be removed in the next release.
