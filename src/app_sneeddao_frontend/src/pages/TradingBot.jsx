@@ -11177,8 +11177,8 @@ function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identit
                 outputToken: Principal.fromText(outputToken),
                 inputAmount: BigInt(rawAmount),
                 minOutputAmount: minOutputAmount ? [BigInt(parseTokenAmount(minOutputAmount, getTokenDecimals(outputToken)))] : [],
-                maxSlippageBps: slippageBps ? [BigInt(slippageBps)] : [],
-                maxPriceImpactBps: maxImpactBps ? [BigInt(maxImpactBps)] : [],
+                maxSlippageBps: slippageBps ? [BigInt(Math.round(parseFloat(slippageBps) * 100))] : [],
+                maxPriceImpactBps: maxImpactBps ? [BigInt(Math.round(parseFloat(maxImpactBps) * 100))] : [],
                 preferredDex: preferredDex === 'auto' ? [] : [BigInt(preferredDex)],
                 sourcePurseId: sourcePurse === 'main' ? [] : [sourcePurse],
             };
@@ -11267,12 +11267,12 @@ function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identit
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px', marginBottom: '14px' }}>
                         <div>
-                            <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px', display: 'block' }}>Slippage (bps)</label>
-                            <input type="number" value={slippageBps} onChange={e => setSlippageBps(e.target.value)} placeholder="Default" style={inputStyle} disabled={submitting} />
+                            <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px', display: 'block' }}>Slippage (%)</label>
+                            <input type="number" step="0.01" value={slippageBps} onChange={e => setSlippageBps(e.target.value)} placeholder="e.g. 1.5" style={inputStyle} disabled={submitting} />
                         </div>
                         <div>
-                            <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px', display: 'block' }}>Max Impact (bps)</label>
-                            <input type="number" value={maxImpactBps} onChange={e => setMaxImpactBps(e.target.value)} placeholder="Default" style={inputStyle} disabled={submitting} />
+                            <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px', display: 'block' }}>Max Impact (%)</label>
+                            <input type="number" step="0.01" value={maxImpactBps} onChange={e => setMaxImpactBps(e.target.value)} placeholder="e.g. 3.0" style={inputStyle} disabled={submitting} />
                         </div>
                         <div>
                             <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px', display: 'block' }}>DEX</label>
