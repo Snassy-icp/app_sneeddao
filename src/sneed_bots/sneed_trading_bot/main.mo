@@ -27,6 +27,70 @@ import BotEventEngine "../BotEventEngine";
 ///
 /// Reuses shared infrastructure: Botkeys, Bot Chores, Botlog.
 /// Supports: Trade Chore, Rebalance Chore, Move Funds Chore, Distribute Funds Chore.
+(with migration = func (old : {
+    var oneOffTradeQueue : [{
+        id : Nat;
+        inputToken : Principal;
+        outputToken : Principal;
+        inputAmount : Nat;
+        minOutputAmount : ?Nat;
+        maxSlippageBps : ?Nat;
+        maxPriceImpactBps : ?Nat;
+        preferredDex : ?Nat;
+        submittedBy : Principal;
+        submittedAt : Int;
+        status : Nat;
+        outputAmount : ?Nat;
+        dexUsed : ?Nat;
+        errorMessage : ?Text;
+        completedAt : ?Int;
+        tradeLogId : ?Nat;
+    }]
+}) : { var oneOffTradeQueue : [T.OneOffTradeEntry] } {
+    {
+        var oneOffTradeQueue = Array.map(
+            old.oneOffTradeQueue,
+            func (e : {
+                id : Nat;
+                inputToken : Principal;
+                outputToken : Principal;
+                inputAmount : Nat;
+                minOutputAmount : ?Nat;
+                maxSlippageBps : ?Nat;
+                maxPriceImpactBps : ?Nat;
+                preferredDex : ?Nat;
+                submittedBy : Principal;
+                submittedAt : Int;
+                status : Nat;
+                outputAmount : ?Nat;
+                dexUsed : ?Nat;
+                errorMessage : ?Text;
+                completedAt : ?Int;
+                tradeLogId : ?Nat;
+            }) : T.OneOffTradeEntry {
+                {
+                    id = e.id;
+                    inputToken = e.inputToken;
+                    outputToken = e.outputToken;
+                    inputAmount = e.inputAmount;
+                    minOutputAmount = e.minOutputAmount;
+                    maxSlippageBps = e.maxSlippageBps;
+                    maxPriceImpactBps = e.maxPriceImpactBps;
+                    preferredDex = e.preferredDex;
+                    sourcePurseId = null;
+                    submittedBy = e.submittedBy;
+                    submittedAt = e.submittedAt;
+                    status = e.status;
+                    outputAmount = e.outputAmount;
+                    dexUsed = e.dexUsed;
+                    errorMessage = e.errorMessage;
+                    completedAt = e.completedAt;
+                    tradeLogId = e.tradeLogId;
+                }
+            }
+        );
+    }
+})
 shared (deployer) persistent actor class TradingBotCanister() = this {
 
     // ============================================
