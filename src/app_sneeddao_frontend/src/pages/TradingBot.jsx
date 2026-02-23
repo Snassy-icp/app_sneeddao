@@ -11075,7 +11075,7 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
 const ONE_OFF_STATUS = { 0: 'Pending', 1: 'Processing', 2: 'Completed', 3: 'Failed', 4: 'Cancelled' };
 const ONE_OFF_STATUS_COLORS = { 0: '#f59e0b', 1: '#3b82f6', 2: '#10b981', 3: '#ef4444', 4: '#6b7280' };
 
-function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identity, tokenRegistry }) {
+function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identity, tokenRegistry, choreInstances }) {
     const { theme } = useTheme();
     const [inputToken, setInputToken] = useState('');
     const [outputToken, setOutputToken] = useState('');
@@ -11084,6 +11084,7 @@ function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identit
     const [slippageBps, setSlippageBps] = useState('');
     const [maxImpactBps, setMaxImpactBps] = useState('');
     const [preferredDex, setPreferredDex] = useState('auto');
+    const [sourcePurse, setSourcePurse] = useState('main');
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -11176,6 +11177,7 @@ function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identit
                 maxSlippageBps: slippageBps ? [BigInt(slippageBps)] : [],
                 maxPriceImpactBps: maxImpactBps ? [BigInt(maxImpactBps)] : [],
                 preferredDex: preferredDex === 'auto' ? [] : [BigInt(preferredDex)],
+                sourcePurseId: sourcePurse === 'main' ? [] : [sourcePurse],
             };
             const result = await bot.submitOneOffTrade(input);
             if ('Ok' in result) {
@@ -11285,7 +11287,7 @@ function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identit
                         </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '14px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px', marginBottom: '14px' }}>
                         <div>
                             <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px', display: 'block' }}>Slippage (bps)</label>
                             <input type="number" value={slippageBps} onChange={e => setSlippageBps(e.target.value)} placeholder="Default" style={inputStyle} disabled={submitting} />
@@ -11300,6 +11302,15 @@ function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identit
                                 <option value="auto">Auto (best quote)</option>
                                 <option value="0">ICPSwap</option>
                                 <option value="1">KongSwap</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px', display: 'block' }}>Source Purse</label>
+                            <select value={sourcePurse} onChange={e => setSourcePurse(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }} disabled={submitting}>
+                                <option value="main">Main Purse</option>
+                                {(choreInstances || []).map(([id, info]) => (
+                                    <option key={id} value={id}>{info?.name || id}</option>
+                                ))}
                             </select>
                         </div>
                     </div>
@@ -11352,6 +11363,7 @@ function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identit
                                             <span style={{ color: theme.colors.primaryText }}>
                                                 {inAmt} {inSym} <FaArrowRight size={9} color={theme.colors.mutedText} style={{ margin: '0 3px', verticalAlign: 'middle' }} /> {outAmt ? `${outAmt} ${outSym}` : outSym}
                                             </span>
+                                            {entry.sourcePurseId?.length > 0 && <span style={{ color: theme.colors.mutedText, fontSize: '0.72rem' }}>from {entry.sourcePurseId[0]}</span>}
                                             {dexLabel && <span style={{ color: theme.colors.mutedText, fontSize: '0.72rem' }}>via {dexLabel}</span>}
                                             {errMsg && <span style={{ color: '#ef4444', fontSize: '0.72rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={errMsg}>{errMsg}</span>}
                                             {status === 0 && (
@@ -12228,6 +12240,7 @@ export default function TradingBot() {
                             createBotActor={createBotActor}
                             identity={identity}
                             tokenRegistry={tokenRegistry}
+                            choreInstances={choreInstances}
                         />
                         <TradingBotLogs
                             canisterId={canisterId}

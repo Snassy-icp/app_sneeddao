@@ -7070,41 +7070,110 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     func _executeOneOffTrade(entry: T.OneOffTradeEntry): async* T.OneOffTradeEntry {
         let src = "one-off:" # Nat.toText(entry.id);
 
+        // Phase 0: Metadata refresh (trade tokens + CB tokens)
+        let cbTokens = _collectCircuitBreakerTokens();
+        let allTokens = Buffer.fromArray<Principal>([entry.inputToken, entry.outputToken]);
+        for (cbt in cbTokens.vals()) {
+            var found = false;
+            for (t in allTokens.vals()) { if (t == cbt) found := true };
+            if (not found) allTokens.add(cbt);
+        };
+        for (tok in allTokens.vals()) {
+            try { ignore await* getTokenInfoOrFetch(tok) } catch (e) {
+                logEngine.logWarning(src, "Metadata fetch failed for " # Principal.toText(tok) # ": " # Error.message(e), null, []);
+            };
+        };
+
+        // Phase 0b: Price fetch for CB pairs (so CB conditions have fresh data)
+        if (circuitBreakerEnabled) {
+            let cbPairs = _collectCircuitBreakerPairs();
+            for ((inp, out) in cbPairs.vals()) {
+                switch (getCachedQuote(inp, out)) {
+                    case (?_) {};
+                    case null {
+                        try {
+                            let info = await* getTokenInfoOrFetch(inp);
+                            let oneUnit = Nat.pow(10, Nat8.toNat(info.decimals));
+                            let quoteOpt = await* getBestQuote(inp, out, oneUnit);
+                            switch (quoteOpt) {
+                                case (?q) { setCachedQuote(inp, out, q) };
+                                case null {};
+                            };
+                        } catch (_) {};
+                    };
+                };
+            };
+        };
+
+        // Phase 1: Circuit breaker evaluation (may freeze tokens or stop chores)
+        evaluateCircuitBreakerRules<system>("one-off:" # Nat.toText(entry.id));
+
+        // Re-check token paused/frozen — CB actions may have just changed this
         if (isTokenPausedOrFrozen(entry.inputToken)) {
-            let msg = "Input token " # tokenLabel(entry.inputToken) # " is paused/frozen";
+            let msg = "Input token " # tokenLabel(entry.inputToken) # " is paused/frozen (may have been triggered by circuit breaker)";
             logEngine.logWarning(src, msg, null, []);
             return _failOneOffTrade(entry, msg);
         };
         if (isTokenPausedOrFrozen(entry.outputToken)) {
-            let msg = "Output token " # tokenLabel(entry.outputToken) # " is paused/frozen";
+            let msg = "Output token " # tokenLabel(entry.outputToken) # " is paused/frozen (may have been triggered by circuit breaker)";
             logEngine.logWarning(src, msg, null, []);
             return _failOneOffTrade(entry, msg);
         };
 
-        try {
-            ignore await* getTokenInfoOrFetch(entry.inputToken);
-        } catch (e) {
-            logEngine.logWarning(src, "Metadata fetch failed for input token: " # Error.message(e), null, []);
-        };
-        try {
-            ignore await* getTokenInfoOrFetch(entry.outputToken);
-        } catch (e) {
-            logEngine.logWarning(src, "Metadata fetch failed for output token: " # Error.message(e), null, []);
+        // Phase 2: Purse lock acquisition
+        let purseId = entry.sourcePurseId; // null = main purse
+        switch (purseId) {
+            case (?pid) {
+                if (not isPurseEnabledForChore(pid)) {
+                    let msg = "Purse '" # pid # "' is no longer enabled";
+                    logEngine.logWarning(src, msg, null, []);
+                    return _failOneOffTrade(entry, msg);
+                };
+                if (not tryLockPurse(pid, "one-off:" # Nat.toText(entry.id))) {
+                    let msg = "Purse '" # pid # "' is locked by another operation";
+                    logEngine.logWarning(src, msg, null, []);
+                    return _failOneOffTrade(entry, msg);
+                };
+            };
+            case null {};
         };
 
+        // All remaining logic is wrapped so we can guarantee purse unlock on any exit path
+        let result = await* _executeOneOffTradeInner(entry, purseId, src);
+
+        switch (purseId) {
+            case (?pid) { unlockPurse(pid) };
+            case null {};
+        };
+
+        result
+    };
+
+    func _executeOneOffTradeInner(entry: T.OneOffTradeEntry, purseId: ?Text, src: Text): async* T.OneOffTradeEntry {
+        // Balance check — resolve from the specified purse or main purse
         let balance = await* getBalance(entry.inputToken, null);
         reconcileBalance(entry.inputToken, balance, src);
-        let mainPurse = computeMainPurseBalance(entry.inputToken, balance);
-        let effectiveBal = Nat.min(mainPurse.balance, balance);
+        let effectiveBal = switch (purseId) {
+            case (?pid) {
+                let purseBal = getChorePurseBalance(pid, entry.inputToken);
+                Nat.min(purseBal, balance)
+            };
+            case null {
+                let mainPurse = computeMainPurseBalance(entry.inputToken, balance);
+                Nat.min(mainPurse.balance, balance)
+            };
+        };
 
+        let purseLabel = switch (purseId) { case (?pid) "purse '" # pid # "'"; case null "main purse" };
         if (effectiveBal < entry.inputAmount) {
-            let msg = "Insufficient main purse balance: " # Nat.toText(effectiveBal) # " < " # Nat.toText(entry.inputAmount);
+            let msg = "Insufficient " # purseLabel # " balance: " # Nat.toText(effectiveBal) # " < " # Nat.toText(entry.inputAmount);
             logEngine.logWarning(src, msg, null, []);
             return _failOneOffTrade(entry, msg);
         };
 
         let inputFee = try { (await* getTokenInfoOrFetch(entry.inputToken)).fee } catch (_) { 0 };
-        let maxAffordable = if (effectiveBal > inputFee * 3) { effectiveBal - inputFee * 3 } else { 0 };
+        let cappedBal = Nat.min(effectiveBal, balance);
+        let maxAffordable = if (cappedBal > inputFee * 3) { cappedBal - inputFee * 3 } else { 0 };
         let actualTradeSize = Nat.min(entry.inputAmount, maxAffordable);
 
         if (actualTradeSize == 0) {
@@ -7193,6 +7262,16 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         logEngine.logInfo(src, "One-off trade executed: " # Nat.toText(actualTradeSize) # " " # tokenLabel(entry.inputToken) # " -> " # Nat.toText(r.amountOut) # " " # tokenLabel(entry.outputToken) # " via DEX " # Nat.toText(quote.dexId), null, []);
                         let netAmountOut = if (r.amountOut > quote.outputFeesTotal) { r.amountOut - quote.outputFeesTotal } else { 0 };
                         adjustLastKnownBalance(entry.outputToken, netAmountOut);
+
+                        // Purse bookkeeping: debit input, credit output (fees come out of main purse via reconciliation)
+                        switch (purseId) {
+                            case (?pid) {
+                                adjustChorePurseBalance(pid, entry.inputToken, actualTradeSize, true);
+                                adjustChorePurseBalance(pid, entry.outputToken, netAmountOut, false);
+                            };
+                            case null {};
+                        };
+
                         let logId = appendTradeLog({
                             choreId = null; choreTypeId = ?"one-off"; actionId = ?entry.id;
                             actionType = 0;
@@ -7244,6 +7323,15 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case (#Err(e)) {
                         let feeLost = quote.inputFeesTotal;
                         setLastKnownBalance(entry.inputToken, if (preSwapLastKnown > feeLost) { preSwapLastKnown - feeLost } else { 0 });
+
+                        // Purse bookkeeping: debit lost fees on failure
+                        switch (purseId) {
+                            case (?pid) {
+                                if (feeLost > 0) { adjustChorePurseBalance(pid, entry.inputToken, feeLost, true) };
+                            };
+                            case null {};
+                        };
+
                         logEngine.logError(src, "One-off trade failed: " # e, null, []);
                         let logId = appendTradeLog({
                             choreId = null; choreTypeId = ?"one-off"; actionId = ?entry.id;
@@ -9089,6 +9177,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (?d) { if (d != T.DexId.ICPSwap and d != T.DexId.KongSwap) { return #Err("Unknown DEX ID: " # Nat.toText(d)) } };
             case null {};
         };
+        switch (input.sourcePurseId) {
+            case (?pid) {
+                if (not isPurseEnabledForChore(pid)) { return #Err("Purse '" # pid # "' does not exist or is not enabled") };
+            };
+            case null {};
+        };
 
         let id = oneOffTradeNextId;
         oneOffTradeNextId += 1;
@@ -9102,6 +9196,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             maxSlippageBps = input.maxSlippageBps;
             maxPriceImpactBps = input.maxPriceImpactBps;
             preferredDex = input.preferredDex;
+            sourcePurseId = input.sourcePurseId;
             submittedBy = caller;
             submittedAt = Time.now();
             status = T.OneOffTradeStatus.Pending;
@@ -9113,7 +9208,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
 
         oneOffTradeQueue := Array.append(oneOffTradeQueue, [entry]);
-        logEngine.logInfo("one-off", "Trade " # Nat.toText(id) # " submitted: " # Nat.toText(input.inputAmount) # " " # tokenLabel(input.inputToken) # " -> " # tokenLabel(input.outputToken), ?caller, []);
+        logEngine.logInfo("one-off", "Trade " # Nat.toText(id) # " submitted: " # Nat.toText(input.inputAmount) # " " # tokenLabel(input.inputToken) # " -> " # tokenLabel(input.outputToken) # (switch (input.sourcePurseId) { case (?p) " from purse " # p; case null "" }), ?caller, []);
 
         _scheduleOneOffProcessing<system>();
 

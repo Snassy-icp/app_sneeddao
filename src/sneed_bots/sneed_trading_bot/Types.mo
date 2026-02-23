@@ -1090,6 +1090,7 @@ module {
         maxSlippageBps: ?Nat;
         maxPriceImpactBps: ?Nat;
         preferredDex: ?Nat;
+        sourcePurseId: ?Text;        // null = main purse; else chore instanceId whose purse to trade from
     };
 
     /// Queue entry for a one-off trade.
@@ -1102,6 +1103,7 @@ module {
         maxSlippageBps: ?Nat;
         maxPriceImpactBps: ?Nat;
         preferredDex: ?Nat;
+        sourcePurseId: ?Text;
         submittedBy: Principal;
         submittedAt: Int;
         status: Nat;

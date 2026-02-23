@@ -666,6 +666,7 @@ export const idlFactory = ({ IDL }) => {
         maxSlippageBps: IDL.Opt(IDL.Nat),
         maxPriceImpactBps: IDL.Opt(IDL.Nat),
         preferredDex: IDL.Opt(IDL.Nat),
+        sourcePurseId: IDL.Opt(IDL.Text),
     });
 
     const OneOffTradeEntry = IDL.Record({
@@ -677,6 +678,7 @@ export const idlFactory = ({ IDL }) => {
         maxSlippageBps: IDL.Opt(IDL.Nat),
         maxPriceImpactBps: IDL.Opt(IDL.Nat),
         preferredDex: IDL.Opt(IDL.Nat),
+        sourcePurseId: IDL.Opt(IDL.Text),
         submittedBy: IDL.Principal,
         submittedAt: IDL.Int,
         status: IDL.Nat,

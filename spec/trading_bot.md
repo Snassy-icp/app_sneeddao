@@ -1673,7 +1673,7 @@ onBotEvent(event: BotEvent) : async { #Ok; #Err: Text }   // Called by source bo
 
 One-Off Trades allow users to submit ad-hoc token swaps to the bot for immediate execution, without configuring a recurring chore. The trade is placed in a queue, processed by a demand-driven timer (one trade at a time), and follows the same execution pipeline as chore-based trades — including metadata fetch, quote aggregation, pre/post-trade snapshots, and trade logging.
 
-One-off trades always operate from the **main purse** (on-chain balance minus chore purse allocations). They do not participate in the chore purse system, circuit breaker evaluation, or any recurring schedule.
+One-off trades default to the **main purse** but can optionally target any enabled chore purse via the `sourcePurseId` parameter. When a chore purse is specified, the trade acquires a purse lock, uses the purse balance for sufficiency checks, and performs full debit/credit bookkeeping after execution (matching the pattern used by trade chore actions). Circuit breaker rules are evaluated before each queued trade executes — if CB actions freeze the involved tokens, the trade fails.
 
 ### Permission
 
@@ -1692,6 +1692,7 @@ OneOffTradeInput = {
     maxSlippageBps: ?Nat;          // Slippage tolerance; null = use defaultSlippageBps
     maxPriceImpactBps: ?Nat;       // Price impact limit; null = use defaultMaxPriceImpactBps
     preferredDex: ?Nat;            // null = auto (quote all enabled DEXes, pick best); 0 = ICPSwap; 1 = KongSwap
+    sourcePurseId: ?Text;          // null = main purse; else chore instanceId whose purse to trade from
 }
 ```
 
@@ -1707,6 +1708,7 @@ OneOffTradeEntry = {
     maxSlippageBps: ?Nat;
     maxPriceImpactBps: ?Nat;
     preferredDex: ?Nat;
+    sourcePurseId: ?Text;          // null = main purse; else chore instanceId
     submittedBy: Principal;
     submittedAt: Int;
     status: Nat;                   // 0=Pending, 1=Processing, 2=Completed, 3=Failed, 4=Cancelled
@@ -1741,7 +1743,7 @@ var oneOffTradeMaxEntries: Nat               // Max entries retained (default: 5
 When a trade is submitted via `submitOneOffTrade`:
 
 1. Validate inputs: both tokens must be in the registry, input amount > 0, tokens not paused/frozen.
-2. Check main purse balance is sufficient for the input amount.
+2. If `sourcePurseId` is specified, verify the purse exists and is enabled.
 3. Create a `OneOffTradeEntry` with `status = 0` (Pending), append to queue.
 4. If no processing timer is active, start one (2-second delay).
 5. Return the entry ID immediately (the caller does not wait for execution).
@@ -1750,25 +1752,35 @@ The **processing timer** (demand-driven, same pattern as event delivery):
 
 1. Find the first entry with `status = 0` (Pending). If none, stop (no reschedule).
 2. Mark it `status = 1` (Processing).
-3. **Metadata refresh**: Ensure token metadata is cached for both tokens.
-4. **Pre-trade snapshot**: Take a portfolio snapshot of `[inputToken, outputToken]` with phase `#Before`, trigger `"One-off trade {id} pre-swap"`.
-5. **Quote & execute**: Follow the same logic as `executeTradeSwap`:
-   - Get balance, reconcile.
+3. **Phase 0 — Metadata refresh**: Fetch token metadata for both trade tokens AND all tokens referenced by circuit breaker conditions.
+4. **Phase 0b — CB price fetch**: For each token pair referenced by enabled CB rules, fetch a price quote (if not already cached) so CB conditions have fresh data.
+5. **Phase 1 — Circuit breaker evaluation**: Run `evaluateCircuitBreakerRules` (same function used by the trade/rebalance conductors). If CB actions freeze either trade token, the trade fails.
+6. **Phase 2 — Purse lock**: If `sourcePurseId` is set, verify the purse is still enabled and acquire a purse lock. If the lock is held by another operation, fail the trade. (Main purse trades skip this phase.)
+7. **Phase 3 — Balance check**: Resolve the effective balance from the specified purse (`getChorePurseBalance`) or main purse (`computeMainPurseBalance`). Verify sufficiency.
+8. **Pre-trade snapshot**: Take a portfolio snapshot of `[inputToken, outputToken]` with phase `#Before`.
+9. **Quote & execute**: Follow the same logic as `executeTradeSwap`:
    - Get quotes (all DEXes or preferred DEX). Apply impact-aware selection.
    - Check `minOutputAmount`: if best quote's `expectedOutput < minOutputAmount`, fail the trade.
    - Compute slippage tolerance, execute swap via `executeSwap`.
-6. **Post-trade snapshot**: Take snapshot with phase `#After`, trigger `"One-off trade {id} post-swap"`.
-7. **Update entry**: Set `status = 2` (Completed) or `3` (Failed), fill in `outputAmount`, `dexUsed`, `errorMessage`, `completedAt`, `tradeLogId`.
-8. **Log**: Append to the trade log with `choreId = null`, `choreTypeId = ?"one-off"`, `actionId = ?id`.
-9. **Emit event**: `OneOffTradeExecuted` (280) or `TradeFailed` (202) with appropriate data tags.
-10. **Prune**: If queue size exceeds `oneOffTradeMaxEntries`, remove oldest completed/failed/cancelled entries.
-11. **Reschedule**: If more pending entries exist, set a 2-second timer for the next trade. Otherwise, stop.
+10. **Purse bookkeeping** (if trading from a chore purse):
+    - On success: debit `actualTradeSize` of input token, credit `netAmountOut` of output token (fees come out of main purse via balance reconciliation, matching trade chore behavior).
+    - On failure: debit lost fees from the purse.
+11. **Post-trade snapshot**: Take snapshot with phase `#After`.
+12. **Purse unlock**: Release the purse lock (if acquired).
+13. **Update entry**: Set `status = 2` (Completed) or `3` (Failed), fill in `outputAmount`, `dexUsed`, `errorMessage`, `completedAt`, `tradeLogId`.
+14. **Log**: Append to the trade log with `choreId = null`, `choreTypeId = ?"one-off"`, `actionId = ?id`.
+15. **Emit event**: `OneOffTradeExecuted` (280) or `OneOffTradeFailed` (281) with appropriate data tags.
+16. **Prune**: If queue size exceeds `oneOffTradeMaxEntries`, remove oldest completed/failed/cancelled entries.
+17. **Reschedule**: If more pending entries exist, set a 2-second timer for the next trade. Otherwise, stop.
 
 ### Error Handling
 
 - If any step (metadata fetch, quote, swap) throws, the trade is marked `status = 3` (Failed) with the error message. Processing continues to the next pending trade.
-- Token pause/freeze is checked at submission time and again at execution time (the token may have been paused between submission and execution).
-- Insufficient balance at execution time → trade fails with an explanatory message.
+- Token pause/freeze is checked at submission time and again at execution time. The CB evaluation phase may freeze tokens between submission and execution.
+- Circuit breaker rules are evaluated fresh before each queued trade. If CB actions freeze either token, the trade fails immediately with a message noting the CB trigger.
+- If `sourcePurseId` is specified but the purse is no longer enabled at execution time, or the purse lock cannot be acquired, the trade fails.
+- Insufficient balance (main purse or specified chore purse) at execution time → trade fails with an explanatory message.
+- Purse locks have a TTL safety net: if a trade traps unexpectedly after acquiring the lock, the lock auto-expires (same pattern as chore conductors).
 
 ### API
 
@@ -1795,9 +1807,11 @@ The trading bot page includes a **Quick Trade** panel (visible when the user has
 - **Input amount** field (with token decimals formatting)
 - **Min output amount** field (optional)
 - **Slippage tolerance** field (optional, default shown from bot settings)
+- **Max price impact** field (optional)
 - **DEX selector**: Auto (best quote) / ICPSwap / KongSwap
+- **Source purse** selector: Main Purse (default) or any enabled chore purse
 - **Submit** button
-- **Queue display**: Table/list showing pending, processing, and recent completed/failed trades with status indicators, timestamps, and results.
+- **Queue display**: Table/list showing pending, processing, and recent completed/failed trades with status indicators, source purse label, DEX used, and results.
 
 ---
 
