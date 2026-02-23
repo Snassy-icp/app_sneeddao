@@ -913,24 +913,73 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                             <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: '12px' }}>
                                 <div style={{ fontSize: '0.8rem', fontWeight: 600, color: theme.colors.primaryText, marginBottom: '10px' }}>Add Subscription</div>
 
-                                {/* Quick-pick: self or enter canister ID */}
+                                {/* Source bot selection */}
                                 <label style={labelStyle}>Source Bot</label>
-                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap' }}>
+
+                                {/* Quick-pick buttons */}
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
                                     <button style={{
-                                        ...btnSecondary, fontSize: '0.78rem', padding: '6px 14px',
+                                        ...btnSecondary, fontSize: '0.78rem', padding: '5px 12px',
+                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
                                         ...(newSubBotId === canisterId ? { borderColor: accent, color: accent, background: `${accent}10` } : {}),
                                     }}
                                         onClick={() => { setNewSubBotId(canisterId); fetchSourceEventTypes(canisterId); }}>
                                         This bot (self)
                                     </button>
-                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.78rem' }}>or</span>
-                                    <div style={{ flex: 1, minWidth: '200px' }}>
-                                        <input style={inputStyle} value={newSubBotId === canisterId ? '' : newSubBotId}
-                                            onChange={e => { setNewSubBotId(e.target.value); setSourceEventTypes(null); setSelectedSourceEvents(new Set()); }}
-                                            onBlur={e => { if (e.target.value.trim() && e.target.value.trim() !== canisterId) fetchSourceEventTypes(e.target.value); }}
-                                            placeholder="Paste another bot's canister ID" />
-                                    </div>
+                                    {knownBots.filter(b => b.canisterId !== canisterId).map(bot => (
+                                        <button key={bot.canisterId} style={{
+                                            ...btnSecondary, fontSize: '0.78rem', padding: '5px 12px',
+                                            display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                            ...(newSubBotId === bot.canisterId ? { borderColor: accent, color: accent, background: `${accent}10` } : {}),
+                                        }}
+                                            onClick={() => { setNewSubBotId(bot.canisterId); fetchSourceEventTypes(bot.canisterId); }}>
+                                            <PrincipalDisplay
+                                                principal={bot.canisterId}
+                                                displayInfo={getPrincipalDisplayInfoFromContext(bot.canisterId, principalNames, principalNicknames)}
+                                                showCopyButton={false}
+                                                isAuthenticated={!!identity}
+                                            />
+                                        </button>
+                                    ))}
                                 </div>
+
+                                {/* Manual entry via PrincipalInput */}
+                                <div style={{ marginBottom: '8px' }}>
+                                    <PrincipalInput
+                                        value={newSubBotId === canisterId || knownBots.some(b => b.canisterId === newSubBotId) ? '' : newSubBotId}
+                                        onChange={val => { setNewSubBotId(val); setSourceEventTypes(null); setSelectedSourceEvents(new Set()); }}
+                                        onSelect={val => { setNewSubBotId(val); fetchSourceEventTypes(val); }}
+                                        onBlur={() => {
+                                            if (newSubBotId && newSubBotId !== canisterId && !sourceEventTypes) {
+                                                try { Principal.fromText(newSubBotId.trim()); fetchSourceEventTypes(newSubBotId); } catch {}
+                                            }
+                                        }}
+                                        placeholder="Or search / paste another bot's canister ID..."
+                                        isAuthenticated={!!identity}
+                                        defaultPrincipalType="canisters"
+                                    />
+                                </div>
+
+                                {/* Show selected bot */}
+                                {newSubBotId && newSubBotId !== canisterId && !knownBots.some(b => b.canisterId === newSubBotId) && (
+                                    <div style={{
+                                        display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px',
+                                        fontSize: '0.78rem', padding: '6px 10px', borderRadius: '6px',
+                                        background: `${accent}08`, border: `1px solid ${accent}25`,
+                                    }}>
+                                        <span style={{ color: theme.colors.secondaryText }}>Selected:</span>
+                                        <PrincipalDisplay
+                                            principal={newSubBotId}
+                                            displayInfo={getPrincipalDisplayInfoFromContext(newSubBotId, principalNames, principalNicknames)}
+                                            showCopyButton={false}
+                                            isAuthenticated={!!identity}
+                                        />
+                                        <button style={{ ...btnSecondary, fontSize: '0.68rem', padding: '1px 6px', marginLeft: 'auto' }}
+                                            onClick={() => { setNewSubBotId(''); setSourceEventTypes(null); setSelectedSourceEvents(new Set()); }}>
+                                            Clear
+                                        </button>
+                                    </div>
+                                )}
 
                                 {/* Loading state */}
                                 {sourceEventTypesLoading && (
