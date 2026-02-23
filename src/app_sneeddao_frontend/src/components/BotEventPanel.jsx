@@ -438,6 +438,36 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
         }
     }, [getActor, loadListenerData]);
 
+    const getTokenDecimals = useCallback((tokenCanisterId) => {
+        if (!tokenCanisterId) return 8;
+        if (tokenRegistryEntries) {
+            const entry = tokenRegistryEntries.find(t =>
+                t.ledgerCanisterId === tokenCanisterId || t.canisterId === tokenCanisterId
+            );
+            if (entry && entry.decimals !== undefined) return Number(entry.decimals);
+        }
+        try {
+            const meta = getTokenMetadataSync(tokenCanisterId);
+            if (meta?.decimals !== undefined) return Number(meta.decimals);
+        } catch {}
+        return 8;
+    }, [tokenRegistryEntries]);
+
+    const getTokenSymbol = useCallback((tokenCanisterId) => {
+        if (!tokenCanisterId) return null;
+        if (tokenRegistryEntries) {
+            const entry = tokenRegistryEntries.find(t =>
+                t.ledgerCanisterId === tokenCanisterId || t.canisterId === tokenCanisterId
+            );
+            if (entry?.symbol) return entry.symbol;
+        }
+        try {
+            const meta = getTokenMetadataSync(tokenCanisterId);
+            if (meta?.symbol) return meta.symbol;
+        } catch {}
+        return null;
+    }, [tokenRegistryEntries]);
+
     const openReactionForm = (rule = null) => {
         if (rule) {
             const subId = String(Number(rule.subscriptionId));
@@ -542,39 +572,6 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
             setRemovingReaction(null);
         }
     }, [getActor, loadListenerData]);
-
-    // ==========================================
-    // HELPERS
-    // ==========================================
-    const getTokenDecimals = useCallback((tokenCanisterId) => {
-        if (!tokenCanisterId) return 8;
-        if (tokenRegistryEntries) {
-            const entry = tokenRegistryEntries.find(t =>
-                t.ledgerCanisterId === tokenCanisterId || t.canisterId === tokenCanisterId
-            );
-            if (entry && entry.decimals !== undefined) return Number(entry.decimals);
-        }
-        try {
-            const meta = getTokenMetadataSync(tokenCanisterId);
-            if (meta?.decimals !== undefined) return Number(meta.decimals);
-        } catch {}
-        return 8;
-    }, [tokenRegistryEntries]);
-
-    const getTokenSymbol = useCallback((tokenCanisterId) => {
-        if (!tokenCanisterId) return null;
-        if (tokenRegistryEntries) {
-            const entry = tokenRegistryEntries.find(t =>
-                t.ledgerCanisterId === tokenCanisterId || t.canisterId === tokenCanisterId
-            );
-            if (entry?.symbol) return entry.symbol;
-        }
-        try {
-            const meta = getTokenMetadataSync(tokenCanisterId);
-            if (meta?.symbol) return meta.symbol;
-        } catch {}
-        return null;
-    }, [tokenRegistryEntries]);
 
     const eventTypeName = (id) => {
         const et = eventTypes.find(t => t.id === Number(id));
