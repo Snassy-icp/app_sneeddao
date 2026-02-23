@@ -1,4 +1,12 @@
 import Principal "mo:base/Principal";
+import Nat8 "mo:base/Nat8";
+import Nat32 "mo:base/Nat32";
+import Char "mo:base/Char";
+import Iter "mo:base/Iter";
+import Array "mo:base/Array";
+import Blob "mo:base/Blob";
+import Text "mo:base/Text";
+import Debug "mo:base/Debug";
 
 /// Reusable types for the Inter-Bot Event System.
 ///
@@ -258,6 +266,81 @@ module {
         selfCanisterId: Principal;
         /// Optional log callback: (level, source, message, tags).
         log: ?((Text, Text, Text, [(Text, Text)]) -> ());
+    };
+
+    // ============================================
+    // ACTION PARAM PARSING HELPERS
+    // ============================================
+
+    /// Parse a decimal string to Nat. Returns null on invalid input.
+    public func textToNat(t: Text): ?Nat {
+        var n: Nat = 0;
+        var hasDigit = false;
+        for (c in t.chars()) {
+            let code = Char.toNat32(c);
+            if (code < 48 or code > 57) return null;
+            n := n * 10 + Nat32.toNat(code - 48);
+            hasDigit := true;
+        };
+        if (hasDigit) ?n else null
+    };
+
+    /// Standard ICRC-1 account for use in reaction params.
+    public type Account = { owner: Principal; subaccount: ?Blob };
+
+    func hexCharToNat(c: Char): ?Nat8 {
+        let code = Char.toNat32(c);
+        if (code >= 48 and code <= 57) { ?Nat8.fromNat(Nat32.toNat(code - 48)) }
+        else if (code >= 65 and code <= 70) { ?Nat8.fromNat(Nat32.toNat(code - 55)) }
+        else if (code >= 97 and code <= 102) { ?Nat8.fromNat(Nat32.toNat(code - 87)) }
+        else { null }
+    };
+
+    func hexToBytes(hex: Text): ?[Nat8] {
+        let chars = Iter.toArray(hex.chars());
+        if (chars.size() % 2 != 0) return null;
+        let buf = Array.init<Nat8>(chars.size() / 2, 0);
+        var i = 0;
+        while (i < chars.size()) {
+            switch (hexCharToNat(chars[i]), hexCharToNat(chars[i + 1])) {
+                case (?hi, ?lo) { buf[i / 2] := hi * 16 + lo };
+                case _ { return null };
+            };
+            i += 2;
+        };
+        ?Array.freeze(buf)
+    };
+
+    /// Parse an ICRC-1 text account representation (or plain principal) into an Account.
+    /// Accepts:
+    ///   - "aaaaa-bbbbb-..." → { owner = principal, subaccount = null }
+    ///   - "aaaaa-bbbbb-....CCCCSSSS..." → { owner = principal, subaccount = ?blob }
+    ///     where CCCC = 4-byte CRC32 checksum (skipped), SSSS = subaccount bytes
+    ///     (the hex after '.' is the checksum + subaccount, left-padded to 36 bytes)
+    /// Traps if the principal text is invalid (caller should wrap in try/catch in async context).
+    public func parseIcrc1Account(text: Text): Account {
+        let parts = Iter.toArray(Text.split(text, #char '.'));
+        if (parts.size() == 1) {
+            { owner = Principal.fromText(parts[0]); subaccount = null }
+        } else if (parts.size() >= 2) {
+            let owner = Principal.fromText(parts[0]);
+            switch (hexToBytes(parts[1])) {
+                case (?bytes) {
+                    let padded = Array.init<Nat8>(36, 0);
+                    let offset: Nat = 36 - bytes.size();
+                    for (j in bytes.keys()) { padded[offset + j] := bytes[j] };
+                    let sub = Array.tabulate<Nat8>(32, func(k) { padded[4 + k] });
+                    var allZero = true;
+                    for (b in sub.vals()) { if (b != 0) allZero := false };
+                    { owner = owner; subaccount = if (allZero) null else ?Blob.fromArray(sub) }
+                };
+                case null {
+                    Debug.trap("Invalid ICRC-1 account hex: " # parts[1])
+                };
+            };
+        } else {
+            Debug.trap("Invalid ICRC-1 account: " # text)
+        }
     };
 
 };

@@ -2669,6 +2669,107 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                     };
                     #Ok
                 } catch (e) { #Err(Error.message(e)) }
+            } else if (actionId == T.StakingAction.DisburseNeuron) {
+                try {
+                    let neurons = await listNeuronsInternal();
+                    for (neuron in neurons.vals()) {
+                        switch (neuron.id) {
+                            case (?nid) {
+                                let req: T.ManageNeuronRequest = {
+                                    id = ?nid; neuron_id_or_subaccount = null;
+                                    command = ?#Disburse({ to_account = null; amount = null });
+                                };
+                                ignore await governance.manage_neuron(req);
+                            };
+                            case null {};
+                        };
+                    };
+                    #Ok
+                } catch (e) { #Err(Error.message(e)) }
+            } else if (actionId == T.StakingAction.StakeMaturity) {
+                try {
+                    let neurons = await listNeuronsInternal();
+                    for (neuron in neurons.vals()) {
+                        switch (neuron.id) {
+                            case (?nid) {
+                                let req: T.ManageNeuronRequest = {
+                                    id = ?nid; neuron_id_or_subaccount = null;
+                                    command = ?#StakeMaturity({ percentage_to_stake = ?100 });
+                                };
+                                ignore await governance.manage_neuron(req);
+                            };
+                            case null {};
+                        };
+                    };
+                    #Ok
+                } catch (e) { #Err(Error.message(e)) }
+            } else if (actionId == T.StakingAction.DisburseMaturity) {
+                try {
+                    let neurons = await listNeuronsInternal();
+                    for (neuron in neurons.vals()) {
+                        switch (neuron.id) {
+                            case (?nid) {
+                                let req: T.ManageNeuronRequest = {
+                                    id = ?nid; neuron_id_or_subaccount = null;
+                                    command = ?#DisburseMaturity({ percentage_to_disburse = 100; to_account = null });
+                                };
+                                ignore await governance.manage_neuron(req);
+                            };
+                            case null {};
+                        };
+                    };
+                    #Ok
+                } catch (e) { #Err(Error.message(e)) }
+            } else if (actionId == T.StakingAction.RefreshStake) {
+                try {
+                    let neurons = await listNeuronsInternal();
+                    for (neuron in neurons.vals()) {
+                        switch (neuron.id) {
+                            case (?nid) { ignore await refreshStakeInternal(nid) };
+                            case null {};
+                        };
+                    };
+                    #Ok
+                } catch (e) { #Err(Error.message(e)) }
+            } else if (actionId == T.StakingAction.IncreaseStake) {
+                switch (getParam("amount")) {
+                    case (?amt) {
+                        switch (BotEventTypes.textToNat(amt)) {
+                            case (?amount) {
+                                try {
+                                    let neurons = await listNeuronsInternal();
+                                    for (neuron in neurons.vals()) {
+                                        switch (neuron.id) {
+                                            case (?nid) {
+                                                let neuronResult = await governance.get_full_neuron(nid.id);
+                                                switch (neuronResult) {
+                                                    case (#Ok(neuron_info)) {
+                                                        let neuronSubaccount: Blob = neuron_info.account;
+                                                        let transferArg: T.TransferArg = {
+                                                            to = { owner = Principal.fromText(T.GOVERNANCE_CANISTER_ID); subaccount = ?neuronSubaccount };
+                                                            fee = ?Nat64.toNat(T.ICP_FEE);
+                                                            memo = null; from_subaccount = null; created_at_time = null;
+                                                            amount = amount;
+                                                        };
+                                                        switch (await ledger.icrc1_transfer(transferArg)) {
+                                                            case (#Ok(_)) { ignore await refreshStakeInternal(nid) };
+                                                            case (#Err(_)) {};
+                                                        };
+                                                    };
+                                                    case (#Err(_)) {};
+                                                };
+                                            };
+                                            case null {};
+                                        };
+                                    };
+                                    #Ok
+                                } catch (e) { #Err(Error.message(e)) }
+                            };
+                            case null { #Err("Invalid amount: " # amt) };
+                        }
+                    };
+                    case null { #Err("Missing amount param for IncreaseStake") };
+                }
             } else {
                 #Err("Unknown action ID: " # Nat.toText(actionId))
             }

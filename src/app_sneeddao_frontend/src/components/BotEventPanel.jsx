@@ -59,7 +59,7 @@ const ACTION_PARAM_HINTS = {
     205: [],
     206: [{ key: 'choreId', hint: 'Chore instance ID', required: true }, { key: 'token', hint: 'Token ledger canister ID', required: true }, { key: 'amount', hint: 'Amount in token units', required: true }],
     207: [{ key: 'choreId', hint: 'Chore instance ID', required: true }, { key: 'token', hint: 'Token ledger canister ID', required: true }, { key: 'amount', hint: 'Amount in token units', required: true }],
-    208: [{ key: 'token', hint: 'Token ledger canister ID', required: true }, { key: 'to', hint: 'Destination principal', required: true }, { key: 'amount', hint: 'Amount in token units', required: true }],
+    208: [{ key: 'token', hint: 'Token ledger canister ID', required: true }, { key: 'to', hint: 'Destination account (principal or ICRC-1 account)', required: true }, { key: 'amount', hint: 'Amount in token units', required: true }],
 };
 
 const EVENT_DATA_KEYS = {
@@ -1293,6 +1293,16 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                                         </span>
                                                     )}
                                                 </div>
+                                            );
+                                        } else if (p.key === 'to') {
+                                            valueInput = (
+                                                <PrincipalInput
+                                                    value={p.value}
+                                                    onChange={val => updateParamValue(val)}
+                                                    placeholder="Destination account (principal or ICRC-1)"
+                                                    isAuthenticated={!!identity}
+                                                    showSubaccountOption={true}
+                                                />
                                             );
                                         } else {
                                             valueInput = (

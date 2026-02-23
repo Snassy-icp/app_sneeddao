@@ -486,136 +486,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         (T.TradingEvent.CumulativeLimitReached, T.TradingPermission.ViewPortfolio),
     ];
 
-    // Trading bot reaction action executor
-    func tradingReactionExecutor(actionId: Nat, params: [(Text, Text)], event: BotEventTypes.BotEvent): async { #Ok; #Err: Text } {
-        let getParam = func(key: Text): ?Text {
-            for ((k, v) in params.vals()) { if (k == key) return ?v };
-            null
-        };
-
-        // Shared base actions (0-99)
-        if (actionId == BotEventTypes.BaseAction.StartChore) {
-            switch (getParam("choreId")) {
-                case (?cid) { choreEngine.start<system>(cid); #Ok };
-                case null { #Err("Missing choreId param") };
-            }
-        } else if (actionId == BotEventTypes.BaseAction.StopChore) {
-            switch (getParam("choreId")) {
-                case (?cid) { choreEngine.stop(cid); #Ok };
-                case null { #Err("Missing choreId param") };
-            }
-        } else if (actionId == BotEventTypes.BaseAction.PauseChore) {
-            switch (getParam("choreId")) {
-                case (?cid) { choreEngine.pause(cid); #Ok };
-                case null { #Err("Missing choreId param") };
-            }
-        } else if (actionId == BotEventTypes.BaseAction.ResumeChore) {
-            switch (getParam("choreId")) {
-                case (?cid) { choreEngine.resume<system>(cid); #Ok };
-                case null { #Err("Missing choreId param") };
-            }
-        } else if (actionId == BotEventTypes.BaseAction.TriggerChore) {
-            switch (getParam("choreId")) {
-                case (?cid) { choreEngine.trigger<system>(cid); #Ok };
-                case null { #Err("Missing choreId param") };
-            }
-        } else if (actionId == BotEventTypes.BaseAction.StopAllChores) {
-            choreEngine.stopAllChores();
-            #Ok
-        }
-        // Trading bot actions (200-299)
-        else if (actionId == T.TradingAction.PauseTokenGlobally) {
-            switch (getParam("token")) {
-                case (?t) {
-                    let token = Principal.fromText(t);
-                    switch (Array.find<Principal>(pausedTokens, func(p: Principal): Bool { Principal.equal(p, token) })) {
-                        case null { pausedTokens := Array.append(pausedTokens, [token]) };
-                        case _ {};
-                    };
-                    #Ok
-                };
-                case null { #Err("Missing token param") };
-            }
-        } else if (actionId == T.TradingAction.FreezeTokenGlobally) {
-            switch (getParam("token")) {
-                case (?t) {
-                    let token = Principal.fromText(t);
-                    switch (Array.find<Principal>(frozenTokens, func(p: Principal): Bool { Principal.equal(p, token) })) {
-                        case null { frozenTokens := Array.append(frozenTokens, [token]) };
-                        case _ {};
-                    };
-                    #Ok
-                };
-                case null { #Err("Missing token param") };
-            }
-        } else if (actionId == T.TradingAction.UnpauseToken) {
-            switch (getParam("token")) {
-                case (?t) {
-                    let token = Principal.fromText(t);
-                    pausedTokens := Array.filter<Principal>(pausedTokens, func(p) { not Principal.equal(p, token) });
-                    #Ok
-                };
-                case null { #Err("Missing token param") };
-            }
-        } else if (actionId == T.TradingAction.UnfreezeToken) {
-            switch (getParam("token")) {
-                case (?t) {
-                    let token = Principal.fromText(t);
-                    frozenTokens := Array.filter<Principal>(frozenTokens, func(p) { not Principal.equal(p, token) });
-                    #Ok
-                };
-                case null { #Err("Missing token param") };
-            }
-        } else if (actionId == T.TradingAction.EnableCircuitBreakers) {
-            circuitBreakerEnabled := true;
-            #Ok
-        } else if (actionId == T.TradingAction.DisableCircuitBreakers) {
-            circuitBreakerEnabled := false;
-            #Ok
-        } else {
-            #Err("Unknown action ID: " # Nat.toText(actionId))
-        }
-    };
-
-    transient let eventEngine = BotEventEngine.Engine({
-        sourceState = {
-            getListeners = func(): [BotEventTypes.EventListenerRegistration] { eventListenerRegistrations };
-            setListeners = func(l: [BotEventTypes.EventListenerRegistration]): () { eventListenerRegistrations := l };
-            getNextListenerId = func(): Nat { eventListenerNextId };
-            setNextListenerId = func(n: Nat): () { eventListenerNextId := n };
-            getEmissionEnabled = func(): Bool { eventEmissionEnabled };
-            setEmissionEnabled = func(b: Bool): () { eventEmissionEnabled := b };
-            getEventLog = func(): [BotEventTypes.BotEvent] { eventLog };
-            setEventLog = func(l: [BotEventTypes.BotEvent]): () { eventLog := l };
-            getEventLogNextId = func(): Nat { eventLogNextId };
-            setEventLogNextId = func(n: Nat): () { eventLogNextId := n };
-            getEventLogMaxEntries = func(): Nat { eventLogMaxEntries };
-        };
-        listenerState = {
-            getSubscriptions = func(): [BotEventTypes.EventSubscription] { eventSubscriptions };
-            setSubscriptions = func(s: [BotEventTypes.EventSubscription]): () { eventSubscriptions := s };
-            getNextSubscriptionId = func(): Nat { eventSubscriptionNextId };
-            setNextSubscriptionId = func(n: Nat): () { eventSubscriptionNextId := n };
-            getReactions = func(): [BotEventTypes.EventReactionRule] { eventReactionRules };
-            setReactions = func(r: [BotEventTypes.EventReactionRule]): () { eventReactionRules := r };
-            getNextReactionId = func(): Nat { eventReactionNextId };
-            setNextReactionId = func(n: Nat): () { eventReactionNextId := n };
-            getReactionLog = func(): [BotEventTypes.EventReactionLogEntry] { eventReactionLog };
-            setReactionLog = func(l: [BotEventTypes.EventReactionLogEntry]): () { eventReactionLog := l };
-            getReactionLogNextId = func(): Nat { eventReactionLogNextId };
-            setReactionLogNextId = func(n: Nat): () { eventReactionLogNextId := n };
-            getReactionLogMaxEntries = func(): Nat { eventReactionLogMaxEntries };
-        };
-        permissionChecker = func(principal: Principal, permId: Nat): Bool {
-            callerHasPermission(principal, permId)
-        };
-        eventPermissionMap = TRADING_EVENT_PERM_MAP;
-        reactionExecutor = tradingReactionExecutor;
-        selfCanisterId = Principal.fromActor(this);
-        log = ?(func(level: Text, source: Text, message: Text, tags: [(Text, Text)]): () {
-            logEngine.logInfo(source, message, null, tags);
-        });
-    });
+    // tradingReactionExecutor and eventEngine are defined after all helper functions (see below appendTradeLog)
 
     // ============================================
     // BALANCE RECONCILIATION HELPERS
@@ -2347,6 +2218,205 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
         ?id
     };
+
+    // Trading bot reaction action executor (placed after all helper functions it depends on)
+    func tradingReactionExecutor(actionId: Nat, params: [(Text, Text)], event: BotEventTypes.BotEvent): async { #Ok; #Err: Text } {
+        let getParam = func(key: Text): ?Text {
+            for ((k, v) in params.vals()) { if (k == key) return ?v };
+            null
+        };
+
+        // Shared base actions (0-99)
+        if (actionId == BotEventTypes.BaseAction.StartChore) {
+            switch (getParam("choreId")) {
+                case (?cid) { choreEngine.start<system>(cid); #Ok };
+                case null { #Err("Missing choreId param") };
+            }
+        } else if (actionId == BotEventTypes.BaseAction.StopChore) {
+            switch (getParam("choreId")) {
+                case (?cid) { choreEngine.stop(cid); #Ok };
+                case null { #Err("Missing choreId param") };
+            }
+        } else if (actionId == BotEventTypes.BaseAction.PauseChore) {
+            switch (getParam("choreId")) {
+                case (?cid) { choreEngine.pause(cid); #Ok };
+                case null { #Err("Missing choreId param") };
+            }
+        } else if (actionId == BotEventTypes.BaseAction.ResumeChore) {
+            switch (getParam("choreId")) {
+                case (?cid) { choreEngine.resume<system>(cid); #Ok };
+                case null { #Err("Missing choreId param") };
+            }
+        } else if (actionId == BotEventTypes.BaseAction.TriggerChore) {
+            switch (getParam("choreId")) {
+                case (?cid) { choreEngine.trigger<system>(cid); #Ok };
+                case null { #Err("Missing choreId param") };
+            }
+        } else if (actionId == BotEventTypes.BaseAction.StopAllChores) {
+            choreEngine.stopAllChores();
+            #Ok
+        }
+        // Trading bot actions (200-299)
+        else if (actionId == T.TradingAction.PauseTokenGlobally) {
+            switch (getParam("token")) {
+                case (?t) {
+                    let token = Principal.fromText(t);
+                    switch (Array.find<Principal>(pausedTokens, func(p: Principal): Bool { Principal.equal(p, token) })) {
+                        case null { pausedTokens := Array.append(pausedTokens, [token]) };
+                        case _ {};
+                    };
+                    #Ok
+                };
+                case null { #Err("Missing token param") };
+            }
+        } else if (actionId == T.TradingAction.FreezeTokenGlobally) {
+            switch (getParam("token")) {
+                case (?t) {
+                    let token = Principal.fromText(t);
+                    switch (Array.find<Principal>(frozenTokens, func(p: Principal): Bool { Principal.equal(p, token) })) {
+                        case null { frozenTokens := Array.append(frozenTokens, [token]) };
+                        case _ {};
+                    };
+                    #Ok
+                };
+                case null { #Err("Missing token param") };
+            }
+        } else if (actionId == T.TradingAction.UnpauseToken) {
+            switch (getParam("token")) {
+                case (?t) {
+                    let token = Principal.fromText(t);
+                    pausedTokens := Array.filter<Principal>(pausedTokens, func(p) { not Principal.equal(p, token) });
+                    #Ok
+                };
+                case null { #Err("Missing token param") };
+            }
+        } else if (actionId == T.TradingAction.UnfreezeToken) {
+            switch (getParam("token")) {
+                case (?t) {
+                    let token = Principal.fromText(t);
+                    frozenTokens := Array.filter<Principal>(frozenTokens, func(p) { not Principal.equal(p, token) });
+                    #Ok
+                };
+                case null { #Err("Missing token param") };
+            }
+        } else if (actionId == T.TradingAction.EnableCircuitBreakers) {
+            circuitBreakerEnabled := true;
+            #Ok
+        } else if (actionId == T.TradingAction.DisableCircuitBreakers) {
+            circuitBreakerEnabled := false;
+            #Ok
+        } else if (actionId == T.TradingAction.FundPurse) {
+            switch (getParam("choreId"), getParam("token"), getParam("amount")) {
+                case (?cid, ?tok, ?amt) {
+                    switch (BotEventTypes.textToNat(amt)) {
+                        case (?amount) {
+                            let token = Principal.fromText(tok);
+                            if (not isPurseEnabledForChore(cid)) return #Err("Purse not enabled for chore " # cid);
+                            if (amount == 0) return #Err("Amount must be > 0");
+                            let onChain = await* getBalance(token, null);
+                            let main = computeMainPurseBalance(token, onChain);
+                            if (amount > main.balance) return #Err("Insufficient main purse balance");
+                            adjustChorePurseBalance(cid, token, amount, false);
+                            #Ok
+                        };
+                        case null { #Err("Invalid amount: " # amt) };
+                    }
+                };
+                case _ { #Err("Missing choreId, token, or amount param") };
+            }
+        } else if (actionId == T.TradingAction.ReclaimFromPurse) {
+            switch (getParam("choreId"), getParam("token"), getParam("amount")) {
+                case (?cid, ?tok, ?amt) {
+                    switch (BotEventTypes.textToNat(amt)) {
+                        case (?amount) {
+                            let token = Principal.fromText(tok);
+                            if (not isPurseEnabledForChore(cid)) return #Err("Purse not enabled for chore " # cid);
+                            if (amount == 0) return #Err("Amount must be > 0");
+                            let current = getChorePurseBalance(cid, token);
+                            if (amount > current) return #Err("Insufficient purse balance");
+                            adjustChorePurseBalance(cid, token, amount, true);
+                            #Ok
+                        };
+                        case null { #Err("Invalid amount: " # amt) };
+                    }
+                };
+                case _ { #Err("Missing choreId, token, or amount param") };
+            }
+        } else if (actionId == T.TradingAction.ManualSend) {
+            switch (getParam("token"), getParam("to"), getParam("amount")) {
+                case (?tok, ?dest, ?amt) {
+                    switch (BotEventTypes.textToNat(amt)) {
+                        case (?amount) {
+                            let token = Principal.fromText(tok);
+                            let account = BotEventTypes.parseIcrc1Account(dest);
+                            if (isTokenFrozen(token)) return #Err("Token is frozen");
+                            let balance = await* getBalance(token, null);
+                            reconcileBalance(token, balance, "event-reaction");
+                            let mainBal = computeMainPurseBalance(token, balance).balance;
+                            let fee = switch (getTokenInfo(token)) { case (?i) i.fee; case null 0 };
+                            if (mainBal < amount + fee) return #Err("Insufficient balance");
+                            let result = await* transferTokens(token, null, { owner = account.owner; subaccount = account.subaccount }, amount);
+                            switch (result) {
+                                case (#Ok(blockIdx)) {
+                                    setLastKnownBalance(token, if (balance > amount + fee) { balance - amount - fee } else { 0 });
+                                    let (icpVal, usdVal) = valueTokenInIcpAndUsd(token, amount);
+                                    capitalDeployedIcpE8s -= icpVal;
+                                    capitalDeployedUsdE8s -= usdVal;
+                                    recordTokenOutflow(token, amount);
+                                    #Ok
+                                };
+                                case (#Err(e)) { #Err("Transfer failed: " # debug_show(e)) };
+                            }
+                        };
+                        case null { #Err("Invalid amount: " # amt) };
+                    }
+                };
+                case _ { #Err("Missing token, to, or amount param") };
+            }
+        } else {
+            #Err("Unknown action ID: " # Nat.toText(actionId))
+        }
+    };
+
+    transient let eventEngine = BotEventEngine.Engine({
+        sourceState = {
+            getListeners = func(): [BotEventTypes.EventListenerRegistration] { eventListenerRegistrations };
+            setListeners = func(l: [BotEventTypes.EventListenerRegistration]): () { eventListenerRegistrations := l };
+            getNextListenerId = func(): Nat { eventListenerNextId };
+            setNextListenerId = func(n: Nat): () { eventListenerNextId := n };
+            getEmissionEnabled = func(): Bool { eventEmissionEnabled };
+            setEmissionEnabled = func(b: Bool): () { eventEmissionEnabled := b };
+            getEventLog = func(): [BotEventTypes.BotEvent] { eventLog };
+            setEventLog = func(l: [BotEventTypes.BotEvent]): () { eventLog := l };
+            getEventLogNextId = func(): Nat { eventLogNextId };
+            setEventLogNextId = func(n: Nat): () { eventLogNextId := n };
+            getEventLogMaxEntries = func(): Nat { eventLogMaxEntries };
+        };
+        listenerState = {
+            getSubscriptions = func(): [BotEventTypes.EventSubscription] { eventSubscriptions };
+            setSubscriptions = func(s: [BotEventTypes.EventSubscription]): () { eventSubscriptions := s };
+            getNextSubscriptionId = func(): Nat { eventSubscriptionNextId };
+            setNextSubscriptionId = func(n: Nat): () { eventSubscriptionNextId := n };
+            getReactions = func(): [BotEventTypes.EventReactionRule] { eventReactionRules };
+            setReactions = func(r: [BotEventTypes.EventReactionRule]): () { eventReactionRules := r };
+            getNextReactionId = func(): Nat { eventReactionNextId };
+            setNextReactionId = func(n: Nat): () { eventReactionNextId := n };
+            getReactionLog = func(): [BotEventTypes.EventReactionLogEntry] { eventReactionLog };
+            setReactionLog = func(l: [BotEventTypes.EventReactionLogEntry]): () { eventReactionLog := l };
+            getReactionLogNextId = func(): Nat { eventReactionLogNextId };
+            setReactionLogNextId = func(n: Nat): () { eventReactionLogNextId := n };
+            getReactionLogMaxEntries = func(): Nat { eventReactionLogMaxEntries };
+        };
+        permissionChecker = func(principal: Principal, permId: Nat): Bool {
+            callerHasPermission(principal, permId)
+        };
+        eventPermissionMap = TRADING_EVENT_PERM_MAP;
+        reactionExecutor = tradingReactionExecutor;
+        selfCanisterId = Principal.fromActor(this);
+        log = ?(func(level: Text, source: Text, message: Text, tags: [(Text, Text)]): () {
+            logEngine.logInfo(source, message, null, tags);
+        });
+    });
 
     // ============================================
     // DAILY OHLC AGGREGATION — INTERNAL HELPERS
