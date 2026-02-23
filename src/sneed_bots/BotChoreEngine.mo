@@ -44,6 +44,16 @@ module {
         // INTERNAL STATE (transient)
         // ============================================
 
+        /// Optional callback for chore run lifecycle events.
+        /// Arguments: (choreId, eventType, errorMsg)
+        /// eventType: "completed" | "failed" | "halted"
+        var onRunLifecycle: ?((Text, Text, ?Text) -> ()) = null;
+
+        /// Set the lifecycle callback (call after constructing the engine).
+        public func setOnRunLifecycle(cb: (Text, Text, ?Text) -> ()) {
+            onRunLifecycle := ?cb;
+        };
+
         /// Registered chore type definitions, keyed by typeId.
         /// Re-registered on each canister start (conduct closures don't survive upgrades).
         var definitions = Buffer.Buffer<BotChoreTypes.ChoreDefinition>(4);
@@ -1237,6 +1247,7 @@ module {
                     totalSuccessCount = s.totalSuccessCount + 1;
                 }
             });
+            switch (onRunLifecycle) { case (?cb) { cb(choreId, "completed", null) }; case null {} };
         };
 
         /// Mark conductor as failed.
@@ -1262,6 +1273,7 @@ module {
                     lastErrorAt = ?Time.now();
                 }
             });
+            switch (onRunLifecycle) { case (?cb) { cb(choreId, "failed", ?msg) }; case null {} };
         };
 
         /// Mark conductor as stopped (by stop flag).

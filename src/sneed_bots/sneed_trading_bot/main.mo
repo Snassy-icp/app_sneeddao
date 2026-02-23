@@ -488,6 +488,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     // tradingReactionExecutor and eventEngine are defined after all helper functions (see below appendTradeLog)
 
+    // Late-bound event queue function: set after eventEngine is constructed to break the
+    // circular dependency between reconcileBalance → eventEngine → tradingReactionExecutor → reconcileBalance.
+    transient var _queueEventFn: (Nat, [(Text, Text)]) -> () = func(_, _) {};
+
     // ============================================
     // BALANCE RECONCILIATION HELPERS
     // ============================================
@@ -591,6 +595,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             capitalDeployedIcpE8s += icpVal;
             capitalDeployedUsdE8s += usdVal;
             recordTokenInflow(token, inflow);
+            _queueEventFn(T.TradingEvent.InflowDetected, [("token", Principal.toText(token)), ("amount", Nat.toText(inflow))]);
         } else if (currentBalance < lastKnown) {
             let outflow = lastKnown - currentBalance;
             logEngine.logWarning(source, "Reconciliation: detected untracked outflow of " # Nat.toText(outflow) # " for " # tokenLabel(token) # " (main)", null, []);
@@ -616,9 +621,19 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             capitalDeployedIcpE8s -= icpVal;
             capitalDeployedUsdE8s -= usdVal;
             recordTokenOutflow(token, outflow);
+            _queueEventFn(T.TradingEvent.OutflowDetected, [("token", Principal.toText(token)), ("amount", Nat.toText(outflow))]);
         };
         // Always update lastKnown to current balance
         setLastKnownBalance(token, currentBalance);
+        let main = computeMainPurseBalance(token, currentBalance);
+        if (main.overcommitted) {
+            let allocated = sumAllChorePurseBalances(token);
+            _queueEventFn(T.TradingEvent.OvercommitDetected, [
+                ("token", Principal.toText(token)),
+                ("onChainBalance", Nat.toText(currentBalance)),
+                ("allocatedTotal", Nat.toText(allocated)),
+            ]);
+        };
     };
 
     // ============================================
@@ -2416,6 +2431,15 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         log = ?(func(level: Text, source: Text, message: Text, tags: [(Text, Text)]): () {
             logEngine.logInfo(source, message, null, tags);
         });
+    });
+    _queueEventFn := eventEngine.queueEvent;
+    choreEngine.setOnRunLifecycle(func(choreId: Text, eventType: Text, errorMsg: ?Text) {
+        if (eventType == "completed") {
+            eventEngine.queueEvent(BotEventTypes.BaseEvent.ChoreRunCompleted, [("choreId", choreId)]);
+        } else if (eventType == "failed") {
+            let err = switch (errorMsg) { case (?e) e; case null "Unknown" };
+            eventEngine.queueEvent(BotEventTypes.BaseEvent.ChoreRunFailed, [("choreId", choreId), ("error", err)]);
+        };
     });
 
     // ============================================
@@ -5442,12 +5466,24 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 let totalDist = totalExternalDistributed + totalPurseDistributed;
                 if (totalDist > 0) {
                     logEngine.logInfo(src, "Distribution list " # list.name # ": distributed " # Nat.toText(totalDist) # " of " # tokenLabel(tok) # " (" # Nat.toText(totalPurseDistributed) # " to purses, " # Nat.toText(totalExternalDistributed) # " external)", null, []);
+                    eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.DistributionExecuted, [
+                        ("choreId", instanceId), ("list", list.name),
+                        ("token", Principal.toText(tok)),
+                        ("amount", Nat.toText(totalDist)),
+                        ("externalAmount", Nat.toText(totalExternalDistributed)),
+                        ("purseAmount", Nat.toText(totalPurseDistributed)),
+                    ]);
                 };
 
                 switch (lockPurseId) { case (?pid) { unlockPurse(pid) }; case null {} };
+                eventEngine.flushDeliveryQueue<system>();
                 #Done
             } catch (e) {
                 switch (lockPurseId) { case (?pid) { unlockPurse(pid) }; case null {} };
+                eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.DistributionFailed, [
+                    ("choreId", instanceId), ("list", list.name),
+                    ("error", Error.message(e)),
+                ]);
                 #Error("Distribution failed: " # Error.message(e))
             }
         }
@@ -5679,6 +5715,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     let src = "chore:" # instanceId;
                     if (action.haltChoreAfterExecution) {
                         logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " executed — halting chore (haltChoreAfterExecution)", null, []);
+                        eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.ChoreHalted, [("choreId", instanceId), ("reason", "haltChoreAfterExecution")]);
                         choreEngine.stop(instanceId);
                     } else {
                         switch (action.maxCumulativeInput) {
@@ -5688,6 +5725,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                     ("choreId", instanceId), ("actionId", Nat.toText(action.id)),
                                     ("limitType", "input"), ("current", Nat.toText(stats.cumulativeInputSpent)), ("max", Nat.toText(max)),
                                 ]);
+                                eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.ChoreHalted, [("choreId", instanceId), ("reason", "cumulativeInputLimit")]);
                                 choreEngine.stop(instanceId);
                             }};
                             case null {};
@@ -5699,6 +5737,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                     ("choreId", instanceId), ("actionId", Nat.toText(action.id)),
                                     ("limitType", "output"), ("current", Nat.toText(stats.cumulativeOutputReceived)), ("max", Nat.toText(max)),
                                 ]);
+                                eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.ChoreHalted, [("choreId", instanceId), ("reason", "cumulativeOutputLimit")]);
                                 choreEngine.stop(instanceId);
                             }};
                             case null {};
@@ -5706,6 +5745,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         switch (action.maxExecutions) {
                             case (?max) { if (stats.executionCount >= max) {
                                 logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " execution limit reached (" # Nat.toText(stats.executionCount) # "/" # Nat.toText(max) # ") — halting chore", null, []);
+                                eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.ChoreHalted, [("choreId", instanceId), ("reason", "maxExecutions")]);
                                 choreEngine.stop(instanceId);
                             }};
                             case null {};

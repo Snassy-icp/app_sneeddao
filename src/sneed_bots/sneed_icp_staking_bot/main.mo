@@ -412,6 +412,14 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             logEngine.logInfo(source, message, null, tags);
         });
     });
+    choreEngine.setOnRunLifecycle(func(choreId: Text, eventType: Text, errorMsg: ?Text) {
+        if (eventType == "completed") {
+            eventEngine.queueEvent(BotEventTypes.BaseEvent.ChoreRunCompleted, [("choreId", choreId)]);
+        } else if (eventType == "failed") {
+            let err = switch (errorMsg) { case (?e) e; case null "Unknown" };
+            eventEngine.queueEvent(BotEventTypes.BaseEvent.ChoreRunFailed, [("choreId", choreId), ("error", err)]);
+        };
+    });
 
     // Mutable state for chore closures (transient, reset on upgrade)
     // -- Refresh Stake chore state --
@@ -730,10 +738,6 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                         return #Err(#GovernanceError(e));
                     };
                     case (?#NeuronId(nid)) {
-                        // Neuron created - no need to store locally, we'll query NNS to get our neurons
-                        
-                        // Set dissolve delay using absolute timestamp
-                        // Using SetDissolveTimestamp instead of IncreaseDissolveDelay to avoid adding to any default delay
                         let nowSeconds: Nat64 = Nat64.fromNat(Int.abs(Time.now() / 1_000_000_000));
                         let dissolveTimestamp: Nat64 = nowSeconds + dissolve_delay_seconds;
                         
@@ -741,13 +745,17 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                             dissolve_timestamp_seconds = dissolveTimestamp;
                         }));
                         
+                        eventEngine.emitEvent<system>(T.StakingEvent.NeuronStaked, [
+                            ("neuronId", Nat64.toText(nid.id)),
+                            ("amount_e8s", Nat64.toText(amount_e8s)),
+                            ("dissolveDelay", Nat64.toText(dissolve_delay_seconds)),
+                        ]);
+
                         switch (configResult) {
                             case (#Err(#GovernanceError(ge))) {
-                                // Neuron was created but dissolve delay failed
                                 return #Err(#GovernanceError(ge));
                             };
                             case (#Err(_)) {
-                                // Other errors - neuron was still created
                                 return #Ok(nid);
                             };
                             case (#Ok) {
@@ -873,8 +881,12 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                         return #Err(#TransferFailed(transferErrorToText(e)));
                     };
                     case (#Ok(_)) {
-                        // Refresh the neuron
-                        return await refreshStakeInternal(neuronId);
+                        let refreshResult = await refreshStakeInternal(neuronId);
+                        eventEngine.emitEvent<system>(T.StakingEvent.StakeIncreased, [
+                            ("neuronId", Nat64.toText(neuronId.id)),
+                            ("amount_e8s", Nat64.toText(amount_e8s)),
+                        ]);
+                        return refreshResult;
                     };
                 };
             };
@@ -885,13 +897,19 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         assertPermission(caller, T.NeuronPermission.StakeNeuron);
         logEngine.logInfo("api", "refreshStake", ?caller, [("neuronId", Nat64.toText(neuronId.id))]);
         
-        // Verify this canister controls the neuron
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
         
-        await refreshStakeInternal(neuronId);
+        let result = await refreshStakeInternal(neuronId);
+        switch (result) {
+            case (#Ok) {
+                eventEngine.emitEvent<system>(T.StakingEvent.StakeRefreshed, [("neuronId", Nat64.toText(neuronId.id))]);
+            };
+            case _ {};
+        };
+        result
     };
 
     func refreshStakeInternal(nid: T.NeuronId): async T.OperationResult {
@@ -934,9 +952,19 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
-        await configureNeuron(neuronId, #IncreaseDissolveDelay({
+        let result = await configureNeuron(neuronId, #IncreaseDissolveDelay({
             additional_dissolve_delay_seconds = additionalSeconds;
         }));
+        switch (result) {
+            case (#Ok) {
+                eventEngine.emitEvent<system>(T.StakingEvent.DissolveDelayChanged, [
+                    ("neuronId", Nat64.toText(neuronId.id)),
+                    ("additionalSeconds", Nat32.toText(additionalSeconds)),
+                ]);
+            };
+            case _ {};
+        };
+        result
     };
 
     public shared ({ caller }) func startDissolving(neuronId: T.NeuronId): async T.OperationResult {
@@ -1009,7 +1037,10 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         switch (result.command) {
             case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
             case (?#Error(e)) { #Err(#GovernanceError(e)) };
-            case (?#Disburse(r)) { #Ok({ transfer_block_height = r.transfer_block_height }) };
+            case (?#Disburse(r)) {
+                eventEngine.emitEvent<system>(T.StakingEvent.NeuronDisbursed, [("neuronId", Nat64.toText(neuronId.id))]);
+                #Ok({ transfer_block_height = r.transfer_block_height })
+            };
             case (_) { #Err(#InvalidOperation("Unexpected response")) };
         };
     };
@@ -1040,7 +1071,13 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         
         switch (result) {
             case (#Err(e)) { #Err(#TransferFailed(transferErrorToText(e))) };
-            case (#Ok(blockIndex)) { #Ok({ transfer_block_height = Nat64.fromNat(blockIndex) }) };
+            case (#Ok(blockIndex)) {
+                eventEngine.emitEvent<system>(T.StakingEvent.IcpWithdrawn, [
+                    ("amount_e8s", Nat64.toText(amount_e8s)),
+                    ("to", Principal.toText(to_account.owner)),
+                ]);
+                #Ok({ transfer_block_height = Nat64.fromNat(blockIndex) })
+            };
         };
     };
 
@@ -1082,7 +1119,14 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         
         switch (result) {
             case (#Err(e)) { #Err(#TransferFailed(transferErrorToText(e))) };
-            case (#Ok(blockIndex)) { #Ok({ transfer_block_height = Nat64.fromNat(blockIndex) }) };
+            case (#Ok(blockIndex)) {
+                eventEngine.emitEvent<system>(T.StakingEvent.TokenWithdrawn, [
+                    ("ledger", Principal.toText(ledger_canister_id)),
+                    ("amount", Nat.toText(amount)),
+                    ("to", Principal.toText(to_account.owner)),
+                ]);
+                #Ok({ transfer_block_height = Nat64.fromNat(blockIndex) })
+            };
         };
     };
     
@@ -1131,7 +1175,11 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                 switch (r.created_neuron_id) {
                     case null { #Err(#InvalidOperation("No neuron ID returned")) };
                     case (?newNid) {
-                        // Spawned neuron will be auto-discovered via listNeurons
+                        eventEngine.emitEvent<system>(T.StakingEvent.MaturitySpawned, [
+                            ("neuronId", Nat64.toText(neuronId.id)),
+                            ("newNeuronId", Nat64.toText(newNid.id)),
+                            ("percentage", Nat32.toText(percentage)),
+                        ]);
                         #Ok(newNid);
                     };
                 };
@@ -1160,7 +1208,13 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         switch (result.command) {
             case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
             case (?#Error(e)) { #Err(#GovernanceError(e)) };
-            case (?#StakeMaturity(_)) { #Ok };
+            case (?#StakeMaturity(_)) {
+                eventEngine.emitEvent<system>(T.StakingEvent.MaturityStaked, [
+                    ("neuronId", Nat64.toText(neuronId.id)),
+                    ("percentage", Nat32.toText(percentage)),
+                ]);
+                #Ok
+            };
             case (_) { #Err(#InvalidOperation("Unexpected response")) };
         };
     };
@@ -1185,7 +1239,13 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         switch (result.command) {
             case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
             case (?#Error(e)) { #Err(#GovernanceError(e)) };
-            case (?#MergeMaturity(_)) { #Ok };
+            case (?#MergeMaturity(_)) {
+                eventEngine.emitEvent<system>(T.StakingEvent.MaturityMerged, [
+                    ("neuronId", Nat64.toText(neuronId.id)),
+                    ("percentage", Nat32.toText(percentage)),
+                ]);
+                #Ok
+            };
             case (_) { #Err(#InvalidOperation("Unexpected response")) };
         };
     };
@@ -1217,7 +1277,13 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         switch (result.command) {
             case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
             case (?#Error(e)) { #Err(#GovernanceError(e)) };
-            case (?#DisburseMaturity(_)) { #Ok };
+            case (?#DisburseMaturity(_)) {
+                eventEngine.emitEvent<system>(T.StakingEvent.MaturityCollected, [
+                    ("neuronId", Nat64.toText(neuronId.id)),
+                    ("percentage", Nat32.toText(percentage)),
+                ]);
+                #Ok
+            };
             case (_) { #Err(#InvalidOperation("Unexpected response")) };
         };
     };
@@ -1262,7 +1328,14 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         switch (result.command) {
             case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
             case (?#Error(e)) { #Err(#GovernanceError(e)) };
-            case (?#RegisterVote(_)) { #Ok };
+            case (?#RegisterVote(_)) {
+                eventEngine.emitEvent<system>(T.StakingEvent.VoteCast, [
+                    ("neuronId", Nat64.toText(neuronId.id)),
+                    ("proposalId", Nat64.toText(proposal_id)),
+                    ("vote", Int32.toText(voteValue)),
+                ]);
+                #Ok
+            };
             case (_) { #Err(#InvalidOperation("Unexpected response")) };
         };
     };
@@ -1394,6 +1467,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             };
         };
         
+        eventEngine.emitEvent<system>(T.StakingEvent.FolloweesConfirmed, [("neuronId", Nat64.toText(neuronId.id))]);
         #Ok;
     };
 
@@ -1409,7 +1483,17 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
-        await configureNeuron(neuronId, #AddHotKey({ new_hot_key = ?hotkey }));
+        let result = await configureNeuron(neuronId, #AddHotKey({ new_hot_key = ?hotkey }));
+        switch (result) {
+            case (#Ok) {
+                eventEngine.emitEvent<system>(T.StakingEvent.HotKeyAdded, [
+                    ("neuronId", Nat64.toText(neuronId.id)),
+                    ("hotkey", Principal.toText(hotkey)),
+                ]);
+            };
+            case _ {};
+        };
+        result
     };
 
     public shared ({ caller }) func removeHotKey(neuronId: T.NeuronId, hotkey: Principal): async T.OperationResult {
@@ -1420,7 +1504,17 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
-        await configureNeuron(neuronId, #RemoveHotKey({ hot_key_to_remove = ?hotkey }));
+        let result = await configureNeuron(neuronId, #RemoveHotKey({ hot_key_to_remove = ?hotkey }));
+        switch (result) {
+            case (#Ok) {
+                eventEngine.emitEvent<system>(T.StakingEvent.HotKeyRemoved, [
+                    ("neuronId", Nat64.toText(neuronId.id)),
+                    ("hotkey", Principal.toText(hotkey)),
+                ]);
+            };
+            case _ {};
+        };
+        result
     };
 
     // Set neuron visibility (0 = private, 1 = public)
@@ -1606,7 +1700,11 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                 switch (r.created_neuron_id) {
                     case null { #Err(#InvalidOperation("No neuron ID returned")) };
                     case (?newNid) {
-                        // New split neuron will be auto-discovered via listNeurons
+                        eventEngine.emitEvent<system>(T.StakingEvent.NeuronSplit, [
+                            ("neuronId", Nat64.toText(neuronId.id)),
+                            ("newNeuronId", Nat64.toText(newNid.id)),
+                            ("amount_e8s", Nat64.toText(amount_e8s)),
+                        ]);
                         #Ok(newNid);
                     };
                 };
@@ -1641,7 +1739,10 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
             case (?#Error(e)) { #Err(#GovernanceError(e)) };
             case (?#Merge(_)) {
-                // Source neuron is destroyed, it will no longer appear in listNeurons
+                eventEngine.emitEvent<system>(T.StakingEvent.NeuronsMerged, [
+                    ("targetNeuronId", Nat64.toText(targetNeuronId.id)),
+                    ("sourceNeuronId", Nat64.toText(sourceNeuronId.id)),
+                ]);
                 #Ok;
             };
             case (_) { #Err(#InvalidOperation("Unexpected response")) };
@@ -2395,6 +2496,11 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                 };
                 case (?#DisburseMaturity(_)) {
                     logEngine.logInfo(src, "Collected " # Nat64.toText(maturityE8s) # " e8s maturity from neuron " # nidText # " to " # destText, null, [("neuronId", nidText), ("maturity_e8s", Nat64.toText(maturityE8s)), ("destination", destText), ("action", "disbursed")]);
+                    eventEngine.emitEvent<system>(T.StakingEvent.MaturityCollected, [
+                        ("neuronId", nidText),
+                        ("maturity_e8s", Nat64.toText(maturityE8s)),
+                        ("destination", destText),
+                    ]);
                     #Done
                 };
                 case null { #Error("No response from governance") };
@@ -2588,9 +2694,21 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             logEngine.logInfo(src, "Distributed " # Nat.toText(distributableNet) # " from list '" # listName # "': " # Nat.toText(successCount) # " succeeded, " # Nat.toText(transferErrors.size()) # " failed", null, [("list", listName), ("amountDistributed", Nat.toText(distributableNet)), ("succeeded", Nat.toText(successCount)), ("failed", Nat.toText(transferErrors.size())), ("ledger", ledgerText)]);
 
             if (transferErrors.size() > 0) {
+                eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.DistributionFailed, [
+                    ("choreId", "distribute-funds"), ("list", listName),
+                    ("succeeded", Nat.toText(successCount)),
+                    ("failed", Nat.toText(transferErrors.size())),
+                    ("ledger", ledgerText),
+                ]);
                 return #Error("Distribution '" # listName # "' completed with " # Nat.toText(transferErrors.size()) # " error(s): " # Text.join("; ", transferErrors.vals()));
             };
 
+            eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.DistributionExecuted, [
+                ("choreId", "distribute-funds"), ("list", listName),
+                ("amount", Nat.toText(distributableNet)),
+                ("targets", Nat.toText(successCount)),
+                ("ledger", ledgerText),
+            ]);
             #Done
         }
     };
