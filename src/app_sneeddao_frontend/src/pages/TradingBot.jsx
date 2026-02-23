@@ -11094,6 +11094,8 @@ function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identit
     const [success, setSuccess] = useState('');
     const [queue, setQueue] = useState([]);
     const [loadingQueue, setLoadingQueue] = useState(false);
+    const [inputBalance, setInputBalance] = useState(null);
+    const [outputBalance, setOutputBalance] = useState(null);
     const actorRef = useRef(null);
     const pollRef = useRef(null);
 
@@ -11137,13 +11139,70 @@ function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identit
         return entry ? entry.symbol : '???';
     }, [tokenRegistry]);
 
+    useEffect(() => {
+        let cancelled = false;
+        const fetchBalances = async () => {
+            if (!inputToken && !outputToken) { setInputBalance(null); setOutputBalance(null); return; }
+            try {
+                const bot = await getActor();
+                if (sourcePurse === 'main') {
+                    const bals = await bot.getMainPurseBalances();
+                    if (cancelled) return;
+                    const findBal = (tok) => {
+                        if (!tok) return null;
+                        const entry = bals.find(b => (b.token?.toText?.() ?? String(b.token)) === tok);
+                        return entry ? entry.balance : 0n;
+                    };
+                    setInputBalance(findBal(inputToken));
+                    setOutputBalance(findBal(outputToken));
+                } else {
+                    const bals = await bot.getPurseBalances(sourcePurse);
+                    if (cancelled) return;
+                    const findBal = (tok) => {
+                        if (!tok) return null;
+                        const entry = bals.find(b => (b.token?.toText?.() ?? String(b.token)) === tok);
+                        return entry ? entry.balance : 0n;
+                    };
+                    setInputBalance(findBal(inputToken));
+                    setOutputBalance(findBal(outputToken));
+                }
+            } catch (_) {
+                if (!cancelled) { setInputBalance(null); setOutputBalance(null); }
+            }
+        };
+        fetchBalances();
+        return () => { cancelled = true; };
+    }, [inputToken, outputToken, sourcePurse, getActor]);
+
+    const refreshBalances = useCallback(async () => {
+        if (!inputToken && !outputToken) return;
+        try {
+            const bot = await getActor();
+            const bals = sourcePurse === 'main'
+                ? await bot.getMainPurseBalances()
+                : await bot.getPurseBalances(sourcePurse);
+            const findBal = (tok) => {
+                if (!tok) return null;
+                const entry = bals.find(b => (b.token?.toText?.() ?? String(b.token)) === tok);
+                return entry ? entry.balance : 0n;
+            };
+            setInputBalance(findBal(inputToken));
+            setOutputBalance(findBal(outputToken));
+        } catch (_) {}
+    }, [inputToken, outputToken, sourcePurse, getActor]);
+
     const loadQueue = useCallback(async () => {
         try {
             const bot = await getActor();
             const q = await bot.getOneOffTradeQueue();
-            setQueue(q);
+            setQueue(prev => {
+                const wasProcessing = prev.some(e => Number(e.status) <= 1);
+                const nowDone = !q.some(e => Number(e.status) <= 1);
+                if (wasProcessing && nowDone) refreshBalances();
+                return q;
+            });
         } catch (_) {}
-    }, [getActor]);
+    }, [getActor, refreshBalances]);
 
     useEffect(() => {
         loadQueue();
@@ -11247,10 +11306,20 @@ function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identit
                         <div>
                             <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px', display: 'block' }}>Input Token</label>
                             <TokenSelector value={inputToken} onChange={setInputToken} tokenSubset={tokenSubset} excludeTokens={outputToken ? [outputToken] : []} disabled={submitting} />
+                            {inputToken && inputBalance != null && (
+                                <div style={{ fontSize: '0.72rem', color: theme.colors.mutedText, marginTop: '3px' }}>
+                                    Balance: {formatTokenAmount(inputBalance, getTokenDecimals(inputToken))} {getTokenSymbol(inputToken)}
+                                </div>
+                            )}
                         </div>
                         <div>
                             <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px', display: 'block' }}>Output Token</label>
                             <TokenSelector value={outputToken} onChange={setOutputToken} tokenSubset={tokenSubset} excludeTokens={inputToken ? [inputToken] : []} disabled={submitting} />
+                            {outputToken && outputBalance != null && (
+                                <div style={{ fontSize: '0.72rem', color: theme.colors.mutedText, marginTop: '3px' }}>
+                                    Balance: {formatTokenAmount(outputBalance, getTokenDecimals(outputToken))} {getTokenSymbol(outputToken)}
+                                </div>
+                            )}
                         </div>
                     </div>
 
