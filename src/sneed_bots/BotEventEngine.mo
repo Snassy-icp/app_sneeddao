@@ -282,7 +282,7 @@ module {
             srcState.setEmissionEnabled(enabled);
         };
 
-        /// Query the event emission log.
+        /// Query the event emission log (returns the newest matching entries).
         public func queryEventLog(filter: BotEventTypes.EventLogQuery): BotEventTypes.EventLogResult {
             let allEntries = srcState.getEventLog();
             let limit = switch (filter.limit) { case (?l) { l }; case null { 100 } };
@@ -290,7 +290,10 @@ module {
             let matched = Buffer.Buffer<BotEventTypes.BotEvent>(limit);
             var totalMatching: Nat = 0;
 
-            for (entry in allEntries.vals()) {
+            var i: Nat = allEntries.size();
+            while (i > 0) {
+                i -= 1;
+                let entry = allEntries[i];
                 if (matchesEventLogQuery(entry, filter)) {
                     totalMatching += 1;
                     if (matched.size() < limit) {
@@ -299,8 +302,10 @@ module {
                 };
             };
 
+            let arr = Buffer.toArray(matched);
+            let size = arr.size();
             {
-                entries = Buffer.toArray(matched);
+                entries = Array.tabulate<BotEventTypes.BotEvent>(size, func(j: Nat): BotEventTypes.BotEvent { arr[size - 1 - j] });
                 totalMatching = totalMatching;
                 hasMore = totalMatching > limit;
             }
@@ -621,7 +626,7 @@ module {
             lsnState.getReactions()
         };
 
-        /// Query the reaction log.
+        /// Query the reaction log (returns the newest matching entries).
         public func queryReactionLog(filter: BotEventTypes.EventReactionLogQuery): BotEventTypes.EventReactionLogResult {
             let allEntries = lsnState.getReactionLog();
             let limit = switch (filter.limit) { case (?l) { l }; case null { 100 } };
@@ -629,7 +634,10 @@ module {
             let matched = Buffer.Buffer<BotEventTypes.EventReactionLogEntry>(limit);
             var totalMatching: Nat = 0;
 
-            for (entry in allEntries.vals()) {
+            var i: Nat = allEntries.size();
+            while (i > 0) {
+                i -= 1;
+                let entry = allEntries[i];
                 if (matchesReactionLogQuery(entry, filter)) {
                     totalMatching += 1;
                     if (matched.size() < limit) {
@@ -638,8 +646,10 @@ module {
                 };
             };
 
+            let arr = Buffer.toArray(matched);
+            let size = arr.size();
             {
-                entries = Buffer.toArray(matched);
+                entries = Array.tabulate<BotEventTypes.EventReactionLogEntry>(size, func(j: Nat): BotEventTypes.EventReactionLogEntry { arr[size - 1 - j] });
                 totalMatching = totalMatching;
                 hasMore = totalMatching > limit;
             }
