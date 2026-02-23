@@ -5023,7 +5023,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
         if (directOk) {
             // --- 6a. Direct trade path ---
-            let quote = switch (directQuoteOpt) { case (?q) q; case null { return false } };
+            let quote = switch (directQuoteOpt) { case (?q) q; case null {
+                ignore appendTradeLog({
+                    choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = null;
+                    actionType = 0; inputToken = sellToken.token; outputToken = ?buyToken.token;
+                    inputAmount = tradeSize; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Failed; errorMessage = ?"No direct quote available (internal error)";
+                    txId = null; destinationOwner = null;
+                });
+                return false;
+            } };
             logEngine.logDebug(src, "Executing direct swap: " # tokenLabel(sellToken.token) # " → " # tokenLabel(buyToken.token) # " on dex " # Nat.toText(quote.dexId) # " amount " # Nat.toText(tradeSize) # " slippage " # Nat.toText(slippage) # " bps", null, [
                 ("route", "direct"),
                 ("dexId", Nat.toText(quote.dexId)),
@@ -5175,8 +5185,28 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             };
             case (?p) p;
         };
-        let leg1Quote = switch (chosenLeg1) { case (?q) q; case null { return false } };
-        let leg2Quote = switch (chosenLeg2) { case (?q) q; case null { return false } };
+        let leg1Quote = switch (chosenLeg1) { case (?q) q; case null {
+            ignore appendTradeLog({
+                choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = null;
+                actionType = 0; inputToken = sellToken.token; outputToken = ?buyToken.token;
+                inputAmount = tradeSize; outputAmount = null;
+                priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                status = #Failed; errorMessage = ?"No leg1 quote available (internal error)";
+                txId = null; destinationOwner = null;
+            });
+            return false;
+        } };
+        let leg2Quote = switch (chosenLeg2) { case (?q) q; case null {
+            ignore appendTradeLog({
+                choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = null;
+                actionType = 0; inputToken = sellToken.token; outputToken = ?buyToken.token;
+                inputAmount = tradeSize; outputAmount = null;
+                priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                status = #Failed; errorMessage = ?"No leg2 quote available (internal error)";
+                txId = null; destinationOwner = null;
+            });
+            return false;
+        } };
         let intLabel = tokenLabel(intermediary);
         let routeLabel = "via-" # intLabel;
 
