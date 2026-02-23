@@ -34,6 +34,7 @@ import TradingBotWizard, { WIZARD_SVG_URL } from '../components/TradingBotWizard
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import StatusLamp, { getChoreSummaryLamp, getSchedulerLampState, getConductorLampState, getTaskLampState, LAMP_COLORS } from '../components/ChoreStatusLamp';
 import priceService from '../services/PriceService';
+import { useDenomination } from '../contexts/DenominationContext';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Line } from 'recharts';
@@ -11081,6 +11082,7 @@ const ONE_OFF_STATUS_COLORS = { 0: '#f59e0b', 1: '#3b82f6', 2: '#10b981', 3: '#e
 
 function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identity, tokenRegistry, choreInstances }) {
     const { theme } = useTheme();
+    const { formatValue: denomFormatValue, denomTokenId } = useDenomination();
     const [inputToken, setInputToken] = useState('');
     const [outputToken, setOutputToken] = useState('');
     const [inputAmount, setInputAmount] = useState('');
@@ -11096,6 +11098,7 @@ function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identit
     const [loadingQueue, setLoadingQueue] = useState(false);
     const [inputBalance, setInputBalance] = useState(null);
     const [outputBalance, setOutputBalance] = useState(null);
+    const [inputTokenUsdPrice, setInputTokenUsdPrice] = useState(null);
     const actorRef = useRef(null);
     const pollRef = useRef(null);
 
@@ -11138,6 +11141,27 @@ function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identit
         });
         return entry ? entry.symbol : '???';
     }, [tokenRegistry]);
+
+    useEffect(() => {
+        if (!inputToken) { setInputTokenUsdPrice(null); return; }
+        let cancelled = false;
+        (async () => {
+            try {
+                const decimals = getTokenDecimals(inputToken);
+                priceService.setTokenDecimals(inputToken, decimals);
+                const icpPrice = inputToken === ICP_LEDGER
+                    ? 1
+                    : await priceService.getTokenICPPrice(inputToken, decimals);
+                const icpUsd = await priceService.getICPUSDPrice();
+                if (!cancelled && icpPrice != null && icpUsd > 0) {
+                    setInputTokenUsdPrice(icpPrice * icpUsd);
+                } else if (!cancelled) {
+                    setInputTokenUsdPrice(null);
+                }
+            } catch { if (!cancelled) setInputTokenUsdPrice(null); }
+        })();
+        return () => { cancelled = true; };
+    }, [inputToken, getTokenDecimals]);
 
     useEffect(() => {
         let cancelled = false;
@@ -11327,6 +11351,14 @@ function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identit
                         <div>
                             <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px', display: 'block' }}>Input Amount</label>
                             <input type="text" value={inputAmount} onChange={e => setInputAmount(e.target.value)} placeholder={`0.00 ${getTokenSymbol(inputToken)}`} style={inputStyle} disabled={submitting} />
+                            {inputAmount && inputTokenUsdPrice != null && (() => {
+                                const parsed = parseFloat(inputAmount);
+                                if (!isNaN(parsed) && parsed > 0) {
+                                    const usdValue = parsed * inputTokenUsdPrice;
+                                    return <div style={{ fontSize: '0.72rem', color: theme.colors.mutedText, marginTop: '3px' }}>{denomFormatValue(usdValue)}</div>;
+                                }
+                                return null;
+                            })()}
                         </div>
                         <div>
                             <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px', display: 'block' }}>Min Output (optional)</label>
