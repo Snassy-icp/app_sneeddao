@@ -271,8 +271,8 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
 
     const [eventTypesCollapsed, setEventTypesCollapsed] = useState(true);
     const [actionsCollapsed, setActionsCollapsed] = useState(true);
-    const [eventLogCollapsed, setEventLogCollapsed] = useState(false);
-    const [reactionLogCollapsed, setReactionLogCollapsed] = useState(false);
+    const [eventLogCollapsed, setEventLogCollapsed] = useState(true);
+    const [reactionLogCollapsed, setReactionLogCollapsed] = useState(true);
 
     // ==========================================
     // STYLES
@@ -741,58 +741,6 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                         </div>
                     </div>
 
-                    {/* Event Types */}
-                    <div style={cardStyle}>
-                        <div style={{ ...sectionTitle, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none', marginBottom: eventTypesCollapsed ? 0 : '10px' }}
-                            onClick={() => setEventTypesCollapsed(c => !c)}>
-                            <span>Event Types {eventTypes.length > 0 && <span style={{ fontSize: '0.72rem', color: theme.colors.mutedText, fontWeight: 400 }}>({eventTypes.length})</span>}</span>
-                            <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, transition: 'transform 0.2s', display: 'inline-block', transform: eventTypesCollapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}>&#9660;</span>
-                        </div>
-                        {!eventTypesCollapsed && (eventTypes.length === 0 ? (
-                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>No event types registered.</div>
-                        ) : (
-                            <div style={{ overflowX: 'auto' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                    <thead>
-                                        <tr>
-                                            <th style={headerCellStyle}>ID</th>
-                                            <th style={{ ...headerCellStyle, textAlign: 'left' }}>Name</th>
-                                            <th style={{ ...headerCellStyle, textAlign: 'left' }}>Data Keys</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {eventTypes.map(t => {
-                                            const keys = EVENT_DATA_KEYS[t.id] || [];
-                                            return (
-                                                <tr key={t.id}>
-                                                    <td style={{ ...cellStyle, fontFamily: 'monospace', width: '60px' }}>{t.id}</td>
-                                                    <td style={cellStyle}>{t.name}</td>
-                                                    <td style={cellStyle}>
-                                                        {keys.length > 0 ? (
-                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
-                                                                {keys.map(k => (
-                                                                    <span key={k.key} title={k.hint} style={{
-                                                                        fontSize: '0.68rem', padding: '1px 5px', borderRadius: '3px',
-                                                                        background: `${accent}10`, border: `1px solid ${accent}25`,
-                                                                        fontFamily: 'monospace', color: theme.colors.primaryText,
-                                                                    }}>
-                                                                        {k.key}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                        ) : (
-                                                            <span style={{ color: theme.colors.mutedText, fontSize: '0.68rem' }}>—</span>
-                                                        )}
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ))}
-                    </div>
-
                     {/* Listeners */}
                     <div style={cardStyle}>
                         <div style={sectionTitle}>Registered Listeners</div>
@@ -852,6 +800,58 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                 </table>
                             </div>
                         )}
+                    </div>
+
+                    {/* Event Types */}
+                    <div style={cardStyle}>
+                        <div style={{ ...sectionTitle, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none', marginBottom: eventTypesCollapsed ? 0 : '10px' }}
+                            onClick={() => setEventTypesCollapsed(c => !c)}>
+                            <span>Event Types {eventTypes.length > 0 && <span style={{ fontSize: '0.72rem', color: theme.colors.mutedText, fontWeight: 400 }}>({eventTypes.length})</span>}</span>
+                            <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, transition: 'transform 0.2s', display: 'inline-block', transform: eventTypesCollapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}>&#9660;</span>
+                        </div>
+                        {!eventTypesCollapsed && (eventTypes.length === 0 ? (
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>No event types registered.</div>
+                        ) : (
+                            <div style={{ overflowX: 'auto' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead>
+                                        <tr>
+                                            <th style={headerCellStyle}>ID</th>
+                                            <th style={{ ...headerCellStyle, textAlign: 'left' }}>Name</th>
+                                            <th style={{ ...headerCellStyle, textAlign: 'left' }}>Data Keys</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {eventTypes.map(t => {
+                                            const keys = EVENT_DATA_KEYS[t.id] || [];
+                                            return (
+                                                <tr key={t.id}>
+                                                    <td style={{ ...cellStyle, fontFamily: 'monospace', width: '60px' }}>{t.id}</td>
+                                                    <td style={cellStyle}>{t.name}</td>
+                                                    <td style={cellStyle}>
+                                                        {keys.length > 0 ? (
+                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                                                                {keys.map(k => (
+                                                                    <span key={k.key} title={k.hint} style={{
+                                                                        fontSize: '0.68rem', padding: '1px 5px', borderRadius: '3px',
+                                                                        background: `${accent}10`, border: `1px solid ${accent}25`,
+                                                                        fontFamily: 'monospace', color: theme.colors.primaryText,
+                                                                    }}>
+                                                                        {k.key}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <span style={{ color: theme.colors.mutedText, fontSize: '0.68rem' }}>—</span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ))}
                     </div>
 
                     {/* Event Log */}
