@@ -11909,6 +11909,7 @@ export default function TradingBot() {
                             extraInfoContent={<DexSettingsPanel canisterId={canisterId} createBotActor={createBotActor} identity={identity} />}
                             cbEvents={cbEvents}
                             preferredChoreTypeOrder={['rebalance', 'trade', 'move-funds', 'distribute-funds', 'snapshot']}
+                            hideLogTab
                         />
                         <TradingBotLogs
                             canisterId={canisterId}

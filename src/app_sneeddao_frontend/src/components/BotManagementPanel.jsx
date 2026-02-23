@@ -217,6 +217,7 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
     extraInfoContent,
     cbEvents,
     preferredChoreTypeOrder,
+    hideLogTab = false,
 }, ref) {
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
@@ -1455,7 +1456,7 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                             </button>
                         )}
                         <button style={tabStyle(activeTab === 'permissions')} onClick={() => setActiveTab('permissions')}>Botkeys</button>
-                        {hasPermission('ViewLogs') && (
+                        {!hideLogTab && hasPermission('ViewLogs') && (
                             <button style={tabStyle(activeTab === 'log')} onClick={() => setActiveTab('log')}>Log</button>
                         )}
                         {(hasPermission('ViewEvents') || hasPermission('ManageEvents')) && (
