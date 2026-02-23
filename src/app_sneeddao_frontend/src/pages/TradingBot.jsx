@@ -6,7 +6,7 @@
  * Uses the reusable BotManagementPanel for Info, Botkeys, Chores framework, and Log tabs.
  * The per-chore configuration panels are custom to the trading bot.
  */
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
@@ -11672,6 +11672,7 @@ export default function TradingBot() {
     const [showWizard, setShowWizard] = useState(false);
     const [hasTokens, setHasTokens] = useState(null);
     const [tokenRegistry, setTokenRegistry] = useState([]);
+    const [choreInstances, setChoreInstances] = useState([]);
     const wizardActorRef = useRef(null);
     const botPanelRef = useRef(null);
 
@@ -11702,9 +11703,13 @@ export default function TradingBot() {
         (async () => {
             try {
                 const bot = await getWizardBotActor();
-                const registry = bot.getTokenRegistry ? await bot.getTokenRegistry() : [];
+                const [registry, instances] = await Promise.all([
+                    bot.getTokenRegistry ? bot.getTokenRegistry() : [],
+                    bot.listChoreInstances ? bot.listChoreInstances([]) : [],
+                ]);
                 if (!cancelled) {
                     setTokenRegistry(registry);
+                    setChoreInstances(instances);
                     const found = registry.length > 0;
                     setHasTokens(found);
                     if (!found) {
