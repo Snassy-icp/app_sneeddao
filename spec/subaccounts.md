@@ -160,6 +160,42 @@ icrc1_transfer({
 
 ---
 
+## PrincipalInput Component — Subaccount Dialog
+
+The `PrincipalInput` component supports an optional subaccount dialog, enabled via the `showSubaccountOption` prop. When enabled, a wallet icon button appears next to the principal input, opening the **Account with Subaccount** dialog.
+
+### Dialog Features
+
+The dialog supports two modes, toggled via a tab selector:
+
+1. **Principal + Subaccount (split mode)**: The user enters a principal and an optional subaccount hex string separately. The dialog shows a live encoded-account preview.
+2. **Encoded Account mode**: The user pastes a full ICRC-1 encoded account string. The dialog parses and displays the resolved principal and subaccount.
+
+### Autocomplete Principal Field
+
+The Principal field inside the subaccount dialog uses the full `PrincipalInput` component with autocomplete support (without subaccount nesting, to avoid recursion). This means users can:
+
+- Search for principals by public name, private nickname, or principal ID
+- Filter results by Private / Public / All tabs
+- Filter by user vs. canister principal types
+- Select from dropdown results, which auto-fills the principal
+
+This is the same autocomplete experience as the standalone `PrincipalInput` used elsewhere in the app.
+
+### Copy Buttons
+
+Each field (principal, subaccount, encoded account) has a copy-to-clipboard button with visual feedback.
+
+### Apply Flow
+
+When the user clicks **Apply**:
+- In split mode: validates the principal, optionally encodes with subaccount into ICRC-1 format
+- In encoded mode: validates the encoded string
+- The result is set as the parent input's value
+- An `onAccountChange` callback fires with `{ principal, subaccount, encoded }` if provided
+
+---
+
 ## UI/UX Considerations
 
 1. **Auto-detection feedback**: When an extended address is detected, show clear feedback about what was parsed
@@ -167,6 +203,7 @@ icrc1_transfer({
 3. **Confirmation screen**: Display the full account breakdown (principal + subaccount separately)
 4. **DIP20 warning**: If token is DIP20 standard, warn that subaccounts are not supported
 5. **Validation**: Validate subaccount input in real-time and show appropriate error messages
+6. **Autocomplete in dialogs**: Principal fields in the subaccount dialog use the full autocomplete PrincipalInput, allowing users to search by name instead of manually entering principal IDs
 
 ---
 

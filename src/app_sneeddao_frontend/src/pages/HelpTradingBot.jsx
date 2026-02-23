@@ -650,7 +650,7 @@ function HelpTradingBot() {
                     <ul style={styles.list}>
                         <li style={styles.listItem}><strong style={styles.strong}>Fund Purse:</strong> Move tokens from the main purse into a chore's purse</li>
                         <li style={styles.listItem}><strong style={styles.strong}>Reclaim:</strong> Move tokens from a chore's purse back to the main purse</li>
-                        <li style={styles.listItem}><strong style={styles.strong}>Send:</strong> Transfer tokens out of the bot to any ICRC-1 account</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Send:</strong> Transfer tokens out of the bot to any ICRC-1 account — destination supports autocomplete search by name and optional subaccount</li>
                     </ul>
                     <div style={styles.tipBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0, fontSize: '0.85rem' }}>
@@ -674,6 +674,7 @@ function HelpTradingBot() {
                     </p>
                     <ul style={styles.list}>
                         <li style={styles.listItem}>Define distribution lists with multiple recipients and percentage allocations</li>
+                        <li style={styles.listItem}>Recipient addresses support autocomplete search by name or nickname, with optional subaccount targeting via the Account with Subaccount dialog</li>
                         <li style={styles.listItem}>Set a minimum threshold balance before distribution triggers</li>
                         <li style={styles.listItem}>Configure a max distribution amount per round</li>
                         <li style={styles.listItem}>Recipients without assigned percentages evenly split the remainder</li>

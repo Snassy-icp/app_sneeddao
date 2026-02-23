@@ -72,7 +72,7 @@ Each Trade Chore instance contains an **ordered list of actions** that execute s
 ### 3.6 Send Action
 
 - Send tokens from the bot's main account or a chore purse to any external ICRC-1 account
-- Configurable destination (owner + optional subaccount)
+- Configurable destination (owner + optional subaccount) via autocomplete principal input with name/nickname search and subaccount dialog
 - Balance conditions and frequency control apply
 
 ### 3.7 Multi-Instance Support
@@ -143,7 +143,7 @@ Automatically distributes funds to multiple recipients based on configurable per
 
 - Multiple distribution lists per chore instance
 - Each list specifies: source token, threshold amount (minimum balance to trigger), max distribution amount per round
-- **Distribution targets**: multiple recipients with configurable basis point allocations
+- **Distribution targets**: multiple recipients with configurable basis point allocations; recipient addresses use autocomplete principal input with name/nickname search and optional subaccount targeting
 - **Auto-split**: targets without assigned percentages evenly split the remainder
 - **Renormalization**: if assigned percentages exceed 100%, they are proportionally scaled down
 - **Hard minimum**: distributions are skipped if the smallest recipient would receive less than one transaction fee
@@ -457,7 +457,7 @@ Fine-grained, role-based access control for delegated bot management.
 - **Trade Chore configuration**: action list with drag-and-drop reordering, per-action forms for all parameters
 - **Rebalancer configuration**: target allocation management, portfolio status visualization with current vs. target allocations, deviation indicators
 - **Move Funds configuration**: action list for scheduled fund movements
-- **Distribution configuration**: distribution list management with target recipient rows
+- **Distribution configuration**: distribution list management with target recipient rows using autocomplete principal input and subaccount dialog
 - **Circuit Breaker tab**: rule builder with condition/action forms, event log, global enable/disable
 - **Token Registry management**: add/remove tokens, reorder, refresh metadata, pause/freeze controls
 - **DEX Settings**: enable/disable DEXes, slippage/price impact defaults
