@@ -1428,12 +1428,28 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                                     <option key={op.id} value={op.id}>{op.label}</option>
                                                 ))}
                                             </select>
-                                            <input style={{ ...inputStyle, fontSize: '0.78rem' }} value={c.value} placeholder="Value"
-                                                onChange={e => {
-                                                    const conds = [...reactionForm.conditions];
-                                                    conds[i] = { ...conds[i], value: e.target.value };
-                                                    setReactionForm(f => ({ ...f, conditions: conds }));
-                                                }} />
+                                            {c.dataKey === 'choreId' && choreStatuses && choreStatuses.length > 0 ? (
+                                                <select style={{ ...inputStyle, fontSize: '0.78rem' }} value={c.value}
+                                                    onChange={e => {
+                                                        const conds = [...reactionForm.conditions];
+                                                        conds[i] = { ...conds[i], value: e.target.value };
+                                                        setReactionForm(f => ({ ...f, conditions: conds }));
+                                                    }}>
+                                                    <option value="">Select chore...</option>
+                                                    {choreStatuses.map(cs => {
+                                                        const cId = cs.choreId || cs.id || '';
+                                                        const cName = cs.choreName || cs.name || cId;
+                                                        return <option key={cId} value={cId}>{cName} ({cId})</option>;
+                                                    })}
+                                                </select>
+                                            ) : (
+                                                <input style={{ ...inputStyle, fontSize: '0.78rem' }} value={c.value} placeholder="Value"
+                                                    onChange={e => {
+                                                        const conds = [...reactionForm.conditions];
+                                                        conds[i] = { ...conds[i], value: e.target.value };
+                                                        setReactionForm(f => ({ ...f, conditions: conds }));
+                                                    }} />
+                                            )}
                                             <button style={{ ...btnDanger, fontSize: '0.72rem', padding: '2px 8px' }}
                                                 onClick={() => setReactionForm(f => ({ ...f, conditions: f.conditions.filter((_, j) => j !== i) }))}>
                                                 ×
