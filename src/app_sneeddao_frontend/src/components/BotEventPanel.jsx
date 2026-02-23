@@ -129,7 +129,7 @@ const EVENT_DATA_KEYS = {
     // SnapshotTaken
     260: [{ key: 'snapshotId', hint: 'Snapshot ID' }, { key: 'trigger', hint: 'Trigger source' }, { key: 'choreId', hint: 'Chore instance ID (if applicable)' }],
     // CumulativeLimitReached
-    270: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'actionId', hint: 'Action ID' }, { key: 'limitType', hint: 'Limit type (input/output)' }, { key: 'current', hint: 'Current cumulative amount' }, { key: 'max', hint: 'Maximum allowed' }],
+    270: [{ key: 'choreId', hint: 'Chore instance ID' }, { key: 'actionId', hint: 'Action ID' }, { key: 'limitType', hint: 'Limit type (input/output/executions)' }, { key: 'current', hint: 'Current cumulative value' }, { key: 'max', hint: 'Maximum allowed' }],
 };
 
 const opLabel = (id) => CONDITION_OPS.find(o => o.id === Number(id))?.label || `Op ${id}`;

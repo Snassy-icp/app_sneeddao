@@ -210,6 +210,7 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
     permissionDescriptions: permDescsProp = {},
     multiInstanceChoreTypes = [],
     renderChoreConfig,
+    renderChoreSummaryExtra,
     renderSwapCard,
     identity,
     isAuthenticated,
@@ -2242,6 +2243,8 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                                                         )}
                                                                     </div>
                                                                 </div>
+
+                                                                {renderChoreSummaryExtra && renderChoreSummaryExtra(chore.choreId, chore, getReadyBotActor)}
 
                                                                 {/* Last error — compact dismissable */}
                                                                 {(() => {

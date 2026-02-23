@@ -424,6 +424,105 @@ const parseTokenAmount = (humanStr, decimals) => {
 };
 
 // ============================================
+// Cumulative progress summary for chore summary card
+// ============================================
+function ChoreCumulativeSummary({ choreId, chore, getReadyBotActor, accentColor, theme, identity }) {
+    const [actions, setActions] = useState(null);
+    const fetchedRef = useRef(null);
+    const optVal = (arr) => arr?.length > 0 ? arr[0] : null;
+
+    const choreType = chore?.choreTypeId || chore?.choreId || '';
+    const fetchFn = (choreType === 'move-funds') ? 'getMoveFundsActions'
+        : (choreType === 'trade' || choreType === 'rebalance') ? 'getTradeActions' : null;
+
+    useEffect(() => {
+        if (!fetchFn || fetchedRef.current === choreId) return;
+        fetchedRef.current = choreId;
+        (async () => {
+            try {
+                const bot = await getReadyBotActor();
+                if (!bot || !bot[fetchFn]) return;
+                const acts = await bot[fetchFn](choreId);
+                setActions(acts || []);
+            } catch { setActions([]); }
+        })();
+    }, [choreId, fetchFn, getReadyBotActor]);
+
+    const tokenIds = React.useMemo(() => {
+        if (!actions) return [];
+        const ids = new Set();
+        for (const a of actions) {
+            const inp = typeof a.inputToken === 'string' ? a.inputToken : a.inputToken?.toText?.() || '';
+            if (inp) ids.add(inp);
+            const out = a.outputToken?.[0];
+            if (out) ids.add(typeof out === 'string' ? out : out?.toText?.() || '');
+        }
+        return [...ids];
+    }, [actions]);
+
+    const tokenMeta = useTokenMetadata(tokenIds, identity);
+    const getSym = (p) => { const k = typeof p === 'string' ? p : p?.toText?.() || String(p); return tokenMeta[k]?.symbol || shortPrincipal(k); };
+    const getDec = (p) => { const k = typeof p === 'string' ? p : p?.toText?.() || String(p); return tokenMeta[k]?.decimals ?? 8; };
+
+    if (!actions || actions.length === 0) return null;
+
+    const limitActions = actions.filter(a =>
+        optVal(a.maxCumulativeInput) != null || optVal(a.maxCumulativeOutput) != null || optVal(a.maxExecutions) != null
+    );
+    if (limitActions.length === 0) return null;
+
+    const barBg = `${accentColor}18`;
+    const barFill = accentColor;
+
+    return (
+        <div style={{ marginTop: '8px', padding: '8px 10px', background: `${accentColor}06`, border: `1px solid ${accentColor}15`, borderRadius: '6px' }}>
+            <div style={{ fontSize: '0.7rem', fontWeight: '600', color: theme.colors.secondaryText, marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cumulative Progress</div>
+            {limitActions.map(a => {
+                const inTok = typeof a.inputToken === 'string' ? a.inputToken : a.inputToken?.toText?.() || '';
+                const outTok = a.outputToken?.[0] ? (typeof a.outputToken[0] === 'string' ? a.outputToken[0] : a.outputToken[0]?.toText?.() || '') : '';
+                const maxIn = optVal(a.maxCumulativeInput);
+                const maxOut = optVal(a.maxCumulativeOutput);
+                const maxEx = optVal(a.maxExecutions);
+                const cumIn = Number(a.cumulativeInputSpent || 0);
+                const cumOut = Number(a.cumulativeOutputReceived || 0);
+                const exCount = Number(a.executionCount || 0);
+                const segments = [];
+                if (maxIn != null) {
+                    const inDec = getDec(inTok);
+                    const pct = Number(maxIn) > 0 ? Math.min(100, (cumIn / Number(maxIn)) * 100) : 0;
+                    segments.push({ label: `Input ${formatTokenAmount(cumIn, inDec)}/${formatTokenAmount(Number(maxIn), inDec)} ${getSym(inTok)}`, pct });
+                }
+                if (maxOut != null && outTok) {
+                    const outDec = getDec(outTok);
+                    const pct = Number(maxOut) > 0 ? Math.min(100, (cumOut / Number(maxOut)) * 100) : 0;
+                    segments.push({ label: `Output ${formatTokenAmount(cumOut, outDec)}/${formatTokenAmount(Number(maxOut), outDec)} ${getSym(outTok)}`, pct });
+                }
+                if (maxEx != null) {
+                    const pct = Number(maxEx) > 0 ? Math.min(100, (exCount / Number(maxEx)) * 100) : 0;
+                    segments.push({ label: `Runs ${exCount}/${Number(maxEx)}`, pct });
+                }
+                if (segments.length === 0) return null;
+                return (
+                    <div key={Number(a.id)} style={{ marginBottom: limitActions.length > 1 ? '6px' : 0 }}>
+                        {limitActions.length > 1 && <div style={{ fontSize: '0.68rem', color: theme.colors.mutedText, marginBottom: '3px' }}>Action #{Number(a.id)}</div>}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px' }}>
+                            {segments.map((seg, i) => (
+                                <div key={i} style={{ flex: '1 1 120px', minWidth: '120px' }}>
+                                    <div style={{ fontSize: '0.68rem', color: theme.colors.secondaryText, marginBottom: '2px' }}>{seg.label}</div>
+                                    <div style={{ height: '5px', borderRadius: '3px', background: barBg, overflow: 'hidden' }}>
+                                        <div style={{ height: '100%', width: `${seg.pct}%`, borderRadius: '3px', background: seg.pct >= 100 ? (theme.colors.error || '#ef4444') : barFill, transition: 'width 0.3s ease' }} />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+// ============================================
 // REUSABLE: Action List Panel (for Trade and Move Funds chores)
 // ============================================
 function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, cardStyle, inputStyle, buttonStyle, secondaryButtonStyle, fetchFn, addFn, updateFn, removeFn, allowedTypes, title, description }) {
@@ -11259,6 +11358,10 @@ export default function TradingBot() {
 
     const renderSwapCard = useSwapCardRenderer(getWizardBotActor, theme, ACCENT);
 
+    const renderChoreSummaryExtra = useCallback((choreId, chore, getReadyBotActor) => (
+        <ChoreCumulativeSummary choreId={choreId} chore={chore} getReadyBotActor={getReadyBotActor} accentColor={ACCENT} theme={theme} identity={identity} />
+    ), [theme, identity]);
+
     useEffect(() => {
         wizardActorRef.current = null;
     }, [identity, canisterId]);
@@ -11792,6 +11895,7 @@ export default function TradingBot() {
                             permissionDescriptions={PERMISSION_DESCRIPTIONS}
                             multiInstanceChoreTypes={MULTI_INSTANCE_CHORE_TYPES}
                             renderChoreConfig={renderTradingBotChoreConfig}
+                            renderChoreSummaryExtra={renderChoreSummaryExtra}
                             renderSwapCard={renderSwapCard}
                             identity={identity}
                             isAuthenticated={isAuthenticated}

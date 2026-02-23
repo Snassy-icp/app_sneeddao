@@ -2982,7 +2982,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         // Check cumulative limits (skip if already exhausted)
         switch (action.maxCumulativeInput) {
             case (?max) { if (action.cumulativeInputSpent >= max) {
-                logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " skipped: cumulative input limit reached (" # Nat.toText(action.cumulativeInputSpent) # " >= " # Nat.toText(max) # ")", null, []);
+                let reason = "Cumulative input limit reached (" # Nat.toText(action.cumulativeInputSpent) # "/" # Nat.toText(max) # ")";
+                logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " skipped: " # reason, null, []);
+                ignore appendTradeLog({
+                    choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                    actionType = action.actionType;
+                    inputToken = action.inputToken; outputToken = action.outputToken;
+                    inputAmount = 0; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Skipped; errorMessage = ?reason;
+                    txId = null; destinationOwner = null;
+                });
                 eventEngine.emitEvent<system>(T.TradingEvent.CumulativeLimitReached, [
                     ("choreId", instanceId), ("actionId", Nat.toText(action.id)),
                     ("limitType", "input"), ("current", Nat.toText(action.cumulativeInputSpent)), ("max", Nat.toText(max)),
@@ -2993,7 +3003,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
         switch (action.maxCumulativeOutput) {
             case (?max) { if (action.cumulativeOutputReceived >= max) {
-                logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " skipped: cumulative output limit reached (" # Nat.toText(action.cumulativeOutputReceived) # " >= " # Nat.toText(max) # ")", null, []);
+                let reason = "Cumulative output limit reached (" # Nat.toText(action.cumulativeOutputReceived) # "/" # Nat.toText(max) # ")";
+                logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " skipped: " # reason, null, []);
+                ignore appendTradeLog({
+                    choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                    actionType = action.actionType;
+                    inputToken = action.inputToken; outputToken = action.outputToken;
+                    inputAmount = 0; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Skipped; errorMessage = ?reason;
+                    txId = null; destinationOwner = null;
+                });
                 eventEngine.emitEvent<system>(T.TradingEvent.CumulativeLimitReached, [
                     ("choreId", instanceId), ("actionId", Nat.toText(action.id)),
                     ("limitType", "output"), ("current", Nat.toText(action.cumulativeOutputReceived)), ("max", Nat.toText(max)),
@@ -3004,7 +3024,21 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
         switch (action.maxExecutions) {
             case (?max) { if (action.executionCount >= max) {
-                logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " skipped: execution limit reached (" # Nat.toText(action.executionCount) # " >= " # Nat.toText(max) # ")", null, []);
+                let reason = "Execution limit reached (" # Nat.toText(action.executionCount) # "/" # Nat.toText(max) # ")";
+                logEngine.logInfo(src, "Action " # Nat.toText(action.id) # " skipped: " # reason, null, []);
+                ignore appendTradeLog({
+                    choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId); actionId = ?action.id;
+                    actionType = action.actionType;
+                    inputToken = action.inputToken; outputToken = action.outputToken;
+                    inputAmount = 0; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Skipped; errorMessage = ?reason;
+                    txId = null; destinationOwner = null;
+                });
+                eventEngine.emitEvent<system>(T.TradingEvent.CumulativeLimitReached, [
+                    ("choreId", instanceId), ("actionId", Nat.toText(action.id)),
+                    ("limitType", "executions"), ("current", Nat.toText(action.executionCount)), ("max", Nat.toText(max)),
+                ]);
                 return (false, 0, 0);
             }};
             case null {};
@@ -5706,10 +5740,41 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         _trade_state := setInMap(_trade_state, instanceId, s)
     };
 
+    func _allActionsAtLimits(instanceId: Text, isTradeChore: Bool): Bool {
+        let actions = if (isTradeChore) { getTradeActionsForInstance(instanceId) }
+                      else { getMoveFundsActionsForInstance(instanceId) };
+        if (actions.size() == 0) return false;
+        for (a in actions.vals()) {
+            let inputExhausted = switch (a.maxCumulativeInput) {
+                case (?max) { a.cumulativeInputSpent >= max };
+                case null false;
+            };
+            let outputExhausted = switch (a.maxCumulativeOutput) {
+                case (?max) { a.cumulativeOutputReceived >= max };
+                case null false;
+            };
+            let execsExhausted = switch (a.maxExecutions) {
+                case (?max) { a.executionCount >= max };
+                case null false;
+            };
+            let hasAnyLimit = a.maxCumulativeInput != null or a.maxCumulativeOutput != null or a.maxExecutions != null;
+            if (not hasAnyLimit or not (inputExhausted or outputExhausted or execsExhausted)) return false;
+        };
+        true
+    };
+
     func _trade_makeTaskFn(action: T.ActionConfig, instanceId: Text, isTradeChore: Bool): () -> async BotChoreTypes.TaskAction {
         func(): async BotChoreTypes.TaskAction {
             try {
                 let (executed, inputSpent, outputReceived) = await* executeTradeAction(action, instanceId);
+                if (not executed) {
+                    if (_allActionsAtLimits(instanceId, isTradeChore)) {
+                        let src = "chore:" # instanceId;
+                        logEngine.logInfo(src, "All actions at their cumulative/execution limits — stopping chore", null, []);
+                        eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.ChoreHalted, [("choreId", instanceId), ("reason", "allActionsAtLimits")]);
+                        choreEngine.stop(instanceId);
+                    };
+                };
                 if (executed) {
                     let stats = updateActionStats(instanceId, action.id, isTradeChore, inputSpent, outputReceived);
                     let src = "chore:" # instanceId;
