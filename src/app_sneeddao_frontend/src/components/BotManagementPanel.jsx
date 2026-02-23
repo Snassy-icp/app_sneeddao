@@ -2687,6 +2687,7 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                             theme={theme}
                             accentColor={accent}
                             hasPermission={hasPermission}
+                            choreStatuses={choreStatuses}
                         />
                     )}
                 </div>

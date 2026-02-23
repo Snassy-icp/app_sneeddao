@@ -9,11 +9,13 @@
  * Creates its own actor via botEventIdlFactory so it's independent of bot-specific IDLs.
  *
  * Props:
- *   canisterId       – Principal string of the bot canister
- *   identity         – Current user identity (from useAuth)
- *   theme            – Theme object from ThemeContext
- *   accentColor      – Primary accent color string
- *   hasPermission    – (permKey: string) => boolean
+ *   canisterId            – Principal string of the bot canister
+ *   identity              – Current user identity (from useAuth)
+ *   theme                 – Theme object from ThemeContext
+ *   accentColor           – Primary accent color string
+ *   hasPermission         – (permKey: string) => boolean
+ *   choreStatuses         – (optional) Array of chore status objects for chore dropdown
+ *   tokenRegistryEntries  – (optional) Array of {ledger_id/ledgerCanisterId, symbol, decimals, fee} for TokenSelector subset
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HttpAgent, Actor } from '@dfinity/agent';
@@ -22,6 +24,8 @@ import { botEventIdlFactory } from '../utils/botEventIdl';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
 import ConfirmDialog from './ConfirmDialog';
+import TokenSelector from './TokenSelector';
+import { getTokenMetadataSync } from '../hooks/useTokenCache';
 
 const CONDITION_OPS = [
     { id: 0, label: 'Equals' },
@@ -51,9 +55,9 @@ const ACTION_PARAM_HINTS = {
     203: [{ key: 'token', hint: 'Token ledger canister ID (principal)', required: true }],
     204: [],
     205: [],
-    206: [{ key: 'choreId', hint: 'Chore instance ID', required: true }, { key: 'token', hint: 'Token ledger canister ID', required: true }, { key: 'amount', hint: 'Amount (e8s)', required: true }],
-    207: [{ key: 'choreId', hint: 'Chore instance ID', required: true }, { key: 'token', hint: 'Token ledger canister ID', required: true }, { key: 'amount', hint: 'Amount (e8s)', required: true }],
-    208: [{ key: 'token', hint: 'Token ledger canister ID', required: true }, { key: 'to', hint: 'Destination principal', required: true }, { key: 'amount', hint: 'Amount (e8s)', required: true }],
+    206: [{ key: 'choreId', hint: 'Chore instance ID', required: true }, { key: 'token', hint: 'Token ledger canister ID', required: true }, { key: 'amount', hint: 'Amount in token units', required: true }],
+    207: [{ key: 'choreId', hint: 'Chore instance ID', required: true }, { key: 'token', hint: 'Token ledger canister ID', required: true }, { key: 'amount', hint: 'Amount in token units', required: true }],
+    208: [{ key: 'token', hint: 'Token ledger canister ID', required: true }, { key: 'to', hint: 'Destination principal', required: true }, { key: 'amount', hint: 'Amount in token units', required: true }],
 };
 
 const EVENT_DATA_KEYS = {
@@ -125,7 +129,7 @@ function shortPrincipal(p) {
     return s.length > 20 ? s.slice(0, 8) + '…' + s.slice(-6) : s;
 }
 
-export default function BotEventPanel({ canisterId, identity, theme, accentColor, hasPermission }) {
+export default function BotEventPanel({ canisterId, identity, theme, accentColor, hasPermission, choreStatuses, tokenRegistryEntries }) {
     const { principalNames, principalNicknames } = useNaming();
     const accent = accentColor;
     const canManage = hasPermission('ManageEvents');
@@ -139,6 +143,29 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
         const agent = HttpAgent.createSync({ identity, host: 'https://icp-api.io' });
         return Actor.createActor(botEventIdlFactory, { agent, canisterId });
     }, [canisterId, identity]);
+
+    // Cache of event type names per source bot canister ID: { [canisterId]: [{id, name}] }
+    const sourceEventTypeCache = useRef({});
+    const [reactionEventTypes, setReactionEventTypes] = useState([]);
+
+    const fetchEventTypesForSource = useCallback(async (sourceBotId) => {
+        if (!sourceBotId) { setReactionEventTypes([]); return; }
+        const pid = typeof sourceBotId === 'string' ? sourceBotId : sourceBotId?.toText?.() || String(sourceBotId);
+        if (sourceEventTypeCache.current[pid]) {
+            setReactionEventTypes(sourceEventTypeCache.current[pid]);
+            return;
+        }
+        try {
+            const agent = HttpAgent.createSync({ identity, host: 'https://icp-api.io' });
+            const sourceActor = Actor.createActor(botEventIdlFactory, { agent, canisterId: pid });
+            const types = await sourceActor.getEventTypes();
+            const mapped = types.map(([id, name]) => ({ id: Number(id), name }));
+            sourceEventTypeCache.current[pid] = mapped;
+            setReactionEventTypes(mapped);
+        } catch {
+            setReactionEventTypes([]);
+        }
+    }, [identity]);
 
     // ==========================================
     // SOURCE SIDE STATE
@@ -393,19 +420,36 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
 
     const openReactionForm = (rule = null) => {
         if (rule) {
+            const subId = String(Number(rule.subscriptionId));
+            const sub = subscriptions.find(s => Number(s.id) === Number(subId));
+            if (sub) fetchEventTypesForSource(sub.sourceBotCanisterId);
+
+            const params = rule.actionParams.map(([k, v]) => ({ key: k, value: v }));
+            const tokenParam = params.find(p => p.key === 'token');
+            if (tokenParam) {
+                const decimals = getTokenDecimals(tokenParam.value);
+                const amountParam = params.find(p => p.key === 'amount');
+                if (amountParam && amountParam.value) {
+                    try {
+                        amountParam.value = String(Number(amountParam.value) / Math.pow(10, decimals));
+                    } catch {}
+                }
+            }
+
             setEditingReactionId(Number(rule.id));
             setReactionForm({
                 name: rule.name,
                 enabled: rule.enabled,
-                subscriptionId: String(Number(rule.subscriptionId)),
+                subscriptionId: subId,
                 eventTypeId: String(Number(rule.eventTypeId)),
                 reactionActionId: String(Number(rule.reactionActionId)),
-                actionParams: rule.actionParams.map(([k, v]) => ({ key: k, value: v })),
+                actionParams: params,
                 conditions: rule.conditions.map(c => ({ dataKey: c.dataKey, operator: String(Number(c.operator)), value: c.value })),
                 cooldownSeconds: rule.cooldownSeconds.length > 0 ? String(Number(rule.cooldownSeconds[0])) : '',
             });
         } else {
             setEditingReactionId(null);
+            setReactionEventTypes([]);
             setReactionForm({
                 name: '', enabled: true, subscriptionId: '', eventTypeId: '',
                 reactionActionId: '', actionParams: [], conditions: [], cooldownSeconds: '',
@@ -418,13 +462,26 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
         setSavingReaction(true);
         setListenerError('');
         try {
+            const convertedParams = reactionForm.actionParams.map(p => {
+                if (p.key === 'amount') {
+                    const tokenParam = reactionForm.actionParams.find(pp => pp.key === 'token');
+                    const decimals = getTokenDecimals(tokenParam?.value);
+                    const humanVal = parseFloat(p.value);
+                    if (!isNaN(humanVal)) {
+                        const raw = Math.round(humanVal * Math.pow(10, decimals));
+                        return [p.key, String(raw)];
+                    }
+                }
+                return [p.key, p.value];
+            });
+
             const input = {
                 name: reactionForm.name,
                 enabled: reactionForm.enabled,
                 subscriptionId: BigInt(reactionForm.subscriptionId),
                 eventTypeId: BigInt(reactionForm.eventTypeId),
                 reactionActionId: BigInt(reactionForm.reactionActionId),
-                actionParams: reactionForm.actionParams.map(p => [p.key, p.value]),
+                actionParams: convertedParams,
                 conditions: reactionForm.conditions.map(c => ({
                     dataKey: c.dataKey,
                     operator: BigInt(c.operator),
@@ -448,7 +505,7 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
         } finally {
             setSavingReaction(false);
         }
-    }, [getActor, reactionForm, editingReactionId, loadListenerData]);
+    }, [getActor, reactionForm, editingReactionId, loadListenerData, getTokenDecimals]);
 
     const removeReaction = useCallback(async (id) => {
         setRemovingReaction(id);
@@ -469,6 +526,36 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
     // ==========================================
     // HELPERS
     // ==========================================
+    const getTokenDecimals = useCallback((tokenCanisterId) => {
+        if (!tokenCanisterId) return 8;
+        if (tokenRegistryEntries) {
+            const entry = tokenRegistryEntries.find(t =>
+                t.ledgerCanisterId === tokenCanisterId || t.canisterId === tokenCanisterId
+            );
+            if (entry && entry.decimals !== undefined) return Number(entry.decimals);
+        }
+        try {
+            const meta = getTokenMetadataSync(tokenCanisterId);
+            if (meta?.decimals !== undefined) return Number(meta.decimals);
+        } catch {}
+        return 8;
+    }, [tokenRegistryEntries]);
+
+    const getTokenSymbol = useCallback((tokenCanisterId) => {
+        if (!tokenCanisterId) return null;
+        if (tokenRegistryEntries) {
+            const entry = tokenRegistryEntries.find(t =>
+                t.ledgerCanisterId === tokenCanisterId || t.canisterId === tokenCanisterId
+            );
+            if (entry?.symbol) return entry.symbol;
+        }
+        try {
+            const meta = getTokenMetadataSync(tokenCanisterId);
+            if (meta?.symbol) return meta.symbol;
+        } catch {}
+        return null;
+    }, [tokenRegistryEntries]);
+
     const eventTypeName = (id) => {
         const et = eventTypes.find(t => t.id === Number(id));
         return et ? et.name : `Event #${id}`;
@@ -754,15 +841,19 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                                 <td style={cellStyle}>{principalDisplay(s.sourceBotCanisterId)}</td>
                                                 <td style={cellStyle}>
                                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                                        {s.eventTypeIds.map(id => (
-                                                            <span key={Number(id)} style={{
-                                                                fontSize: '0.7rem', padding: '1px 6px', borderRadius: '4px',
-                                                                background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`,
-                                                                fontFamily: 'monospace',
-                                                            }}>
-                                                                #{Number(id)}
-                                                            </span>
-                                                        ))}
+                                                        {s.eventTypeIds.map(id => {
+                                                            const pid = typeof s.sourceBotCanisterId === 'string' ? s.sourceBotCanisterId : s.sourceBotCanisterId?.toText?.() || String(s.sourceBotCanisterId);
+                                                            const cached = sourceEventTypeCache.current[pid];
+                                                            const et = cached?.find(t => t.id === Number(id));
+                                                            return (
+                                                                <span key={Number(id)} style={{
+                                                                    fontSize: '0.7rem', padding: '1px 6px', borderRadius: '4px',
+                                                                    background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`,
+                                                                }}>
+                                                                    {et ? et.name : `#${Number(id)}`}
+                                                                </span>
+                                                            );
+                                                        })}
                                                     </div>
                                                 </td>
                                                 <td style={{ ...cellStyle, textAlign: 'center', fontFamily: 'monospace' }}>
@@ -996,9 +1087,18 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                             placeholder="e.g. Dissolve on CB trigger" />
                                     </div>
                                     <div>
-                                        <label style={labelStyle}>Subscription ID</label>
+                                        <label style={labelStyle}>Subscription</label>
                                         <select style={inputStyle} value={reactionForm.subscriptionId}
-                                            onChange={e => setReactionForm(f => ({ ...f, subscriptionId: e.target.value }))}>
+                                            onChange={e => {
+                                                const subId = e.target.value;
+                                                setReactionForm(f => ({ ...f, subscriptionId: subId, eventTypeId: '' }));
+                                                if (subId) {
+                                                    const sub = subscriptions.find(s => Number(s.id) === Number(subId));
+                                                    if (sub) fetchEventTypesForSource(sub.sourceBotCanisterId);
+                                                } else {
+                                                    setReactionEventTypes([]);
+                                                }
+                                            }}>
                                             <option value="">Select subscription...</option>
                                             {subscriptions.map(s => (
                                                 <option key={Number(s.id)} value={Number(s.id)}>
@@ -1008,10 +1108,26 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                         </select>
                                     </div>
                                     <div>
-                                        <label style={labelStyle}>Event Type ID</label>
-                                        <input style={inputStyle} value={reactionForm.eventTypeId}
-                                            onChange={e => setReactionForm(f => ({ ...f, eventTypeId: e.target.value }))}
-                                            placeholder="e.g. 210" />
+                                        <label style={labelStyle}>Event Type</label>
+                                        {(() => {
+                                            const selectedSub = reactionForm.subscriptionId
+                                                ? subscriptions.find(s => Number(s.id) === Number(reactionForm.subscriptionId))
+                                                : null;
+                                            const subEventIds = selectedSub
+                                                ? selectedSub.eventTypeIds.map(id => Number(id))
+                                                : [];
+                                            const filteredTypes = reactionEventTypes.filter(t => subEventIds.includes(t.id));
+                                            return (
+                                                <select style={inputStyle} value={reactionForm.eventTypeId}
+                                                    onChange={e => setReactionForm(f => ({ ...f, eventTypeId: e.target.value }))}
+                                                    disabled={!reactionForm.subscriptionId}>
+                                                    <option value="">{reactionForm.subscriptionId ? 'Select event type...' : 'Select a subscription first'}</option>
+                                                    {filteredTypes.map(t => (
+                                                        <option key={t.id} value={t.id}>{t.name}</option>
+                                                    ))}
+                                                </select>
+                                            );
+                                        })()}
                                     </div>
                                     <div>
                                         <label style={labelStyle}>Reaction Action</label>
@@ -1061,22 +1177,81 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                     {reactionForm.actionParams.map((p, i) => {
                                         const hints = ACTION_PARAM_HINTS[Number(reactionForm.reactionActionId)] || [];
                                         const hint = hints.find(h => h.key === p.key);
+                                        const isKnownParam = !!hint;
+                                        const updateParamValue = (val) => {
+                                            const params = [...reactionForm.actionParams];
+                                            params[i] = { ...params[i], value: val };
+                                            setReactionForm(f => ({ ...f, actionParams: params }));
+                                        };
+
+                                        let valueInput;
+                                        if (p.key === 'choreId' && choreStatuses && choreStatuses.length > 0) {
+                                            valueInput = (
+                                                <select style={{ ...inputStyle, fontSize: '0.78rem' }} value={p.value}
+                                                    onChange={e => updateParamValue(e.target.value)}>
+                                                    <option value="">Select chore...</option>
+                                                    {choreStatuses.map(cs => {
+                                                        const cId = cs.choreId || cs.id || '';
+                                                        const cName = cs.choreName || cs.name || cId;
+                                                        return (
+                                                            <option key={String(cId)} value={String(cId)}>
+                                                                {cName} ({cId})
+                                                            </option>
+                                                        );
+                                                    })}
+                                                </select>
+                                            );
+                                        } else if (p.key === 'token') {
+                                            valueInput = (
+                                                <TokenSelector
+                                                    value={p.value}
+                                                    onChange={(canId) => updateParamValue(canId)}
+                                                    tokenSubset={tokenRegistryEntries || undefined}
+                                                />
+                                            );
+                                        } else if (p.key === 'amount') {
+                                            const tokenParam = reactionForm.actionParams.find(pp => pp.key === 'token');
+                                            const tokenSymbol = getTokenSymbol(tokenParam?.value);
+                                            valueInput = (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }}>
+                                                    <input style={{ ...inputStyle, fontSize: '0.78rem' }} type="number" step="any" min="0"
+                                                        value={p.value}
+                                                        placeholder="0.00"
+                                                        onChange={e => updateParamValue(e.target.value)} />
+                                                    {tokenSymbol && (
+                                                        <span style={{ fontSize: '0.72rem', color: theme.colors.secondaryText, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                                            {tokenSymbol}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            );
+                                        } else {
+                                            valueInput = (
+                                                <input style={{ ...inputStyle, fontSize: '0.78rem' }} value={p.value}
+                                                    placeholder={hint ? hint.hint : 'Value'}
+                                                    onChange={e => updateParamValue(e.target.value)} />
+                                            );
+                                        }
+
                                         return (
                                             <div key={i} style={{ marginBottom: '4px' }}>
-                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '6px' }}>
-                                                    <input style={{ ...inputStyle, fontSize: '0.78rem' }} value={p.key} placeholder="Key"
-                                                        onChange={e => {
-                                                            const params = [...reactionForm.actionParams];
-                                                            params[i] = { ...params[i], key: e.target.value };
-                                                            setReactionForm(f => ({ ...f, actionParams: params }));
-                                                        }} />
-                                                    <input style={{ ...inputStyle, fontSize: '0.78rem' }} value={p.value}
-                                                        placeholder={hint ? hint.hint : 'Value'}
-                                                        onChange={e => {
-                                                            const params = [...reactionForm.actionParams];
-                                                            params[i] = { ...params[i], value: e.target.value };
-                                                            setReactionForm(f => ({ ...f, actionParams: params }));
-                                                        }} />
+                                                <div style={{ display: 'grid', gridTemplateColumns: isKnownParam ? 'auto 1fr auto' : '1fr 1fr auto', gap: '6px', alignItems: 'center' }}>
+                                                    {isKnownParam ? (
+                                                        <span style={{
+                                                            fontSize: '0.75rem', fontWeight: 600, color: theme.colors.secondaryText,
+                                                            fontFamily: 'monospace', padding: '0 4px', whiteSpace: 'nowrap',
+                                                        }}>
+                                                            {p.key}
+                                                        </span>
+                                                    ) : (
+                                                        <input style={{ ...inputStyle, fontSize: '0.78rem' }} value={p.key} placeholder="Key"
+                                                            onChange={e => {
+                                                                const params = [...reactionForm.actionParams];
+                                                                params[i] = { ...params[i], key: e.target.value };
+                                                                setReactionForm(f => ({ ...f, actionParams: params }));
+                                                            }} />
+                                                    )}
+                                                    {valueInput}
                                                     <button style={{ ...btnDanger, fontSize: '0.72rem', padding: '2px 8px' }}
                                                         onClick={() => setReactionForm(f => ({ ...f, actionParams: f.actionParams.filter((_, j) => j !== i) }))}>
                                                         ×
@@ -1135,7 +1310,9 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                 <div style={{ marginBottom: '14px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                                         <label style={{ ...labelStyle, marginBottom: 0 }}>Conditions (all must match)</label>
-                                        <button style={{ ...btnSecondary, fontSize: '0.72rem', padding: '2px 8px' }}
+                                        <button style={{ ...btnSecondary, fontSize: '0.72rem', padding: '2px 8px', ...(reactionForm.eventTypeId === '' ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
+                                            disabled={reactionForm.eventTypeId === ''}
+                                            title={reactionForm.eventTypeId === '' ? 'Select an event type first' : ''}
                                             onClick={() => setReactionForm(f => ({ ...f, conditions: [...f.conditions, { dataKey: '', operator: '0', value: '' }] }))}>
                                             + Add
                                         </button>

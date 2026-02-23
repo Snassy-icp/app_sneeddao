@@ -7299,6 +7299,7 @@ function IcpNeuronManager() {
                                 theme={theme}
                                 accentColor={neuronPrimary}
                                 hasPermission={hasPermission}
+                                choreStatuses={choreStatuses}
                             />
                         )}
 
