@@ -8451,6 +8451,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         eventEngine.unregisterListener(caller, listenerId)
     };
 
+    public shared ({ caller }) func updateEventListenerTypes(listenerId: Nat, newEventTypeIds: [Nat]): async { #Ok; #Err: Text } {
+        eventEngine.updateListenerEventTypes(caller, listenerId, newEventTypeIds)
+    };
+
     public shared query ({ caller }) func getEventListeners(): async [BotEventTypes.EventListenerRegistration] {
         assertPermission(caller, T.TradingPermission.ViewEvents);
         eventEngine.getListeners()
@@ -8494,6 +8498,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     public shared ({ caller }) func removeEventSubscription(id: Nat): async () {
         assertPermission(caller, T.TradingPermission.ManageEvents);
         await eventEngine.removeSubscription(id);
+    };
+
+    public shared ({ caller }) func updateEventSubscription(id: Nat, newEventTypeIds: [Nat]): async { #Ok; #Err: Text } {
+        assertPermission(caller, T.TradingPermission.ManageEvents);
+        await eventEngine.updateSubscription(id, newEventTypeIds)
     };
 
     public shared query ({ caller }) func getEventSubscriptions(): async [BotEventTypes.EventSubscription] {

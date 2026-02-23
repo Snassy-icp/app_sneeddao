@@ -232,6 +232,11 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
     const [savingReaction, setSavingReaction] = useState(false);
     const [removingReaction, setRemovingReaction] = useState(null);
     const [removingSub, setRemovingSub] = useState(null);
+    const [editingSubId, setEditingSubId] = useState(null);
+    const [editSubEventTypes, setEditSubEventTypes] = useState(null);
+    const [editSubAvailable, setEditSubAvailable] = useState(null);
+    const [editSubLoading, setEditSubLoading] = useState(false);
+    const [savingSub, setSavingSub] = useState(false);
 
     // ==========================================
     // STYLES
@@ -437,6 +442,52 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
             setRemovingSub(null);
         }
     }, [getActor, loadListenerData]);
+
+    const startEditSubscription = useCallback(async (sub) => {
+        const subId = Number(sub.id);
+        if (editingSubId === subId) { setEditingSubId(null); return; }
+        setEditingSubId(subId);
+        setEditSubEventTypes(new Set(sub.eventTypeIds.map(id => Number(id))));
+        setEditSubAvailable(null);
+        setEditSubLoading(true);
+        try {
+            const pid = typeof sub.sourceBotCanisterId === 'string' ? sub.sourceBotCanisterId : sub.sourceBotCanisterId?.toText?.() || String(sub.sourceBotCanisterId);
+            if (sourceEventTypeCache.current[pid]) {
+                setEditSubAvailable(sourceEventTypeCache.current[pid]);
+            } else {
+                const agent = HttpAgent.createSync({ identity, host: 'https://icp-api.io' });
+                const sourceActor = Actor.createActor(botEventIdlFactory, { agent, canisterId: pid });
+                const types = await sourceActor.getEventTypes();
+                const mapped = types.map(([id, name]) => ({ id: Number(id), name }));
+                sourceEventTypeCache.current[pid] = mapped;
+                setEditSubAvailable(mapped);
+            }
+        } catch {
+            setEditSubAvailable([]);
+        } finally {
+            setEditSubLoading(false);
+        }
+    }, [editingSubId, identity]);
+
+    const saveSubscription = useCallback(async () => {
+        if (editingSubId == null || !editSubEventTypes || editSubEventTypes.size === 0) return;
+        setSavingSub(true);
+        setListenerError('');
+        try {
+            const actor = await getActor();
+            const ids = Array.from(editSubEventTypes).map(n => BigInt(n));
+            const result = await actor.updateEventSubscription(BigInt(editingSubId), ids);
+            if (result && 'Err' in result) throw new Error(result.Err);
+            setListenerSuccess('Subscription updated');
+            setTimeout(() => setListenerSuccess(''), 3000);
+            setEditingSubId(null);
+            await loadListenerData(true);
+        } catch (e) {
+            setListenerError(e.message || String(e));
+        } finally {
+            setSavingSub(false);
+        }
+    }, [getActor, editingSubId, editSubEventTypes, loadListenerData]);
 
     const getTokenDecimals = useCallback((tokenCanisterId) => {
         if (!tokenCanisterId) return 8;
@@ -852,49 +903,120 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {subscriptions.map(s => (
-                                            <tr key={Number(s.id)}>
-                                                <td style={{ ...cellStyle, fontFamily: 'monospace', width: '40px' }}>{Number(s.id)}</td>
-                                                <td style={cellStyle}>{principalDisplay(s.sourceBotCanisterId)}</td>
-                                                <td style={cellStyle}>
-                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                                        {s.eventTypeIds.map(id => {
-                                                            const pid = typeof s.sourceBotCanisterId === 'string' ? s.sourceBotCanisterId : s.sourceBotCanisterId?.toText?.() || String(s.sourceBotCanisterId);
-                                                            const cached = sourceEventTypeCache.current[pid];
-                                                            const et = cached?.find(t => t.id === Number(id));
-                                                            return (
-                                                                <span key={Number(id)} style={{
-                                                                    fontSize: '0.7rem', padding: '1px 6px', borderRadius: '4px',
-                                                                    background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`,
-                                                                }}>
-                                                                    {et ? et.name : `#${Number(id)}`}
-                                                                </span>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </td>
-                                                <td style={{ ...cellStyle, textAlign: 'center', fontFamily: 'monospace' }}>
-                                                    {s.registrationId.length > 0 ? Number(s.registrationId[0]) : '—'}
-                                                </td>
-                                                <td style={{ ...cellStyle, textAlign: 'center' }}>
-                                                    <span style={{
-                                                        fontSize: '0.7rem', fontWeight: 600, padding: '1px 8px', borderRadius: '10px',
-                                                        background: s.enabled ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.12)',
-                                                        color: s.enabled ? (theme.colors.success || '#22c55e') : (theme.colors.error || '#ef4444'),
-                                                    }}>
-                                                        {s.enabled ? 'Active' : 'Disabled'}
-                                                    </span>
-                                                </td>
-                                                {canManage && (
-                                                    <td style={{ ...cellStyle, textAlign: 'center' }}>
-                                                        <button style={btnDanger} onClick={() => removeSubscription(Number(s.id))}
-                                                            disabled={removingSub === Number(s.id)}>
-                                                            {removingSub === Number(s.id) ? '...' : 'Remove'}
-                                                        </button>
-                                                    </td>
-                                                )}
-                                            </tr>
-                                        ))}
+                                        {subscriptions.map(s => {
+                                            const sid = Number(s.id);
+                                            const isEditing = editingSubId === sid;
+                                            return (
+                                                <React.Fragment key={sid}>
+                                                    <tr>
+                                                        <td style={{ ...cellStyle, fontFamily: 'monospace', width: '40px' }}>{sid}</td>
+                                                        <td style={cellStyle}>{principalDisplay(s.sourceBotCanisterId)}</td>
+                                                        <td style={cellStyle}>
+                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                                                {s.eventTypeIds.map(id => {
+                                                                    const pid = typeof s.sourceBotCanisterId === 'string' ? s.sourceBotCanisterId : s.sourceBotCanisterId?.toText?.() || String(s.sourceBotCanisterId);
+                                                                    const cached = sourceEventTypeCache.current[pid];
+                                                                    const et = cached?.find(t => t.id === Number(id));
+                                                                    return (
+                                                                        <span key={Number(id)} style={{
+                                                                            fontSize: '0.7rem', padding: '1px 6px', borderRadius: '4px',
+                                                                            background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`,
+                                                                        }}>
+                                                                            {et ? et.name : `#${Number(id)}`}
+                                                                        </span>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </td>
+                                                        <td style={{ ...cellStyle, textAlign: 'center', fontFamily: 'monospace' }}>
+                                                            {s.registrationId.length > 0 ? Number(s.registrationId[0]) : '—'}
+                                                        </td>
+                                                        <td style={{ ...cellStyle, textAlign: 'center' }}>
+                                                            <span style={{
+                                                                fontSize: '0.7rem', fontWeight: 600, padding: '1px 8px', borderRadius: '10px',
+                                                                background: s.enabled ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.12)',
+                                                                color: s.enabled ? (theme.colors.success || '#22c55e') : (theme.colors.error || '#ef4444'),
+                                                            }}>
+                                                                {s.enabled ? 'Active' : 'Disabled'}
+                                                            </span>
+                                                        </td>
+                                                        {canManage && (
+                                                            <td style={{ ...cellStyle, textAlign: 'center' }}>
+                                                                <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                                                                    <button style={btnSecondary} onClick={() => startEditSubscription(s)}>
+                                                                        {isEditing ? 'Close' : 'Edit'}
+                                                                    </button>
+                                                                    <button style={btnDanger} onClick={() => removeSubscription(sid)}
+                                                                        disabled={removingSub === sid}>
+                                                                        {removingSub === sid ? '...' : 'Remove'}
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        )}
+                                                    </tr>
+                                                    {isEditing && (
+                                                        <tr>
+                                                            <td colSpan={canManage ? 6 : 5} style={{ padding: '10px 14px', background: `${accent}06`, borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: theme.colors.primaryText, marginBottom: '8px' }}>
+                                                                    Edit Subscribed Event Types
+                                                                </div>
+                                                                {editSubLoading && (
+                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', padding: '8px' }}>Loading event types...</div>
+                                                                )}
+                                                                {editSubAvailable && !editSubLoading && (
+                                                                    <>
+                                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                                                            <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>
+                                                                                {editSubEventTypes?.size || 0} of {editSubAvailable.length} selected
+                                                                            </span>
+                                                                            <div style={{ display: 'flex', gap: '6px' }}>
+                                                                                <button style={{ ...btnSecondary, fontSize: '0.7rem', padding: '2px 8px' }}
+                                                                                    onClick={() => setEditSubEventTypes(new Set(editSubAvailable.map(t => t.id)))}>All</button>
+                                                                                <button style={{ ...btnSecondary, fontSize: '0.7rem', padding: '2px 8px' }}
+                                                                                    onClick={() => setEditSubEventTypes(new Set())}>None</button>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div style={{
+                                                                            display: 'flex', flexWrap: 'wrap', gap: '4px',
+                                                                            padding: '8px', background: theme.colors.secondaryBg, borderRadius: '8px',
+                                                                            border: `1px solid ${theme.colors.border}`, maxHeight: '200px', overflowY: 'auto',
+                                                                        }}>
+                                                                            {editSubAvailable.map(t => {
+                                                                                const checked = editSubEventTypes?.has(t.id);
+                                                                                return (
+                                                                                    <label key={t.id} style={{
+                                                                                        display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
+                                                                                        fontSize: '0.78rem', color: theme.colors.primaryText, padding: '4px 8px',
+                                                                                        borderRadius: '4px', background: checked ? `${accent}15` : 'transparent',
+                                                                                        border: `1px solid ${checked ? accent : 'transparent'}`,
+                                                                                        minWidth: '140px',
+                                                                                    }}>
+                                                                                        <input type="checkbox" checked={checked}
+                                                                                            onChange={() => {
+                                                                                                const next = new Set(editSubEventTypes);
+                                                                                                if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
+                                                                                                setEditSubEventTypes(next);
+                                                                                            }} />
+                                                                                        {t.name}
+                                                                                    </label>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                        <div style={{ display: 'flex', gap: '8px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                                                                            <button style={btnSecondary} onClick={() => setEditingSubId(null)}>Cancel</button>
+                                                                            <button style={btnStyle} onClick={saveSubscription}
+                                                                                disabled={savingSub || !editSubEventTypes || editSubEventTypes.size === 0}>
+                                                                                {savingSub ? 'Saving...' : 'Save Changes'}
+                                                                            </button>
+                                                                        </div>
+                                                                    </>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </React.Fragment>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>

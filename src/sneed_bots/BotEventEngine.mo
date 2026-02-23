@@ -39,6 +39,7 @@ module {
     type SourceBotActor = actor {
         registerEventListener: shared (BotEventTypes.RegisterListenerRequest) -> async { #Ok: Nat; #Err: Text };
         unregisterEventListener: shared (Nat) -> async ();
+        updateEventListenerTypes: shared (Nat, [Nat]) -> async { #Ok; #Err: Text };
     };
 
     public class Engine(config: BotEventTypes.EngineConfig) {
@@ -223,6 +224,38 @@ module {
                 }
             );
             srcState.setListeners(updated);
+        };
+
+        /// Update the event type IDs for an existing listener registration.
+        public func updateListenerEventTypes(
+            callerPrincipal: Principal,
+            listenerId: Nat,
+            newEventTypeIds: [Nat]
+        ): { #Ok; #Err: Text } {
+            if (newEventTypeIds.size() == 0) {
+                return #Err("No event types specified");
+            };
+            if (not Principal.equal(callerPrincipal, selfPrincipal) and
+                not hasPermissionForAllEvents(callerPrincipal, newEventTypeIds)) {
+                return #Err("Insufficient permissions for requested event types");
+            };
+            let listeners = srcState.getListeners();
+            var found = false;
+            let updated = Array.map<BotEventTypes.EventListenerRegistration, BotEventTypes.EventListenerRegistration>(
+                listeners,
+                func(reg: BotEventTypes.EventListenerRegistration): BotEventTypes.EventListenerRegistration {
+                    if (reg.id == listenerId and (
+                        Principal.equal(reg.listenerCanisterId, callerPrincipal) or
+                        Principal.isController(callerPrincipal)
+                    )) {
+                        found := true;
+                        { id = reg.id; listenerCanisterId = reg.listenerCanisterId; eventTypeIds = newEventTypeIds; registeredAt = reg.registeredAt; enabled = reg.enabled }
+                    } else { reg }
+                }
+            );
+            if (not found) return #Err("Listener registration not found");
+            srcState.setListeners(updated);
+            #Ok
         };
 
         /// Get all registered listeners.
@@ -443,6 +476,61 @@ module {
                 func(s: BotEventTypes.EventSubscription): Bool { s.id != subId }
             );
             lsnState.setSubscriptions(updated);
+        };
+
+        /// Update the event type IDs for an existing subscription.
+        /// Re-registers with the source bot using the new event types.
+        public func updateSubscription(subId: Nat, newEventTypeIds: [Nat]): async { #Ok; #Err: Text } {
+            if (newEventTypeIds.size() == 0) {
+                return #Err("No event types specified");
+            };
+
+            let subs = lsnState.getSubscriptions();
+            var targetSub: ?BotEventTypes.EventSubscription = null;
+            for (sub in subs.vals()) {
+                if (sub.id == subId) { targetSub := ?sub };
+            };
+
+            switch (targetSub) {
+                case (?sub) {
+                    switch (sub.registrationId) {
+                        case (?regId) {
+                            if (Principal.equal(sub.sourceBotCanisterId, selfPrincipal)) {
+                                let result = updateListenerEventTypes(selfPrincipal, regId, newEventTypeIds);
+                                switch (result) {
+                                    case (#Err(msg)) { return #Err("Self-update failed: " # msg) };
+                                    case (#Ok) {};
+                                };
+                            } else {
+                                try {
+                                    let sourceBot: SourceBotActor = actor(Principal.toText(sub.sourceBotCanisterId));
+                                    let result = await sourceBot.updateEventListenerTypes(regId, newEventTypeIds);
+                                    switch (result) {
+                                        case (#Err(msg)) { return #Err("Source bot rejected update: " # msg) };
+                                        case (#Ok) {};
+                                    };
+                                } catch (e) {
+                                    return #Err("Failed to update on source bot: " # Error.message(e));
+                                };
+                            };
+                        };
+                        case null {};
+                    };
+
+                    let updated = Array.map<BotEventTypes.EventSubscription, BotEventTypes.EventSubscription>(
+                        subs,
+                        func(s: BotEventTypes.EventSubscription): BotEventTypes.EventSubscription {
+                            if (s.id == subId) {
+                                { id = s.id; sourceBotCanisterId = s.sourceBotCanisterId; eventTypeIds = newEventTypeIds; registrationId = s.registrationId; enabled = s.enabled; createdAt = s.createdAt }
+                            } else { s }
+                        }
+                    );
+                    lsnState.setSubscriptions(updated);
+                    emitLog("Info", "Subscription updated: " # Nat.toText(subId), []);
+                    #Ok
+                };
+                case null { #Err("Subscription not found") };
+            }
         };
 
         /// Get all subscriptions.

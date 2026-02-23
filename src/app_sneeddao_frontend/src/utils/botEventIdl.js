@@ -122,6 +122,7 @@ export const botEventIdlFactory = ({ IDL: _IDL }) => {
         // Source side
         registerEventListener: IDL.Func([RegisterListenerRequest], [OkNat], []),
         unregisterEventListener: IDL.Func([IDL.Nat], [], []),
+        updateEventListenerTypes: IDL.Func([IDL.Nat, IDL.Vec(IDL.Nat)], [OkUnit], []),
         getEventListeners: IDL.Func([], [IDL.Vec(EventListenerRegistration)], ['query']),
         setEventEmissionEnabled: IDL.Func([IDL.Bool], [], []),
         getEventLog: IDL.Func([EventLogQuery], [EventLogResult], ['query']),
@@ -130,6 +131,7 @@ export const botEventIdlFactory = ({ IDL: _IDL }) => {
         // Listener side
         addEventSubscription: IDL.Func([IDL.Principal, IDL.Vec(IDL.Nat)], [OkNat], []),
         removeEventSubscription: IDL.Func([IDL.Nat], [], []),
+        updateEventSubscription: IDL.Func([IDL.Nat, IDL.Vec(IDL.Nat)], [OkUnit], []),
         getEventSubscriptions: IDL.Func([], [IDL.Vec(EventSubscription)], ['query']),
         addEventReaction: IDL.Func([EventReactionRuleInput], [IDL.Nat], []),
         updateEventReaction: IDL.Func([IDL.Nat, EventReactionRuleInput], [], []),
