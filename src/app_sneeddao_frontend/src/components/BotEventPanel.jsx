@@ -184,7 +184,19 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
 
     // Cache of event type names per source bot canister ID: { [canisterId]: [{id, name}] }
     const sourceEventTypeCache = useRef({});
+    const [cacheVersion, setCacheVersion] = useState(0);
     const [reactionEventTypes, setReactionEventTypes] = useState([]);
+
+    const populateCache = useCallback(async (pid) => {
+        if (sourceEventTypeCache.current[pid]) return;
+        try {
+            const agent = HttpAgent.createSync({ identity, host: 'https://icp-api.io' });
+            const sourceActor = Actor.createActor(botEventIdlFactory, { agent, canisterId: pid });
+            const types = await sourceActor.getEventTypes();
+            sourceEventTypeCache.current[pid] = types.map(([id, name]) => ({ id: Number(id), name }));
+            setCacheVersion(v => v + 1);
+        } catch { /* ignore */ }
+    }, [identity]);
 
     const fetchEventTypesForSource = useCallback(async (sourceBotId) => {
         if (!sourceBotId) { setReactionEventTypes([]); return; }
@@ -199,6 +211,7 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
             const types = await sourceActor.getEventTypes();
             const mapped = types.map(([id, name]) => ({ id: Number(id), name }));
             sourceEventTypeCache.current[pid] = mapped;
+            setCacheVersion(v => v + 1);
             setReactionEventTypes(mapped);
         } catch {
             setReactionEventTypes([]);
@@ -358,6 +371,14 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
         if (subTab === 'source') loadSourceData();
         else loadListenerData();
     }, [subTab, loadSourceData, loadListenerData]);
+
+    useEffect(() => {
+        if (subscriptions.length === 0) return;
+        const pids = new Set(subscriptions.map(s =>
+            typeof s.sourceBotCanisterId === 'string' ? s.sourceBotCanisterId : s.sourceBotCanisterId?.toText?.() || String(s.sourceBotCanisterId)
+        ));
+        pids.forEach(pid => populateCache(pid));
+    }, [subscriptions, populateCache]);
 
     // ==========================================
     // SOURCE ACTIONS
