@@ -161,7 +161,8 @@ module {
                 return #Err("No event types specified");
             };
 
-            if (not hasPermissionForAllEvents(callerPrincipal, req.eventTypeIds)) {
+            if (not Principal.equal(callerPrincipal, selfPrincipal) and
+                not hasPermissionForAllEvents(callerPrincipal, req.eventTypeIds)) {
                 return #Err("Insufficient permissions for requested event types");
             };
 
@@ -305,11 +306,11 @@ module {
             };
 
             for (delivery in batch.vals()) {
-                if (not hasPermissionForEvent(delivery.listenerCanisterId, delivery.event.eventTypeId)) {
+                if (Principal.equal(delivery.listenerCanisterId, selfPrincipal)) {
+                    await handleIncomingEventInternal(delivery.event);
+                } else if (not hasPermissionForEvent(delivery.listenerCanisterId, delivery.event.eventTypeId)) {
                     emitLog("Warning", "Skipping delivery: permission revoked for " # Principal.toText(delivery.listenerCanisterId),
                         [("eventTypeId", Nat.toText(delivery.event.eventTypeId))]);
-                } else if (Principal.equal(delivery.listenerCanisterId, selfPrincipal)) {
-                    await handleIncomingEventInternal(delivery.event);
                 } else {
                     try {
                         let listener: ListenerActor = actor(Principal.toText(delivery.listenerCanisterId));
