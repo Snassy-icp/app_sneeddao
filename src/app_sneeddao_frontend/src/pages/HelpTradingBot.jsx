@@ -7,7 +7,8 @@ import {
     FaCogs, FaShieldAlt, FaKey, FaRocket, FaLightbulb, FaQuestionCircle,
     FaCheckCircle, FaExclamationTriangle, FaPlay, FaPause, FaStop,
     FaClipboardList, FaSyncAlt, FaArrowRight, FaPaperPlane, FaCamera,
-    FaUserShield, FaDownload, FaRoute, FaBullseye, FaChartArea
+    FaUserShield, FaDownload, FaRoute, FaBullseye, FaChartArea,
+    FaBell, FaBolt
 } from 'react-icons/fa';
 
 const customAnimations = `
@@ -549,9 +550,12 @@ function HelpTradingBot() {
                         </h4>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}><strong style={styles.strong}>Halt after execution:</strong> Stop the entire chore after this specific action fires once (useful for stop-loss actions)</li>
-                            <li style={styles.listItem}><strong style={styles.strong}>Max cumulative input:</strong> Budget cap — the chore halts when total input spent reaches this limit</li>
-                            <li style={styles.listItem}><strong style={styles.strong}>Max cumulative output:</strong> Output cap — the chore halts when total output received reaches this limit</li>
-                            <li style={styles.listItem}><strong style={styles.strong}>Max executions:</strong> Execution count cap — the chore halts after N successful executions</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Max cumulative input:</strong> Budget cap — the action is skipped once total input spent reaches this limit</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Max cumulative output:</strong> Output cap — the action is skipped once total output received reaches this limit</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Max executions:</strong> Execution count cap — the action is skipped after N successful executions</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Auto-halt:</strong> When <em>all</em> enabled actions in a chore have reached their cumulative limits, the chore is automatically stopped</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Progress display:</strong> The chore summary card shows cumulative progress bars for each action with limits configured (e.g. "42 / 100 ICP spent")</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Reset stats:</strong> Use the "Reset Stats" button on an action card to clear cumulative counters and re-enable a halted chore</li>
                         </ul>
                     </div>
 
@@ -909,6 +913,118 @@ function HelpTradingBot() {
                     </div>
                 </div>
 
+                {/* Inter-Bot Event System */}
+                <div style={styles.section} className="trading-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#a855f7')}>
+                            <FaBell size={20} color="#a855f7" />
+                        </div>
+                        <h2 style={styles.subheading}>Inter-Bot Event System</h2>
+                    </div>
+                    <p style={styles.paragraph}>
+                        Bots can communicate with each other through a loosely-coupled <strong style={styles.strong}>event system</strong>.
+                        A bot emits events at key operational points (trades, circuit breaker triggers, neuron operations, etc.),
+                        and other bots — or the same bot — can listen and react automatically.
+                    </p>
+
+                    <div style={styles.diagramBox}>
+                        <div style={styles.diagramItem}>
+                            <div style={{ color: '#a855f7', fontWeight: 'bold' }}>Source Bot (emits events)</div>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>Trades, CB triggers, distributions, etc.</div>
+                        </div>
+                        <div style={styles.diagramArrow}>
+                            <div style={{ fontSize: '0.8rem' }}>delivers events</div>
+                            <div style={{ fontSize: '1.5rem' }}>&#8595;</div>
+                        </div>
+                        <div style={styles.diagramItem}>
+                            <div style={{ color: '#a855f7', fontWeight: 'bold' }}>Listener Bot (reacts)</div>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>Reaction rules &#8594; automatic actions</div>
+                        </div>
+                    </div>
+
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaBell size={14} color="#a855f7" />
+                            Key Concepts
+                        </h4>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}><strong style={styles.strong}>Event Types:</strong> Each bot defines event types it can emit (e.g. TradeExecuted, RebalanceSkipped, CircuitBreakerTriggered). Each event carries key-value data tags.</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Subscriptions:</strong> Subscribe your bot to events from another bot (or from itself). You choose which specific event types to listen for.</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Reaction Rules:</strong> Define what your bot should do when an event arrives — conditions to check, an action to execute, and an optional cooldown period.</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Self-Events:</strong> A bot can listen to its own events. When it does, delivery is optimized — no inter-canister call is made.</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Permission-Gated:</strong> Listeners need appropriate Botkey permissions on the source bot to register for events. Permissions are also re-checked at delivery time.</li>
+                        </ul>
+                    </div>
+
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaBolt size={14} color="#f59e0b" />
+                            Available Reaction Actions
+                        </h4>
+                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>
+                            When an event matches a reaction rule, the <strong style={styles.strong}>listener bot</strong> executes one of these actions on itself:
+                        </p>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}><strong style={styles.strong}>Start / Stop / Pause / Resume / Trigger Chore</strong> — control any chore on the listener bot</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Stop All Chores</strong> — emergency halt of all listener bot activity</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Pause / Freeze / Unfreeze Token</strong> — control token trading status (trading bot)</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Enable / Disable Circuit Breakers</strong> — toggle CB evaluation (trading bot)</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Fund Purse / Reclaim From Purse</strong> — move tokens between purses (trading bot)</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Manual Send</strong> — send tokens to an external account (trading bot)</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Start / Stop Dissolving</strong> — control neuron dissolving (staking bot)</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Disburse / Stake / Refresh</strong> — neuron management actions (staking bot)</li>
+                        </ul>
+                    </div>
+
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaCogs size={14} color={tradingPrimary} />
+                            Reaction Rule Configuration
+                        </h4>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}><strong style={styles.strong}>Subscription:</strong> Which source bot subscription the rule applies to</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Event Type:</strong> Which specific event type triggers this rule</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Conditions:</strong> Optional conditions on the event's data (e.g. only trigger if choreId equals "my-dca" or if limitType equals "input"). Supported operators: equals, not-equals, contains, greater-than, less-than.</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Action &amp; Parameters:</strong> Which action to execute and its parameters (e.g. choreId to stop, token to freeze)</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Cooldown:</strong> Minimum seconds between consecutive triggers of this rule</li>
+                        </ul>
+                    </div>
+
+                    <div style={styles.tipBox}>
+                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem', fontSize: '0.85rem' }}>
+                            <strong style={styles.strong}>Example — Stop on Skip:</strong> Subscribe your trading bot to its own events.
+                            Add a reaction rule: "When RebalanceSkipped occurs for choreId = my-rebalancer, execute StopChore on my-rebalancer."
+                            Now if the rebalancer skips (e.g. all targets are within tolerance), it automatically stops itself.
+                        </p>
+                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem', fontSize: '0.85rem' }}>
+                            <strong style={styles.strong}>Example — Cross-Bot Orchestration:</strong> Give your staking bot's principal a
+                            ViewPortfolio botkey on your trading bot. Subscribe the staking bot to CircuitBreakerTriggered events
+                            from the trading bot. Add a reaction: "When CB fires, start dissolving all neurons." Now a market crash
+                            detected by the trading bot automatically triggers the staking bot to prepare ICP for withdrawal.
+                        </p>
+                        <p style={{ ...styles.paragraph, marginBottom: 0, fontSize: '0.85rem' }}>
+                            <strong style={styles.strong}>Example — Auto-Distribute Inflows:</strong> Subscribe your trading bot to
+                            DistributionExecuted events from the staking bot. Add a reaction: "When distribution arrives,
+                            trigger my distribute-funds chore." Incoming ICP from staking rewards is automatically routed
+                            to the right purses.
+                        </p>
+                    </div>
+
+                    <div style={styles.infoBox}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaClipboardList size={14} color={theme.colors.accent} />
+                            Events Tab in the Bot Card
+                        </h4>
+                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>
+                            The Events tab has two sub-tabs:
+                        </p>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}><strong style={styles.strong}>Source (Outgoing):</strong> See registered listeners, event types this bot emits, and the emitted event log. Toggle event emission on/off.</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Listener (Incoming):</strong> Manage subscriptions to other bots' events, configure reaction rules, and view the reaction log showing when rules triggered and whether actions succeeded.</li>
+                        </ul>
+                    </div>
+                </div>
+
                 {/* Controllers & Botkeys */}
                 <div style={styles.section} className="trading-help-fade-in">
                     <div style={styles.sectionHeader}>
@@ -943,6 +1059,7 @@ function HelpTradingBot() {
                         </p>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}><strong style={styles.strong}>View Chores / View Logs / View Portfolio:</strong> Read-only access to monitor the bot</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>View Events / Manage Events:</strong> View or fully manage the event system (subscriptions, reaction rules, logs)</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Manage Trades / Manage Rebalancer:</strong> Configure trade actions and rebalance targets</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Manage Chores:</strong> Start, stop, pause, resume, or trigger specific chore types</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Manage Token Registry / DEX Settings:</strong> Add tokens and configure DEX parameters</li>
@@ -991,18 +1108,32 @@ function HelpTradingBot() {
                     <div style={styles.featureCard}>
                         <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>Trade Log</h4>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
-                            <li style={styles.listItem}>Every trade, fund purse, reclaim, send, detected inflow, and detected outflow is recorded</li>
-                            <li style={styles.listItem}>Includes: tokens, amounts, price, price impact, slippage, DEX used, status, error messages</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Every</strong> trade attempt, skip, and failure is recorded — nothing is silent</li>
+                            <li style={styles.listItem}>Three statuses: <strong style={styles.strong}>Success</strong> (executed), <strong style={styles.strong}>Skipped</strong> (condition not met), <strong style={styles.strong}>Failed</strong> (execution error)</li>
+                            <li style={styles.listItem}>Skipped entries include the reason: cumulative limit reached, frequency limit, purse locked, token frozen, balance/price out of range, trailing stop not triggered, no viable route, and more</li>
+                            <li style={styles.listItem}>Includes: tokens, amounts, price, price impact, slippage, DEX used, error messages</li>
                             <li style={styles.listItem}>Filterable by chore, action type, token pair, status, and time range</li>
                             <li style={styles.listItem}>Live swap progress cards show real-time status of in-flight trades</li>
                         </ul>
                     </div>
 
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaBell size={14} color="#a855f7" />
+                            Event Logs
+                        </h4>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}><strong style={styles.strong}>Emitted Event Log:</strong> A capped circular buffer (500 entries) of events this bot has emitted, viewable in the Events tab under Source</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Reaction Log:</strong> A capped circular buffer (500 entries) of reaction rules that fired, including whether the action succeeded or failed, viewable under Listener</li>
+                        </ul>
+                    </div>
+
                     <div style={styles.tipBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0, fontSize: '0.85rem' }}>
-                            <strong style={styles.strong}>Debugging Tip:</strong> If a trade isn't executing as expected, check the activity logs
-                            at Info level — the bot now logs detailed skip reasons (balance too low, price out of range,
-                            trailing stop not triggered, etc.) so you can see exactly why an action was skipped.
+                            <strong style={styles.strong}>Debugging Tip:</strong> If a trade isn't executing as expected, check the trade log
+                            for Skipped entries — every skip now includes a human-readable reason (balance too low, price out of range,
+                            cumulative limit reached, trailing stop not triggered, etc.) so you can see exactly why an action was skipped.
+                            For deeper investigation, check the activity log at Info or Debug level.
                         </p>
                     </div>
                 </div>
@@ -1049,6 +1180,14 @@ function HelpTradingBot() {
                         safety system that can pause, stop, or start chores — it orchestrates which chores are active.
                         Use trailing stops for automated sell/buy decisions and circuit breakers for risk management and cross-chore orchestration
                         (e.g. stop a rebalancer and start an exit strategy chore against the same purse).
+                    </p>
+
+                    <h4 style={styles.subsubheading}>Can my bots react to each other's events?</h4>
+                    <p style={styles.paragraph}>
+                        Yes! The inter-bot event system lets any bot subscribe to events from any other bot (or itself). You
+                        configure reaction rules that define what to do when specific events arrive. For example, your staking bot
+                        can start dissolving neurons when your trading bot's circuit breaker fires. The listener bot always executes
+                        actions on itself — a source bot never controls a listener directly.
                     </p>
 
                     <h4 style={styles.subsubheading}>Is my configuration preserved during upgrades?</h4>

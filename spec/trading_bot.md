@@ -39,6 +39,8 @@ The Trading Bot uses the shared base permissions (0–99) plus its own bot-speci
 | 2   | `#ViewChores`            | View chore statuses |
 | 3   | `#ViewLogs`              | Read log entries |
 | 4   | `#ManageLogs`            | Set log level, clear logs |
+| 5   | `#ManageEvents`          | Full control over event system: manage listeners, subscriptions, reaction rules |
+| 6   | `#ViewEvents`            | View event listeners, subscriptions, reaction rules, and event logs |
 | 200 | `#ViewPortfolio`         | View balances, purses, portfolio state |
 | 202 | `#ManageTrades`          | Configure trade chore actions (add/edit/remove trades) |
 | 203 | `#ManageRebalancer`      | Configure rebalancer targets and parameters |
@@ -448,9 +450,11 @@ Actions support post-execution behavior flags that can automatically stop the pa
 - **`maxCumulativeOutput`**: When the action's `cumulativeOutputReceived` reaches this threshold, the chore is stopped. Use case: "Buy until I have 1 BTC."
 - **`maxExecutions`**: When the action's `executionCount` reaches this threshold, the chore is stopped. Use case: "Execute at most 50 trades."
 
-Pre-checks at the start of `executeTradeAction` skip the action entirely if its cumulative limits are already met, preventing wasted work.
+Pre-checks at the start of `executeTradeAction` skip the action entirely if its cumulative limits are already met, preventing wasted work. Skipped-due-to-limit entries are recorded in the trade log with a `#Skipped` status.
 
 After each successful execution, `updateActionStats` atomically updates `lastExecutedAt`, `cumulativeInputSpent`, `cumulativeOutputReceived`, and `executionCount`. The chore conductor then checks all halt/limit conditions and stops the chore if any are triggered.
+
+Additionally, after all actions in a chore run have been processed, the conductor calls `_allActionsAtLimits` to check whether **every** enabled action in the chore has reached at least one of its cumulative limits. If so, the chore is automatically stopped and a `ChoreHalted` event is emitted. This prevents indefinite scheduling of a chore that can no longer make progress.
 
 `resetActionStats` API allows resetting cumulative stats for a specific action to re-enable a halted chore.
 
@@ -491,9 +495,15 @@ When a Trade Chore instance fires:
 
 ### Trade Log
 
-All trade attempts are logged, including skipped trades. The trade log supports page-based pagination via `getTradeLog(query)` with page/pageSize parameters.
+**Every** trade attempt, skip, and failure is logged to the trade log — nothing is silent. The trade log supports page-based pagination via `getTradeLog(query)` with page/pageSize parameters.
 
-Skipped trades are logged with a `#Skipped` status and a reason (e.g., "Price impact 30% exceeds max 3%").
+Entries use three statuses:
+
+- **`#Success`**: The action executed successfully. Includes trade amounts, DEX used, prices, and detected inflows/outflows.
+- **`#Skipped`**: The action was skipped due to an unmet condition. Includes a human-readable reason (e.g., "Price impact 30% exceeds max 3%", "Cumulative input limit reached", "Purse locked", "Token frozen").
+- **`#Failed`**: The action attempted execution but failed. Includes the error message (e.g., swap execution error, transfer failure, internal error).
+
+This comprehensive logging covers all paths: cumulative limit skips, frequency limit skips, purse lock skips, token pause/freeze skips, balance/price condition skips, trailing stop non-triggers, no-route failures, swap failures, send failures, rebalancer skips, and unexpected exceptions in catch blocks.
 
 ### Frequency Warnings
 
@@ -752,6 +762,23 @@ var chorePurseBalances: [(Text, [(Text, Nat)])]           // instanceId → [(ba
 var purseSnapshots: [(Text, PortfolioSnapshot)]           // (purseId, snapshot) pairs
 var purseSnapshotNextId: Nat
 var purseSnapshotMaxEntries: Nat
+
+// Event System — Source side
+var eventListenerRegistrations: [BotEventTypes.EventListenerRegistration]
+var eventListenerNextId: Nat
+var eventEmissionEnabled: Bool
+var eventLog: [BotEventTypes.BotEvent]
+var eventLogNextId: Nat
+var eventLogMaxEntries: Nat                               // Default: 500
+
+// Event System — Listener side
+var eventSubscriptions: [BotEventTypes.EventSubscription]
+var eventSubscriptionNextId: Nat
+var eventReactionRules: [BotEventTypes.EventReactionRule]
+var eventReactionNextId: Nat
+var eventReactionLog: [BotEventTypes.EventReactionLogEntry]
+var eventReactionLogNextId: Nat
+var eventReactionLogMaxEntries: Nat                       // Default: 500
 ```
 
 ---
@@ -888,6 +915,31 @@ getLogs(filter: LogFilter) : async LogResult
 getLogConfig() : async LogConfig
 setLogLevel(level: LogLevel) : async ()
 clearLogs() : async ()
+```
+
+### Event System (shared pattern)
+```motoko
+// Source side
+registerEventListener(req: RegisterListenerRequest) : async { #Ok: Nat; #Err: Text }
+unregisterEventListener(listenerId: Nat) : async ()
+updateEventListenerTypes(listenerId: Nat, newEventTypeIds: [Nat]) : async { #Ok; #Err: Text }
+getEventListeners() : async [EventListenerRegistration]
+setEventEmissionEnabled(enabled: Bool) : async ()
+getEventLog(query: EventLogQuery) : async EventLogResult
+getEventTypes() : async [(Nat, Text)]
+
+// Listener side
+addEventSubscription(sourceBotId: Principal, eventTypeIds: [Nat]) : async { #Ok: Nat; #Err: Text }
+removeEventSubscription(id: Nat) : async ()
+updateEventSubscription(id: Nat, newEventTypeIds: [Nat]) : async { #Ok; #Err: Text }
+getEventSubscriptions() : async [EventSubscription]
+addEventReaction(input: EventReactionRuleInput) : async Nat
+updateEventReaction(id: Nat, input: EventReactionRuleInput) : async ()
+removeEventReaction(id: Nat) : async ()
+getEventReactions() : async [EventReactionRule]
+getEventReactionLog(query: EventReactionLogQuery) : async EventReactionLogResult
+getAvailableReactionActions() : async [(Nat, Text)]
+onBotEvent(event: BotEvent) : async { #Ok; #Err: Text }
 ```
 
 ---
@@ -1551,6 +1603,7 @@ Listener side:
 ```motoko
 registerEventListener(req: RegisterListenerRequest) : async { #Ok: Nat; #Err: Text }
 unregisterEventListener(listenerId: Nat) : async ()
+updateEventListenerTypes(listenerId: Nat, newEventTypeIds: [Nat]) : async { #Ok; #Err: Text }
 getEventListeners() : async [EventListenerRegistration]
 setEventEmissionEnabled(enabled: Bool) : async ()
 getEventLog(query: EventLogQuery) : async EventLogResult
@@ -1562,6 +1615,7 @@ getEventTypes() : async [(Nat, Text)]   // List all event types this bot emits
 ```motoko
 addEventSubscription(sourceBotId: Principal, eventTypeIds: [Nat]) : async { #Ok: Nat; #Err: Text }
 removeEventSubscription(id: Nat) : async ()
+updateEventSubscription(id: Nat, newEventTypeIds: [Nat]) : async { #Ok; #Err: Text }
 getEventSubscriptions() : async [EventSubscription]
 addEventReaction(input: EventReactionRuleInput) : async Nat
 updateEventReaction(id: Nat, input: EventReactionRuleInput) : async ()
