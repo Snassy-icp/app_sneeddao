@@ -126,6 +126,7 @@ const PERMISSION_LABELS = {
     'ManagePurses': 'Manage Purses',
     'ManageEvents': 'Manage Events',
     'ViewEvents': 'View Events',
+    'ExecuteOneOffTrade': 'Execute Quick Trades',
 };
 
 const PERMISSION_DESCRIPTIONS = {
@@ -151,6 +152,7 @@ const PERMISSION_DESCRIPTIONS = {
     'ManagePurses': 'Enable/disable chore purses, fund and reclaim operations',
     'ManageEvents': 'Configure event subscriptions, reaction rules, and emission settings',
     'ViewEvents': 'View event types, listeners, subscriptions, and logs',
+    'ExecuteOneOffTrade': 'Submit, view, and cancel one-off quick trades',
 };
 
 // Chore types that support multiple instances
@@ -11068,6 +11070,308 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
 }
 
 // ============================================
+// Quick Trade Panel — One-off trade submission and queue
+// ============================================
+const ONE_OFF_STATUS = { 0: 'Pending', 1: 'Processing', 2: 'Completed', 3: 'Failed', 4: 'Cancelled' };
+const ONE_OFF_STATUS_COLORS = { 0: '#f59e0b', 1: '#3b82f6', 2: '#10b981', 3: '#ef4444', 4: '#6b7280' };
+
+function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identity, tokenRegistry }) {
+    const { theme } = useTheme();
+    const [inputToken, setInputToken] = useState('');
+    const [outputToken, setOutputToken] = useState('');
+    const [inputAmount, setInputAmount] = useState('');
+    const [minOutputAmount, setMinOutputAmount] = useState('');
+    const [slippageBps, setSlippageBps] = useState('');
+    const [maxImpactBps, setMaxImpactBps] = useState('');
+    const [preferredDex, setPreferredDex] = useState('auto');
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [queue, setQueue] = useState([]);
+    const [loadingQueue, setLoadingQueue] = useState(false);
+    const [expanded, setExpanded] = useState(true);
+    const actorRef = useRef(null);
+    const pollRef = useRef(null);
+
+    const getActor = useCallback(async () => {
+        if (actorRef.current) return actorRef.current;
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
+        const agent = HttpAgent.createSync({ identity, host });
+        if (isLocal) await agent.fetchRootKey();
+        actorRef.current = createBotActorFn(canisterId, { agent });
+        return actorRef.current;
+    }, [canisterId, identity, createBotActorFn]);
+
+    useEffect(() => { actorRef.current = null; }, [identity, canisterId]);
+
+    const tokenSubset = useMemo(() => {
+        if (!tokenRegistry || tokenRegistry.length === 0) return undefined;
+        return tokenRegistry.map(t => ({
+            ledger_id: t.ledgerCanisterId?.toText?.() ?? String(t.ledgerCanisterId),
+            symbol: t.symbol,
+            decimals: Number(t.decimals),
+            fee: Number(t.fee),
+        }));
+    }, [tokenRegistry]);
+
+    const getTokenDecimals = useCallback((tokenPrincipal) => {
+        if (!tokenRegistry || !tokenPrincipal) return 8;
+        const entry = tokenRegistry.find(t => {
+            const id = t.ledgerCanisterId?.toText?.() ?? String(t.ledgerCanisterId);
+            return id === tokenPrincipal;
+        });
+        return entry ? Number(entry.decimals) : 8;
+    }, [tokenRegistry]);
+
+    const getTokenSymbol = useCallback((tokenPrincipal) => {
+        if (!tokenRegistry || !tokenPrincipal) return '???';
+        const entry = tokenRegistry.find(t => {
+            const id = t.ledgerCanisterId?.toText?.() ?? String(t.ledgerCanisterId);
+            return id === tokenPrincipal;
+        });
+        return entry ? entry.symbol : '???';
+    }, [tokenRegistry]);
+
+    const loadQueue = useCallback(async () => {
+        try {
+            const bot = await getActor();
+            const q = await bot.getOneOffTradeQueue();
+            setQueue(q);
+        } catch (_) {}
+    }, [getActor]);
+
+    useEffect(() => {
+        loadQueue();
+        return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    }, [loadQueue]);
+
+    useEffect(() => {
+        const hasActive = queue.some(e => Number(e.status) <= 1);
+        if (hasActive) {
+            if (!pollRef.current) {
+                pollRef.current = setInterval(loadQueue, 4000);
+            }
+        } else {
+            if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+        }
+    }, [queue, loadQueue]);
+
+    const handleSubmit = async () => {
+        setError(''); setSuccess('');
+        if (!inputToken || !outputToken) { setError('Select both input and output tokens'); return; }
+        if (inputToken === outputToken) { setError('Input and output tokens must be different'); return; }
+        const inDec = getTokenDecimals(inputToken);
+        const rawAmount = parseTokenAmount(inputAmount, inDec);
+        if (!rawAmount || rawAmount === '0') { setError('Enter a valid input amount'); return; }
+
+        setSubmitting(true);
+        try {
+            const bot = await getActor();
+            const input = {
+                inputToken: Principal.fromText(inputToken),
+                outputToken: Principal.fromText(outputToken),
+                inputAmount: BigInt(rawAmount),
+                minOutputAmount: minOutputAmount ? [BigInt(parseTokenAmount(minOutputAmount, getTokenDecimals(outputToken)))] : [],
+                maxSlippageBps: slippageBps ? [BigInt(slippageBps)] : [],
+                maxPriceImpactBps: maxImpactBps ? [BigInt(maxImpactBps)] : [],
+                preferredDex: preferredDex === 'auto' ? [] : [BigInt(preferredDex)],
+            };
+            const result = await bot.submitOneOffTrade(input);
+            if ('Ok' in result) {
+                setSuccess(`Trade #${result.Ok} submitted`);
+                setInputAmount(''); setMinOutputAmount('');
+                await loadQueue();
+            } else {
+                setError(result.Err);
+            }
+        } catch (e) {
+            setError(e.message || 'Failed to submit trade');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleCancel = async (id) => {
+        try {
+            const bot = await getActor();
+            const result = await bot.cancelOneOffTrade(BigInt(id));
+            if ('Err' in result) { setError(result.Err); }
+            await loadQueue();
+        } catch (e) { setError(e.message); }
+    };
+
+    const handleClearHistory = async () => {
+        try {
+            const bot = await getActor();
+            await bot.clearOneOffTradeHistory();
+            await loadQueue();
+        } catch (e) { setError(e.message); }
+    };
+
+    const cardStyle = {
+        background: theme.colors.cardGradient,
+        borderRadius: '12px',
+        border: `1px solid ${theme.colors.border}`,
+        padding: '16px 20px',
+        marginBottom: '16px',
+    };
+
+    const inputStyle = {
+        background: theme.colors.secondaryBg,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '8px',
+        padding: '8px 12px',
+        color: theme.colors.primaryText,
+        fontSize: '0.85rem',
+        width: '100%',
+        boxSizing: 'border-box',
+        outline: 'none',
+    };
+
+    const btnStyle = {
+        background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_SECONDARY})`,
+        color: '#fff',
+        border: 'none',
+        borderRadius: '8px',
+        padding: '10px 20px',
+        cursor: submitting ? 'not-allowed' : 'pointer',
+        fontWeight: 600,
+        fontSize: '0.85rem',
+        opacity: submitting ? 0.6 : 1,
+    };
+
+    const completedOrFailed = queue.filter(e => Number(e.status) >= 2);
+    const pendingOrProcessing = queue.filter(e => Number(e.status) <= 1);
+
+    return (
+        <div style={cardStyle}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: expanded ? '14px' : 0 }}
+                onClick={() => setExpanded(v => !v)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <FaExchangeAlt size={14} color={ACCENT} />
+                    <span style={{ fontWeight: 600, color: theme.colors.primaryText, fontSize: '0.95rem' }}>Quick Trade</span>
+                    {pendingOrProcessing.length > 0 && (
+                        <span style={{ background: ACCENT, color: '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '0.7rem', fontWeight: 700 }}>
+                            {pendingOrProcessing.length}
+                        </span>
+                    )}
+                </div>
+                {expanded ? <FaChevronUp size={12} color={theme.colors.mutedText} /> : <FaChevronDown size={12} color={theme.colors.mutedText} />}
+            </div>
+
+            {expanded && (
+                <div>
+                    {/* Form */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                        <div>
+                            <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px', display: 'block' }}>Input Token</label>
+                            <TokenSelector value={inputToken} onChange={setInputToken} tokenSubset={tokenSubset} excludeTokens={outputToken ? [outputToken] : []} disabled={submitting} />
+                        </div>
+                        <div>
+                            <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px', display: 'block' }}>Output Token</label>
+                            <TokenSelector value={outputToken} onChange={setOutputToken} tokenSubset={tokenSubset} excludeTokens={inputToken ? [inputToken] : []} disabled={submitting} />
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                        <div>
+                            <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px', display: 'block' }}>Input Amount</label>
+                            <input type="text" value={inputAmount} onChange={e => setInputAmount(e.target.value)} placeholder={`0.00 ${getTokenSymbol(inputToken)}`} style={inputStyle} disabled={submitting} />
+                        </div>
+                        <div>
+                            <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px', display: 'block' }}>Min Output (optional)</label>
+                            <input type="text" value={minOutputAmount} onChange={e => setMinOutputAmount(e.target.value)} placeholder={`0.00 ${getTokenSymbol(outputToken)}`} style={inputStyle} disabled={submitting} />
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '14px' }}>
+                        <div>
+                            <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px', display: 'block' }}>Slippage (bps)</label>
+                            <input type="number" value={slippageBps} onChange={e => setSlippageBps(e.target.value)} placeholder="Default" style={inputStyle} disabled={submitting} />
+                        </div>
+                        <div>
+                            <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px', display: 'block' }}>Max Impact (bps)</label>
+                            <input type="number" value={maxImpactBps} onChange={e => setMaxImpactBps(e.target.value)} placeholder="Default" style={inputStyle} disabled={submitting} />
+                        </div>
+                        <div>
+                            <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px', display: 'block' }}>DEX</label>
+                            <select value={preferredDex} onChange={e => setPreferredDex(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }} disabled={submitting}>
+                                <option value="auto">Auto (best quote)</option>
+                                <option value="0">ICPSwap</option>
+                                <option value="1">KongSwap</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                        <button onClick={handleSubmit} disabled={submitting} style={btnStyle}>
+                            {submitting ? 'Submitting...' : 'Submit Trade'}
+                        </button>
+                        {error && <span style={{ color: '#ef4444', fontSize: '0.8rem' }}>{error}</span>}
+                        {success && <span style={{ color: ACCENT, fontSize: '0.8rem' }}>{success}</span>}
+                    </div>
+
+                    {/* Queue display */}
+                    {queue.length > 0 && (
+                        <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: '12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: theme.colors.primaryText }}>Trade Queue</span>
+                                {completedOrFailed.length > 0 && (
+                                    <button onClick={handleClearHistory} style={{ background: 'none', border: 'none', color: theme.colors.mutedText, cursor: 'pointer', fontSize: '0.72rem', textDecoration: 'underline' }}>
+                                        Clear history
+                                    </button>
+                                )}
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                {queue.slice().reverse().map(entry => {
+                                    const status = Number(entry.status);
+                                    const inDec = getTokenDecimals(entry.inputToken?.toText?.() ?? String(entry.inputToken));
+                                    const outDec = getTokenDecimals(entry.outputToken?.toText?.() ?? String(entry.outputToken));
+                                    const inSym = getTokenSymbol(entry.inputToken?.toText?.() ?? String(entry.inputToken));
+                                    const outSym = getTokenSymbol(entry.outputToken?.toText?.() ?? String(entry.outputToken));
+                                    const inAmt = formatTokenAmount(entry.inputAmount, inDec);
+                                    const outAmt = entry.outputAmount?.length > 0 ? formatTokenAmount(entry.outputAmount[0], outDec) : null;
+                                    const dexLabel = entry.dexUsed?.length > 0 ? DEX_LABELS[Number(entry.dexUsed[0])] : null;
+                                    const errMsg = entry.errorMessage?.length > 0 ? entry.errorMessage[0] : null;
+
+                                    return (
+                                        <div key={Number(entry.id)} style={{
+                                            background: theme.colors.secondaryBg,
+                                            borderRadius: '8px',
+                                            padding: '8px 12px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '10px',
+                                            fontSize: '0.8rem',
+                                        }}>
+                                            <span style={{ color: ONE_OFF_STATUS_COLORS[status], fontWeight: 600, minWidth: '72px' }}>
+                                                {status === 1 && <span className="swap-pulse">&#9679; </span>}
+                                                {ONE_OFF_STATUS[status]}
+                                            </span>
+                                            <span style={{ color: theme.colors.primaryText }}>
+                                                {inAmt} {inSym} <FaArrowRight size={9} color={theme.colors.mutedText} style={{ margin: '0 3px', verticalAlign: 'middle' }} /> {outAmt ? `${outAmt} ${outSym}` : outSym}
+                                            </span>
+                                            {dexLabel && <span style={{ color: theme.colors.mutedText, fontSize: '0.72rem' }}>via {dexLabel}</span>}
+                                            {errMsg && <span style={{ color: '#ef4444', fontSize: '0.72rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={errMsg}>{errMsg}</span>}
+                                            {status === 0 && (
+                                                <button onClick={() => handleCancel(Number(entry.id))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px', marginLeft: 'auto' }} title="Cancel">
+                                                    <FaTimes size={11} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ============================================
 // Recovery Panel — Recover stuck ICPSwap pool funds
 // ============================================
 const ICPSWAP_FEE_TIERS = [3000, 500, 10000, 30000];
@@ -11355,6 +11659,7 @@ export default function TradingBot() {
     const [controllers, setControllers] = useState([]);
     const [showWizard, setShowWizard] = useState(false);
     const [hasTokens, setHasTokens] = useState(null);
+    const [tokenRegistry, setTokenRegistry] = useState([]);
     const wizardActorRef = useRef(null);
     const botPanelRef = useRef(null);
 
@@ -11387,6 +11692,7 @@ export default function TradingBot() {
                 const bot = await getWizardBotActor();
                 const registry = bot.getTokenRegistry ? await bot.getTokenRegistry() : [];
                 if (!cancelled) {
+                    setTokenRegistry(registry);
                     const found = registry.length > 0;
                     setHasTokens(found);
                     if (!found) {
@@ -11916,6 +12222,12 @@ export default function TradingBot() {
                             cbEvents={cbEvents}
                             preferredChoreTypeOrder={['rebalance', 'trade', 'move-funds', 'distribute-funds', 'snapshot']}
                             hideLogTab
+                        />
+                        <QuickTradePanel
+                            canisterId={canisterId}
+                            createBotActor={createBotActor}
+                            identity={identity}
+                            tokenRegistry={tokenRegistry}
                         />
                         <TradingBotLogs
                             canisterId={canisterId}

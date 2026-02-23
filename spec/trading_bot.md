@@ -54,6 +54,7 @@ The Trading Bot uses the shared base permissions (0–99) plus its own bot-speci
 | 211 | `#ManageDistributeFunds` | Start/stop/pause/resume/trigger distribute-funds chore |
 | 213 | `#ManageCircuitBreaker`  | Create/update/delete/enable CB rules and global toggle |
 | 214 | `#ManagePurses`          | Enable/disable chore purses; fund and reclaim operations |
+| 215 | `#ExecuteOneOffTrade`    | Submit, view, and cancel one-off trades |
 
 ---
 
@@ -763,6 +764,11 @@ var purseSnapshots: [(Text, PortfolioSnapshot)]           // (purseId, snapshot)
 var purseSnapshotNextId: Nat
 var purseSnapshotMaxEntries: Nat
 
+// One-Off Trades
+var oneOffTradeQueue: [OneOffTradeEntry]
+var oneOffTradeNextId: Nat
+var oneOffTradeMaxEntries: Nat                                // Default: 50
+
 // Event System — Source side
 var eventListenerRegistrations: [BotEventTypes.EventListenerRegistration]
 var eventListenerNextId: Nat
@@ -902,6 +908,14 @@ manualSend(token: Principal, to: Account, amount: Nat, sourcePurseId: ?Text) : a
 setTradingPurseId(instanceId: Text, purseId: ?Text) : async { #Ok; #Err: Text }
 getTradingPurseId(instanceId: Text) : async ?Text            // Raw override (null = no override)
 getResolvedPurseId(instanceId: Text) : async ?Text           // Fully resolved: override > own purse > null (main)
+```
+
+### One-Off Trades
+```motoko
+submitOneOffTrade(input: OneOffTradeInput) : async { #Ok: Nat; #Err: Text }
+getOneOffTradeQueue() : async [OneOffTradeEntry]
+cancelOneOffTrade(id: Nat) : async { #Ok; #Err: Text }
+clearOneOffTradeHistory() : async ()
 ```
 
 ### Trade Log
@@ -1449,6 +1463,8 @@ Event type IDs follow the same range convention as permission IDs. Stored as Nat
 | 252 | `OvercommitDetected` | Main purse overcommitted | token |
 | 260 | `SnapshotTaken` | Portfolio snapshot taken | choreInstanceId |
 | 270 | `CumulativeLimitReached` | Action hit cumulative budget | choreInstanceId, actionId, limitType |
+| 280 | `OneOffTradeExecuted` | One-off trade completed | tradeId, inputToken, outputToken, inputAmount, outputAmount, dexId |
+| 281 | `OneOffTradeFailed`   | One-off trade failed | tradeId, inputToken, outputToken, error |
 
 ### Reaction Action IDs
 
@@ -1648,6 +1664,140 @@ onBotEvent(event: BotEvent) : async { #Ok; #Err: Text }   // Called by source bo
 2. On trading bot: `addEventSubscription(stakingBotPID, [10])` (DistributionExecuted).
 3. On trading bot: `addEventReaction({ subscriptionId, eventTypeId: 10, reactionActionId: 4, actionParams: [("choreId", "distribute-funds-1")], ... })` (TriggerChore).
 4. When staking bot distributes ICP → event 10 emitted → delivered to trading bot → trading bot triggers its distribute-funds chore.
+
+---
+
+## 19. One-Off Trades
+
+### Overview
+
+One-Off Trades allow users to submit ad-hoc token swaps to the bot for immediate execution, without configuring a recurring chore. The trade is placed in a queue, processed by a demand-driven timer (one trade at a time), and follows the same execution pipeline as chore-based trades — including metadata fetch, quote aggregation, pre/post-trade snapshots, and trade logging.
+
+One-off trades always operate from the **main purse** (on-chain balance minus chore purse allocations). They do not participate in the chore purse system, circuit breaker evaluation, or any recurring schedule.
+
+### Permission
+
+| ID  | Variant                | Description |
+|-----|------------------------|-------------|
+| 215 | `#ExecuteOneOffTrade`  | Submit, view, and cancel one-off trades |
+
+### Input Type
+
+```
+OneOffTradeInput = {
+    inputToken: Principal;
+    outputToken: Principal;
+    inputAmount: Nat;
+    minOutputAmount: ?Nat;         // Minimum acceptable output; trade rejected if best quote is below this
+    maxSlippageBps: ?Nat;          // Slippage tolerance; null = use defaultSlippageBps
+    maxPriceImpactBps: ?Nat;       // Price impact limit; null = use defaultMaxPriceImpactBps
+    preferredDex: ?Nat;            // null = auto (quote all enabled DEXes, pick best); 0 = ICPSwap; 1 = KongSwap
+}
+```
+
+### Queue Entry Type
+
+```
+OneOffTradeEntry = {
+    id: Nat;
+    inputToken: Principal;
+    outputToken: Principal;
+    inputAmount: Nat;
+    minOutputAmount: ?Nat;
+    maxSlippageBps: ?Nat;
+    maxPriceImpactBps: ?Nat;
+    preferredDex: ?Nat;
+    submittedBy: Principal;
+    submittedAt: Int;
+    status: Nat;                   // 0=Pending, 1=Processing, 2=Completed, 3=Failed, 4=Cancelled
+    outputAmount: ?Nat;            // Actual output received (set on completion)
+    dexUsed: ?Nat;                 // DEX that executed the trade
+    errorMessage: ?Text;           // Error details (set on failure)
+    completedAt: ?Int;             // Timestamp of completion/failure
+    tradeLogId: ?Nat;              // Reference to the trade log entry
+}
+```
+
+Status values (stored as Nat, not enum):
+
+| Nat | Status     |
+|-----|------------|
+| 0   | Pending    |
+| 1   | Processing |
+| 2   | Completed  |
+| 3   | Failed     |
+| 4   | Cancelled  |
+
+### Stable Variables
+
+```
+var oneOffTradeQueue: [OneOffTradeEntry]     // All entries (pending, processing, completed, failed, cancelled)
+var oneOffTradeNextId: Nat                   // Auto-increment counter
+var oneOffTradeMaxEntries: Nat               // Max entries retained (default: 50); oldest completed/failed are pruned
+```
+
+### Execution Flow
+
+When a trade is submitted via `submitOneOffTrade`:
+
+1. Validate inputs: both tokens must be in the registry, input amount > 0, tokens not paused/frozen.
+2. Check main purse balance is sufficient for the input amount.
+3. Create a `OneOffTradeEntry` with `status = 0` (Pending), append to queue.
+4. If no processing timer is active, start one (2-second delay).
+5. Return the entry ID immediately (the caller does not wait for execution).
+
+The **processing timer** (demand-driven, same pattern as event delivery):
+
+1. Find the first entry with `status = 0` (Pending). If none, stop (no reschedule).
+2. Mark it `status = 1` (Processing).
+3. **Metadata refresh**: Ensure token metadata is cached for both tokens.
+4. **Pre-trade snapshot**: Take a portfolio snapshot of `[inputToken, outputToken]` with phase `#Before`, trigger `"One-off trade {id} pre-swap"`.
+5. **Quote & execute**: Follow the same logic as `executeTradeSwap`:
+   - Get balance, reconcile.
+   - Get quotes (all DEXes or preferred DEX). Apply impact-aware selection.
+   - Check `minOutputAmount`: if best quote's `expectedOutput < minOutputAmount`, fail the trade.
+   - Compute slippage tolerance, execute swap via `executeSwap`.
+6. **Post-trade snapshot**: Take snapshot with phase `#After`, trigger `"One-off trade {id} post-swap"`.
+7. **Update entry**: Set `status = 2` (Completed) or `3` (Failed), fill in `outputAmount`, `dexUsed`, `errorMessage`, `completedAt`, `tradeLogId`.
+8. **Log**: Append to the trade log with `choreId = null`, `choreTypeId = ?"one-off"`, `actionId = ?id`.
+9. **Emit event**: `OneOffTradeExecuted` (280) or `TradeFailed` (202) with appropriate data tags.
+10. **Prune**: If queue size exceeds `oneOffTradeMaxEntries`, remove oldest completed/failed/cancelled entries.
+11. **Reschedule**: If more pending entries exist, set a 2-second timer for the next trade. Otherwise, stop.
+
+### Error Handling
+
+- If any step (metadata fetch, quote, swap) throws, the trade is marked `status = 3` (Failed) with the error message. Processing continues to the next pending trade.
+- Token pause/freeze is checked at submission time and again at execution time (the token may have been paused between submission and execution).
+- Insufficient balance at execution time → trade fails with an explanatory message.
+
+### API
+
+```motoko
+submitOneOffTrade(input: OneOffTradeInput) : async { #Ok: Nat; #Err: Text }
+getOneOffTradeQueue() : async [OneOffTradeEntry]
+cancelOneOffTrade(id: Nat) : async { #Ok; #Err: Text }
+clearOneOffTradeHistory() : async ()
+```
+
+### Event
+
+| ID  | Name                  | Description | Key Data Fields |
+|-----|-----------------------|-------------|-----------------|
+| 280 | `OneOffTradeExecuted` | One-off trade completed | tradeId, inputToken, outputToken, inputAmount, outputAmount, dexId |
+| 281 | `OneOffTradeFailed`   | One-off trade failed | tradeId, inputToken, outputToken, error |
+
+### Frontend
+
+The trading bot page includes a **Quick Trade** panel (visible when the user has `ExecuteOneOffTrade` permission) with:
+
+- **Input token** selector (from token registry)
+- **Output token** selector (from token registry)
+- **Input amount** field (with token decimals formatting)
+- **Min output amount** field (optional)
+- **Slippage tolerance** field (optional, default shown from bot settings)
+- **DEX selector**: Auto (best quote) / ICPSwap / KongSwap
+- **Submit** button
+- **Queue display**: Table/list showing pending, processing, and recent completed/failed trades with status indicators, timestamps, and results.
 
 ---
 

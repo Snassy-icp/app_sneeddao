@@ -39,6 +39,7 @@ export const idlFactory = ({ IDL }) => {
         ManageSnapshotChore: IDL.Null,
         ManageCircuitBreaker: IDL.Null,
         ManagePurses: IDL.Null,
+        ExecuteOneOffTrade: IDL.Null,
     });
 
     const HotkeyPermissionInfo = IDL.Record({
@@ -655,6 +656,38 @@ export const idlFactory = ({ IDL }) => {
     });
 
     // ==========================================
+    // One-Off Trade types
+    // ==========================================
+    const OneOffTradeInput = IDL.Record({
+        inputToken: IDL.Principal,
+        outputToken: IDL.Principal,
+        inputAmount: IDL.Nat,
+        minOutputAmount: IDL.Opt(IDL.Nat),
+        maxSlippageBps: IDL.Opt(IDL.Nat),
+        maxPriceImpactBps: IDL.Opt(IDL.Nat),
+        preferredDex: IDL.Opt(IDL.Nat),
+    });
+
+    const OneOffTradeEntry = IDL.Record({
+        id: IDL.Nat,
+        inputToken: IDL.Principal,
+        outputToken: IDL.Principal,
+        inputAmount: IDL.Nat,
+        minOutputAmount: IDL.Opt(IDL.Nat),
+        maxSlippageBps: IDL.Opt(IDL.Nat),
+        maxPriceImpactBps: IDL.Opt(IDL.Nat),
+        preferredDex: IDL.Opt(IDL.Nat),
+        submittedBy: IDL.Principal,
+        submittedAt: IDL.Int,
+        status: IDL.Nat,
+        outputAmount: IDL.Opt(IDL.Nat),
+        dexUsed: IDL.Opt(IDL.Nat),
+        errorMessage: IDL.Opt(IDL.Text),
+        completedAt: IDL.Opt(IDL.Int),
+        tradeLogId: IDL.Opt(IDL.Nat),
+    });
+
+    // ==========================================
     // Service definition
     // ==========================================
     return IDL.Service({
@@ -839,6 +872,12 @@ export const idlFactory = ({ IDL }) => {
         setTradingPurseId: IDL.Func([IDL.Text, IDL.Opt(IDL.Text)], [PurseResult], []),
         getTradingPurseId: IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], ['query']),
         getResolvedPurseId: IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], ['query']),
+
+        // One-Off Trades
+        submitOneOffTrade: IDL.Func([OneOffTradeInput], [IDL.Variant({ Ok: IDL.Nat, Err: IDL.Text })], []),
+        getOneOffTradeQueue: IDL.Func([], [IDL.Vec(OneOffTradeEntry)], ['query']),
+        cancelOneOffTrade: IDL.Func([IDL.Nat], [IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })], []),
+        clearOneOffTradeHistory: IDL.Func([], [], []),
 
         // Pool recovery
         recoverPoolFunds: IDL.Func([IDL.Principal, IDL.Principal], [IDL.Variant({

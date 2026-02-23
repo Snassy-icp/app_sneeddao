@@ -11,6 +11,7 @@ import Buffer "mo:base/Buffer";
 import Text "mo:base/Text";
 import Debug "mo:base/Debug";
 import Error "mo:base/Error";
+import Timer "mo:base/Timer";
 
 import T "Types";
 import BotkeyPermissions "../BotkeyPermissions";
@@ -156,6 +157,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // Cross-chore purse sharing: maps instanceId → purseId of another chore to trade from
     var choreTradingPurseId: [(Text, Text)] = [];
 
+    // One-Off Trades
+    var oneOffTradeQueue: [T.OneOffTradeEntry] = [];
+    var oneOffTradeNextId: Nat = 1;
+    var oneOffTradeMaxEntries: Nat = 50;
+
     // Event System — Source side (who is listening to this bot)
     var eventListenerRegistrations: [BotEventTypes.EventListenerRegistration] = [];
     var eventListenerNextId: Nat = 1;
@@ -183,6 +189,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     // Circuit Breaker: per-chore abort signal set by CB evaluation
     transient var _cbAbortChore: [(Text, Bool)] = [];
+
+    // One-off trade processing: true while a timer is active
+    transient var _oneOffProcessing: Bool = false;
 
     // Token metadata cache: Principal -> { entry, fetchedAt }
     transient var _tokenMetaCache: [(Principal, T.CachedTokenMeta)] = [];
@@ -325,6 +334,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         (212, #ManageSnapshotChore),
         (213, #ManageCircuitBreaker),
         (214, #ManagePurses),
+        (215, #ExecuteOneOffTrade),
     ];
 
     func permissionVariantToId(perm: T.TradingPermissionType): Nat {
@@ -350,6 +360,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (#ManageSnapshotChore) { 212 };
             case (#ManageCircuitBreaker) { 213 };
             case (#ManagePurses) { 214 };
+            case (#ExecuteOneOffTrade) { 215 };
         }
     };
 
@@ -376,6 +387,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (212) { ?#ManageSnapshotChore };
             case (213) { ?#ManageCircuitBreaker };
             case (214) { ?#ManagePurses };
+            case (215) { ?#ExecuteOneOffTrade };
             case (_)   { null };
         }
     };
@@ -6988,6 +7000,302 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     system func postupgrade() {
         choreEngine.resumeTimers<system>();
+        _restartOneOffQueueIfNeeded<system>();
+    };
+
+    // ============================================
+    // ONE-OFF TRADE QUEUE PROCESSING
+    // ============================================
+
+    func _restartOneOffQueueIfNeeded<system>() {
+        let hasPending = Array.find<T.OneOffTradeEntry>(oneOffTradeQueue, func(e) { e.status == T.OneOffTradeStatus.Pending }) != null;
+        if (hasPending and not _oneOffProcessing) {
+            _scheduleOneOffProcessing<system>();
+        };
+    };
+
+    func _scheduleOneOffProcessing<system>() {
+        if (_oneOffProcessing) return;
+        _oneOffProcessing := true;
+        ignore Timer.setTimer<system>(#seconds 2, func(): async () {
+            await _processNextOneOffTrade<system>();
+        });
+    };
+
+    func _processNextOneOffTrade<system>(): async () {
+        let pendingOpt = Array.find<T.OneOffTradeEntry>(oneOffTradeQueue, func(e) { e.status == T.OneOffTradeStatus.Pending });
+        switch (pendingOpt) {
+            case null {
+                _oneOffProcessing := false;
+                return;
+            };
+            case (?entry) {
+                oneOffTradeQueue := Array.map<T.OneOffTradeEntry, T.OneOffTradeEntry>(oneOffTradeQueue, func(e) {
+                    if (e.id == entry.id) { { e with status = T.OneOffTradeStatus.Processing } } else { e }
+                });
+
+                let result = await* _executeOneOffTrade(entry);
+
+                oneOffTradeQueue := Array.map<T.OneOffTradeEntry, T.OneOffTradeEntry>(oneOffTradeQueue, func(e) {
+                    if (e.id == entry.id) { result } else { e }
+                });
+
+                _pruneOneOffQueue();
+
+                let hasMore = Array.find<T.OneOffTradeEntry>(oneOffTradeQueue, func(e) { e.status == T.OneOffTradeStatus.Pending }) != null;
+                if (hasMore) {
+                    ignore Timer.setTimer<system>(#seconds 2, func(): async () {
+                        await _processNextOneOffTrade<system>();
+                    });
+                } else {
+                    _oneOffProcessing := false;
+                };
+            };
+        };
+    };
+
+    func _pruneOneOffQueue() {
+        if (oneOffTradeQueue.size() <= oneOffTradeMaxEntries) return;
+        let excess = oneOffTradeQueue.size() - oneOffTradeMaxEntries : Nat;
+        var removed: Nat = 0;
+        oneOffTradeQueue := Array.filter<T.OneOffTradeEntry>(oneOffTradeQueue, func(e) {
+            if (removed >= excess) return true;
+            if (e.status == T.OneOffTradeStatus.Completed or e.status == T.OneOffTradeStatus.Failed or e.status == T.OneOffTradeStatus.Cancelled) {
+                removed += 1;
+                false
+            } else { true }
+        });
+    };
+
+    func _executeOneOffTrade(entry: T.OneOffTradeEntry): async* T.OneOffTradeEntry {
+        let src = "one-off:" # Nat.toText(entry.id);
+
+        if (isTokenPausedOrFrozen(entry.inputToken)) {
+            let msg = "Input token " # tokenLabel(entry.inputToken) # " is paused/frozen";
+            logEngine.logWarning(src, msg, null, []);
+            return _failOneOffTrade(entry, msg);
+        };
+        if (isTokenPausedOrFrozen(entry.outputToken)) {
+            let msg = "Output token " # tokenLabel(entry.outputToken) # " is paused/frozen";
+            logEngine.logWarning(src, msg, null, []);
+            return _failOneOffTrade(entry, msg);
+        };
+
+        try {
+            ignore await* getTokenInfoOrFetch(entry.inputToken);
+        } catch (e) {
+            logEngine.logWarning(src, "Metadata fetch failed for input token: " # Error.message(e), null, []);
+        };
+        try {
+            ignore await* getTokenInfoOrFetch(entry.outputToken);
+        } catch (e) {
+            logEngine.logWarning(src, "Metadata fetch failed for output token: " # Error.message(e), null, []);
+        };
+
+        let balance = await* getBalance(entry.inputToken, null);
+        reconcileBalance(entry.inputToken, balance, src);
+        let mainPurse = computeMainPurseBalance(entry.inputToken, balance);
+        let effectiveBal = Nat.min(mainPurse.balance, balance);
+
+        if (effectiveBal < entry.inputAmount) {
+            let msg = "Insufficient main purse balance: " # Nat.toText(effectiveBal) # " < " # Nat.toText(entry.inputAmount);
+            logEngine.logWarning(src, msg, null, []);
+            return _failOneOffTrade(entry, msg);
+        };
+
+        let inputFee = try { (await* getTokenInfoOrFetch(entry.inputToken)).fee } catch (_) { 0 };
+        let maxAffordable = if (effectiveBal > inputFee * 3) { effectiveBal - inputFee * 3 } else { 0 };
+        let actualTradeSize = Nat.min(entry.inputAmount, maxAffordable);
+
+        if (actualTradeSize == 0) {
+            let msg = "Trade size is 0 after fee deduction";
+            logEngine.logWarning(src, msg, null, []);
+            return _failOneOffTrade(entry, msg);
+        };
+
+        // Pre-trade snapshot
+        try {
+            let snaps = await* takeTokenSnapshots([entry.inputToken, entry.outputToken]);
+            let totalIcp = Array.foldLeft<T.TokenSnapshot, Nat>(snaps, 0, func(acc, s) { acc + (switch (s.valueIcpE8s) { case (?v) v; case null 0 }) });
+            let totalUsd = Array.foldLeft<T.TokenSnapshot, Nat>(snaps, 0, func(acc, s) { acc + (switch (s.valueUsdE8s) { case (?v) v; case null 0 }) });
+            ignore appendPortfolioSnapshot({
+                trigger = "One-off trade " # Nat.toText(entry.id) # " pre-swap";
+                tradeLogId = null;
+                phase = #Before;
+                choreId = null;
+                denominationToken = null;
+                totalValueIcpE8s = ?totalIcp;
+                totalValueUsdE8s = ?totalUsd;
+                totalValueDenomE8s = null;
+                tokens = snaps;
+            });
+        } catch (e) {
+            logEngine.logWarning(src, "Pre-trade snapshot failed: " # Error.message(e), null, []);
+        };
+
+        let maxImpact = switch (entry.maxPriceImpactBps) { case (?m) m; case null defaultMaxPriceImpactBps };
+        let slippage = switch (entry.maxSlippageBps) { case (?s) s; case null defaultSlippageBps };
+
+        let quoteOpt: ?T.SwapQuote = switch (entry.preferredDex) {
+            case (?dexId) {
+                if (dexId == T.DexId.ICPSwap) {
+                    await* getICPSwapQuote(entry.inputToken, entry.outputToken, actualTradeSize)
+                } else if (dexId == T.DexId.KongSwap) {
+                    await* getKongQuote(entry.inputToken, entry.outputToken, actualTradeSize)
+                } else { null }
+            };
+            case null {
+                let allQuotes = await* getAllQuotes(entry.inputToken, entry.outputToken, actualTradeSize);
+                var best: ?T.SwapQuote = null;
+                for (q in allQuotes.vals()) {
+                    if (q.priceImpactBps <= maxImpact) {
+                        switch (best) {
+                            case null { best := ?q };
+                            case (?b) { if (q.expectedOutput > b.expectedOutput) { best := ?q } };
+                        };
+                    };
+                };
+                best
+            };
+        };
+
+        switch (quoteOpt) {
+            case null {
+                let msg = "No viable quote from any DEX (impact may exceed max " # Nat.toText(maxImpact) # " bps)";
+                logEngine.logWarning(src, msg, null, []);
+                return _failOneOffTrade(entry, msg);
+            };
+            case (?quote) {
+                if (quote.priceImpactBps > maxImpact) {
+                    let msg = "Price impact " # Nat.toText(quote.priceImpactBps) # " bps exceeds max " # Nat.toText(maxImpact) # " bps";
+                    logEngine.logWarning(src, msg, null, []);
+                    return _failOneOffTrade(entry, msg);
+                };
+
+                switch (entry.minOutputAmount) {
+                    case (?minOut) {
+                        if (quote.expectedOutput < minOut) {
+                            let msg = "Expected output " # Nat.toText(quote.expectedOutput) # " < min output " # Nat.toText(minOut);
+                            logEngine.logWarning(src, msg, null, []);
+                            return _failOneOffTrade(entry, msg);
+                        };
+                    };
+                    case null {};
+                };
+
+                let preSwapLastKnown = balance;
+                setLastKnownBalance(entry.inputToken, if (balance > actualTradeSize) { balance - actualTradeSize } else { 0 });
+
+                let result = await* executeSwap(quote, slippage);
+
+                switch (result) {
+                    case (#Ok(r)) {
+                        logEngine.logInfo(src, "One-off trade executed: " # Nat.toText(actualTradeSize) # " " # tokenLabel(entry.inputToken) # " -> " # Nat.toText(r.amountOut) # " " # tokenLabel(entry.outputToken) # " via DEX " # Nat.toText(quote.dexId), null, []);
+                        let netAmountOut = if (r.amountOut > quote.outputFeesTotal) { r.amountOut - quote.outputFeesTotal } else { 0 };
+                        adjustLastKnownBalance(entry.outputToken, netAmountOut);
+                        let logId = appendTradeLog({
+                            choreId = null; choreTypeId = ?"one-off"; actionId = ?entry.id;
+                            actionType = 0;
+                            inputToken = entry.inputToken; outputToken = ?entry.outputToken;
+                            inputAmount = actualTradeSize; outputAmount = ?r.amountOut;
+                            priceE8s = ?quote.spotPriceE8s; priceImpactBps = ?quote.priceImpactBps;
+                            slippageBps = ?slippage; dexId = ?quote.dexId;
+                            status = #Success; errorMessage = null;
+                            txId = r.txId; destinationOwner = null;
+                        });
+                        eventEngine.emitEvent<system>(T.TradingEvent.OneOffTradeExecuted, [
+                            ("tradeId", Nat.toText(entry.id)),
+                            ("inputToken", Principal.toText(entry.inputToken)),
+                            ("outputToken", Principal.toText(entry.outputToken)),
+                            ("inputAmount", Nat.toText(actualTradeSize)),
+                            ("outputAmount", Nat.toText(r.amountOut)),
+                            ("dexId", Nat.toText(quote.dexId)),
+                        ]);
+
+                        // Post-trade snapshot
+                        try {
+                            let snaps = await* takeTokenSnapshots([entry.inputToken, entry.outputToken]);
+                            let totalIcp = Array.foldLeft<T.TokenSnapshot, Nat>(snaps, 0, func(acc, s) { acc + (switch (s.valueIcpE8s) { case (?v) v; case null 0 }) });
+                            let totalUsd = Array.foldLeft<T.TokenSnapshot, Nat>(snaps, 0, func(acc, s) { acc + (switch (s.valueUsdE8s) { case (?v) v; case null 0 }) });
+                            ignore appendPortfolioSnapshot({
+                                trigger = "One-off trade " # Nat.toText(entry.id) # " post-swap";
+                                tradeLogId = logId;
+                                phase = #After;
+                                choreId = null;
+                                denominationToken = null;
+                                totalValueIcpE8s = ?totalIcp;
+                                totalValueUsdE8s = ?totalUsd;
+                                totalValueDenomE8s = null;
+                                tokens = snaps;
+                            });
+                        } catch (e) {
+                            logEngine.logWarning(src, "Post-trade snapshot failed: " # Error.message(e), null, []);
+                        };
+
+                        { entry with
+                            status = T.OneOffTradeStatus.Completed;
+                            outputAmount = ?r.amountOut;
+                            dexUsed = ?quote.dexId;
+                            errorMessage = null;
+                            completedAt = ?Time.now();
+                            tradeLogId = logId;
+                        }
+                    };
+                    case (#Err(e)) {
+                        let feeLost = quote.inputFeesTotal;
+                        setLastKnownBalance(entry.inputToken, if (preSwapLastKnown > feeLost) { preSwapLastKnown - feeLost } else { 0 });
+                        logEngine.logError(src, "One-off trade failed: " # e, null, []);
+                        let logId = appendTradeLog({
+                            choreId = null; choreTypeId = ?"one-off"; actionId = ?entry.id;
+                            actionType = 0;
+                            inputToken = entry.inputToken; outputToken = ?entry.outputToken;
+                            inputAmount = actualTradeSize; outputAmount = null;
+                            priceE8s = ?quote.spotPriceE8s; priceImpactBps = ?quote.priceImpactBps;
+                            slippageBps = ?slippage; dexId = ?quote.dexId;
+                            status = #Failed; errorMessage = ?e;
+                            txId = null; destinationOwner = null;
+                        });
+                        eventEngine.emitEvent<system>(T.TradingEvent.OneOffTradeFailed, [
+                            ("tradeId", Nat.toText(entry.id)),
+                            ("inputToken", Principal.toText(entry.inputToken)),
+                            ("outputToken", Principal.toText(entry.outputToken)),
+                            ("error", e),
+                        ]);
+                        { entry with
+                            status = T.OneOffTradeStatus.Failed;
+                            outputAmount = null;
+                            dexUsed = ?quote.dexId;
+                            errorMessage = ?e;
+                            completedAt = ?Time.now();
+                            tradeLogId = logId;
+                        }
+                    };
+                };
+            };
+        };
+    };
+
+    func _failOneOffTrade(entry: T.OneOffTradeEntry, msg: Text): T.OneOffTradeEntry {
+        ignore appendTradeLog({
+            choreId = null; choreTypeId = ?"one-off"; actionId = ?entry.id;
+            actionType = 0;
+            inputToken = entry.inputToken; outputToken = ?entry.outputToken;
+            inputAmount = entry.inputAmount; outputAmount = null;
+            priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+            status = #Failed; errorMessage = ?msg;
+            txId = null; destinationOwner = null;
+        });
+        eventEngine.queueEvent(T.TradingEvent.OneOffTradeFailed, [
+            ("tradeId", Nat.toText(entry.id)),
+            ("inputToken", Principal.toText(entry.inputToken)),
+            ("outputToken", Principal.toText(entry.outputToken)),
+            ("error", msg),
+        ]);
+        { entry with
+            status = T.OneOffTradeStatus.Failed;
+            errorMessage = ?msg;
+            completedAt = ?Time.now();
+        }
     };
 
     // ============================================
@@ -8765,6 +9073,88 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     // ============================================
+    // ONE-OFF TRADES API
+    // ============================================
+
+    public shared ({ caller }) func submitOneOffTrade(input: T.OneOffTradeInput): async { #Ok: Nat; #Err: Text } {
+        assertPermission(caller, T.TradingPermission.ExecuteOneOffTrade);
+
+        if (input.inputAmount == 0) { return #Err("Input amount must be > 0") };
+        if (input.inputToken == input.outputToken) { return #Err("Input and output tokens must be different") };
+        if (getTokenInfo(input.inputToken) == null) { return #Err("Input token not in registry") };
+        if (getTokenInfo(input.outputToken) == null) { return #Err("Output token not in registry") };
+        if (isTokenPausedOrFrozen(input.inputToken)) { return #Err("Input token is paused or frozen") };
+        if (isTokenPausedOrFrozen(input.outputToken)) { return #Err("Output token is paused or frozen") };
+        switch (input.preferredDex) {
+            case (?d) { if (d != T.DexId.ICPSwap and d != T.DexId.KongSwap) { return #Err("Unknown DEX ID: " # Nat.toText(d)) } };
+            case null {};
+        };
+
+        let id = oneOffTradeNextId;
+        oneOffTradeNextId += 1;
+
+        let entry: T.OneOffTradeEntry = {
+            id = id;
+            inputToken = input.inputToken;
+            outputToken = input.outputToken;
+            inputAmount = input.inputAmount;
+            minOutputAmount = input.minOutputAmount;
+            maxSlippageBps = input.maxSlippageBps;
+            maxPriceImpactBps = input.maxPriceImpactBps;
+            preferredDex = input.preferredDex;
+            submittedBy = caller;
+            submittedAt = Time.now();
+            status = T.OneOffTradeStatus.Pending;
+            outputAmount = null;
+            dexUsed = null;
+            errorMessage = null;
+            completedAt = null;
+            tradeLogId = null;
+        };
+
+        oneOffTradeQueue := Array.append(oneOffTradeQueue, [entry]);
+        logEngine.logInfo("one-off", "Trade " # Nat.toText(id) # " submitted: " # Nat.toText(input.inputAmount) # " " # tokenLabel(input.inputToken) # " -> " # tokenLabel(input.outputToken), ?caller, []);
+
+        _scheduleOneOffProcessing<system>();
+
+        #Ok(id)
+    };
+
+    public shared query ({ caller }) func getOneOffTradeQueue(): async [T.OneOffTradeEntry] {
+        assertPermission(caller, T.TradingPermission.ExecuteOneOffTrade);
+        oneOffTradeQueue
+    };
+
+    public shared ({ caller }) func cancelOneOffTrade(id: Nat): async { #Ok; #Err: Text } {
+        assertPermission(caller, T.TradingPermission.ExecuteOneOffTrade);
+        var found = false;
+        var alreadyProcessing = false;
+        oneOffTradeQueue := Array.map<T.OneOffTradeEntry, T.OneOffTradeEntry>(oneOffTradeQueue, func(e) {
+            if (e.id == id) {
+                found := true;
+                if (e.status != T.OneOffTradeStatus.Pending) {
+                    alreadyProcessing := true;
+                    e
+                } else {
+                    { e with status = T.OneOffTradeStatus.Cancelled; completedAt = ?Time.now() }
+                }
+            } else { e }
+        });
+        if (not found) { return #Err("Trade " # Nat.toText(id) # " not found") };
+        if (alreadyProcessing) { return #Err("Trade " # Nat.toText(id) # " is not pending (cannot cancel)") };
+        logEngine.logInfo("one-off", "Trade " # Nat.toText(id) # " cancelled", ?caller, []);
+        #Ok
+    };
+
+    public shared ({ caller }) func clearOneOffTradeHistory(): async () {
+        assertPermission(caller, T.TradingPermission.ExecuteOneOffTrade);
+        oneOffTradeQueue := Array.filter<T.OneOffTradeEntry>(oneOffTradeQueue, func(e) {
+            e.status == T.OneOffTradeStatus.Pending or e.status == T.OneOffTradeStatus.Processing
+        });
+        logEngine.logInfo("one-off", "Trade history cleared", ?caller, []);
+    };
+
+    // ============================================
     // EVENT SYSTEM — SOURCE SIDE API
     // ============================================
 
@@ -8808,6 +9198,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             (240, "PurseFunded"), (241, "PurseReclaimed"), (242, "SendExecuted"), (243, "SendFailed"),
             (250, "InflowDetected"), (251, "OutflowDetected"), (252, "OvercommitDetected"),
             (260, "SnapshotTaken"), (270, "CumulativeLimitReached"),
+            (280, "OneOffTradeExecuted"), (281, "OneOffTradeFailed"),
         ]
     };
 

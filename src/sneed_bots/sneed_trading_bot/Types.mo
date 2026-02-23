@@ -513,6 +513,7 @@ module {
         #ManageSnapshotChore;       // 212: Start/stop/pause/resume/trigger snapshot chore
         #ManageCircuitBreaker;      // 213: Configure circuit breaker rules
         #ManagePurses;              // 214: Enable/disable chore purses; fund and reclaim
+        #ExecuteOneOffTrade;        // 215: Submit, view, and cancel one-off trades
     };
 
     /// Numeric IDs for permission types (for stable storage).
@@ -542,6 +543,7 @@ module {
         public let ManageSnapshotChore: Nat = 212;
         public let ManageCircuitBreaker: Nat = 213;
         public let ManagePurses: Nat = 214;
+        public let ExecuteOneOffTrade: Nat = 215;
     };
 
     /// Trading bot event type IDs (range 200–299).
@@ -568,6 +570,8 @@ module {
         public let OvercommitDetected: Nat       = 252;
         public let SnapshotTaken: Nat            = 260;
         public let CumulativeLimitReached: Nat   = 270;
+        public let OneOffTradeExecuted: Nat      = 280;
+        public let OneOffTradeFailed: Nat        = 281;
     };
 
     /// Trading bot reaction action IDs (range 200–299).
@@ -1062,6 +1066,50 @@ module {
         instanceId: Text;
         enabled: Bool;
         balances: [PurseBalance];
+    };
+
+    // ============================================
+    // ONE-OFF TRADE TYPES
+    // ============================================
+
+    /// Status codes for one-off trade entries (stored as Nat, not enum).
+    public module OneOffTradeStatus {
+        public let Pending: Nat     = 0;
+        public let Processing: Nat  = 1;
+        public let Completed: Nat   = 2;
+        public let Failed: Nat      = 3;
+        public let Cancelled: Nat   = 4;
+    };
+
+    /// Input type for submitting a one-off trade.
+    public type OneOffTradeInput = {
+        inputToken: Principal;
+        outputToken: Principal;
+        inputAmount: Nat;
+        minOutputAmount: ?Nat;
+        maxSlippageBps: ?Nat;
+        maxPriceImpactBps: ?Nat;
+        preferredDex: ?Nat;
+    };
+
+    /// Queue entry for a one-off trade.
+    public type OneOffTradeEntry = {
+        id: Nat;
+        inputToken: Principal;
+        outputToken: Principal;
+        inputAmount: Nat;
+        minOutputAmount: ?Nat;
+        maxSlippageBps: ?Nat;
+        maxPriceImpactBps: ?Nat;
+        preferredDex: ?Nat;
+        submittedBy: Principal;
+        submittedAt: Int;
+        status: Nat;
+        outputAmount: ?Nat;
+        dexUsed: ?Nat;
+        errorMessage: ?Text;
+        completedAt: ?Int;
+        tradeLogId: ?Nat;
     };
 
 };
