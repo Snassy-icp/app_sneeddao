@@ -256,6 +256,9 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
     const [editSubLoading, setEditSubLoading] = useState(false);
     const [savingSub, setSavingSub] = useState(false);
 
+    const [eventTypesCollapsed, setEventTypesCollapsed] = useState(true);
+    const [actionsCollapsed, setActionsCollapsed] = useState(true);
+
     // ==========================================
     // STYLES
     // ==========================================
@@ -717,8 +720,12 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
 
                     {/* Event Types */}
                     <div style={cardStyle}>
-                        <div style={sectionTitle}>Event Types</div>
-                        {eventTypes.length === 0 ? (
+                        <div style={{ ...sectionTitle, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none', marginBottom: eventTypesCollapsed ? 0 : '10px' }}
+                            onClick={() => setEventTypesCollapsed(c => !c)}>
+                            <span>Event Types {eventTypes.length > 0 && <span style={{ fontSize: '0.72rem', color: theme.colors.mutedText, fontWeight: 400 }}>({eventTypes.length})</span>}</span>
+                            <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, transition: 'transform 0.2s', display: 'inline-block', transform: eventTypesCollapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}>&#9660;</span>
+                        </div>
+                        {!eventTypesCollapsed && (eventTypes.length === 0 ? (
                             <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>No event types registered.</div>
                         ) : (
                             <div style={{ overflowX: 'auto' }}>
@@ -760,7 +767,7 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                     </tbody>
                                 </table>
                             </div>
-                        )}
+                        ))}
                     </div>
 
                     {/* Listeners */}
@@ -1612,8 +1619,12 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
 
                     {/* Available Actions */}
                     <div style={cardStyle}>
-                        <div style={sectionTitle}>Available Reaction Actions</div>
-                        {availableActions.length === 0 ? (
+                        <div style={{ ...sectionTitle, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none', marginBottom: actionsCollapsed ? 0 : '10px' }}
+                            onClick={() => setActionsCollapsed(c => !c)}>
+                            <span>Available Reaction Actions {availableActions.length > 0 && <span style={{ fontSize: '0.72rem', color: theme.colors.mutedText, fontWeight: 400 }}>({availableActions.length})</span>}</span>
+                            <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, transition: 'transform 0.2s', display: 'inline-block', transform: actionsCollapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}>&#9660;</span>
+                        </div>
+                        {!actionsCollapsed && (availableActions.length === 0 ? (
                             <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>No actions available.</div>
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1638,7 +1649,7 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                     );
                                 })}
                             </div>
-                        )}
+                        ))}
                     </div>
 
                     {/* Reaction Log */}
