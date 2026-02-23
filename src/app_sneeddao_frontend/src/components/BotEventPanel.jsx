@@ -1380,7 +1380,7 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                                     <option value="">Select chore...</option>
                                                     {choreStatuses.map(cs => {
                                                         const cId = cs.choreId || cs.id || '';
-                                                        const cName = cs.choreName || cs.name || cId;
+                                                        const cName = cs.instanceLabel || cs.choreName || cs.name || cId;
                                                         return (
                                                             <option key={String(cId)} value={String(cId)}>
                                                                 {cName} ({cId})
@@ -1560,7 +1560,7 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                                     <option value="">Select chore...</option>
                                                     {choreStatuses.map(cs => {
                                                         const cId = cs.choreId || cs.id || '';
-                                                        const cName = cs.choreName || cs.name || cId;
+                                                        const cName = cs.instanceLabel || cs.choreName || cs.name || cId;
                                                         return <option key={cId} value={cId}>{cName} ({cId})</option>;
                                                     })}
                                                 </select>
