@@ -188,9 +188,9 @@ export default function TradingBotDSLPanel({ canisterId, getReadyBotActor, theme
                   onClick={handleCopyGuide}
                   style={{
                     ...buttonStyle,
-                    background: guideCopied ? '#f0fdf4' : `${theme.colors.border}20`,
-                    color: guideCopied ? '#16a34a' : theme.colors.secondaryText,
-                    border: `1px solid ${guideCopied ? '#86efac' : theme.colors.border}`,
+                    background: guideCopied ? `${accentColor}25` : `${accentColor}10`,
+                    color: guideCopied ? accentColor : theme.colors.secondaryText,
+                    border: `1px solid ${guideCopied ? accentColor : theme.colors.border}`,
                   }}
                 >
                   {guideCopied ? 'Copied!' : 'Copy LLM Guide'}
@@ -240,12 +240,12 @@ export default function TradingBotDSLPanel({ canisterId, getReadyBotActor, theme
 
         {parseError && (
           <div style={{
-            background: '#fee2e2',
-            border: '1px solid #fca5a5',
+            background: '#dc262615',
+            border: '1px solid #dc262640',
             borderRadius: '6px',
             padding: '10px 14px',
             marginBottom: '12px',
-            color: '#dc2626',
+            color: '#f87171',
             fontSize: '0.85rem',
             fontFamily: 'monospace',
             whiteSpace: 'pre-wrap',
@@ -311,17 +311,17 @@ export default function TradingBotDSLPanel({ canisterId, getReadyBotActor, theme
           <div>
             {errors.length > 0 && (
               <div style={{
-                background: '#fef3c7',
-                border: '1px solid #fbbf24',
+                background: '#f59e0b15',
+                border: '1px solid #f59e0b40',
                 borderRadius: '6px',
                 padding: '10px 14px',
                 marginBottom: '12px',
               }}>
-                <div style={{ fontWeight: '600', color: '#92400e', fontSize: '0.85rem', marginBottom: '4px' }}>
+                <div style={{ fontWeight: '600', color: '#fbbf24', fontSize: '0.85rem', marginBottom: '4px' }}>
                   Resolver Warnings ({errors.length})
                 </div>
                 {errors.map((err, i) => (
-                  <div key={i} style={{ color: '#92400e', fontSize: '0.8rem', fontFamily: 'monospace' }}>
+                  <div key={i} style={{ color: '#fbbf24', fontSize: '0.8rem', fontFamily: 'monospace' }}>
                     Line {err.line}: {err.message}
                   </div>
                 ))}
@@ -367,6 +367,11 @@ export default function TradingBotDSLPanel({ canisterId, getReadyBotActor, theme
                   const execResult = executionResults.find(r => r.index === idx);
                   const isExecuting = executingIndex === idx;
 
+                  const successBg = `${accentColor}15`;
+                  const successBorder = `${accentColor}40`;
+                  const failBg = '#dc262615';
+                  const failBorder = '#dc262640';
+
                   return (
                     <div
                       key={idx}
@@ -374,10 +379,10 @@ export default function TradingBotDSLPanel({ canisterId, getReadyBotActor, theme
                         display: 'flex', alignItems: 'center', gap: '10px',
                         padding: '8px 12px', marginBottom: '4px',
                         background: isCall
-                          ? (execResult ? (execResult.success ? '#f0fdf4' : '#fef2f2') : theme.colors.bg)
+                          ? (execResult ? (execResult.success ? successBg : failBg) : theme.colors.bg)
                           : `${theme.colors.bg}80`,
                         border: `1px solid ${isCall
-                          ? (execResult ? (execResult.success ? '#86efac' : '#fca5a5') : theme.colors.border)
+                          ? (execResult ? (execResult.success ? successBorder : failBorder) : theme.colors.border)
                           : `${theme.colors.border}60`}`,
                         borderRadius: '6px',
                         opacity: isCall ? 1 : 0.6,
@@ -416,7 +421,7 @@ export default function TradingBotDSLPanel({ canisterId, getReadyBotActor, theme
                           </div>
                         )}
                         {execResult && !execResult.success && (
-                          <div style={{ color: '#dc2626', fontSize: '0.8rem', marginTop: '4px', fontFamily: 'monospace' }}>
+                          <div style={{ color: '#f87171', fontSize: '0.8rem', marginTop: '4px', fontFamily: 'monospace' }}>
                             {execResult.error}
                           </div>
                         )}
@@ -441,8 +446,8 @@ export default function TradingBotDSLPanel({ canisterId, getReadyBotActor, theme
             {mode === 'executing' && executingIndex === -1 && executionResults.length > 0 && (
               <div style={{
                 padding: '12px 16px',
-                background: executionResults.every(r => r.success) ? '#f0fdf4' : '#fef3c7',
-                border: `1px solid ${executionResults.every(r => r.success) ? '#86efac' : '#fbbf24'}`,
+                background: executionResults.every(r => r.success) ? `${accentColor}15` : '#f59e0b15',
+                border: `1px solid ${executionResults.every(r => r.success) ? `${accentColor}40` : '#f59e0b40'}`,
                 borderRadius: '6px',
                 marginTop: '12px',
               }}>
