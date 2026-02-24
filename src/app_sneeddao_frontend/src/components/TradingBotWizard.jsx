@@ -1530,11 +1530,16 @@ function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterI
             : `Here's everything the script will do. Review each operation, uncheck anything you don't want, then hit Execute!`,
     };
 
+    const goToStep3 = () => {
+        engine.setEditorText('');
+        setStep(3);
+    };
+
     const handleExportAndCopy = async () => {
         const text = await engine.handleExport();
         if (text) {
             setExportedText(text);
-            navigator.clipboard.writeText(text).catch(() => {});
+            engine.setEditorText('');
             setStateCopied(true);
             setTimeout(() => setStateCopied(false), 2000);
         }
@@ -1560,6 +1565,7 @@ function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterI
             <StepProgress steps={stepLabels} currentStep={step} onStepClick={s => {
                 if (s < step && engine.mode !== 'executing') {
                     if (s <= 3) engine.handleBackToEditor();
+                    if (s === 3) engine.setEditorText('');
                     setStep(s);
                 }
             }} theme={theme} />
@@ -1704,7 +1710,7 @@ function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterI
                             <button onClick={() => setStep(1)} style={btnSecondary(theme)}>
                                 <FaArrowLeft size={12} /> Back
                             </button>
-                            <button onClick={() => setStep(3)} style={btnPrimary(theme, !!exportedText)}>
+                            <button onClick={goToStep3} style={btnPrimary(theme, !!exportedText)}>
                                 Next <FaArrowRight size={12} />
                             </button>
                         </div>

@@ -69,6 +69,7 @@ export function useDSLEngine(getReadyBotActor) {
       const text = await serializeBotState(bot);
       setEditorText(text);
       setMode('editor');
+      copyToClipboard(text);
       return text;
     } catch (e) {
       setParseError(`Export failed: ${e.message}`);
