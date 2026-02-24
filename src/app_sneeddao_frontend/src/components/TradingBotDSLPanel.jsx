@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { parseDSL, TokenizerError, ParseError } from '../dsl/parser';
 import { serializeBotState } from '../dsl/serializer';
 import { resolveOperations, ResolverError } from '../dsl/resolver';
+import { generateLLMGuide } from '../dsl/llm-guide';
 
 const CATEGORY_LABELS = {
   tokens: 'Token Registry',
@@ -34,6 +35,7 @@ export default function TradingBotDSLPanel({ canisterId, getReadyBotActor, theme
   const [executionResults, setExecutionResults] = useState([]);
   const [executingIndex, setExecutingIndex] = useState(-1);
   const [enabledOps, setEnabledOps] = useState({});
+  const [guideCopied, setGuideCopied] = useState(false);
   const textareaRef = useRef(null);
 
   const cardStyle = {
@@ -53,6 +55,24 @@ export default function TradingBotDSLPanel({ canisterId, getReadyBotActor, theme
     fontWeight: '600',
     transition: 'all 0.15s',
   };
+
+  // ---- Copy LLM Guide ----
+  const handleCopyGuide = useCallback(() => {
+    const guide = generateLLMGuide();
+    navigator.clipboard.writeText(guide).then(() => {
+      setGuideCopied(true);
+      setTimeout(() => setGuideCopied(false), 2000);
+    }).catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = guide;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setGuideCopied(true);
+      setTimeout(() => setGuideCopied(false), 2000);
+    });
+  }, []);
 
   // ---- Export ----
   const handleExport = useCallback(async () => {
@@ -164,6 +184,17 @@ export default function TradingBotDSLPanel({ canisterId, getReadyBotActor, theme
           <div style={{ display: 'flex', gap: '8px' }}>
             {mode === 'editor' && (
               <>
+                <button
+                  onClick={handleCopyGuide}
+                  style={{
+                    ...buttonStyle,
+                    background: guideCopied ? '#f0fdf4' : `${theme.colors.border}20`,
+                    color: guideCopied ? '#16a34a' : theme.colors.secondaryText,
+                    border: `1px solid ${guideCopied ? '#86efac' : theme.colors.border}`,
+                  }}
+                >
+                  {guideCopied ? 'Copied!' : 'Copy LLM Guide'}
+                </button>
                 <button
                   onClick={handleExport}
                   disabled={exporting}
