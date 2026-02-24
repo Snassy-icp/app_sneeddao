@@ -8,7 +8,7 @@ import {
     FaCheckCircle, FaExclamationTriangle, FaPlay, FaPause, FaStop,
     FaClipboardList, FaSyncAlt, FaArrowRight, FaPaperPlane, FaCamera,
     FaUserShield, FaDownload, FaRoute, FaBullseye, FaChartArea,
-    FaBell, FaBolt
+    FaBell, FaBolt, FaCode, FaRobot, FaCopy
 } from 'react-icons/fa';
 
 const customAnimations = `
@@ -265,7 +265,7 @@ function HelpTradingBot() {
                         maxWidth: '600px',
                         lineHeight: '1.6',
                     }}>
-                        Automate token swaps, portfolio rebalancing, fund distribution, and more with your own on-chain trading bot
+                        Automate token swaps, portfolio rebalancing, fund distribution, and more with your own on-chain trading bot — now with AI-powered configuration via SneedScript
                     </p>
                 </div>
             </div>
@@ -1139,6 +1139,161 @@ function HelpTradingBot() {
                     </div>
                 </div>
 
+                {/* SneedScript DSL */}
+                <div style={styles.section} className="trading-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#6366f1')}>
+                            <FaCode size={20} color="#6366f1" />
+                        </div>
+                        <h2 style={styles.subheading}>SneedScript — AI-Powered Configuration</h2>
+                    </div>
+                    <p style={styles.paragraph}>
+                        The <strong style={styles.strong}>Script</strong> tab gives you a powerful text-based interface for configuring your trading bot with the help of any large language model (ChatGPT, Claude, Gemini, etc.). Instead of clicking through menus, you can describe what you want in plain English and let the AI write the configuration for you.
+                    </p>
+
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaRobot size={14} color="#6366f1" />
+                            How It Works
+                        </h4>
+                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>
+                            The workflow has three phases: give context to your AI, get a configuration script back, then review and execute it.
+                        </p>
+                        <ol style={{ ...styles.stepList, marginBottom: 0 }}>
+                            <li style={styles.stepItem}><strong style={styles.strong}>Copy the LLM Guide</strong> — Click <strong style={styles.strong}>Copy LLM Guide</strong> and paste it into a new conversation with your AI. This teaches the AI the SneedScript syntax. You only need to do this once per conversation.</li>
+                            <li style={styles.stepItem}><strong style={styles.strong}>Export your bot state</strong> — Click <strong style={styles.strong}>Export State</strong> to get a text snapshot of your bot's full configuration and stats. Paste this into the AI conversation along with what you want to change (e.g. "add a DCA for ckBTC, buying 0.5 ICP worth every 4 hours").</li>
+                            <li style={styles.stepItem}><strong style={styles.strong}>Get a script back</strong> — The AI returns SneedScript statements. Copy them.</li>
+                            <li style={styles.stepItem}><strong style={styles.strong}>Paste and parse</strong> — Paste the script into the editor and click <strong style={styles.strong}>Parse &amp; Resolve</strong>. The bot analyzes each statement, compares it against current state, and shows you exactly what will change.</li>
+                            <li style={styles.stepItem}><strong style={styles.strong}>Review and execute</strong> — You see every operation that will be performed (add token, create chore, update action, etc.) with checkboxes to enable or disable individual operations. Click <strong style={styles.strong}>Execute</strong> to apply.</li>
+                        </ol>
+                    </div>
+
+                    <div style={styles.diagramBox}>
+                        <div style={styles.diagramItem}>
+                            <div style={{ color: '#6366f1', fontWeight: 'bold' }}>1. Copy LLM Guide</div>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>Paste into AI conversation (once)</div>
+                        </div>
+                        <div style={styles.diagramArrow}>
+                            <div style={{ fontSize: '1.5rem' }}>&#8595;</div>
+                        </div>
+                        <div style={styles.diagramItem}>
+                            <div style={{ color: '#6366f1', fontWeight: 'bold' }}>2. Export State + Describe Goal</div>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>Paste bot state + your objectives into AI</div>
+                        </div>
+                        <div style={styles.diagramArrow}>
+                            <div style={{ fontSize: '1.5rem' }}>&#8595;</div>
+                        </div>
+                        <div style={styles.diagramItem}>
+                            <div style={{ color: '#6366f1', fontWeight: 'bold' }}>3. AI Returns Script</div>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>Copy the SneedScript response</div>
+                        </div>
+                        <div style={styles.diagramArrow}>
+                            <div style={{ fontSize: '1.5rem' }}>&#8595;</div>
+                        </div>
+                        <div style={styles.diagramItem}>
+                            <div style={{ color: '#6366f1', fontWeight: 'bold' }}>4. Parse, Review, Execute</div>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>You approve every change before it happens</div>
+                        </div>
+                    </div>
+
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaSyncAlt size={14} color={tradingPrimary} />
+                            The Conversation Loop
+                        </h4>
+                        <p style={styles.paragraph}>
+                            You don't need to start a new conversation each time. After executing a script, continue the same AI conversation:
+                        </p>
+                        <ol style={{ ...styles.stepList, marginBottom: '0.5rem' }}>
+                            <li style={styles.stepItem}>Execute the first script</li>
+                            <li style={styles.stepItem}>Click <strong style={styles.strong}>Export State</strong> again to get the updated state</li>
+                            <li style={styles.stepItem}>Paste the new state into the same conversation: "Here's the updated state. Now also add a circuit breaker that stops trading if ICP drops below $5"</li>
+                            <li style={styles.stepItem}>Get a new script, paste, review, execute</li>
+                        </ol>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            Each round, the AI sees the latest state and can make incremental changes. The LLM Guide only needs to be pasted once at the start.
+                        </p>
+                    </div>
+
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaCopy size={14} color="#3b82f6" />
+                            LLM Context — Supplementary Data
+                        </h4>
+                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>
+                            Expand the <strong style={styles.strong}>LLM Context</strong> bar below the main buttons for quick-copy buttons that give your AI additional context:
+                        </p>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}><strong style={styles.strong}>Copy All Tokens:</strong> Token registry with ledger canister IDs, symbols, decimals, and fees. Give this to the AI when it needs to reference token principals (e.g. when adding a new token).</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Copy Trade Log:</strong> Last 50 trade entries in compact format. Give this when the AI needs to understand what trades have been executing, failing, or being skipped.</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Copy Bot Log:</strong> Last 50 activity log entries. Give this when debugging errors or unexpected behavior.</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Copy CB Log:</strong> Last 20 circuit breaker events. Give this when the AI needs to understand why chores were stopped or paused.</li>
+                        </ul>
+                    </div>
+
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaClipboardList size={14} color={tradingPrimary} />
+                            Log Copy Buttons
+                        </h4>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            Every log panel in the bot UI (Trade Log, Bot Log, Circuit Breaker Event Log, and per-chore logs) has a small <strong style={styles.strong}>Copy</strong> button in its header. Click it to copy the currently displayed entries in a compact text format that you can paste into your AI conversation for analysis.
+                        </p>
+                    </div>
+
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaShieldAlt size={14} color="#ef4444" />
+                            Safety: You Always Approve
+                        </h4>
+                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>
+                            SneedScript never executes anything without your explicit approval. After parsing, you see every operation that will be performed:
+                        </p>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}>Operations are grouped by category (Token Registry, Chore Management, Actions, etc.)</li>
+                            <li style={styles.listItem}>Each operation has a checkbox — uncheck anything you don't want</li>
+                            <li style={styles.listItem}>Operations that would be no-ops (e.g. token already registered) are shown as "already up to date"</li>
+                            <li style={styles.listItem}>You can see the exact canister method and arguments for every call</li>
+                        </ul>
+                    </div>
+
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaLightbulb size={14} color="#f59e0b" />
+                            What Can SneedScript Configure?
+                        </h4>
+                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>
+                            Everything. The DSL covers the bot's full configuration surface:
+                        </p>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}>Token registry (add, remove, pause, freeze tokens)</li>
+                            <li style={styles.listItem}>Chore instances (create, delete, start, stop, pause, configure intervals)</li>
+                            <li style={styles.listItem}>Trade and move-funds actions (create, update, remove — with all parameters)</li>
+                            <li style={styles.listItem}>Rebalance targets and settings</li>
+                            <li style={styles.listItem}>Distribution lists and recipients</li>
+                            <li style={styles.listItem}>Circuit breaker rules with complex nested conditions</li>
+                            <li style={styles.listItem}>DEX settings (enable/disable, default slippage/impact)</li>
+                            <li style={styles.listItem}>Purse management (enable/disable, trading purse overrides)</li>
+                            <li style={styles.listItem}>Event subscriptions and reaction rules</li>
+                            <li style={styles.listItem}>Logging settings</li>
+                            <li style={styles.listItem}>Quick trades, withdrawals, fund/reclaim operations</li>
+                        </ul>
+                    </div>
+
+                    <div style={styles.tipBox}>
+                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem', fontSize: '0.85rem' }}>
+                            <strong style={styles.strong}>Example Prompts:</strong>
+                        </p>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={{ ...styles.listItem, fontSize: '0.85rem' }}>"Set up a DCA that buys 0.5 ICP worth of SNEED every 6 hours, with a 50 ICP total budget"</li>
+                            <li style={{ ...styles.listItem, fontSize: '0.85rem' }}>"Add ckETH to the token registry and create a rebalancer targeting 40% ICP, 30% ckBTC, 30% ckETH"</li>
+                            <li style={{ ...styles.listItem, fontSize: '0.85rem' }}>"Add a circuit breaker that pauses all trading if ICP drops below $5"</li>
+                            <li style={{ ...styles.listItem, fontSize: '0.85rem' }}>"Here's my trade log [paste]. Why are my trades being skipped? Fix the configuration."</li>
+                            <li style={{ ...styles.listItem, fontSize: '0.85rem' }}>"Set up a range trader that buys SNEED when it's under 0.001 ICP and sells when it's over 0.002 ICP"</li>
+                        </ul>
+                    </div>
+                </div>
+
                 {/* FAQ */}
                 <div style={styles.section} className="trading-help-fade-in">
                     <div style={styles.sectionHeader}>
@@ -1191,6 +1346,28 @@ function HelpTradingBot() {
                         actions on itself — a source bot never controls a listener directly.
                     </p>
 
+                    <h4 style={styles.subsubheading}>Do I need to know SneedScript syntax to use it?</h4>
+                    <p style={styles.paragraph}>
+                        No. The LLM Guide teaches your AI the syntax. You just describe what you want in plain English and
+                        the AI writes the script. You then paste it, review the operations, and execute. The DSL syntax is
+                        designed for machines to write and humans to review.
+                    </p>
+
+                    <h4 style={styles.subsubheading}>Can SneedScript break my bot?</h4>
+                    <p style={styles.paragraph}>
+                        No. Every operation is shown to you for approval before execution. You can uncheck any operation
+                        you don't want. SneedScript uses idempotent operations (<code>ensure</code>, <code>remove</code>, <code>set</code>) so
+                        running the same script twice produces the same result, and no-ops are clearly marked. It never bypasses
+                        the normal canister API — it simply generates the same calls the UI would make.
+                    </p>
+
+                    <h4 style={styles.subsubheading}>Which AI should I use with SneedScript?</h4>
+                    <p style={styles.paragraph}>
+                        Any modern LLM that can follow structured instructions works well — ChatGPT (GPT-4 and above), Claude,
+                        Gemini, and others. The LLM Guide is written to be universally compatible. More capable models tend
+                        to produce more accurate scripts, especially for complex multi-step configurations.
+                    </p>
+
                     <h4 style={styles.subsubheading}>Is my configuration preserved during upgrades?</h4>
                     <p style={styles.paragraph}>
                         Yes. Upgrades preserve stable memory, so your token registry, chore configurations, purse allocations,
@@ -1229,6 +1406,7 @@ function HelpTradingBot() {
                             <li style={styles.stepItem}><strong style={styles.strong}>Enable Snapshots:</strong> Start a snapshot chore to track portfolio performance over time</li>
                             <li style={styles.stepItem}><strong style={styles.strong}>Add Safety Rules:</strong> Configure circuit breaker rules and trailing stops to protect against adverse conditions</li>
                             <li style={styles.stepItem}><strong style={styles.strong}>Monitor:</strong> Check the trade log and activity logs to see your bot in action</li>
+                            <li style={styles.stepItem}><strong style={styles.strong}>Try SneedScript:</strong> Open the Script tab, copy the LLM Guide into your favorite AI, and describe your next strategy in plain English — let the AI configure the bot for you</li>
                         </ol>
                     </div>
                 </div>
