@@ -3,6 +3,7 @@ import { parseDSL, TokenizerError, ParseError } from '../dsl/parser';
 import { serializeBotState } from '../dsl/serializer';
 import { resolveOperations, ResolverError } from '../dsl/resolver';
 import { generateLLMGuide } from '../dsl/llm-guide';
+import { formatTokenRegistry, formatTradeLog, formatBotLog, formatCBLog } from '../dsl/context-formatters';
 
 const CATEGORY_LABELS = {
   tokens: 'Token Registry',
@@ -36,6 +37,8 @@ export default function TradingBotDSLPanel({ canisterId, getReadyBotActor, theme
   const [executingIndex, setExecutingIndex] = useState(-1);
   const [enabledOps, setEnabledOps] = useState({});
   const [guideCopied, setGuideCopied] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [contextStatus, setContextStatus] = useState({}); // { tokens: 'copying'|'copied', ... }
   const textareaRef = useRef(null);
 
   const cardStyle = {
@@ -58,21 +61,37 @@ export default function TradingBotDSLPanel({ canisterId, getReadyBotActor, theme
 
   // ---- Copy LLM Guide ----
   const handleCopyGuide = useCallback(() => {
-    const guide = generateLLMGuide();
-    navigator.clipboard.writeText(guide).then(() => {
-      setGuideCopied(true);
-      setTimeout(() => setGuideCopied(false), 2000);
-    }).catch(() => {
+    copyText(generateLLMGuide());
+    setGuideCopied(true);
+    setTimeout(() => setGuideCopied(false), 2000);
+  }, [copyText]);
+
+  // ---- Clipboard utility ----
+  const copyText = useCallback((text) => {
+    navigator.clipboard.writeText(text).catch(() => {
       const ta = document.createElement('textarea');
-      ta.value = guide;
+      ta.value = text;
       document.body.appendChild(ta);
       ta.select();
       document.execCommand('copy');
       document.body.removeChild(ta);
-      setGuideCopied(true);
-      setTimeout(() => setGuideCopied(false), 2000);
     });
   }, []);
+
+  // ---- Context copy handlers ----
+  const handleCopyContext = useCallback(async (key, fetchFn) => {
+    setContextStatus(prev => ({ ...prev, [key]: 'copying' }));
+    try {
+      const bot = await getReadyBotActor();
+      const text = await fetchFn(bot);
+      copyText(text);
+      setContextStatus(prev => ({ ...prev, [key]: 'copied' }));
+      setTimeout(() => setContextStatus(prev => ({ ...prev, [key]: null })), 2000);
+    } catch (e) {
+      setContextStatus(prev => ({ ...prev, [key]: null }));
+      setParseError(`Copy failed: ${e.message}`);
+    }
+  }, [getReadyBotActor, copyText]);
 
   // ---- Export ----
   const handleExport = useCallback(async () => {
@@ -251,6 +270,69 @@ export default function TradingBotDSLPanel({ canisterId, getReadyBotActor, theme
             whiteSpace: 'pre-wrap',
           }}>
             {parseError}
+          </div>
+        )}
+
+        {/* LLM Context Bar */}
+        {mode === 'editor' && (
+          <div style={{ marginBottom: '12px' }}>
+            <button
+              onClick={() => setContextOpen(prev => !prev)}
+              style={{
+                ...buttonStyle,
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: `${accentColor}08`,
+                color: theme.colors.secondaryText,
+                border: `1px solid ${theme.colors.border}`,
+                padding: '8px 14px',
+                fontSize: '0.8rem',
+                fontWeight: '500',
+              }}
+            >
+              <span>LLM Context — copy supplementary data for your AI</span>
+              <span style={{ fontSize: '0.7rem' }}>{contextOpen ? '\u25B2' : '\u25BC'}</span>
+            </button>
+            {contextOpen && (
+              <div style={{
+                display: 'flex', flexWrap: 'wrap', gap: '8px',
+                padding: '10px 14px',
+                background: theme.colors.bg,
+                border: `1px solid ${theme.colors.border}`,
+                borderTop: 'none',
+                borderRadius: '0 0 6px 6px',
+              }}>
+                {[
+                  { key: 'tokens', label: 'All Tokens', fn: formatTokenRegistry },
+                  { key: 'tradeLog', label: 'Trade Log (50)', fn: (bot) => formatTradeLog(bot, 50) },
+                  { key: 'botLog', label: 'Bot Log (50)', fn: (bot) => formatBotLog(bot, 50) },
+                  { key: 'cbLog', label: 'CB Log (20)', fn: (bot) => formatCBLog(bot, 20) },
+                ].map(({ key, label, fn }) => {
+                  const status = contextStatus[key];
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => handleCopyContext(key, fn)}
+                      disabled={status === 'copying'}
+                      style={{
+                        ...buttonStyle,
+                        padding: '6px 12px',
+                        fontSize: '0.78rem',
+                        fontWeight: '500',
+                        background: status === 'copied' ? `${accentColor}25` : `${accentColor}10`,
+                        color: status === 'copied' ? accentColor : theme.colors.secondaryText,
+                        border: `1px solid ${status === 'copied' ? accentColor : theme.colors.border}`,
+                        opacity: status === 'copying' ? 0.6 : 1,
+                      }}
+                    >
+                      {status === 'copying' ? 'Copying...' : status === 'copied' ? 'Copied!' : `Copy ${label}`}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 

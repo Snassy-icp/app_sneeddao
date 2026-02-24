@@ -339,7 +339,24 @@ export async function resolveOperations(ast, bot, tokenLookupOverride = null) {
   function resolveEnsureToken(stmt) {
     const props = stmt.properties;
     const ledger = resolveValue(props.ledger, tokenLookup);
-    if (!ledger) throw new ResolverError('ensure token requires "ledger" property', stmt.line);
+
+    if (!ledger) {
+      // No ledger property — check if the symbol is already registered
+      const symbol = stmt.key;
+      const matches = [];
+      for (const [pid, info] of Object.entries(tokenLookup)) {
+        if (info.symbol === symbol) matches.push(pid);
+      }
+      if (matches.length >= 1) {
+        operations.push({ type: 'no-op', description: `Token ${symbol} already registered`, category: 'tokens', line: stmt.line });
+        return;
+      }
+      throw new ResolverError(
+        `ensure token "${symbol}" requires a "ledger" property (token is not yet registered). ` +
+        `Ask the user for the ledger canister ID, or use: Copy All Tokens in the Script tab.`,
+        stmt.line
+      );
+    }
 
     const pid = typeof ledger === 'string' ? ledger : principalToText(ledger);
     if (registryByPrincipal[pid]) {
@@ -353,7 +370,6 @@ export async function resolveOperations(ast, bot, tokenLookupOverride = null) {
       decimals: Number(resolveValue(props.decimals, tokenLookup) || 8),
       fee: Number(resolveValue(props.fee, tokenLookup) || 0),
     };
-    // Register in local lookup for subsequent statements
     tokenLookup[pid] = { symbol: entry.symbol, decimals: entry.decimals, fee: entry.fee };
     registryByPrincipal[pid] = entry;
 

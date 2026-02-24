@@ -246,6 +246,44 @@ export function generateLLMGuide() {
 # submit fund_purse { purse: "trade-1", token: ICP, amount: 5.0 ICP }
 # submit reclaim { purse: "trade-1", token: ICP, amount: 2.0 ICP }
 #
+# === SUPPLEMENTARY CONTEXT ===
+#
+# The user has additional data they can copy for you from the bot's UI.
+# If you need any of the following, ask the user to provide it:
+#
+# 1. TOKEN REGISTRY (with ledger canister IDs)
+#    Ask: "Please click 'Copy All Tokens' in the LLM Context bar of the
+#    Script tab and paste the result here."
+#    You need this when: writing ensure token statements for new tokens,
+#    or referencing tokens by principal instead of symbol.
+#
+# 2. TRADE LOG (recent trade executions)
+#    Ask: "Please click 'Copy Trade Log' in the LLM Context bar (or the
+#    Copy button on the Trade Log panel) and paste the result here."
+#    You need this when: debugging why trades are failing or being skipped,
+#    analyzing trading performance, or understanding execution patterns.
+#
+# 3. BOT LOG (activity and error log)
+#    Ask: "Please click 'Copy Bot Log' in the LLM Context bar (or the
+#    Copy button on the Bot Log panel) and paste it here."
+#    You need this when: diagnosing errors, understanding chore behavior,
+#    or investigating unexpected bot activity.
+#
+# 4. CIRCUIT BREAKER LOG (trigger events)
+#    Ask: "Please click 'Copy CB Log' in the LLM Context bar (or the
+#    Copy button on the Circuit Breaker Event Log) and paste it here."
+#    You need this when: understanding why chores were stopped/paused,
+#    or tuning circuit breaker conditions.
+#
+# 5. CHORE-SPECIFIC LOGS
+#    Ask: "Please go to the chore's Logs tab, click the Copy button,
+#    and paste the result here."
+#    You need this when: debugging a specific chore's behavior.
+#
+# When the user provides an exported bot state, the # comment lines
+# contain read-only stats (balances, execution counts, prices, timestamps).
+# Use these to understand the bot's current situation.
+#
 # === END OF REFERENCE ===
 `;
 }

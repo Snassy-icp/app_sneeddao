@@ -286,6 +286,42 @@ const shortPrincipal = (p) => {
 /** True when a symbol value is a placeholder that should be resolved from cache. */
 const _isPlaceholderSymbol = (s) => !s || s === '?' || s === '???' || s === '???';
 
+function CopyToClipboardButton({ getText, accentColor, theme, label = 'Copy' }) {
+    const [copied, setCopied] = React.useState(false);
+    const handleClick = async () => {
+        try {
+            const text = typeof getText === 'function' ? getText() : getText;
+            await navigator.clipboard.writeText(text);
+        } catch (_) {
+            const text = typeof getText === 'function' ? getText() : getText;
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+    return (
+        <button
+            onClick={handleClick}
+            title={copied ? 'Copied!' : `${label} to clipboard`}
+            style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px',
+                display: 'flex', alignItems: 'center', gap: '4px',
+                color: copied ? accentColor : theme.colors.secondaryText,
+                fontSize: '0.72rem', opacity: copied ? 1 : 0.7,
+                transition: 'all 0.15s',
+            }}
+        >
+            <FaCopy style={{ fontSize: '0.7rem' }} />
+            <span>{copied ? 'Copied!' : label}</span>
+        </button>
+    );
+}
+
 // ============================================
 // SHARED PRICE HELPER — two-hop denom pricing via PriceService
 // ============================================
@@ -3232,6 +3268,28 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                     >
                         <FaSyncAlt style={{ fontSize: '0.75rem', animation: loading ? 'spin 1s linear infinite' : 'none' }} />
                     </button>
+                    <CopyToClipboardButton
+                        accentColor={accentColor} theme={theme} label="Copy"
+                        getText={() => {
+                            if (!entries.length) return '# Trade Log (empty)\n';
+                            const lines = [`# Trade Log (${entries.length} entries, page ${page + 1})`];
+                            const ACTION_NAMES = { 0: 'trade', 1: 'fund_purse', 2: 'reclaim', 3: 'send' };
+                            const fmtAmt = (raw, dec) => { const d = Number(dec || 8); const r = BigInt(raw); const w = r / BigInt(10**d); const f = r % BigInt(10**d); return f === 0n ? `${w}` : `${w}.${f.toString().padStart(d,'0').replace(/0+$/,'')}`; };
+                            const fmtTs = (ns) => { try { return new Date(Number(BigInt(ns)/1_000_000n)).toISOString(); } catch(_) { return '?'; } };
+                            for (const e of entries) {
+                                const st = Object.keys(e.status||{})[0]||'?';
+                                const iSym = getSym(e.inputToken); const oSym = optVal(e.outputToken) ? getSym(optVal(e.outputToken)) : '';
+                                const pair = oSym ? `${iSym} -> ${oSym}` : iSym;
+                                const inAmt = `${fmtAmt(e.inputAmount, getDec(e.inputToken))} ${iSym}`;
+                                let detail = inAmt;
+                                if (st === 'Success' && optVal(e.outputAmount) && oSym) detail += ` -> ${fmtAmt(optVal(e.outputAmount), getDec(optVal(e.outputToken)))} ${oSym}`;
+                                else if (st === 'Failed') detail += ` | ${optVal(e.errorMessage)||'?'}`;
+                                const chore = optVal(e.choreId)||'-';
+                                lines.push(`#${e.id} | ${fmtTs(e.timestamp)} | ${ACTION_NAMES[Number(e.actionType)]||e.actionType} | ${pair} | ${st}: ${detail} | chore: ${chore}`);
+                            }
+                            return lines.join('\n') + '\n';
+                        }}
+                    />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     {stats && <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>{totalCount} entries</span>}
@@ -7143,6 +7201,18 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                 <div style={{ marginTop: '16px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                         <h5 style={sectionTitle}>Event Log</h5>
+                        <CopyToClipboardButton
+                            accentColor={accentColor} theme={theme} label="Copy"
+                            getText={() => {
+                                if (!events.length) return '# Circuit Breaker Log (empty)\n';
+                                const fmtTs = (ns) => { try { return new Date(Number(BigInt(ns)/1_000_000n)).toISOString(); } catch(_) { return '?'; } };
+                                const lines = [`# Circuit Breaker Log (${events.length} entries)`];
+                                for (const e of events) {
+                                    lines.push(`#${e.id} | ${fmtTs(e.timestamp)} | Rule: "${e.ruleName}" | ${e.conditionSummary} | Actions: ${e.actionsTaken.join(', ')}`);
+                                }
+                                return lines.join('\n') + '\n';
+                            }}
+                        />
                         <button onClick={handleClearLog} style={btnSm({ color: '#e74c3c', fontSize: '0.75rem' })}>Clear Log</button>
                     </div>
                     {events.length === 0 ? (
@@ -7286,10 +7356,27 @@ function BotLogPanel({ getReadyBotActor, theme, accentColor }) {
             ) : (
                 <>
                     <div style={{ ...cardStyle, background: `linear-gradient(135deg, ${accentColor}08, ${accentColor}05)`, border: `1px solid ${accentColor}20` }}>
-                        <p style={{ margin: 0, fontSize: '0.85rem', color: theme.colors.secondaryText, lineHeight: '1.5' }}>
-                            Bot Log records all activity — API calls, chore actions, permission changes, and errors.
-                            {logConfig && <> Currently storing <strong>{Number(logConfig.entryCount).toLocaleString()}</strong> of {Number(logConfig.maxEntries).toLocaleString()} max entries at <strong>{Object.keys(logConfig.logLevel)[0]}</strong> write level.</>}
-                        </p>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <p style={{ margin: 0, fontSize: '0.85rem', color: theme.colors.secondaryText, lineHeight: '1.5', flex: 1 }}>
+                                Bot Log records all activity — API calls, chore actions, permission changes, and errors.
+                                {logConfig && <> Currently storing <strong>{Number(logConfig.entryCount).toLocaleString()}</strong> of {Number(logConfig.maxEntries).toLocaleString()} max entries at <strong>{Object.keys(logConfig.logLevel)[0]}</strong> write level.</>}
+                            </p>
+                            <CopyToClipboardButton
+                                accentColor={accentColor} theme={theme} label="Copy"
+                                getText={() => {
+                                    if (!entries.length) return '# Bot Log (empty)\n';
+                                    const LOG_NAMES = { Off:'OFF', Error:'ERROR', Warning:'WARN', Info:'INFO', Debug:'DEBUG', Trace:'TRACE' };
+                                    const lvl = (l) => { for (const k in LOG_NAMES) if (l[k]!==undefined) return LOG_NAMES[k]; return '?'; };
+                                    const fmtTs = (ns) => { try { return new Date(Number(BigInt(ns)/1_000_000n)).toISOString(); } catch(_) { return '?'; } };
+                                    const lines = [`# Bot Log (${entries.length} entries)`];
+                                    for (const e of entries) {
+                                        const tags = e.tags?.length ? ' | ' + e.tags.map(([k,v])=>`${k}=${v}`).join(', ') : '';
+                                        lines.push(`[${fmtTs(e.timestamp)}] [${lvl(e.level)}] [${e.source}] ${e.message}${tags}`);
+                                    }
+                                    return lines.join('\n') + '\n';
+                                }}
+                            />
+                        </div>
                     </div>
 
                     {error && <div style={{ ...cardStyle, background: '#ef444415', border: '1px solid #ef444430', color: '#ef4444', fontSize: '0.85rem' }}>{error}</div>}
@@ -10663,6 +10750,38 @@ function ChoreLogPanel({ instanceId, getReadyBotActor, theme, accentColor }) {
                     marginLeft: 'auto', background: 'none', border: 'none', cursor: loading ? 'default' : 'pointer',
                     color: accentColor, padding: '2px', display: 'flex', alignItems: 'center', opacity: loading ? 0.5 : 1,
                 }} title="Refresh"><FaSyncAlt style={{ fontSize: '0.7rem', animation: loading ? 'spin 1s linear infinite' : 'none' }} /></button>
+                <CopyToClipboardButton
+                    accentColor={accentColor} theme={theme} label="Copy"
+                    getText={() => {
+                        const currentEntries = tab === 'activity' ? activityEntries : tradeEntries;
+                        if (!currentEntries.length) return `# Chore ${instanceId} ${tab} log (empty)\n`;
+                        const fmtTs = (ns) => { try { return new Date(Number(BigInt(ns)/1_000_000n)).toISOString(); } catch(_) { return '?'; } };
+                        if (tab === 'activity') {
+                            const LOG_NAMES = { Off:'OFF', Error:'ERROR', Warning:'WARN', Info:'INFO', Debug:'DEBUG', Trace:'TRACE' };
+                            const lvl = (l) => { for (const k in LOG_NAMES) if (l[k]!==undefined) return LOG_NAMES[k]; return '?'; };
+                            const lines = [`# Chore "${instanceId}" Activity Log (${currentEntries.length} entries)`];
+                            for (const e of currentEntries) {
+                                const tags = e.tags?.length ? ' | ' + e.tags.map(([k,v])=>`${k}=${v}`).join(', ') : '';
+                                lines.push(`[${fmtTs(e.timestamp)}] [${lvl(e.level)}] ${e.message}${tags}`);
+                            }
+                            return lines.join('\n') + '\n';
+                        } else {
+                            const ACTION_NAMES = { 0:'trade', 1:'fund_purse', 2:'reclaim', 3:'send' };
+                            const fmtAmt = (raw, dec) => { const d = Number(dec||8); const r = BigInt(raw); const w = r/BigInt(10**d); const f = r%BigInt(10**d); return f===0n ? `${w}` : `${w}.${f.toString().padStart(d,'0').replace(/0+$/,'')}`; };
+                            const lines = [`# Chore "${instanceId}" Trade Log (${currentEntries.length} entries)`];
+                            for (const e of currentEntries) {
+                                const st = Object.keys(e.status||{})[0]||'?';
+                                const iSym = getSym(e.inputToken); const oTok = e.outputToken?.length>0?e.outputToken[0]:null; const oSym = oTok?getSym(oTok):'';
+                                const inAmt = `${fmtAmt(e.inputAmount, getDec(e.inputToken))} ${iSym}`;
+                                let detail = inAmt;
+                                if (st==='Success' && e.outputAmount?.length>0 && oSym) detail += ` -> ${fmtAmt(e.outputAmount[0], getDec(oTok))} ${oSym}`;
+                                else if (st==='Failed') detail += ` | ${e.errorMessage?.length>0?e.errorMessage[0]:'?'}`;
+                                lines.push(`#${e.id} | ${fmtTs(e.timestamp)} | ${ACTION_NAMES[Number(e.actionType)]||e.actionType} | ${st}: ${detail}`);
+                            }
+                            return lines.join('\n') + '\n';
+                        }
+                    }}
+                />
             </div>
 
             {error && <div style={{ padding: '6px 10px', background: '#ef444415', borderRadius: '6px', color: '#ef4444', fontSize: '0.75rem', marginBottom: '8px' }}>{error}</div>}
