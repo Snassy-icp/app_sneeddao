@@ -326,7 +326,33 @@ export function generateLLMGuide() {
 #      But this is unusual — the default expectation is that configured
 #      chores should be started.
 #
-# 8. GENERAL COMMON SENSE
+# 8. NAMING CONVENTIONS
+#    Follow these patterns so names stay consistent across sessions.
+#
+#    Instance IDs (the key in ensure chore):
+#      - Format: {type}-{short-unique}  e.g. "trade-a1b2", "rebalance-c3d4"
+#      - Use the chore type as prefix, then a short unique suffix
+#        (a few random alphanumeric chars or an abbreviation).
+#      - NEVER put numbers/percentages/amounts in the ID — they change.
+#
+#    Chore labels (the label: property):
+#      - DCA trade:    "DCA {Input} → {Output}"       e.g. "DCA ICP → SNEED"
+#      - Range trade:  "Range {SymA}/{SymB}"           e.g. "Range ICP/SNEED"
+#      - Rebalance:    "{Sym1}/{Sym2}/... Portfolio"   e.g. "SNEED/ckBTC/ICP Portfolio"
+#      - Move-funds:   short purpose description       e.g. "Fund Trading Purses"
+#      - Distribute:   short purpose description       e.g. "Team Distribution"
+#      - Snapshot:     "{Sym1}/{Sym2}/... Snapshot"    e.g. "ICP/SNEED Snapshot"
+#      - List token symbols in the same order the user mentioned them.
+#      - NEVER include allocation percentages, amounts, intervals, or
+#        other config values in the label — they change over time.
+#
+#    Action keys (the key in ensure action):
+#      - Use lowercase-kebab-case describing what the action does.
+#      - e.g. "buy-sneed", "sell-icp-high", "stop-loss-sneed",
+#        "fund-trade-purse", "reclaim-excess"
+#      - Keep them short but descriptive.
+#
+# 9. GENERAL COMMON SENSE
 #    - If something about the request seems unusual, contradictory,
 #      or potentially costly, say so politely before producing the
 #      script. The user can always override your suggestion.
