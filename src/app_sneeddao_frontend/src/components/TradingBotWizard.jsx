@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Principal } from '@dfinity/principal';
-import { FaCheck, FaArrowRight, FaArrowLeft, FaMagic, FaTimes, FaSpinner, FaWallet, FaExchangeAlt, FaChartLine, FaBalanceScale, FaShieldAlt, FaPlus, FaTrash } from 'react-icons/fa';
+import { FaCheck, FaArrowRight, FaArrowLeft, FaMagic, FaTimes, FaSpinner, FaWallet, FaExchangeAlt, FaChartLine, FaBalanceScale, FaShieldAlt, FaPlus, FaTrash, FaRobot, FaCopy, FaClipboard, FaFileExport, FaPaste, FaListAlt } from 'react-icons/fa';
 import { useTheme } from '../contexts/ThemeContext';
 import TokenSelector from './TokenSelector';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getTokenMetadataSync, setTokenMetadataManual } from '../hooks/useTokenCache';
+import { useDSLEngine, DSLScriptEditor, DSLOperationReview, DSLContextBar, DSLCopyGuideButton, DSLExportButton } from './TradingBotDSLPanel';
 
 const ACCENT = '#10b981';
 const ACCENT_SECONDARY = '#34d399';
@@ -1509,6 +1510,301 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
     );
 }
 
+function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId }) {
+    const [step, setStep] = useState(1);
+    const engine = useDSLEngine(getReadyBotActor);
+    const [exportedText, setExportedText] = useState(null);
+    const [guideCopiedOnce, setGuideCopiedOnce] = useState(false);
+    const [stateCopied, setStateCopied] = useState(false);
+
+    const accentColor = '#6366f1';
+
+    const stepLabels = ['Guide', 'Export', 'Script', 'Review'];
+
+    const messages = {
+        1: `First, let's give your AI the language reference. Click "Copy LLM Guide" below, then paste it into a new conversation with your favorite AI (ChatGPT, Claude, Gemini, etc.)`,
+        2: `Great! Now let's export your bot's current state and copy it for the AI. You'll paste this along with a description of what you want.`,
+        3: `Paste the SneedScript that your AI generated below. I'll analyze it and show you exactly what will change.`,
+        4: engine.mode === 'executing'
+            ? `Executing your changes...`
+            : `Here's everything the script will do. Review each operation, uncheck anything you don't want, then hit Execute!`,
+    };
+
+    const handleExportAndCopy = async () => {
+        const text = await engine.handleExport();
+        if (text) {
+            setExportedText(text);
+            navigator.clipboard.writeText(text).catch(() => {});
+            setStateCopied(true);
+            setTimeout(() => setStateCopied(false), 2000);
+        }
+    };
+
+    const handleReCopyState = () => {
+        if (exportedText) {
+            navigator.clipboard.writeText(exportedText).catch(() => {});
+            setStateCopied(true);
+            setTimeout(() => setStateCopied(false), 2000);
+        }
+    };
+
+    const handleParseAndAdvance = async () => {
+        const result = await engine.handleParse();
+        if (result) setStep(4);
+    };
+
+    const executionDone = engine.mode === 'executing' && engine.executingIndex === -1 && engine.executionResults.length > 0;
+
+    return (
+        <div>
+            <StepProgress steps={stepLabels} currentStep={step} onStepClick={s => {
+                if (s < step && engine.mode !== 'executing') {
+                    if (s <= 3) engine.handleBackToEditor();
+                    setStep(s);
+                }
+            }} theme={theme} />
+            <WizardMascot message={messages[step]} theme={theme} size="small" />
+
+            <div style={{ marginTop: '1rem' }}>
+                {/* Step 1: Copy LLM Guide */}
+                {step === 1 && (
+                    <WizardCard theme={theme}>
+                        <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+                            <div style={{
+                                width: '56px', height: '56px', borderRadius: '16px',
+                                background: `${accentColor}15`, display: 'flex',
+                                alignItems: 'center', justifyContent: 'center',
+                                margin: '0 auto 1rem',
+                            }}>
+                                <FaCopy size={24} color={accentColor} />
+                            </div>
+                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', lineHeight: '1.6', margin: '0 0 1.25rem', maxWidth: '380px', marginLeft: 'auto', marginRight: 'auto' }}>
+                                The LLM Guide teaches your AI the SneedScript syntax. You only need to paste it once at the start of a conversation.
+                            </p>
+                            <DSLCopyGuideButton theme={theme} accentColor={accentColor} />
+                            {!guideCopiedOnce && (
+                                <p style={{ color: theme.colors.mutedText, fontSize: '0.78rem', marginTop: '0.75rem' }}>
+                                    Click the button above, then paste it into your AI chat
+                                </p>
+                            )}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
+                            <button onClick={onBack} style={btnSecondary(theme)}>
+                                <FaArrowLeft size={12} /> Back
+                            </button>
+                            <button onClick={() => { setGuideCopiedOnce(true); setStep(2); }} style={btnPrimary(theme)}>
+                                Next <FaArrowRight size={12} />
+                            </button>
+                        </div>
+                    </WizardCard>
+                )}
+
+                {/* Step 2: Export State */}
+                {step === 2 && (
+                    <WizardCard theme={theme}>
+                        <div style={{ textAlign: 'center', padding: '0.5rem 0' }}>
+                            <div style={{
+                                width: '56px', height: '56px', borderRadius: '16px',
+                                background: `${accentColor}15`, display: 'flex',
+                                alignItems: 'center', justifyContent: 'center',
+                                margin: '0 auto 1rem',
+                            }}>
+                                <FaFileExport size={24} color={accentColor} />
+                            </div>
+
+                            {!exportedText ? (
+                                <>
+                                    <p style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', lineHeight: '1.6', margin: '0 0 1rem', maxWidth: '400px', marginLeft: 'auto', marginRight: 'auto' }}>
+                                        Export your bot's current configuration and stats. This will be copied to your clipboard automatically.
+                                    </p>
+                                    <button
+                                        onClick={handleExportAndCopy}
+                                        disabled={engine.exporting}
+                                        style={{
+                                            ...btnPrimary(theme, !engine.exporting),
+                                            display: 'inline-flex', flex: 'none', minWidth: 'auto',
+                                            padding: '10px 24px',
+                                        }}
+                                    >
+                                        {engine.exporting ? (
+                                            <><FaSpinner className="wizard-spin" size={14} /> Exporting...</>
+                                        ) : (
+                                            <><FaFileExport size={14} /> Export & Copy State</>
+                                        )}
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <div style={{
+                                        background: `${ACCENT}15`,
+                                        border: `1px solid ${ACCENT}40`,
+                                        borderRadius: '10px',
+                                        padding: '12px 16px',
+                                        marginBottom: '1rem',
+                                        textAlign: 'left',
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                            <span style={{ color: ACCENT, fontWeight: '600', fontSize: '0.85rem' }}>
+                                                <FaCheck size={12} /> State exported & copied!
+                                            </span>
+                                            <button
+                                                onClick={handleReCopyState}
+                                                style={{
+                                                    background: 'none', border: `1px solid ${ACCENT}40`,
+                                                    borderRadius: '6px', padding: '4px 10px',
+                                                    color: ACCENT, fontSize: '0.75rem', fontWeight: '500',
+                                                    cursor: 'pointer',
+                                                }}
+                                            >
+                                                {stateCopied ? 'Copied!' : 'Re-copy'}
+                                            </button>
+                                        </div>
+                                        <div style={{
+                                            color: theme.colors.secondaryText, fontSize: '0.78rem', lineHeight: '1.5',
+                                            maxHeight: '80px', overflow: 'hidden',
+                                            fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+                                            opacity: 0.7,
+                                        }}>
+                                            {exportedText.substring(0, 200)}...
+                                        </div>
+                                    </div>
+                                    <p style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', lineHeight: '1.6', margin: '0 0 0.5rem' }}>
+                                        Now paste this into your AI conversation along with what you want to change. For example:
+                                    </p>
+                                    <div style={{
+                                        background: theme.colors.primaryBg,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '8px',
+                                        padding: '10px 14px',
+                                        textAlign: 'left',
+                                        fontSize: '0.82rem',
+                                        color: theme.colors.secondaryText,
+                                        fontStyle: 'italic',
+                                        lineHeight: '1.5',
+                                    }}>
+                                        "Here's my bot state: [paste]. Set up a DCA that buys 0.5 ICP worth of SNEED every 4 hours"
+                                    </div>
+                                </>
+                            )}
+
+                            {engine.parseError && (
+                                <div style={{
+                                    background: '#dc262615', border: '1px solid #dc262640', borderRadius: '6px',
+                                    padding: '10px 14px', marginTop: '12px',
+                                    color: '#f87171', fontSize: '0.82rem', fontFamily: 'monospace', textAlign: 'left',
+                                }}>
+                                    {engine.parseError}
+                                </div>
+                            )}
+                        </div>
+
+                        <DSLContextBar getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} setParseError={engine.setParseError} />
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem' }}>
+                            <button onClick={() => setStep(1)} style={btnSecondary(theme)}>
+                                <FaArrowLeft size={12} /> Back
+                            </button>
+                            <button onClick={() => setStep(3)} style={btnPrimary(theme, !!exportedText)}>
+                                Next <FaArrowRight size={12} />
+                            </button>
+                        </div>
+                    </WizardCard>
+                )}
+
+                {/* Step 3: Paste Script */}
+                {step === 3 && (
+                    <WizardCard theme={theme}>
+                        <div style={{ marginBottom: '12px' }}>
+                            <DSLScriptEditor
+                                editorText={engine.editorText}
+                                setEditorText={engine.setEditorText}
+                                theme={theme}
+                                minHeight="200px"
+                                placeholder="# Paste the SneedScript from your AI here..."
+                            />
+                        </div>
+
+                        {engine.parseError && (
+                            <div style={{
+                                background: '#dc262615', border: '1px solid #dc262640', borderRadius: '6px',
+                                padding: '10px 14px', marginBottom: '12px',
+                                color: '#f87171', fontSize: '0.82rem', fontFamily: 'monospace', whiteSpace: 'pre-wrap',
+                            }}>
+                                {engine.parseError}
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <button onClick={() => setStep(2)} style={btnSecondary(theme)}>
+                                <FaArrowLeft size={12} /> Back
+                            </button>
+                            <button
+                                onClick={handleParseAndAdvance}
+                                disabled={engine.parsing || !engine.editorText.trim()}
+                                style={btnPrimary(theme, !engine.parsing && engine.editorText.trim())}
+                            >
+                                {engine.parsing ? (
+                                    <><FaSpinner className="wizard-spin" size={12} /> Parsing...</>
+                                ) : (
+                                    <>Parse & Review <FaArrowRight size={12} /></>
+                                )}
+                            </button>
+                        </div>
+                    </WizardCard>
+                )}
+
+                {/* Step 4: Review & Execute */}
+                {step === 4 && (
+                    <WizardCard theme={theme}>
+                        <DSLOperationReview
+                            operations={engine.operations}
+                            errors={engine.errors}
+                            enabledOps={engine.enabledOps}
+                            toggleOp={engine.toggleOp}
+                            executionResults={engine.executionResults}
+                            executingIndex={engine.executingIndex}
+                            mode={engine.mode}
+                            handleExecute={engine.handleExecute}
+                            enabledCount={engine.enabledCount}
+                            callOps={engine.callOps}
+                            noopOps={engine.noopOps}
+                            theme={theme}
+                            accentColor={accentColor}
+                        />
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
+                            {!executionDone ? (
+                                <>
+                                    <button onClick={() => { engine.handleBackToEditor(); setStep(3); }} style={btnSecondary(theme)} disabled={engine.mode === 'executing'}>
+                                        <FaArrowLeft size={12} /> Back
+                                    </button>
+                                    <div />
+                                </>
+                            ) : (
+                                <>
+                                    <button
+                                        onClick={() => {
+                                            engine.resetAll();
+                                            setExportedText(null);
+                                            setStep(2);
+                                        }}
+                                        style={btnSecondary(theme)}
+                                    >
+                                        <FaArrowLeft size={12} /> Another Round
+                                    </button>
+                                    <button onClick={() => onComplete(null, null)} style={btnPrimary(theme)}>
+                                        Done <FaCheck size={12} />
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </WizardCard>
+                )}
+            </div>
+        </div>
+    );
+}
+
 function SummaryRow({ label, value, theme }) {
     return (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: `1px solid ${theme.colors.border}40`, fontSize: '0.82rem' }}>
@@ -1581,6 +1877,13 @@ export default function TradingBotWizard({ isOpen, onClose, getReadyBotActor, ca
             desc: 'Maintain target allocations across multiple tokens. Auto-rebalances when drift exceeds threshold.',
             color: '#8b5cf6',
         },
+        {
+            id: 'ai-script',
+            icon: <FaRobot size={22} />,
+            title: 'AI Script (SneedScript)',
+            desc: 'Describe what you want in plain English to your favorite AI, and let it configure the bot for you. Supports everything.',
+            color: '#6366f1',
+        },
     ];
 
     return (
@@ -1622,7 +1925,7 @@ export default function TradingBotWizard({ isOpen, onClose, getReadyBotActor, ca
                             <WizardMascot
                                 message={hasTokens
                                     ? "Welcome back! Ready to set up a new trading strategy? Pick a scenario below and I'll guide you through it."
-                                    : "Welcome to your Trading Bot! I'm the Bot Wizard, and I'll help you get everything set up. Let's start by choosing a trading strategy!"
+                                    : "Welcome to your Trading Bot! I'm the Bot Wizard, and I'll help you get everything set up. Beep bibbidi-bobbidi-boop! Let's start by choosing a trading strategy!"
                                 }
                                 theme={theme}
                                 size="large"
@@ -1677,6 +1980,8 @@ export default function TradingBotWizard({ isOpen, onClose, getReadyBotActor, ca
                     <RangeTradeWizard theme={theme} onComplete={handleComplete} onBack={() => setScenario(null)} getReadyBotActor={getReadyBotActor} canisterId={canisterId} identity={identity} />
                 ) : scenario === 'rebalance' ? (
                     <RebalanceWizard theme={theme} onComplete={handleComplete} onBack={() => setScenario(null)} getReadyBotActor={getReadyBotActor} canisterId={canisterId} identity={identity} />
+                ) : scenario === 'ai-script' ? (
+                    <AIScriptWizard theme={theme} onComplete={handleComplete} onBack={() => setScenario(null)} getReadyBotActor={getReadyBotActor} canisterId={canisterId} />
                 ) : null}
             </div>
         </div>
