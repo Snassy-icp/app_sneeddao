@@ -246,6 +246,68 @@ export function generateLLMGuide() {
 # submit fund_purse { purse: "trade-1", token: ICP, amount: 5.0 ICP }
 # submit reclaim { purse: "trade-1", token: ICP, amount: 2.0 ICP }
 #
+# === FEASIBILITY & SAFETY CHECKS ===
+#
+# IMPORTANT: Before producing any script, you MUST sanity-check
+# the user's request against the exported state. The comment lines
+# in the exported state contain balances, prices, and stats — use them.
+#
+# 1. BALANCE FEASIBILITY
+#    - fund_purse: check that the MAIN PURSE balance (total balance
+#      minus sum of all chore purses) has enough of the token.
+#      If not, tell the user how much is available and ask what they
+#      want to do instead.
+#    - reclaim: check the chore purse actually holds that much.
+#    - send / withdraw: check the source (main purse or chore purse)
+#      has the amount. Account for the token's fee as well.
+#    - submit trade: check the source has enough input token.
+#    - DCA budget (max_cumulative_input): note if the funded purse
+#      balance is much smaller than the budget — the chore will stall
+#      once the purse is exhausted.
+#    If something doesn't add up, clearly explain the shortfall and
+#    suggest alternatives (e.g. smaller amount, fund the purse first).
+#
+# 2. SLIPPAGE & PRICE IMPACT
+#    - For liquid pairs (ICP, ckBTC, ckETH, ckUSDC, ckUSDT):
+#      slippage above 3% is unusual. Above 5% deserves a warning.
+#    - For illiquid/meme tokens: up to 10-15% may be necessary,
+#      but warn above 25%.
+#    - max_price_impact above 5% is almost always dangerous.
+#    - If the user doesn't specify these, don't override the bot
+#      defaults (1% slippage, 3% impact) — they're reasonable.
+#    Politely flag if values seem aggressive and explain the risk.
+#
+# 3. EXECUTION INTERVALS
+#    - The practical minimum chore interval is about 5 minutes (300s).
+#      Shorter intervals waste cycles and may cause timer overlap.
+#    - For DCA strategies, intervals below 15m are unusual — flag it
+#      unless the user has a clear reason.
+#    - Snapshot chores below 30m may produce excessive data.
+#
+# 4. TRADE SIZE SANITY
+#    - If a single trade would consume more than ~25% of the purse's
+#      balance of that token, note this to the user.
+#    - If the user asks for a very large one-shot (submit) trade,
+#      note the amount relative to their balance and suggest splitting
+#      into smaller trades if slippage/impact may be an issue.
+#
+# 5. SAFETY NET REMINDERS
+#    - If the user is setting up trading chores without any circuit
+#      breaker rules, gently suggest adding at least a basic one
+#      (e.g. "pause all if portfolio value drops X%").
+#    - If the user sets halt_chore_after: false on a stop-loss action,
+#      confirm they want the chore to keep running after the stop-loss
+#      fires (this is unusual).
+#    - If trailing_stop_reset is "never", remind the user the watermark
+#      won't reset after execution (intentional for one-shot stops).
+#
+# 6. GENERAL COMMON SENSE
+#    - If something about the request seems unusual, contradictory,
+#      or potentially costly, say so politely before producing the
+#      script. The user can always override your suggestion.
+#    - When in doubt, ask a clarifying question rather than guessing.
+#    - Always produce valid SneedScript — never invent syntax.
+#
 # === SUPPLEMENTARY CONTEXT ===
 #
 # The user has additional data they can copy for you from the bot's UI.
