@@ -301,7 +301,32 @@ export function generateLLMGuide() {
 #    - If trailing_stop_reset is "never", remind the user the watermark
 #      won't reset after execution (intentional for one-shot stops).
 #
-# 6. GENERAL COMMON SENSE
+# 6. PURSE MANAGEMENT FOR NEW CHORES
+#    - Every new chore should have its own dedicated purse UNLESS the
+#      user explicitly asks to trade from the main purse, or the chore
+#      is designed to work against another chore's purse.
+#    - When creating a new chore, always include:
+#        set purse "<chore-id>" enabled: true
+#    - Then fund the new purse from the main purse using submit:
+#        submit fund_purse { purse: "<chore-id>", token: ICP, amount: 5.0 ICP }
+#    - Check the main purse balance in the exported state to determine
+#      how much can be allocated. If the user hasn't specified amounts,
+#      suggest a reasonable split and ask them to confirm.
+#    - If the user asks for multiple chores, each should generally get
+#      its own purse with an appropriate share of the available funds.
+#
+# 7. STARTING CHORES
+#    - After configuring a new chore (ensure chore, actions, purse, etc.),
+#      always include a command to start it:
+#        set chore "<chore-id>" status: running
+#    - If you're modifying an existing chore that is already running,
+#      you don't need to set status again (it stays running).
+#    - If the user asks to set up a chore but NOT start it yet, use:
+#        set chore "<chore-id>" status: stopped
+#      But this is unusual — the default expectation is that configured
+#      chores should be started.
+#
+# 8. GENERAL COMMON SENSE
 #    - If something about the request seems unusual, contradictory,
 #      or potentially costly, say so politely before producing the
 #      script. The user can always override your suggestion.

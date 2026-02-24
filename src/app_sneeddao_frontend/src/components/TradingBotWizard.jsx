@@ -1510,29 +1510,84 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
     );
 }
 
-function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId }) {
+function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, identity }) {
     const [step, setStep] = useState(1);
     const engine = useDSLEngine(getReadyBotActor);
     const [exportedText, setExportedText] = useState(null);
     const [guideCopiedOnce, setGuideCopiedOnce] = useState(false);
     const [stateCopied, setStateCopied] = useState(false);
 
+    const [fundToken, setFundToken] = useState('');
+    const [fundAmount, setFundAmount] = useState('');
+    const [fundMeta, setFundMeta] = useState(null);
+    const [walletBalance, setWalletBalance] = useState(null);
+    const [botBalance, setBotBalance] = useState(null);
+    const [funding, setFunding] = useState(false);
+    const [fundLog, setFundLog] = useState([]);
+
+    useEffect(() => {
+        if (!fundToken || !identity) { setWalletBalance(null); setFundMeta(null); setBotBalance(null); return; }
+        let cancelled = false;
+        (async () => {
+            try {
+                const ledger = createLedgerActor(fundToken, { agentOptions: { identity } });
+                const [bal, dec, sym, fee] = await Promise.all([
+                    ledger.icrc1_balance_of({ owner: identity.getPrincipal(), subaccount: [] }),
+                    ledger.icrc1_decimals(), ledger.icrc1_symbol(), ledger.icrc1_fee(),
+                ]);
+                if (cancelled) return;
+                setWalletBalance(BigInt(bal));
+                setFundMeta({ decimals: Number(dec), symbol: sym, fee: BigInt(fee) });
+                if (canisterId) {
+                    const botBal = await ledger.icrc1_balance_of({ owner: Principal.fromText(canisterId), subaccount: [] });
+                    if (!cancelled) setBotBalance(BigInt(botBal));
+                }
+            } catch { if (!cancelled) { setWalletBalance(null); setFundMeta(null); setBotBalance(null); } }
+        })();
+        return () => { cancelled = true; };
+    }, [fundToken, identity, canisterId, fundLog.length]);
+
+    const fundSymbol = fundMeta?.symbol || getTokenMetadataSync(fundToken)?.symbol || '???';
+    const fundDecimals = fundMeta?.decimals ?? getTokenMetadataSync(fundToken)?.decimals ?? 8;
+    const fmtBal = (raw, dec) => raw == null ? '...' : (Number(raw) / Math.pow(10, dec)).toLocaleString(undefined, { maximumFractionDigits: dec });
+
+    const handleFundBot = async () => {
+        if (!fundToken || !fundAmount || Number(fundAmount) <= 0 || !identity) return;
+        setFunding(true);
+        try {
+            const dec = fundDecimals;
+            const rawAmt = BigInt(Math.floor(Number(fundAmount) * Math.pow(10, dec)));
+            const ledger = createLedgerActor(fundToken, { agentOptions: { identity } });
+            await ledger.icrc1_transfer({
+                to: { owner: Principal.fromText(canisterId), subaccount: [] },
+                amount: rawAmt, fee: [], memo: [], from_subaccount: [], created_at_time: [],
+            });
+            setFundLog(prev => [...prev, { token: fundSymbol, amount: fundAmount, ledger: fundToken }]);
+            setFundAmount('');
+        } catch (e) {
+            setFundLog(prev => [...prev, { token: fundSymbol, amount: fundAmount, error: e.message }]);
+        } finally {
+            setFunding(false);
+        }
+    };
+
     const accentColor = '#6366f1';
 
-    const stepLabels = ['Guide', 'Export', 'Script', 'Review'];
+    const stepLabels = ['Guide', 'Fund', 'Export', 'Script', 'Review'];
 
     const messages = {
         1: `First, let's give your AI the language reference. Click "Copy LLM Guide" below, then paste it into a new conversation with your favorite AI (ChatGPT, Claude, Gemini, etc.)`,
-        2: `Great! Now let's export your bot's current state and copy it for the AI. You'll paste this along with a description of what you want.`,
-        3: `Paste the SneedScript that your AI generated below. I'll analyze it and show you exactly what will change.`,
-        4: engine.mode === 'executing'
+        2: `If you want the AI to allocate funds to the strategies it creates, send tokens to the bot now. The next step exports your bot state — including balances — so the AI can see what's available.`,
+        3: `Great! Now let's export your bot's current state and copy it for the AI. You'll paste this along with a description of what you want.`,
+        4: `Paste the SneedScript that your AI generated below. I'll analyze it and show you exactly what will change.`,
+        5: engine.mode === 'executing'
             ? `Executing your changes...`
             : `Here's everything the script will do. Review each operation, uncheck anything you don't want, then hit Execute!`,
     };
 
-    const goToStep3 = () => {
+    const goToStep4 = () => {
         engine.setEditorText('');
-        setStep(3);
+        setStep(4);
     };
 
     const handleExportAndCopy = async () => {
@@ -1555,7 +1610,7 @@ function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterI
 
     const handleParseAndAdvance = async () => {
         const result = await engine.handleParse();
-        if (result) setStep(4);
+        if (result) setStep(5);
     };
 
     const executionDone = engine.mode === 'executing' && engine.executingIndex === -1 && engine.executionResults.length > 0;
@@ -1564,8 +1619,8 @@ function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterI
         <div>
             <StepProgress steps={stepLabels} currentStep={step} onStepClick={s => {
                 if (s < step && engine.mode !== 'executing') {
-                    if (s <= 3) engine.handleBackToEditor();
-                    if (s === 3) engine.setEditorText('');
+                    if (s <= 4) engine.handleBackToEditor();
+                    if (s === 4) engine.setEditorText('');
                     setStep(s);
                 }
             }} theme={theme} />
@@ -1605,8 +1660,84 @@ function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterI
                     </WizardCard>
                 )}
 
-                {/* Step 2: Export State */}
+                {/* Step 2: Fund Bot */}
                 {step === 2 && (
+                    <WizardCard theme={theme}>
+                        <div style={{ textAlign: 'center', padding: '0.5rem 0' }}>
+                            <div style={{
+                                width: '56px', height: '56px', borderRadius: '16px',
+                                background: `${accentColor}15`, display: 'flex',
+                                alignItems: 'center', justifyContent: 'center',
+                                margin: '0 auto 1rem',
+                            }}>
+                                <FaWallet size={24} color={accentColor} />
+                            </div>
+                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', lineHeight: '1.6', margin: '0 0 1rem', maxWidth: '420px', marginLeft: 'auto', marginRight: 'auto' }}>
+                                Send tokens to the bot so the AI can see your balances and include commands to distribute funds to the strategies it creates. You can send multiple tokens.
+                            </p>
+
+                            <div style={{ textAlign: 'left', padding: '14px', background: theme.colors.primaryBg, borderRadius: '10px', border: `1px solid ${theme.colors.border}`, marginBottom: '10px' }}>
+                                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '6px' }}>Token</label>
+                                <TokenSelector value={fundToken} onChange={setFundToken} onSelectToken={cacheTokenFromSelector} placeholder="Select token to send..." />
+                                {fundToken && (
+                                    <div style={{ marginTop: '10px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: theme.colors.secondaryText, marginBottom: '6px' }}>
+                                            <span>Wallet: <strong style={{ color: theme.colors.primaryText }}>{fmtBal(walletBalance, fundDecimals)} {fundSymbol}</strong></span>
+                                            <span>Bot: <strong style={{ color: theme.colors.primaryText }}>{fmtBal(botBalance, fundDecimals)} {fundSymbol}</strong></span>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+                                            <div style={{ flex: 1 }}>
+                                                <AmountInput label={`Amount to send`} value={fundAmount} onChange={setFundAmount} theme={theme} placeholder="0" />
+                                            </div>
+                                            <button
+                                                onClick={handleFundBot}
+                                                disabled={funding || !fundAmount || Number(fundAmount) <= 0 || (walletBalance != null && BigInt(Math.floor(Number(fundAmount) * Math.pow(10, fundDecimals))) > walletBalance)}
+                                                style={{
+                                                    ...btnPrimary(theme, !funding && fundAmount && Number(fundAmount) > 0),
+                                                    flex: 'none', minWidth: 'auto', padding: '10px 18px', fontSize: '0.82rem',
+                                                }}
+                                            >
+                                                {funding ? <><FaSpinner className="wizard-spin" size={12} /> Sending...</> : <>Send</>}
+                                            </button>
+                                        </div>
+                                        {walletBalance != null && fundAmount && Number(fundAmount) > 0 && BigInt(Math.floor(Number(fundAmount) * Math.pow(10, fundDecimals))) > walletBalance && (
+                                            <div style={{ color: theme.colors.error || '#ef4444', fontSize: '0.78rem', marginTop: '6px' }}>Insufficient wallet balance</div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            {fundLog.length > 0 && (
+                                <div style={{ textAlign: 'left', marginBottom: '6px' }}>
+                                    {fundLog.map((entry, i) => (
+                                        <div key={i} style={{
+                                            display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px',
+                                            borderRadius: '6px', fontSize: '0.78rem', marginBottom: '4px',
+                                            background: entry.error ? '#ef444412' : `${ACCENT}12`,
+                                            border: `1px solid ${entry.error ? '#ef444430' : ACCENT + '30'}`,
+                                        }}>
+                                            {entry.error
+                                                ? <><FaTimes size={10} color="#ef4444" /><span style={{ color: '#ef4444' }}>Failed to send {entry.amount} {entry.token}: {entry.error}</span></>
+                                                : <><FaCheck size={10} color={ACCENT} /><span style={{ color: ACCENT }}>Sent {entry.amount} {entry.token} to bot</span></>
+                                            }
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem' }}>
+                            <button onClick={() => setStep(1)} style={btnSecondary(theme)}>
+                                <FaArrowLeft size={12} /> Back
+                            </button>
+                            <button onClick={() => setStep(3)} style={btnPrimary(theme)}>
+                                {fundLog.some(e => !e.error) ? 'Next' : 'Skip'} <FaArrowRight size={12} />
+                            </button>
+                        </div>
+                    </WizardCard>
+                )}
+
+                {/* Step 3: Export State */}
+                {step === 3 && (
                     <WizardCard theme={theme}>
                         <div style={{ textAlign: 'center', padding: '0.5rem 0' }}>
                             <div style={{
@@ -1707,18 +1838,18 @@ function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterI
                         <DSLContextBar getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} setParseError={engine.setParseError} />
 
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem' }}>
-                            <button onClick={() => setStep(1)} style={btnSecondary(theme)}>
+                            <button onClick={() => setStep(2)} style={btnSecondary(theme)}>
                                 <FaArrowLeft size={12} /> Back
                             </button>
-                            <button onClick={goToStep3} style={btnPrimary(theme, !!exportedText)}>
+                            <button onClick={goToStep4} style={btnPrimary(theme, !!exportedText)}>
                                 Next <FaArrowRight size={12} />
                             </button>
                         </div>
                     </WizardCard>
                 )}
 
-                {/* Step 3: Paste Script */}
-                {step === 3 && (
+                {/* Step 4: Paste Script */}
+                {step === 4 && (
                     <WizardCard theme={theme}>
                         <div style={{ marginBottom: '12px' }}>
                             <DSLScriptEditor
@@ -1741,7 +1872,7 @@ function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterI
                         )}
 
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <button onClick={() => setStep(2)} style={btnSecondary(theme)}>
+                            <button onClick={() => setStep(3)} style={btnSecondary(theme)}>
                                 <FaArrowLeft size={12} /> Back
                             </button>
                             <button
@@ -1759,8 +1890,8 @@ function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterI
                     </WizardCard>
                 )}
 
-                {/* Step 4: Review & Execute */}
-                {step === 4 && (
+                {/* Step 5: Review & Execute */}
+                {step === 5 && (
                     <WizardCard theme={theme}>
                         <DSLOperationReview
                             operations={engine.operations}
@@ -1781,7 +1912,7 @@ function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterI
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
                             {!executionDone ? (
                                 <>
-                                    <button onClick={() => { engine.handleBackToEditor(); setStep(3); }} style={btnSecondary(theme)} disabled={engine.mode === 'executing'}>
+                                    <button onClick={() => { engine.handleBackToEditor(); setStep(4); }} style={btnSecondary(theme)} disabled={engine.mode === 'executing'}>
                                         <FaArrowLeft size={12} /> Back
                                     </button>
                                     <div />
@@ -1792,7 +1923,7 @@ function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterI
                                         onClick={() => {
                                             engine.resetAll();
                                             setExportedText(null);
-                                            setStep(2);
+                                            setStep(3);
                                         }}
                                         style={btnSecondary(theme)}
                                     >
@@ -1987,7 +2118,7 @@ export default function TradingBotWizard({ isOpen, onClose, getReadyBotActor, ca
                 ) : scenario === 'rebalance' ? (
                     <RebalanceWizard theme={theme} onComplete={handleComplete} onBack={() => setScenario(null)} getReadyBotActor={getReadyBotActor} canisterId={canisterId} identity={identity} />
                 ) : scenario === 'ai-script' ? (
-                    <AIScriptWizard theme={theme} onComplete={handleComplete} onBack={() => setScenario(null)} getReadyBotActor={getReadyBotActor} canisterId={canisterId} />
+                    <AIScriptWizard theme={theme} onComplete={handleComplete} onBack={() => setScenario(null)} getReadyBotActor={getReadyBotActor} canisterId={canisterId} identity={identity} />
                 ) : null}
             </div>
         </div>
