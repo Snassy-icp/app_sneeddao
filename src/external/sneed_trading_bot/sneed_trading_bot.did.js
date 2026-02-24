@@ -25,6 +25,8 @@ export const idlFactory = ({ IDL }) => {
         ViewChores: IDL.Null,
         ViewLogs: IDL.Null,
         ManageLogs: IDL.Null,
+        ManageEvents: IDL.Null,
+        ViewEvents: IDL.Null,
         ViewPortfolio: IDL.Null,
         ManageTrades: IDL.Null,
         ManageRebalancer: IDL.Null,
@@ -658,6 +660,111 @@ export const idlFactory = ({ IDL }) => {
     });
 
     // ==========================================
+    // Event System types
+    // ==========================================
+    const EventListenerRegistration = IDL.Record({
+        id: IDL.Nat,
+        listenerCanisterId: IDL.Principal,
+        eventTypeIds: IDL.Vec(IDL.Nat),
+        registeredAt: IDL.Int,
+        enabled: IDL.Bool,
+    });
+
+    const RegisterListenerRequest = IDL.Record({
+        eventTypeIds: IDL.Vec(IDL.Nat),
+    });
+
+    const EventSubscription = IDL.Record({
+        id: IDL.Nat,
+        sourceBotCanisterId: IDL.Principal,
+        eventTypeIds: IDL.Vec(IDL.Nat),
+        registrationId: IDL.Opt(IDL.Nat),
+        enabled: IDL.Bool,
+        createdAt: IDL.Int,
+    });
+
+    const EventCondition = IDL.Record({
+        dataKey: IDL.Text,
+        operator: IDL.Nat,
+        value: IDL.Text,
+    });
+
+    const EventReactionRule = IDL.Record({
+        id: IDL.Nat,
+        name: IDL.Text,
+        enabled: IDL.Bool,
+        subscriptionId: IDL.Nat,
+        eventTypeId: IDL.Nat,
+        reactionActionId: IDL.Nat,
+        actionParams: IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)),
+        conditions: IDL.Vec(EventCondition),
+        cooldownSeconds: IDL.Opt(IDL.Nat),
+        lastTriggeredAt: IDL.Opt(IDL.Int),
+        triggerCount: IDL.Nat,
+    });
+
+    const EventReactionRuleInput = IDL.Record({
+        name: IDL.Text,
+        enabled: IDL.Bool,
+        subscriptionId: IDL.Nat,
+        eventTypeId: IDL.Nat,
+        reactionActionId: IDL.Nat,
+        actionParams: IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)),
+        conditions: IDL.Vec(EventCondition),
+        cooldownSeconds: IDL.Opt(IDL.Nat),
+    });
+
+    const BotEvent = IDL.Record({
+        sourceCanisterId: IDL.Principal,
+        eventTypeId: IDL.Nat,
+        timestamp: IDL.Int,
+        data: IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text)),
+        eventId: IDL.Nat,
+    });
+
+    const EventLogQuery = IDL.Record({
+        eventTypeId: IDL.Opt(IDL.Nat),
+        fromTime: IDL.Opt(IDL.Int),
+        toTime: IDL.Opt(IDL.Int),
+        startId: IDL.Opt(IDL.Nat),
+        limit: IDL.Opt(IDL.Nat),
+    });
+
+    const EventLogResult = IDL.Record({
+        entries: IDL.Vec(BotEvent),
+        totalMatching: IDL.Nat,
+        hasMore: IDL.Bool,
+    });
+
+    const EventReactionLogEntry = IDL.Record({
+        id: IDL.Nat,
+        timestamp: IDL.Int,
+        eventId: IDL.Nat,
+        eventTypeId: IDL.Nat,
+        sourceCanisterId: IDL.Principal,
+        reactionRuleId: IDL.Nat,
+        reactionRuleName: IDL.Text,
+        reactionActionId: IDL.Nat,
+        success: IDL.Bool,
+        error: IDL.Opt(IDL.Text),
+    });
+
+    const EventReactionLogQuery = IDL.Record({
+        reactionRuleId: IDL.Opt(IDL.Nat),
+        eventTypeId: IDL.Opt(IDL.Nat),
+        fromTime: IDL.Opt(IDL.Int),
+        toTime: IDL.Opt(IDL.Int),
+        startId: IDL.Opt(IDL.Nat),
+        limit: IDL.Opt(IDL.Nat),
+    });
+
+    const EventReactionLogResult = IDL.Record({
+        entries: IDL.Vec(EventReactionLogEntry),
+        totalMatching: IDL.Nat,
+        hasMore: IDL.Bool,
+    });
+
+    // ==========================================
     // One-Off Trade types
     // ==========================================
     const OneOffTradeInput = IDL.Record({
@@ -882,6 +989,28 @@ export const idlFactory = ({ IDL }) => {
         getOneOffTradeQueue: IDL.Func([], [IDL.Vec(OneOffTradeEntry)], ['query']),
         cancelOneOffTrade: IDL.Func([IDL.Nat], [IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })], []),
         clearOneOffTradeHistory: IDL.Func([], [], []),
+
+        // Event System — Source side
+        registerEventListener: IDL.Func([RegisterListenerRequest], [IDL.Variant({ Ok: IDL.Nat, Err: IDL.Text })], []),
+        unregisterEventListener: IDL.Func([IDL.Nat], [], []),
+        updateEventListenerTypes: IDL.Func([IDL.Nat, IDL.Vec(IDL.Nat)], [IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })], []),
+        getEventListeners: IDL.Func([], [IDL.Vec(EventListenerRegistration)], ['query']),
+        setEventEmissionEnabled: IDL.Func([IDL.Bool], [], []),
+        getEventLog: IDL.Func([EventLogQuery], [EventLogResult], ['query']),
+        getEventTypes: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Nat, IDL.Text))], ['query']),
+
+        // Event System — Listener side
+        addEventSubscription: IDL.Func([IDL.Principal, IDL.Vec(IDL.Nat)], [IDL.Variant({ Ok: IDL.Nat, Err: IDL.Text })], []),
+        removeEventSubscription: IDL.Func([IDL.Nat], [], []),
+        updateEventSubscription: IDL.Func([IDL.Nat, IDL.Vec(IDL.Nat)], [IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })], []),
+        getEventSubscriptions: IDL.Func([], [IDL.Vec(EventSubscription)], ['query']),
+        addEventReaction: IDL.Func([EventReactionRuleInput], [IDL.Nat], []),
+        updateEventReaction: IDL.Func([IDL.Nat, EventReactionRuleInput], [], []),
+        removeEventReaction: IDL.Func([IDL.Nat], [], []),
+        getEventReactions: IDL.Func([], [IDL.Vec(EventReactionRule)], ['query']),
+        getEventReactionLog: IDL.Func([EventReactionLogQuery], [EventReactionLogResult], ['query']),
+        getAvailableReactionActions: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Nat, IDL.Text))], ['query']),
+        onBotEvent: IDL.Func([BotEvent], [IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })], []),
 
         // Pool recovery
         recoverPoolFunds: IDL.Func([IDL.Principal, IDL.Principal], [IDL.Variant({
