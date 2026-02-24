@@ -7305,6 +7305,8 @@ function BotLogPanel({ getReadyBotActor, theme, accentColor }) {
     const [totalMatching, setTotalMatching] = useState(0);
     const [autoRefresh, setAutoRefresh] = useState(false);
     const autoRefreshRef = useRef(null);
+    const [savingConfig, setSavingConfig] = useState(false);
+    const [configMsg, setConfigMsg] = useState({ text: '', isError: false });
 
     const allTokenIds = React.useMemo(() => {
         const ids = new Set();
@@ -7436,8 +7438,54 @@ function BotLogPanel({ getReadyBotActor, theme, accentColor }) {
                                 style={{ padding: '3px 6px', borderRadius: '6px', border: `1px solid ${theme.colors.border}`, background: theme.colors.cardBackground || theme.colors.background, color: theme.colors.primaryText, fontSize: '0.8rem', cursor: 'pointer' }}>
                                 {[10, 25, 50, 100, 200].map(n => <option key={n} value={n}>{n}</option>)}
                             </select>
+                            <div style={{ flex: 1 }} />
+                            {logConfig && (
+                                <>
+                                    <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>Write level:</span>
+                                    <select value={Object.keys(logConfig.logLevel)[0]}
+                                        onChange={async (e) => {
+                                            setSavingConfig(true); setConfigMsg({ text: '', isError: false });
+                                            try {
+                                                const newLevel = e.target.value;
+                                                const bot = await getReadyBotActor();
+                                                await bot.setLogLevel({ [newLevel]: null });
+                                                setLogConfig(prev => prev ? { ...prev, logLevel: { [newLevel]: null } } : prev);
+                                                setConfigMsg({ text: `Log level set to ${newLevel}`, isError: false });
+                                                setTimeout(() => setConfigMsg({ text: '', isError: false }), 3000);
+                                                loadLogs(undefined, true);
+                                            } catch (err) { setConfigMsg({ text: 'Failed: ' + err.message, isError: true }); }
+                                            finally { setSavingConfig(false); }
+                                        }}
+                                        disabled={savingConfig}
+                                        style={{ padding: '3px 8px', borderRadius: '6px', border: `1px solid ${theme.colors.border}`, background: theme.colors.cardBackground || theme.colors.background, color: theme.colors.primaryText, fontSize: '0.8rem', cursor: 'pointer' }}>
+                                        {['Off', 'Error', 'Warning', 'Info', 'Debug', 'Trace'].map(l => <option key={l} value={l}>{l}</option>)}
+                                    </select>
+                                    <button onClick={async () => {
+                                        if (!window.confirm('Clear all log entries?')) return;
+                                        setSavingConfig(true); setConfigMsg({ text: '', isError: false });
+                                        try {
+                                            const bot = await getReadyBotActor();
+                                            await bot.clearLogs();
+                                            setConfigMsg({ text: 'Logs cleared', isError: false });
+                                            setTimeout(() => setConfigMsg({ text: '', isError: false }), 3000);
+                                            loadLogs();
+                                        } catch (err) { setConfigMsg({ text: 'Failed: ' + err.message, isError: true }); }
+                                        finally { setSavingConfig(false); }
+                                    }} disabled={savingConfig}
+                                        style={{ padding: '4px 12px', borderRadius: '8px', border: '1px solid #ef444440', background: '#ef444410', color: '#ef4444', fontSize: '0.8rem', cursor: 'pointer' }}>
+                                        Clear Logs
+                                    </button>
+                                </>
+                            )}
                         </div>
                     </div>
+
+                    {configMsg.text && (
+                        <div style={{ ...cardStyle, background: configMsg.isError ? '#ef444415' : '#22c55e15', border: `1px solid ${configMsg.isError ? '#ef444430' : '#22c55e30'}`, color: configMsg.isError ? '#ef4444' : '#22c55e', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ flex: 1 }}>{configMsg.text}</span>
+                            <button onClick={() => setConfigMsg({ text: '', isError: false })} title="Dismiss" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: '2px', fontSize: '0.9rem', lineHeight: 1, flexShrink: 0, opacity: 0.7 }}>×</button>
+                        </div>
+                    )}
 
                     {/* Log entries */}
                     {entries.length > 0 ? (
