@@ -452,7 +452,7 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
             const toRawPrice = (p) => BigInt(Math.floor(Number(p) * Math.pow(10, dec)));
             const hasPriceRange = enablePriceRange && (dcaMinPrice || dcaMaxPrice);
             await bot.addTradeAction(instId, {
-                actionType: 0, enabled: true,
+                key: '', actionType: 0, enabled: true,
                 inputToken: Principal.fromText(inputToken),
                 outputToken: [Principal.fromText(outputToken)],
                 minAmount: rawSize, maxAmount: rawSize,
@@ -842,7 +842,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                 const slInput = stopLossSellToken === 'A' ? tokenA : tokenB;
                 const slOutput = stopLossSellToken === 'A' ? tokenB : tokenA;
                 await bot.addTradeAction(instId, {
-                    actionType: 0, enabled: true,
+                    key: '', actionType: 0, enabled: true,
                     inputToken: Principal.fromText(slInput),
                     outputToken: [Principal.fromText(slOutput)],
                     minAmount: 0n, maxAmount: 0n,
@@ -864,7 +864,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
 
             setDeployStep('Adding sell-A range action...');
             await bot.addTradeAction(instId, {
-                actionType: 0, enabled: true,
+                key: '', actionType: 0, enabled: true,
                 inputToken: Principal.fromText(tokenA),
                 outputToken: [Principal.fromText(tokenB)],
                 minAmount: rawTradeSizeA, maxAmount: rawTradeSizeA,
@@ -885,7 +885,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
 
             setDeployStep('Adding sell-B range action...');
             await bot.addTradeAction(instId, {
-                actionType: 0, enabled: true,
+                key: '', actionType: 0, enabled: true,
                 inputToken: Principal.fromText(tokenB),
                 outputToken: [Principal.fromText(tokenA)],
                 minAmount: rawTradeSizeB, maxAmount: rawTradeSizeB,
