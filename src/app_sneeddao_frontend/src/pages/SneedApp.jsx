@@ -344,6 +344,7 @@ export default function SneedApp() {
                                 transition: 'transform 0.2s, box-shadow 0.2s',
                                 cursor: 'pointer'
                             }}
+                                onClick={() => navigate(`/sneedapp/app/${app.appId}`)}
                                 onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 8px 24px ${cardColor}20`; }}
                                 onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}
                             >
@@ -429,7 +430,8 @@ export default function SneedApp() {
                                     )}
                                 </div>
 
-                                <button onClick={() => {
+                                <button onClick={(e) => {
+                                    e.stopPropagation();
                                     if (!isAuthenticated) { login(); return; }
                                     navigate(getMintUrl(app));
                                 }} style={{
