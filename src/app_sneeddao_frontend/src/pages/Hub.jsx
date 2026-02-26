@@ -3,7 +3,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
 import { Link } from 'react-router-dom';
-import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaCube, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock, FaShieldAlt, FaGlobe, FaBrain, FaGavel, FaNetworkWired } from 'react-icons/fa';
+import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaCube, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock, FaShieldAlt, FaGlobe, FaBrain, FaGavel, FaNetworkWired, FaStore, FaChartLine, FaRobot } from 'react-icons/fa';
 import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
@@ -1097,6 +1097,26 @@ function Hub() {
             color: hubPrimary,
             badge: 'Popular',
             gradient: `linear-gradient(135deg, ${hubPrimary}20 0%, ${hubSecondary}10 100%)`,
+        },
+        {
+            title: 'Sneedapp',
+            icon: <FaStore size={28} />,
+            desc: 'The on-chain app store. Browse, mint, and manage your own canister smart contracts — from trading bots to neuron managers — all fully on-chain and non-custodial.',
+            path: '/sneedapp',
+            cta: 'Browse Apps',
+            color: '#06b6d4',
+            badge: 'Apps',
+            gradient: 'linear-gradient(135deg, #06b6d420 0%, #22d3ee10 100%)',
+        },
+        {
+            title: 'Trading Bot',
+            icon: <FaChartLine size={28} />,
+            desc: 'The world\'s first 100% on-chain, fully non-custodial trading engine. Your own canister, your keys, your funds — no third party can ever access your tokens.',
+            path: '/sneedapp/app/sneed-trading-bot',
+            cta: 'Learn More',
+            color: '#10b981',
+            badge: 'World First',
+            gradient: 'linear-gradient(135deg, #10b98120 0%, #34d39910 100%)',
         },
         {
             title: 'Liquid Staking',

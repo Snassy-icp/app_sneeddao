@@ -921,7 +921,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     </button>
 
                     <button
-                        onClick={() => navigate('/liquid_staking')}
+                        onClick={() => navigate('/sneedapp')}
                         style={{
                             background: 'none',
                             border: 'none',
@@ -936,9 +936,30 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         }}
                         onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.1)'}
                         onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                        title="Go to Liquid Staking"
+                        title="Go to Sneedapp"
                     >
-                        <FaTint size={16} />
+                        <FaStore size={16} />
+                    </button>
+
+                    <button
+                        onClick={() => navigate('/sneedapp/app/sneed-trading-bot')}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            color: theme.colors.primaryText,
+                            cursor: 'pointer',
+                            padding: '4px',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            fontSize: '18px',
+                            transition: 'background-color 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.1)'}
+                        onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                        title="Trading Bot"
+                    >
+                        <FaChartLine size={16} />
                     </button>
 
                     <button
@@ -1189,6 +1210,32 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             
                             <button
                                 onClick={() => {
+                                    navigate('/sneedapp');
+                                    setIsQuickLinksOpen(false);
+                                }}
+                                style={{
+                                    width: '100%',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: theme.colors.primaryText,
+                                    cursor: 'pointer',
+                                    padding: '12px 16px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    fontSize: '14px',
+                                    textAlign: 'left',
+                                    transition: 'background-color 0.2s ease'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.secondaryBg}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                            >
+                                <FaStore size={14} />
+                                Sneedapp
+                            </button>
+                            
+                            <button
+                                onClick={() => {
                                     navigate('/swap');
                                     setIsQuickLinksOpen(false);
                                 }}
@@ -1215,7 +1262,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             
                             <button
                                 onClick={() => {
-                                    navigate('/liquid_staking');
+                                    navigate('/sneedapp/app/sneed-trading-bot');
                                     setIsQuickLinksOpen(false);
                                 }}
                                 style={{
@@ -1235,8 +1282,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.secondaryBg}
                                 onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                             >
-                                <FaTint size={14} />
-                                Liquid Staking
+                                <FaChartLine size={14} />
+                                Trading Bot
                             </button>
                             
                             <button
