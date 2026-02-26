@@ -1106,6 +1106,7 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                                 displayInfo={getPrincipalDisplayInfoFromContext(bot.canisterId, principalNames, principalNicknames)}
                                                 showCopyButton={false}
                                                 isAuthenticated={!!identity}
+                                                noLink={true}
                                             />
                                         </button>
                                     ))}
