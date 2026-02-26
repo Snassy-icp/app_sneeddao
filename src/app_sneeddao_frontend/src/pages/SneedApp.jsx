@@ -277,7 +277,7 @@ export default function SneedApp() {
                                 margin: '4px 0 0 0',
                                 lineHeight: '1.5'
                             }}>
-                                Browse and mint canisters from the Sneed app ecosystem
+                                Browse and mint canisters from the ICP app ecosystem
                             </p>
                         </div>
                     </div>
