@@ -50,7 +50,7 @@ const APP_CONTENT = {
         glowRgb: '139, 92, 246',
         type: 'staking',
         helpUrl: '/help/icp-neuron-manager',
-        heroDescription: 'The ICP Staking Bot is a fully autonomous canister that manages your ICP neurons — staking, splitting, spawning maturity, and distributing rewards — all without you lifting a finger. Your own personal neuron management infrastructure, running 24/7 on-chain.',
+        heroDescription: 'The ICP Staking Bot is a fully autonomous canister that manages your ICP neurons — staking, splitting, spawning maturity, voting, and distributing rewards — all without you lifting a finger. Your own personal neuron management infrastructure, running 24/7 on-chain.',
         features: [
             { icon: FaBrain, title: 'Autonomous Neuron Management', desc: 'Automatically manages your ICP neurons with configurable staking strategies' },
             { icon: FaCoins, title: 'Maturity Spawning & Staking', desc: 'Spawns maturity and restakes rewards to compound your earnings over time' },
