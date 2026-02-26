@@ -11,7 +11,7 @@ import {
     FaChartLine, FaBrain, FaRobot, FaShieldAlt, FaCogs,
     FaNetworkWired, FaCoins, FaKey, FaStar, FaCrown,
     FaLightbulb, FaPlay, FaCode, FaBolt, FaQuestionCircle,
-    FaChevronDown, FaChevronUp
+    FaChevronDown, FaChevronUp, FaLock, FaGlobeAmericas, FaTrophy
 } from 'react-icons/fa';
 
 const customStyles = `
@@ -69,29 +69,40 @@ const APP_CONTENT = {
         ],
     },
     'sneed-trading-bot': {
-        tagline: 'Automated on-chain trading strategies for ICP tokens',
+        tagline: 'The world\'s first 100% on-chain, fully non-custodial trading engine',
         color: '#10b981',
         secondary: '#34d399',
         gradient: 'linear-gradient(135deg, #10b981, #34d399)',
         glowRgb: '16, 185, 129',
         type: 'trading',
         helpUrl: '/help/trading_bot',
-        heroDescription: 'The Sneed Trading Bot brings automated trading strategies directly on-chain. Define your strategies using a powerful DSL, set conditions for buying and selling, and let the bot execute trades autonomously on ICP decentralized exchanges — no centralized exchange needed.',
+        heroDescription: 'The Sneed Trading Bot is a fully non-custodial, 100% on-chain trading engine. When you mint one, you get your own canister smart contract — and you alone control it. Your funds never leave your custody: no third party, no intermediary, no operator can access or move your tokens. Define strategies using a powerful DSL, set conditions for buying and selling, and let the bot execute trades autonomously on ICP decentralized exchanges.',
+        splash: {
+            title: 'A world first in DeFi',
+            subtitle: 'The first 100% on-chain, fully non-custodial trading engine — ever.',
+            description: 'Unlike every other trading bot on the market, the Sneed Trading Bot is not a service that holds your funds. It is your own smart contract, running on the Internet Computer blockchain. You hold the keys. Nobody else — not Sneed DAO, not any operator, not any server — can touch your funds or override your strategies. This is trustless automation in its purest form.',
+            points: [
+                { icon: FaLock, text: 'Fully non-custodial — your canister, your keys, your funds' },
+                { icon: FaGlobeAmericas, text: '100% on-chain — no servers, no centralized infrastructure' },
+                { icon: FaShieldAlt, text: 'No third party can access, freeze, or move your tokens' },
+                { icon: FaTrophy, text: 'The first trading engine in the world with these properties' },
+            ],
+        },
         features: [
-            { icon: FaChartLine, title: 'Automated Trading', desc: 'Execute buy and sell orders automatically based on your configured strategies' },
-            { icon: FaCode, title: 'Powerful Strategy DSL', desc: 'Define complex trading strategies with a domain-specific language for maximum flexibility' },
-            { icon: FaBolt, title: 'DEX Integration', desc: 'Trades directly on ICP decentralized exchanges — fully on-chain, no intermediaries' },
-            { icon: FaShieldAlt, title: 'Your Own Canister', desc: 'The bot runs as your own canister — you have full control over your funds and strategies' },
-            { icon: FaCogs, title: 'Configurable Conditions', desc: 'Set price triggers, time-based conditions, and portfolio-balancing rules' },
-            { icon: FaRobot, title: 'Chore Engine', desc: 'Built-in scheduling engine executes your strategies on configurable intervals' },
+            { icon: FaLock, title: 'Fully Non-Custodial', desc: 'Your funds stay in your canister at all times. No third party — not even Sneed DAO — can access, freeze, or move your tokens.' },
+            { icon: FaChartLine, title: 'Automated Trading', desc: 'Execute buy and sell orders automatically based on your configured strategies, around the clock.' },
+            { icon: FaCode, title: 'Powerful Strategy DSL', desc: 'Define complex trading strategies with a domain-specific language for maximum flexibility.' },
+            { icon: FaBolt, title: 'DEX Integration', desc: 'Trades directly on ICP decentralized exchanges — fully on-chain, no intermediaries.' },
+            { icon: FaKey, title: 'You Hold the Keys', desc: 'You are the sole controller of your canister. Nobody else can execute trades, change settings, or withdraw funds.' },
+            { icon: FaRobot, title: 'Chore Engine', desc: 'Built-in scheduling engine executes your strategies on configurable intervals, autonomously.' },
         ],
         highlights: [
-            'Fully on-chain trading — no centralized exchanges',
-            'Powerful DSL for custom strategies',
-            'DCA, grid trading, and more',
-            'Configurable trade triggers and conditions',
-            'Event logs for full transparency',
-            'Premium members get discounted minting',
+            '100% non-custodial — you never give up control of your funds',
+            'Fully on-chain — no centralized servers or exchanges',
+            'You are the sole controller of your canister',
+            'No operator, admin, or third party can access your tokens',
+            'Powerful DSL for custom strategies: DCA, grid, and more',
+            'Event logs for full transparency on every action',
         ],
     },
 };
@@ -376,6 +387,81 @@ export default function SneedAppDetail() {
                         </Link>
                     )}
                 </div>
+
+                {/* Splash Banner (world-first callout) */}
+                {content?.splash && (
+                    <div className="detail-fade-in-2" style={{
+                        borderRadius: 16, padding: '2rem 1.5rem', marginBottom: 20,
+                        background: `linear-gradient(135deg, ${accentColor}12 0%, ${accentSecondary}08 50%, ${accentColor}06 100%)`,
+                        border: `1px solid ${accentColor}25`,
+                        position: 'relative', overflow: 'hidden',
+                    }}>
+                        <div style={{
+                            position: 'absolute', top: '-30%', right: '-5%',
+                            width: '300px', height: '300px',
+                            background: `radial-gradient(circle, ${accentColor}12 0%, transparent 70%)`,
+                            pointerEvents: 'none',
+                        }} />
+                        <div style={{ position: 'relative', zIndex: 1 }}>
+                            <div style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 6,
+                                background: `${accentColor}20`, padding: '4px 12px',
+                                borderRadius: 20, marginBottom: 12,
+                                fontSize: 12, fontWeight: 700, color: accentColor,
+                                textTransform: 'uppercase', letterSpacing: '0.06em',
+                            }}>
+                                <FaTrophy style={{ fontSize: 11 }} /> World First
+                            </div>
+                            <h2 style={{
+                                fontSize: '1.4rem', fontWeight: 800,
+                                color: theme.colors.primaryText, margin: '0 0 6px',
+                                lineHeight: 1.3,
+                            }}>
+                                {content.splash.title}
+                            </h2>
+                            <p style={{
+                                color: accentColor, fontSize: '1.05rem',
+                                fontWeight: 600, margin: '0 0 14px',
+                            }}>
+                                {content.splash.subtitle}
+                            </p>
+                            <p style={{
+                                color: theme.colors.secondaryText, fontSize: 14,
+                                lineHeight: 1.7, margin: '0 0 20px', maxWidth: 700,
+                            }}>
+                                {content.splash.description}
+                            </p>
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+                                gap: 10,
+                            }}>
+                                {content.splash.points.map((p, i) => (
+                                    <div key={i} style={{
+                                        display: 'flex', alignItems: 'center', gap: 10,
+                                        padding: '10px 14px', borderRadius: 10,
+                                        background: `${accentColor}08`,
+                                        border: `1px solid ${accentColor}15`,
+                                    }}>
+                                        <div style={{
+                                            width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                                            background: `${accentColor}18`,
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        }}>
+                                            <p.icon style={{ color: accentColor, fontSize: 14 }} />
+                                        </div>
+                                        <span style={{
+                                            color: theme.colors.primaryText, fontSize: 13,
+                                            fontWeight: 500, lineHeight: 1.4,
+                                        }}>
+                                            {p.text}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Features Grid */}
                 {content?.features && (
