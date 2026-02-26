@@ -1104,6 +1104,12 @@ function IcpNeuronManager() {
                 fetchManagerData(),
             ]);
             
+            // Override version from potentially stale query cache.
+            // getVersion() is a query call that boundary nodes may serve from
+            // cache before the upgraded canister state propagates, causing a
+            // false "version mismatch" warning until the next page refresh.
+            setManagerInfo(prev => prev ? { ...prev, version: versionStr } : prev);
+            
         } catch (err) {
             console.error('Upgrade failed:', err);
             setUpgradeError(`Upgrade failed: ${err.message || 'Unknown error'}`);
