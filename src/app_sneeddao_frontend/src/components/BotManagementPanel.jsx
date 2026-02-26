@@ -485,19 +485,37 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
         }
     }, [canisterId, identity, getReadyBotActor]);
 
-    // Load official versions from factory (for version verification)
+    // Load official versions from factory (public data — no auth required)
     const loadOfficialVersions = useCallback(async () => {
-        if (!appId || !identity) return;
+        if (!appId) return;
         try {
             const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
                 ? 'https://icp0.io' : 'http://localhost:4943';
-            const factory = createFactoryActor(factoryCanisterId, {
-                agentOptions: { identity, host }
-            });
-            const versions = await factory.getAppVersions(appId);
-            setOfficialVersions(versions);
-        } catch { /* factory may not have this app */ }
-    }, [appId, identity]);
+            const agent = HttpAgent.createSync({ host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const factory = createFactoryActor(factoryCanisterId, { agent });
+            let versions = [];
+            try {
+                versions = await factory.getAppVersions(appId);
+            } catch (_) {}
+            if (!versions || versions.length === 0) {
+                versions = await factory.getOfficialVersions();
+            }
+            const normalized = (versions || []).map(v => ({
+                ...v,
+                wasmUrl: Array.isArray(v.wasmUrl) ? (v.wasmUrl[0] || '') : (v.wasmUrl || ''),
+                wasmHash: Array.isArray(v.wasmHash) ? (v.wasmHash[0] || '') : (v.wasmHash || ''),
+                sourceUrl: Array.isArray(v.sourceUrl) ? (v.sourceUrl[0] || '') : (v.sourceUrl || ''),
+                description: Array.isArray(v.description) ? (v.description[0] || '') : (v.description || ''),
+            }));
+            setOfficialVersions(normalized);
+        } catch (err) {
+            console.error('Error fetching official versions:', err);
+            setOfficialVersions([]);
+        }
+    }, [appId]);
 
     // Load user permissions
     const fetchUserPermissions = useCallback(async () => {
@@ -790,12 +808,12 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
         if (isAuthenticated && identity && canisterId) {
             loadCanisterStatus();
             loadBotVersion();
-            loadOfficialVersions();
             fetchUserPermissions();
             fetchConversionRate();
             fetchUserBalance();
             loadChoreData();
         }
+        loadOfficialVersions();
     }, [isAuthenticated, identity, canisterId, loadCanisterStatus, loadBotVersion, loadOfficialVersions, fetchUserPermissions, fetchConversionRate, fetchUserBalance, loadChoreData]);
 
     useEffect(() => {
@@ -1015,63 +1033,95 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
     // ==========================================
     // VERSION MATCHING
     // ==========================================
-    const matchedOfficialVersion = canisterStatus?.moduleHash && officialVersions.length > 0
-        ? officialVersions.find(v => v.wasmHash === canisterStatus.moduleHash)
+    const moduleHashLower = canisterStatus?.moduleHash?.toLowerCase() || '';
+    const matchedOfficialVersion = moduleHashLower && officialVersions.length > 0
+        ? officialVersions.find(v => v.wasmHash && v.wasmHash.toLowerCase() === moduleHashLower)
         : null;
-    const latestOfficialVersion = officialVersions.length > 0
-        ? officialVersions.reduce((best, v) => {
-            if (!best) return v;
-            if (Number(v.major) > Number(best.major)) return v;
-            if (Number(v.major) === Number(best.major) && Number(v.minor) > Number(best.minor)) return v;
-            if (Number(v.major) === Number(best.major) && Number(v.minor) === Number(best.minor) && Number(v.patch) > Number(best.patch)) return v;
-            return best;
-        }, null) : null;
-    const nextAvailableVersion = matchedOfficialVersion && latestOfficialVersion
-        && (Number(latestOfficialVersion.major) > Number(matchedOfficialVersion.major)
-            || (Number(latestOfficialVersion.major) === Number(matchedOfficialVersion.major) && Number(latestOfficialVersion.minor) > Number(matchedOfficialVersion.minor))
-            || (Number(latestOfficialVersion.major) === Number(matchedOfficialVersion.major) && Number(latestOfficialVersion.minor) === Number(matchedOfficialVersion.minor) && Number(latestOfficialVersion.patch) > Number(matchedOfficialVersion.patch)))
-        ? latestOfficialVersion : null;
+
+    const compareVersions = (a, b) => {
+        const am = Number(a.major), an = Number(a.minor), ap = Number(a.patch);
+        const bm = Number(b.major), bn = Number(b.minor), bp = Number(b.patch);
+        if (am !== bm) return am - bm;
+        if (an !== bn) return an - bn;
+        return ap - bp;
+    };
+    const fmtVer = (v) => `${Number(v.major)}.${Number(v.minor)}.${Number(v.patch)}`;
+
+    const versionsWithWasm = officialVersions.filter(v => v.wasmUrl && v.wasmUrl.trim().length > 0);
+    const latestOfficialVersion = versionsWithWasm.length > 0
+        ? versionsWithWasm.reduce((best, v) => !best || compareVersions(v, best) > 0 ? v : best, null)
+        : null;
+
+    const nextAvailableVersion = (() => {
+        if (!matchedOfficialVersion || versionsWithWasm.length === 0) return null;
+        const higher = versionsWithWasm.filter(v => compareVersions(v, matchedOfficialVersion) > 0);
+        if (higher.length === 0) return null;
+        higher.sort(compareVersions);
+        return higher[0];
+    })();
+
+    const hasVersionMismatch = matchedOfficialVersion && botVersion &&
+        fmtVer(matchedOfficialVersion) !== botVersion;
+    const isUnverifiedWasm = canisterStatus?.moduleHash && !matchedOfficialVersion && officialVersions.length > 0;
 
     // ==========================================
     // HANDLERS
     // ==========================================
 
     // Upgrade handler
-    const handleUpgrade = async (version, mode) => {
-        if (!version?.hasWasm) { setUpgradeError('No WASM blob available for this version'); return; }
+    const handleUpgrade = async (targetVersion, mode) => {
+        const wasmUrl = targetVersion?.wasmUrl;
+        if (!wasmUrl || !wasmUrl.trim()) {
+            setUpgradeError('No WASM URL available for this version');
+            return;
+        }
         setUpgrading(true); setUpgradeMode(mode); setUpgradeError(''); setUpgradeSuccess('');
         try {
-            const factory = createFactoryActor(factoryCanisterId, {
-                agentOptions: { identity, host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943' }
-            });
-            // Fetch WASM from factory (this is a simplified pattern — real impl may need chunked download)
-            // For now we just use the install_code flow via management canister
-            const agent = getAgent();
+            const versionStr = fmtVer(targetVersion);
+
+            const response = await fetch(wasmUrl);
+            if (!response.ok) throw new Error(`Failed to fetch WASM: ${response.status} ${response.statusText}`);
+
+            const arrayBuffer = await response.arrayBuffer();
+            const wasmModule = new Uint8Array(arrayBuffer);
+            if (wasmModule.length === 0) throw new Error('Downloaded WASM file is empty');
+
+            const isWasm = wasmModule[0] === 0x00 && wasmModule[1] === 0x61 && wasmModule[2] === 0x73 && wasmModule[3] === 0x6D;
+            const isGzip = wasmModule[0] === 0x1F && wasmModule[1] === 0x8B;
+            if (!isWasm && !isGzip) throw new Error('Downloaded file does not appear to be a valid WASM module');
+
+            const canisterPrincipal = Principal.fromText(canisterId);
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
+                ? 'https://icp0.io' : 'http://localhost:4943';
+            const agent = HttpAgent.createSync({ host, identity });
             if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
-            // The factory should provide a way to get the WASM blob; use upgrade endpoint if available
-            // Fallback: fetch from wasmUrl if available
-            if (version.wasmUrl?.length > 0) {
-                const resp = await fetch(version.wasmUrl[0]);
-                if (!resp.ok) throw new Error(`Download failed: ${resp.status}`);
-                const wasmBytes = new Uint8Array(await resp.arrayBuffer());
-                const mgmt = Actor.createActor(managementCanisterIdlFactory, {
-                    agent, canisterId: MANAGEMENT_CANISTER_ID,
-                    effectiveCanisterId: Principal.fromText(canisterId),
-                });
-                await mgmt.install_code({
-                    mode: { [mode]: null },
-                    canister_id: Principal.fromText(canisterId),
-                    wasm_module: wasmBytes,
-                    arg: [],
-                });
-                setUpgradeSuccess(`${mode === 'upgrade' ? 'Upgraded' : 'Reinstalled'} to v${Number(version.major)}.${Number(version.minor)}.${Number(version.patch)}`);
-                await loadCanisterStatus();
-                await loadBotVersion();
-            } else {
-                setUpgradeError('No WASM URL available for download');
-            }
+
+            const mgmt = Actor.createActor(managementCanisterIdlFactory, {
+                agent, canisterId: MANAGEMENT_CANISTER_ID,
+                callTransform: (_methodName, _args, callConfig) => ({
+                    ...callConfig, effectiveCanisterId: canisterPrincipal,
+                }),
+            });
+
+            const emptyArgs = new Uint8Array([0x44, 0x49, 0x44, 0x4C, 0x00, 0x00]);
+            await mgmt.install_code({
+                mode: { [mode]: null },
+                canister_id: canisterPrincipal,
+                wasm_module: wasmModule,
+                arg: emptyArgs,
+            });
+
+            setUpgradeSuccess(`✅ Successfully ${mode === 'reinstall' ? 'reinstalled' : 'upgraded'} to v${versionStr}`);
+
+            await Promise.all([loadCanisterStatus(), loadBotVersion()]);
+
+            // Override version from potentially stale query cache.
+            // getVersion() is a query call that boundary nodes may serve from
+            // cache before the upgraded canister state propagates.
+            setBotVersion(versionStr);
         } catch (err) {
-            setUpgradeError(`${mode} failed: ${err.message}`);
+            console.error('Upgrade failed:', err);
+            setUpgradeError(`${mode === 'reinstall' ? 'Reinstall' : 'Upgrade'} failed: ${err.message || 'Unknown error'}`);
         } finally { setUpgrading(false); }
     };
 
@@ -1490,7 +1540,7 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                             <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Version:</span>
                                             <span style={{ color: theme.colors.primaryText, fontSize: '12px' }}>{botVersion}</span>
-                                            {matchedOfficialVersion && `${Number(matchedOfficialVersion.major)}.${Number(matchedOfficialVersion.minor)}.${Number(matchedOfficialVersion.patch)}` === botVersion && (
+                                            {matchedOfficialVersion && !hasVersionMismatch && (
                                                 <span title="Version verified" style={{ color: theme.colors.success || '#22c55e', fontSize: '14px' }}>✓</span>
                                             )}
                                         </div>
@@ -1518,7 +1568,12 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                             <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Module Hash</span>
                                             {matchedOfficialVersion && (
                                                 <span style={{ color: theme.colors.success || '#22c55e', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                    ✓ Official v{Number(matchedOfficialVersion.major)}.{Number(matchedOfficialVersion.minor)}.{Number(matchedOfficialVersion.patch)}
+                                                    ✓ Official v{fmtVer(matchedOfficialVersion)}
+                                                </span>
+                                            )}
+                                            {isUnverifiedWasm && (
+                                                <span style={{ color: theme.colors.warning || '#f59e0b', fontSize: '11px' }}>
+                                                    ⚠ Unverified
                                                 </span>
                                             )}
                                         </div>
@@ -1532,33 +1587,188 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                             {canisterStatus.moduleHash || <span style={{ color: theme.colors.mutedText, fontStyle: 'italic' }}>No module installed</span>}
                                         </div>
 
+                                        {/* Official version links */}
+                                        {matchedOfficialVersion && (matchedOfficialVersion.wasmUrl || matchedOfficialVersion.sourceUrl) && (
+                                            <div style={{ display: 'flex', gap: '15px', marginTop: '8px', fontSize: '11px' }}>
+                                                {matchedOfficialVersion.sourceUrl && (
+                                                    <a href={matchedOfficialVersion.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: accent }}>
+                                                        View Source →
+                                                    </a>
+                                                )}
+                                                {matchedOfficialVersion.wasmUrl && (
+                                                    <a href={matchedOfficialVersion.wasmUrl} target="_blank" rel="noopener noreferrer" style={{ color: accent }}>
+                                                        Download WASM →
+                                                    </a>
+                                                )}
+                                            </div>
+                                        )}
+
                                         {/* Upgrade Available */}
                                         {nextAvailableVersion && isController && (
-                                            <div style={{ marginTop: '12px', padding: '12px', background: `${theme.colors.accent}15`, borderRadius: '6px', border: `1px solid ${theme.colors.accent}40` }}>
+                                            <div style={{ marginTop: '12px', padding: '12px', background: `${accent}15`, borderRadius: '6px', border: `1px solid ${accent}40` }}>
                                                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
                                                     <div>
-                                                        <div style={{ color: theme.colors.accent, fontWeight: '600', fontSize: '13px', marginBottom: '2px' }}>🚀 Upgrade Available</div>
+                                                        <div style={{ color: accent, fontWeight: '600', fontSize: '13px', marginBottom: '2px' }}>🚀 Upgrade Available</div>
                                                         <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                                            v{Number(nextAvailableVersion.major)}.{Number(nextAvailableVersion.minor)}.{Number(nextAvailableVersion.patch)} is available
+                                                            v{fmtVer(nextAvailableVersion)} is available
                                                         </div>
                                                     </div>
                                                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                                                         <button onClick={() => handleUpgrade(nextAvailableVersion, 'upgrade')} disabled={upgrading}
-                                                            style={{ ...buttonStyle, background: theme.colors.accent, opacity: upgrading ? 0.7 : 1 }}>
-                                                            {upgrading && upgradeMode === 'upgrade' ? '⏳ Upgrading...' : '⬆️ Upgrade'}
+                                                            style={{
+                                                                ...buttonStyle, background: accent,
+                                                                opacity: upgrading ? 0.7 : 1,
+                                                                display: 'flex', alignItems: 'center', gap: '6px',
+                                                            }}>
+                                                            {upgrading && upgradeMode === 'upgrade' ? <><span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span> Upgrading...</> : '⬆️ Upgrade'}
                                                         </button>
-                                                        <button onClick={() => { if (window.confirm('⚠️ Reinstall will WIPE ALL CANISTER STATE. Are you sure?')) handleUpgrade(nextAvailableVersion, 'reinstall'); }}
-                                                            disabled={upgrading} style={{ ...secondaryButtonStyle, color: theme.colors.mutedText, opacity: upgrading ? 0.7 : 1 }}>
+                                                        <button onClick={() => { if (window.confirm('⚠️ Reinstall will WIPE ALL CANISTER STATE including creation time. This cannot be undone. Are you sure?')) handleUpgrade(nextAvailableVersion, 'reinstall'); }}
+                                                            disabled={upgrading}
+                                                            style={{
+                                                                background: 'transparent', color: theme.colors.mutedText,
+                                                                border: `1px solid ${theme.colors.border || '#3a3a3a'}`, borderRadius: '6px',
+                                                                padding: '8px 12px', fontSize: '12px',
+                                                                cursor: upgrading ? 'wait' : 'pointer', opacity: upgrading ? 0.7 : 1,
+                                                            }}
+                                                            title="⚠️ Reinstall DELETES all canister state!">
                                                             {upgrading && upgradeMode === 'reinstall' ? '⏳...' : '🔄 Reinstall'}
                                                         </button>
                                                     </div>
                                                 </div>
+                                                {nextAvailableVersion.sourceUrl && (
+                                                    <div style={{ marginTop: '8px', fontSize: '11px' }}>
+                                                        <a href={nextAvailableVersion.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: accent }}>
+                                                            View release notes →
+                                                        </a>
+                                                    </div>
+                                                )}
                                                 {upgradeError && <div style={{ marginTop: '10px', padding: '8px 10px', background: `${theme.colors.error || '#ef4444'}20`, borderRadius: '4px', color: theme.colors.error || '#ef4444', fontSize: '12px' }}>{upgradeError}</div>}
                                                 {upgradeSuccess && <div style={{ marginTop: '10px', padding: '8px 10px', background: `${theme.colors.success || '#22c55e'}20`, borderRadius: '4px', color: theme.colors.success || '#22c55e', fontSize: '12px' }}>{upgradeSuccess}</div>}
                                             </div>
                                         )}
+
+                                        {/* Version Mismatch / Unknown WASM warning */}
+                                        {(() => {
+                                            const shouldShowWarning = (isUnverifiedWasm || hasVersionMismatch) && latestOfficialVersion && isController;
+                                            if (!shouldShowWarning) return null;
+                                            return (
+                                                <div style={{
+                                                    marginTop: '12px', padding: '12px',
+                                                    background: `${theme.colors.warning || '#f59e0b'}15`,
+                                                    borderRadius: '6px', border: `1px solid ${theme.colors.warning || '#f59e0b'}40`,
+                                                }}>
+                                                    <div style={{
+                                                        color: isUnverifiedWasm ? (theme.colors.error || '#ef4444') : (theme.colors.warning || '#f59e0b'),
+                                                        fontWeight: '600', fontSize: '13px', marginBottom: '6px',
+                                                    }}>
+                                                        {hasVersionMismatch ? '⚠️ Version Mismatch' : '⚠️ Unknown WASM — Proceed With Care'}
+                                                    </div>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: isUnverifiedWasm ? '8px' : '12px' }}>
+                                                        {hasVersionMismatch
+                                                            ? `The WASM hash matches official v${fmtVer(matchedOfficialVersion)}, but the canister reports v${botVersion}. You can install the latest official version (v${fmtVer(latestOfficialVersion)}).`
+                                                            : `This canister is running an unverified WASM module that does not match any known ${botName} version. This canister may not be a ${botName}. Upgrading it with the ${botName} WASM could break or destroy the canister. Only proceed if you are sure this canister is a ${botName}.`
+                                                        }
+                                                    </div>
+                                                    {isUnverifiedWasm && (
+                                                        <div style={{
+                                                            padding: '8px 10px',
+                                                            background: `${theme.colors.error || '#ef4444'}15`,
+                                                            borderRadius: '4px', border: `1px solid ${theme.colors.error || '#ef4444'}30`,
+                                                            color: theme.colors.error || '#ef4444',
+                                                            fontSize: '11px', fontWeight: '500', marginBottom: '12px', lineHeight: '1.4',
+                                                        }}>
+                                                            Module hash: {canisterStatus.moduleHash}
+                                                            <br />
+                                                            This hash does not match any known official {botName} WASM. If this canister is not a {botName}, upgrading it will replace its code.
+                                                        </div>
+                                                    )}
+                                                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                                        <button
+                                                            onClick={() => {
+                                                                if (isUnverifiedWasm) {
+                                                                    if (window.confirm(`⚠️ This canister has an unknown WASM and may not be a ${botName}. Upgrading it with the ${botName} WASM could break or destroy this canister. Are you sure you want to proceed?`)) {
+                                                                        handleUpgrade(latestOfficialVersion, 'upgrade');
+                                                                    }
+                                                                } else {
+                                                                    handleUpgrade(latestOfficialVersion, 'upgrade');
+                                                                }
+                                                            }}
+                                                            disabled={upgrading}
+                                                            style={{
+                                                                background: isUnverifiedWasm ? (theme.colors.warning || '#f59e0b') : accent,
+                                                                color: '#fff', border: 'none', borderRadius: '6px',
+                                                                padding: '8px 16px', fontSize: '13px', fontWeight: '600',
+                                                                cursor: upgrading ? 'wait' : 'pointer', opacity: upgrading ? 0.7 : 1,
+                                                            }}
+                                                            title={isUnverifiedWasm ? '⚠️ Unknown WASM — upgrade with caution' : 'Upgrade keeps canister state'}>
+                                                            {upgrading && upgradeMode === 'upgrade' ? '⏳ Upgrading...' : '⬆️ Upgrade'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                if (window.confirm('⚠️ Reinstall will WIPE ALL CANISTER STATE. This cannot be undone. Are you sure?')) {
+                                                                    handleUpgrade(latestOfficialVersion, 'reinstall');
+                                                                }
+                                                            }}
+                                                            disabled={upgrading}
+                                                            style={{
+                                                                background: 'transparent', color: theme.colors.error || '#ef4444',
+                                                                border: `1px solid ${theme.colors.error || '#ef4444'}`, borderRadius: '6px',
+                                                                padding: '8px 16px', fontSize: '13px', fontWeight: '600',
+                                                                cursor: upgrading ? 'wait' : 'pointer', opacity: upgrading ? 0.7 : 1,
+                                                            }}
+                                                            title="⚠️ Reinstall DELETES all canister state!">
+                                                            {upgrading && upgradeMode === 'reinstall' ? '⏳ Reinstalling...' : '🔄 Reinstall'}
+                                                        </button>
+                                                    </div>
+                                                    {latestOfficialVersion && (
+                                                        <div style={{ marginTop: '10px', fontSize: '11px', color: theme.colors.mutedText }}>
+                                                            Target: {botName} v{fmtVer(latestOfficialVersion)}
+                                                            {latestOfficialVersion.sourceUrl && (
+                                                                <>
+                                                                    {' — '}
+                                                                    <a href={latestOfficialVersion.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: accent }}>
+                                                                        View source code →
+                                                                    </a>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {upgradeError && <div style={{ marginTop: '10px', padding: '8px 10px', background: `${theme.colors.error || '#ef4444'}20`, borderRadius: '4px', color: theme.colors.error || '#ef4444', fontSize: '12px' }}>{upgradeError}</div>}
+                                                    {upgradeSuccess && <div style={{ marginTop: '10px', padding: '8px 10px', background: `${theme.colors.success || '#22c55e'}20`, borderRadius: '4px', color: theme.colors.success || '#22c55e', fontSize: '12px' }}>{upgradeSuccess}</div>}
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 )}
+
+                                {/* Non-Controller Upgrade Notice */}
+                                {(() => {
+                                    const hasIssue = isUnverifiedWasm || hasVersionMismatch || (nextAvailableVersion != null);
+                                    if (isController || !hasIssue) return null;
+                                    return (
+                                        <div style={{
+                                            marginTop: '15px', padding: '12px',
+                                            background: `${theme.colors.mutedText}10`,
+                                            borderRadius: '6px', border: `1px solid ${theme.colors.border}`,
+                                        }}>
+                                            <div style={{
+                                                color: theme.colors.mutedText, fontWeight: '600', fontSize: '13px', marginBottom: '6px',
+                                                display: 'flex', alignItems: 'center', gap: '8px',
+                                            }}>
+                                                <span>🔒</span>
+                                                <span>Upgrade/Reinstall Not Available</span>
+                                            </div>
+                                            <div style={{ color: theme.colors.mutedText, fontSize: '12px', lineHeight: '1.5' }}>
+                                                You are not a controller of this canister. Only controllers can upgrade or reinstall the canister.
+                                                {latestOfficialVersion && (
+                                                    <span style={{ display: 'block', marginTop: '8px' }}>
+                                                        Latest official version: <strong style={{ color: theme.colors.primaryText }}>v{fmtVer(latestOfficialVersion)}</strong>
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
                             </div>
 
                             {/* Controllers */}
