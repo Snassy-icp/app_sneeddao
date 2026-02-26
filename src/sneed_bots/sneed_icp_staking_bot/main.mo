@@ -3129,6 +3129,11 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         eventEngine.getListeners()
     };
 
+    public shared query ({ caller }) func getEventEmissionEnabled(): async Bool {
+        assertPermission(caller, T.NeuronPermission.ViewEvents);
+        eventEngine.getEmissionEnabled()
+    };
+
     public shared ({ caller }) func setEventEmissionEnabled(enabled: Bool): async () {
         assertPermission(caller, T.NeuronPermission.ManageEvents);
         eventEngine.setEmissionEnabled(enabled);

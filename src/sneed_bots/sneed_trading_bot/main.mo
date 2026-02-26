@@ -9424,6 +9424,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         eventEngine.getListeners()
     };
 
+    public shared query ({ caller }) func getEventEmissionEnabled(): async Bool {
+        assertPermission(caller, T.TradingPermission.ViewEvents);
+        eventEngine.getEmissionEnabled()
+    };
+
     public shared ({ caller }) func setEventEmissionEnabled(enabled: Bool): async () {
         assertPermission(caller, T.TradingPermission.ManageEvents);
         eventEngine.setEmissionEnabled(enabled);

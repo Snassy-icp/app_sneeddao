@@ -327,16 +327,18 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
         setSourceError('');
         try {
             const actor = await getActor();
-            const [types, lsnrs, log] = await Promise.all([
+            const [types, lsnrs, log, emEnabled] = await Promise.all([
                 actor.getEventTypes(),
                 actor.getEventListeners(),
                 actor.getEventLog({ eventTypeId: [], fromTime: [], toTime: [], startId: [], limit: [BigInt(50)] }),
+                actor.getEventEmissionEnabled().catch(() => null),
             ]);
             setEventTypes(types.map(([id, name]) => ({ id: Number(id), name })));
             setListeners(lsnrs);
             setEventLog(log.entries);
             setEventLogHasMore(log.hasMore);
             setEventLogTotal(Number(log.totalMatching));
+            if (emEnabled !== null) setEmissionEnabled(emEnabled);
         } catch (e) {
             if (!silent) setSourceError(e.message || String(e));
         } finally {

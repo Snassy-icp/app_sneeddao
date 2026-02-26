@@ -277,6 +277,11 @@ module {
             srcState.setListeners(updated);
         };
 
+        /// Query whether global event emission is enabled.
+        public func getEmissionEnabled(): Bool {
+            srcState.getEmissionEnabled()
+        };
+
         /// Enable or disable global event emission.
         public func setEmissionEnabled(enabled: Bool) {
             srcState.setEmissionEnabled(enabled);

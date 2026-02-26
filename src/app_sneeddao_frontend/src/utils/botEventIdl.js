@@ -124,6 +124,7 @@ export const botEventIdlFactory = ({ IDL: _IDL }) => {
         unregisterEventListener: IDL.Func([IDL.Nat], [], []),
         updateEventListenerTypes: IDL.Func([IDL.Nat, IDL.Vec(IDL.Nat)], [OkUnit], []),
         getEventListeners: IDL.Func([], [IDL.Vec(EventListenerRegistration)], ['query']),
+        getEventEmissionEnabled: IDL.Func([], [IDL.Bool], ['query']),
         setEventEmissionEnabled: IDL.Func([IDL.Bool], [], []),
         getEventLog: IDL.Func([EventLogQuery], [EventLogResult], ['query']),
         getEventTypes: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Nat, IDL.Text))], ['query']),
