@@ -668,9 +668,21 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
         }
     }, [getActor, loadListenerData]);
 
-    const eventTypeName = (id) => {
-        const et = eventTypes.find(t => t.id === Number(id));
-        return et ? et.name : `Event #${id}`;
+    const eventTypeName = (id, sourceBotCanisterId) => {
+        const numId = Number(id);
+        const et = eventTypes.find(t => t.id === numId);
+        if (et) return et.name;
+        if (sourceBotCanisterId) {
+            const pid = typeof sourceBotCanisterId === 'string' ? sourceBotCanisterId : sourceBotCanisterId?.toText?.() || String(sourceBotCanisterId);
+            const cached = sourceEventTypeCache.current[pid];
+            const src = cached?.find(t => t.id === numId);
+            if (src) return src.name;
+        }
+        for (const pid of Object.keys(sourceEventTypeCache.current)) {
+            const src = sourceEventTypeCache.current[pid]?.find(t => t.id === numId);
+            if (src) return src.name;
+        }
+        return `Event #${id}`;
     };
 
     const actionName = (id) => {
@@ -1259,7 +1271,7 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                                 </div>
                                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '6px', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
                                                     <span>Sub #{Number(r.subscriptionId)}</span>
-                                                    <span>Event: <strong style={{ color: accent }}>{eventTypeName(Number(r.eventTypeId))}</strong></span>
+                                                    <span>Event: <strong style={{ color: accent }}>{eventTypeName(Number(r.eventTypeId), subscriptions.find(s => Number(s.id) === Number(r.subscriptionId))?.sourceBotCanisterId)}</strong></span>
                                                     <span>Action: <strong>{actionName(Number(r.reactionActionId))}</strong></span>
                                                     {r.cooldownSeconds.length > 0 && <span>Cooldown: {Number(r.cooldownSeconds[0])}s</span>}
                                                     <span>Triggered: {Number(r.triggerCount)}×</span>
@@ -1712,7 +1724,7 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                                         fontSize: '0.72rem', padding: '1px 6px', borderRadius: '4px',
                                                         background: `${accent}18`, color: accent, fontWeight: 500,
                                                     }}>
-                                                        #{Number(r.eventTypeId)}
+                                                        {eventTypeName(Number(r.eventTypeId), r.sourceCanisterId)}
                                                     </span>
                                                     <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginLeft: '4px' }}>evt #{Number(r.eventId)}</span>
                                                 </td>

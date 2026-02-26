@@ -341,7 +341,11 @@ module {
 
             deliveryTimerActive := true;
             let tid = Timer.setTimer<system>(#seconds 2, func(): async () {
-                await processDeliveryBatch();
+                try {
+                    await processDeliveryBatch();
+                } catch (e) {
+                    emitLog("Error", "Delivery batch trapped: " # Error.message(e), []);
+                };
                 deliveryTimerActive := false;
                 deliveryTimerId := null;
                 if (deliveryQueue.size() > 0) {
@@ -369,7 +373,13 @@ module {
                 let isSelf = Principal.equal(delivery.listenerCanisterId, selfPrincipal);
                 emitLog("Trace", "Delivering eventId=" # Nat.toText(delivery.event.eventId) # " typeId=" # Nat.toText(delivery.event.eventTypeId) # " to " # (if isSelf "self" else Principal.toText(delivery.listenerCanisterId)), []);
                 if (isSelf) {
-                    await handleIncomingEventInternal(delivery.event);
+                    try {
+                        await handleIncomingEventInternal(delivery.event);
+                    } catch (e) {
+                        emitLog("Error", "Self-delivery failed: " # Error.message(e),
+                            [("eventId", Nat.toText(delivery.event.eventId)),
+                             ("eventTypeId", Nat.toText(delivery.event.eventTypeId))]);
+                    };
                 } else if (not hasPermissionForEvent(delivery.listenerCanisterId, delivery.event.eventTypeId)) {
                     emitLog("Warning", "Skipping delivery: permission revoked for " # Principal.toText(delivery.listenerCanisterId),
                         [("eventTypeId", Nat.toText(delivery.event.eventTypeId))]);
