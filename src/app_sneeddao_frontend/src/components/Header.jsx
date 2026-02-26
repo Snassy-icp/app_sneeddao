@@ -567,6 +567,15 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Disclaimer', path: '/disclaimer' }
             ]
         },
+        'Sneedapp': {
+            icon: <FaStore size={18} />,
+            displayName: 'Sneedapp',
+            defaultPath: '/sneedapp',
+            subMenu: [
+                { name: 'Browse Apps', path: '/sneedapp' },
+                { name: 'My Apps', path: '/apps' },
+            ]
+        },
         'Sneedex': {
             icon: <FaExchangeAlt size={18} />,
             displayName: 'Sneedex',
@@ -579,16 +588,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'About', path: '/sneedex' }
             ]
         },
-        'Liquid Staking': {
-            icon: <FaTint size={18} />,
-            displayName: 'Liquid Staking',
-            defaultPath: '/liquid_staking',
-            subMenu: [
-                { name: 'Overview', path: '/liquid_staking' },
-                { name: 'ICP Liquid Staking', path: '/create_icp_neuron' },
-                { name: 'SNS Liquid Staking', path: '/sns_neuron_wizard' },
-            ]
-        },
         'Sneed Lock': {
             icon: <FaLock size={18} />,
             displayName: 'Sneed Lock',
@@ -597,6 +596,16 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Create Lock', path: '/lock_wizard' },
                 { name: 'All Locks', path: '/sneedlock_info' },
                 { name: 'Overview', path: '/sneedlock' }
+            ]
+        },
+        'Liquid Staking': {
+            icon: <FaTint size={18} />,
+            displayName: 'Liquid Staking',
+            defaultPath: '/liquid_staking',
+            subMenu: [
+                { name: 'Overview', path: '/liquid_staking' },
+                { name: 'ICP Liquid Staking', path: '/create_icp_neuron' },
+                { name: 'SNS Liquid Staking', path: '/sns_neuron_wizard' },
             ]
         },
         'Help': {
@@ -619,19 +628,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Tools', path: '/tools/main' },
                 { name: 'SNS Jailbreak', path: '/tools/sns_jailbreak' },
                 { name: 'My Scripts', path: '/tools/sns_jailbreak_list' }
-            ]
-        };
-    }
-
-    // Add Sneedapp section only for admins (for now)
-    if (isAuthenticated && isAdmin === true) {
-        menuSections['Sneedapp'] = {
-            icon: <FaStore size={18} />,
-            displayName: 'Sneedapp',
-            defaultPath: '/sneedapp',
-            subMenu: [
-                { name: 'Browse Apps', path: '/sneedapp' },
-                { name: 'My Apps', path: '/apps' },
             ]
         };
     }
