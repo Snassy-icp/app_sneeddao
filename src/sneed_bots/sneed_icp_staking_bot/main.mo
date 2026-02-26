@@ -26,7 +26,62 @@ import Error "mo:base/Error";
 
 // This is the actual canister that gets deployed for each user
 // No constructor arguments needed - access control uses IC canister controllers
-
+(with migration = func (old : {
+    var distributionSettings : [(Text, {
+        lists : [{
+            id : Nat;
+            maxDistributionAmount : Nat;
+            name : Text;
+            sourceSubaccount : ?Blob;
+            targets : [{
+                account : { owner : Principal; subaccount : ?Blob };
+                basisPoints : ?Nat;
+            }];
+            thresholdAmount : Nat;
+            tokenLedgerCanisterId : Principal;
+        }];
+        nextListId : Nat;
+    })]
+}) : {
+    var distributionSettings : [(Text, {
+        lists : [DistributionTypes.DistributionList];
+        nextListId : Nat;
+    })]
+} {
+    type OldTarget = { account : { owner : Principal; subaccount : ?Blob }; basisPoints : ?Nat };
+    type OldList = { id : Nat; maxDistributionAmount : Nat; name : Text; sourceSubaccount : ?Blob; targets : [OldTarget]; thresholdAmount : Nat; tokenLedgerCanisterId : Principal };
+    type OldSettings = (Text, { lists : [OldList]; nextListId : Nat });
+    {
+        var distributionSettings = Array.map<OldSettings, (Text, { lists : [DistributionTypes.DistributionList]; nextListId : Nat })>(
+            old.distributionSettings,
+            func ((instanceId, ds)) {
+                (instanceId, {
+                    lists = Array.map<OldList, DistributionTypes.DistributionList>(ds.lists, func (l) {
+                        {
+                            id = l.id;
+                            name = l.name;
+                            tokenLedgerCanisterId = l.tokenLedgerCanisterId;
+                            thresholdAmount = l.thresholdAmount;
+                            maxDistributionAmount = l.maxDistributionAmount;
+                            targets = Array.map<OldTarget, DistributionTypes.DistributionTarget>(l.targets, func (t) {
+                                {
+                                    account = t.account;
+                                    basisPoints = t.basisPoints;
+                                    choreInstanceId = null;
+                                }
+                            });
+                            sourcePurseId = null;
+                            amountMode = 0;
+                            balancePercent = null;
+                            minDistributionAmount = 0;
+                        }
+                    });
+                    nextListId = ds.nextListId;
+                })
+            }
+        );
+    }
+})
 shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     // ============================================
