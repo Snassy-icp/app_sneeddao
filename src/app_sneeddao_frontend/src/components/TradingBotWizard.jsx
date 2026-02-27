@@ -1642,7 +1642,7 @@ function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterI
                             <p style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', lineHeight: '1.6', margin: '0 0 1.25rem', maxWidth: '380px', marginLeft: 'auto', marginRight: 'auto' }}>
                                 The LLM Guide teaches your AI the SneedScript syntax. You only need to paste it once at the start of a conversation.
                             </p>
-                            <DSLCopyGuideButton theme={theme} accentColor={accentColor} getReadyBotActor={getReadyBotActor} />
+                            <DSLCopyGuideButton theme={theme} accentColor={accentColor} />
                             {!guideCopiedOnce && (
                                 <p style={{ color: theme.colors.mutedText, fontSize: '0.78rem', marginTop: '0.75rem' }}>
                                     Click the button above, then paste it into your AI chat

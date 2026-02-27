@@ -4,6 +4,8 @@ import { serializeBotState } from '../dsl/serializer';
 import { resolveOperations, ResolverError } from '../dsl/resolver';
 import { generateLLMGuide } from '../dsl/llm-guide';
 import { formatTokenRegistry, formatTradeLog, formatBotLog, formatCBLog } from '../dsl/context-formatters';
+import { getCachedWhitelistTokens } from '../hooks/useTokenCache';
+import { getAllSnses } from '../utils/SnsUtils';
 
 const CATEGORY_LABELS = {
   tokens: 'Token Registry',
@@ -484,37 +486,27 @@ export function DSLContextBar({ getReadyBotActor, theme, accentColor, setParseEr
 }
 
 // ---- Reusable: Copy LLM Guide button ----
-export function DSLCopyGuideButton({ theme, accentColor, getReadyBotActor }) {
+export function DSLCopyGuideButton({ theme, accentColor }) {
   const [guideCopied, setGuideCopied] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const handleCopyGuide = useCallback(async () => {
-    setLoading(true);
-    try {
-      let registry = null;
-      if (getReadyBotActor) {
-        try { registry = await (await getReadyBotActor()).getTokenRegistry(); } catch (_) {}
-      }
-      copyToClipboard(generateLLMGuide(registry));
-      setGuideCopied(true);
-      setTimeout(() => setGuideCopied(false), 2000);
-    } finally {
-      setLoading(false);
-    }
-  }, [getReadyBotActor]);
+  const handleCopyGuide = useCallback(() => {
+    const whitelistTokens = getCachedWhitelistTokens();
+    const snsData = getAllSnses();
+    copyToClipboard(generateLLMGuide({ whitelistTokens, snsData }));
+    setGuideCopied(true);
+    setTimeout(() => setGuideCopied(false), 2000);
+  }, []);
 
   return (
     <button
       onClick={handleCopyGuide}
-      disabled={loading}
       style={{
         ...BTN_BASE,
         background: guideCopied ? `${accentColor}25` : `${accentColor}10`,
         color: guideCopied ? accentColor : theme.colors.secondaryText,
         border: `1px solid ${guideCopied ? accentColor : theme.colors.border}`,
-        opacity: loading ? 0.6 : 1,
       }}
     >
-      {loading ? 'Loading...' : guideCopied ? 'Copied!' : 'Copy LLM Guide'}
+      {guideCopied ? 'Copied!' : 'Copy LLM Guide'}
     </button>
   );
 }
@@ -543,13 +535,13 @@ export default function TradingBotDSLPanel({ canisterId, getReadyBotActor, theme
   const engine = useDSLEngine(getReadyBotActor);
   const [guideCopied, setGuideCopied] = useState(false);
 
-  const handleCopyGuide = useCallback(async () => {
-    let registry = null;
-    try { registry = await (await getReadyBotActor()).getTokenRegistry(); } catch (_) {}
-    copyToClipboard(generateLLMGuide(registry));
+  const handleCopyGuide = useCallback(() => {
+    const whitelistTokens = getCachedWhitelistTokens();
+    const snsData = getAllSnses();
+    copyToClipboard(generateLLMGuide({ whitelistTokens, snsData }));
     setGuideCopied(true);
     setTimeout(() => setGuideCopied(false), 2000);
-  }, [getReadyBotActor]);
+  }, []);
 
   const cardStyle = {
     background: theme.colors.cardBg,

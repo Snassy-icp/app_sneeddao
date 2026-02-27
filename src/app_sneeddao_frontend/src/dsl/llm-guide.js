@@ -17,7 +17,7 @@ function formatAmount(rawAmount, decimals, symbol) {
   return `${whole}.${fracStr} ${symbol}`;
 }
 
-export function generateLLMGuide(tokenRegistry) {
+export function generateLLMGuide({ whitelistTokens, snsData } = {}) {
   let guide = `# ==========================================
 # SneedScript DSL Reference
 # ==========================================
@@ -381,9 +381,12 @@ export function generateLLMGuide(tokenRegistry) {
 # The user has additional data they can copy for you from the bot's UI.
 # If you need any of the following, ask the user to provide it:
 #
-# 1. TOKEN REGISTRY — Already included at the end of this guide under
-#    "Known Tokens". Use it to look up symbols, ledger canister IDs,
-#    decimals, and fees. You should NOT need to ask the user for this.
+# 1. TOKEN DIRECTORY — Already included at the end of this guide under
+#    "Available Tokens". This lists ALL tokens the platform knows about
+#    (not just those registered on the bot), with symbols, ledger canister
+#    IDs, decimals, and fees. SNS governance tokens are also identified.
+#    Use this to look up tokens the user mentions. You should NOT need to
+#    ask the user for token information.
 #
 # 2. TRADE LOG (recent trade executions)
 #    Ask: "Please click 'Copy Trade Log' in the LLM Context bar (or the
@@ -415,15 +418,29 @@ export function generateLLMGuide(tokenRegistry) {
 # === END OF REFERENCE ===
 `;
 
-  if (tokenRegistry && tokenRegistry.length > 0) {
-    const tokenLines = ['\n# === KNOWN TOKENS ===', `# ${tokenRegistry.length} token(s) registered on this bot.\n`];
-    for (const t of tokenRegistry) {
-      const pid = principalToText(t.ledgerCanisterId);
-      const feeStr = formatAmount(t.fee, t.decimals, t.symbol);
-      tokenLines.push(`# ${t.symbol} | ledger: ${pid} | decimals: ${t.decimals} | fee: ${feeStr}`);
+  // Build SNS ledger lookup: ledger canister ID -> { name, symbol }
+  const snsLedgerSet = new Set();
+  if (snsData && snsData.length > 0) {
+    for (const sns of snsData) {
+      if (sns.canisters?.ledger) snsLedgerSet.add(sns.canisters.ledger);
     }
-    tokenLines.push('');
-    guide += tokenLines.join('\n');
+  }
+
+  if (whitelistTokens && whitelistTokens.length > 0) {
+    const lines = ['\n# === AVAILABLE TOKENS ===', `# ${whitelistTokens.length} token(s) known to the platform.`];
+    lines.push('# Use these when the user asks to trade, register, or reference a token.');
+    lines.push('# Tokens marked [SNS] are SNS governance tokens.\n');
+    for (const t of whitelistTokens) {
+      const pid = t.ledger_id?.toString?.() ?? String(t.ledger_id);
+      const s = t.symbol || '?';
+      const d = t.decimals ?? 8;
+      const fee = t.fee ?? 0;
+      const feeStr = formatAmount(fee, d, s);
+      const snsTag = snsLedgerSet.has(pid) ? ' [SNS]' : '';
+      lines.push(`# ${s} | ledger: ${pid} | decimals: ${d} | fee: ${feeStr}${snsTag}`);
+    }
+    lines.push('');
+    guide += lines.join('\n');
   }
 
   return guide;
