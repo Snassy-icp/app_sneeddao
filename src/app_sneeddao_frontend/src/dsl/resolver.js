@@ -364,13 +364,21 @@ export async function resolveOperations(ast, bot, tokenLookupOverride = null) {
       return;
     }
 
+    const symbol = resolveValue(props.symbol, tokenLookup) || stmt.key;
+    const decimals = Number(resolveValue(props.decimals, tokenLookup) || 8);
+
+    // Add preliminary entry so self-referencing fees (e.g. "fee: 0.0001 NTN"
+    // inside ensure token NTN) can resolve against the token being registered.
+    tokenLookup[pid] = { symbol, decimals, fee: 0 };
+
+    const fee = Number(resolveValue(props.fee, tokenLookup) || 0);
     const entry = {
       ledgerCanisterId: toPrincipal(pid),
-      symbol: resolveValue(props.symbol, tokenLookup) || stmt.key,
-      decimals: Number(resolveValue(props.decimals, tokenLookup) || 8),
-      fee: Number(resolveValue(props.fee, tokenLookup) || 0),
+      symbol,
+      decimals,
+      fee,
     };
-    tokenLookup[pid] = { symbol: entry.symbol, decimals: entry.decimals, fee: entry.fee };
+    tokenLookup[pid] = { symbol, decimals, fee };
     registryByPrincipal[pid] = entry;
 
     operations.push({
