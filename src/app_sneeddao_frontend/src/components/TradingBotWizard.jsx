@@ -1595,8 +1595,6 @@ function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterI
         if (text) {
             setExportedText(text);
             engine.setEditorText('');
-            setStateCopied(true);
-            setTimeout(() => setStateCopied(false), 2000);
         }
     };
 
@@ -1752,7 +1750,7 @@ function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterI
                             {!exportedText ? (
                                 <>
                                     <p style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', lineHeight: '1.6', margin: '0 0 1rem', maxWidth: '400px', marginLeft: 'auto', marginRight: 'auto' }}>
-                                        Export your bot's current configuration and stats. This will be copied to your clipboard automatically.
+                                        Export your bot's current configuration and stats.
                                     </p>
                                     <button
                                         onClick={handleExportAndCopy}
@@ -1782,18 +1780,20 @@ function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterI
                                     }}>
                                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                                             <span style={{ color: ACCENT, fontWeight: '600', fontSize: '0.85rem' }}>
-                                                <FaCheck size={12} /> State exported & copied!
+                                                <FaCheck size={12} /> State exported!
                                             </span>
                                             <button
                                                 onClick={handleReCopyState}
                                                 style={{
-                                                    background: 'none', border: `1px solid ${ACCENT}40`,
+                                                    background: stateCopied ? 'none' : ACCENT,
+                                                    border: `1px solid ${ACCENT}40`,
                                                     borderRadius: '6px', padding: '4px 10px',
-                                                    color: ACCENT, fontSize: '0.75rem', fontWeight: '500',
+                                                    color: stateCopied ? ACCENT : '#fff',
+                                                    fontSize: '0.75rem', fontWeight: '600',
                                                     cursor: 'pointer',
                                                 }}
                                             >
-                                                {stateCopied ? 'Copied!' : 'Re-copy'}
+                                                {stateCopied ? <><FaCheck size={10} /> Copied!</> : <><FaCopy size={10} /> Copy to Clipboard</>}
                                             </button>
                                         </div>
                                         <div style={{

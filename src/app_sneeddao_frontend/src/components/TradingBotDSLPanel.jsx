@@ -29,14 +29,28 @@ const CATEGORY_ORDER = [
 
 // ---- Clipboard utility ----
 function copyToClipboard(text) {
-  navigator.clipboard.writeText(text).catch(() => {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+    } else {
+      fallbackCopy(text);
+    }
+  } catch (_) {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  try {
     const ta = document.createElement('textarea');
     ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
     document.body.appendChild(ta);
     ta.select();
     document.execCommand('copy');
     document.body.removeChild(ta);
-  });
+  } catch (_) {}
 }
 
 const BTN_BASE = {
