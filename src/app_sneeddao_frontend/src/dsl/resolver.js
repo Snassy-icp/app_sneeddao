@@ -1209,9 +1209,43 @@ function buildCBRuleInput(stmt, tokenLookup) {
       base.operator = cond.op === '>' ? 0 : cond.op === '<' ? 1 : cond.op === 'in_range' ? 2 : 3;
       const thresh = resolveValue(cond.threshold, tokenLookup);
       if (thresh !== null) base.threshold = [Number(thresh)];
+    } else if (cond.type === 'value') {
+      base.conditionType = 1;
+      base.valueSources = buildCBValueSources(cond.sources, tokenLookup);
+      base.denominationToken = [toPrincipal(resolveToken(cond.denomToken, tokenLookup))];
+      base.operator = cond.op === '>' ? 0 : cond.op === '<' ? 1 : cond.op === 'in_range' ? 2 : 3;
+      const thresh = resolveValue(cond.threshold, tokenLookup);
+      if (thresh !== null) base.threshold = [Number(thresh)];
+    } else if (cond.type === 'value_change') {
+      base.conditionType = 1;
+      base.valueSources = buildCBValueSources(cond.sources, tokenLookup);
+      base.denominationToken = [toPrincipal(resolveToken(cond.denomToken, tokenLookup))];
+      base.operator = 4;
+      const bps = resolveValue(cond.changeBps, tokenLookup);
+      base.changePercentBps = [Number(bps)];
+      base.changeDirection = [{ up: 0, down: 1, either: 2 }[cond.direction] ?? 2];
+      const period = resolveValue(cond.period, tokenLookup);
+      base.changePeriodSeconds = [Number(period)];
     }
 
     return base;
+  }
+
+  function buildCBValueSources(sources, tl) {
+    return sources.map(s => {
+      if (s.type === 'all') {
+        return {
+          sourceType: 2,
+          token: [],
+          choreInstanceId: (s.purse && s.purse !== 'main') ? [s.purse] : [],
+        };
+      }
+      return {
+        sourceType: 0,
+        token: [toPrincipal(resolveToken(s.token, tl))],
+        choreInstanceId: (s.purse && s.purse !== 'main') ? [s.purse] : [],
+      };
+    });
   }
 
   function buildCBAction(action) {

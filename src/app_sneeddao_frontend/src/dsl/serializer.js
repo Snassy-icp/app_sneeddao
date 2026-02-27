@@ -706,7 +706,28 @@ function serializeCBCondition(lines, cond, tokenLookup, indentLevel) {
     const thresh = optNat(cond.threshold);
     ln(`balance ${token} in ${purse === 'main' ? 'main' : `"${purse}"`} ${opSym} ${thresh !== null ? Number(thresh) : '?'}`);
   } else if (condType === 1) {
-    ln(`value ... (complex value condition)`);
+    const sources = cond.valueSources || [];
+    const sourceStr = sources.map(s => {
+      const st = Number(s.sourceType);
+      const purse = optText(s.choreInstanceId) || 'main';
+      const purseRef = purse === 'main' ? 'main' : `"${purse}"`;
+      if (st === 2) return `ALL in ${purseRef}`;
+      if (st === 1) return `rebal_tokens in ${purseRef}`;
+      const tok = s.token ? sym(tokenLookup, optPrincipal(s.token)) : '?';
+      return `${tok} in ${purseRef}`;
+    }).join(', ') || '?';
+    const denomTok = optPrincipal(cond.denominationToken);
+    const denomSym = denomTok ? sym(tokenLookup, denomTok) : 'ICP';
+    if (op === 4) {
+      const dir = CB_CHANGE_DIR[Number(optNat(cond.changeDirection))] || 'either';
+      const bps = Number(optNat(cond.changePercentBps) || 0);
+      const period = formatDuration(Number(optNat(cond.changePeriodSeconds) || 0));
+      ln(`value ${sourceStr} denominated_in ${denomSym} changed ${dir} ${bps} bps in ${period}`);
+    } else {
+      const opSym = op === 0 ? '>' : op === 1 ? '<' : CB_OPERATOR[op];
+      const thresh = optNat(cond.threshold);
+      ln(`value ${sourceStr} denominated_in ${denomSym} ${opSym} ${thresh !== null ? Number(thresh) : '?'}`);
+    }
   }
 }
 

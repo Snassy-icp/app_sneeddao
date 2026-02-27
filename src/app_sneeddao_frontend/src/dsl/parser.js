@@ -515,12 +515,22 @@ export function parse(tokens) {
       return { type: 'balance', token, purse, op, threshold };
     }
 
+    // value <sources> denominated_in TOKEN changed up|down|either <bps> in <duration>
     // value <sources> denominated_in TOKEN <op> <value>
     if (tok.type === TT.KEYWORD && tok.value === 'value') {
       advance();
       const sources = parseValueSources();
       expect(TT.KEYWORD, 'denominated_in');
       const denomToken = parseKey();
+      if (isAt(TT.KEYWORD, 'changed')) {
+        advance();
+        const direction = current().value;
+        advance();
+        const changeBps = parseValue();
+        expect(TT.KEYWORD, 'in');
+        const period = parseValue();
+        return { type: 'value_change', sources, denomToken, direction, changeBps, period };
+      }
       const op = parseComparisonOp();
       const threshold = parseValue();
       return { type: 'value', sources, denomToken, op, threshold };

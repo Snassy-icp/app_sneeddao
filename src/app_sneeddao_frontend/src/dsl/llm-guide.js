@@ -173,11 +173,32 @@ export function generateLLMGuide({ whitelistTokens, snsData } = {}) {
 #     freeze token SNEED
 #   }
 # }
+#
+# ensure circuit_breaker "portfolio-crash" {
+#   enabled: true
+#   when ANY {
+#     value ALL in main denominated_in ckUSDC changed down 4000 bps in 24h
+#     value ALL in "rebal-1" denominated_in ckUSDC changed down 2500 bps in 2h
+#   }
+#   then {
+#     pause all rebalance chores
+#   }
+# }
 # remove circuit_breaker "crash-protection"
 #
-# CB conditions:  price T1/T2 > <amt>  |  price T1/T2 < <amt>
-#                 balance TOKEN in <purse> > <amt>
-#                 price T1/T2 changed up|down|either <bps> in <duration>
+# CB conditions:
+#   price T1/T2 > <amt>  |  price T1/T2 < <amt>
+#   price T1/T2 changed up|down|either <bps> in <duration>
+#   balance TOKEN in <purse> > <amt>
+#   value <sources> denominated_in TOKEN > <amt>
+#   value <sources> denominated_in TOKEN changed up|down|either <bps> in <duration>
+#
+# Value sources:
+#   ALL in main                 — total value of all tokens on the bot account
+#   ALL in "chore-id"           — total value of all tokens in a chore purse
+#   TOKEN in main               — value of a single token on the main account
+#   TOKEN in "chore-id"         — value of a single token in a chore purse
+#
 # CB actions:     stop|pause|start chore "id"
 #                 stop|pause|start all chores
 #                 stop|pause|start all TYPE chores
