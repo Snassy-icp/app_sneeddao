@@ -484,25 +484,37 @@ export function DSLContextBar({ getReadyBotActor, theme, accentColor, setParseEr
 }
 
 // ---- Reusable: Copy LLM Guide button ----
-export function DSLCopyGuideButton({ theme, accentColor }) {
+export function DSLCopyGuideButton({ theme, accentColor, getReadyBotActor }) {
   const [guideCopied, setGuideCopied] = useState(false);
-  const handleCopyGuide = useCallback(() => {
-    copyToClipboard(generateLLMGuide());
-    setGuideCopied(true);
-    setTimeout(() => setGuideCopied(false), 2000);
-  }, []);
+  const [loading, setLoading] = useState(false);
+  const handleCopyGuide = useCallback(async () => {
+    setLoading(true);
+    try {
+      let registry = null;
+      if (getReadyBotActor) {
+        try { registry = await (await getReadyBotActor()).getTokenRegistry(); } catch (_) {}
+      }
+      copyToClipboard(generateLLMGuide(registry));
+      setGuideCopied(true);
+      setTimeout(() => setGuideCopied(false), 2000);
+    } finally {
+      setLoading(false);
+    }
+  }, [getReadyBotActor]);
 
   return (
     <button
       onClick={handleCopyGuide}
+      disabled={loading}
       style={{
         ...BTN_BASE,
         background: guideCopied ? `${accentColor}25` : `${accentColor}10`,
         color: guideCopied ? accentColor : theme.colors.secondaryText,
         border: `1px solid ${guideCopied ? accentColor : theme.colors.border}`,
+        opacity: loading ? 0.6 : 1,
       }}
     >
-      {guideCopied ? 'Copied!' : 'Copy LLM Guide'}
+      {loading ? 'Loading...' : guideCopied ? 'Copied!' : 'Copy LLM Guide'}
     </button>
   );
 }
@@ -531,11 +543,13 @@ export default function TradingBotDSLPanel({ canisterId, getReadyBotActor, theme
   const engine = useDSLEngine(getReadyBotActor);
   const [guideCopied, setGuideCopied] = useState(false);
 
-  const handleCopyGuide = useCallback(() => {
-    copyToClipboard(generateLLMGuide());
+  const handleCopyGuide = useCallback(async () => {
+    let registry = null;
+    try { registry = await (await getReadyBotActor()).getTokenRegistry(); } catch (_) {}
+    copyToClipboard(generateLLMGuide(registry));
     setGuideCopied(true);
     setTimeout(() => setGuideCopied(false), 2000);
-  }, []);
+  }, [getReadyBotActor]);
 
   const cardStyle = {
     background: theme.colors.cardBg,

@@ -1,7 +1,24 @@
 // Generates a concise but complete SneedScript DSL reference for LLM consumption.
 
-export function generateLLMGuide() {
-  return `# ==========================================
+function principalToText(p) {
+  if (!p) return '?';
+  return typeof p === 'string' ? p : (p.toText ? p.toText() : String(p));
+}
+
+function formatAmount(rawAmount, decimals, symbol) {
+  if (rawAmount === 0n || rawAmount === 0) return `0 ${symbol}`;
+  const d = Number(decimals || 8);
+  const divisor = 10 ** d;
+  const raw = typeof rawAmount === 'bigint' ? rawAmount : BigInt(rawAmount);
+  const whole = raw / BigInt(divisor);
+  const frac = raw % BigInt(divisor);
+  if (frac === 0n) return `${whole} ${symbol}`;
+  const fracStr = frac.toString().padStart(d, '0').replace(/0+$/, '');
+  return `${whole}.${fracStr} ${symbol}`;
+}
+
+export function generateLLMGuide(tokenRegistry) {
+  let guide = `# ==========================================
 # SneedScript DSL Reference
 # ==========================================
 #
@@ -364,11 +381,9 @@ export function generateLLMGuide() {
 # The user has additional data they can copy for you from the bot's UI.
 # If you need any of the following, ask the user to provide it:
 #
-# 1. TOKEN REGISTRY (with ledger canister IDs)
-#    Ask: "Please click 'Copy All Tokens' in the LLM Context bar of the
-#    Script tab and paste the result here."
-#    You need this when: writing ensure token statements for new tokens,
-#    or referencing tokens by principal instead of symbol.
+# 1. TOKEN REGISTRY — Already included at the end of this guide under
+#    "Known Tokens". Use it to look up symbols, ledger canister IDs,
+#    decimals, and fees. You should NOT need to ask the user for this.
 #
 # 2. TRADE LOG (recent trade executions)
 #    Ask: "Please click 'Copy Trade Log' in the LLM Context bar (or the
@@ -399,4 +414,17 @@ export function generateLLMGuide() {
 #
 # === END OF REFERENCE ===
 `;
+
+  if (tokenRegistry && tokenRegistry.length > 0) {
+    const tokenLines = ['\n# === KNOWN TOKENS ===', `# ${tokenRegistry.length} token(s) registered on this bot.\n`];
+    for (const t of tokenRegistry) {
+      const pid = principalToText(t.ledgerCanisterId);
+      const feeStr = formatAmount(t.fee, t.decimals, t.symbol);
+      tokenLines.push(`# ${t.symbol} | ledger: ${pid} | decimals: ${t.decimals} | fee: ${feeStr}`);
+    }
+    tokenLines.push('');
+    guide += tokenLines.join('\n');
+  }
+
+  return guide;
 }
