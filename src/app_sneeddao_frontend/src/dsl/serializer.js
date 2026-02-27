@@ -141,8 +141,8 @@ export async function serializeBotState(bot) {
     bot.getLastKnownPrices(),
     bot.getEventSubscriptions(),
     bot.getEventReactions(),
-    bot.getEventEmissionEnabled().catch(() => null),
-    bot.getCapitalFlows().catch(() => null),
+    (typeof bot.getEventEmissionEnabled === 'function' ? bot.getEventEmissionEnabled().catch(() => null) : Promise.resolve(null)),
+    (typeof bot.getCapitalFlows === 'function' ? bot.getCapitalFlows().catch(() => null) : Promise.resolve(null)),
     bot.getVersion(),
   ]);
 
