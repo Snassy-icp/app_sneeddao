@@ -3051,6 +3051,10 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         appRevenueStatsMap.get(numericAppId);
     };
 
+    public query func getAllAppRevenueStats(): async [AppRevenueStats] {
+        Iter.toArray(Iter.map<(Nat, AppRevenueStats), AppRevenueStats>(appRevenueStatsMap.entries(), func(e) { e.1 }));
+    };
+
     public query func getDaoRevenueStats(): async DaoRevenueStats {
         {
             totalDaoCutReceivedE8s = totalDaoCutReceivedE8s;

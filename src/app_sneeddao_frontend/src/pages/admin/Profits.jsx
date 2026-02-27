@@ -26,6 +26,9 @@ export default function ProfitsAdmin() {
     
     // Profit data states
     const [factoryProfits, setFactoryProfits] = useState(null);
+    const [factoryApps, setFactoryApps] = useState([]);
+    const [factoryAppStats, setFactoryAppStats] = useState([]);
+    const [factoryDaoStats, setFactoryDaoStats] = useState(null);
     const [sneedexProfits, setSneedexProfits] = useState(null);
     const [sneedLockProfits, setSneedLockProfits] = useState(null);
     const [premiumProfits, setPremiumProfits] = useState(null);
@@ -110,8 +113,16 @@ export default function ProfitsAdmin() {
             const actor = createFactoryActor(factoryCanisterId, {
                 agentOptions: { identity }
             });
-            const aggregates = await actor.getFactoryAggregates();
+            const [aggregates, apps, appStats, daoStats] = await Promise.all([
+                actor.getFactoryAggregates(),
+                actor.getApps(),
+                actor.getAllAppRevenueStats(),
+                actor.getDaoRevenueStats(),
+            ]);
             setFactoryProfits(aggregates);
+            setFactoryApps(apps);
+            setFactoryAppStats(appStats);
+            setFactoryDaoStats(daoStats);
         } catch (err) {
             console.error('Failed to fetch factory profits:', err);
             setFactoryProfits({ error: err.message });
@@ -535,52 +546,105 @@ export default function ProfitsAdmin() {
         </div>
     );
 
-    const renderFactoryCard = () => (
-        <div style={styles.card}>
-            <h3 style={styles.cardTitle}>
-                <FaCube style={styles.cardIcon} />
-                ICP Staking Bot Factory
-            </h3>
-            {loadingFactory ? (
-                <p style={styles.loadingText}>Loading...</p>
-            ) : factoryProfits?.error ? (
-                <p style={styles.errorText}>
-                    <FaExclamationTriangle />
-                    {factoryProfits.error}
-                </p>
-            ) : factoryProfits ? (
-                <>
-                    <div style={styles.statRow}>
-                        <span style={styles.statLabel}>Total ICP Profit</span>
-                        <div style={styles.statValue}>
-                            {formatIcp(factoryProfits.totalIcpProfitE8s)} ICP
-                            <div style={styles.statUsd}>{formatUsd(e8sToUsd(factoryProfits.totalIcpProfitE8s))}</div>
+    const renderFactoryCard = () => {
+        const appNameMap = {};
+        for (const app of factoryApps) {
+            appNameMap[Number(app.numericAppId)] = app.name;
+        }
+
+        return (
+            <div style={styles.card}>
+                <h3 style={styles.cardTitle}>
+                    <FaCube style={styles.cardIcon} />
+                    Sneedapp
+                </h3>
+                {loadingFactory ? (
+                    <p style={styles.loadingText}>Loading...</p>
+                ) : factoryProfits?.error ? (
+                    <p style={styles.errorText}>
+                        <FaExclamationTriangle />
+                        {factoryProfits.error}
+                    </p>
+                ) : factoryProfits ? (
+                    <>
+                        <div style={styles.statRow}>
+                            <span style={styles.statLabel}>Total ICP Profit</span>
+                            <div style={styles.statValue}>
+                                {formatIcp(factoryProfits.totalIcpProfitE8s)} ICP
+                                <div style={styles.statUsd}>{formatUsd(e8sToUsd(factoryProfits.totalIcpProfitE8s))}</div>
+                            </div>
                         </div>
-                    </div>
-                    <div style={styles.statRow}>
-                        <span style={styles.statLabel}>Total ICP Received</span>
-                        <div style={styles.statValue}>
-                            {formatIcp(factoryProfits.totalIcpPaidE8s)} ICP
+                        <div style={styles.statRow}>
+                            <span style={styles.statLabel}>Total ICP Received</span>
+                            <div style={styles.statValue}>
+                                {formatIcp(factoryProfits.totalIcpPaidE8s)} ICP
+                            </div>
                         </div>
-                    </div>
-                    <div style={styles.statRow}>
-                        <span style={styles.statLabel}>ICP Used for Cycles</span>
-                        <div style={styles.statValue}>
-                            {formatIcp(factoryProfits.totalIcpForCyclesE8s)} ICP
+                        <div style={styles.statRow}>
+                            <span style={styles.statLabel}>ICP Used for Cycles</span>
+                            <div style={styles.statValue}>
+                                {formatIcp(factoryProfits.totalIcpForCyclesE8s)} ICP
+                            </div>
                         </div>
-                    </div>
-                    <div style={{ ...styles.statRow, borderBottom: 'none' }}>
-                        <span style={styles.statLabel}>Canisters Created</span>
-                        <div style={styles.statValue}>
-                            {Number(factoryProfits.totalCanistersCreated).toLocaleString()}
+                        <div style={styles.statRow}>
+                            <span style={styles.statLabel}>Canisters Created</span>
+                            <div style={styles.statValue}>
+                                {Number(factoryProfits.totalCanistersCreated).toLocaleString()}
+                            </div>
                         </div>
-                    </div>
-                </>
-            ) : (
-                <p style={styles.loadingText}>No data</p>
-            )}
-        </div>
-    );
+
+                        {factoryDaoStats && (
+                            <div style={{ ...styles.statRow, borderBottom: factoryAppStats.length > 0 ? undefined : 'none' }}>
+                                <span style={styles.statLabel}>DAO Revenue (tracked)</span>
+                                <div style={styles.statValue}>
+                                    {formatIcp(factoryDaoStats.totalRevenueE8s)} ICP
+                                    <div style={styles.statUsd}>{formatUsd(e8sToUsd(factoryDaoStats.totalRevenueE8s))}</div>
+                                </div>
+                            </div>
+                        )}
+
+                        {factoryAppStats.length > 0 && (
+                            <>
+                                <h4 style={{
+                                    color: theme.colors.primaryText,
+                                    fontSize: '0.95rem',
+                                    marginTop: '15px',
+                                    marginBottom: '10px',
+                                    fontWeight: '600'
+                                }}>
+                                    Revenue by App
+                                </h4>
+                                <div style={styles.tokenCutsTable}>
+                                    {factoryAppStats.map((stat) => {
+                                        const appName = appNameMap[Number(stat.numericAppId)] || `App #${Number(stat.numericAppId)}`;
+                                        const totalE8s = Number(stat.totalRevenueE8s) + Number(stat.totalDaoCutE8s);
+                                        return (
+                                            <div key={Number(stat.numericAppId)} style={styles.tokenCutRow}>
+                                                <div>
+                                                    <span style={{ ...styles.tokenCutLabel, fontFamily: 'inherit', color: theme.colors.primaryText }}>{appName}</span>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem' }}>
+                                                        {Number(stat.mintCount)} mint{Number(stat.mintCount) !== 1 ? 's' : ''}
+                                                    </div>
+                                                </div>
+                                                <div style={styles.tokenCutValue}>
+                                                    {formatIcp(totalE8s)} ICP
+                                                    {e8sToUsd(totalE8s) !== null && (
+                                                        <div style={styles.statUsd}>{formatUsd(e8sToUsd(totalE8s))}</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </>
+                        )}
+                    </>
+                ) : (
+                    <p style={styles.loadingText}>No data</p>
+                )}
+            </div>
+        );
+    };
 
     const renderSneedexCard = () => (
         <div style={styles.card}>
