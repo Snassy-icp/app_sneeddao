@@ -1595,14 +1595,34 @@ function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterI
         if (text) {
             setExportedText(text);
             engine.setEditorText('');
+            try {
+                await navigator.clipboard.writeText(text);
+                setStateCopied(true);
+                setTimeout(() => setStateCopied(false), 3000);
+            } catch (_) {
+                // Transient activation expired — user must click Copy
+            }
         }
     };
 
-    const handleReCopyState = () => {
-        if (exportedText) {
-            navigator.clipboard.writeText(exportedText).catch(() => {});
+    const handleReCopyState = async () => {
+        if (!exportedText) return;
+        try {
+            await navigator.clipboard.writeText(exportedText);
             setStateCopied(true);
-            setTimeout(() => setStateCopied(false), 2000);
+            setTimeout(() => setStateCopied(false), 3000);
+        } catch (_) {
+            // Fallback: hidden textarea
+            const ta = document.createElement('textarea');
+            ta.value = exportedText;
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            setStateCopied(true);
+            setTimeout(() => setStateCopied(false), 3000);
         }
     };
 
@@ -1780,12 +1800,12 @@ function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterI
                                     }}>
                                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                                             <span style={{ color: ACCENT, fontWeight: '600', fontSize: '0.85rem' }}>
-                                                <FaCheck size={12} /> State exported!
+                                                <FaCheck size={12} /> {stateCopied ? 'Exported & copied to clipboard!' : 'State exported!'}
                                             </span>
                                             <button
                                                 onClick={handleReCopyState}
                                                 style={{
-                                                    background: stateCopied ? 'none' : ACCENT,
+                                                    background: stateCopied ? `${ACCENT}15` : ACCENT,
                                                     border: `1px solid ${ACCENT}40`,
                                                     borderRadius: '6px', padding: '4px 10px',
                                                     color: stateCopied ? ACCENT : '#fff',

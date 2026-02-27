@@ -34,6 +34,13 @@ export function generateLLMGuide({ whitelistTokens, snsData } = {}) {
 #   \`ensure\` statements become no-ops, but omitting unchanged state is cleaner.
 # - Do NOT invent token symbols. Only use symbols from the exported state or
 #   explicit principals for new tokens.
+# - TOKEN MAPPING: This bot runs on the Internet Computer. When the user
+#   refers to real-world assets, use the corresponding ck-wrapped token:
+#     USD / dollars  → ckUSDC      EUR  → ckEUR (if available)
+#     BTC / Bitcoin  → ckBTC       ETH / Ether → ckETH
+#     USDT           → ckUSDT
+#   Do NOT ask the user to clarify — just use the ck-token silently.
+#   If the user says "denominated in USD", use ckUSDC as the denomination.
 #
 # === LITERALS ===
 #
