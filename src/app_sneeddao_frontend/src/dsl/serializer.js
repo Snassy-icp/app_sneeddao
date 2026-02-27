@@ -119,7 +119,8 @@ export async function serializeBotState(bot) {
     loggingSettings, choreLoggingOverrides,
     priceStaleness, metadataStaleness, priceHistoryMaxSize,
     lastKnownPrices,
-    eventSubscriptions, eventReactions,
+    eventSubscriptions, eventReactions, eventEmissionEnabled,
+    capitalFlows,
     version,
   ] = await Promise.all([
     bot.getTokenRegistry(),
@@ -140,6 +141,8 @@ export async function serializeBotState(bot) {
     bot.getLastKnownPrices(),
     bot.getEventSubscriptions(),
     bot.getEventReactions(),
+    bot.getEventEmissionEnabled().catch(() => null),
+    bot.getCapitalFlows().catch(() => null),
     bot.getVersion(),
   ]);
 
@@ -220,6 +223,12 @@ export async function serializeBotState(bot) {
       }).catch(() => { perChoreData[id].tradingPurseId = null; })
     );
   }
+  // Fetch main purse balances (async call, not query)
+  let mainPurseBalances = [];
+  fetchPromises.push(
+    bot.getMainPurseBalances().then(bals => { mainPurseBalances = bals; }).catch(() => {})
+  );
+
   await Promise.all(fetchPromises);
 
   // ---- Header ----
@@ -278,6 +287,22 @@ export async function serializeBotState(bot) {
   ln(`set metadata_staleness: ${formatDuration(Number(metadataStaleness))}`);
   ln(`set price_history_max_size: ${Number(priceHistoryMaxSize)}`);
   ln();
+
+  // ---- Last Known Prices ----
+  if (lastKnownPrices.length > 0) {
+    comment('---- Last Known Prices ----');
+    for (const p of lastKnownPrices) {
+      const pairKey = p[0];
+      const cached = p[1];
+      if (cached && cached.quote !== undefined && cached.quote !== null) {
+        const age = cached.timestampNanos
+          ? formatDuration(Math.round((Date.now() - Number(BigInt(cached.timestampNanos) / 1_000_000n)) / 1000))
+          : '?';
+        comment(`${pairKey}: ${Number(cached.quote) / 1e8} (age: ${age})`);
+      }
+    }
+    ln();
+  }
 
   // ---- Logging ----
   comment('---- Logging ----');
@@ -409,9 +434,41 @@ export async function serializeBotState(bot) {
     }
   }
 
+  // ---- Main Purse Balances ----
+  if (mainPurseBalances.length > 0) {
+    comment('---- Main Purse Balances (unallocated funds) ----');
+    for (const b of mainPurseBalances) {
+      const s = sym(tokenLookup, b.token);
+      const d = dec(tokenLookup, b.token);
+      const balStr = formatAmount(b.balance, d, s);
+      const note = b.overcommitted ? ' [OVERCOMMITTED]' : '';
+      comment(`${s}: ${balStr}${note}`);
+    }
+    ln();
+  }
+
+  // ---- Capital Flows ----
+  if (capitalFlows) {
+    comment('---- Capital Flows ----');
+    const icpDeployed = Number(capitalFlows.capitalDeployedIcpE8s) / 1e8;
+    const usdDeployed = Number(capitalFlows.capitalDeployedUsdE8s) / 1e8;
+    comment(`Capital deployed: ${icpDeployed.toFixed(4)} ICP / ${usdDeployed.toFixed(2)} USD`);
+    if (capitalFlows.perToken && capitalFlows.perToken.length > 0) {
+      for (const [tokenKey, flows] of capitalFlows.perToken) {
+        const info = tokenLookup[tokenKey];
+        const s = info?.symbol || tokenKey;
+        const d = info?.decimals ?? 8;
+        const inflowStr = formatAmount(flows.totalInflowNative, d, s);
+        const outflowStr = formatAmount(flows.totalOutflowNative, d, s);
+        comment(`${s}: inflow ${inflowStr}, outflow ${outflowStr}`);
+      }
+    }
+    ln();
+  }
+
   // ---- Purse Configuration ----
   if (allPurseAllocations.length > 0) {
-    comment('---- Purse Configuration ----');
+    comment('---- Chore Purse Configuration ----');
     for (const purse of allPurseAllocations) {
       const balDesc = purse.balances.map(b => fmtAmt(tokenLookup, b.token, b.balance)).join(', ');
       if (balDesc) comment(`Purse "${purse.instanceId}" balances: ${balDesc}`);
@@ -423,8 +480,11 @@ export async function serializeBotState(bot) {
   }
 
   // ---- Event System ----
-  if (eventSubscriptions.length > 0 || eventReactions.length > 0) {
+  if (eventEmissionEnabled !== null || eventSubscriptions.length > 0 || eventReactions.length > 0) {
     comment('---- Event System ----');
+    if (eventEmissionEnabled !== null) {
+      ln(`set event_emission: ${eventEmissionEnabled}`);
+    }
 
     for (const sub of eventSubscriptions) {
       const source = principalToText(sub.sourceBotCanisterId);
