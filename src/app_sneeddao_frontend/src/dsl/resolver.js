@@ -1054,11 +1054,32 @@ export async function resolveOperations(ast, bot, tokenLookupOverride = null) {
 // ============================================
 
 function sortStatements(stmts) {
-  const order = { token: 0, chore: 1, action: 2, rebalance_target: 3, distribution: 3, circuit_breaker: 4, event_subscription: 5, event_reaction: 6 };
+  // Execution order:
+  //  0  tokens           — register tokens first
+  //  1  global settings  — set globals + create chores
+  //  1  ensure chore     — create chores
+  //  2  actions          — add/update actions in chores
+  //  3  config sets      — intervals, purse enable, rebalance settings, etc.
+  //  3  rebalance targets, distributions
+  //  4  circuit breakers
+  //  5  event subscriptions
+  //  6  event reactions
+  //  7  other
+  //  8  submit fund_purse / reclaim — fund purses before starting chores
+  //  9  set chore status  — start/stop/pause after everything is configured & funded
+  // 10  submit trade / withdraw / send — imperative operations last
+  const entityOrder = { token: 0, chore: 1, action: 2, rebalance_target: 3, distribution: 3, circuit_breaker: 4, event_subscription: 5, event_reaction: 6 };
   const typeOrder = (s) => {
-    if (s.type === 'submit') return 10;
-    if (s.type === 'set') return s.entity === 'global' ? 1 : 3;
-    return order[s.entity] ?? 7;
+    if (s.type === 'submit') {
+      if (s.action === 'fund_purse' || s.action === 'reclaim') return 8;
+      return 10;
+    }
+    if (s.type === 'set') {
+      if (s.entity === 'global') return 1;
+      if (s.entity === 'chore' && s.property === 'status') return 9;
+      return 3;
+    }
+    return entityOrder[s.entity] ?? 7;
   };
   return [...stmts].sort((a, b) => typeOrder(a) - typeOrder(b));
 }
