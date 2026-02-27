@@ -346,8 +346,12 @@ export function parse(tokens) {
       if (tok.value === 's') { advance(); return { type: 'duration', value: num, unit: 's' }; }
       if (tok.value === 'm') { advance(); return { type: 'duration', value: num, unit: 'm' }; }
       if (tok.value === 'h') { advance(); return { type: 'duration', value: num, unit: 'h' }; }
-      // Token amount (number followed by token symbol)
-      if (tok.type === TT.IDENT || (tok.type === TT.KEYWORD && !['bps', 's', 'm', 'h', 'in', 'from', 'to', 'true', 'false', 'none'].includes(tok.value))) {
+      // Token amount (number followed by token symbol), but only if the
+      // identifier isn't a property key (i.e. not followed by a colon)
+      const nextTok = tokens[pos + 1];
+      const followedByColon = nextTok && nextTok.type === TT.COLON;
+      if (!followedByColon &&
+          (tok.type === TT.IDENT || (tok.type === TT.KEYWORD && !['bps', 's', 'm', 'h', 'in', 'from', 'to', 'true', 'false', 'none'].includes(tok.value)))) {
         const symbol = advance().value;
         return { type: 'amount', value: num, token: symbol };
       }
