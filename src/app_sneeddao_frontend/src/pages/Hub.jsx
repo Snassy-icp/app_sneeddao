@@ -1702,7 +1702,7 @@ function Hub() {
                                 <FaArrowRight size={14} />
                             </Link>
                             <Link 
-                                to="/liquid_staking" 
+                                to="/sneedapp" 
                                 className="hub-cta-btn"
                                 style={{
                                     display: 'inline-flex',
@@ -1719,11 +1719,11 @@ function Hub() {
                                     transition: 'all 0.3s ease',
                                 }}
                             >
-                                <FaCoins size={18} />
-                                Liquid Staking
+                                <FaStore size={18} />
+                                Sneedapp
                             </Link>
                             <Link 
-                                to="/tools/sns_jailbreak" 
+                                to="/sneedapp/app/sneed-trading-bot" 
                                 className="hub-cta-btn"
                                 style={{
                                     display: 'inline-flex',
@@ -1740,8 +1740,8 @@ function Hub() {
                                     transition: 'all 0.3s ease',
                                 }}
                             >
-                                <FaUnlock size={16} style={{ color: hubAccent }} />
-                                Unlock Neurons
+                                <FaRobot size={16} style={{ color: hubAccent }} />
+                                Trading Bot
                             </Link>
                         </div>
                         

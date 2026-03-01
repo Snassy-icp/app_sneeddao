@@ -23,7 +23,7 @@ import { createActor as createBotActor } from 'external/sneed_trading_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { decodeIcrcAccount, encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { computeAccountId } from '../utils/PrincipalUtils';
-import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay, FaArrowUp, FaArrowDown, FaPaperPlane, FaExchangeAlt, FaWallet, FaShieldAlt, FaToggleOn, FaToggleOff, FaCopy, FaDownload, FaArrowRight, FaChevronDown, FaChevronUp, FaTag, FaGlobe, FaEyeSlash, FaRobot, FaMedkit, FaCode } from 'react-icons/fa';
+import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay, FaArrowUp, FaArrowDown, FaPaperPlane, FaExchangeAlt, FaWallet, FaShieldAlt, FaToggleOn, FaToggleOff, FaCopy, FaDownload, FaArrowRight, FaChevronDown, FaChevronUp, FaTag, FaGlobe, FaEyeSlash, FaRobot, FaMedkit, FaCode, FaCamera, FaCoins, FaCogs, FaBoxes } from 'react-icons/fa';
 import TradingBotDSLPanel from '../components/TradingBotDSLPanel';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createIcpSwapFactoryActor, canisterId as icpSwapFactoryCanisterId } from 'external/icp_swap_factory';
@@ -62,7 +62,6 @@ const tradingBotStyles = `
     70% { opacity: 1; }
     100% { transform: translateX(8px); opacity: 0; }
 }
-.swap-card-slot { overflow: hidden; transition: max-height 0.35s ease-out, opacity 0.25s ease-out; }
 .swap-pulse { animation: swapPulse 1.5s ease-in-out infinite; }
 .swap-flow-dot { animation: swapFlowDot 1.2s ease-in-out infinite; }
 `;
@@ -10395,6 +10394,42 @@ const SwapProgressCard = React.memo(function SwapProgressCard({ entry, isRunning
 });
 
 // ============================================
+// Task display info — maps task IDs to human-readable labels and icons
+// ============================================
+const TASK_DISPLAY_RULES = [
+    { pattern: /^trade-meta-/,            Icon: FaSyncAlt,      label: 'Refreshing metadata',      color: null },
+    { pattern: /^trade-prices-/,          Icon: FaChartLine,    label: 'Fetching prices',           color: null },
+    { pattern: /^trade-cb-check-/,        Icon: FaShieldAlt,    label: 'Circuit breaker check',     color: null },
+    { pattern: /^trade-snap-before-/,     Icon: FaCamera,       label: 'Pre-trade snapshot',        color: null },
+    { pattern: /^trade-acct-snap-before-/,Icon: FaCamera,       label: 'Account snapshot',          color: null },
+    { pattern: /^trade-snap-after-/,      Icon: FaCamera,       label: 'Post-trade snapshot',       color: '#22c55e' },
+    { pattern: /^trade-acct-snap-after-/, Icon: FaCamera,       label: 'Account snapshot',          color: '#22c55e' },
+    { pattern: /^rebal-meta-/,            Icon: FaSyncAlt,      label: 'Refreshing metadata',       color: null },
+    { pattern: /^rebal-prices-/,          Icon: FaChartLine,    label: 'Fetching prices',           color: null },
+    { pattern: /^rebal-snap-before-/,     Icon: FaCamera,       label: 'Pre-rebalance snapshot',    color: null },
+    { pattern: /^rebal-cb-check-/,        Icon: FaShieldAlt,    label: 'Circuit breaker check',     color: null },
+    { pattern: /^rebal-snap-after-/,      Icon: FaCamera,       label: 'Post-rebalance snapshot',   color: '#22c55e' },
+    { pattern: /^mf-acct-snap-before-/,   Icon: FaCamera,       label: 'Pre-transfer snapshot',     color: null },
+    { pattern: /^mf-acct-snap-after-/,    Icon: FaCamera,       label: 'Post-transfer snapshot',    color: '#22c55e' },
+    { pattern: /^mf-action-/,             Icon: FaArrowRight,   label: 'Moving funds',              color: null },
+    { pattern: /^dist-snap-before-/,      Icon: FaCamera,       label: 'Pre-distribution snapshot', color: null },
+    { pattern: /^dist-snap-after-/,       Icon: FaCamera,       label: 'Post-distribution snapshot',color: '#22c55e' },
+    { pattern: /^dist-/,                  Icon: FaCoins,        label: 'Distributing funds',        color: null },
+    { pattern: /^snap-meta-/,             Icon: FaSyncAlt,      label: 'Refreshing metadata',       color: null },
+    { pattern: /^snap-prices-/,           Icon: FaChartLine,    label: 'Fetching prices',           color: null },
+    { pattern: /^snap-balance-/,          Icon: FaCamera,       label: 'Taking balance snapshot',   color: null },
+    { pattern: /^snap-archive-/,          Icon: FaBoxes,        label: 'Archiving daily summary',   color: null },
+];
+
+function getTaskDisplayInfo(taskId) {
+    if (!taskId) return null;
+    for (const rule of TASK_DISPLAY_RULES) {
+        if (rule.pattern.test(taskId)) return rule;
+    }
+    return { Icon: FaCogs, label: taskId, color: null };
+}
+
+// ============================================
 // Swap card renderer hook — detects swap tasks from run data and fetches trade log results
 // ============================================
 const ACTIVE_SWAP_PATTERN = /^trade-action-|^rebalance-exec-/;
@@ -10491,7 +10526,7 @@ function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
     }, []);
 
     const renderSwapCard = useCallback((choreId, run, _chore) => {
-        if (!run) return <div className="swap-card-slot" style={{ maxHeight: 0, opacity: 0 }} />;
+        if (!run) return null;
 
         const runStamp = run._condStartNs || run.conductorStartedAtMs || '';
 
@@ -10516,7 +10551,6 @@ function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
 
         let entry = showCard ? (swapResults[activeKey] || null) : null;
 
-        // Discard stale entries from a previous run and unlock fetch so we can retry
         if (entry && !isSwapRunning && entry.timestamp && runStamp) {
             const entryNs = BigInt(entry.timestamp);
             const runNs = BigInt(runStamp);
@@ -10572,20 +10606,18 @@ function useSwapCardRenderer(getReadyBotActor, theme, accentColor) {
         const isPending = !isSwapRunning && recentSwapTask && !entry;
         const hasContent = showCard && (entry || isPending || isSwapRunning);
 
+        if (!hasContent) return null;
+
         return (
-            <div className="swap-card-slot" style={{ maxHeight: hasContent ? 250 : 0, opacity: hasContent ? 1 : 0 }}>
-                {hasContent && (
-                    <SwapProgressCard
-                        entry={entry}
-                        isRunning={isSwapRunning}
-                        pending={isPending}
-                        theme={theme}
-                        accentColor={accentColor}
-                        taskType={taskType}
-                        onDismiss={() => setDismissed(prev => new Set(prev).add(activeKey))}
-                    />
-                )}
-            </div>
+            <SwapProgressCard
+                entry={entry}
+                isRunning={isSwapRunning}
+                pending={isPending}
+                theme={theme}
+                accentColor={accentColor}
+                taskType={taskType}
+                onDismiss={() => setDismissed(prev => new Set(prev).add(activeKey))}
+            />
         );
     }, [swapResults, dismissed, actionCache, theme, accentColor, triggerFetch, triggerActionFetch]);
 
@@ -11030,7 +11062,7 @@ function ControlTabPanel({ chore, controlTabContent: ct, getReadyBotActor, theme
                 </div>
             </div>
 
-            {/* Conductor run card (full detail) — stable placeholder */}
+            {/* Conductor run card — always visible, stable layout */}
             {(() => {
                 const run = choreRunTracker[chore.choreId];
                 const hasRun = !!run;
@@ -11039,28 +11071,101 @@ function ControlTabPanel({ chore, controlTabContent: ct, getReadyBotActor, theme
                 const timeStr = (ms) => ms ? new Date(ms).toLocaleTimeString() : '--:--';
                 const dotStyle = (color) => ({ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 });
                 const rowBase = { display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 8px', borderRadius: '5px', fontSize: '0.78rem' };
+
+                const currentTaskId = run?.currentTask?.taskId;
+                const isSwapTask = currentTaskId && ACTIVE_SWAP_PATTERN.test(currentTaskId);
+                const taskInfo = !isSwapTask ? getTaskDisplayInfo(currentTaskId) : null;
+                const swapCardContent = renderSwapCard ? renderSwapCard(chore.choreId, run, chore) : null;
+                const showSwapCard = !!swapCardContent;
+
+                const lastCompletedNonSwap = hasRun && !run.isRunning && !showSwapCard
+                    ? [...(run.completedTasks || [])].reverse().find(t => !ACTIVE_SWAP_PATTERN.test(t.taskId))
+                    : null;
+                const lastTaskInfo = lastCompletedNonSwap ? getTaskDisplayInfo(lastCompletedNonSwap.taskId) : null;
+
                 return (
-                    <div style={{ overflow: 'hidden', transition: 'max-height 0.35s ease-out, opacity 0.25s ease-out, margin-top 0.35s ease-out', maxHeight: hasRun ? 500 : 0, opacity: hasRun ? 1 : 0, marginTop: hasRun ? 10 : 0 }}>
-                        {hasRun && (
-                            <div style={{ padding: '10px', background: run.isRunning ? `${accent}06` : theme.colors.primaryBg, border: `1px solid ${run.isRunning ? accent + '30' : theme.colors.border}`, borderRadius: '8px', fontSize: '0.8rem', color: theme.colors.primaryText }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                    <strong style={{ fontSize: '0.82rem' }}>{run.isRunning ? 'Conductor Running' : 'Last Conductor Run'}</strong>
-                                    <span style={{ fontSize: '0.72rem', color: theme.colors.secondaryText }}>{timeStr(run.conductorStartedAtMs)}{run.conductorEndedAtMs ? ` → ${timeStr(run.conductorEndedAtMs)}` : ''}</span>
-                                </div>
+                    <div style={{ marginTop: 10 }}>
+                        <div style={{ padding: '10px', background: hasRun && run.isRunning ? `${accent}06` : theme.colors.primaryBg, border: `1px solid ${hasRun && run.isRunning ? accent + '30' : theme.colors.border}`, borderRadius: '8px', fontSize: '0.8rem', color: theme.colors.primaryText, transition: 'background 0.3s, border-color 0.3s' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                <strong style={{ fontSize: '0.82rem' }}>
+                                    {hasRun && run.isRunning ? 'Conductor Running' : hasRun ? 'Last Conductor Run' : 'Activity'}
+                                </strong>
+                                <span style={{ fontSize: '0.72rem', color: theme.colors.secondaryText }}>
+                                    {hasRun ? (<>{timeStr(run.conductorStartedAtMs)}{run.conductorEndedAtMs ? ` → ${timeStr(run.conductorEndedAtMs)}` : ''}</>) : 'Idle'}
+                                </span>
+                            </div>
+
+                            {hasRun && (
                                 <div style={{ ...rowBase, background: run.isRunning ? `${accent}10` : theme.colors.primaryBg, border: `1px solid ${run.isRunning ? accent + '20' : theme.colors.border}`, marginBottom: '5px' }}>
                                     <span style={dotStyle(run.isRunning ? accent : '#22c55e')} /><span style={{ color: theme.colors.secondaryText, minWidth: 62 }}>Conductor</span><span style={{ flex: 1 }} /><span style={{ fontFamily: 'monospace', fontWeight: '600', fontSize: '0.8rem', color: run.isRunning ? accent : theme.colors.primaryText }}>{elapsedStr(run.conductorStartedAtMs, run.conductorEndedAtMs)}</span>
                                 </div>
-                                {run.currentTask && (<div style={{ ...rowBase, background: `${accent}10`, border: `1px solid ${accent}20`, marginBottom: '5px' }}><span style={dotStyle(accent)} /><span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.76rem' }} title={run.currentTask.taskId}>{run.currentTask.taskId}</span><span style={{ fontFamily: 'monospace', fontWeight: '500', color: accent, fontSize: '0.78rem' }}>{elapsedStr(run.currentTask.startedAtMs, null)}</span></div>)}
-                                {renderSwapCard && renderSwapCard(chore.choreId, run, chore)}
-                                {run.completedTasks.length > 0 && (
-                                    <details style={{ marginTop: '4px' }}><summary style={{ cursor: 'pointer', fontSize: '0.73rem', color: theme.colors.secondaryText, userSelect: 'none', padding: '3px 0' }}>{run.completedTasks.length} completed task{run.completedTasks.length !== 1 ? 's' : ''}</summary>
-                                        <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                            {[...run.completedTasks].reverse().map((t, i) => (<div key={i} style={{ ...rowBase, background: theme.colors.primaryBg, border: `1px solid ${theme.colors.border}`, fontSize: '0.73rem' }}><span style={dotStyle(t.succeeded === false ? (theme.colors.error || '#ef4444') : '#22c55e')} /><span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.taskId + (t.error ? ' — ' + t.error : '')}>{t.taskId}</span><span style={{ fontFamily: 'monospace', color: theme.colors.secondaryText, fontSize: '0.72rem' }}>{elapsedStr(t.startedAtMs, t.endedAtMs)}</span></div>))}
+                            )}
+
+                            {/* Current task row with human-readable label */}
+                            {run?.currentTask && (
+                                <div style={{ ...rowBase, background: `${accent}10`, border: `1px solid ${accent}20`, marginBottom: '5px' }}>
+                                    <span style={dotStyle(accent)} />
+                                    {taskInfo ? (
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: 1, overflow: 'hidden' }}>
+                                            <taskInfo.Icon style={{ fontSize: '0.72rem', color: taskInfo.color || accent, flexShrink: 0 }} />
+                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.76rem' }} title={run.currentTask.taskId}>{taskInfo.label}</span>
+                                        </span>
+                                    ) : (
+                                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.76rem' }} title={run.currentTask.taskId}>{run.currentTask.taskId}</span>
+                                    )}
+                                    <span style={{ fontFamily: 'monospace', fontWeight: '500', color: accent, fontSize: '0.78rem' }}>{elapsedStr(run.currentTask.startedAtMs, null)}</span>
+                                </div>
+                            )}
+
+                            {/* Task activity slot — always present, content changes smoothly */}
+                            <div style={{ minHeight: 44, transition: 'min-height 0.2s ease-out' }}>
+                                {showSwapCard ? swapCardContent : (
+                                    hasRun && run.isRunning && !run.currentTask ? (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: `${accent}06`, borderRadius: '8px', border: `1px solid ${accent}15` }}>
+                                            <span className="swap-pulse" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: '50%', background: `${accent}20`, color: accent, fontSize: '0.7rem', fontWeight: '700' }}>⟳</span>
+                                            <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Initializing...</span>
                                         </div>
-                                    </details>
+                                    ) : hasRun && run.isRunning && taskInfo && !isSwapTask ? (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: `${accent}06`, borderRadius: '8px', border: `1px solid ${accent}15` }}>
+                                            <span className="swap-pulse" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: '50%', background: `${taskInfo.color || accent}20`, color: taskInfo.color || accent, fontSize: '0.75rem' }}>
+                                                <taskInfo.Icon />
+                                            </span>
+                                            <span style={{ fontSize: '0.78rem', fontWeight: '500', color: taskInfo.color || accent }}>{taskInfo.label}</span>
+                                        </div>
+                                    ) : hasRun && !run.isRunning && lastTaskInfo ? (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: '50%', background: '#22c55e20', color: '#22c55e', fontSize: '0.75rem' }}>
+                                                <lastTaskInfo.Icon />
+                                            </span>
+                                            <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>{lastTaskInfo.label}</span>
+                                            <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#22c55e', fontWeight: '500' }}>Done</span>
+                                        </div>
+                                    ) : !hasRun ? (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: '50%', background: `${theme.colors.secondaryText}15`, color: theme.colors.mutedText, fontSize: '0.7rem' }}>–</span>
+                                            <span style={{ fontSize: '0.78rem', color: theme.colors.mutedText }}>Waiting for next run…</span>
+                                        </div>
+                                    ) : null
                                 )}
                             </div>
-                        )}
+
+                            {hasRun && run.completedTasks.length > 0 && (
+                                <details style={{ marginTop: '4px' }}><summary style={{ cursor: 'pointer', fontSize: '0.73rem', color: theme.colors.secondaryText, userSelect: 'none', padding: '3px 0' }}>{run.completedTasks.length} completed task{run.completedTasks.length !== 1 ? 's' : ''}</summary>
+                                    <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                        {[...run.completedTasks].reverse().map((t, i) => {
+                                            const ti = getTaskDisplayInfo(t.taskId);
+                                            const TaskIcon = ti?.Icon;
+                                            return (<div key={i} style={{ ...rowBase, background: theme.colors.primaryBg, border: `1px solid ${theme.colors.border}`, fontSize: '0.73rem' }}>
+                                                <span style={dotStyle(t.succeeded === false ? (theme.colors.error || '#ef4444') : '#22c55e')} />
+                                                {TaskIcon && <TaskIcon style={{ fontSize: '0.65rem', color: t.succeeded === false ? (theme.colors.error || '#ef4444') : theme.colors.secondaryText, flexShrink: 0 }} />}
+                                                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.taskId + (t.error ? ' — ' + t.error : '')}>{ti?.label || t.taskId}</span>
+                                                <span style={{ fontFamily: 'monospace', color: theme.colors.secondaryText, fontSize: '0.72rem' }}>{elapsedStr(t.startedAtMs, t.endedAtMs)}</span>
+                                            </div>);
+                                        })}
+                                    </div>
+                                </details>
+                            )}
+                        </div>
                     </div>
                 );
             })()}
