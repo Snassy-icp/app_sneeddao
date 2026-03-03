@@ -18,7 +18,7 @@ module {
     public let CURRENT_VERSION: Version = {
         major = 0;
         minor = 9;
-        patch = 0;
+        patch = 1;
     };
 
     // ============================================
