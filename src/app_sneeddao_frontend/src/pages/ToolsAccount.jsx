@@ -4,8 +4,28 @@ import { encodeIcrcAccount, decodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { useTheme } from '../contexts/ThemeContext';
 import { computeAccountId } from '../utils/PrincipalUtils';
 import { bytesToHex, isDefaultSubaccount } from '../utils/AccountParser';
-import { FaCopy, FaCheck } from 'react-icons/fa';
+import { FaCopy, FaCheck, FaKey } from 'react-icons/fa';
 import Header from '../components/Header';
+
+const accountPrimary = '#14b8a6';
+const accountSecondary = '#2dd4bf';
+
+const customStyles = `
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+.account-fade-in {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+.account-float {
+    animation: float 3s ease-in-out infinite;
+}
+`;
 
 // --- Subaccount conversion helpers ---
 
@@ -189,9 +209,9 @@ const INPUT_MODES = [
 ];
 
 const SUB_FORMATS = [
+    { key: 'hex', label: 'Hex String', placeholder: 'e.g. 0x01 or a1b2c3', desc: 'Hexadecimal string, right-aligned (zero-padded on the left)' },
     { key: 'number', label: 'Number', placeholder: 'e.g. 1 or 123456789', desc: 'Decimal integer, encoded as big-endian bytes (right-aligned)' },
     { key: 'text', label: 'Text', placeholder: 'e.g. my-account', desc: 'UTF-8 text, left-aligned in 32 bytes' },
-    { key: 'hex', label: 'Hex String', placeholder: 'e.g. 0x01 or a1b2c3', desc: 'Hexadecimal string, right-aligned (zero-padded on the left)' },
     { key: 'bytes', label: 'Byte Array', placeholder: 'e.g. 0, 0, 0, 1', desc: 'Comma-separated byte values (0-255)' },
     { key: 'principal', label: 'Principal', placeholder: 'e.g. rrkah-fqaaa-aaaaa-aaaaq-cai', desc: 'Principal encoded as subaccount: [length][principal_bytes][index]' },
 ];
@@ -208,7 +228,7 @@ function ToolsAccount() {
     const [inputMode, setInputMode] = useState('principal');
     const [principalInput, setPrincipalInput] = useState('');
     const [principal2Input, setPrincipal2Input] = useState('');
-    const [subFormat, setSubFormat] = useState('number');
+    const [subFormat, setSubFormat] = useState('hex');
     const [subInput, setSubInput] = useState('');
     const [byteAlign, setByteAlign] = useState('right');
     const [icrc1Input, setIcrc1Input] = useState('');
@@ -453,19 +473,88 @@ function ToolsAccount() {
 
     return (
         <div className="page-container" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{customStyles}</style>
             <Header />
 
-            <main style={{ maxWidth: '800px', margin: '0 auto', padding: '1.5rem 1rem', color: theme.colors.primaryText }}>
-                {/* Page Header */}
-                <div style={{ marginBottom: '1.5rem' }}>
-                    <h1 style={{ fontSize: '1.75rem', fontWeight: '700', margin: '0 0 0.5rem 0' }}>
+            {/* Hero Banner */}
+            <div style={{
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${accountPrimary}12 50%, ${accountSecondary}08 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '2rem 1rem',
+                position: 'relative',
+                overflow: 'hidden',
+                width: '100%',
+                boxSizing: 'border-box',
+            }}>
+                <div style={{
+                    position: 'absolute',
+                    top: '-50%',
+                    right: '-5%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${accountPrimary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none',
+                }} />
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-40%',
+                    left: '10%',
+                    width: '200px',
+                    height: '200px',
+                    background: `radial-gradient(circle, ${accountSecondary}10 0%, transparent 70%)`,
+                    pointerEvents: 'none',
+                }} />
+
+                <div className="account-fade-in" style={{ maxWidth: '800px', margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+                    <div className="account-float" style={{
+                        width: '56px',
+                        height: '56px',
+                        borderRadius: '14px',
+                        background: `linear-gradient(135deg, ${accountPrimary}, ${accountSecondary})`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        margin: '0 auto 0.75rem',
+                        boxShadow: `0 10px 30px ${accountPrimary}40`,
+                    }}>
+                        <FaKey size={22} style={{ color: '#fff' }} />
+                    </div>
+                    <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        background: `${accountPrimary}20`,
+                        color: accountPrimary,
+                        padding: '5px 14px',
+                        borderRadius: '20px',
+                        fontSize: '0.78rem',
+                        fontWeight: '600',
+                        marginBottom: '0.5rem',
+                    }}>
+                        <FaKey size={10} /> Free Tool
+                    </div>
+                    <h1 style={{
+                        fontSize: '1.75rem',
+                        fontWeight: '700',
+                        color: theme.colors.primaryText,
+                        margin: '0.5rem 0',
+                        letterSpacing: '-0.5px',
+                    }}>
                         Account Tool
                     </h1>
-                    <p style={{ color: theme.colors.secondaryText, fontSize: '0.95rem', lineHeight: '1.5', margin: 0 }}>
-                        Convert between ICP account formats. Enter a principal, a principal with subaccount,
-                        or an ICRC-1 account string to see all derived representations including the legacy ICP account identifier.
+                    <p style={{
+                        color: theme.colors.secondaryText,
+                        fontSize: '0.95rem',
+                        maxWidth: '550px',
+                        margin: '0 auto',
+                        lineHeight: '1.6',
+                    }}>
+                        Convert between ICP account formats — principals, subaccounts, ICRC-1 accounts, and legacy account identifiers
                     </p>
                 </div>
+            </div>
+
+            <main style={{ maxWidth: '800px', margin: '0 auto', padding: '1.5rem 1rem', color: theme.colors.primaryText }}>
 
                 {/* Input Mode Tabs */}
                 <div style={{
