@@ -131,10 +131,13 @@ export class ICPSwapDex extends BaseDex {
     // Pool actor cache (in-memory only)
     this._poolActors = new Map();
 
-    // ICPSwap's own view of token standards (token canister ID → 'icrc1'|'icrc2').
+    // ICPSwap's own view of token standards.
+    // Maps token canister ID → { standard: 'icrc1'|'icrc2', cachedAt: number }.
     // ICPSwap ignores the caller's standard choice and uses its internal cache,
     // so we must match their expectation to avoid "unsupported transferFrom" errors.
+    // Entries expire after _STANDARD_CACHE_TTL_MS so we pick up fixes.
     this._icpswapTokenStandards = new Map();
+    this._STANDARD_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
   }
 
   // ─── Internal helpers ───────────────────────────────────────────────────
@@ -178,32 +181,42 @@ export class ICPSwapDex extends BaseDex {
     const addr = (t) => typeof t.address === 'string'
       ? t.address
       : (t.address.toText ? t.address.toText() : String(t.address));
+    const now = Date.now();
 
     if (poolData.token0) {
-      this._icpswapTokenStandards.set(addr(poolData.token0), this._normalizeICPSwapStandard(poolData.token0.standard));
+      this._icpswapTokenStandards.set(addr(poolData.token0), {
+        standard: this._normalizeICPSwapStandard(poolData.token0.standard),
+        cachedAt: now,
+      });
     }
     if (poolData.token1) {
-      this._icpswapTokenStandards.set(addr(poolData.token1), this._normalizeICPSwapStandard(poolData.token1.standard));
+      this._icpswapTokenStandards.set(addr(poolData.token1), {
+        standard: this._normalizeICPSwapStandard(poolData.token1.standard),
+        cachedAt: now,
+      });
     }
   }
 
   /**
    * Get ICPSwap's view of what standard a token uses.
-   * Checks in-memory cache first; falls back to querying pool metadata.
+   * Checks in-memory cache first (with TTL); falls back to querying pool metadata.
    * @param {string} tokenCid
    * @param {string} poolCid
    * @returns {Promise<'icrc1'|'icrc2'|null>}
    */
   async _getICPSwapStandard(tokenCid, poolCid) {
     const cached = this._icpswapTokenStandards.get(tokenCid);
-    if (cached) return cached;
+    if (cached && (Date.now() - cached.cachedAt) < this._STANDARD_CACHE_TTL_MS) {
+      return cached.standard;
+    }
 
     try {
       const pool = this._getPoolActor(poolCid);
       const metaResult = await pool.metadata();
       if ('ok' in metaResult && metaResult.ok) {
         this._cachePoolTokenStandards(metaResult.ok);
-        return this._icpswapTokenStandards.get(tokenCid) || null;
+        const fresh = this._icpswapTokenStandards.get(tokenCid);
+        return fresh ? fresh.standard : null;
       }
     } catch (e) {
       console.warn('Failed to fetch ICPSwap pool metadata for standard detection:', e);

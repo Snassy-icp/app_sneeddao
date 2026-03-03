@@ -50,10 +50,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     var defaultMaxPriceImpactBps: Nat = 300; // 3%
     var icpswapPoolCache: [(Text, Principal)] = [];
 
-    // ICPSwap's own view of token standards (token canister ID → "icrc1"|"icrc2").
+    // ICPSwap's own view of token standards (token canister ID, standard, timestamp).
     // ICPSwap ignores caller-provided standards and uses its internal cache,
     // so we must match their expectation to pick the right swap path.
-    var icpswapTokenStandards: [(Text, Text)] = [];
+    // Entries expire after ICPSWAP_STANDARD_CACHE_TTL so we pick up fixes.
+    var icpswapTokenStandards: [(Text, Text, Int)] = [];
 
     // Bot Chores: stable state for the chore system
     var choreConfigs: [(Text, BotChoreTypes.ChoreConfig)] = [];
@@ -864,6 +865,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     // ─── ICPSwap token-standard helpers ──────────────────────────────────────
 
+    // Cache entries expire after 1 hour so we pick up ICPSwap metadata fixes.
+    let ICPSWAP_STANDARD_CACHE_TTL: Int = 3_600_000_000_000; // 1 h in nanoseconds
+
     /// Normalize an ICPSwap standard label ("ICRC1", "ICRC2", "ICP", …) to our
     /// canonical lowercase form.  Anything that isn't explicitly ICRC2 is treated
     /// as ICRC1 (including ICP, EXT, etc.).
@@ -872,22 +876,24 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         else { "icrc1" }
     };
 
-    /// Cache ICPSwap's view of one token's standard.
+    /// Cache ICPSwap's view of one token's standard (with current timestamp).
     func cacheICPSwapTokenStandard(tokenAddress: Text, standard: Text) {
         let normalized = normalizeICPSwapStandard(standard);
-        icpswapTokenStandards := Array.filter<(Text, Text)>(icpswapTokenStandards, func(e) { e.0 != tokenAddress });
-        icpswapTokenStandards := Array.append(icpswapTokenStandards, [(tokenAddress, normalized)]);
+        icpswapTokenStandards := Array.filter<(Text, Text, Int)>(icpswapTokenStandards, func(e) { e.0 != tokenAddress });
+        icpswapTokenStandards := Array.append(icpswapTokenStandards, [(tokenAddress, normalized, Time.now())]);
     };
 
-    /// Get ICPSwap's view of a token's standard, querying pool metadata as a
-    /// fallback if we haven't seen this token via a factory response yet.
+    /// Get ICPSwap's view of a token's standard, querying pool metadata when the
+    /// cache is empty or expired.
     func getICPSwapTokenStandard(tokenAddress: Text, poolCid: Principal): async* Text {
-        // Check in-memory cache
-        for ((addr, std) in icpswapTokenStandards.vals()) {
-            if (addr == tokenAddress) return std;
+        let now = Time.now();
+
+        // Check cache — only use entries younger than the TTL
+        for ((addr, std, ts) in icpswapTokenStandards.vals()) {
+            if (addr == tokenAddress and (now - ts) < ICPSWAP_STANDARD_CACHE_TTL) return std;
         };
 
-        // Fallback: query pool metadata
+        // Cache miss or expired — query pool metadata
         let pool: T.ICPSwapPoolActor = actor(Principal.toText(poolCid));
         try {
             let metaResult = await pool.metadata();
@@ -895,7 +901,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 case (#ok(meta)) {
                     cacheICPSwapTokenStandard(meta.token0.address, meta.token0.standard);
                     cacheICPSwapTokenStandard(meta.token1.address, meta.token1.standard);
-                    for ((addr, std) in icpswapTokenStandards.vals()) {
+                    for ((addr, std, _ts) in icpswapTokenStandards.vals()) {
                         if (addr == tokenAddress) return std;
                     };
                     "icrc1"
