@@ -618,19 +618,23 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         }
     };
 
-    // Add tools section for all authenticated users
+    // Tools section - Account Tool is available to everyone, other tools require auth
+    const toolsSubMenu = [
+        { name: 'Tools', path: '/tools/main' },
+        { name: 'Account Tool', path: '/tools/account' },
+    ];
     if (isAuthenticated) {
-        menuSections['Tools'] = {
-            icon: <FaTools size={18} />,
-            displayName: 'Sneed Tools',
-            defaultPath: '/tools/main',
-            subMenu: [
-                { name: 'Tools', path: '/tools/main' },
-                { name: 'SNS Jailbreak', path: '/tools/sns_jailbreak' },
-                { name: 'My Scripts', path: '/tools/sns_jailbreak_list' }
-            ]
-        };
+        toolsSubMenu.push(
+            { name: 'SNS Jailbreak', path: '/tools/sns_jailbreak' },
+            { name: 'My Scripts', path: '/tools/sns_jailbreak_list' }
+        );
     }
+    menuSections['Tools'] = {
+        icon: <FaTools size={18} />,
+        displayName: 'Sneed Tools',
+        defaultPath: '/tools/main',
+        subMenu: toolsSubMenu,
+    };
 
     // Add admin section only if user is authenticated and confirmed admin
     if (isAuthenticated && isAdmin === true) {

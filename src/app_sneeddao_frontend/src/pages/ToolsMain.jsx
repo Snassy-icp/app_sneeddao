@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { FaUnlock, FaArrowRight, FaList, FaMagic, FaRocket, FaCheckCircle, FaExchangeAlt, FaBrain, FaCog } from 'react-icons/fa';
+import { FaUnlock, FaArrowRight, FaList, FaMagic, FaRocket, FaCheckCircle, FaExchangeAlt, FaBrain, FaCog, FaKey, FaFingerprint } from 'react-icons/fa';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -43,6 +43,10 @@ const toolsSecondary = '#a78bfa';
 // Jailbreak accent - orange
 const jailbreakPrimary = '#f97316';
 const jailbreakSecondary = '#fb923c';
+
+// Account tool accent - teal
+const accountPrimary = '#14b8a6';
+const accountSecondary = '#2dd4bf';
 
 function ToolsMain() {
     const { theme } = useTheme();
@@ -283,6 +287,52 @@ function ToolsMain() {
                         <Link to="/tools/sns_jailbreak_list" style={styles.secondaryButton}>
                             <FaList size={14} />
                             My Saved Scripts
+                        </Link>
+                    </div>
+                </div>
+                
+                {/* Account Tool Card */}
+                <div className="tools-fade-in-delay" style={styles.toolCard}>
+                    <div style={styles.decorativeGlow(accountPrimary)} />
+                    
+                    <div style={{ ...styles.toolIcon, background: `linear-gradient(135deg, ${accountPrimary}25, ${accountPrimary}10)` }}>
+                        <FaKey size={26} style={{ color: accountPrimary }} />
+                    </div>
+                    
+                    <h2 style={styles.toolTitle}>
+                        Account Tool
+                        <span style={styles.badge(accountPrimary)}>Free</span>
+                    </h2>
+                    
+                    <p style={styles.toolDescription}>
+                        Convert between ICP account formats instantly. Enter a principal, a principal with subaccount 
+                        in multiple formats, or an ICRC-1 account string to see all derived representations including 
+                        the legacy ICP account identifier.
+                    </p>
+                    
+                    <div style={styles.featureList}>
+                        <div style={styles.feature(accountPrimary)}>
+                            <FaFingerprint size={12} />
+                            Principal parsing
+                        </div>
+                        <div style={styles.feature(accountPrimary)}>
+                            <FaExchangeAlt size={12} />
+                            ICRC-1 encoding
+                        </div>
+                        <div style={styles.feature(accountPrimary)}>
+                            <FaCheckCircle size={12} />
+                            Multiple subaccount formats
+                        </div>
+                        <div style={styles.feature(accountPrimary)}>
+                            <FaKey size={12} />
+                            Legacy account IDs
+                        </div>
+                    </div>
+                    
+                    <div style={styles.buttonRow}>
+                        <Link to="/tools/account" style={styles.primaryButton(accountPrimary)}>
+                            Open Account Tool
+                            <FaArrowRight size={14} />
                         </Link>
                     </div>
                 </div>
