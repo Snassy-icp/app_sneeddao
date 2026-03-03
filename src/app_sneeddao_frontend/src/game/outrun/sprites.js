@@ -466,11 +466,13 @@ function drawSparks(ctx, cx, baseY, w, timer) {
 }
 
 function shadeColor(color, percent) {
-  const num = parseInt(color.replace('#', ''), 16);
+  let h = color.replace('#', '');
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  const num = parseInt(h, 16);
   const r = Math.min(255, Math.max(0, (num >> 16) + percent));
   const g = Math.min(255, Math.max(0, ((num >> 8) & 0x00FF) + percent));
   const b = Math.min(255, Math.max(0, (num & 0x0000FF) + percent));
   return `rgb(${r},${g},${b})`;
 }
 
-export const CAR_COLORS = ['#2266DD', '#DDDD22', '#22DD44', '#DD22DD', '#FF8800', '#22DDDD', '#FFF', '#FF4466'];
+export const CAR_COLORS = ['#2266DD', '#DDDD22', '#22DD44', '#DD22DD', '#FF8800', '#22DDDD', '#FFFFFF', '#FF4466'];

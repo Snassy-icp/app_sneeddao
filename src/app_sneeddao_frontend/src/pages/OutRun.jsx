@@ -15,10 +15,20 @@ export default function OutRun() {
   const [selectedTrack, setSelectedTrack] = useState(0);
   const containerRef = useRef(null);
 
-  const initGame = useCallback((trackIndex) => {
+  const cleanup = useCallback(() => {
     if (gameRef.current) {
       gameRef.current.stop();
+      gameRef.current = null;
     }
+    if (inputRef.current) {
+      inputRef.current.detach();
+      inputRef.current = null;
+    }
+  }, []);
+
+  const initGame = useCallback((trackIndex) => {
+    cleanup();
+
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -26,29 +36,30 @@ export default function OutRun() {
     canvas.height = CANVAS_HEIGHT;
 
     const track = ALL_TRACKS[trackIndex] || DEFAULT_TRACK;
-    const game = createGame(canvas, track);
-    const input = createInput();
 
-    gameRef.current = game;
-    inputRef.current = input;
+    try {
+      const game = createGame(canvas, track);
+      const input = createInput();
 
-    input.attach();
-    game.start(input);
-  }, []);
+      gameRef.current = game;
+      inputRef.current = input;
+
+      input.attach();
+      game.start(input);
+    } catch (e) {
+      console.error('OutRun: failed to initialize game', e);
+    }
+  }, [cleanup]);
 
   useEffect(() => {
     initGame(selectedTrack);
-
-    return () => {
-      if (gameRef.current) gameRef.current.stop();
-      if (inputRef.current) inputRef.current.detach();
-    };
-  }, [selectedTrack, initGame]);
+    return cleanup;
+  }, [selectedTrack, initGame, cleanup]);
 
   useEffect(() => {
     function onEsc(e) {
       if (e.code === 'Escape') {
-        if (isFullscreen) {
+        if (document.fullscreenElement) {
           exitFullscreen();
         } else {
           navigate('/');
@@ -57,22 +68,37 @@ export default function OutRun() {
     }
     window.addEventListener('keydown', onEsc);
     return () => window.removeEventListener('keydown', onEsc);
-  }, [navigate, isFullscreen]);
+  }, [navigate]);
 
   function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      exitFullscreen();
+      return;
+    }
+
     const el = containerRef.current;
     if (!el) return;
 
-    if (!document.fullscreenElement) {
-      el.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
-    } else {
-      exitFullscreen();
+    const rfs = el.requestFullscreen
+      || el.webkitRequestFullscreen
+      || el.mozRequestFullScreen
+      || el.msRequestFullscreen;
+
+    if (rfs) {
+      rfs.call(el).then(() => setIsFullscreen(true)).catch((err) => {
+        console.warn('Fullscreen request denied:', err);
+      });
     }
   }
 
   function exitFullscreen() {
-    if (document.fullscreenElement) {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+    const efs = document.exitFullscreen
+      || document.webkitExitFullscreen
+      || document.mozCancelFullScreen
+      || document.msExitFullscreen;
+
+    if (efs && document.fullscreenElement) {
+      efs.call(document).then(() => setIsFullscreen(false)).catch(() => {});
     }
     setIsFullscreen(false);
   }
@@ -82,10 +108,13 @@ export default function OutRun() {
       setIsFullscreen(!!document.fullscreenElement);
     }
     document.addEventListener('fullscreenchange', onFsChange);
-    return () => document.removeEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange);
+      document.removeEventListener('webkitfullscreenchange', onFsChange);
+    };
   }, []);
 
-  // Touch controls for mobile
   const handleTouchStart = useCallback((zone) => (e) => {
     e.preventDefault();
     if (!inputRef.current) return;
@@ -132,7 +161,7 @@ export default function OutRun() {
     <div className="outrun-page" ref={containerRef}>
       <div className="outrun-header">
         <button className="outrun-back-btn" onClick={() => navigate('/')}>
-          ← Back
+          &larr; Back
         </button>
         <div className="outrun-track-select">
           {ALL_TRACKS.map((t, i) => (
@@ -146,7 +175,7 @@ export default function OutRun() {
           ))}
         </div>
         <button className="outrun-fs-btn" onClick={toggleFullscreen}>
-          {isFullscreen ? '⊡' : '⊞'} {isFullscreen ? 'Exit' : 'Fullscreen'}
+          {isFullscreen ? '\u229E' : '\u229E'} Fullscreen
         </button>
       </div>
 
@@ -161,7 +190,7 @@ export default function OutRun() {
           onTouchStart={handleTouchStart('left')}
           onTouchEnd={handleTouchEnd('left')}
         >
-          ←
+          &larr;
         </div>
         <div className="touch-zone-center">
           <div
@@ -191,7 +220,7 @@ export default function OutRun() {
           onTouchStart={handleTouchStart('right')}
           onTouchEnd={handleTouchEnd('right')}
         >
-          →
+          &rarr;
         </div>
       </div>
     </div>

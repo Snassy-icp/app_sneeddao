@@ -7,7 +7,7 @@ import {
 import { clamp, randomChoice, overlap } from './utils.js';
 import { buildRoad, findSegment, trackLength, addSpritesToSegments, getSegmentIndex } from './road.js';
 import { getSpriteWidth, CAR_COLORS } from './sprites.js';
-import { render } from './render.js';
+import { render, resetRenderCache } from './render.js';
 import { getStageTrack, THEME_ORDER } from './tracks.js';
 
 export function createGame(canvas, trackDef) {
@@ -405,13 +405,18 @@ export function createGame(canvas, trackDef) {
   function frame(timestamp) {
     const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
     lastTime = timestamp;
-    update(dt, state._input);
-    render(ctx, state);
+    try {
+      update(dt, state._input);
+      render(ctx, state);
+    } catch (e) {
+      console.error('OutRun frame error:', e);
+    }
     animFrameId = requestAnimationFrame(frame);
   }
 
   function start(input) {
     state._input = input;
+    resetRenderCache();
     init();
     lastTime = performance.now();
     animFrameId = requestAnimationFrame(frame);

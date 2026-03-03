@@ -9,6 +9,8 @@
 }
 
 .outrun-page:-webkit-full-screen,
+.outrun-page:-moz-full-screen,
+.outrun-page:-ms-fullscreen,
 .outrun-page:fullscreen {
   background: #000;
   justify-content: center;
@@ -82,6 +84,9 @@
   box-shadow: 0 0 30px rgba(232, 71, 60, 0.15), 0 0 60px rgba(0, 0, 0, 0.5);
 }
 
+.outrun-page:-webkit-full-screen .outrun-canvas-wrapper,
+.outrun-page:-moz-full-screen .outrun-canvas-wrapper,
+.outrun-page:-ms-fullscreen .outrun-canvas-wrapper,
 .outrun-page:fullscreen .outrun-canvas-wrapper {
   width: auto;
   height: 100vh;
@@ -97,6 +102,9 @@
   image-rendering: crisp-edges;
 }
 
+.outrun-page:-webkit-full-screen .outrun-canvas,
+.outrun-page:-moz-full-screen .outrun-canvas,
+.outrun-page:-ms-fullscreen .outrun-canvas,
 .outrun-page:fullscreen .outrun-canvas {
   height: 100vh;
   width: auto;
@@ -217,6 +225,12 @@
 }
 
 /* Fullscreen hides header and touch controls */
+.outrun-page:-webkit-full-screen .outrun-header,
+.outrun-page:-webkit-full-screen .outrun-touch-controls,
+.outrun-page:-moz-full-screen .outrun-header,
+.outrun-page:-moz-full-screen .outrun-touch-controls,
+.outrun-page:-ms-fullscreen .outrun-header,
+.outrun-page:-ms-fullscreen .outrun-touch-controls,
 .outrun-page:fullscreen .outrun-header,
 .outrun-page:fullscreen .outrun-touch-controls {
   display: none;

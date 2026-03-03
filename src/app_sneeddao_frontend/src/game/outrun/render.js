@@ -1,7 +1,7 @@
 import {
   CAMERA_DEPTH, CAMERA_HEIGHT,
   DRAW_DISTANCE, SEGMENT_LENGTH, ROAD_WIDTH,
-  MAX_SPEED, THEMES, LANE_COUNT, TRANSITION_SEGS,
+  MAX_SPEED, THEMES, LANE_COUNT,
 } from './constants.js';
 import { project, exponentialFog } from './utils.js';
 import { interpolateY, trackLength } from './road.js';
@@ -9,6 +9,13 @@ import { drawSprite, drawCar, drawPlayerCar } from './sprites.js';
 
 let cachedGradient = null;
 let cachedGradientKey = '';
+
+export function resetRenderCache() {
+  cachedGradient = null;
+  cachedGradientKey = '';
+  fogBandCache = null;
+  fogBandThemeKey = '';
+}
 
 function getCachedSkyGradient(ctx, h, theme) {
   const key = theme.sky[0] + theme.sky[1];
@@ -52,7 +59,9 @@ function parseHex(hex) {
   if (hexCache[hex]) return hexCache[hex];
   let r, g, b;
   if (hex[0] === '#') {
-    const n = parseInt(hex.slice(1), 16);
+    let h = hex.slice(1);
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    const n = parseInt(h, 16);
     r = (n >> 16) & 0xFF;
     g = (n >> 8) & 0xFF;
     b = n & 0xFF;
