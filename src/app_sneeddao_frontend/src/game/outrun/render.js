@@ -4,7 +4,7 @@ import {
   MAX_SPEED, THEMES,
 } from './constants.js';
 import { project, lerp, exponentialFog } from './utils.js';
-import { findSegment, trackLength } from './road.js';
+import { findSegment, interpolateY, trackLength } from './road.js';
 import { drawSprite, drawCar, drawPlayerCar, getSpriteWidth } from './sprites.js';
 
 export function render(ctx, state) {
@@ -16,9 +16,7 @@ export function render(ctx, state) {
 
   const baseSegmentIndex = Math.floor(position / SEGMENT_LENGTH) % segments.length;
   const basePercent = (position % SEGMENT_LENGTH) / SEGMENT_LENGTH;
-  const playerSegment = findSegment(segments, position);
-
-  const playerY = playerSegment ? (playerSegment.world.y || 0) : 0;
+  const playerY = interpolateY(segments, position);
 
   ctx.clearRect(0, 0, width, height);
 
@@ -48,7 +46,8 @@ export function render(ctx, state) {
 
     x += dx;
     dx += seg.curve;
-    seg.screen.x += x;
+    dx *= 0.985; // damping: curves settle naturally instead of growing forever
+    seg.screen.x += Math.round(x * seg.screen.w * 0.004);
 
     seg.clip = maxY;
 
@@ -74,6 +73,7 @@ export function render(ctx, state) {
       spriteQueue.push({
         sprite: seg.sprite,
         screen: { ...seg.screen },
+        roadW: seg.screen.w,
         clip: maxY,
         distance: n,
       });
@@ -81,13 +81,13 @@ export function render(ctx, state) {
 
     // Queue cars
     for (const car of seg.cars) {
-      const spriteScale = seg.screen.scale;
-      const carScreenX = seg.screen.x + (spriteScale * car.offset * ROAD_WIDTH * width / 2);
+      const carScreenX = seg.screen.x + (seg.screen.scale * car.offset * ROAD_WIDTH * width / 2);
       spriteQueue.push({
         car,
         screenX: carScreenX,
         screenY: seg.screen.y,
-        scale: spriteScale,
+        roadW: seg.screen.w,
+        scale: seg.screen.scale,
         clip: maxY,
         distance: n,
       });
@@ -104,13 +104,14 @@ export function render(ctx, state) {
       ctx.beginPath();
       ctx.rect(0, 0, width, item.clip);
       ctx.clip();
-      drawCar(ctx, item.screenX, item.screenY, item.scale, item.car.color);
+      const carScale = item.roadW * 0.002;
+      drawCar(ctx, item.screenX, item.screenY, carScale, item.car.color);
       ctx.restore();
     } else if (item.sprite) {
       const sp = item.sprite;
       const spriteX = item.screen.x + (item.screen.scale * sp.offset * ROAD_WIDTH * width / 2);
       const spriteY = item.screen.y;
-      const spriteScale = item.screen.scale * 300;
+      const spriteScale = item.roadW * 0.7;
 
       ctx.save();
       ctx.beginPath();

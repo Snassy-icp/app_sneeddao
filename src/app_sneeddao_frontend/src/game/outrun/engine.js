@@ -1,7 +1,7 @@
 import {
   SEGMENT_LENGTH, ROAD_WIDTH, MAX_SPEED, ACCEL, BRAKE_DECEL,
   NATURAL_DECEL, OFF_ROAD_DECEL, OFF_ROAD_MAX, CENTRIFUGAL_FORCE,
-  TOTAL_CARS, STAGE_TIME, CAMERA_HEIGHT, CAMERA_DEPTH,
+  OFF_ROAD_THRESHOLD, TOTAL_CARS, STAGE_TIME, CAMERA_HEIGHT, CAMERA_DEPTH,
 } from './constants.js';
 import { clamp, randomInt, randomChoice, overlap } from './utils.js';
 import { buildRoad, findSegment, trackLength, addSpritesToSegments, addCarsToRoad } from './road.js';
@@ -141,11 +141,12 @@ export function createGame(canvas, trackDef) {
       state.speed += NATURAL_DECEL * dt;
     }
 
-    // Off-road slowdown
-    if (Math.abs(state.playerX) > 1.0) {
-      state.speed += OFF_ROAD_DECEL * dt;
+    // Off-road slowdown (gradual, not instant)
+    if (Math.abs(state.playerX) > OFF_ROAD_THRESHOLD) {
+      const offAmount = (Math.abs(state.playerX) - OFF_ROAD_THRESHOLD) / 1.5;
+      state.speed += OFF_ROAD_DECEL * offAmount * dt;
       if (state.speed > OFF_ROAD_MAX) {
-        state.speed = Math.max(OFF_ROAD_MAX, state.speed + OFF_ROAD_DECEL * dt * 2);
+        state.speed = Math.max(OFF_ROAD_MAX, state.speed + OFF_ROAD_DECEL * offAmount * dt);
       }
     }
 

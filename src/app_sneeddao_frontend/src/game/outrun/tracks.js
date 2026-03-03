@@ -5,28 +5,29 @@ export const COCONUT_BEACH = {
   name: 'Coconut Beach',
   theme: 'beach',
   definition: [
+    { type: 'straight', length: 50 },
+    { type: 'curve', direction: 'right', length: 120, intensity: 3 },
     { type: 'straight', length: 40 },
-    { type: 'curve', direction: 'right', length: 60, intensity: 2 },
-    { type: 'straight', length: 25 },
-    { type: 'hill', direction: 'up', length: 40, intensity: 25 },
-    { type: 'curve', direction: 'left', length: 50, intensity: 3 },
-    { type: 'straight', length: 20 },
-    { type: 'hill', direction: 'down', length: 35, intensity: 20 },
-    { type: 'scurve', length: 80, intensity: 4 },
+    { type: 'hill', direction: 'up', length: 60, intensity: 30 },
+    { type: 'curve', direction: 'left', length: 100, intensity: 2.5 },
     { type: 'straight', length: 30 },
-    { type: 'hillcurve', length: 50, hillIntensity: 30, hillDir: 'up', curveIntensity: 2, curveDir: 'right' },
-    { type: 'straight', length: 25 },
-    { type: 'curve', direction: 'left', length: 70, intensity: 3.5 },
-    { type: 'hill', direction: 'up', length: 30, intensity: 15 },
+    { type: 'hill', direction: 'down', length: 50, intensity: 25 },
     { type: 'straight', length: 20 },
-    { type: 'curve', direction: 'right', length: 55, intensity: 2.5 },
-    { type: 'hill', direction: 'down', length: 40, intensity: 25 },
+    { type: 'scurve', length: 200, intensity: 3 },
+    { type: 'straight', length: 40 },
+    { type: 'hillcurve', length: 80, hillIntensity: 35, hillDir: 'up', curveIntensity: 2, curveDir: 'right' },
+    { type: 'straight', length: 30 },
+    { type: 'curve', direction: 'left', length: 140, intensity: 3.5 },
+    { type: 'hill', direction: 'up', length: 50, intensity: 20 },
     { type: 'straight', length: 35 },
-    { type: 'scurve', length: 60, intensity: 3 },
-    { type: 'straight', length: 30 },
+    { type: 'curve', direction: 'right', length: 100, intensity: 2 },
+    { type: 'hill', direction: 'down', length: 60, intensity: 30 },
+    { type: 'straight', length: 50 },
+    { type: 'scurve', length: 160, intensity: 2.5 },
+    { type: 'straight', length: 40 },
     { type: 'fork', length: 40 },
   ],
-  sprites: generateBeachSprites(),
+  sprites: generateBeachSprites(1480),
 };
 
 // --- TRACK 2: Desert Dusk ---
@@ -34,104 +35,86 @@ export const DESERT_DUSK = {
   name: 'Desert Dusk',
   theme: 'desert',
   definition: [
-    { type: 'straight', length: 50 },
-    { type: 'curve', direction: 'left', length: 80, intensity: 2.5 },
-    { type: 'hill', direction: 'up', length: 50, intensity: 35 },
-    { type: 'straight', length: 20 },
-    { type: 'curve', direction: 'right', length: 90, intensity: 4 },
-    { type: 'hill', direction: 'down', length: 60, intensity: 30 },
-    { type: 'straight', length: 40 },
-    { type: 'scurve', length: 100, intensity: 5 },
-    { type: 'hillcurve', length: 60, hillIntensity: 25, hillDir: 'up', curveIntensity: 3, curveDir: 'left' },
+    { type: 'straight', length: 60 },
+    { type: 'curve', direction: 'left', length: 140, intensity: 2.5 },
+    { type: 'hill', direction: 'up', length: 70, intensity: 40 },
     { type: 'straight', length: 30 },
-    { type: 'curve', direction: 'right', length: 70, intensity: 3 },
-    { type: 'straight', length: 25 },
+    { type: 'curve', direction: 'right', length: 160, intensity: 3.5 },
+    { type: 'hill', direction: 'down', length: 80, intensity: 35 },
+    { type: 'straight', length: 50 },
+    { type: 'scurve', length: 200, intensity: 3 },
+    { type: 'hillcurve', length: 100, hillIntensity: 30, hillDir: 'up', curveIntensity: 2.5, curveDir: 'left' },
+    { type: 'straight', length: 40 },
+    { type: 'curve', direction: 'right', length: 120, intensity: 3 },
+    { type: 'straight', length: 35 },
+    { type: 'hill', direction: 'up', length: 50, intensity: 25 },
+    { type: 'straight', length: 30 },
     { type: 'fork', length: 40 },
   ],
-  sprites: generateDesertSprites(),
+  sprites: generateDesertSprites(1205),
 };
 
-function generateBeachSprites() {
+function generateBeachSprites(totalSegs) {
   const sprites = [];
-  let segment = 0;
-
-  // Place palm trees on both sides, with variety
   const rightSideTypes = [SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.BUSH, SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.ROCK];
   const leftSideTypes = [SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.SIGN_LEFT, SPRITE_TYPES.BUSH, SPRITE_TYPES.PALM_TREE];
 
-  // Total segments roughly = sum of all definition lengths
-  const totalSegs = 785; // approximate
-
-  for (let i = 5; i < totalSegs - 45; i += 4) {
-    // Right side sprites (every ~4 segments)
-    if (i % 4 === 0) {
+  for (let i = 5; i < totalSegs - 45; i++) {
+    if (i % 3 === 0) {
       sprites.push({
         segment: i,
-        type: rightSideTypes[Math.floor(Math.random() * rightSideTypes.length)],
-        offset: 1.4 + Math.random() * 0.8,
+        type: rightSideTypes[(i * 7) % rightSideTypes.length],
+        offset: 1.3 + (((i * 13) % 100) / 100) * 0.8,
       });
     }
-    // Left side sprites (every ~6 segments)
-    if (i % 6 === 0) {
+    if (i % 5 === 0) {
       sprites.push({
         segment: i,
-        type: leftSideTypes[Math.floor(Math.random() * leftSideTypes.length)],
-        offset: -1.4 - Math.random() * 0.8,
+        type: leftSideTypes[(i * 11) % leftSideTypes.length],
+        offset: -1.3 - (((i * 17) % 100) / 100) * 0.8,
       });
     }
-    // Occasional billboards
-    if (i % 80 === 0) {
+    if (i % 60 === 0) {
       sprites.push({
         segment: i,
         type: SPRITE_TYPES.BILLBOARD,
-        offset: (Math.random() > 0.5 ? 1 : -1) * (1.8 + Math.random() * 0.5),
+        offset: (i % 120 === 0 ? 1 : -1) * (1.8 + ((i * 7) % 50) / 100),
       });
     }
-    // Columns on straight sections
-    if (i % 10 === 0 && i < 40) {
-      sprites.push({
-        segment: i,
-        type: SPRITE_TYPES.COLUMN,
-        offset: 1.2,
-      });
-      sprites.push({
-        segment: i,
-        type: SPRITE_TYPES.COLUMN,
-        offset: -1.2,
-      });
+    if (i % 8 === 0 && i < 50) {
+      sprites.push({ segment: i, type: SPRITE_TYPES.COLUMN, offset: 1.15 });
+      sprites.push({ segment: i, type: SPRITE_TYPES.COLUMN, offset: -1.15 });
     }
   }
 
   return sprites;
 }
 
-function generateDesertSprites() {
+function generateDesertSprites(totalSegs) {
   const sprites = [];
-  const totalSegs = 675; // approximate
-
   const rightTypes = [SPRITE_TYPES.CACTUS, SPRITE_TYPES.ROCK, SPRITE_TYPES.DEAD_TREE, SPRITE_TYPES.CACTUS];
   const leftTypes = [SPRITE_TYPES.ROCK, SPRITE_TYPES.CACTUS, SPRITE_TYPES.SIGN_LEFT, SPRITE_TYPES.DEAD_TREE];
 
-  for (let i = 5; i < totalSegs - 45; i += 5) {
-    if (i % 5 === 0) {
+  for (let i = 5; i < totalSegs - 45; i++) {
+    if (i % 4 === 0) {
       sprites.push({
         segment: i,
-        type: rightTypes[Math.floor(Math.random() * rightTypes.length)],
-        offset: 1.3 + Math.random() * 1.0,
+        type: rightTypes[(i * 7) % rightTypes.length],
+        offset: 1.3 + (((i * 13) % 100) / 100) * 1.0,
       });
     }
-    if (i % 7 === 0) {
+    if (i % 6 === 0) {
       sprites.push({
         segment: i,
-        type: leftTypes[Math.floor(Math.random() * leftTypes.length)],
-        offset: -1.3 - Math.random() * 1.0,
+        type: leftTypes[(i * 11) % leftTypes.length],
+        offset: -1.3 - (((i * 17) % 100) / 100) * 1.0,
       });
     }
-    if (i % 100 === 0) {
+    if (i % 80 === 0) {
       sprites.push({
         segment: i,
         type: SPRITE_TYPES.BILLBOARD,
-        offset: (Math.random() > 0.5 ? 1 : -1) * (1.8 + Math.random() * 0.5),
+        offset: (i % 160 === 0 ? 1 : -1) * (1.8 + ((i * 7) % 50) / 100),
       });
     }
   }

@@ -88,7 +88,7 @@ function addHill(segments, length, height, direction, startIndex) {
   for (let i = 0; i < length; i++) {
     const seg = createSegment(startIndex + i);
     const t = i / length;
-    seg.world.y = Math.sin(t * Math.PI) * height * SEGMENT_LENGTH * direction * 0.05;
+    seg.world.y = Math.sin(t * Math.PI) * height * direction * 60;
     segments.push(seg);
   }
 }
@@ -97,7 +97,7 @@ function addHillCurve(segments, length, hillHeight, hillDir, curveIntensity, cur
   for (let i = 0; i < length; i++) {
     const seg = createSegment(startIndex + i);
     const t = i / length;
-    seg.world.y = Math.sin(t * Math.PI) * hillHeight * SEGMENT_LENGTH * hillDir * 0.05;
+    seg.world.y = Math.sin(t * Math.PI) * hillHeight * hillDir * 60;
     seg.curve = easeInOutSine(t) * curveIntensity * curveDir;
     segments.push(seg);
   }
@@ -122,6 +122,15 @@ function easeInOutSine(t) {
 export function findSegment(segments, z) {
   const index = Math.floor(z / SEGMENT_LENGTH) % segments.length;
   return segments[index];
+}
+
+export function interpolateY(segments, z) {
+  const idx = Math.floor(z / SEGMENT_LENGTH) % segments.length;
+  const nextIdx = (idx + 1) % segments.length;
+  const t = ((z % SEGMENT_LENGTH) + SEGMENT_LENGTH) % SEGMENT_LENGTH / SEGMENT_LENGTH;
+  const y0 = segments[idx].world.y || 0;
+  const y1 = segments[nextIdx].world.y || 0;
+  return y0 + (y1 - y0) * t;
 }
 
 export function getSegmentIndex(z, totalSegments) {
