@@ -288,6 +288,7 @@ export function drawPlayerCar(ctx, canvasW, canvasH, steer, speed, maxSpeed) {
 
   // Shadow
   ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
   ctx.ellipse(0, 4, w * 1.1, 6, 0, 0, Math.PI * 2);
   ctx.fill();
 

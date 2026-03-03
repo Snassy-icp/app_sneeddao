@@ -6,7 +6,7 @@ export const CANVAS_HEIGHT = 480;
 export const FOV = 100; // degrees — wide like the arcade
 export const CAMERA_DEPTH = 1 / Math.tan(((FOV / 2) * Math.PI) / 180);
 export const CAMERA_HEIGHT = 1500;
-export const DRAW_DISTANCE = 300; // segments rendered ahead
+export const DRAW_DISTANCE = 150; // segments rendered ahead (fog hides beyond ~100)
 
 // Road geometry
 export const SEGMENT_LENGTH = 200; // world-units per segment
