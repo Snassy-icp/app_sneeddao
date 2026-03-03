@@ -65,7 +65,7 @@ class PoolCanisterCache {
   getMap() { return this.map; }
 
   /** Load all pools from factory into cache. */
-  async loadAll(factoryActor) {
+  async loadAll(factoryActor, onPoolData) {
     const result = await factoryActor.getPools();
     if ('err' in result) throw new Error(`getPools failed: ${JSON.stringify(result.err)}`);
     const pools = result.ok;
@@ -76,6 +76,7 @@ class PoolCanisterCache {
         ? p.canisterId
         : (p.canisterId.toText ? p.canisterId.toText() : Principal.from(p.canisterId).toText());
       this.map.set(pairKey(t0, t1), cid);
+      if (onPoolData) onPoolData(p);
     }
     this._saveToStorage();
     return pools.length;
@@ -129,6 +130,11 @@ export class ICPSwapDex extends BaseDex {
 
     // Pool actor cache (in-memory only)
     this._poolActors = new Map();
+
+    // ICPSwap's own view of token standards (token canister ID → 'icrc1'|'icrc2').
+    // ICPSwap ignores the caller's standard choice and uses its internal cache,
+    // so we must match their expectation to avoid "unsupported transferFrom" errors.
+    this._icpswapTokenStandards = new Map();
   }
 
   // ─── Internal helpers ───────────────────────────────────────────────────
@@ -148,6 +154,61 @@ export class ICPSwapDex extends BaseDex {
       this._poolActors.set(poolCanisterId, actor);
     }
     return actor;
+  }
+
+  /**
+   * Normalize an ICPSwap standard label to our internal representation.
+   * ICPSwap uses "ICRC1", "ICRC2", "ICP", "EXT", etc.
+   * @param {string} raw
+   * @returns {'icrc1'|'icrc2'}
+   */
+  _normalizeICPSwapStandard(raw) {
+    if (!raw) return 'icrc1';
+    const s = raw.toLowerCase().replace(/-/g, '');
+    if (s === 'icrc2') return 'icrc2';
+    return 'icrc1';
+  }
+
+  /**
+   * Extract and cache token standards from ICPSwap pool data.
+   * Works with both PoolData (from factory) and PoolMetadata (from pool canister).
+   * @param {{ token0: { address: string, standard: string }, token1: { address: string, standard: string } }} poolData
+   */
+  _cachePoolTokenStandards(poolData) {
+    const addr = (t) => typeof t.address === 'string'
+      ? t.address
+      : (t.address.toText ? t.address.toText() : String(t.address));
+
+    if (poolData.token0) {
+      this._icpswapTokenStandards.set(addr(poolData.token0), this._normalizeICPSwapStandard(poolData.token0.standard));
+    }
+    if (poolData.token1) {
+      this._icpswapTokenStandards.set(addr(poolData.token1), this._normalizeICPSwapStandard(poolData.token1.standard));
+    }
+  }
+
+  /**
+   * Get ICPSwap's view of what standard a token uses.
+   * Checks in-memory cache first; falls back to querying pool metadata.
+   * @param {string} tokenCid
+   * @param {string} poolCid
+   * @returns {Promise<'icrc1'|'icrc2'|null>}
+   */
+  async _getICPSwapStandard(tokenCid, poolCid) {
+    const cached = this._icpswapTokenStandards.get(tokenCid);
+    if (cached) return cached;
+
+    try {
+      const pool = this._getPoolActor(poolCid);
+      const metaResult = await pool.metadata();
+      if ('ok' in metaResult && metaResult.ok) {
+        this._cachePoolTokenStandards(metaResult.ok);
+        return this._icpswapTokenStandards.get(tokenCid) || null;
+      }
+    } catch (e) {
+      console.warn('Failed to fetch ICPSwap pool metadata for standard detection:', e);
+    }
+    return null;
   }
 
   /**
@@ -184,6 +245,7 @@ export class ICPSwapDex extends BaseDex {
         ? pool.canisterId
         : (pool.canisterId.toText ? pool.canisterId.toText() : Principal.from(pool.canisterId).toText());
 
+      this._cachePoolTokenStandards(pool);
       this.poolCache.set(key, cid);
       return cid;
     } catch (e) {
@@ -260,6 +322,20 @@ export class ICPSwapDex extends BaseDex {
   async getQuote({ inputToken, outputToken, amount, standard, slippage = 0.01 }) {
     const poolCid = await this._getPoolCanisterId(inputToken, outputToken);
     if (!poolCid) throw new Error(`ICPSwap: no pool for ${inputToken} / ${outputToken}`);
+
+    // ICPSwap uses its own internal metadata cache to decide whether to call
+    // icrc1_transfer or icrc2_transferFrom — regardless of what the caller says.
+    // We must match their expectation or the swap will fail.
+    const icpswapStandard = await this._getICPSwapStandard(inputToken, poolCid);
+    if (icpswapStandard) {
+      if (icpswapStandard !== standard) {
+        console.warn(
+          `ICPSwap reports ${inputToken} as ${icpswapStandard.toUpperCase()}, ` +
+          `overriding token-reported standard ${standard.toUpperCase()}`
+        );
+      }
+      standard = icpswapStandard;
+    }
 
     // Determine fees
     const inputFeeCount = this.getInputFeeCount(standard);
@@ -359,8 +435,12 @@ export class ICPSwapDex extends BaseDex {
   }
 
   async executeSwap({ quote, slippage = 0.01, onProgress }) {
-    const { inputToken, outputToken, standard } = quote;
+    const { inputToken, outputToken } = quote;
     const poolCid = quote.route[0].poolId;
+
+    // Use ICPSwap's view of the standard, falling back to the quote's standard
+    const icpswapStandard = await this._getICPSwapStandard(inputToken, poolCid);
+    const standard = icpswapStandard || quote.standard;
     const pool = this._getPoolActor(poolCid);
     const zeroForOne = isZeroForOne(inputToken, outputToken);
 
@@ -490,7 +570,9 @@ export class ICPSwapDex extends BaseDex {
    * @returns {Promise<number>} Number of pools loaded
    */
   async loadAllPools() {
-    return this.poolCache.loadAll(this.factoryActor);
+    return this.poolCache.loadAll(this.factoryActor, (poolData) => {
+      this._cachePoolTokenStandards(poolData);
+    });
   }
 
   /**
