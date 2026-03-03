@@ -309,16 +309,22 @@ export function drawCar(ctx, x, y, scale, color) {
 }
 
 // Draw the player's car (seen from behind)
-export function drawPlayerCar(ctx, canvasW, canvasH, steer, speed, maxSpeed) {
+export function drawPlayerCar(ctx, canvasW, canvasH, steer, speed, maxSpeed, crash) {
   const x = canvasW / 2;
-  const y = canvasH - 10;
+  const baseY = canvasH - 10;
   const w = 52;
   const h = 32;
+
+  if (crash && crash.timer > 0) {
+    drawCrashingCar(ctx, x, baseY, w, h, crash);
+    return;
+  }
+
   const tilt = steer * 3;
   const bounce = speed > 0 ? Math.sin(Date.now() * 0.02) * (speed / maxSpeed) * 2 : 0;
 
   ctx.save();
-  ctx.translate(x + tilt * 4, y + bounce);
+  ctx.translate(x + tilt * 4, baseY + bounce);
 
   // Shadow
   ctx.fillStyle = 'rgba(0,0,0,0.3)';
@@ -326,49 +332,19 @@ export function drawPlayerCar(ctx, canvasW, canvasH, steer, speed, maxSpeed) {
   ctx.ellipse(0, 4, w * 1.1, 6, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Body
-  ctx.fillStyle = '#E8473C';
-  ctx.beginPath();
-  ctx.moveTo(-w, 0);
-  ctx.lineTo(-w + 4, -h);
-  ctx.lineTo(w - 4, -h);
-  ctx.lineTo(w, 0);
-  ctx.closePath();
-  ctx.fill();
-
-  // Roof
-  ctx.fillStyle = '#C63030';
-  ctx.beginPath();
-  ctx.moveTo(-w * 0.55, -h);
-  ctx.lineTo(-w * 0.4, -h * 1.55);
-  ctx.lineTo(w * 0.4, -h * 1.55);
-  ctx.lineTo(w * 0.55, -h);
-  ctx.closePath();
-  ctx.fill();
-
-  // Rear window
-  ctx.fillStyle = '#1a1a3e';
-  ctx.beginPath();
-  ctx.moveTo(-w * 0.42, -h * 1.02);
-  ctx.lineTo(-w * 0.33, -h * 1.45);
-  ctx.lineTo(w * 0.33, -h * 1.45);
-  ctx.lineTo(w * 0.42, -h * 1.02);
-  ctx.closePath();
-  ctx.fill();
+  drawCarBody(ctx, w, h);
 
   // Tail lights
   ctx.fillStyle = '#FF2020';
   ctx.fillRect(-w + 2, -h * 0.6, 8, 6);
   ctx.fillRect(w - 10, -h * 0.6, 8, 6);
 
-  // Brake lights (bright when braking)
   if (speed < maxSpeed * 0.5 && speed > 0) {
     ctx.fillStyle = '#FF6060';
     ctx.fillRect(-w + 2, -h * 0.6, 8, 6);
     ctx.fillRect(w - 10, -h * 0.6, 8, 6);
   }
 
-  // Exhaust
   if (speed > maxSpeed * 0.3) {
     ctx.fillStyle = 'rgba(200,200,200,0.3)';
     ctx.beginPath();
@@ -381,7 +357,6 @@ export function drawPlayerCar(ctx, canvasW, canvasH, steer, speed, maxSpeed) {
   ctx.fillRect(-w - 4, -6, 8, 10);
   ctx.fillRect(w - 4, -6, 8, 10);
 
-  // Tilt indicator — steering wheel implied by body lean
   if (Math.abs(steer) > 0.1) {
     const lean = steer > 0 ? 1 : -1;
     ctx.fillStyle = 'rgba(0,0,0,0.1)';
@@ -389,6 +364,105 @@ export function drawPlayerCar(ctx, canvasW, canvasH, steer, speed, maxSpeed) {
   }
 
   ctx.restore();
+}
+
+function drawCarBody(ctx, w, h) {
+  ctx.fillStyle = '#E8473C';
+  ctx.beginPath();
+  ctx.moveTo(-w, 0);
+  ctx.lineTo(-w + 4, -h);
+  ctx.lineTo(w - 4, -h);
+  ctx.lineTo(w, 0);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#C63030';
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.55, -h);
+  ctx.lineTo(-w * 0.4, -h * 1.55);
+  ctx.lineTo(w * 0.4, -h * 1.55);
+  ctx.lineTo(w * 0.55, -h);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#1a1a3e';
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.42, -h * 1.02);
+  ctx.lineTo(-w * 0.33, -h * 1.45);
+  ctx.lineTo(w * 0.33, -h * 1.45);
+  ctx.lineTo(w * 0.42, -h * 1.02);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawCrashingCar(ctx, cx, baseY, w, h, crash) {
+  const liftPixels = crash.airY * 0.6;
+  const carY = baseY - liftPixels;
+  const scaleImpact = crash.airY < 5 && crash.bounces > 0 ? 1.1 : 1.0;
+
+  // Shadow on the ground (shrinks as car rises)
+  const shadowScale = Math.max(0.3, 1 - crash.airY / 600);
+  ctx.fillStyle = `rgba(0,0,0,${0.3 * shadowScale})`;
+  ctx.beginPath();
+  ctx.ellipse(cx, baseY + 4, w * 1.1 * shadowScale, 6 * shadowScale, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Sparks/debris on bounce
+  if (crash.airY < 10 && crash.bounces > 0 && crash.bounces <= 3) {
+    drawSparks(ctx, cx, baseY, w, crash.timer);
+  }
+
+  // Car body — rotated and airborne
+  ctx.save();
+  ctx.translate(cx, carY - h * 0.5);
+  ctx.rotate(crash.rotation);
+  ctx.scale(scaleImpact, scaleImpact);
+
+  drawCarBody(ctx, w, h);
+
+  // Wheels visible from angle
+  ctx.fillStyle = '#111';
+  ctx.fillRect(-w - 3, -3, 6, 8);
+  ctx.fillRect(w - 3, -3, 6, 8);
+
+  // Undercarriage visible when flipped
+  const normalizedRot = ((crash.rotation % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+  if (normalizedRot > Math.PI * 0.3 && normalizedRot < Math.PI * 1.7) {
+    ctx.fillStyle = '#333';
+    ctx.fillRect(-w * 0.8, -2, w * 1.6, h * 0.3);
+    ctx.fillStyle = '#555';
+    ctx.fillRect(-w * 0.3, 0, w * 0.15, h * 0.15);
+    ctx.fillRect(w * 0.15, 0, w * 0.15, h * 0.15);
+  }
+
+  ctx.restore();
+
+  // Dust cloud at base
+  if (crash.timer < 1.5) {
+    const dustAlpha = Math.max(0, 0.4 - crash.timer * 0.3);
+    ctx.fillStyle = `rgba(180,160,130,${dustAlpha})`;
+    for (let i = 0; i < 5; i++) {
+      const dx = Math.sin(crash.timer * 3 + i * 1.3) * (30 + crash.timer * 40);
+      const dy = -crash.timer * 15 - i * 5;
+      const r = 8 + crash.timer * 12;
+      ctx.beginPath();
+      ctx.ellipse(cx + dx, baseY + dy, r, r * 0.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawSparks(ctx, cx, baseY, w, timer) {
+  ctx.fillStyle = '#FFD700';
+  const sparkCount = 8;
+  for (let i = 0; i < sparkCount; i++) {
+    const angle = (i / sparkCount) * Math.PI * 2 + timer * 5;
+    const dist = 10 + Math.sin(timer * 10 + i) * 20;
+    const sx = cx + Math.cos(angle) * dist;
+    const sy = baseY - 5 + Math.sin(angle) * dist * 0.3;
+    const size = 1 + Math.random() * 2;
+    ctx.fillRect(sx, sy, size, size);
+  }
 }
 
 function shadeColor(color, percent) {

@@ -11,7 +11,7 @@ export const DRAW_DISTANCE = 150; // segments rendered ahead (fog hides beyond ~
 // Road geometry
 export const SEGMENT_LENGTH = 200; // world-units per segment
 export const ROAD_WIDTH = 2000; // half-width of the road in world units
-export const LANE_COUNT = 4;
+export const LANE_COUNT = 6;
 export const RUMBLE_LENGTH = 3; // segments per rumble strip band
 
 // Player
@@ -31,6 +31,7 @@ export const CAR_SPACING = 50; // minimum segment gap between AI cars
 
 // Timing
 export const STAGE_TIME = 75; // seconds per stage
+export const TRANSITION_SEGS = 220;
 
 // Colors — alternating road band palettes
 export const COLORS = {
