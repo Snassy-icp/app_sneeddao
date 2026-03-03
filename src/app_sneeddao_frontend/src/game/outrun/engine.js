@@ -209,7 +209,7 @@ export function createGame(canvas, trackDef) {
 
     if (state.position >= total * 0.92) {
       const forkSeg = findSegment(state.segments, state.position);
-      if (forkSeg && forkSeg.fork) {
+      if (forkSeg && forkSeg.fork && forkSeg.fork.progress > 0.45) {
         state.gameState = 'fork';
         state.forkTimer = 0;
       }
@@ -232,7 +232,17 @@ export function createGame(canvas, trackDef) {
 
   function updateFork(dt, input) {
     state.forkTimer += dt;
-    state.speed = Math.max(0, state.speed - MAX_SPEED * dt * 0.5);
+    const total = trackLength(state.segments);
+
+    // Decelerate but keep a minimum speed so the road split stays visible
+    const cruiseSpeed = MAX_SPEED * 0.12;
+    if (state.speed > cruiseSpeed) {
+      state.speed = Math.max(cruiseSpeed, state.speed - MAX_SPEED * dt * 0.6);
+    }
+
+    // Keep advancing through the fork area
+    state.position += state.speed * dt;
+    if (state.position >= total) state.position = total - 1;
 
     const steerDir = input.steerDirection();
     if (steerDir < -0.3) {
@@ -241,7 +251,7 @@ export function createGame(canvas, trackDef) {
       state.forkChoice = 'right';
     }
 
-    if ((state.forkChoice && state.forkTimer > 1.5) || state.forkTimer > 4) {
+    if ((state.forkChoice && state.forkTimer > 1.0) || state.forkTimer > 5) {
       if (!state.forkChoice) state.forkChoice = 'right';
       state.stage += 1;
       state.time += STAGE_TIME;

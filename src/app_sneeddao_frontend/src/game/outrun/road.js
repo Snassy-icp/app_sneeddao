@@ -110,7 +110,8 @@ function addFork(segments, length, startIndex) {
     const t = i / length;
     seg.fork = {
       progress: t,
-      split: easeInOutSine(t),
+      widen: easeInOutSine(Math.min(1, t * 2.5)),
+      split: easeInOutSine(Math.max(0, (t - 0.25) / 0.75)),
     };
     segments.push(seg);
   }

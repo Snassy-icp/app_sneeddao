@@ -74,9 +74,9 @@ export function project(p, cameraX, cameraY, cameraZ, cameraDepth, width, height
   }
   const s = cameraDepth / cam.z;
   p.screen.scale = s;
-  p.screen.x = (width / 2 + (s * cam.x * width) / 2) | 0;
-  p.screen.y = (height / 2 - (s * cam.y * height) / 2) | 0;
-  p.screen.w = (s * roadWidth * width / 2) | 0;
+  p.screen.x = width / 2 + (s * cam.x * width) / 2;
+  p.screen.y = height / 2 - (s * cam.y * height) / 2;
+  p.screen.w = s * roadWidth * width / 2;
 }
 
 export function overlap(x1, w1, x2, w2, percent) {

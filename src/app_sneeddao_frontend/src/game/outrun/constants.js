@@ -11,7 +11,7 @@ export const DRAW_DISTANCE = 150; // segments rendered ahead (fog hides beyond ~
 // Road geometry
 export const SEGMENT_LENGTH = 200; // world-units per segment
 export const ROAD_WIDTH = 2000; // half-width of the road in world units
-export const LANE_COUNT = 3;
+export const LANE_COUNT = 4;
 export const RUMBLE_LENGTH = 3; // segments per rumble strip band
 
 // Player

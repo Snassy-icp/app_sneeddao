@@ -1,7 +1,7 @@
 import {
   CAMERA_DEPTH, CAMERA_HEIGHT,
   DRAW_DISTANCE, SEGMENT_LENGTH, ROAD_WIDTH,
-  MAX_SPEED, THEMES,
+  MAX_SPEED, THEMES, LANE_COUNT,
 } from './constants.js';
 import { project, exponentialFog } from './utils.js';
 import { interpolateY, trackLength } from './road.js';
@@ -22,7 +22,6 @@ function getCachedSkyGradient(ctx, h, theme) {
   return grad;
 }
 
-// Pre-compute fog blended colors per-theme for N bands
 const FOG_BANDS = 16;
 let fogBandCache = null;
 let fogBandThemeKey = '';
@@ -30,7 +29,6 @@ let fogBandThemeKey = '';
 function getFogBands(theme, fogBase) {
   const key = theme.ground.light + fogBase;
   if (fogBandThemeKey === key && fogBandCache) return fogBandCache;
-
   const bands = [];
   for (let b = 0; b < FOG_BANDS; b++) {
     const fogAmt = b / (FOG_BANDS - 1);
@@ -98,9 +96,6 @@ export function render(ctx, state) {
   let maxY = height;
   let x = 0;
   let dx = 0;
-
-  // Sprite arrays — reuse to avoid allocation
-  const spriteBuf = spriteBuffer;
   let spriteCount = 0;
 
   for (let n = 0; n < DRAW_DISTANCE; n++) {
@@ -117,7 +112,7 @@ export function render(ctx, state) {
     x += dx;
     dx += seg.curve;
     dx *= 0.985;
-    seg.screen.x += (x * seg.screen.w * 0.004) | 0;
+    seg.screen.x += x * seg.screen.w * 0.004;
 
     seg.clip = maxY;
 
@@ -134,35 +129,25 @@ export function render(ctx, state) {
       drawSegmentStrip(ctx, width, seg.color, fogBands[bandIdx],
         prev.screen.x, prev.screen.y, prev.screen.w,
         seg.screen.x, seg.screen.y, seg.screen.w,
-        fogAmount, seg.fork);
+        fogAmount, seg.fork, prev.fork);
     }
 
-    if (seg.sprite && seg.screen.w > 4) {
+    if (seg.sprite && seg.screen.w > 1) {
       const sp = seg.sprite;
       const spriteX = seg.screen.x + (seg.screen.scale * sp.offset * ROAD_WIDTH * width / 2);
       if (spriteX > -200 && spriteX < width + 200) {
-        spriteBuf[spriteCount++] = {
-          type: sp.type,
-          screenX: spriteX,
-          screenY: seg.screen.y,
-          roadW: seg.screen.w,
-          clip: maxY,
-        };
+        spritePool[spriteCount++] = makeSpriteItem(
+          sp.type, null, spriteX, seg.screen.y, seg.screen.w, maxY);
       }
     }
 
     for (let ci = 0; ci < seg.cars.length; ci++) {
-      if (seg.screen.w > 3) {
+      if (seg.screen.w > 1) {
         const car = seg.cars[ci];
         const carScreenX = seg.screen.x + (seg.screen.scale * car.offset * ROAD_WIDTH * width / 2);
         if (carScreenX > -100 && carScreenX < width + 100) {
-          spriteBuf[spriteCount++] = {
-            carColor: car.color,
-            screenX: carScreenX,
-            screenY: seg.screen.y,
-            roadW: seg.screen.w,
-            clip: maxY,
-          };
+          spritePool[spriteCount++] = makeSpriteItem(
+            null, car.color, carScreenX, seg.screen.y, seg.screen.w, maxY);
         }
       }
     }
@@ -170,15 +155,14 @@ export function render(ctx, state) {
     maxY = seg.screen.y;
   }
 
-  // Draw sprites back to front (they were pushed near-to-far, draw in reverse)
   for (let i = spriteCount - 1; i >= 0; i--) {
-    const item = spriteBuf[i];
+    const item = spritePool[i];
     if (item.carColor) {
       const carScale = item.roadW * 0.002;
-      drawCar(ctx, item.screenX, item.screenY, carScale, item.carColor);
+      if (carScale > 0.02) drawCar(ctx, item.screenX, item.screenY, carScale, item.carColor);
     } else {
       const spriteScale = item.roadW * 0.8;
-      if (spriteScale < 6) continue;
+      if (spriteScale < 4) continue;
 
       const needsClip = item.screenY > item.clip - spriteScale * 0.6;
       if (needsClip) {
@@ -195,15 +179,22 @@ export function render(ctx, state) {
   drawPlayerCar(ctx, width, height, steer, speed, MAX_SPEED);
   drawHUD(ctx, width, height, speed, time, stage, state.gameState);
 
-  if (state.gameState === 'fork') drawForkOverlay(ctx, width, height, state.forkTimer);
+  if (state.gameState === 'fork') drawForkOverlay(ctx, width, height, state.forkTimer, state.forkChoice);
   if (state.gameState === 'title') drawTitleScreen(ctx, width, height);
   else if (state.gameState === 'countdown') drawCountdown(ctx, width, height, state.countdown);
   else if (state.gameState === 'gameover') drawGameOver(ctx, width, height);
 }
 
-// Pre-allocated sprite buffer to avoid per-frame array allocation
-const spriteBuffer = new Array(300);
-for (let i = 0; i < 300; i++) spriteBuffer[i] = {};
+// Sprite item pool to reduce allocations
+const POOL_SIZE = 300;
+const spritePool = [];
+for (let i = 0; i < POOL_SIZE; i++) {
+  spritePool[i] = { type: null, carColor: null, screenX: 0, screenY: 0, roadW: 0, clip: 0 };
+}
+
+function makeSpriteItem(type, carColor, sx, sy, rw, clip) {
+  return { type, carColor, screenX: sx, screenY: sy, roadW: rw, clip };
+}
 
 function drawSky(ctx, w, h, theme, offset) {
   const skyH = h * 0.48;
@@ -251,40 +242,65 @@ function drawBackground(ctx, w, h, theme, bgOffset, hillOffset) {
   ctx.fill();
 }
 
-function drawSegmentStrip(ctx, w, color, band, x1, y1, w1, x2, y2, w2, fogAmount, fork) {
+function drawSegmentStrip(ctx, w, color, band, x1, y1, w1, x2, y2, w2, fogAmount, fork, prevFork) {
   const isLight = color === 'light';
   const stripH = y1 - y2;
   if (stripH <= 0) return;
 
-  ctx.fillStyle = isLight ? band.grassLight : band.grassDark;
+  const grassColor = isLight ? band.grassLight : band.grassDark;
+
+  // Fork road widening
+  const fw1 = prevFork ? w1 * (1 + prevFork.widen * 0.5) : w1;
+  const fw2 = fork ? w2 * (1 + fork.widen * 0.5) : w2;
+
+  // Grass background
+  ctx.fillStyle = grassColor;
   ctx.fillRect(0, y2, w, stripH);
 
-  drawPolygon(ctx, x1 - w1, y1, x1 + w1, y1, x2 + w2, y2, x2 - w2, y2,
+  // Road
+  drawPolygon(ctx, x1 - fw1, y1, x1 + fw1, y1, x2 + fw2, y2, x2 - fw2, y2,
     isLight ? band.roadLight : band.roadDark);
 
-  const rumbleW1 = w1 * 1.15;
-  const rumbleW2 = w2 * 1.15;
-  const rumble = isLight ? band.rumbleLight : band.rumbleDark;
-  drawPolygon(ctx, x1 - rumbleW1, y1, x1 - w1, y1, x2 - w2, y2, x2 - rumbleW2, y2, rumble);
-  drawPolygon(ctx, x1 + w1, y1, x1 + rumbleW1, y1, x2 + rumbleW2, y2, x2 + w2, y2, rumble);
+  // Outer rumble strips
+  const rum1 = fw1 * 1.15;
+  const rum2 = fw2 * 1.15;
+  const rumbleColor = isLight ? band.rumbleLight : band.rumbleDark;
+  drawPolygon(ctx, x1 - rum1, y1, x1 - fw1, y1, x2 - fw2, y2, x2 - rum2, y2, rumbleColor);
+  drawPolygon(ctx, x1 + fw1, y1, x1 + rum1, y1, x2 + rum2, y2, x2 + fw2, y2, rumbleColor);
 
+  // Lane markings — variable count
   if (isLight && fogAmount < 0.6) {
-    const laneW1 = Math.max(1, w1 * 0.015);
-    const laneW2 = Math.max(1, w2 * 0.015);
-    for (let i = 1; i < 3; i++) {
-      const lx1 = x1 + (w1 * 2 * i / 3) - w1;
-      const lx2 = x2 + (w2 * 2 * i / 3) - w2;
+    const lanes = fork ? Math.round(LANE_COUNT + fork.widen * 2) : LANE_COUNT;
+    const laneW1 = Math.max(1, fw1 * 0.012);
+    const laneW2 = Math.max(1, fw2 * 0.012);
+    for (let i = 1; i < lanes; i++) {
+      const lx1 = x1 + (fw1 * 2 * i / lanes) - fw1;
+      const lx2 = x2 + (fw2 * 2 * i / lanes) - fw2;
       drawPolygon(ctx, lx1 - laneW1, y1, lx1 + laneW1, y1,
                        lx2 + laneW2, y2, lx2 - laneW2, y2, band.lane);
     }
   }
 
-  if (fork && fork.progress > 0.1) {
-    const split = fork.split * w1 * 0.8;
-    drawPolygon(ctx, x1 - w1 * 0.1, y1, x1 - w1 * 0.05, y1,
-                     x2 - split - w2 * 0.05, y2, x2 - split - w2 * 0.1, y2, 'rgba(255,255,100,0.3)');
-    drawPolygon(ctx, x1 + w1 * 0.05, y1, x1 + w1 * 0.1, y1,
-                     x2 + split + w2 * 0.1, y2, x2 + split + w2 * 0.05, y2, 'rgba(255,255,100,0.3)');
+  // Fork road split — grass divider growing in center
+  const splitCur = fork ? fork.split : 0;
+  const splitPrev = prevFork ? prevFork.split : 0;
+  if (splitCur > 0.02 || splitPrev > 0.02) {
+    const dw1 = fw1 * splitPrev * 0.35;
+    const dw2 = fw2 * splitCur * 0.35;
+
+    // Center grass divider
+    drawPolygon(ctx, x1 - dw1, y1, x1 + dw1, y1,
+                     x2 + dw2, y2, x2 - dw2, y2, grassColor);
+
+    // Inner rumble strips on divider edges
+    if (dw2 > 1) {
+      const irw1 = Math.max(0.5, dw1 * 0.2);
+      const irw2 = Math.max(0.5, dw2 * 0.2);
+      drawPolygon(ctx, x1 - dw1 - irw1, y1, x1 - dw1, y1,
+                       x2 - dw2, y2, x2 - dw2 - irw2, y2, rumbleColor);
+      drawPolygon(ctx, x1 + dw1, y1, x1 + dw1 + irw1, y1,
+                       x2 + dw2 + irw2, y2, x2 + dw2, y2, rumbleColor);
+    }
   }
 }
 
@@ -368,17 +384,34 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-function drawForkOverlay(ctx, w, h, timer) {
-  ctx.fillStyle = `rgba(0,0,0,${Math.min(0.7, timer * 0.15)})`;
+function drawForkOverlay(ctx, w, h, timer, choice) {
+  // Semi-transparent so the road split is visible beneath
+  const alpha = Math.min(0.3, timer * 0.1);
+  ctx.fillStyle = `rgba(0,0,0,${alpha})`;
   ctx.fillRect(0, 0, w, h);
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.8)';
+  ctx.shadowBlur = 6;
+
   ctx.fillStyle = '#FFF';
   ctx.font = 'bold 28px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('CHOOSE YOUR PATH', w / 2, h * 0.35);
-  ctx.font = '18px monospace';
-  ctx.fillStyle = '#FFD700';
-  ctx.fillText('\u2190 LEFT', w * 0.25, h * 0.5);
-  ctx.fillText('RIGHT \u2192', w * 0.75, h * 0.5);
+  ctx.fillText('CHOOSE YOUR PATH', w / 2, h * 0.28);
+
+  ctx.font = 'bold 24px monospace';
+  ctx.fillStyle = choice === 'left' ? '#FFD700' : '#CCC';
+  ctx.fillText('\u2190 LEFT', w * 0.25, h * 0.40);
+  ctx.fillStyle = choice === 'right' ? '#FFD700' : '#CCC';
+  ctx.fillText('RIGHT \u2192', w * 0.75, h * 0.40);
+
+  if (!choice && ((Date.now() / 500) | 0) % 2 === 0) {
+    ctx.fillStyle = '#FFD700';
+    ctx.font = '16px monospace';
+    ctx.fillText('STEER LEFT OR RIGHT', w / 2, h * 0.50);
+  }
+
+  ctx.restore();
 }
 
 function drawTitleScreen(ctx, w, h) {
