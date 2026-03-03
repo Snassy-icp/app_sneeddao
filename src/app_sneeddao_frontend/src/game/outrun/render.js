@@ -22,16 +22,31 @@ function getCachedSkyGradient(ctx, h, theme) {
   return grad;
 }
 
-function blendColor(hex, fogHex, fogAmount) {
-  if (fogAmount <= 0) return hex;
-  if (fogAmount >= 1) return fogHex;
-  const c = parseHex(hex);
-  const f = parseHex(fogHex);
-  const a = fogAmount;
-  const r = Math.round(c.r + (f.r - c.r) * a);
-  const g = Math.round(c.g + (f.g - c.g) * a);
-  const b = Math.round(c.b + (f.b - c.b) * a);
-  return `rgb(${r},${g},${b})`;
+// Pre-compute fog blended colors per-theme for N bands
+const FOG_BANDS = 16;
+let fogBandCache = null;
+let fogBandThemeKey = '';
+
+function getFogBands(theme, fogBase) {
+  const key = theme.ground.light + fogBase;
+  if (fogBandThemeKey === key && fogBandCache) return fogBandCache;
+
+  const bands = [];
+  for (let b = 0; b < FOG_BANDS; b++) {
+    const fogAmt = b / (FOG_BANDS - 1);
+    bands.push({
+      grassLight: blendRGB(theme.ground.light, fogBase, fogAmt),
+      grassDark: blendRGB(theme.ground.dark, fogBase, fogAmt),
+      roadLight: blendRGB(theme.road.light, fogBase, fogAmt),
+      roadDark: blendRGB(theme.road.dark, fogBase, fogAmt),
+      rumbleLight: blendRGB(theme.rumble.light, fogBase, fogAmt),
+      rumbleDark: blendRGB(theme.rumble.dark, fogBase, fogAmt),
+      lane: blendRGB(theme.lane, fogBase, fogAmt),
+    });
+  }
+  fogBandCache = bands;
+  fogBandThemeKey = key;
+  return bands;
 }
 
 const hexCache = {};
@@ -52,6 +67,17 @@ function parseHex(hex) {
   return hexCache[hex];
 }
 
+function blendRGB(hex, fogHex, amt) {
+  if (amt <= 0) return hex;
+  if (amt >= 1) return fogHex;
+  const c = parseHex(hex);
+  const f = parseHex(fogHex);
+  const r = (c.r + (f.r - c.r) * amt) | 0;
+  const g = (c.g + (f.g - c.g) * amt) | 0;
+  const b = (c.b + (f.b - c.b) * amt) | 0;
+  return `rgb(${r},${g},${b})`;
+}
+
 export function render(ctx, state) {
   const { segments, playerX, position, speed, theme: themeName, steer, time, stage } = state;
   const theme = THEMES[themeName] || THEMES.beach;
@@ -61,8 +87,8 @@ export function render(ctx, state) {
 
   const baseSegmentIndex = Math.floor(position / SEGMENT_LENGTH) % segments.length;
   const playerY = interpolateY(segments, position);
-
   const fogBase = theme.sky[1];
+  const fogBands = getFogBands(theme, fogBase);
 
   ctx.clearRect(0, 0, width, height);
 
@@ -73,7 +99,9 @@ export function render(ctx, state) {
   let x = 0;
   let dx = 0;
 
-  const spriteQueue = [];
+  // Sprite arrays — reuse to avoid allocation
+  const spriteBuf = spriteBuffer;
+  let spriteCount = 0;
 
   for (let n = 0; n < DRAW_DISTANCE; n++) {
     const idx = (baseSegmentIndex + n) % segments.length;
@@ -89,7 +117,7 @@ export function render(ctx, state) {
     x += dx;
     dx += seg.curve;
     dx *= 0.985;
-    seg.screen.x += Math.round(x * seg.screen.w * 0.004);
+    seg.screen.x += (x * seg.screen.w * 0.004) | 0;
 
     seg.clip = maxY;
 
@@ -102,68 +130,64 @@ export function render(ctx, state) {
 
     if (n > 0) {
       const fogAmount = 1 - exponentialFog(n / DRAW_DISTANCE, 5);
-      drawSegmentStrip(ctx, width, theme, seg.color, fogBase, fogAmount,
+      const bandIdx = Math.min(FOG_BANDS - 1, (fogAmount * (FOG_BANDS - 1)) | 0);
+      drawSegmentStrip(ctx, width, seg.color, fogBands[bandIdx],
         prev.screen.x, prev.screen.y, prev.screen.w,
         seg.screen.x, seg.screen.y, seg.screen.w,
-        seg.fork);
+        fogAmount, seg.fork);
     }
 
-    if (seg.sprite && seg.screen.w > 3) {
-      spriteQueue.push({
-        sprite: seg.sprite,
-        screenX: seg.screen.x,
-        screenY: seg.screen.y,
-        screenScale: seg.screen.scale,
-        roadW: seg.screen.w,
-        clip: maxY,
-        distance: n,
-      });
-    }
-
-    for (const car of seg.cars) {
-      if (seg.screen.w > 2) {
-        const carScreenX = seg.screen.x + (seg.screen.scale * car.offset * ROAD_WIDTH * width / 2);
-        spriteQueue.push({
-          car,
-          screenX: carScreenX,
+    if (seg.sprite && seg.screen.w > 4) {
+      const sp = seg.sprite;
+      const spriteX = seg.screen.x + (seg.screen.scale * sp.offset * ROAD_WIDTH * width / 2);
+      if (spriteX > -200 && spriteX < width + 200) {
+        spriteBuf[spriteCount++] = {
+          type: sp.type,
+          screenX: spriteX,
           screenY: seg.screen.y,
           roadW: seg.screen.w,
           clip: maxY,
-          distance: n,
-        });
+        };
+      }
+    }
+
+    for (let ci = 0; ci < seg.cars.length; ci++) {
+      if (seg.screen.w > 3) {
+        const car = seg.cars[ci];
+        const carScreenX = seg.screen.x + (seg.screen.scale * car.offset * ROAD_WIDTH * width / 2);
+        if (carScreenX > -100 && carScreenX < width + 100) {
+          spriteBuf[spriteCount++] = {
+            carColor: car.color,
+            screenX: carScreenX,
+            screenY: seg.screen.y,
+            roadW: seg.screen.w,
+            clip: maxY,
+          };
+        }
       }
     }
 
     maxY = seg.screen.y;
   }
 
-  for (let i = spriteQueue.length - 1; i >= 0; i--) {
-    const item = spriteQueue[i];
-    if (item.car) {
-      const needsClip = item.screenY > item.clip - 10;
-      if (needsClip) ctx.save();
-      if (needsClip) {
-        ctx.beginPath();
-        ctx.rect(0, 0, width, item.clip);
-        ctx.clip();
-      }
+  // Draw sprites back to front (they were pushed near-to-far, draw in reverse)
+  for (let i = spriteCount - 1; i >= 0; i--) {
+    const item = spriteBuf[i];
+    if (item.carColor) {
       const carScale = item.roadW * 0.002;
-      drawCar(ctx, item.screenX, item.screenY, carScale, item.car.color);
-      if (needsClip) ctx.restore();
-    } else if (item.sprite) {
-      const sp = item.sprite;
-      const spriteX = item.screenX + (item.screenScale * sp.offset * ROAD_WIDTH * width / 2);
-      const spriteY = item.screenY;
-      const spriteScale = item.roadW * 0.7;
+      drawCar(ctx, item.screenX, item.screenY, carScale, item.carColor);
+    } else {
+      const spriteScale = item.roadW * 0.8;
+      if (spriteScale < 6) continue;
 
-      const needsClip = spriteY > item.clip - spriteScale * 0.8;
-      if (needsClip) ctx.save();
+      const needsClip = item.screenY > item.clip - spriteScale * 0.6;
       if (needsClip) {
+        ctx.save();
         ctx.beginPath();
         ctx.rect(0, 0, width, item.clip);
         ctx.clip();
       }
-      drawSprite(ctx, sp.type, spriteX, spriteY, item.screenScale, spriteScale);
+      drawSprite(ctx, item.type, item.screenX, item.screenY, 0, spriteScale);
       if (needsClip) ctx.restore();
     }
   }
@@ -171,17 +195,15 @@ export function render(ctx, state) {
   drawPlayerCar(ctx, width, height, steer, speed, MAX_SPEED);
   drawHUD(ctx, width, height, speed, time, stage, state.gameState);
 
-  if (state.gameState === 'fork') {
-    drawForkOverlay(ctx, width, height, state.forkTimer);
-  }
-  if (state.gameState === 'title') {
-    drawTitleScreen(ctx, width, height);
-  } else if (state.gameState === 'countdown') {
-    drawCountdown(ctx, width, height, state.countdown);
-  } else if (state.gameState === 'gameover') {
-    drawGameOver(ctx, width, height);
-  }
+  if (state.gameState === 'fork') drawForkOverlay(ctx, width, height, state.forkTimer);
+  if (state.gameState === 'title') drawTitleScreen(ctx, width, height);
+  else if (state.gameState === 'countdown') drawCountdown(ctx, width, height, state.countdown);
+  else if (state.gameState === 'gameover') drawGameOver(ctx, width, height);
 }
+
+// Pre-allocated sprite buffer to avoid per-frame array allocation
+const spriteBuffer = new Array(300);
+for (let i = 0; i < 300; i++) spriteBuffer[i] = {};
 
 function drawSky(ctx, w, h, theme, offset) {
   const skyH = h * 0.48;
@@ -206,7 +228,7 @@ function drawBackground(ctx, w, h, theme, bgOffset, hillOffset) {
   ctx.beginPath();
   ctx.moveTo(0, horizonY);
   const mountainOffset = (bgOffset * 0.3) % w;
-  for (let px = -50; px <= w + 50; px += 40) {
+  for (let px = -50; px <= w + 50; px += 50) {
     const peakH = 20 + Math.sin((px + mountainOffset) * 0.015) * 35
                      + Math.sin((px + mountainOffset) * 0.03) * 15;
     ctx.lineTo(px, horizonY - peakH);
@@ -219,7 +241,7 @@ function drawBackground(ctx, w, h, theme, bgOffset, hillOffset) {
   ctx.beginPath();
   ctx.moveTo(0, horizonY);
   const hillOff = (hillOffset * 0.5) % w;
-  for (let px = -50; px <= w + 50; px += 30) {
+  for (let px = -50; px <= w + 50; px += 40) {
     const peakH = 8 + Math.sin((px + hillOff) * 0.02) * 18
                     + Math.sin((px + hillOff) * 0.05) * 8;
     ctx.lineTo(px, horizonY - peakH);
@@ -229,42 +251,34 @@ function drawBackground(ctx, w, h, theme, bgOffset, hillOffset) {
   ctx.fill();
 }
 
-function drawSegmentStrip(ctx, w, theme, color, fogBase, fogAmount, x1, y1, w1, x2, y2, w2, fork) {
+function drawSegmentStrip(ctx, w, color, band, x1, y1, w1, x2, y2, w2, fogAmount, fork) {
   const isLight = color === 'light';
-  const grassColor = blendColor(isLight ? theme.ground.light : theme.ground.dark, fogBase, fogAmount);
-  const roadColor = blendColor(isLight ? theme.road.light : theme.road.dark, fogBase, fogAmount);
-  const rumbleColor = blendColor(isLight ? theme.rumble.light : theme.rumble.dark, fogBase, fogAmount);
-
   const stripH = y1 - y2;
   if (stripH <= 0) return;
 
-  // Grass
-  ctx.fillStyle = grassColor;
+  ctx.fillStyle = isLight ? band.grassLight : band.grassDark;
   ctx.fillRect(0, y2, w, stripH);
 
-  // Road
-  drawPolygon(ctx, x1 - w1, y1, x1 + w1, y1, x2 + w2, y2, x2 - w2, y2, roadColor);
+  drawPolygon(ctx, x1 - w1, y1, x1 + w1, y1, x2 + w2, y2, x2 - w2, y2,
+    isLight ? band.roadLight : band.roadDark);
 
-  // Rumble strips
   const rumbleW1 = w1 * 1.15;
   const rumbleW2 = w2 * 1.15;
-  drawPolygon(ctx, x1 - rumbleW1, y1, x1 - w1, y1, x2 - w2, y2, x2 - rumbleW2, y2, rumbleColor);
-  drawPolygon(ctx, x1 + w1, y1, x1 + rumbleW1, y1, x2 + rumbleW2, y2, x2 + w2, y2, rumbleColor);
+  const rumble = isLight ? band.rumbleLight : band.rumbleDark;
+  drawPolygon(ctx, x1 - rumbleW1, y1, x1 - w1, y1, x2 - w2, y2, x2 - rumbleW2, y2, rumble);
+  drawPolygon(ctx, x1 + w1, y1, x1 + rumbleW1, y1, x2 + rumbleW2, y2, x2 + w2, y2, rumble);
 
-  // Lane markings (only on light segments, only if close enough to see)
-  if (isLight && fogAmount < 0.7) {
-    const laneColor = blendColor(theme.lane, fogBase, fogAmount);
+  if (isLight && fogAmount < 0.6) {
     const laneW1 = Math.max(1, w1 * 0.015);
     const laneW2 = Math.max(1, w2 * 0.015);
     for (let i = 1; i < 3; i++) {
       const lx1 = x1 + (w1 * 2 * i / 3) - w1;
       const lx2 = x2 + (w2 * 2 * i / 3) - w2;
       drawPolygon(ctx, lx1 - laneW1, y1, lx1 + laneW1, y1,
-                       lx2 + laneW2, y2, lx2 - laneW2, y2, laneColor);
+                       lx2 + laneW2, y2, lx2 - laneW2, y2, band.lane);
     }
   }
 
-  // Fork visual
   if (fork && fork.progress > 0.1) {
     const split = fork.split * w1 * 0.8;
     drawPolygon(ctx, x1 - w1 * 0.1, y1, x1 - w1 * 0.05, y1,
@@ -287,12 +301,10 @@ function drawPolygon(ctx, x1, y1, x2, y1b, x3, y2, x4, y2b, color) {
 
 function drawHUD(ctx, w, h, speed, time, stage, gameState) {
   if (gameState === 'title') return;
-
   ctx.save();
 
   const speedPercent = speed / MAX_SPEED;
-  const displaySpeed = Math.round(speedPercent * 280);
-
+  const displaySpeed = (speedPercent * 280) | 0;
   const gaugeX = w - 130;
   const gaugeY = h - 30;
 
@@ -309,8 +321,7 @@ function drawHUD(ctx, w, h, speed, time, stage, gameState) {
 
   ctx.fillStyle = '#333';
   ctx.fillRect(gaugeX, gaugeY + 10, 110, 6);
-  const barColor = speedPercent > 0.8 ? '#E8473C' : speedPercent > 0.5 ? '#FFA500' : '#4DE84D';
-  ctx.fillStyle = barColor;
+  ctx.fillStyle = speedPercent > 0.8 ? '#E8473C' : speedPercent > 0.5 ? '#FFA500' : '#4DE84D';
   ctx.fillRect(gaugeX, gaugeY + 10, 110 * speedPercent, 6);
 
   ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -336,11 +347,11 @@ function drawHUD(ctx, w, h, speed, time, stage, gameState) {
 
 function formatTimeHUD(t) {
   if (t <= 0) return "0:00.0";
-  const secs = Math.floor(t);
-  const tenths = Math.floor((t * 10) % 10);
-  const mins = Math.floor(secs / 60);
+  const secs = t | 0;
+  const tenths = ((t * 10) | 0) % 10;
+  const mins = (secs / 60) | 0;
   const s = secs % 60;
-  return `${mins}:${s.toString().padStart(2, '0')}.${tenths}`;
+  return `${mins}:${s < 10 ? '0' : ''}${s}.${tenths}`;
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -358,15 +369,12 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 function drawForkOverlay(ctx, w, h, timer) {
-  const alpha = Math.min(0.7, timer * 0.15);
-  ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+  ctx.fillStyle = `rgba(0,0,0,${Math.min(0.7, timer * 0.15)})`;
   ctx.fillRect(0, 0, w, h);
-
   ctx.fillStyle = '#FFF';
   ctx.font = 'bold 28px monospace';
   ctx.textAlign = 'center';
   ctx.fillText('CHOOSE YOUR PATH', w / 2, h * 0.35);
-
   ctx.font = '18px monospace';
   ctx.fillStyle = '#FFD700';
   ctx.fillText('\u2190 LEFT', w * 0.25, h * 0.5);
@@ -376,22 +384,18 @@ function drawForkOverlay(ctx, w, h, timer) {
 function drawTitleScreen(ctx, w, h) {
   ctx.fillStyle = 'rgba(0,0,0,0.65)';
   ctx.fillRect(0, 0, w, h);
-
   ctx.fillStyle = '#E8473C';
   ctx.font = 'bold 52px monospace';
   ctx.textAlign = 'center';
   ctx.fillText('SNEED RUN', w / 2, h * 0.32);
-
   ctx.fillStyle = '#FFD700';
   ctx.font = 'bold 16px monospace';
   ctx.fillText('A SNEED DAO PRODUCTION', w / 2, h * 0.40);
-
-  if (Math.floor(Date.now() / 600) % 2 === 0) {
+  if (((Date.now() / 600) | 0) % 2 === 0) {
     ctx.fillStyle = '#FFF';
     ctx.font = '20px monospace';
     ctx.fillText('PRESS ENTER TO START', w / 2, h * 0.62);
   }
-
   ctx.fillStyle = '#AAA';
   ctx.font = '13px monospace';
   ctx.fillText('\u2191 / W  ACCELERATE      \u2193 / S  BRAKE', w / 2, h * 0.78);
@@ -402,7 +406,6 @@ function drawCountdown(ctx, w, h, count) {
   if (count <= 0) return;
   ctx.fillStyle = 'rgba(0,0,0,0.3)';
   ctx.fillRect(0, 0, w, h);
-
   ctx.fillStyle = '#FFF';
   ctx.font = 'bold 80px monospace';
   ctx.textAlign = 'center';
@@ -413,17 +416,14 @@ function drawCountdown(ctx, w, h, count) {
 function drawGameOver(ctx, w, h) {
   ctx.fillStyle = 'rgba(0,0,0,0.7)';
   ctx.fillRect(0, 0, w, h);
-
   ctx.fillStyle = '#E8473C';
   ctx.font = 'bold 48px monospace';
   ctx.textAlign = 'center';
   ctx.fillText('GAME OVER', w / 2, h * 0.38);
-
   ctx.fillStyle = '#FFF';
   ctx.font = '18px monospace';
   ctx.fillText("TIME'S UP!", w / 2, h * 0.48);
-
-  if (Math.floor(Date.now() / 600) % 2 === 0) {
+  if (((Date.now() / 600) | 0) % 2 === 0) {
     ctx.fillStyle = '#FFD700';
     ctx.font = '20px monospace';
     ctx.fillText('PRESS ENTER TO RETRY', w / 2, h * 0.65);

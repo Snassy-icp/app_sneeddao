@@ -3,8 +3,8 @@ import {
   NATURAL_DECEL, OFF_ROAD_DECEL, OFF_ROAD_MAX, CENTRIFUGAL_FORCE,
   OFF_ROAD_THRESHOLD, TOTAL_CARS, STAGE_TIME, CAMERA_HEIGHT, CAMERA_DEPTH,
 } from './constants.js';
-import { clamp, randomInt, randomChoice, overlap } from './utils.js';
-import { buildRoad, findSegment, trackLength, addSpritesToSegments, addCarsToRoad } from './road.js';
+import { clamp, randomChoice, overlap } from './utils.js';
+import { buildRoad, findSegment, trackLength, addSpritesToSegments, getSegmentIndex } from './road.js';
 import { getSpriteWidth, CAR_COLORS } from './sprites.js';
 import { render } from './render.js';
 
@@ -21,7 +21,7 @@ export function createGame(canvas, trackDef) {
     steer: 0,
     time: STAGE_TIME,
     stage: 1,
-    gameState: 'title', // title | countdown | playing | fork | gameover
+    gameState: 'title',
     countdown: 3,
     theme: trackDef.theme || 'beach',
     skyOffset: 0,
@@ -30,6 +30,7 @@ export function createGame(canvas, trackDef) {
     cars: [],
     forkTimer: 0,
     forkChoice: null,
+    collisionCooldown: 0,
     trackDef,
   };
 
@@ -39,18 +40,31 @@ export function createGame(canvas, trackDef) {
       addSpritesToSegments(state.segments, trackDef.sprites);
     }
     initCars();
+    placeCarsOnSegments();
   }
 
   function initCars() {
     state.cars = [];
     const total = trackLength(state.segments);
+    const safeZone = SEGMENT_LENGTH * 20;
     for (let i = 0; i < TOTAL_CARS; i++) {
+      let z = safeZone + Math.random() * (total - safeZone * 2);
       state.cars.push({
-        offset: -0.8 + Math.random() * 1.6,
-        z: Math.random() * total,
-        speed: MAX_SPEED * (0.2 + Math.random() * 0.5),
+        offset: -0.7 + Math.random() * 1.4,
+        z,
+        speed: MAX_SPEED * (0.3 + Math.random() * 0.4),
         color: randomChoice(CAR_COLORS),
       });
+    }
+  }
+
+  function placeCarsOnSegments() {
+    for (const seg of state.segments) {
+      seg.cars.length = 0;
+    }
+    for (const car of state.cars) {
+      const idx = getSegmentIndex(car.z, state.segments.length);
+      state.segments[idx].cars.push(car);
     }
   }
 
@@ -64,6 +78,7 @@ export function createGame(canvas, trackDef) {
     state.countdown = 3;
     state.forkTimer = 0;
     state.forkChoice = null;
+    state.collisionCooldown = 0;
     state.skyOffset = 0;
     state.bgOffset = 0;
     state.hillOffset = 0;
@@ -91,7 +106,6 @@ export function createGame(canvas, trackDef) {
   }
 
   function updateTitle(dt, input) {
-    // Keep the road scrolling slowly for ambiance
     state.position += dt * MAX_SPEED * 0.15;
     const total = trackLength(state.segments);
     if (state.position > total) state.position -= total;
@@ -117,22 +131,19 @@ export function createGame(canvas, trackDef) {
     const total = trackLength(state.segments);
     const seg = findSegment(state.segments, state.position);
 
-    // Steering
     const steerDir = input.steerDirection();
     state.steer = steerDir;
 
     if (steerDir !== 0) {
-      state.playerX += steerDir * dt * 2 * (state.speed / MAX_SPEED);
+      state.playerX += steerDir * dt * 2.0 * (state.speed / MAX_SPEED);
     }
 
-    // Centrifugal force from curves
     if (seg) {
       state.playerX -= (seg.curve * CENTRIFUGAL_FORCE * dt * state.speed / MAX_SPEED);
     }
 
     state.playerX = clamp(state.playerX, -2.5, 2.5);
 
-    // Acceleration / braking
     if (input.isAccelerating()) {
       state.speed += ACCEL * dt;
     } else if (input.isBraking()) {
@@ -141,7 +152,6 @@ export function createGame(canvas, trackDef) {
       state.speed += NATURAL_DECEL * dt;
     }
 
-    // Off-road slowdown (gradual, not instant)
     if (Math.abs(state.playerX) > OFF_ROAD_THRESHOLD) {
       const offAmount = (Math.abs(state.playerX) - OFF_ROAD_THRESHOLD) / 1.5;
       state.speed += OFF_ROAD_DECEL * offAmount * dt;
@@ -151,47 +161,52 @@ export function createGame(canvas, trackDef) {
     }
 
     state.speed = clamp(state.speed, 0, MAX_SPEED);
-
-    // Position advance
     state.position += state.speed * dt;
 
-    // Parallax scrolling
     state.skyOffset += (steerDir * state.speed / MAX_SPEED) * dt * 80;
     state.bgOffset += (steerDir * state.speed / MAX_SPEED) * dt * 160;
     state.hillOffset += (steerDir * state.speed / MAX_SPEED) * dt * 240;
 
-    // Collision with roadside sprites
-    if (seg && seg.sprite && Math.abs(state.playerX) > 0.65) {
-      const spriteW = getSpriteWidth(seg.sprite.type) / ROAD_WIDTH;
-      const spritePos = seg.sprite.offset;
-      if (overlap(state.playerX, 0.4, spritePos, spriteW * 2, 1.0)) {
-        state.speed = Math.max(0, state.speed * 0.2);
-      }
+    if (state.collisionCooldown > 0) {
+      state.collisionCooldown -= dt;
     }
 
-    // Collision with AI cars
-    for (const car of state.cars) {
-      const carSeg = findSegment(state.segments, car.z);
-      if (carSeg && seg && Math.abs(car.z - state.position) < SEGMENT_LENGTH * 3) {
-        if (overlap(state.playerX, 0.4, car.offset, 0.4, 0.8)) {
-          if (state.speed > car.speed) {
-            state.speed = car.speed * 0.7;
+    if (state.collisionCooldown <= 0) {
+      // Sprite collision
+      if (seg && seg.sprite && Math.abs(state.playerX) > 0.8) {
+        const spriteW = getSpriteWidth(seg.sprite.type) / ROAD_WIDTH;
+        const spritePos = seg.sprite.offset;
+        if (overlap(state.playerX, 0.3, spritePos, spriteW * 2, 1.0)) {
+          state.speed = Math.max(0, state.speed * 0.3);
+          state.collisionCooldown = 0.8;
+        }
+      }
+
+      // Car collision — only check cars on nearby segments
+      const playerSegIdx = getSegmentIndex(state.position, state.segments.length);
+      for (let di = -2; di <= 2; di++) {
+        const checkIdx = ((playerSegIdx + di) % state.segments.length + state.segments.length) % state.segments.length;
+        const checkSeg = state.segments[checkIdx];
+        for (const car of checkSeg.cars) {
+          if (overlap(state.playerX, 0.3, car.offset, 0.3, 0.8)) {
+            if (state.speed > car.speed) {
+              state.speed = Math.max(car.speed, state.speed * 0.5);
+              state.collisionCooldown = 1.0;
+            }
           }
         }
       }
     }
 
-    // Update AI cars
     updateCars(dt, total);
+    placeCarsOnSegments();
 
-    // Time countdown
     state.time -= dt;
     if (state.time <= 0) {
       state.time = 0;
       state.gameState = 'gameover';
     }
 
-    // Check for fork / end of track
     if (state.position >= total * 0.92) {
       const forkSeg = findSegment(state.segments, state.position);
       if (forkSeg && forkSeg.fork) {
@@ -200,12 +215,9 @@ export function createGame(canvas, trackDef) {
       }
     }
 
-    // Wrap around for continuous play (won't happen if fork triggers)
     if (state.position >= total) {
       state.position -= total;
     }
-
-    addCarsToRoad(state.segments, state.cars);
   }
 
   function updateCars(dt, total) {
@@ -213,10 +225,8 @@ export function createGame(canvas, trackDef) {
       car.z += car.speed * dt;
       if (car.z >= total) car.z -= total;
       if (car.z < 0) car.z += total;
-
-      // Simple lane drifting
-      car.offset += (Math.sin(car.z * 0.001) * 0.002);
-      car.offset = clamp(car.offset, -0.9, 0.9);
+      car.offset += (Math.sin(car.z * 0.001) * 0.001);
+      car.offset = clamp(car.offset, -0.8, 0.8);
     }
   }
 
@@ -233,26 +243,21 @@ export function createGame(canvas, trackDef) {
 
     if ((state.forkChoice && state.forkTimer > 1.5) || state.forkTimer > 4) {
       if (!state.forkChoice) state.forkChoice = 'right';
-
-      // Advance to next stage
       state.stage += 1;
       state.time += STAGE_TIME;
       state.position = 0;
-      state.speed = MAX_SPEED * 0.3;
+      state.speed = MAX_SPEED * 0.5;
       state.forkTimer = 0;
       state.forkChoice = null;
+      state.collisionCooldown = 2.0;
       state.gameState = 'playing';
-
-      // In the future, this would load a different track.
-      // For now, just re-init the same track with shuffled cars.
       initCars();
-      addCarsToRoad(state.segments, state.cars);
+      placeCarsOnSegments();
     }
   }
 
   function updateGameOver(dt, input) {
     state.speed = Math.max(0, state.speed - MAX_SPEED * dt);
-
     if (input.isStart()) {
       reset();
       state.gameState = 'countdown';
@@ -261,12 +266,10 @@ export function createGame(canvas, trackDef) {
   }
 
   function frame(timestamp) {
-    const dt = Math.min((timestamp - lastTime) / 1000, 0.05); // cap at 50ms
+    const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
     lastTime = timestamp;
-
     update(dt, state._input);
     render(ctx, state);
-
     animFrameId = requestAnimationFrame(frame);
   }
 
@@ -284,9 +287,5 @@ export function createGame(canvas, trackDef) {
     }
   }
 
-  function getState() {
-    return state;
-  }
-
-  return { start, stop, reset, getState };
+  return { start, stop, reset, getState: () => state };
 }

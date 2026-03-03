@@ -5,6 +5,7 @@ export function createSegment(n) {
   return {
     index: n,
     world: { x: 0, y: 0, z: n * SEGMENT_LENGTH },
+    camera: { x: 0, y: 0, z: 0 },
     screen: { x: 0, y: 0, w: 0, scale: 0 },
     curve: 0,
     sprite: null,
@@ -152,10 +153,21 @@ export function addSpritesToSegments(segments, spriteList) {
 
 export function addCarsToRoad(segments, cars) {
   for (const seg of segments) {
-    seg.cars = [];
+    seg.cars.length = 0;
   }
   for (const car of cars) {
     const idx = getSegmentIndex(car.z, segments.length);
     segments[idx].cars.push(car);
   }
+}
+
+export function getCarsNearSegment(cars, segZ, segLen, range) {
+  const result = [];
+  for (let i = 0; i < cars.length; i++) {
+    const dz = Math.abs(cars[i].z - segZ);
+    if (dz < range || dz > segLen - range) {
+      result.push(cars[i]);
+    }
+  }
+  return result;
 }

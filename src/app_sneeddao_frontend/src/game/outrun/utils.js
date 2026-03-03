@@ -61,19 +61,22 @@ export function formatTime(seconds) {
 }
 
 export function project(p, cameraX, cameraY, cameraZ, cameraDepth, width, height, roadWidth) {
-  p.camera = {
-    x: (p.world.x || 0) - cameraX,
-    y: (p.world.y || 0) - cameraY,
-    z: (p.world.z || 0) - cameraZ,
-  };
-  if (p.camera.z <= 0) {
-    p.screen = { x: 0, y: 0, w: 0, scale: 0 };
+  const cam = p.camera;
+  cam.x = (p.world.x || 0) - cameraX;
+  cam.y = (p.world.y || 0) - cameraY;
+  cam.z = (p.world.z || 0) - cameraZ;
+  if (cam.z <= 0) {
+    p.screen.x = 0;
+    p.screen.y = 0;
+    p.screen.w = 0;
+    p.screen.scale = 0;
     return;
   }
-  p.screen.scale = cameraDepth / p.camera.z;
-  p.screen.x = Math.round(width / 2 + (p.screen.scale * p.camera.x * width) / 2);
-  p.screen.y = Math.round(height / 2 - (p.screen.scale * p.camera.y * height) / 2);
-  p.screen.w = Math.round((p.screen.scale * roadWidth * width) / 2);
+  const s = cameraDepth / cam.z;
+  p.screen.scale = s;
+  p.screen.x = (width / 2 + (s * cam.x * width) / 2) | 0;
+  p.screen.y = (height / 2 - (s * cam.y * height) / 2) | 0;
+  p.screen.w = (s * roadWidth * width / 2) | 0;
 }
 
 export function overlap(x1, w1, x2, w2, percent) {

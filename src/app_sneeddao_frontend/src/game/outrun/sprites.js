@@ -37,6 +37,13 @@ export function drawSprite(ctx, type, x, y, scale, resolvedScale) {
   ctx.save();
   ctx.translate(x, y);
 
+  // LOD: distant sprites get simplified rendering
+  if (s < 18) {
+    drawSimplified(ctx, s, type);
+    ctx.restore();
+    return;
+  }
+
   switch (type) {
     case 'palm_tree':
       drawPalmTree(ctx, s);
@@ -71,6 +78,33 @@ export function drawSprite(ctx, type, x, y, scale, resolvedScale) {
   }
 
   ctx.restore();
+}
+
+const simplifiedColors = {
+  palm_tree:  ['#8B6914', '#228B22'],
+  pine_tree:  ['#5C3317', '#0D5B0D'],
+  bush:       [null,      '#2D8B2D'],
+  rock:       [null,      '#808080'],
+  sign_right: ['#AAA',    '#E8473C'],
+  sign_left:  ['#AAA',    '#E8473C'],
+  column:     ['#DDD',    null],
+  cactus:     ['#2D6B2D', null],
+  dead_tree:  ['#5C3317', null],
+  billboard:  ['#777',    '#1a1a2e'],
+};
+
+function drawSimplified(ctx, s, type) {
+  const colors = simplifiedColors[type] || [null, '#228B22'];
+  if (colors[0]) {
+    ctx.fillStyle = colors[0];
+    ctx.fillRect(-s * 0.04, -s * 0.5, s * 0.08, s * 0.5);
+  }
+  if (colors[1]) {
+    ctx.fillStyle = colors[1];
+    ctx.beginPath();
+    ctx.ellipse(0, colors[0] ? -s * 0.5 : -s * 0.1, s * 0.15, s * 0.12, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 function drawPalmTree(ctx, s) {

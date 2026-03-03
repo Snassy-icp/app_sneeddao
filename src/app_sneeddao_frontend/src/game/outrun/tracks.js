@@ -56,35 +56,44 @@ export const DESERT_DUSK = {
 
 function generateBeachSprites(totalSegs) {
   const sprites = [];
-  const rightSideTypes = [SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.BUSH, SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.ROCK];
-  const leftSideTypes = [SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.SIGN_LEFT, SPRITE_TYPES.BUSH, SPRITE_TYPES.PALM_TREE];
+  // Heavily palm-tree weighted, very few signs
+  const rightTypes = [SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.BUSH, SPRITE_TYPES.ROCK];
+  const leftTypes  = [SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.BUSH, SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.BUSH];
 
-  for (let i = 5; i < totalSegs - 45; i++) {
-    if (i % 3 === 0) {
-      sprites.push({
-        segment: i,
-        type: rightSideTypes[(i * 7) % rightSideTypes.length],
-        offset: 1.3 + (((i * 13) % 100) / 100) * 0.8,
-      });
-    }
-    if (i % 5 === 0) {
-      sprites.push({
-        segment: i,
-        type: leftSideTypes[(i * 11) % leftSideTypes.length],
-        offset: -1.3 - (((i * 17) % 100) / 100) * 0.8,
-      });
-    }
-    if (i % 60 === 0) {
-      sprites.push({
-        segment: i,
-        type: SPRITE_TYPES.BILLBOARD,
-        offset: (i % 120 === 0 ? 1 : -1) * (1.8 + ((i * 7) % 50) / 100),
-      });
-    }
-    if (i % 8 === 0 && i < 50) {
-      sprites.push({ segment: i, type: SPRITE_TYPES.COLUMN, offset: 1.15 });
-      sprites.push({ segment: i, type: SPRITE_TYPES.COLUMN, offset: -1.15 });
-    }
+  for (let i = 8; i < totalSegs - 45; i += 7) {
+    sprites.push({
+      segment: i,
+      type: rightTypes[(i * 7) % rightTypes.length],
+      offset: 1.3 + (((i * 13) % 100) / 100) * 0.6,
+    });
+  }
+  for (let i = 12; i < totalSegs - 45; i += 11) {
+    sprites.push({
+      segment: i,
+      type: leftTypes[(i * 11) % leftTypes.length],
+      offset: -1.3 - (((i * 17) % 100) / 100) * 0.6,
+    });
+  }
+  // Billboards every ~200 segments
+  for (let i = 100; i < totalSegs - 100; i += 200) {
+    sprites.push({
+      segment: i,
+      type: SPRITE_TYPES.BILLBOARD,
+      offset: (i % 400 < 200 ? 1 : -1) * 2.0,
+    });
+  }
+  // Signs — just a few
+  for (let i = 50; i < totalSegs - 100; i += 150) {
+    sprites.push({
+      segment: i,
+      type: SPRITE_TYPES.SIGN_RIGHT,
+      offset: 1.6,
+    });
+  }
+  // Starting columns
+  for (let i = 2; i < 30; i += 8) {
+    sprites.push({ segment: i, type: SPRITE_TYPES.COLUMN, offset: 1.12 });
+    sprites.push({ segment: i, type: SPRITE_TYPES.COLUMN, offset: -1.12 });
   }
 
   return sprites;
@@ -92,31 +101,29 @@ function generateBeachSprites(totalSegs) {
 
 function generateDesertSprites(totalSegs) {
   const sprites = [];
-  const rightTypes = [SPRITE_TYPES.CACTUS, SPRITE_TYPES.ROCK, SPRITE_TYPES.DEAD_TREE, SPRITE_TYPES.CACTUS];
-  const leftTypes = [SPRITE_TYPES.ROCK, SPRITE_TYPES.CACTUS, SPRITE_TYPES.SIGN_LEFT, SPRITE_TYPES.DEAD_TREE];
+  const rightTypes = [SPRITE_TYPES.CACTUS, SPRITE_TYPES.ROCK, SPRITE_TYPES.DEAD_TREE, SPRITE_TYPES.CACTUS, SPRITE_TYPES.ROCK];
+  const leftTypes  = [SPRITE_TYPES.ROCK, SPRITE_TYPES.CACTUS, SPRITE_TYPES.DEAD_TREE, SPRITE_TYPES.ROCK, SPRITE_TYPES.CACTUS];
 
-  for (let i = 5; i < totalSegs - 45; i++) {
-    if (i % 4 === 0) {
-      sprites.push({
-        segment: i,
-        type: rightTypes[(i * 7) % rightTypes.length],
-        offset: 1.3 + (((i * 13) % 100) / 100) * 1.0,
-      });
-    }
-    if (i % 6 === 0) {
-      sprites.push({
-        segment: i,
-        type: leftTypes[(i * 11) % leftTypes.length],
-        offset: -1.3 - (((i * 17) % 100) / 100) * 1.0,
-      });
-    }
-    if (i % 80 === 0) {
-      sprites.push({
-        segment: i,
-        type: SPRITE_TYPES.BILLBOARD,
-        offset: (i % 160 === 0 ? 1 : -1) * (1.8 + ((i * 7) % 50) / 100),
-      });
-    }
+  for (let i = 8; i < totalSegs - 45; i += 8) {
+    sprites.push({
+      segment: i,
+      type: rightTypes[(i * 7) % rightTypes.length],
+      offset: 1.3 + (((i * 13) % 100) / 100) * 0.8,
+    });
+  }
+  for (let i = 14; i < totalSegs - 45; i += 12) {
+    sprites.push({
+      segment: i,
+      type: leftTypes[(i * 11) % leftTypes.length],
+      offset: -1.3 - (((i * 17) % 100) / 100) * 0.8,
+    });
+  }
+  for (let i = 100; i < totalSegs - 100; i += 250) {
+    sprites.push({
+      segment: i,
+      type: SPRITE_TYPES.BILLBOARD,
+      offset: (i % 500 < 250 ? 1 : -1) * 2.0,
+    });
   }
 
   return sprites;
