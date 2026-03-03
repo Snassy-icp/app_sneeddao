@@ -4,7 +4,7 @@ import { encodeIcrcAccount, decodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { useTheme } from '../contexts/ThemeContext';
 import { computeAccountId } from '../utils/PrincipalUtils';
 import { bytesToHex, isDefaultSubaccount } from '../utils/AccountParser';
-import { FaCopy, FaCheck, FaKey } from 'react-icons/fa';
+import { FaCopy, FaCheck, FaKey, FaChevronDown, FaChevronUp, FaQuestionCircle } from 'react-icons/fa';
 import Header from '../components/Header';
 
 const accountPrimary = '#14b8a6';
@@ -237,6 +237,8 @@ function ToolsAccount() {
     // Principal-as-subaccount index state
     const [indexFormat, setIndexFormat] = useState('number');
     const [indexInput, setIndexInput] = useState('');
+
+    const [showHelp, setShowHelp] = useState(false);
 
     const handleCopy = useCallback(async (text, field) => {
         try {
@@ -848,8 +850,276 @@ function ToolsAccount() {
                         </div>
                     )}
                 </div>
+
+                {/* Expandable Help Section */}
+                <div style={{
+                    ...cardStyle,
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                }}>
+                    <div
+                        onClick={() => setShowHelp(!showHelp)}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                        }}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                            <FaQuestionCircle size={16} style={{ color: accountPrimary, flexShrink: 0 }} />
+                            <span style={{ fontSize: '1rem', fontWeight: '600', color: theme.colors.primaryText }}>
+                                Understanding ICP Account Formats
+                            </span>
+                        </div>
+                        {showHelp
+                            ? <FaChevronUp size={14} style={{ color: theme.colors.mutedText }} />
+                            : <FaChevronDown size={14} style={{ color: theme.colors.mutedText }} />
+                        }
+                    </div>
+
+                    {showHelp && (
+                        <div style={{
+                            marginTop: '1.25rem',
+                            fontSize: '0.88rem',
+                            lineHeight: '1.7',
+                            color: theme.colors.secondaryText,
+                        }}>
+                            <HelpSection theme={theme} />
+                        </div>
+                    )}
+                </div>
             </main>
         </div>
+    );
+}
+
+function HelpSection({ theme }) {
+    const headingStyle = {
+        fontSize: '1rem',
+        fontWeight: '600',
+        color: theme.colors.primaryText,
+        margin: '1.5rem 0 0.5rem 0',
+    };
+    const firstHeadingStyle = { ...headingStyle, marginTop: '0' };
+    const codeStyle = {
+        fontFamily: 'monospace',
+        fontSize: '0.82rem',
+        background: theme.colors.primaryBg,
+        padding: '2px 6px',
+        borderRadius: '4px',
+        wordBreak: 'break-all',
+    };
+    const blockStyle = {
+        background: theme.colors.primaryBg,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '8px',
+        padding: '0.75rem 1rem',
+        fontFamily: 'monospace',
+        fontSize: '0.8rem',
+        lineHeight: '1.6',
+        margin: '0.5rem 0',
+        overflowX: 'auto',
+        wordBreak: 'break-all',
+    };
+    const noteStyle = {
+        background: `${theme.colors.accent}10`,
+        border: `1px solid ${theme.colors.accent}30`,
+        borderRadius: '8px',
+        padding: '0.75rem 1rem',
+        margin: '0.75rem 0',
+        fontSize: '0.85rem',
+    };
+
+    return (
+        <>
+            {/* Overview */}
+            <h3 style={firstHeadingStyle}>Overview</h3>
+            <p>
+                The Internet Computer uses two different account systems. Understanding
+                when to use each is important for safely sending and receiving tokens.
+            </p>
+
+            {/* ICRC-1 Accounts */}
+            <h3 style={headingStyle}>ICRC-1 Accounts (Modern Standard)</h3>
+            <p>
+                An ICRC-1 account is a pair of two values: an <strong>owner</strong> (a principal)
+                and an optional <strong>subaccount</strong> (a 32-byte identifier). If the
+                subaccount is omitted or all zeros, it is the principal's <em>default account</em>.
+            </p>
+            <div style={blockStyle}>
+                Account = {'{'} owner: principal; subaccount: opt blob {'}'}<br />
+                Subaccount = 32 bytes (256 bits)
+            </div>
+            <p>
+                Because the principal and subaccount are stored directly (not hashed), you can
+                always see exactly who owns an account and which subaccount it belongs to. A single
+                principal can have up to 2<sup>256</sup> different accounts by varying the subaccount.
+            </p>
+            <p>
+                <strong>Textual representation:</strong> When an ICRC-1 account has a non-default
+                subaccount, it is encoded as <span style={codeStyle}>principal.checksum-subaccount</span> —
+                for example:
+            </p>
+            <div style={blockStyle}>
+                k2t6j-2nvnp-4zjm3-25dtz-6xhaa-c7boj-5gayf-oj3xs-i43lp-teber-6ae.1
+            </div>
+            <p>
+                If the subaccount is the default (all zeros), the textual form is just the
+                principal text by itself.
+            </p>
+            <div style={noteStyle}>
+                <strong>When to use:</strong> ICRC-1 accounts are used throughout the ICP ecosystem —
+                SNS tokens, DeFi protocols, DEXes, wallets, dapps, and canister-to-canister
+                transfers. <strong>Use ICRC-1 for everything unless a service specifically asks
+                for a legacy Account ID.</strong>
+            </div>
+
+            {/* Legacy Account IDs */}
+            <h3 style={headingStyle}>Legacy Account Identifiers</h3>
+            <p>
+                The original ICP ledger (predating the ICRC standards) uses a different format
+                called an <strong>Account Identifier</strong>. It is a 32-byte value displayed as
+                a 64-character hex string, computed as:
+            </p>
+            <div style={blockStyle}>
+                h = SHA-224("\x0Aaccount-id" || principal_bytes || subaccount_bytes)<br />
+                Account ID = CRC32(h) || h &nbsp;&nbsp;→&nbsp;&nbsp;32 bytes (64 hex chars)
+            </div>
+            <p>
+                Because it is a one-way hash, <strong>a legacy Account ID cannot be converted back
+                to a principal or subaccount</strong>. This provides a degree of anonymity — you
+                cannot tell who owns an account just by looking at the identifier — but it also
+                means there is no way to recover the original principal from a legacy Account ID.
+            </p>
+            <div style={noteStyle}>
+                <strong>One-way conversion:</strong> Any ICRC-1 account (principal + subaccount) can be
+                converted to a legacy Account ID, as this tool does. However, the reverse is
+                impossible — you cannot derive the principal or subaccount from a legacy Account ID.
+            </div>
+            <div style={noteStyle}>
+                <strong>When to use:</strong> Legacy Account IDs are primarily used by centralized
+                exchanges (CEXes) such as Coinbase, Binance, and others for ICP deposits and
+                withdrawals. If an exchange asks for your "Account ID" or shows you a
+                64-character hex string, that is a legacy Account Identifier. For everything else
+                on the IC, prefer ICRC-1 accounts.
+            </div>
+
+            {/* Subaccounts */}
+            <h3 style={headingStyle}>Subaccounts</h3>
+            <p>
+                A subaccount is a 32-byte (256-bit) value that distinguishes multiple accounts
+                under the same principal. The all-zeros subaccount is the <em>default</em> and
+                is usually omitted. Subaccounts can be created from various input formats:
+            </p>
+            <ul style={{ paddingLeft: '1.25rem', margin: '0.5rem 0' }}>
+                <li>
+                    <strong>Hex String</strong> — Raw hexadecimal bytes, right-aligned (zero-padded on the left).
+                    This is the most common format in developer documentation and blockchain explorers.
+                </li>
+                <li style={{ marginTop: '0.35rem' }}>
+                    <strong>Number</strong> — A decimal integer encoded as big-endian bytes, right-aligned.
+                    For example, subaccount <span style={codeStyle}>1</span> is 31 zero bytes followed
+                    by <span style={codeStyle}>0x01</span>.
+                </li>
+                <li style={{ marginTop: '0.35rem' }}>
+                    <strong>Text</strong> — A UTF-8 string placed left-aligned in the 32 bytes.
+                    Useful for human-readable named subaccounts.
+                </li>
+                <li style={{ marginTop: '0.35rem' }}>
+                    <strong>Byte Array</strong> — Comma-separated decimal byte values (0-255).
+                    Can be aligned from the left or right of the 32-byte array.
+                </li>
+                <li style={{ marginTop: '0.35rem' }}>
+                    <strong>Principal</strong> — A principal encoded into a subaccount using the
+                    standard layout described below.
+                </li>
+            </ul>
+
+            {/* Principal-derived subaccounts */}
+            <h3 style={headingStyle}>Principal-Derived Subaccounts</h3>
+            <p>
+                A common pattern on the IC is to derive a subaccount from a principal.
+                This is used, for example, when a canister needs to hold funds on behalf of a
+                specific user — it creates a subaccount from that user's principal. The standard
+                byte layout is:
+            </p>
+            <div style={blockStyle}>
+                Byte 0: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;length of principal bytes (1 byte)<br />
+                Bytes 1..N: &nbsp;&nbsp;principal bytes<br />
+                Bytes N+1..31: index / unused (zero by default)
+            </div>
+            <p>
+                For a typical user principal (29 bytes), this leaves 2 bytes of unused space at the
+                end. For a canister principal (10 bytes), there are 21 unused bytes. These trailing
+                bytes can be used as an <strong>index</strong> to generate multiple subaccounts from the
+                same principal — for example, a canister could create subaccounts 0, 1, 2, … for
+                a given user by varying the index.
+            </p>
+            <p>
+                This tool's "Principal" subaccount format lets you enter both the principal and
+                an optional index value to fill those trailing bytes.
+            </p>
+
+            {/* Summary table */}
+            <h3 style={headingStyle}>Quick Comparison</h3>
+            <div style={{ overflowX: 'auto' }}>
+                <table style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    fontSize: '0.82rem',
+                    margin: '0.5rem 0',
+                }}>
+                    <thead>
+                        <tr style={{ borderBottom: `2px solid ${theme.colors.border}` }}>
+                            <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: theme.colors.primaryText }}>Feature</th>
+                            <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: theme.colors.primaryText }}>ICRC-1 Account</th>
+                            <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: theme.colors.primaryText }}>Legacy Account ID</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {[
+                            ['Format', 'Principal + Subaccount', '64-char hex string (32 bytes)'],
+                            ['Reversible', 'Yes — principal & subaccount visible', 'No — one-way SHA-224 hash'],
+                            ['Privacy', 'Transparent (owner is visible)', 'Pseudo-anonymous (hash hides owner)'],
+                            ['Used by', 'SNS tokens, DeFi, DEXes, dapps', 'CEXes (Coinbase, Binance, etc.)'],
+                            ['Standard', 'ICRC-1 (modern)', 'ICP Ledger (legacy, pre-ICRC)'],
+                            ['Convert to other?', 'Can compute legacy Account ID', 'Cannot recover ICRC-1 account'],
+                            ['Default account', 'Subaccount = all zeros (omitted)', 'SHA-224 of principal + 32 zero bytes'],
+                        ].map(([feature, icrc1, legacy], i) => (
+                            <tr key={i} style={{ borderBottom: `1px solid ${theme.colors.border}30` }}>
+                                <td style={{ padding: '0.5rem 0.75rem', fontWeight: '500', color: theme.colors.primaryText }}>{feature}</td>
+                                <td style={{ padding: '0.5rem 0.75rem' }}>{icrc1}</td>
+                                <td style={{ padding: '0.5rem 0.75rem' }}>{legacy}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Practical advice */}
+            <h3 style={headingStyle}>Practical Advice</h3>
+            <ul style={{ paddingLeft: '1.25rem', margin: '0.5rem 0' }}>
+                <li>
+                    <strong>Sending to/from a CEX:</strong> Use the <em>Legacy Account ID</em>.
+                    Exchanges typically show you a 64-character hex string as your deposit address.
+                </li>
+                <li style={{ marginTop: '0.35rem' }}>
+                    <strong>Everything else on the IC:</strong> Use the <em>ICRC-1 account</em> format.
+                    This includes sending tokens between wallets, interacting with DeFi
+                    protocols, trading on DEXes, and any canister interaction.
+                </li>
+                <li style={{ marginTop: '0.35rem' }}>
+                    <strong>Double-check the format:</strong> If an address is a 64-character hex
+                    string, it's a legacy Account ID. If it looks like a principal (groups of
+                    lowercase letters and numbers separated by dashes, optionally
+                    with <span style={codeStyle}>.checksum-hex</span>), it's an ICRC-1 account.
+                </li>
+                <li style={{ marginTop: '0.35rem' }}>
+                    <strong>Subaccount = 0:</strong> If you don't specify a subaccount, you're
+                    using the default account. This is the most common case for regular users.
+                </li>
+            </ul>
+        </>
     );
 }
 
