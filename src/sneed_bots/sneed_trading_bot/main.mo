@@ -50,6 +50,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     var defaultMaxPriceImpactBps: Nat = 300; // 3%
     var icpswapPoolCache: [(Text, Principal)] = [];
 
+    // ICPSwap's own view of token standards (token canister ID → "icrc1"|"icrc2").
+    // ICPSwap ignores caller-provided standards and uses its internal cache,
+    // so we must match their expectation to pick the right swap path.
+    var icpswapTokenStandards: [(Text, Text)] = [];
+
     // Bot Chores: stable state for the chore system
     var choreConfigs: [(Text, BotChoreTypes.ChoreConfig)] = [];
     var choreStates: [(Text, BotChoreTypes.ChoreRuntimeState)] = [];
@@ -824,6 +829,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             });
             switch (result) {
                 case (#ok(pool)) {
+                    cacheICPSwapTokenStandard(pool.token0.address, pool.token0.standard);
+                    cacheICPSwapTokenStandard(pool.token1.address, pool.token1.standard);
                     icpswapPoolCache := Array.append(icpswapPoolCache, [(key, pool.canisterId)]);
                     ?pool.canisterId
                 };
@@ -853,6 +860,49 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             else { 0 }
         });
         Blob.fromArray(sub)
+    };
+
+    // ─── ICPSwap token-standard helpers ──────────────────────────────────────
+
+    /// Normalize an ICPSwap standard label ("ICRC1", "ICRC2", "ICP", …) to our
+    /// canonical lowercase form.  Anything that isn't explicitly ICRC2 is treated
+    /// as ICRC1 (including ICP, EXT, etc.).
+    func normalizeICPSwapStandard(raw: Text): Text {
+        if (raw == "ICRC2" or raw == "icrc2" or raw == "ICRC-2" or raw == "icrc-2") { "icrc2" }
+        else { "icrc1" }
+    };
+
+    /// Cache ICPSwap's view of one token's standard.
+    func cacheICPSwapTokenStandard(tokenAddress: Text, standard: Text) {
+        let normalized = normalizeICPSwapStandard(standard);
+        icpswapTokenStandards := Array.filter<(Text, Text)>(icpswapTokenStandards, func(e) { e.0 != tokenAddress });
+        icpswapTokenStandards := Array.append(icpswapTokenStandards, [(tokenAddress, normalized)]);
+    };
+
+    /// Get ICPSwap's view of a token's standard, querying pool metadata as a
+    /// fallback if we haven't seen this token via a factory response yet.
+    func getICPSwapTokenStandard(tokenAddress: Text, poolCid: Principal): async* Text {
+        // Check in-memory cache
+        for ((addr, std) in icpswapTokenStandards.vals()) {
+            if (addr == tokenAddress) return std;
+        };
+
+        // Fallback: query pool metadata
+        let pool: T.ICPSwapPoolActor = actor(Principal.toText(poolCid));
+        try {
+            let metaResult = await pool.metadata();
+            switch (metaResult) {
+                case (#ok(meta)) {
+                    cacheICPSwapTokenStandard(meta.token0.address, meta.token0.standard);
+                    cacheICPSwapTokenStandard(meta.token1.address, meta.token1.standard);
+                    for ((addr, std) in icpswapTokenStandards.vals()) {
+                        if (addr == tokenAddress) return std;
+                    };
+                    "icrc1"
+                };
+                case (#err(_)) { "icrc1" };
+            };
+        } catch (_) { "icrc1" };
     };
 
     /// Get token info from the registry.
@@ -2097,8 +2147,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // DEX AGGREGATOR — SWAP EXECUTION
     // ============================================
 
-    /// Execute a swap on ICPSwap using ICRC-1 path.
-    /// (Transfer to pool subaccount, then depositAndSwap)
+    /// Execute a swap on ICPSwap.
+    /// Uses ICRC-2 (approve → depositFromAndSwap) or ICRC-1 (transfer → depositAndSwap)
+    /// based on ICPSwap's own cached view of the token standard.
     func executeICPSwapSwap(quote: T.SwapQuote, slippageBps: Nat): async* T.SwapResult {
         let poolCid = switch (quote.poolCanisterId) {
             case (?p) p;
@@ -2119,52 +2170,100 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         let pool: T.ICPSwapPoolActor = actor(Principal.toText(poolCid));
         let inputLedger = getLedger(quote.inputToken);
 
-        // Step 1: Transfer input tokens to pool's subaccount for our principal
-        let selfPrincipal = Principal.fromActor(this);
-        let poolSubaccount = principalToSubaccount(selfPrincipal);
-        let transferAmount = effectiveInput + inputInfo.fee; // Pool's internal deposit costs a fee
-
-        try {
-            let transferResult = await inputLedger.icrc1_transfer({
-                to = { owner = poolCid; subaccount = ?poolSubaccount };
-                fee = ?inputInfo.fee;
-                memo = null;
-                from_subaccount = null;
-                created_at_time = null;
-                amount = transferAmount;
-            });
-
-            switch (transferResult) {
-                case (#Err(e)) {
-                    return #Err("Transfer to pool failed: " # debug_show(e));
-                };
-                case (#Ok(_)) {};
-            };
-        } catch (e) {
-            return #Err("Transfer to pool threw: " # Error.message(e));
+        let swapArgs: T.ICPSwapSwapArgs = {
+            amountIn = Nat.toText(effectiveInput);
+            zeroForOne = zfo;
+            amountOutMinimum = Nat.toText(minOutput);
+            tokenInFee = inputInfo.fee;
+            tokenOutFee = outputInfo.fee;
         };
 
-        // Step 2: depositAndSwap
-        try {
-            let swapResult = await pool.depositAndSwap({
-                amountIn = Nat.toText(effectiveInput);
-                zeroForOne = zfo;
-                amountOutMinimum = Nat.toText(minOutput);
-                tokenInFee = inputInfo.fee;
-                tokenOutFee = outputInfo.fee;
-            });
+        // Ask ICPSwap which standard it expects for this token
+        let standard = await* getICPSwapTokenStandard(Principal.toText(quote.inputToken), poolCid);
+        logEngine.logDebug("dex", "ICPSwap standard for " # Principal.toText(quote.inputToken) # ": " # standard, null, []);
 
-            switch (swapResult) {
-                case (#ok(amountOut)) {
-                    if (amountOut == 0) {
-                        return #Err("ICPSwap swap returned zero output");
+        if (standard == "icrc2") {
+            // ── ICRC-2 path: approve pool, then depositFromAndSwap ──
+            let approveAmount = effectiveInput + inputInfo.fee;
+
+            try {
+                let approveResult = await inputLedger.icrc2_approve({
+                    spender = { owner = poolCid; subaccount = null };
+                    amount = approveAmount;
+                    fee = null;
+                    memo = null;
+                    from_subaccount = null;
+                    created_at_time = null;
+                    expected_allowance = null;
+                    expires_at = null;
+                });
+
+                switch (approveResult) {
+                    case (#Err(e)) {
+                        return #Err("ICRC2 approve failed: " # debug_show(e));
                     };
-                    #Ok({ amountOut = amountOut; txId = null })
+                    case (#Ok(_)) {};
                 };
-                case (#err(e)) { #Err("ICPSwap swap failed: " # T.icpSwapErrorToText(e)) };
+            } catch (e) {
+                return #Err("ICRC2 approve threw: " # Error.message(e));
             };
-        } catch (e) {
-            #Err("ICPSwap swap threw: " # Error.message(e))
+
+            try {
+                let swapResult = await pool.depositFromAndSwap(swapArgs);
+
+                switch (swapResult) {
+                    case (#ok(amountOut)) {
+                        if (amountOut == 0) {
+                            return #Err("ICPSwap swap returned zero output");
+                        };
+                        #Ok({ amountOut = amountOut; txId = null })
+                    };
+                    case (#err(e)) { #Err("ICPSwap swap failed: " # T.icpSwapErrorToText(e)) };
+                };
+            } catch (e) {
+                #Err("ICPSwap swap threw: " # Error.message(e))
+            };
+        } else {
+            // ── ICRC-1 path: transfer to pool subaccount, then depositAndSwap ──
+            let selfPrincipal = Principal.fromActor(this);
+            let poolSubaccount = principalToSubaccount(selfPrincipal);
+            let transferAmount = effectiveInput + inputInfo.fee;
+
+            try {
+                let transferResult = await inputLedger.icrc1_transfer({
+                    to = { owner = poolCid; subaccount = ?poolSubaccount };
+                    fee = ?inputInfo.fee;
+                    memo = null;
+                    from_subaccount = null;
+                    created_at_time = null;
+                    amount = transferAmount;
+                });
+
+                switch (transferResult) {
+                    case (#Err(e)) {
+                        return #Err("Transfer to pool failed: " # debug_show(e));
+                    };
+                    case (#Ok(_)) {};
+                };
+            } catch (e) {
+                return #Err("Transfer to pool threw: " # Error.message(e));
+            };
+
+            try {
+                let swapResult = await pool.depositAndSwap(swapArgs);
+
+                switch (swapResult) {
+                    case (#ok(amountOut)) {
+                        if (amountOut == 0) {
+                            return #Err("ICPSwap swap returned zero output");
+                        };
+                        #Ok({ amountOut = amountOut; txId = null })
+                    };
+                    case (#err(e)) { #Err("ICPSwap swap failed: " # T.icpSwapErrorToText(e)) };
+                };
+            } catch (e) {
+                #Err("ICPSwap swap threw: " # Error.message(e))
+            };
         };
     };
 
