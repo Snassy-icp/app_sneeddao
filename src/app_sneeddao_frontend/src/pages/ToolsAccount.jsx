@@ -251,7 +251,7 @@ function ToolsAccount() {
     const [showHelp, setShowHelp] = useState(false);
 
     // Token balance lookup
-    const [selectedToken, setSelectedToken] = useState('');
+    const [selectedToken, setSelectedToken] = useState('ryjl3-tyaaa-aaaaa-aaaba-cai');
     const [tokenMeta, setTokenMeta] = useState(null); // { symbol, decimals }
     const [balance, setBalance] = useState(null);
     const [balanceLoading, setBalanceLoading] = useState(false);
