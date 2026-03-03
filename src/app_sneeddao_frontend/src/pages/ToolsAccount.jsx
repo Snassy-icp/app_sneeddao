@@ -1,11 +1,14 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Principal } from '@dfinity/principal';
 import { encodeIcrcAccount, decodeIcrcAccount } from '@dfinity/ledger-icrc';
+import { HttpAgent } from '@dfinity/agent';
 import { useTheme } from '../contexts/ThemeContext';
 import { computeAccountId } from '../utils/PrincipalUtils';
 import { bytesToHex, isDefaultSubaccount } from '../utils/AccountParser';
-import { FaCopy, FaCheck, FaKey, FaChevronDown, FaChevronUp, FaQuestionCircle } from 'react-icons/fa';
+import { FaCopy, FaCheck, FaKey, FaChevronDown, FaChevronUp, FaQuestionCircle, FaCoins, FaSpinner } from 'react-icons/fa';
 import Header from '../components/Header';
+import TokenSelector from '../components/TokenSelector';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 
 const accountPrimary = '#14b8a6';
 const accountSecondary = '#2dd4bf';
@@ -24,6 +27,13 @@ const customStyles = `
 }
 .account-float {
     animation: float 3s ease-in-out infinite;
+}
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+.account-spin {
+    animation: spin 1s linear infinite;
 }
 `;
 
@@ -240,6 +250,13 @@ function ToolsAccount() {
 
     const [showHelp, setShowHelp] = useState(false);
 
+    // Token balance lookup
+    const [selectedToken, setSelectedToken] = useState('');
+    const [tokenMeta, setTokenMeta] = useState(null); // { symbol, decimals }
+    const [balance, setBalance] = useState(null);
+    const [balanceLoading, setBalanceLoading] = useState(false);
+    const balanceFetchId = useRef(0);
+
     const handleCopy = useCallback(async (text, field) => {
         try {
             await navigator.clipboard.writeText(text);
@@ -353,6 +370,64 @@ function ToolsAccount() {
 
         return { principalText, subHex, subBytesStr, hasNonDefaultSub, subAsPrincipal, icrc1Account, legacyAccountId };
     }, [parsed]);
+
+    // Fetch balance when principal/subaccount/token changes
+    useEffect(() => {
+        if (!parsed.principal || !selectedToken) {
+            setBalance(null);
+            setTokenMeta(null);
+            return;
+        }
+
+        const fetchId = ++balanceFetchId.current;
+        setBalanceLoading(true);
+        setBalance(null);
+
+        (async () => {
+            try {
+                const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
+                    ? 'https://ic0.app' : 'http://localhost:4943';
+                const agent = new HttpAgent({ host });
+                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                    await agent.fetchRootKey();
+                }
+
+                const ledger = createLedgerActor(selectedToken, { agent });
+                const subBytes = parsed.subaccount && !isDefaultSubaccount(parsed.subaccount)
+                    ? parsed.subaccount : null;
+                const account = {
+                    owner: parsed.principal,
+                    subaccount: subBytes ? [Array.from(subBytes)] : [],
+                };
+
+                const [bal, dec, sym] = await Promise.all([
+                    ledger.icrc1_balance_of(account),
+                    ledger.icrc1_decimals(),
+                    ledger.icrc1_symbol(),
+                ]);
+
+                if (fetchId !== balanceFetchId.current) return;
+                setBalance(BigInt(bal));
+                setTokenMeta({ decimals: Number(dec), symbol: sym });
+            } catch (err) {
+                if (fetchId !== balanceFetchId.current) return;
+                console.error('Balance fetch error:', err);
+                setBalance(null);
+                setTokenMeta(null);
+            } finally {
+                if (fetchId === balanceFetchId.current) setBalanceLoading(false);
+            }
+        })();
+    }, [parsed.principal, parsed.subaccount, selectedToken]);
+
+    const formattedBalance = useMemo(() => {
+        if (balance === null || !tokenMeta) return null;
+        const divisor = 10 ** tokenMeta.decimals;
+        const whole = balance / BigInt(divisor);
+        const frac = balance % BigInt(divisor);
+        const fracStr = frac.toString().padStart(tokenMeta.decimals, '0').replace(/0+$/, '');
+        return fracStr ? `${whole}.${fracStr}` : whole.toString();
+    }, [balance, tokenMeta]);
 
     // --- Styles ---
 
@@ -850,6 +925,57 @@ function ToolsAccount() {
                         </div>
                     )}
                 </div>
+
+                {/* Token Balance Lookup */}
+                {summary && (
+                    <div style={cardStyle}>
+                        <h2 style={{ fontSize: '1.1rem', fontWeight: '600', margin: '0 0 0.75rem 0', color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <FaCoins size={16} style={{ color: accountPrimary }} />
+                            Token Balance
+                        </h2>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            <div>
+                                <label style={labelStyle}>Token</label>
+                                <TokenSelector
+                                    value={selectedToken}
+                                    onChange={setSelectedToken}
+                                    placeholder="Select a token to check balance..."
+                                    allowCustom
+                                    style={{ maxWidth: 'none' }}
+                                />
+                            </div>
+                            {selectedToken && (
+                                <div style={{
+                                    padding: '0.75rem 1rem',
+                                    background: theme.colors.primaryBg,
+                                    borderRadius: '10px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    minHeight: '44px',
+                                }}>
+                                    <span style={{ fontSize: '0.82rem', color: theme.colors.mutedText, fontWeight: '500' }}>
+                                        Balance
+                                    </span>
+                                    {balanceLoading ? (
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                            <FaSpinner size={14} className="account-spin" /> Loading...
+                                        </span>
+                                    ) : formattedBalance !== null ? (
+                                        <span style={{ fontFamily: 'monospace', fontSize: '1rem', fontWeight: '600', color: theme.colors.primaryText }}>
+                                            {formattedBalance} <span style={{ fontWeight: '500', fontSize: '0.85rem', color: theme.colors.secondaryText }}>{tokenMeta?.symbol}</span>
+                                        </span>
+                                    ) : (
+                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>
+                                            {selectedToken ? 'Unable to fetch balance' : '\u2014'}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {/* Expandable Help Section */}
                 <div style={{
