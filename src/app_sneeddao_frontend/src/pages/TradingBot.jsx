@@ -3005,6 +3005,7 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
     const [hasMore, setHasMore] = useState(false);
     const [filterStatus, setFilterStatus] = useState('');
     const [filterChoreType, setFilterChoreType] = useState('');
+    const [filterActionType, setFilterActionType] = useState('');
     // Snapshots indexed by tradeLogId: { before: snap|null, after: snap|null }
     const [snapMap, setSnapMap] = useState({});
     // Track which trade log entries have their snapshot section expanded
@@ -3036,8 +3037,10 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
 
     const filterStatusRef = React.useRef(filterStatus);
     const filterChoreTypeRef = React.useRef(filterChoreType);
+    const filterActionTypeRef = React.useRef(filterActionType);
     filterStatusRef.current = filterStatus;
     filterChoreTypeRef.current = filterChoreType;
+    filterActionTypeRef.current = filterActionType;
 
     // Load trade entries + batch-fetch all related snapshots
     const loadData = useCallback(async (pg) => {
@@ -3047,7 +3050,8 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
             const q = {
                 startId: [], limit: [PAGE_SIZE], offset: [(pg ?? 0) * PAGE_SIZE],
                 choreId: [], choreTypeId: filterChoreTypeRef.current ? [filterChoreTypeRef.current] : [],
-                actionType: [], inputToken: [], outputToken: [],
+                actionType: filterActionTypeRef.current !== '' ? [Number(filterActionTypeRef.current)] : [],
+                inputToken: [], outputToken: [],
                 status: filterStatusRef.current ? [{ [filterStatusRef.current]: null }] : [],
                 fromTime: [], toTime: [],
             };
@@ -3326,6 +3330,15 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                     <option value="rebalance">Rebalance</option>
                     <option value="move-funds">Move Funds</option>
                     <option value="distribute-funds">Distribute</option>
+                </select>
+                <select value={filterActionType} onChange={(e) => setFilterActionType(e.target.value)} style={{ ...inputStyle, appearance: 'auto', minWidth: '120px' }}>
+                    <option value="">All actions</option>
+                    <option value="0">Trade (Swap)</option>
+                    <option value="1">Fund Purse</option>
+                    <option value="2">Reclaim from Purse</option>
+                    <option value="3">Send</option>
+                    <option value="4">Detected Inflow</option>
+                    <option value="5">Detected Outflow</option>
                 </select>
                 <button onClick={applyFilters} style={{ ...inputStyle, cursor: 'pointer', background: `${accentColor}15`, border: `1px solid ${accentColor}30`, color: accentColor, fontWeight: '500' }}>Filter</button>
             </div>
@@ -5423,6 +5436,11 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
     const [dailyPriceCandles, setDailyPriceCandles] = useState([]);
     const [selectedPurse, setSelectedPurse] = useState('__account__'); // '__account__' = whole account
     const [enabledPurses, setEnabledPurses] = useState([]); // purse IDs with enabled purses
+    const [showAdjustCapital, setShowAdjustCapital] = useState(false);
+    const [adjustIcp, setAdjustIcp] = useState('');
+    const [adjustUsd, setAdjustUsd] = useState('');
+    const [adjusting, setAdjusting] = useState(false);
+    const [adjustResult, setAdjustResult] = useState('');
     const [purseAllocations, setPurseAllocations] = useState([]); // full allocation data per purse
     const [purseSnapshots, setPurseSnapshots] = useState([]);
     const [purseLoading, setPurseLoading] = useState(false);
@@ -5459,6 +5477,28 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
             setLoading(false);
         }
     }, [getReadyBotActor]);
+
+    const handleAdjustCapital = async () => {
+        const icpDelta = Math.round(parseFloat(adjustIcp || '0') * 1e8);
+        const usdDelta = Math.round(parseFloat(adjustUsd || '0') * 1e8);
+        if (icpDelta === 0 && usdDelta === 0) return;
+        setAdjusting(true);
+        setAdjustResult('');
+        try {
+            const bot = await getReadyBotActor();
+            if (!bot) throw new Error('Bot actor not available');
+            await bot.adjustCapitalDeployed(BigInt(icpDelta), BigInt(usdDelta));
+            setAdjustResult('Capital adjusted successfully.');
+            setAdjustIcp('');
+            setAdjustUsd('');
+            setShowAdjustCapital(false);
+            loadData();
+        } catch (err) {
+            setAdjustResult('Error: ' + (err?.message || String(err)));
+        } finally {
+            setAdjusting(false);
+        }
+    };
 
     // Load purse-specific snapshots when a purse is selected
     useEffect(() => {
@@ -5718,13 +5758,43 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
                 {!isPurseView ? <>
                     {/* Net Capital Deployed */}
                     <div style={cardStyle}>
-                        <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Net Capital Deployed</div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>Net Capital Deployed</div>
+                            <button onClick={() => { setShowAdjustCapital(!showAdjustCapital); setAdjustResult(''); }}
+                                title="Adjust capital deployed"
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.colors.mutedText, fontSize: '0.65rem', padding: '2px 4px' }}
+                            ><FaEdit style={{ fontSize: '0.65rem' }} /></button>
+                        </div>
                         <div style={{ fontSize: '1.2rem', fontWeight: '700', color: theme.colors.text }}>
                             {formatNum(capitalIcp, 'icp')}
                         </div>
                         <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>
                             {formatNum(capitalUsd, 'usd')}
                         </div>
+                        {showAdjustCapital && (
+                            <div style={{ marginTop: '10px', padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                <div style={{ fontSize: '0.72rem', color: theme.colors.secondaryText, marginBottom: '6px' }}>
+                                    Enter adjustment deltas (negative to reduce):
+                                </div>
+                                <div style={{ display: 'flex', gap: '6px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                                    <input type="number" step="any" placeholder="ICP delta" value={adjustIcp} onChange={e => setAdjustIcp(e.target.value)}
+                                        style={{ flex: 1, minWidth: '80px', background: theme.colors.inputBg, border: `1px solid ${theme.colors.border}`, borderRadius: '6px', padding: '5px 8px', color: theme.colors.primaryText, fontSize: '0.78rem' }} />
+                                    <input type="number" step="any" placeholder="USD delta" value={adjustUsd} onChange={e => setAdjustUsd(e.target.value)}
+                                        style={{ flex: 1, minWidth: '80px', background: theme.colors.inputBg, border: `1px solid ${theme.colors.border}`, borderRadius: '6px', padding: '5px 8px', color: theme.colors.primaryText, fontSize: '0.78rem' }} />
+                                </div>
+                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                    <button onClick={handleAdjustCapital} disabled={adjusting || (!adjustIcp && !adjustUsd)}
+                                        style={{ background: `linear-gradient(135deg, ${accentColor}, ${theme.colors.accentDark || accentColor})`, border: 'none', color: 'white', borderRadius: '6px', padding: '4px 12px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, opacity: adjusting ? 0.6 : 1 }}>
+                                        {adjusting ? 'Adjusting...' : 'Apply'}
+                                    </button>
+                                    <button onClick={() => { setShowAdjustCapital(false); setAdjustResult(''); }}
+                                        style={{ background: 'none', border: `1px solid ${theme.colors.border}`, borderRadius: '6px', padding: '4px 12px', cursor: 'pointer', fontSize: '0.72rem', color: theme.colors.secondaryText }}>
+                                        Cancel
+                                    </button>
+                                </div>
+                                {adjustResult && <div style={{ marginTop: '6px', fontSize: '0.72rem', color: adjustResult.startsWith('Error') ? '#ef4444' : '#22c55e' }}>{adjustResult}</div>}
+                            </div>
+                        )}
                     </div>
                     {/* Trading P&L */}
                     <div style={cardStyle}>
