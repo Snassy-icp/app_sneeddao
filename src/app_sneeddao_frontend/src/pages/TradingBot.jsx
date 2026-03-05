@@ -6110,6 +6110,14 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
         const cached = getTokenMetadataSync(principalText);
         return cached?.symbol || principalText.slice(0, 8) + '..';
     };
+    const dec = (principalText) => {
+        const entry = tokenRegistry.find(t => (t.ledgerCanisterId?.toText?.() || t.ledgerCanisterId?.toString?.() || '') === principalText);
+        if (entry?.decimals != null) return Number(entry.decimals);
+        const cached = getTokenMetadataSync(principalText);
+        return cached?.decimals ?? 8;
+    };
+    const humanRate = (rawOutput, rawInput, outputDec, inputDec) =>
+        rawInput > 0 ? (rawOutput / Math.pow(10, outputDec)) / (rawInput / Math.pow(10, inputDec)) : 0;
 
     // Build pair options from lastKnownPrices, excluding self-pairs (e.g. SNEED/SNEED)
     // defaultFlipped: true when ICP/ckUSDC is the cached inputToken (we want it as quote/denominator)
@@ -6133,19 +6141,22 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
                 const aOther = a.inputPrincipal === ICP_LEDGER ? a.outputPrincipal : a.inputPrincipal;
                 const bOther = b.inputPrincipal === ICP_LEDGER ? b.outputPrincipal : b.inputPrincipal;
                 if (aOther === bOther) continue;
-                // Rate of aOther in ICP terms
+                // Rate of aOther in ICP terms (decimal-normalized)
                 const aQ = a.cached.quote;
                 const aInpAmt = Number(aQ.inputAmount);
                 const aOutAmt = Number(aQ.expectedOutput);
+                const aOtherDec = dec(aOther);
+                const icpDec = dec(ICP_LEDGER);
                 const aIcpPerOther = a.inputPrincipal === ICP_LEDGER
-                    ? (aOutAmt > 0 ? aInpAmt / aOutAmt : 0)  // cache: ICP→Other, so ICP/Other
-                    : (aInpAmt > 0 ? aOutAmt / aInpAmt : 0);  // cache: Other→ICP, so ICP/Other
+                    ? (humanRate(aOutAmt, aInpAmt, aOtherDec, icpDec) > 0 ? 1 / humanRate(aOutAmt, aInpAmt, aOtherDec, icpDec) : 0)
+                    : humanRate(aOutAmt, aInpAmt, icpDec, aOtherDec);
                 const bQ = b.cached.quote;
                 const bInpAmt = Number(bQ.inputAmount);
                 const bOutAmt = Number(bQ.expectedOutput);
+                const bOtherDec = dec(bOther);
                 const bIcpPerOther = b.inputPrincipal === ICP_LEDGER
-                    ? (bOutAmt > 0 ? bInpAmt / bOutAmt : 0)
-                    : (bInpAmt > 0 ? bOutAmt / bInpAmt : 0);
+                    ? (humanRate(bOutAmt, bInpAmt, bOtherDec, icpDec) > 0 ? 1 / humanRate(bOutAmt, bInpAmt, bOtherDec, icpDec) : 0)
+                    : humanRate(bOutAmt, bInpAmt, icpDec, bOtherDec);
                 if (aIcpPerOther === 0 || bIcpPerOther === 0) continue;
                 // aOther/bOther = (ICP per aOther) / (ICP per bOther) = how many bOther per 1 aOther
                 const rate = aIcpPerOther / bIcpPerOther;
@@ -6203,20 +6214,24 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
         ? (activePairInfo.defaultFlipped !== flippedPairs.has(activePairInfo.key))
         : false;
 
-    // Helper: extract "ICP per token" time-series from a constituent pair's history
+    // Helper: extract "ICP per token" time-series from a constituent pair's history (decimal-normalized)
     const icpPerTokenSeries = React.useCallback((pairKey, otherPrincipal, inputPrincipal) => {
         const entries = historyByPair.get(pairKey) || [];
         const currentEntry = lastKnownPrices.find(([k]) => k === pairKey);
         const all = currentEntry ? [...entries, currentEntry[1]] : entries;
+        const icpDec = dec(ICP_LEDGER);
+        const otherDec = dec(otherPrincipal);
         return all.map(entry => {
             const ts = Number(entry.fetchedAt) / 1_000_000;
             const q = entry.quote;
             const inAmt = Number(q.inputAmount);
             const outAmt = Number(q.expectedOutput);
             const entryInp = entry.inputToken?.toText?.() || entry.inputToken?.toString?.() || '';
-            // "ICP per otherToken": if entry is ICP→Other, rate = inAmt/outAmt; if Other→ICP, rate = outAmt/inAmt
             const isIcpInput = entryInp === ICP_LEDGER;
-            const icpPer = isIcpInput ? (outAmt > 0 ? inAmt / outAmt : 0) : (inAmt > 0 ? outAmt / inAmt : 0);
+            // "human ICP per 1 human otherToken"
+            const icpPer = isIcpInput
+                ? (humanRate(outAmt, inAmt, otherDec, icpDec) > 0 ? 1 / humanRate(outAmt, inAmt, otherDec, icpDec) : 0)
+                : humanRate(outAmt, inAmt, icpDec, otherDec);
             return { ts, icpPer };
         }).filter(d => d.icpPer > 0).sort((a, b) => a.ts - b.ts);
     }, [historyByPair, lastKnownPrices]);
@@ -6262,6 +6277,9 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
         }
 
         const canonicalInput = activePairInfo.inputPrincipal;
+        const canonicalOutput = activePairInfo.outputPrincipal;
+        const canInDec = dec(canonicalInput);
+        const canOutDec = dec(canonicalOutput);
         const entries = historyByPair.get(activePair) || [];
         const currentEntry = lastKnownPrices.find(([k]) => k === activePair);
         const allEntries = currentEntry ? [...entries, currentEntry[1]] : entries;
@@ -6274,10 +6292,12 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
             const entryInput = entry.inputToken?.toText?.() || entry.inputToken?.toString?.() || '';
             const sameDirection = entryInput === canonicalInput;
             let price = sameDirection
-                ? (inputAmt > 0 ? outputAmt / inputAmt : 0)
-                : (outputAmt > 0 ? inputAmt / outputAmt : 0);
-            let spotPrice = Number(q.spotPriceE8s) / 1e8;
-            spotPrice = spotPrice > 0 ? (sameDirection ? spotPrice : 1 / spotPrice) : null;
+                ? humanRate(outputAmt, inputAmt, canOutDec, canInDec)
+                : humanRate(inputAmt, outputAmt, canOutDec, canInDec);
+            const rawSpot = Number(q.spotPriceE8s);
+            const entryOutDec = sameDirection ? canOutDec : canInDec;
+            let spotPrice = rawSpot > 0 ? rawSpot / Math.pow(10, entryOutDec) : null;
+            if (!sameDirection && spotPrice != null && spotPrice > 0) spotPrice = 1 / spotPrice;
             if (activeEffectiveFlipped) {
                 price = price > 0 ? 1 / price : 0;
                 spotPrice = spotPrice != null && spotPrice > 0 ? 1 / spotPrice : null;
@@ -6310,11 +6330,18 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
         const entries = dailyPriceCandleData.get(activePair) || [];
         return entries.map(c => {
             const ts = Number(c.date) / 1_000_000;
-            let o = Number(c.openE8s) / 1e8;
-            let h = Number(c.highE8s) / 1e8;
-            let l = Number(c.lowE8s) / 1e8;
-            let cl = Number(c.closeE8s) / 1e8;
-            if (activeEffectiveFlipped) {
+            const candleOutText = c.outputToken?.toText?.() || c.outputToken?.toString?.() || '';
+            const candleInText = c.inputToken?.toText?.() || c.inputToken?.toString?.() || '';
+            const candleOutDec = dec(candleOutText);
+            const divisor = Math.pow(10, candleOutDec);
+            let o = Number(c.openE8s) / divisor;
+            let h = Number(c.highE8s) / divisor;
+            let l = Number(c.lowE8s) / divisor;
+            let cl = Number(c.closeE8s) / divisor;
+            // Candle is in canonical direction; if activePairInfo direction is reversed, invert
+            const candleReversed = activePairInfo && candleInText !== activePairInfo.inputPrincipal;
+            const needsInvert = candleReversed !== activeEffectiveFlipped; // XOR: one but not both
+            if (needsInvert) {
                 const io = o > 0 ? 1 / o : 0;
                 const ih = h > 0 ? 1 / h : 0;
                 const il = l > 0 ? 1 / l : 0;
@@ -6347,7 +6374,7 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
                     const q = p.cached.quote;
                     const inputAmt = Number(q.inputAmount);
                     const outputAmt = Number(q.expectedOutput);
-                    rawRate = inputAmt > 0 ? (outputAmt / inputAmt) : 0;
+                    rawRate = humanRate(outputAmt, inputAmt, dec(p.outputPrincipal), dec(p.inputPrincipal));
                     const age = (Date.now() - Number(p.cached.fetchedAt) / 1_000_000) / 1000;
                     ageLabel = age < 60 ? `${Math.round(age)}s` : age < 3600 ? `${Math.round(age / 60)}m` : `${(age / 3600).toFixed(1)}h`;
                 }
