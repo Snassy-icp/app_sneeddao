@@ -3011,6 +3011,7 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
     // Track which trade log entries have their snapshot section expanded
     const [expandedSnaps, setExpandedSnaps] = useState(new Set());
     const [showDuplicateCleanup, setShowDuplicateCleanup] = useState(false);
+    const [deletingEntryId, setDeletingEntryId] = useState(null);
 
     // Collect token IDs from entries for metadata resolution
     const entryTokenIds = React.useMemo(() => {
@@ -3140,6 +3141,22 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
         setLoading(true);
         setSnapMap({});
         loadData(0);
+    };
+
+    const handleDeleteEntry = async (entryId) => {
+        if (!window.confirm(`Delete entry #${entryId} and reverse its capital impact?`)) return;
+        setDeletingEntryId(entryId);
+        try {
+            const bot = await getReadyBotActor();
+            if (!bot) return;
+            await bot.deleteTradeLogEntries([entryId]);
+            setSnapMap({});
+            loadData(page);
+        } catch (err) {
+            alert('Failed to delete: ' + (err?.message || String(err)));
+        } finally {
+            setDeletingEntryId(null);
+        }
     };
 
     const cardStyle = {
@@ -3388,7 +3405,26 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                                         )}
                                         <span style={{ color: theme.colors.mutedText }}>{ACTION_TYPE_LABELS[Number(e.actionType)] || `Type ${Number(e.actionType)}`}</span>
                                     </div>
-                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>{new Date(Number(e.timestamp) / 1_000_000).toLocaleString()}</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>{new Date(Number(e.timestamp) / 1_000_000).toLocaleString()}</span>
+                                        {isReconciliation && (
+                                            <button
+                                                onClick={() => handleDeleteEntry(Number(e.id))}
+                                                disabled={deletingEntryId === Number(e.id)}
+                                                title="Remove this entry and reverse its capital impact"
+                                                style={{
+                                                    background: 'none', border: `1px solid ${theme.colors.border}`,
+                                                    borderRadius: '4px', padding: '1px 6px', cursor: 'pointer',
+                                                    fontSize: '0.65rem', color: theme.colors.mutedText,
+                                                    display: 'flex', alignItems: 'center', gap: '3px',
+                                                    opacity: deletingEntryId === Number(e.id) ? 0.5 : 1,
+                                                }}
+                                            >
+                                                <FaTrash style={{ fontSize: '0.55rem' }} />
+                                                {deletingEntryId === Number(e.id) ? 'Removing...' : 'Remove'}
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '4px', color: theme.colors.secondaryText }}>
                                     {isReconciliation ? (
