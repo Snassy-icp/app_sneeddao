@@ -6203,8 +6203,8 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
         return map;
     }, [priceHistory]);
 
-    // Default to first pair if none selected
-    const activePair = selectedPricepair || (pairOptions.length > 0 ? pairOptions[0].key : null);
+    // Default to first non-derived pair if none selected
+    const activePair = selectedPricepair || (pairOptions.find(p => !p.derived) || pairOptions[0])?.key || null;
 
     // Get the pair info for display
     const activePairInfo = pairOptions.find(p => p.key === activePair);
@@ -6324,9 +6324,75 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
         return { current, first, high, low, change, count: prices.length };
     }, [chartData]);
 
+    // Convert a candle entry to human-readable "ICP per otherToken" OHLC
+    const candleToIcpPer = React.useCallback((c) => {
+        const candleOutText = c.outputToken?.toText?.() || c.outputToken?.toString?.() || '';
+        const candleInText = c.inputToken?.toText?.() || c.inputToken?.toString?.() || '';
+        const outDec = dec(candleOutText);
+        const divisor = Math.pow(10, outDec);
+        let o = Number(c.openE8s) / divisor;
+        let h = Number(c.highE8s) / divisor;
+        let l = Number(c.lowE8s) / divisor;
+        let cl = Number(c.closeE8s) / divisor;
+        // Candle is in canonical direction (inputToken → outputToken).
+        // We want "ICP per otherToken". If ICP is the input, rate = output/input = other per ICP, so invert.
+        const icpIsInput = candleInText === ICP_LEDGER;
+        if (icpIsInput) {
+            // Stored rate = otherPerIcp; we want icpPerOther = 1/rate
+            const inv = (v) => v > 0 ? 1 / v : 0;
+            const io = inv(o), ih = inv(h), il = inv(l), ic = inv(cl);
+            return { o: io, h: Math.max(io, ih, il, ic), l: Math.min(io || Infinity, ih || Infinity, il || Infinity, ic || Infinity) === Infinity ? 0 : Math.min(io || Infinity, ih || Infinity, il || Infinity, ic || Infinity), cl: ic };
+        }
+        // ICP is the output: stored rate = ICP per otherToken already
+        return { o, h, l, cl };
+    }, []);
+
     // Build daily candle chart data for the selected pair (also respects flip)
     const dailyCandleChartData = React.useMemo(() => {
-        if (!activePair || !dailyPriceCandleData || (activePairInfo && activePairInfo.derived)) return [];
+        if (!activePair || !dailyPriceCandleData) return [];
+
+        if (activePairInfo && activePairInfo.derived) {
+            const { constituentA, constituentB } = activePairInfo;
+            if (!constituentA || !constituentB) return [];
+            const candlesA = dailyPriceCandleData.get(constituentA.key) || [];
+            const candlesB = dailyPriceCandleData.get(constituentB.key) || [];
+            if (candlesA.length === 0 || candlesB.length === 0) return [];
+            // Index B candles by date for O(1) lookup
+            const bByDate = new Map();
+            for (const cb of candlesB) bByDate.set(Number(cb.date), cb);
+            const result = [];
+            for (const ca of candlesA) {
+                const dateKey = Number(ca.date);
+                const cb = bByDate.get(dateKey);
+                if (!cb) continue;
+                const a = candleToIcpPer(ca);
+                const b = candleToIcpPer(cb);
+                if (a.cl <= 0 || b.cl <= 0) continue;
+                // aOther/bOther cross-rate: icpPerA / icpPerB
+                let o = b.o > 0 ? a.o / b.o : 0;
+                let cl = b.cl > 0 ? a.cl / b.cl : 0;
+                let h = b.l > 0 ? a.h / b.l : 0; // best case: A high, B low
+                let l = b.h > 0 ? a.l / b.h : 0; // worst case: A low, B high
+                if (activeEffectiveFlipped) {
+                    const inv = (v) => v > 0 ? 1 / v : 0;
+                    const io = inv(o), ih = inv(h), il = inv(l), ic = inv(cl);
+                    o = io; cl = ic;
+                    h = Math.max(io, ih, il, ic);
+                    l = Math.min(io || Infinity, ih || Infinity, il || Infinity, ic || Infinity);
+                    if (l === Infinity) l = 0;
+                }
+                const ts = dateKey / 1_000_000;
+                result.push({
+                    time: ts,
+                    label: new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+                    open: o, high: h, low: l, close: cl,
+                    range: [l, h],
+                    quoteCount: Math.min(Number(ca.quoteCount), Number(cb.quoteCount)),
+                });
+            }
+            return result.filter(d => d.close > 0);
+        }
+
         const entries = dailyPriceCandleData.get(activePair) || [];
         return entries.map(c => {
             const ts = Number(c.date) / 1_000_000;
@@ -6338,14 +6404,11 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
             let h = Number(c.highE8s) / divisor;
             let l = Number(c.lowE8s) / divisor;
             let cl = Number(c.closeE8s) / divisor;
-            // Candle is in canonical direction; if activePairInfo direction is reversed, invert
             const candleReversed = activePairInfo && candleInText !== activePairInfo.inputPrincipal;
-            const needsInvert = candleReversed !== activeEffectiveFlipped; // XOR: one but not both
+            const needsInvert = candleReversed !== activeEffectiveFlipped;
             if (needsInvert) {
-                const io = o > 0 ? 1 / o : 0;
-                const ih = h > 0 ? 1 / h : 0;
-                const il = l > 0 ? 1 / l : 0;
-                const ic = cl > 0 ? 1 / cl : 0;
+                const inv = (v) => v > 0 ? 1 / v : 0;
+                const io = inv(o), ih = inv(h), il = inv(l), ic = inv(cl);
                 o = io; cl = ic;
                 h = Math.max(io, ih, il, ic);
                 l = Math.min(io || Infinity, ih || Infinity, il || Infinity, ic || Infinity);
@@ -6359,7 +6422,7 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
                 quoteCount: Number(c.quoteCount),
             };
         }).filter(d => d.close > 0);
-    }, [activePair, dailyPriceCandleData, activePairInfo, activeEffectiveFlipped]);
+    }, [activePair, dailyPriceCandleData, activePairInfo, activeEffectiveFlipped, candleToIcpPer]);
 
     const renderPriceCards = (pairs) => (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: activePair ? '0' : undefined }}>
@@ -6550,7 +6613,7 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
                         ) : (
                             <div style={{ textAlign: 'center', padding: '30px 20px', color: theme.colors.secondaryText, fontSize: '0.85rem', paddingLeft: '16px' }}>
                                 {activePairInfo?.derived
-                                    ? 'Daily candles are not available for derived pairs. Switch to Detailed view.'
+                                    ? 'Not enough overlapping candle data for constituent pairs.'
                                     : 'No daily price candles for this pair yet.'}
                             </div>
                         )
