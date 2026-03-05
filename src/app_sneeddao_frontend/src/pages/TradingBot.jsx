@@ -25,6 +25,7 @@ import { decodeIcrcAccount, encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { computeAccountId } from '../utils/PrincipalUtils';
 import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay, FaArrowUp, FaArrowDown, FaPaperPlane, FaExchangeAlt, FaWallet, FaShieldAlt, FaToggleOn, FaToggleOff, FaCopy, FaDownload, FaArrowRight, FaChevronDown, FaChevronUp, FaTag, FaGlobe, FaEyeSlash, FaRobot, FaMedkit, FaCode, FaCamera, FaCoins, FaCogs, FaBoxes } from 'react-icons/fa';
 import TradingBotDSLPanel from '../components/TradingBotDSLPanel';
+import DuplicateCleanupDialog from '../components/DuplicateCleanupDialog';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createIcpSwapFactoryActor, canisterId as icpSwapFactoryCanisterId } from 'external/icp_swap_factory';
 import { principalToSubaccount } from '../services/dex/types';
@@ -3008,6 +3009,7 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
     const [snapMap, setSnapMap] = useState({});
     // Track which trade log entries have their snapshot section expanded
     const [expandedSnaps, setExpandedSnaps] = useState(new Set());
+    const [showDuplicateCleanup, setShowDuplicateCleanup] = useState(false);
 
     // Collect token IDs from entries for metadata resolution
     const entryTokenIds = React.useMemo(() => {
@@ -3289,6 +3291,18 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                             return lines.join('\n') + '\n';
                         }}
                     />
+                    <button
+                        onClick={() => setShowDuplicateCleanup(true)}
+                        title="Cleanup Duplicate Inflows"
+                        style={{
+                            background: `${accentColor}12`, border: `1px solid ${accentColor}30`,
+                            borderRadius: '6px', padding: '3px 10px', cursor: 'pointer',
+                            fontSize: '0.72rem', fontWeight: 500, color: accentColor,
+                            display: 'flex', alignItems: 'center', gap: '4px',
+                        }}
+                    >
+                        <FaMedkit style={{ fontSize: '0.7rem' }} /> Cleanup Duplicates
+                    </button>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     {stats && <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>{totalCount} entries</span>}
@@ -3411,6 +3425,12 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                     )}
                 </div>
             )}
+            <DuplicateCleanupDialog
+                isOpen={showDuplicateCleanup}
+                onClose={() => setShowDuplicateCleanup(false)}
+                getReadyBotActor={getReadyBotActor}
+                onComplete={() => { setLoading(true); setSnapMap({}); loadData(page); }}
+            />
         </div>
     );
 }

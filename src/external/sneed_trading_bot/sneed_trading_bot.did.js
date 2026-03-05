@@ -920,6 +920,12 @@ export const idlFactory = ({ IDL }) => {
         getTradeLog: IDL.Func([TradeLogQuery], [TradeLogResult], ['query']),
         getTradeLogStats: IDL.Func([], [IDL.Record({ totalEntries: IDL.Nat, nextId: IDL.Nat })], ['query']),
         clearTradeLog: IDL.Func([], [], []),
+        deleteTradeLogEntries: IDL.Func(
+            [IDL.Vec(IDL.Nat)],
+            [IDL.Record({ deleted: IDL.Nat, capitalIcpReversed: IDL.Int, capitalUsdReversed: IDL.Int })],
+            []
+        ),
+        adjustCapitalDeployed: IDL.Func([IDL.Int, IDL.Int], [], []),
 
         // Portfolio Snapshot Log
         getPortfolioSnapshots: IDL.Func([PortfolioSnapshotQuery], [PortfolioSnapshotResult], ['query']),

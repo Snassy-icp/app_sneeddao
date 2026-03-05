@@ -572,6 +572,22 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         if (not found) { tokenCapitalFlows := Array.append(tokenCapitalFlows, [(key, (0, amount))]) };
     };
 
+    /// Reverse a previously recorded inflow (clamped to 0).
+    func reverseTokenInflow(token: Principal, amount: Nat) {
+        let key = Principal.toText(token);
+        tokenCapitalFlows := Array.map<(Text, (Nat, Nat)), (Text, (Nat, Nat))>(tokenCapitalFlows, func((k, (infl, outfl))) {
+            if (k == key) { (k, (if (infl > amount) { infl - amount } else { 0 }, outfl)) } else { (k, (infl, outfl)) }
+        });
+    };
+
+    /// Reverse a previously recorded outflow (clamped to 0).
+    func reverseTokenOutflow(token: Principal, amount: Nat) {
+        let key = Principal.toText(token);
+        tokenCapitalFlows := Array.map<(Text, (Nat, Nat)), (Text, (Nat, Nat))>(tokenCapitalFlows, func((k, (infl, outfl))) {
+            if (k == key) { (k, (infl, if (outfl > amount) { outfl - amount } else { 0 })) } else { (k, (infl, outfl)) }
+        });
+    };
+
     /// Compare the current balance to the last known balance (0 if never seen before).
     /// If a discrepancy is found, log it as a trade log entry (actionType 4=inflow, 5=outflow).
     func migrateCapitalUsdIfNeeded() {
@@ -8838,6 +8854,63 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         assertPermission(msg.caller, T.TradingPermission.ManageLogs);
         tradeLogEntries := [];
         logEngine.logInfo("trade-log", "Trade log cleared", ?msg.caller, []);
+    };
+
+    public shared (msg) func deleteTradeLogEntries(ids: [Nat]): async {
+        deleted: Nat;
+        capitalIcpReversed: Int;
+        capitalUsdReversed: Int;
+    } {
+        assertPermission(msg.caller, T.TradingPermission.ManageLogs);
+        let idSet = Buffer.Buffer<Nat>(ids.size());
+        for (id in ids.vals()) { idSet.add(id) };
+        let keep = Buffer.Buffer<T.TradeLogEntry>(tradeLogEntries.size());
+        var deleted: Nat = 0;
+        var icpReversed: Int = 0;
+        var usdReversed: Int = 0;
+        for (entry in tradeLogEntries.vals()) {
+            var shouldDelete = false;
+            for (id in idSet.vals()) {
+                if (entry.id == id) { shouldDelete := true };
+            };
+            if (shouldDelete) {
+                deleted += 1;
+                if (entry.actionType == T.ActionType.DetectedInflow) {
+                    let (icpVal, usdVal) = valueTokenInIcpAndUsd(entry.inputToken, entry.inputAmount);
+                    capitalDeployedIcpE8s -= icpVal;
+                    capitalDeployedUsdE8s -= usdVal;
+                    icpReversed += icpVal;
+                    usdReversed += usdVal;
+                    reverseTokenInflow(entry.inputToken, entry.inputAmount);
+                } else if (entry.actionType == T.ActionType.DetectedOutflow) {
+                    let (icpVal, usdVal) = valueTokenInIcpAndUsd(entry.inputToken, entry.inputAmount);
+                    capitalDeployedIcpE8s += icpVal;
+                    capitalDeployedUsdE8s += usdVal;
+                    icpReversed -= icpVal;
+                    usdReversed -= usdVal;
+                    reverseTokenOutflow(entry.inputToken, entry.inputAmount);
+                };
+            } else {
+                keep.add(entry);
+            };
+        };
+        tradeLogEntries := Buffer.toArray(keep);
+        logEngine.logInfo("trade-log", "Deleted " # Nat.toText(deleted) # " trade log entries", ?msg.caller, [
+            ("deletedCount", Nat.toText(deleted)),
+            ("capitalIcpReversed", Int.toText(icpReversed)),
+            ("capitalUsdReversed", Int.toText(usdReversed)),
+        ]);
+        { deleted = deleted; capitalIcpReversed = icpReversed; capitalUsdReversed = usdReversed }
+    };
+
+    public shared (msg) func adjustCapitalDeployed(icpDeltaE8s: Int, usdDeltaE8s: Int): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageLogs);
+        capitalDeployedIcpE8s += icpDeltaE8s;
+        capitalDeployedUsdE8s += usdDeltaE8s;
+        logEngine.logInfo("capital", "Capital manually adjusted", ?msg.caller, [
+            ("icpDeltaE8s", Int.toText(icpDeltaE8s)),
+            ("usdDeltaE8s", Int.toText(usdDeltaE8s)),
+        ]);
     };
 
     // ============================================
