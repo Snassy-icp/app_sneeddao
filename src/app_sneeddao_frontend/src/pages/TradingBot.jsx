@@ -6097,6 +6097,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
 function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleData, tokenRegistry, symbolMap, selectedPricepair, setSelectedPricePair, theme, accentColor, cardStyle }) {
     const [priceView, setPriceView] = useState('detailed'); // 'detailed' or 'daily'
     const [flippedPairs, setFlippedPairs] = useState(new Set());
+    const [showDerived, setShowDerived] = useState(false);
     const toggleFlip = (key) => setFlippedPairs(prev => {
         const next = new Set(prev);
         if (next.has(key)) next.delete(key); else next.add(key);
@@ -6161,6 +6162,8 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
                     defaultFlipped,
                     derived: true,
                     derivedRate: rate,
+                    constituentA: { key: a.key, otherPrincipal: aOther, inputPrincipal: a.inputPrincipal },
+                    constituentB: { key: b.key, otherPrincipal: bOther, inputPrincipal: b.inputPrincipal },
                 });
             }
         }
@@ -6200,10 +6203,64 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
         ? (activePairInfo.defaultFlipped !== flippedPairs.has(activePairInfo.key))
         : false;
 
+    // Helper: extract "ICP per token" time-series from a constituent pair's history
+    const icpPerTokenSeries = React.useCallback((pairKey, otherPrincipal, inputPrincipal) => {
+        const entries = historyByPair.get(pairKey) || [];
+        const currentEntry = lastKnownPrices.find(([k]) => k === pairKey);
+        const all = currentEntry ? [...entries, currentEntry[1]] : entries;
+        return all.map(entry => {
+            const ts = Number(entry.fetchedAt) / 1_000_000;
+            const q = entry.quote;
+            const inAmt = Number(q.inputAmount);
+            const outAmt = Number(q.expectedOutput);
+            const entryInp = entry.inputToken?.toText?.() || entry.inputToken?.toString?.() || '';
+            // "ICP per otherToken": if entry is ICP→Other, rate = inAmt/outAmt; if Other→ICP, rate = outAmt/inAmt
+            const isIcpInput = entryInp === ICP_LEDGER;
+            const icpPer = isIcpInput ? (outAmt > 0 ? inAmt / outAmt : 0) : (inAmt > 0 ? outAmt / inAmt : 0);
+            return { ts, icpPer };
+        }).filter(d => d.icpPer > 0).sort((a, b) => a.ts - b.ts);
+    }, [historyByPair, lastKnownPrices]);
+
     // Build chart data for the selected pair.
-    // Canonical direction comes from the cached pair info; effective flip inverts prices.
+    // For direct pairs: canonical direction from cached pair info; effective flip inverts prices.
+    // For derived pairs: cross-rate from two constituent ICP-based pair histories.
     const chartData = React.useMemo(() => {
-        if (!activePair || !activePairInfo || activePairInfo.derived) return [];
+        if (!activePair || !activePairInfo) return [];
+
+        if (activePairInfo.derived) {
+            const { constituentA, constituentB } = activePairInfo;
+            if (!constituentA || !constituentB) return [];
+            const seriesA = icpPerTokenSeries(constituentA.key, constituentA.otherPrincipal, constituentA.inputPrincipal);
+            const seriesB = icpPerTokenSeries(constituentB.key, constituentB.otherPrincipal, constituentB.inputPrincipal);
+            if (seriesA.length === 0 || seriesB.length === 0) return [];
+
+            // Merge: use all timestamps from both series; for each, use last-known value from the other
+            const allTimestamps = new Set([...seriesA.map(d => d.ts), ...seriesB.map(d => d.ts)]);
+            const sorted = [...allTimestamps].sort((a, b) => a - b);
+            const minStart = Math.max(seriesA[0].ts, seriesB[0].ts);
+
+            let aiIdx = 0, biIdx = 0;
+            const result = [];
+            for (const ts of sorted) {
+                if (ts < minStart) continue;
+                while (aiIdx < seriesA.length - 1 && seriesA[aiIdx + 1].ts <= ts) aiIdx++;
+                while (biIdx < seriesB.length - 1 && seriesB[biIdx + 1].ts <= ts) biIdx++;
+                const aIcp = seriesA[aiIdx].icpPer;
+                const bIcp = seriesB[biIdx].icpPer;
+                if (aIcp <= 0 || bIcp <= 0) continue;
+                // aOther/bOther rate = aIcpPer / bIcpPer (how many bOther per 1 aOther)
+                let price = aIcp / bIcp;
+                if (activeEffectiveFlipped) price = price > 0 ? 1 / price : 0;
+                result.push({
+                    time: ts,
+                    label: new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+                    price,
+                    spotPrice: null,
+                });
+            }
+            return result;
+        }
+
         const canonicalInput = activePairInfo.inputPrincipal;
         const entries = historyByPair.get(activePair) || [];
         const currentEntry = lastKnownPrices.find(([k]) => k === activePair);
@@ -6232,7 +6289,7 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
                 spotPrice,
             };
         });
-    }, [activePair, activePairInfo, historyByPair, lastKnownPrices, activeEffectiveFlipped]);
+    }, [activePair, activePairInfo, historyByPair, lastKnownPrices, activeEffectiveFlipped, icpPerTokenSeries]);
 
     // Overall price stats
     const priceStats = React.useMemo(() => {
@@ -6277,6 +6334,57 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
         }).filter(d => d.close > 0);
     }, [activePair, dailyPriceCandleData, activePairInfo, activeEffectiveFlipped]);
 
+    const renderPriceCards = (pairs) => (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: activePair ? '0' : undefined }}>
+            {pairs.map(p => {
+                const manuallyFlipped = flippedPairs.has(p.key);
+                const effectiveFlipped = p.defaultFlipped !== manuallyFlipped;
+                let rawRate, ageLabel;
+                if (p.derived) {
+                    rawRate = p.derivedRate;
+                    ageLabel = null;
+                } else {
+                    const q = p.cached.quote;
+                    const inputAmt = Number(q.inputAmount);
+                    const outputAmt = Number(q.expectedOutput);
+                    rawRate = inputAmt > 0 ? (outputAmt / inputAmt) : 0;
+                    const age = (Date.now() - Number(p.cached.fetchedAt) / 1_000_000) / 1000;
+                    ageLabel = age < 60 ? `${Math.round(age)}s` : age < 3600 ? `${Math.round(age / 60)}m` : `${(age / 3600).toFixed(1)}h`;
+                }
+                const displayRate = effectiveFlipped ? (rawRate > 0 ? 1 / rawRate : 0) : rawRate;
+                const baseSymbol = effectiveFlipped ? p.outputSymbol : p.inputSymbol;
+                const quoteSymbol = effectiveFlipped ? p.inputSymbol : p.outputSymbol;
+                const isActive = activePair === p.key;
+                return (
+                    <div key={p.key} style={{
+                        padding: '6px 10px', borderRadius: '8px', fontSize: '0.78rem',
+                        border: `1px solid ${isActive ? accentColor : theme.colors.border}`,
+                        background: isActive ? accentColor + '12' : theme.colors.primaryBg,
+                        color: theme.colors.text, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px',
+                        minWidth: '120px', cursor: 'pointer', position: 'relative',
+                    }} onClick={() => setSelectedPricePair(p.key)}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
+                            <span style={{ fontWeight: '600', fontSize: '0.75rem', flex: 1 }}>{baseSymbol}/{quoteSymbol}</span>
+                            <span onClick={(e) => { e.stopPropagation(); toggleFlip(p.key); }}
+                                title="Flip pair direction"
+                                style={{ cursor: 'pointer', opacity: 0.5, fontSize: '0.65rem', padding: '1px 3px', borderRadius: '3px', lineHeight: 1 }}>
+                                <FaExchangeAlt />
+                            </span>
+                        </div>
+                        <span style={{ fontSize: '0.82rem', fontWeight: '700', color: accentColor }}>
+                            {displayRate > 0.001 ? displayRate.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 }) : displayRate.toExponential(3)}
+                        </span>
+                        <span style={{ fontSize: '0.68rem', color: theme.colors.mutedText }}>
+                            {p.derived
+                                ? <span style={{ background: accentColor + '20', color: accentColor, borderRadius: '3px', padding: '0 4px', fontSize: '0.62rem' }}>derived</span>
+                                : `${ageLabel} ago`}
+                        </span>
+                    </div>
+                );
+            })}
+        </div>
+    );
+
     if (lastKnownPrices.length === 0 && priceHistory.length === 0) {
         return (
             <div style={{ ...cardStyle, textAlign: 'center', padding: '20px', color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
@@ -6290,53 +6398,23 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
             {/* Current Prices Overview */}
             <div style={cardStyle}>
                 <div style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.text, marginBottom: '10px' }}>Last Known Prices</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: activePair ? '0' : undefined }}>
-                    {pairOptions.map(p => {
-                        const manuallyFlipped = flippedPairs.has(p.key);
-                        const effectiveFlipped = p.defaultFlipped !== manuallyFlipped; // XOR
-                        let rawRate, age, ageLabel;
-                        if (p.derived) {
-                            rawRate = p.derivedRate;
-                            age = null;
-                            ageLabel = 'derived';
-                        } else {
-                            const q = p.cached.quote;
-                            const inputAmt = Number(q.inputAmount);
-                            const outputAmt = Number(q.expectedOutput);
-                            rawRate = inputAmt > 0 ? (outputAmt / inputAmt) : 0;
-                            age = (Date.now() - Number(p.cached.fetchedAt) / 1_000_000) / 1000;
-                            ageLabel = age < 60 ? `${Math.round(age)}s` : age < 3600 ? `${Math.round(age / 60)}m` : `${(age / 3600).toFixed(1)}h`;
-                        }
-                        const displayRate = effectiveFlipped ? (rawRate > 0 ? 1 / rawRate : 0) : rawRate;
-                        const baseSymbol = effectiveFlipped ? p.outputSymbol : p.inputSymbol;
-                        const quoteSymbol = effectiveFlipped ? p.inputSymbol : p.outputSymbol;
-                        const isActive = activePair === p.key;
-                        return (
-                            <div key={p.key} style={{
-                                padding: '6px 10px', borderRadius: '8px', fontSize: '0.78rem',
-                                border: `1px solid ${isActive ? accentColor : theme.colors.border}`,
-                                background: isActive ? accentColor + '12' : theme.colors.primaryBg,
-                                color: theme.colors.text, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px',
-                                minWidth: '120px', cursor: 'pointer', position: 'relative',
-                            }} onClick={() => setSelectedPricePair(p.key)}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
-                                    <span style={{ fontWeight: '600', fontSize: '0.75rem', flex: 1 }}>{baseSymbol}/{quoteSymbol}</span>
-                                    <span onClick={(e) => { e.stopPropagation(); toggleFlip(p.key); }}
-                                        title="Flip pair direction"
-                                        style={{ cursor: 'pointer', opacity: 0.5, fontSize: '0.65rem', padding: '1px 3px', borderRadius: '3px', lineHeight: 1 }}>
-                                        <FaExchangeAlt />
-                                    </span>
-                                </div>
-                                <span style={{ fontSize: '0.82rem', fontWeight: '700', color: accentColor }}>
-                                    {displayRate > 0.001 ? displayRate.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 }) : displayRate.toExponential(3)}
-                                </span>
-                                <span style={{ fontSize: '0.68rem', color: theme.colors.mutedText }}>
-                                    {p.derived ? <span style={{ background: accentColor + '20', color: accentColor, borderRadius: '3px', padding: '0 4px', fontSize: '0.62rem' }}>derived</span> : `${ageLabel} ago`}
-                                </span>
-                            </div>
-                        );
-                    })}
-                </div>
+                {renderPriceCards(pairOptions.filter(p => !p.derived))}
+                {(() => {
+                    const derivedPairs = pairOptions.filter(p => p.derived);
+                    if (derivedPairs.length === 0) return null;
+                    return (
+                        <>
+                            <button onClick={() => setShowDerived(v => !v)} style={{
+                                background: 'none', border: 'none', cursor: 'pointer', padding: '6px 0 2px',
+                                fontSize: '0.72rem', color: theme.colors.secondaryText, display: 'flex', alignItems: 'center', gap: '4px',
+                            }}>
+                                {showDerived ? <FaChevronUp style={{ fontSize: '0.6rem' }} /> : <FaChevronDown style={{ fontSize: '0.6rem' }} />}
+                                {showDerived ? 'Hide' : 'Show'} {derivedPairs.length} derived pair{derivedPairs.length !== 1 ? 's' : ''}
+                            </button>
+                            {showDerived && renderPriceCards(derivedPairs)}
+                        </>
+                    );
+                })()}
             </div>
 
             {/* Price Chart for Selected Pair */}
@@ -6351,6 +6429,11 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
                                         : `${activePairInfo.inputSymbol} / ${activePairInfo.outputSymbol}`)
                                     : 'Price History'}
                             </span>
+                            {activePairInfo?.derived && (
+                                <span style={{ fontSize: '0.62rem', marginLeft: '8px', background: accentColor + '20', color: accentColor, borderRadius: '3px', padding: '1px 5px', verticalAlign: 'middle' }}>
+                                    derived via ICP
+                                </span>
+                            )}
                             {priceStats && priceView === 'detailed' && (
                                 <span style={{ fontSize: '0.78rem', marginLeft: '12px', color: priceStats.change >= 0 ? '#10b981' : '#ef4444', fontWeight: '500' }}>
                                     {priceStats.change >= 0 ? '+' : ''}{priceStats.change.toFixed(2)}%
@@ -6405,11 +6488,11 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
                             </ResponsiveContainer>
                         ) : (
                             <div style={{ textAlign: 'center', padding: '30px 20px', color: theme.colors.secondaryText, fontSize: '0.85rem', paddingLeft: '16px' }}>
-                                {activePairInfo?.derived
-                                    ? 'No price history available for derived pairs.'
-                                    : chartData.length === 0
-                                        ? 'No history for this pair yet.'
-                                        : 'At least 2 data points are needed to draw a chart.'}
+                                {chartData.length === 0
+                                    ? (activePairInfo?.derived
+                                        ? 'Not enough constituent pair history to compute a derived chart.'
+                                        : 'No history for this pair yet.')
+                                    : 'At least 2 data points are needed to draw a chart.'}
                             </div>
                         )
                     ) : (
@@ -6440,7 +6523,7 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
                         ) : (
                             <div style={{ textAlign: 'center', padding: '30px 20px', color: theme.colors.secondaryText, fontSize: '0.85rem', paddingLeft: '16px' }}>
                                 {activePairInfo?.derived
-                                    ? 'No price history available for derived pairs.'
+                                    ? 'Daily candles are not available for derived pairs. Switch to Detailed view.'
                                     : 'No daily price candles for this pair yet.'}
                             </div>
                         )
