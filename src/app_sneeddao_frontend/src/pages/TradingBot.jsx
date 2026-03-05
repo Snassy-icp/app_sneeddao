@@ -6096,6 +6096,12 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor, choreStatuses 
 
 function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleData, tokenRegistry, symbolMap, selectedPricepair, setSelectedPricePair, theme, accentColor, cardStyle }) {
     const [priceView, setPriceView] = useState('detailed'); // 'detailed' or 'daily'
+    const [flippedPairs, setFlippedPairs] = useState(new Set());
+    const toggleFlip = (key) => setFlippedPairs(prev => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key); else next.add(key);
+        return next;
+    });
     const sym = (principalText) => {
         if (symbolMap && symbolMap[principalText]) return symbolMap[principalText];
         const entry = tokenRegistry.find(t => (t.ledgerCanisterId?.toText?.() || t.ledgerCanisterId?.toString?.() || '') === principalText);
@@ -6105,13 +6111,66 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
     };
 
     // Build pair options from lastKnownPrices, excluding self-pairs (e.g. SNEED/SNEED)
+    // defaultFlipped: true when ICP/ckUSDC is the cached inputToken (we want it as quote/denominator)
     const pairOptions = React.useMemo(() => {
-        return lastKnownPrices.map(([key, cached]) => {
+        const isQuoteToken = (t) => t === ICP_LEDGER || t === CKUSDC_LEDGER;
+        const direct = lastKnownPrices.map(([key, cached]) => {
             const inpText = cached.inputToken?.toText?.() || cached.inputToken?.toString?.() || '';
             const outText = cached.outputToken?.toText?.() || cached.outputToken?.toString?.() || '';
-            return { key, inputSymbol: sym(inpText), outputSymbol: sym(outText), inputPrincipal: inpText, outputPrincipal: outText, cached };
-        }).filter(p => p.inputPrincipal !== p.outputPrincipal)
-          .sort((a, b) => (a.inputSymbol + a.outputSymbol).localeCompare(b.inputSymbol + b.outputSymbol));
+            const defaultFlipped = isQuoteToken(inpText) && !isQuoteToken(outText);
+            return { key, inputSymbol: sym(inpText), outputSymbol: sym(outText), inputPrincipal: inpText, outputPrincipal: outText, cached, defaultFlipped, derived: false };
+        }).filter(p => p.inputPrincipal !== p.outputPrincipal);
+
+        // Derived cross-pairs: for every two direct pairs that share ICP as a common token,
+        // create a derived pair (e.g. SNEED/ckUSDC from SNEED/ICP + ckUSDC/ICP)
+        const icpPairs = direct.filter(p => p.inputPrincipal === ICP_LEDGER || p.outputPrincipal === ICP_LEDGER);
+        const derived = [];
+        for (let i = 0; i < icpPairs.length; i++) {
+            for (let j = i + 1; j < icpPairs.length; j++) {
+                const a = icpPairs[i];
+                const b = icpPairs[j];
+                const aOther = a.inputPrincipal === ICP_LEDGER ? a.outputPrincipal : a.inputPrincipal;
+                const bOther = b.inputPrincipal === ICP_LEDGER ? b.outputPrincipal : b.inputPrincipal;
+                if (aOther === bOther) continue;
+                // Rate of aOther in ICP terms
+                const aQ = a.cached.quote;
+                const aInpAmt = Number(aQ.inputAmount);
+                const aOutAmt = Number(aQ.expectedOutput);
+                const aIcpPerOther = a.inputPrincipal === ICP_LEDGER
+                    ? (aOutAmt > 0 ? aInpAmt / aOutAmt : 0)  // cache: ICP→Other, so ICP/Other
+                    : (aInpAmt > 0 ? aOutAmt / aInpAmt : 0);  // cache: Other→ICP, so ICP/Other
+                const bQ = b.cached.quote;
+                const bInpAmt = Number(bQ.inputAmount);
+                const bOutAmt = Number(bQ.expectedOutput);
+                const bIcpPerOther = b.inputPrincipal === ICP_LEDGER
+                    ? (bOutAmt > 0 ? bInpAmt / bOutAmt : 0)
+                    : (bInpAmt > 0 ? bOutAmt / bInpAmt : 0);
+                if (aIcpPerOther === 0 || bIcpPerOther === 0) continue;
+                // aOther/bOther = (ICP per aOther) / (ICP per bOther) = how many bOther per 1 aOther
+                const rate = aIcpPerOther / bIcpPerOther;
+                const normKey = aOther < bOther ? aOther + ':' + bOther : bOther + ':' + aOther;
+                if (direct.some(p => p.key === normKey) || derived.some(p => p.key === normKey)) continue;
+                const defaultFlipped = isQuoteToken(aOther) && !isQuoteToken(bOther);
+                derived.push({
+                    key: normKey,
+                    inputSymbol: sym(aOther),
+                    outputSymbol: sym(bOther),
+                    inputPrincipal: aOther,
+                    outputPrincipal: bOther,
+                    cached: null,
+                    defaultFlipped,
+                    derived: true,
+                    derivedRate: rate,
+                });
+            }
+        }
+
+        const all = [...direct, ...derived];
+        return all.sort((a, b) => {
+            const al = a.defaultFlipped ? (a.outputSymbol + a.inputSymbol) : (a.inputSymbol + a.outputSymbol);
+            const bl = b.defaultFlipped ? (b.outputSymbol + b.inputSymbol) : (b.inputSymbol + b.outputSymbol);
+            return al.localeCompare(bl);
+        });
     }, [lastKnownPrices, tokenRegistry, symbolMap]);
 
     // Group price history by pair key
@@ -6136,12 +6195,15 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
     // Get the pair info for display
     const activePairInfo = pairOptions.find(p => p.key === activePair);
 
+    // Effective flip for the active pair (defaultFlipped XOR manuallyFlipped)
+    const activeEffectiveFlipped = activePairInfo
+        ? (activePairInfo.defaultFlipped !== flippedPairs.has(activePairInfo.key))
+        : false;
+
     // Build chart data for the selected pair.
-    // Since both directions (A→B and B→A) share the same normalized key,
-    // we pick a canonical direction from the active pair info and invert
-    // entries that were stored in the opposite direction.
+    // Canonical direction comes from the cached pair info; effective flip inverts prices.
     const chartData = React.useMemo(() => {
-        if (!activePair || !activePairInfo) return [];
+        if (!activePair || !activePairInfo || activePairInfo.derived) return [];
         const canonicalInput = activePairInfo.inputPrincipal;
         const entries = historyByPair.get(activePair) || [];
         const currentEntry = lastKnownPrices.find(([k]) => k === activePair);
@@ -6154,18 +6216,23 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
             const outputAmt = Number(q.expectedOutput);
             const entryInput = entry.inputToken?.toText?.() || entry.inputToken?.toString?.() || '';
             const sameDirection = entryInput === canonicalInput;
-            const price = sameDirection
+            let price = sameDirection
                 ? (inputAmt > 0 ? outputAmt / inputAmt : 0)
                 : (outputAmt > 0 ? inputAmt / outputAmt : 0);
-            const spotPrice = Number(q.spotPriceE8s) / 1e8;
+            let spotPrice = Number(q.spotPriceE8s) / 1e8;
+            spotPrice = spotPrice > 0 ? (sameDirection ? spotPrice : 1 / spotPrice) : null;
+            if (activeEffectiveFlipped) {
+                price = price > 0 ? 1 / price : 0;
+                spotPrice = spotPrice != null && spotPrice > 0 ? 1 / spotPrice : null;
+            }
             return {
                 time: ts,
                 label: new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
-                price: price,
-                spotPrice: spotPrice > 0 ? (sameDirection ? spotPrice : (spotPrice > 0 ? 1 / spotPrice : null)) : null,
+                price,
+                spotPrice,
             };
         });
-    }, [activePair, activePairInfo, historyByPair, lastKnownPrices]);
+    }, [activePair, activePairInfo, historyByPair, lastKnownPrices, activeEffectiveFlipped]);
 
     // Overall price stats
     const priceStats = React.useMemo(() => {
@@ -6180,16 +6247,26 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
         return { current, first, high, low, change, count: prices.length };
     }, [chartData]);
 
-    // Build daily candle chart data for the selected pair
+    // Build daily candle chart data for the selected pair (also respects flip)
     const dailyCandleChartData = React.useMemo(() => {
-        if (!activePair || !dailyPriceCandleData) return [];
+        if (!activePair || !dailyPriceCandleData || (activePairInfo && activePairInfo.derived)) return [];
         const entries = dailyPriceCandleData.get(activePair) || [];
         return entries.map(c => {
             const ts = Number(c.date) / 1_000_000;
-            const o = Number(c.openE8s) / 1e8;
-            const h = Number(c.highE8s) / 1e8;
-            const l = Number(c.lowE8s) / 1e8;
-            const cl = Number(c.closeE8s) / 1e8;
+            let o = Number(c.openE8s) / 1e8;
+            let h = Number(c.highE8s) / 1e8;
+            let l = Number(c.lowE8s) / 1e8;
+            let cl = Number(c.closeE8s) / 1e8;
+            if (activeEffectiveFlipped) {
+                const io = o > 0 ? 1 / o : 0;
+                const ih = h > 0 ? 1 / h : 0;
+                const il = l > 0 ? 1 / l : 0;
+                const ic = cl > 0 ? 1 / cl : 0;
+                o = io; cl = ic;
+                h = Math.max(io, ih, il, ic);
+                l = Math.min(io || Infinity, ih || Infinity, il || Infinity, ic || Infinity);
+                if (l === Infinity) l = 0;
+            }
             return {
                 time: ts,
                 label: new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
@@ -6198,7 +6275,7 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
                 quoteCount: Number(c.quoteCount),
             };
         }).filter(d => d.close > 0);
-    }, [activePair, dailyPriceCandleData]);
+    }, [activePair, dailyPriceCandleData, activePairInfo, activeEffectiveFlipped]);
 
     if (lastKnownPrices.length === 0 && priceHistory.length === 0) {
         return (
@@ -6215,27 +6292,48 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
                 <div style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.text, marginBottom: '10px' }}>Last Known Prices</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: activePair ? '0' : undefined }}>
                     {pairOptions.map(p => {
-                        const q = p.cached.quote;
-                        const inputAmt = Number(q.inputAmount);
-                        const outputAmt = Number(q.expectedOutput);
-                        const rate = inputAmt > 0 ? (outputAmt / inputAmt) : 0;
-                        const age = (Date.now() - Number(p.cached.fetchedAt) / 1_000_000) / 1000;
-                        const ageLabel = age < 60 ? `${Math.round(age)}s` : age < 3600 ? `${Math.round(age / 60)}m` : `${(age / 3600).toFixed(1)}h`;
+                        const manuallyFlipped = flippedPairs.has(p.key);
+                        const effectiveFlipped = p.defaultFlipped !== manuallyFlipped; // XOR
+                        let rawRate, age, ageLabel;
+                        if (p.derived) {
+                            rawRate = p.derivedRate;
+                            age = null;
+                            ageLabel = 'derived';
+                        } else {
+                            const q = p.cached.quote;
+                            const inputAmt = Number(q.inputAmount);
+                            const outputAmt = Number(q.expectedOutput);
+                            rawRate = inputAmt > 0 ? (outputAmt / inputAmt) : 0;
+                            age = (Date.now() - Number(p.cached.fetchedAt) / 1_000_000) / 1000;
+                            ageLabel = age < 60 ? `${Math.round(age)}s` : age < 3600 ? `${Math.round(age / 60)}m` : `${(age / 3600).toFixed(1)}h`;
+                        }
+                        const displayRate = effectiveFlipped ? (rawRate > 0 ? 1 / rawRate : 0) : rawRate;
+                        const baseSymbol = effectiveFlipped ? p.outputSymbol : p.inputSymbol;
+                        const quoteSymbol = effectiveFlipped ? p.inputSymbol : p.outputSymbol;
                         const isActive = activePair === p.key;
                         return (
-                            <button key={p.key} onClick={() => setSelectedPricePair(p.key)} style={{
-                                padding: '6px 10px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.78rem',
+                            <div key={p.key} style={{
+                                padding: '6px 10px', borderRadius: '8px', fontSize: '0.78rem',
                                 border: `1px solid ${isActive ? accentColor : theme.colors.border}`,
                                 background: isActive ? accentColor + '12' : theme.colors.primaryBg,
                                 color: theme.colors.text, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px',
-                                minWidth: '120px',
-                            }}>
-                                <span style={{ fontWeight: '600', fontSize: '0.75rem' }}>{p.inputSymbol}/{p.outputSymbol}</span>
+                                minWidth: '120px', cursor: 'pointer', position: 'relative',
+                            }} onClick={() => setSelectedPricePair(p.key)}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
+                                    <span style={{ fontWeight: '600', fontSize: '0.75rem', flex: 1 }}>{baseSymbol}/{quoteSymbol}</span>
+                                    <span onClick={(e) => { e.stopPropagation(); toggleFlip(p.key); }}
+                                        title="Flip pair direction"
+                                        style={{ cursor: 'pointer', opacity: 0.5, fontSize: '0.65rem', padding: '1px 3px', borderRadius: '3px', lineHeight: 1 }}>
+                                        <FaExchangeAlt />
+                                    </span>
+                                </div>
                                 <span style={{ fontSize: '0.82rem', fontWeight: '700', color: accentColor }}>
-                                    {rate > 0.001 ? rate.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 }) : rate.toExponential(3)}
+                                    {displayRate > 0.001 ? displayRate.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 }) : displayRate.toExponential(3)}
                                 </span>
-                                <span style={{ fontSize: '0.68rem', color: theme.colors.mutedText }}>{ageLabel} ago</span>
-                            </button>
+                                <span style={{ fontSize: '0.68rem', color: theme.colors.mutedText }}>
+                                    {p.derived ? <span style={{ background: accentColor + '20', color: accentColor, borderRadius: '3px', padding: '0 4px', fontSize: '0.62rem' }}>derived</span> : `${ageLabel} ago`}
+                                </span>
+                            </div>
                         );
                     })}
                 </div>
@@ -6247,7 +6345,11 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingLeft: '16px', flexWrap: 'wrap', gap: '6px' }}>
                         <div>
                             <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.text }}>
-                                {activePairInfo ? `${activePairInfo.inputSymbol} / ${activePairInfo.outputSymbol}` : 'Price History'}
+                                {activePairInfo
+                                    ? (activeEffectiveFlipped
+                                        ? `${activePairInfo.outputSymbol} / ${activePairInfo.inputSymbol}`
+                                        : `${activePairInfo.inputSymbol} / ${activePairInfo.outputSymbol}`)
+                                    : 'Price History'}
                             </span>
                             {priceStats && priceView === 'detailed' && (
                                 <span style={{ fontSize: '0.78rem', marginLeft: '12px', color: priceStats.change >= 0 ? '#10b981' : '#ef4444', fontWeight: '500' }}>
@@ -6303,7 +6405,11 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
                             </ResponsiveContainer>
                         ) : (
                             <div style={{ textAlign: 'center', padding: '30px 20px', color: theme.colors.secondaryText, fontSize: '0.85rem', paddingLeft: '16px' }}>
-                                {chartData.length === 0 ? 'No history for this pair yet.' : 'At least 2 data points are needed to draw a chart.'}
+                                {activePairInfo?.derived
+                                    ? 'No price history available for derived pairs.'
+                                    : chartData.length === 0
+                                        ? 'No history for this pair yet.'
+                                        : 'At least 2 data points are needed to draw a chart.'}
                             </div>
                         )
                     ) : (
@@ -6333,7 +6439,9 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
                             </ResponsiveContainer>
                         ) : (
                             <div style={{ textAlign: 'center', padding: '30px 20px', color: theme.colors.secondaryText, fontSize: '0.85rem', paddingLeft: '16px' }}>
-                                No daily price candles for this pair yet.
+                                {activePairInfo?.derived
+                                    ? 'No price history available for derived pairs.'
+                                    : 'No daily price candles for this pair yet.'}
                             </div>
                         )
                     )}
