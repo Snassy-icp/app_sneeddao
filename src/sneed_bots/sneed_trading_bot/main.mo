@@ -4641,9 +4641,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             ("dexId", Nat.toText(quote.dexId)),
             ("route", route),
         ]);
-        // Pre-adjust lastKnown for sell token before the swap
-        let preSwapSellBalance = sellToken.balance;
-        setLastKnownBalance(sellToken.token, if (sellToken.balance > tradeSize) { sellToken.balance - tradeSize } else { 0 });
+        // Pre-adjust lastKnown for sell token before the swap.
+        // Use getLastKnownBalance (set to on-chain balance by reconcileBalance) rather
+        // than sellToken.balance (purse-constrained) to avoid corrupting lastKnown and
+        // causing phantom inflow detections on the next reconciliation.
+        let preSwapSellBalance = switch (getLastKnownBalance(sellToken.token)) { case (?v) v; case null sellToken.balance };
+        setLastKnownBalance(sellToken.token, if (preSwapSellBalance > tradeSize) { preSwapSellBalance - tradeSize } else { 0 });
 
         let result = await* executeSwap(quote, slippage);
         switch (result) {
@@ -5488,9 +5491,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             ("expectedOutput", Nat.toText(leg1Quote.expectedOutput)),
             ("slippageBps", Nat.toText(slippage)),
         ]);
-        // Pre-adjust lastKnown for sell token before leg 1
-        let preSwapSellBalance = sellToken.balance;
-        setLastKnownBalance(sellToken.token, if (sellToken.balance > tradeSize) { sellToken.balance - tradeSize } else { 0 });
+        // Pre-adjust lastKnown for sell token before leg 1.
+        // Use getLastKnownBalance (on-chain) rather than sellToken.balance (purse-constrained)
+        // to avoid corrupting lastKnown and causing phantom inflow detections.
+        let preSwapSellBalance = switch (getLastKnownBalance(sellToken.token)) { case (?v) v; case null sellToken.balance };
+        setLastKnownBalance(sellToken.token, if (preSwapSellBalance > tradeSize) { preSwapSellBalance - tradeSize } else { 0 });
 
         let leg1Result = await* executeSwap(leg1Quote, slippage);
         let intermediaryReceived = switch (leg1Result) {
