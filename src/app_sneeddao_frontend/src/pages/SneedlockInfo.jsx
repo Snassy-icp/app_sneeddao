@@ -16,6 +16,7 @@ import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import PrincipalInput from '../components/PrincipalInput';
 import TokenSelector from '../components/TokenSelector';
 import { FaLock, FaCoins, FaWater, FaChevronDown, FaChevronRight, FaFilter, FaSpinner, FaUser, FaClock, FaShieldAlt } from 'react-icons/fa';
+import { useDenomination } from '../contexts/DenominationContext';
 
 // Custom CSS for animations
 const customStyles = `
@@ -71,6 +72,7 @@ function SneedlockInfo() {
     const { identity } = useAuth();
     const { whitelistedTokens } = useWhitelistTokens();
     const { theme } = useTheme();
+    const { formatValue: denomFormatValue } = useDenomination();
     const location = useLocation();
     const navigate = useNavigate();
     
@@ -255,7 +257,7 @@ function SneedlockInfo() {
 
     const formatUSD = (value) => {
         if (value === undefined || value === null || isNaN(value)) return '';
-        return `($${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
+        return `(${denomFormatValue(value)})`;
     };
 
     const getUSDValue = (amount, decimals, symbol) => {

@@ -18,6 +18,7 @@ import { indexNeuronsByOwner } from '../utils/NeuronUtils';
 import OfferCard from '../components/OfferCard';
 import FeedItemCard from '../components/FeedItemCard';
 import priceService from '../services/PriceService';
+import { useDenomination } from '../contexts/DenominationContext';
 
 // Constants - Sneed DAO canister IDs (hardcoded to avoid waiting for SNS list)
 const SNEED_LEDGER_ID = 'hvgxa-wqaaa-aaaaq-aacia-cai';
@@ -367,6 +368,7 @@ const hubAccent = '#06b6d4'; // Cyan
 function Hub() {
     const { theme } = useTheme();
     const { identity } = useAuth();
+    const { formatValue: denomFormatValue, formatValueCompact: denomFormatCompact } = useDenomination();
     const [hoveredCard, setHoveredCard] = useState(null);
     
     // Use global token metadata cache
@@ -1508,7 +1510,7 @@ function Hub() {
                                     marginTop: '1px',
                                 }}
                             >
-                                {prices.loading ? '' : `≈ $${formatPrice(prices.sneedUsd, 6)}`}
+                                {prices.loading ? '' : `≈ ${denomFormatValue(prices.sneedUsd)}`}
                             </div>
                         </div>
                     </div>
@@ -1770,7 +1772,7 @@ function Hub() {
                                 >
                                     <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>FDV</div>
                                     <div style={{ fontSize: '1rem', fontWeight: '700', color: hubPrimary, fontFamily: 'monospace' }}>
-                                        {financialStats.fdv > 0 ? `$${financialStats.fdv >= 1e6 ? (financialStats.fdv / 1e6).toFixed(2) + 'M' : financialStats.fdv >= 1e3 ? (financialStats.fdv / 1e3).toFixed(1) + 'K' : financialStats.fdv.toFixed(0)}` : '—'}
+                                        {financialStats.fdv > 0 ? (denomFormatCompact(financialStats.fdv) || denomFormatValue(financialStats.fdv)) : '—'}
                                     </div>
                                 </Link>
                                 <div className="tooltip-content" style={{ background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText }}>
@@ -1797,7 +1799,7 @@ function Hub() {
                                 >
                                     <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Circ. MCap</div>
                                     <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.success, fontFamily: 'monospace' }}>
-                                        {financialStats.marketCap > 0 ? `$${financialStats.marketCap >= 1e6 ? (financialStats.marketCap / 1e6).toFixed(2) + 'M' : financialStats.marketCap >= 1e3 ? (financialStats.marketCap / 1e3).toFixed(1) + 'K' : financialStats.marketCap.toFixed(0)}` : '—'}
+                                        {financialStats.marketCap > 0 ? (denomFormatCompact(financialStats.marketCap) || denomFormatValue(financialStats.marketCap)) : '—'}
                                     </div>
                                 </Link>
                                 <div className="tooltip-content" style={{ background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText }}>

@@ -28,7 +28,6 @@ import {
     getErrorMessage,
     formatFeeRate,
     calculateMarketplaceFee,
-    formatUsd,
     calculateUsdValue,
     SNEEDEX_CANISTER_ID,
     CANISTER_KIND_UNKNOWN,
@@ -48,6 +47,7 @@ import { fetchAndCacheSnsData, fetchSnsLogo, getAllSnses } from '../utils/SnsUti
 import { useWalletOptional } from '../contexts/WalletContext';
 import { useNeuronsOptional } from '../contexts/NeuronsContext';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
+import { useDenomination } from '../contexts/DenominationContext';
 import { normalizeId } from '../utils/IdUtils';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { VotingPowerCalculator } from '../utils/VotingPowerUtils';
@@ -156,6 +156,8 @@ function SneedexOffer() {
     const { id } = useParams();
     const { identity, isAuthenticated } = useAuth();
     const { theme } = useTheme();
+    const { formatValue: denomFormatValue, currencySign: denomSign } = useDenomination();
+    const formatUsd = (v) => denomFormatValue(v || 0);
     const walletContext = useWalletOptional();
     const neuronsContext = useNeuronsOptional();
     const navigate = useNavigate();
@@ -6014,7 +6016,7 @@ function SneedexOffer() {
                                                             fontSize: '0.9rem',
                                                             flexShrink: 0,
                                                         }}>
-                                                            $
+                                                            {denomSign || '$'}
                                                         </span>
                                                     )}
                                                     <input
@@ -6170,8 +6172,8 @@ function SneedexOffer() {
                                                 const buyoutE8s = Number(offer.buyout_price[0]);
                                                 
                                                 if (bidAmountE8s >= buyoutE8s) {
-                                                    const displayBid = bidInputMode === 'usd' 
-                                                        ? `$${bidAmount}` 
+                                                    const displayBid = bidInputMode === 'usd'
+                                                        ? formatUsd(parseFloat(bidAmount))
                                                         : `${bidAmount} ${tokenInfo.symbol}`;
                                                     return (
                                                         <div style={{

@@ -15,7 +15,6 @@ import {
     getAssetType,
     getErrorMessage,
     parseAmount,
-    formatUsd,
     calculateUsdValue,
     SNEEDEX_CANISTER_ID
 } from '../utils/SneedexUtils';
@@ -27,6 +26,7 @@ import { fetchAndCacheSnsData, getAllSnses } from '../utils/SnsUtils';
 import { useWalletOptional } from '../contexts/WalletContext';
 import { useNeuronsOptional } from '../contexts/NeuronsContext';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
+import { useDenomination } from '../contexts/DenominationContext';
 
 // Generate bid escrow subaccount (matches backend Utils.bidEscrowSubaccount)
 // Structure: byte 0 = principal length, bytes 1-N = principal, byte 23 = 0x42 ('B'), bytes 24-31 = bidId big-endian
@@ -97,6 +97,8 @@ const injectSneedexMyStyles = () => {
 function SneedexMy() {
     const { identity, isAuthenticated } = useAuth();
     const { theme } = useTheme();
+    const { formatValue: denomFormatValue } = useDenomination();
+    const formatUsd = (v) => denomFormatValue(v || 0);
     const navigate = useNavigate();
     const walletContext = useWalletOptional();
     const neuronsContext = useNeuronsOptional();

@@ -19,7 +19,6 @@ import {
     getAssetDetails,
     CANISTER_KIND_ICP_NEURON_MANAGER,
     CANISTER_KIND_TRADING_BOT,
-    formatUsd,
     calculateUsdValue
 } from '../utils/SneedexUtils';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
@@ -30,6 +29,7 @@ import priceService from '../services/PriceService';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
+import { useDenomination } from '../contexts/DenominationContext';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
@@ -89,6 +89,8 @@ const injectSneedexStyles = () => {
 function SneedexOffers() {
     const { identity, isAuthenticated } = useAuth();
     const { theme } = useTheme();
+    const { formatValue: denomFormatValue } = useDenomination();
+    const formatUsd = (v) => denomFormatValue(v || 0);
     const navigate = useNavigate();
     
     // Use global token metadata cache for fast logo/metadata loading

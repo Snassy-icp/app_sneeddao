@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { useDenomination } from '../contexts/DenominationContext';
 
 /**
  * TokenConfetti - An EPIC celebration effect with token logos
@@ -21,6 +22,7 @@ const TokenConfetti = ({
     usdValue = 0, // USD value of new tips for scaling and display
     particleEffectsEnabled = true // When false, only show USD splash, skip particle effects
 }) => {
+    const { formatValue: denomFormatValue } = useDenomination();
     const canvasRef = useRef(null);
     const [isActive, setIsActive] = useState(false);
     const [loadedImages, setLoadedImages] = useState([]);
@@ -468,15 +470,9 @@ const TokenConfetti = ({
         return () => window.removeEventListener('resize', handleResize);
     }, [isActive]);
     
-    // Format USD value for display
+    // Format value for display using denomination
     const formatUsdDisplay = (value) => {
-        if (value >= 1000) {
-            return `$${(value / 1000).toFixed(1)}K`;
-        } else if (value >= 1) {
-            return `$${value.toFixed(2)}`;
-        } else {
-            return `$${value.toFixed(2)}`;
-        }
+        return denomFormatValue(value);
     };
     
     if (!isActive && !screenFlash && !showUsdSplash) return null;

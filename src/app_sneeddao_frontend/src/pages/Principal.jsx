@@ -33,12 +33,12 @@ import {
     getOfferStateString,
     getBidStateString,
     getAssetType,
-    formatUsd,
     calculateUsdValue
 } from '../utils/SneedexUtils';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import { get_token_conversion_rate } from '../utils/TokenUtils';
 import { addToSkipList, filterSkipList } from '../utils/LedgerSkipList';
+import { useDenomination } from '../contexts/DenominationContext';
 
 const ACCESS_LEVEL_ICONS = { crown: FaCrown, key: FaKey, voteyea: FaVoteYea, manager: FaUserShield, coins: FaCoins, question: FaQuestion };
 
@@ -123,6 +123,8 @@ const validateNameInput = (input) => {
 export default function PrincipalPage() {
     const { theme } = useTheme();
     const { identity, isAuthenticated } = useAuth();
+    const { formatValue: denomFormatValue } = useDenomination();
+    const formatUsd = (v) => denomFormatValue(v || 0);
     const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
     const { principalNames, principalNicknames, neuronNames, neuronNicknames, verifiedNames } = useNaming();
     const { createForumActor } = useForum();

@@ -11,12 +11,11 @@ import { Principal } from '@dfinity/principal';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
 import { 
-    createSneedexActor, 
-    parseAmount, 
+    createSneedexActor,
+    parseAmount,
     createAssetVariant,
     getErrorMessage,
     formatFeeRate,
-    formatUsd,
     calculateUsdValue,
     SNEEDEX_CANISTER_ID,
     CANISTER_KIND_UNKNOWN,
@@ -40,6 +39,7 @@ import { normalizeId } from '../utils/IdUtils';
 import { useWalletOptional } from '../contexts/WalletContext';
 import { useNeuronsOptional } from '../contexts/NeuronsContext';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
+import { useDenomination } from '../contexts/DenominationContext';
 import { fetchUserNeuronsForSns, getNeuronId, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import PrincipalInput from '../components/PrincipalInput';
@@ -122,6 +122,8 @@ const managementIdlFactory = () => {
 function SneedexCreate() {
     const { identity, isAuthenticated } = useAuth();
     const { theme } = useTheme();
+    const { formatValue: denomFormatValue } = useDenomination();
+    const formatUsd = (v) => denomFormatValue(v || 0);
     const walletContext = useWalletOptional();
     const neuronsContext = useNeuronsOptional();
     const { principalNames, principalNicknames, getNeuronDisplayName: getNeuronNameInfo } = useNaming();
@@ -2643,16 +2645,16 @@ function SneedexCreate() {
                                     {paymentTokenPrice ? (
                                         <>
                                             <span>1 {priceTokenSymbol} ≈</span>
-                                            <span style={{ 
-                                                color: theme.colors.success, 
-                                                fontWeight: '600' 
+                                            <span style={{
+                                                color: theme.colors.success,
+                                                fontWeight: '600'
                                             }}>
-                                                ${paymentTokenPrice.toFixed(paymentTokenPrice < 0.01 ? 6 : paymentTokenPrice < 1 ? 4 : 2)}
+                                                {formatUsd(paymentTokenPrice)}
                                             </span>
                                         </>
                                     ) : (
                                         <span style={{ color: theme.colors.mutedText, fontStyle: 'italic' }}>
-                                            USD price not available
+                                            Price not available
                                         </span>
                                     )}
                                 </div>
@@ -2792,20 +2794,20 @@ function SneedexCreate() {
                                 return (
                                     <>
                                         <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText, marginTop: '4px' }}>
-                                            ≈ ${usdValue.toFixed(2)} USD
+                                            ≈ {formatUsd(usdValue)}
                                         </div>
                                         {isOutsideRange && (
-                                            <div style={{ 
-                                                fontSize: '0.8rem', 
+                                            <div style={{
+                                                fontSize: '0.8rem',
                                                 color: theme.colors.warning || '#f59e0b',
                                                 marginTop: '4px',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 gap: '4px',
                                             }}>
-                                                ⚠️ {usdValue < rangeMin 
-                                                    ? `Small increment (< $${rangeMin.toFixed(2)}) - may lead to many small bids` 
-                                                    : `Large increment (> $${rangeMax.toFixed(2)}) - may discourage bidders`}
+                                                ⚠️ {usdValue < rangeMin
+                                                    ? `Small increment (< ${formatUsd(rangeMin)}) - may lead to many small bids`
+                                                    : `Large increment (> ${formatUsd(rangeMax)}) - may discourage bidders`}
                                             </div>
                                         )}
                                     </>
@@ -4611,7 +4613,7 @@ function SneedexCreate() {
                                     {minBidIncrement} {priceTokenSymbol}
                                     {paymentTokenPrice && parseFloat(minBidIncrement) > 0 && (
                                         <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
-                                            (≈ ${(parseFloat(minBidIncrement) * paymentTokenPrice).toFixed(2)})
+                                            (≈ {formatUsd(parseFloat(minBidIncrement) * paymentTokenPrice)})
                                         </span>
                                     )}
                                 </div>

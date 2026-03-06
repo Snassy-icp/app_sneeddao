@@ -16,6 +16,7 @@ import { getTokenLogo, getTokenMetaForSwap } from '../utils/TokenUtils';
 import { FaRocket, FaLock, FaExchangeAlt, FaUsers, FaDollarSign, FaArrowRight, FaSpinner, FaCubes, FaBolt, FaChartLine, FaGavel, FaWater } from 'react-icons/fa';
 import { createSneedexActor } from '../utils/SneedexUtils';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
+import { useDenomination } from '../contexts/DenominationContext';
 
 // Custom CSS for animations
 const customAnimations = `
@@ -206,11 +207,12 @@ const LoadingSpinner = ({ accentColor }) => (
     <FaSpinner className="products-spin" size={18} style={{ color: accentColor }} />
 );
 
-function StatCard({ value, label, isLoading, isParentComplete, isFinalValue, theme, accentColor }) {
+function StatCard({ value, rawValue, label, isLoading, isParentComplete, isFinalValue, theme, accentColor, formatDenom }) {
     const [displayValue, setDisplayValue] = useState('0');
     const [isComplete, setIsComplete] = useState(false);
     const styles = getStyles(theme);
-    
+    const isMoney = formatDenom && rawValue != null;
+
     useEffect(() => {
         if (isLoading) {
             setDisplayValue(null);
@@ -219,18 +221,17 @@ function StatCard({ value, label, isLoading, isParentComplete, isFinalValue, the
         }
 
         let start = 0;
-        const end = parseFloat(value.replace(/[^0-9.-]+/g, ''));
-        const isUSD = value.startsWith('$');
-        
-        // For USD values, stay gray until we have a non-zero value
-        if (isUSD && end === 0) {
-            setDisplayValue('$0.00');
+        const end = isMoney ? Number(rawValue) : parseFloat(value.replace(/[^0-9.-]+/g, ''));
+
+        // For monetary values, stay gray until we have a non-zero value
+        if (isMoney && end === 0) {
+            setDisplayValue(formatDenom(0));
             setIsComplete(false);
             return;
         }
-        
-        // For non-USD values, show the actual value even if it's zero
-        if (!isUSD) {
+
+        // For non-monetary values, show the actual value even if it's zero
+        if (!isMoney) {
             if (end === 0) {
                 setDisplayValue('0');
                 setIsComplete(true);
@@ -240,20 +241,20 @@ function StatCard({ value, label, isLoading, isParentComplete, isFinalValue, the
 
         if (isNaN(end)) {
             setDisplayValue(value);
-            setIsComplete(!isUSD); // USD values need to be non-zero to be complete
+            setIsComplete(!isMoney);
             return;
         }
 
         // For total value, use parent completion state
-        if (label === "Total Value Locked" && isUSD) {
-            setDisplayValue(value);
+        if (label === "Total Value Locked" && isMoney) {
+            setDisplayValue(isMoney ? formatDenom(end) : value);
             setIsComplete(isParentComplete);
             return;
         }
 
         // For position locks value, only complete when it's the final value
-        if (label === "Pos. Locks Value" && isUSD) {
-            setDisplayValue(value);
+        if (label === "Pos. Locks Value" && isMoney) {
+            setDisplayValue(isMoney ? formatDenom(end) : value);
             setIsComplete(isFinalValue && end > 0);
             return;
         }
@@ -265,23 +266,15 @@ function StatCard({ value, label, isLoading, isParentComplete, isFinalValue, the
         const updateNumber = () => {
             start += increment;
             if (start >= end) {
-                setDisplayValue(value);
+                setDisplayValue(isMoney ? formatDenom(end) : value);
                 // Only set complete if not position locks value (which needs isFinalValue)
                 setIsComplete(label !== "Pos. Locks Value");
                 clearInterval(timer);
             } else {
-                if (isUSD) {
-                    // Format USD values with appropriate decimals during animation
-                    const currentValue = start;
-                    if (currentValue < 0.01 && currentValue > 0) {
-                        setDisplayValue(`$${currentValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`);
-                    } else if (currentValue < 1) {
-                        setDisplayValue(`$${currentValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`);
-                    } else {
-                        setDisplayValue(`$${currentValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-                    }
+                if (isMoney) {
+                    setDisplayValue(formatDenom(start));
                 } else {
-                    // Format non-USD values with commas
+                    // Format non-monetary values with commas
                     setDisplayValue(Math.floor(start).toLocaleString('en-US'));
                 }
                 setIsComplete(false);
@@ -290,7 +283,7 @@ function StatCard({ value, label, isLoading, isParentComplete, isFinalValue, the
 
         timer = setInterval(updateNumber, 16);
         return () => clearInterval(timer);
-    }, [value, isLoading, label, isParentComplete, isFinalValue]);
+    }, [value, rawValue, isLoading, label, isParentComplete, isFinalValue, isMoney, formatDenom]);
 
     return (
         <div style={styles.stat(accentColor)}>
@@ -306,6 +299,7 @@ function Products() {
     const { identity } = useAuth();
     const { whitelistedTokens } = useWhitelistTokens();
     const { theme } = useTheme();
+    const { formatValue: denomFormatValue } = useDenomination();
     const styles = getStyles(theme);
     const [sneedLockStats, setSneedLockStats] = useState({
         totalTokenLocks: 0,
@@ -343,23 +337,7 @@ function Products() {
     const [isLastPositionProcessed, setIsLastPositionProcessed] = useState(false);
 
     const formatUSD = (value) => {
-        if (value === undefined || value === null || isNaN(value)) return '$0.00';
-        const num = Number(value);
-        if (num === 0) return '$0.00';
-        
-        // For very small amounts, show more decimals
-        if (num < 0.01 && num > 0) {
-            return `$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`;
-        }
-        
-        // For amounts less than 1, show up to 4 decimals
-        if (num < 1) {
-            return `$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
-        }
-        
-        // For larger amounts, show 2 decimals but remove trailing zeros
-        const formatted = num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        return `$${formatted}`;
+        return denomFormatValue(value || 0);
     };
 
     const getUSDValue = (amount, decimals, symbol) => {
@@ -1056,8 +1034,10 @@ function Products() {
                                     accentColor={sneedlockPrimary}
                                 />
                                 <div ref={setTokenRef}>
-                                    <StatCard 
-                                        value={formatUSD(sneedLockStats.tokenLocksValue)} 
+                                    <StatCard
+                                        value={formatUSD(sneedLockStats.tokenLocksValue)}
+                                        rawValue={sneedLockStats.tokenLocksValue}
+                                        formatDenom={denomFormatValue}
                                         label="Token Locks Value"
                                         isLoading={false}
                                         theme={theme}
@@ -1065,8 +1045,10 @@ function Products() {
                                     />
                                 </div>
                                 <div ref={setPositionRef}>
-                                    <StatCard 
-                                        value={formatUSD(sneedLockStats.positionLocksValue)} 
+                                    <StatCard
+                                        value={formatUSD(sneedLockStats.positionLocksValue)}
+                                        rawValue={sneedLockStats.positionLocksValue}
+                                        formatDenom={denomFormatValue}
                                         label="Pos. Locks Value"
                                         isLoading={false}
                                         isFinalValue={isLastPositionProcessed}
@@ -1074,8 +1056,10 @@ function Products() {
                                         accentColor={sneedlockPrimary}
                                     />
                                 </div>
-                                <StatCard 
-                                    value={formatUSD(sneedLockStats.totalValue)} 
+                                <StatCard
+                                    value={formatUSD(sneedLockStats.totalValue)}
+                                    rawValue={sneedLockStats.totalValue}
+                                    formatDenom={denomFormatValue}
                                     label="Total Value Locked"
                                     isLoading={false}
                                     isParentComplete={tokenValueComplete && positionValueComplete}

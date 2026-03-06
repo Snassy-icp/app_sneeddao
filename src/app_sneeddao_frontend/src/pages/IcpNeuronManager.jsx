@@ -23,7 +23,8 @@ import { getCyclesColor, getNeuronManagerSettings } from '../utils/NeuronManager
 import TokenIcon from '../components/TokenIcon';
 import { getLogoSync } from '../hooks/useLogoCache';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
-import { formatUsd, calculateUsdValue } from '../utils/SneedexUtils';
+import { calculateUsdValue } from '../utils/SneedexUtils';
+import { useDenomination } from '../contexts/DenominationContext';
 import priceService from '../services/PriceService';
 import StatusLamp, {
     LAMP_OFF, LAMP_OK, LAMP_ACTIVE, LAMP_WARN, LAMP_ERROR,
@@ -211,6 +212,8 @@ function IcpNeuronManager() {
     const navigate = useNavigate();
     const { theme } = useTheme();
     const { identity, isAuthenticated, login } = useAuth();
+    const { formatValue: denomFormatValue } = useDenomination();
+    const formatUsd = (v) => denomFormatValue(v || 0);
     const { principalNames, principalNicknames, fetchAllNames } = useNaming();
     const { whitelistedTokens } = useWhitelistTokens();
     

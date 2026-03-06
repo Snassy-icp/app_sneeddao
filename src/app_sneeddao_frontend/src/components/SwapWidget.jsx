@@ -23,6 +23,7 @@ import {
 } from '../utils/SneedexUtils';
 import { Principal } from '@dfinity/principal';
 import { setMySettings } from '../utils/BackendUtils';
+import { useDenomination } from '../contexts/DenominationContext';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -109,7 +110,7 @@ function SlippageSettings({ value, onChange }) {
   );
 }
 
-function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, outputUsdPrice, isBest, splitAdvantage, inputSymbol, outputSymbol }) {
+function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, outputUsdPrice, isBest, splitAdvantage, inputSymbol, outputSymbol, fmtUSD = formatUSD }) {
   const outputStr = formatAmount(quote.expectedOutput, outputDecimals);
   const minStr = formatAmount(quote.minimumOutput, outputDecimals);
   const impactPct = (quote.priceImpact * 100).toFixed(2);
@@ -120,7 +121,7 @@ function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, o
   const isSplitTrade = !!quote.isSplitTrade;
 
   const outputNum = Number(quote.expectedOutput) / (10 ** outputDecimals);
-  const usdValue = outputUsdPrice ? formatUSD(outputNum * outputUsdPrice) : null;
+  const usdValue = outputUsdPrice ? fmtUSD(outputNum * outputUsdPrice) : null;
 
   return (
     <div
@@ -409,12 +410,12 @@ function buildBuyoutQuotes(matchingAuctions, inputAmount, outputToken, bestSwapR
 
 // ─── Mini Auction Card (ads) ─────────────────────────────────────────────
 
-function MiniAuctionCard({ offer, outputAmount, buyoutPrice, rate, inputTokenInfo, outputTokenInfo, outputUsdPrice }) {
+function MiniAuctionCard({ offer, outputAmount, buyoutPrice, rate, inputTokenInfo, outputTokenInfo, outputUsdPrice, fmtUSD = formatUSD }) {
   const outputStr = formatAmount(outputAmount, outputTokenInfo?.decimals || 8);
   const priceStr = formatAmount(buyoutPrice, inputTokenInfo?.decimals || 8);
   const rateStr = rate < 0.000001 ? rate.toExponential(3) : rate.toPrecision(6);
   const outputNum = Number(outputAmount) / (10 ** (outputTokenInfo?.decimals || 8));
-  const usdValue = outputUsdPrice ? formatUSD(outputNum * outputUsdPrice) : null;
+  const usdValue = outputUsdPrice ? fmtUSD(outputNum * outputUsdPrice) : null;
   const offerId = Number(offer.id);
 
   return (
@@ -461,7 +462,7 @@ function MiniAuctionCard({ offer, outputAmount, buyoutPrice, rate, inputTokenInf
 
 const AUCTION_ADS_DEFAULT_VISIBLE = 3;
 
-function AuctionAdsSection({ matchingAuctions, outputToken, inputTokenInfo, outputTokenInfo, outputUsdPrice, loadingAuctions }) {
+function AuctionAdsSection({ matchingAuctions, outputToken, inputTokenInfo, outputTokenInfo, outputUsdPrice, loadingAuctions, fmtUSD }) {
   const [collapsed, setCollapsed] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
@@ -521,6 +522,7 @@ function AuctionAdsSection({ matchingAuctions, outputToken, inputTokenInfo, outp
               inputTokenInfo={inputTokenInfo}
               outputTokenInfo={outputTokenInfo}
               outputUsdPrice={outputUsdPrice}
+              fmtUSD={fmtUSD}
             />
           ))}
           {hasMore && (
@@ -721,6 +723,11 @@ function SplitTradeProgressPanel({ progress }) {
 export default function SwapWidget({ initialInput, initialOutput, initialOutputAmount, onClose, onInputTokenChange, onOutputTokenChange, onSwapComplete }) {
   const { identity, isAuthenticated } = useAuth();
   const { theme } = useTheme();
+  const { formatValue: denomFormatValue } = useDenomination();
+  const fmtUSD = useCallback((amount) => {
+    if (amount === null || amount === undefined || isNaN(amount)) return null;
+    return denomFormatValue(amount);
+  }, [denomFormatValue]);
   const walletContext = useWalletOptional();
 
   // ── State ──
@@ -1782,11 +1789,11 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
 
   // ── USD value computations ──
   const inputUsdValue = (inputAmountStr && inputUsdPrice !== null)
-    ? formatUSD(parseFloat(inputAmountStr) * inputUsdPrice)
+    ? fmtUSD(parseFloat(inputAmountStr) * inputUsdPrice)
     : null;
 
   const outputUsdValue = (selectedQuote && outputTokenInfo && outputUsdPrice !== null)
-    ? formatUSD((Number(selectedQuote.expectedOutput) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)
+    ? fmtUSD((Number(selectedQuote.expectedOutput) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)
     : null;
 
   const isSameToken = inputToken && outputToken && inputToken === outputToken;
@@ -2016,7 +2023,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
                   </span>
                   {inputBalance !== null && inputUsdPrice !== null && (
                     <span style={{ opacity: 0.7 }}>
-                      {' '}({formatUSD((Number(inputBalance) / (10 ** inputTokenInfo.decimals)) * inputUsdPrice)})
+                      {' '}({fmtUSD((Number(inputBalance) / (10 ** inputTokenInfo.decimals)) * inputUsdPrice)})
                     </span>
                   )}
                 </span>
@@ -2101,7 +2108,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
                   </span>
                   {outputBalance !== null && outputUsdPrice !== null && (
                     <span style={{ opacity: 0.7 }}>
-                      {' '}({formatUSD((Number(outputBalance) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)})
+                      {' '}({fmtUSD((Number(outputBalance) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)})
                     </span>
                   )}
                 </span>
@@ -2191,7 +2198,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
               Received: <strong>{formatAmount(result.amountOut, outputTokenInfo.decimals)} {outputTokenInfo.symbol}</strong>
               {outputUsdPrice !== null && (
                 <span style={{ color: theme.colors.mutedText }}>
-                  {' '}({formatUSD((Number(result.amountOut) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)})
+                  {' '}({fmtUSD((Number(result.amountOut) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)})
                 </span>
               )}
             </div>
@@ -2331,7 +2338,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
                     : 0;
                   const outDec = outputTokenInfo?.decimals || 8;
                   const usdVal = outputUsdPrice
-                    ? formatUSD((Number(diff) / (10 ** outDec)) * outputUsdPrice)
+                    ? fmtUSD((Number(diff) / (10 ** outDec)) * outputUsdPrice)
                     : null;
                   splitAdv = { amount: diff, percent: pct, usdValue: usdVal };
                 }
@@ -2349,6 +2356,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
                   splitAdvantage={splitAdv}
                   inputSymbol={inputTokenInfo?.symbol || ''}
                   outputSymbol={outputTokenInfo?.symbol || ''}
+                  fmtUSD={fmtUSD}
                 />
               );
             })}
@@ -2364,6 +2372,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
             outputTokenInfo={outputTokenInfo}
             outputUsdPrice={outputUsdPrice}
             loadingAuctions={loadingAuctions}
+            fmtUSD={fmtUSD}
           />
         )}
 
@@ -2441,7 +2450,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
               <span style={{ color: theme.colors.secondaryText }}>
                 1 {inputTokenInfo.symbol} = {selectedQuote.spotPrice?.toFixed(6)} {outputTokenInfo.symbol}
                 {inputUsdPrice !== null && (
-                  <span style={{ color: theme.colors.mutedText }}> ({formatUSD(inputUsdPrice)})</span>
+                  <span style={{ color: theme.colors.mutedText }}> ({fmtUSD(inputUsdPrice)})</span>
                 )}
               </span>
             </div>
@@ -2470,7 +2479,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
                 {formatAmount(selectedQuote.isAuctionQuote ? selectedQuote.expectedOutput : selectedQuote.minimumOutput, outputTokenInfo.decimals)} {outputTokenInfo.symbol}
                 {outputUsdPrice !== null && (
                   <span style={{ color: theme.colors.mutedText }}>
-                    {' '}({formatUSD((Number(selectedQuote.isAuctionQuote ? selectedQuote.expectedOutput : selectedQuote.minimumOutput) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)})
+                    {' '}({fmtUSD((Number(selectedQuote.isAuctionQuote ? selectedQuote.expectedOutput : selectedQuote.minimumOutput) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)})
                   </span>
                 )}
               </span>

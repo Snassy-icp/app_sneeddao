@@ -17,6 +17,7 @@ import {
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import { Link } from 'react-router-dom';
 import { FaChartPie, FaBrain, FaCoins, FaHandshake, FaRocket, FaArrowRight, FaSpinner, FaLock, FaExchangeAlt } from 'react-icons/fa';
+import { useDenomination } from '../contexts/DenominationContext';
 
 // Custom CSS for animations
 const customStyles = `
@@ -237,6 +238,7 @@ function DaoInfo() {
     const { identity } = useAuth();
     const { whitelistedTokens } = useWhitelistTokens();
     const { theme } = useTheme();
+    const { formatValue: denomFormatValue } = useDenomination();
     const styles = getStyles(theme);
     const [loading, setLoading] = useState({
         metrics: true,
@@ -656,12 +658,7 @@ function DaoInfo() {
     };
 
     const formatUSD = (value) => {
-        return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD',
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-        }).format(value);
+        return denomFormatValue(value || 0);
     };
 
     return (

@@ -44,7 +44,7 @@ import TransactionList from '../components/TransactionList';
 import NeuronDisplay from '../components/NeuronDisplay';
 import { useSns } from '../contexts/SnsContext';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
-import { formatUsd, calculateUsdValue } from '../utils/SneedexUtils';
+import { calculateUsdValue } from '../utils/SneedexUtils';
 import { get_token_conversion_rate } from '../utils/TokenUtils';
 import { 
     getNeuronManagerSettings, 
@@ -131,7 +131,7 @@ export default function Me() {
     const { identity } = useAuth();
     const { selectedSnsRoot, updateSelectedSns } = useSns();
     const { createForumActor } = useForum();
-    const { denomTokenId, setDenomToken } = useDenomination();
+    const { denomTokenId, setDenomToken, formatValue: denomFormatValue } = useDenomination();
     
     // Use WalletContext's global neuron cache for user neurons
     const walletContext = useWalletOptional();
@@ -4342,7 +4342,7 @@ function NeuronCard({
                 }}>
                     {activeNeuronUsdLoading
                         ? '...'
-                        : formatUsd(calculateUsdValue(neuron.cached_neuron_stake_e8s || 0, 8, activeNeuronUsdRate))}
+                        : denomFormatValue(calculateUsdValue(neuron.cached_neuron_stake_e8s || 0, 8, activeNeuronUsdRate))}
                 </div>
 
                 {name && (

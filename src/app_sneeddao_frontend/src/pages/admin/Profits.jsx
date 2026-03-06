@@ -4,6 +4,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useAdminCheck } from '../../hooks/useAdminCheck';
 import Header from '../../components/Header';
 import { FaChartLine, FaDollarSign, FaSync, FaExclamationTriangle, FaCoins, FaCrown, FaLock, FaStore, FaCube, FaUnlock } from 'react-icons/fa';
+import { useDenomination } from '../../contexts/DenominationContext';
 
 // Canister imports
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
@@ -21,6 +22,7 @@ const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 export default function ProfitsAdmin() {
     const { isAuthenticated, identity } = useAuth();
     const { theme, isDark } = useTheme();
+    const { formatValue: denomFormatValue } = useDenomination();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     
@@ -59,7 +61,7 @@ export default function ProfitsAdmin() {
     // Format USD amount
     const formatUsd = (amount) => {
         if (amount === null || amount === undefined) return '—';
-        return `$${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        return denomFormatValue(amount);
     };
 
     // Calculate USD value from e8s

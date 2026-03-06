@@ -1,15 +1,15 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
+import { useDenomination } from '../contexts/DenominationContext';
 import { FaClock, FaGavel, FaRobot, FaCubes, FaBrain, FaCoins, FaLock } from 'react-icons/fa';
-import { 
-    formatAmount, 
+import {
+    formatAmount,
     formatTimeRemaining,
     isOfferPastExpiration,
     getOfferStateString,
     getAssetDetails,
     CANISTER_KIND_ICP_NEURON_MANAGER,
-    formatUsd,
     calculateUsdValue
 } from '../utils/SneedexUtils';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
@@ -52,7 +52,9 @@ function OfferCard({
     variant = 'default',
 }) {
     const { theme } = useTheme();
-    
+    const { formatValue: denomFormatValue } = useDenomination();
+    const formatUsd = (v) => denomFormatValue(v || 0);
+
     // Get token info for the payment token
     const tokenInfo = getTokenInfo ? getTokenInfo(offer.price_token_ledger?.toString()) : { symbol: 'TOKEN', decimals: 8, fee: null };
     const paymentTokenPrice = tokenPrices[offer.price_token_ledger?.toString()];
