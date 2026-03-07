@@ -23,6 +23,10 @@ import { getSnsById, fetchSnsLogo } from '../utils/SnsUtils';
 import { safePrincipalString, safePermissionType } from '../utils/NeuronUtils';
 import { HttpAgent } from '@dfinity/agent';
 import { useFrontendUpdate } from '../contexts/FrontendUpdateContext';
+import { useDenomination } from '../contexts/DenominationContext';
+import { CKUSDC_LEDGER, getCurrencySign } from '../utils/DenominationUtils';
+import TokenSelector from './TokenSelector';
+import { setMySettings } from '../utils/BackendUtils';
 import { useOutdatedBotsNotification } from '../hooks/useOutdatedBotsNotification';
 import { useLowCyclesNotification } from '../hooks/useLowCyclesNotification';
 import { useBotChoreNotification } from '../hooks/useBotChoreNotification';
@@ -37,6 +41,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const { isAuthenticated, identity, login, logout } = useAuth();
     const { theme } = useTheme();
     const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
+    const { denomTokenId, denomTokenSymbol, setDenomToken, currencySign } = useDenomination();
     
     // Use WalletContext's global neuron cache for user neurons
     const walletContext = useWalletOptional();
@@ -243,11 +248,12 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 setIsMenuOpen(false);
             }
             
-            // Don't close quick links if clicking on the quick links toggle or dropdown
+            // Don't close quick links if clicking on the quick links toggle, dropdown, or the token selector portal
             const isClickOnQuickLinksToggle = quickLinksToggleRef.current && quickLinksToggleRef.current.contains(event.target);
             const isClickOnQuickLinks = quickLinksRef.current && quickLinksRef.current.contains(event.target);
+            const isClickOnTokenSelector = event.target.closest('.token-selector-dropdown') || event.target.closest('.token-selector-trigger');
             
-            if (!isClickOnQuickLinksToggle && !isClickOnQuickLinks) {
+            if (!isClickOnQuickLinksToggle && !isClickOnQuickLinks && !isClickOnTokenSelector) {
                 setIsQuickLinksOpen(false);
             }
         };
@@ -1420,6 +1426,73 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 Premium
                             </button>
                             
+                            <div style={{ 
+                                borderTop: `1px solid ${theme.colors.border}`,
+                                padding: '12px 16px',
+                            }}>
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    marginBottom: '8px',
+                                }}>
+                                    <span style={{ color: theme.colors.mutedText, fontSize: '14px' }}>Currency</span>
+                                    {currencySign && (
+                                        <span style={{ 
+                                            fontSize: '1rem', 
+                                            fontWeight: '600', 
+                                            color: theme.colors.primaryText 
+                                        }}>
+                                            {currencySign}
+                                        </span>
+                                    )}
+                                </div>
+                                <div style={{ width: '100%' }}>
+                                    <TokenSelector
+                                        value={denomTokenId}
+                                        onChange={(tokenId) => {
+                                            const newId = tokenId || CKUSDC_LEDGER;
+                                            setDenomToken(newId);
+                                            if (identity) {
+                                                setMySettings(identity, { denomination_token: newId });
+                                            }
+                                        }}
+                                        onSelectToken={(tokenData) => {
+                                            if (tokenData?.ledger_id) {
+                                                setDenomToken(tokenData.ledger_id, tokenData.symbol);
+                                                if (identity) {
+                                                    setMySettings(identity, { denomination_token: tokenData.ledger_id });
+                                                }
+                                            }
+                                        }}
+                                        allowCustom={true}
+                                        placeholder="Select currency..."
+                                    />
+                                </div>
+                                {denomTokenId && denomTokenId !== CKUSDC_LEDGER && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setDenomToken(CKUSDC_LEDGER);
+                                            if (identity) {
+                                                setMySettings(identity, { denomination_token: CKUSDC_LEDGER });
+                                            }
+                                        }}
+                                        style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            fontSize: '0.75rem',
+                                            color: theme.colors.mutedText,
+                                            padding: '6px 0 0',
+                                            textDecoration: 'underline',
+                                        }}
+                                    >
+                                        Reset to USD
+                                    </button>
+                                )}
+                            </div>
+
                             <div style={{ 
                                 borderTop: `1px solid ${theme.colors.border}`,
                                 padding: '12px 16px',
