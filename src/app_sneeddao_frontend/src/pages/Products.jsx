@@ -13,7 +13,7 @@ import { createActor as createSwapRunnerActor } from 'external/swaprunner_backen
 import { canisterId as swapRunnerCanisterId } from 'external/swaprunner_backend';
 import { formatAmount } from '../utils/StringUtils';
 import { getTokenLogo, getTokenMetaForSwap } from '../utils/TokenUtils';
-import { FaRocket, FaLock, FaExchangeAlt, FaUsers, FaDollarSign, FaArrowRight, FaSpinner, FaCubes, FaBolt, FaChartLine, FaGavel, FaWater } from 'react-icons/fa';
+import { FaRocket, FaLock, FaExchangeAlt, FaUsers, FaDollarSign, FaArrowRight, FaSpinner, FaCubes, FaBolt, FaChartLine, FaGavel, FaWater, FaStore, FaRobot } from 'react-icons/fa';
 import { createSneedexActor } from '../utils/SneedexUtils';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import { useDenomination } from '../contexts/DenominationContext';
@@ -65,6 +65,14 @@ const sneedexPrimary = '#14b8a6';
 const sneedexSecondary = '#2dd4bf';
 const liquidStakingPrimary = '#06b6d4';
 const liquidStakingSecondary = '#22d3ee';
+const sneedexSwapPrimary = '#3498db';
+const sneedexSwapSecondary = '#5dade2';
+const sneedappPrimary = '#ec4899';
+const sneedappSecondary = '#f472b6';
+const tradingBotPrimary = '#059669';
+const tradingBotSecondary = '#34d399';
+const icpStakingBotPrimary = '#e67e22';
+const icpStakingBotSecondary = '#f59e0b';
 
 const getStyles = (theme) => ({
     container: {
@@ -754,6 +762,95 @@ function Products() {
             
             <main style={styles.container}>
                 <div style={styles.grid}>
+                    {/* Sneedex Swap */}
+                    <div className="products-fade-in" style={styles.product(sneedexSwapPrimary)}>
+                        <div style={styles.decorativeGlow(sneedexSwapPrimary)} />
+                        
+                        <div style={styles.productHeader}>
+                            <div style={styles.productIcon(sneedexSwapPrimary)}>
+                                <FaExchangeAlt size={24} style={{ color: '#fff' }} />
+                            </div>
+                            <div>
+                                <h2 style={styles.productTitle(sneedexSwapPrimary)}>Sneedex Swap</h2>
+                                <div style={styles.productBadge(sneedexSwapPrimary)}>
+                                    <FaBolt size={10} />
+                                    DEX Aggregator
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <p style={styles.description}>
+                            Swap tokens instantly with the best rates across multiple DEXes.
+                            Aggregates quotes from ICPSwap, Kong, and more to find you the optimal price.
+                        </p>
+                        
+                        <div style={styles.statsSection}>
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(2, 1fr)',
+                                gap: '0.75rem',
+                                marginBottom: '1.25rem',
+                            }}>
+                                <div style={{
+                                    background: `${sneedexSwapPrimary}08`,
+                                    border: `1px solid ${sneedexSwapPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>🔀</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        Multi-DEX Routing
+                                    </div>
+                                </div>
+                                <div style={{
+                                    background: `${sneedexSwapPrimary}08`,
+                                    border: `1px solid ${sneedexSwapPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>💎</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        Best Rates
+                                    </div>
+                                </div>
+                                <div style={{
+                                    background: `${sneedexSwapPrimary}08`,
+                                    border: `1px solid ${sneedexSwapPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>⚡</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        Fast Execution
+                                    </div>
+                                </div>
+                                <div style={{
+                                    background: `${sneedexSwapPrimary}08`,
+                                    border: `1px solid ${sneedexSwapPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>📊</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        Low Slippage
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <Link 
+                                to="/swap" 
+                                style={styles.button(sneedexSwapPrimary)}
+                            >
+                                Swap Tokens
+                                <FaArrowRight size={14} />
+                            </Link>
+                        </div>
+                    </div>
+
                     {/* Sneedex */}
                     <div className="products-fade-in" style={styles.product(sneedexPrimary)}>
                         <div style={styles.decorativeGlow(sneedexPrimary)} />
@@ -898,8 +995,275 @@ function Products() {
                         </div>
                     </div>
 
+                    {/* Sneedapp */}
+                    <div className="products-fade-in" style={{ ...styles.product(sneedappPrimary), animationDelay: '0.2s' }}>
+                        <div style={styles.decorativeGlow(sneedappPrimary)} />
+                        
+                        <div style={styles.productHeader}>
+                            <div style={styles.productIcon(sneedappPrimary)}>
+                                <FaStore size={24} style={{ color: '#fff' }} />
+                            </div>
+                            <div>
+                                <h2 style={styles.productTitle(sneedappPrimary)}>Sneedapp</h2>
+                                <div style={styles.productBadge(sneedappPrimary)}>
+                                    <FaCubes size={10} />
+                                    On-Chain App Store
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <p style={styles.description}>
+                            The on-chain app store. Browse, mint, and manage your own canister smart contracts
+                            — from trading bots to neuron managers — all fully on-chain and non-custodial.
+                        </p>
+                        
+                        <div style={styles.statsSection}>
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(2, 1fr)',
+                                gap: '0.75rem',
+                                marginBottom: '1.25rem',
+                            }}>
+                                <div style={{
+                                    background: `${sneedappPrimary}08`,
+                                    border: `1px solid ${sneedappPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>📦</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        Mint Your Own Canisters
+                                    </div>
+                                </div>
+                                <div style={{
+                                    background: `${sneedappPrimary}08`,
+                                    border: `1px solid ${sneedappPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>🔐</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        Fully Non-Custodial
+                                    </div>
+                                </div>
+                                <div style={{
+                                    background: `${sneedappPrimary}08`,
+                                    border: `1px solid ${sneedappPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>🌐</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        100% On-Chain
+                                    </div>
+                                </div>
+                                <div style={{
+                                    background: `${sneedappPrimary}08`,
+                                    border: `1px solid ${sneedappPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>🛠️</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        App Management
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <Link 
+                                to="/sneedapp" 
+                                style={styles.button(sneedappPrimary)}
+                            >
+                                Browse Apps
+                                <FaArrowRight size={14} />
+                            </Link>
+                        </div>
+                    </div>
+
+                    {/* Trading Bot */}
+                    <div className="products-fade-in" style={{ ...styles.product(tradingBotPrimary), animationDelay: '0.3s' }}>
+                        <div style={styles.decorativeGlow(tradingBotPrimary)} />
+                        
+                        <div style={styles.productHeader}>
+                            <div style={styles.productIcon(tradingBotPrimary)}>
+                                <FaChartLine size={24} style={{ color: '#fff' }} />
+                            </div>
+                            <div>
+                                <h2 style={styles.productTitle(tradingBotPrimary)}>Trading Bot</h2>
+                                <div style={styles.productBadge(tradingBotPrimary)}>
+                                    <FaRocket size={10} />
+                                    World First
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <p style={styles.description}>
+                            The world's first 100% on-chain, fully non-custodial trading engine.
+                            Your own canister, your keys, your funds — no third party can ever access your tokens.
+                        </p>
+                        
+                        <div style={styles.statsSection}>
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(2, 1fr)',
+                                gap: '0.75rem',
+                                marginBottom: '1.25rem',
+                            }}>
+                                <div style={{
+                                    background: `${tradingBotPrimary}08`,
+                                    border: `1px solid ${tradingBotPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>🔗</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        100% On-Chain
+                                    </div>
+                                </div>
+                                <div style={{
+                                    background: `${tradingBotPrimary}08`,
+                                    border: `1px solid ${tradingBotPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>🔑</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        Your Keys, Your Funds
+                                    </div>
+                                </div>
+                                <div style={{
+                                    background: `${tradingBotPrimary}08`,
+                                    border: `1px solid ${tradingBotPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>🤖</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        Autonomous Trading
+                                    </div>
+                                </div>
+                                <div style={{
+                                    background: `${tradingBotPrimary}08`,
+                                    border: `1px solid ${tradingBotPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>🛡️</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        Fully Non-Custodial
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <Link 
+                                to="/sneedapp/app/sneed-trading-bot" 
+                                style={styles.button(tradingBotPrimary)}
+                            >
+                                Learn More
+                                <FaArrowRight size={14} />
+                            </Link>
+                        </div>
+                    </div>
+
+                    {/* ICP Staking Bot */}
+                    <div className="products-fade-in" style={{ ...styles.product(icpStakingBotPrimary), animationDelay: '0.4s' }}>
+                        <div style={styles.decorativeGlow(icpStakingBotPrimary)} />
+                        
+                        <div style={styles.productHeader}>
+                            <div style={styles.productIcon(icpStakingBotPrimary)}>
+                                <FaRobot size={24} style={{ color: '#fff' }} />
+                            </div>
+                            <div>
+                                <h2 style={styles.productTitle(icpStakingBotPrimary)}>ICP Staking Bot</h2>
+                                <div style={styles.productBadge(icpStakingBotPrimary)}>
+                                    <FaBolt size={10} />
+                                    Automated Staking
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <p style={styles.description}>
+                            Your own canister that manages ICP neurons automatically — spawning maturity,
+                            staking rewards, and voting on NNS proposals. Fully non-custodial and tradable on Sneedex.
+                        </p>
+                        
+                        <div style={styles.statsSection}>
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(2, 1fr)',
+                                gap: '0.75rem',
+                                marginBottom: '1.25rem',
+                            }}>
+                                <div style={{
+                                    background: `${icpStakingBotPrimary}08`,
+                                    border: `1px solid ${icpStakingBotPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>🧠</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        Auto Maturity Spawn
+                                    </div>
+                                </div>
+                                <div style={{
+                                    background: `${icpStakingBotPrimary}08`,
+                                    border: `1px solid ${icpStakingBotPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>🗳️</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        NNS Voting
+                                    </div>
+                                </div>
+                                <div style={{
+                                    background: `${icpStakingBotPrimary}08`,
+                                    border: `1px solid ${icpStakingBotPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>💰</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        Auto Compounding
+                                    </div>
+                                </div>
+                                <div style={{
+                                    background: `${icpStakingBotPrimary}08`,
+                                    border: `1px solid ${icpStakingBotPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>🔄</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        Tradable on Sneedex
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <Link 
+                                to="/sneedapp/app/sneed-icp-staking-bot" 
+                                style={styles.button(icpStakingBotPrimary)}
+                            >
+                                Learn More
+                                <FaArrowRight size={14} />
+                            </Link>
+                        </div>
+                    </div>
+
                     {/* Liquid Staking */}
-                    <div className="products-fade-in" style={{ ...styles.product(liquidStakingPrimary), animationDelay: '0.2s' }}>
+                    <div className="products-fade-in" style={{ ...styles.product(liquidStakingPrimary), animationDelay: '0.5s' }}>
                         <div style={styles.decorativeGlow(liquidStakingPrimary)} />
                         
                         <div style={styles.productHeader}>
@@ -989,7 +1353,7 @@ function Products() {
                     </div>
 
                     {/* SneedLock */}
-                    <div className="products-fade-in" style={{ ...styles.product(sneedlockPrimary), animationDelay: '0.3s' }}>
+                    <div className="products-fade-in" style={{ ...styles.product(sneedlockPrimary), animationDelay: '0.6s' }}>
                         <div style={styles.decorativeGlow(sneedlockPrimary)} />
                         
                         <div style={styles.productHeader}>
