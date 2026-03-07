@@ -4300,6 +4300,7 @@ function NeuronCard({
     activeNeuronUsdRate,
     activeNeuronUsdLoading
 }) {
+    const { formatValue: denomFormatValue } = useDenomination();
     const displayName = name || nickname;
     const [isExpanded, setIsExpanded] = useState(false);
     const showDetails = isExpanded || editingName === neuronId;
