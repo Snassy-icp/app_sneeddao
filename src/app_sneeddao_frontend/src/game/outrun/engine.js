@@ -353,7 +353,7 @@ export function createGame(canvas, trackDef) {
     // Build transition curves + next stage track
     const transitionDef = buildTransitionDef(choice);
     const nextTrackData = getStageTrack(state.stage + 1);
-    const fullDef = [...transitionDef, ...nextTrackData.definition, { type: 'fork', length: 40 }];
+    const fullDef = [...transitionDef, ...nextTrackData.definition, { type: 'fork', length: 120 }];
 
     state.segments = buildRoad(fullDef);
 

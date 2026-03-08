@@ -45,15 +45,15 @@ export const SPRITE_TYPES = {
 // --- Atlas coordinates ---
 // Player car rear views (from 104648.png, row 1)
 const PLAYER_FRAMES = [
-  { x: 153, y: 0,  w: 80, h: 60 }, // 0: hard left
-  { x: 233, y: 3,  w: 78, h: 57 }, // 1: left
-  { x: 311, y: 8,  w: 79, h: 52 }, // 2: slight left
-  { x: 390, y: 0,  w: 80, h: 60 }, // 3: slight left variant
-  { x: 471, y: 3,  w: 80, h: 57 }, // 4: straight center
-  { x: 551, y: 8,  w: 80, h: 52 }, // 5: slight right
-  { x: 631, y: 0,  w: 82, h: 60 }, // 6: slight right variant
-  { x: 713, y: 3,  w: 82, h: 57 }, // 7: right
-  { x: 795, y: 8,  w: 82, h: 52 }, // 8: hard right
+  { x: 153, y: 0, w: 80, h: 60 }, // 0: hard left
+  { x: 233, y: 0, w: 78, h: 60 }, // 1: left
+  { x: 311, y: 0, w: 79, h: 60 }, // 2: slight left
+  { x: 390, y: 0, w: 80, h: 60 }, // 3: slight left variant
+  { x: 471, y: 0, w: 80, h: 60 }, // 4: straight center
+  { x: 551, y: 0, w: 80, h: 60 }, // 5: slight right
+  { x: 631, y: 0, w: 82, h: 60 }, // 6: slight right variant
+  { x: 713, y: 0, w: 82, h: 60 }, // 7: right
+  { x: 795, y: 0, w: 82, h: 60 }, // 8: hard right
 ];
 
 // Crash/tumble frames (row 4 of player sheet)

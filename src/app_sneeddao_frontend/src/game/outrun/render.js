@@ -154,7 +154,14 @@ export function render(ctx, state) {
   let prevRoadScale = 1;
   let prevFork = null;
 
+  // Don't wrap past track end if it ends with a fork (except during title demo)
+  const trackEndsFork = segments.length > 0 && segments[segments.length - 1].fork != null;
+  const preventWrap = trackEndsFork && state.gameState !== 'title';
+
   for (let n = 0; n < DRAW_DISTANCE; n++) {
+    // Stop drawing if we'd wrap past a fork ending
+    if (preventWrap && (baseSegmentIndex + n) >= segments.length) break;
+
     const idx = (baseSegmentIndex + n) % segments.length;
     const seg = segments[idx];
     const looped = (baseSegmentIndex + n) >= segments.length;
@@ -363,8 +370,8 @@ function drawSegmentStrip(ctx, w, color, band, x1, y1, w1, x2, y2, w2, fogAmount
   const splitCur = fork ? fork.split : 0;
   const splitPrev = prevFork ? prevFork.split : 0;
   if (splitCur > 0.02 || splitPrev > 0.02) {
-    const dw1 = w1 * splitPrev * 0.35;
-    const dw2 = w2 * splitCur * 0.35;
+    const dw1 = w1 * splitPrev * 0.6;
+    const dw2 = w2 * splitCur * 0.6;
 
     drawPolygon(ctx, x1 - dw1, y1, x1 + dw1, y1,
                      x2 + dw2, y2, x2 - dw2, y2, grassColor);

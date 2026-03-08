@@ -101,7 +101,7 @@ function addCurve(segments, length, intensity, direction, startIndex, lanes) {
   for (let i = 0; i < length; i++) {
     const seg = createSegment(startIndex + i, lanes);
     const t = i / length;
-    seg.curve = easeInOutSine(t) * intensity * direction;
+    seg.curve = Math.sin(t * Math.PI) * intensity * direction;
     segments.push(seg);
   }
 }
@@ -120,7 +120,7 @@ function addHillCurve(segments, length, hillHeight, hillDir, curveIntensity, cur
     const seg = createSegment(startIndex + i, lanes);
     const t = i / length;
     seg.world.y = Math.sin(t * Math.PI) * hillHeight * hillDir * 60;
-    seg.curve = easeInOutSine(t) * curveIntensity * curveDir;
+    seg.curve = Math.sin(t * Math.PI) * curveIntensity * curveDir;
     segments.push(seg);
   }
 }
@@ -131,8 +131,8 @@ function addFork(segments, length, startIndex) {
     const t = i / length;
     seg.fork = {
       progress: t,
-      widen: easeInOutSine(Math.min(1, t * 2.5)),
-      split: easeInOutSine(Math.max(0, (t - 0.25) / 0.75)),
+      widen: Math.min(1, t * 5),
+      split: Math.min(1, Math.max(0, (t - 0.05) * 3)),
     };
     segments.push(seg);
   }
