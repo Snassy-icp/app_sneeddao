@@ -273,7 +273,6 @@ export function render(ctx, state) {
   drawPlayerCar(ctx, W, H, steer, speed, MAX_SPEED, crashData);
   drawHUD(ctx, W, H, speed, time, stage, state.gameState);
 
-  if (state.gameState === 'fork') drawForkOverlay(ctx, W, H, state.forkTimer, state.forkChoice);
   if (state.gameState === 'title') drawTitleScreen(ctx, W, H);
   else if (state.gameState === 'countdown') drawCountdown(ctx, W, H, state.countdown);
   else if (state.gameState === 'gameover') drawGameOver(ctx, W, H);
@@ -465,35 +464,6 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.lineTo(x, y + r);
   ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
-}
-
-function drawForkOverlay(ctx, w, h, timer, choice) {
-  const alpha = Math.min(0.3, timer * 0.1);
-  ctx.fillStyle = `rgba(0,0,0,${alpha})`;
-  ctx.fillRect(0, 0, w, h);
-
-  ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,0.8)';
-  ctx.shadowBlur = 6;
-
-  ctx.fillStyle = '#FFF';
-  ctx.font = 'bold 28px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText('CHOOSE YOUR PATH', w / 2, h * 0.28);
-
-  ctx.font = 'bold 24px monospace';
-  ctx.fillStyle = choice === 'left' ? '#FFD700' : '#CCC';
-  ctx.fillText('\u2190 LEFT', w * 0.25, h * 0.40);
-  ctx.fillStyle = choice === 'right' ? '#FFD700' : '#CCC';
-  ctx.fillText('RIGHT \u2192', w * 0.75, h * 0.40);
-
-  if (!choice && ((Date.now() / 500) | 0) % 2 === 0) {
-    ctx.fillStyle = '#FFD700';
-    ctx.font = '16px monospace';
-    ctx.fillText('STEER LEFT OR RIGHT', w / 2, h * 0.50);
-  }
-
-  ctx.restore();
 }
 
 function drawTitleScreen(ctx, w, h) {

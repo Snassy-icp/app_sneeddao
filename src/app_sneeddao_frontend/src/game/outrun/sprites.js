@@ -45,15 +45,15 @@ export const SPRITE_TYPES = {
 // --- Atlas coordinates ---
 // Player car rear views (from 104648.png, row 1)
 const PLAYER_FRAMES = [
-  { x: 153, y: 0, w: 80, h: 60 }, // 0: hard left
-  { x: 233, y: 0, w: 78, h: 60 }, // 1: left
-  { x: 311, y: 0, w: 79, h: 60 }, // 2: slight left
-  { x: 390, y: 0, w: 80, h: 60 }, // 3: slight left variant
-  { x: 471, y: 0, w: 80, h: 60 }, // 4: straight center
-  { x: 551, y: 0, w: 80, h: 60 }, // 5: slight right
-  { x: 631, y: 0, w: 82, h: 60 }, // 6: slight right variant
-  { x: 713, y: 0, w: 82, h: 60 }, // 7: right
-  { x: 795, y: 0, w: 82, h: 60 }, // 8: hard right
+  { x: 153, y: 0, w: 79, h: 44 }, // 0: hard left (unused — use flipped frame 8)
+  { x: 233, y: 0, w: 77, h: 44 }, // 1: left (unused — use flipped frame 7)
+  { x: 311, y: 0, w: 78, h: 44 }, // 2: slight left (unused)
+  { x: 390, y: 0, w: 79, h: 44 }, // 3: slight left variant (unused)
+  { x: 471, y: 0, w: 79, h: 44 }, // 4: CENTER (straight)
+  { x: 551, y: 0, w: 79, h: 44 }, // 5: slight right
+  { x: 631, y: 0, w: 81, h: 44 }, // 6: slight right variant
+  { x: 713, y: 0, w: 81, h: 44 }, // 7: right
+  { x: 795, y: 0, w: 81, h: 44 }, // 8: hard right
 ];
 
 // Crash/tumble frames (row 4 of player sheet)
@@ -218,15 +218,16 @@ export function drawCar(ctx, x, y, scale, color, colorIndex) {
   ctx.drawImage(scenerySheet, car.x, car.y, car.w, car.h, dx, dy, dw, dh);
 }
 
-// Get player car steer frame index from steer value (-1..1)
+// Get player car steer frame + flip flag from steer value (-1..1).
+// Only frames 4-8 (center + right) are used; left turns flip horizontally.
 function getPlayerFrame(steer) {
-  if (steer < -0.6) return 0;
-  if (steer < -0.3) return 1;
-  if (steer < -0.1) return 2;
-  if (steer > 0.6) return 8;
-  if (steer > 0.3) return 7;
-  if (steer > 0.1) return 5;
-  return 4;
+  const abs = Math.abs(steer);
+  let frameIdx;
+  if (abs < 0.1) frameIdx = 4;       // center
+  else if (abs < 0.3) frameIdx = 5;   // slight turn
+  else if (abs < 0.6) frameIdx = 7;   // turn
+  else frameIdx = 8;                   // hard turn
+  return { frameIdx, flip: steer < -0.1 };
 }
 
 // Draw the player's car (seen from behind)
@@ -249,8 +250,9 @@ export function drawPlayerCar(ctx, canvasW, canvasH, steer, speed, maxSpeed, cra
     return;
   }
 
-  const frame = PLAYER_FRAMES[getPlayerFrame(steer)];
-  const PLAYER_SCALE = 2.0;
+  const { frameIdx, flip } = getPlayerFrame(steer);
+  const frame = PLAYER_FRAMES[frameIdx];
+  const PLAYER_SCALE = 2.7;
   const dw = frame.w * PLAYER_SCALE;
   const dh = frame.h * PLAYER_SCALE;
   const dx = x - dw / 2 + tilt * 4;
@@ -262,7 +264,15 @@ export function drawPlayerCar(ctx, canvasW, canvasH, steer, speed, maxSpeed, cra
   ctx.ellipse(x + tilt * 4, baseY + 4, dw * 0.55, 6, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.drawImage(playerSheet, frame.x, frame.y, frame.w, frame.h, dx, dy, dw, dh);
+  if (flip) {
+    ctx.save();
+    ctx.translate(dx + dw, dy);
+    ctx.scale(-1, 1);
+    ctx.drawImage(playerSheet, frame.x, frame.y, frame.w, frame.h, 0, 0, dw, dh);
+    ctx.restore();
+  } else {
+    ctx.drawImage(playerSheet, frame.x, frame.y, frame.w, frame.h, dx, dy, dw, dh);
+  }
 }
 
 function drawCrashingCar(ctx, cx, baseY, crash) {

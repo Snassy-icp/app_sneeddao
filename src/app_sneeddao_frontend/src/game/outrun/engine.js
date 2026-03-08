@@ -23,15 +23,13 @@ export function createGame(canvas, trackDef) {
     steer: 0,
     time: STAGE_TIME,
     stage: 1,
-    gameState: 'title', // title | countdown | playing | fork | crash | gameover
+    gameState: 'title', // title | countdown | playing | crash | gameover
     countdown: 3,
     theme: trackDef.theme || 'beach',
     skyOffset: 0,
     bgOffset: 0,
     hillOffset: 0,
     cars: [],
-    forkTimer: 0,
-    forkChoice: null,
     collisionCooldown: 0,
     trackDef,
     // Theme transition
@@ -86,8 +84,6 @@ export function createGame(canvas, trackDef) {
     state.stage = 1;
     state.gameState = 'title';
     state.countdown = 3;
-    state.forkTimer = 0;
-    state.forkChoice = null;
     state.collisionCooldown = 0;
     state.skyOffset = 0;
     state.bgOffset = 0;
@@ -110,9 +106,6 @@ export function createGame(canvas, trackDef) {
         break;
       case 'playing':
         updatePlaying(dt, input);
-        break;
-      case 'fork':
-        updateFork(dt, input);
         break;
       case 'crash':
         updateCrash(dt);
@@ -250,16 +243,11 @@ export function createGame(canvas, trackDef) {
       state.gameState = 'gameover';
     }
 
-    if (state.position >= total * 0.92) {
-      const forkSeg = findSegment(state.segments, state.position);
-      if (forkSeg && forkSeg.fork && forkSeg.fork.progress > 0.45) {
-        state.gameState = 'fork';
-        state.forkTimer = 0;
-      }
-    }
-
+    // When reaching track end, auto-advance based on player position
     if (state.position >= total) {
-      state.position -= total;
+      const choice = state.playerX >= 0 ? 'right' : 'left';
+      advanceToNextStage(choice);
+      return;
     }
   }
 
@@ -320,31 +308,6 @@ export function createGame(canvas, trackDef) {
     }
   }
 
-  function updateFork(dt, input) {
-    state.forkTimer += dt;
-    const total = trackLength(state.segments);
-
-    const cruiseSpeed = MAX_SPEED * 0.12;
-    if (state.speed > cruiseSpeed) {
-      state.speed = Math.max(cruiseSpeed, state.speed - MAX_SPEED * dt * 0.6);
-    }
-
-    state.position += state.speed * dt;
-    if (state.position >= total) state.position = total - 1;
-
-    const steerDir = input.steerDirection();
-    if (steerDir < -0.3) {
-      state.forkChoice = 'left';
-    } else if (steerDir > 0.3) {
-      state.forkChoice = 'right';
-    }
-
-    if ((state.forkChoice && state.forkTimer > 1.0) || state.forkTimer > 5) {
-      if (!state.forkChoice) state.forkChoice = 'right';
-      advanceToNextStage(state.forkChoice);
-    }
-  }
-
   function advanceToNextStage(choice) {
     const prevTheme = state.theme;
     const nextThemeIdx = (THEME_ORDER.indexOf(prevTheme) + 1) % THEME_ORDER.length;
@@ -369,8 +332,6 @@ export function createGame(canvas, trackDef) {
     state.time += STAGE_TIME;
     state.position = 0;
     state.speed = MAX_SPEED * 0.5;
-    state.forkTimer = 0;
-    state.forkChoice = null;
     state.collisionCooldown = 2.0;
     state.gameState = 'playing';
 
