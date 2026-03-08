@@ -3,19 +3,35 @@
 
 const playerSheet = new Image();
 const scenerySheet = new Image();
+const bgSky = new Image();
+const bgClouds = new Image();
+const bgMountains = new Image();
 let sheetsLoaded = false;
 
 export function loadSpriteSheets() {
   return new Promise((resolve) => {
     let loaded = 0;
-    const check = () => { if (++loaded >= 2) { sheetsLoaded = true; resolve(); } };
+    const check = () => { if (++loaded >= 5) { sheetsLoaded = true; resolve(); } };
     playerSheet.onload = check;
     scenerySheet.onload = check;
+    bgSky.onload = check;
+    bgClouds.onload = check;
+    bgMountains.onload = check;
     playerSheet.onerror = check;
     scenerySheet.onerror = check;
+    bgSky.onerror = check;
+    bgClouds.onerror = check;
+    bgMountains.onerror = check;
     playerSheet.src = '/outrun-player.png';
     scenerySheet.src = '/outrun-scenery.png';
+    bgSky.src = '/outrun-bg-sky.png';
+    bgClouds.src = '/outrun-bg-clouds.png';
+    bgMountains.src = '/outrun-bg-mountains.png';
   });
+}
+
+export function getBgImages() {
+  return { sky: bgSky, clouds: bgClouds, mountains: bgMountains };
 }
 
 export function areSheetsLoaded() { return sheetsLoaded; }

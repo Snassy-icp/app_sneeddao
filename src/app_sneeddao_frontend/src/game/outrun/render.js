@@ -5,7 +5,7 @@ import {
 } from './constants.js';
 import { exponentialFog } from './utils.js';
 import { interpolateY, trackLength } from './road.js';
-import { drawSprite, drawCar, drawPlayerCar, drawFingerWag } from './sprites.js';
+import { drawSprite, drawCar, drawPlayerCar, drawFingerWag, getBgImages } from './sprites.js';
 
 let cachedGradient = null;
 let cachedGradientKey = '';
@@ -322,22 +322,43 @@ function makeSpriteItem(type, carColor, colorIndex, sx, sy, rw, clip, flip) {
 }
 
 function drawSky(ctx, w, h, theme, offset) {
+  const bg = getBgImages();
   const skyH = h * 0.48;
-  ctx.fillStyle = getCachedSkyGradient(ctx, h, theme);
-  ctx.fillRect(0, 0, w, skyH);
 
-  ctx.fillStyle = 'rgba(255,255,255,0.12)';
-  const cloudOffset = (offset * 0.2) % w;
-  for (let i = 0; i < 5; i++) {
-    const cx = ((i * w / 3.5) + cloudOffset) % (w + 200) - 100;
-    const cy = skyH * 0.2 + (i % 3) * skyH * 0.15;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, 80 + i * 15, 20 + i * 3, 0, 0, Math.PI * 2);
-    ctx.fill();
+  if (!bg.sky.complete || !bg.sky.naturalWidth) {
+    // Fallback: procedural gradient for non-loaded state
+    ctx.fillStyle = getCachedSkyGradient(ctx, h, theme);
+    ctx.fillRect(0, 0, w, skyH);
+    return;
+  }
+
+  // Draw sky layer (slowest parallax) with mirror wrapping
+  drawMirrorLayer(ctx, bg.sky, offset * 0.15, 0, w, skyH);
+
+  // Draw cloud layer on top (medium parallax, has alpha)
+  if (bg.clouds.complete && bg.clouds.naturalWidth) {
+    const cloudY = skyH * 0.15;
+    const cloudH = skyH * 0.55;
+    drawMirrorLayer(ctx, bg.clouds, offset * 0.25, cloudY, w, cloudH);
   }
 }
 
 function drawBackground(ctx, w, h, theme, bgOffset, hillOffset) {
+  const bg = getBgImages();
+  const horizonY = h * 0.48;
+
+  if (!bg.mountains.complete || !bg.mountains.naturalWidth) {
+    drawProceduralBackground(ctx, w, h, theme, bgOffset, hillOffset);
+    return;
+  }
+
+  // Mountains layer (faster parallax), positioned at horizon
+  const mtH = horizonY * 0.45;
+  const mtY = horizonY - mtH;
+  drawMirrorLayer(ctx, bg.mountains, bgOffset * 0.4, mtY, w, mtH);
+}
+
+function drawProceduralBackground(ctx, w, h, theme, bgOffset, hillOffset) {
   const horizonY = h * 0.48;
 
   ctx.fillStyle = theme.mountains;
@@ -365,6 +386,30 @@ function drawBackground(ctx, w, h, theme, bgOffset, hillOffset) {
   ctx.lineTo(w + 50, horizonY);
   ctx.closePath();
   ctx.fill();
+}
+
+function drawMirrorLayer(ctx, img, scrollX, y, viewW, drawH) {
+  const imgW = img.naturalWidth;
+  const imgH = img.naturalHeight;
+  const scale = drawH / imgH;
+  const scaledW = imgW * scale;
+  const period = scaledW * 2;
+  let ox = ((scrollX % period) + period) % period;
+
+  for (let i = -1; i <= 2; i++) {
+    const baseX = -ox + i * scaledW;
+    if (baseX + scaledW < 0 || baseX > viewW) continue;
+    const isFlipped = ((Math.floor((ox / scaledW) + i) % 2) + 2) % 2 === 1;
+    if (isFlipped) {
+      ctx.save();
+      ctx.translate(baseX + scaledW, y);
+      ctx.scale(-1, 1);
+      ctx.drawImage(img, 0, 0, imgW, imgH, 0, 0, scaledW, drawH);
+      ctx.restore();
+    } else {
+      ctx.drawImage(img, 0, 0, imgW, imgH, baseX, y, scaledW, drawH);
+    }
+  }
 }
 
 function drawSegmentStrip(ctx, w, color, band, x1, y1, w1, x2, y2, w2, fogAmount, fork, prevFork, lanes, tunnel, prevTunnel, waterSide) {
