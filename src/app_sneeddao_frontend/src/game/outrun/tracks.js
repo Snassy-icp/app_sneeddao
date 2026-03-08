@@ -133,25 +133,25 @@ function generateBeachSprites(totalSegs, startOffset) {
     sprites.push({
       segment: i,
       type: rightTypes[(i * 7) % rightTypes.length],
-      offset: 1.3 + (((i * 13) % 100) / 100) * 0.6,
+      offset: 1.8 + (((i * 13) % 100) / 100) * 0.6,
     });
   }
   for (let i = start + 4; i < totalSegs - 45; i += 11) {
     sprites.push({
       segment: i,
       type: leftTypes[(i * 11) % leftTypes.length],
-      offset: -1.3 - (((i * 17) % 100) / 100) * 0.6,
+      offset: -1.8 - (((i * 17) % 100) / 100) * 0.6,
     });
   }
   for (let i = 100; i < totalSegs - 100; i += 200) {
-    sprites.push({ segment: i, type: SPRITE_TYPES.BILLBOARD, offset: (i % 400 < 200 ? 1 : -1) * 2.0 });
+    sprites.push({ segment: i, type: SPRITE_TYPES.BILLBOARD, offset: (i % 400 < 200 ? 1 : -1) * 2.5 });
   }
   for (let i = 50; i < totalSegs - 100; i += 150) {
-    sprites.push({ segment: i, type: SPRITE_TYPES.SIGN_RIGHT, offset: 1.6 });
+    sprites.push({ segment: i, type: SPRITE_TYPES.SIGN_RIGHT, offset: 2.0 });
   }
   for (let i = 2; i < 30; i += 8) {
-    sprites.push({ segment: i, type: SPRITE_TYPES.COLUMN, offset: 1.12 });
-    sprites.push({ segment: i, type: SPRITE_TYPES.COLUMN, offset: -1.12 });
+    sprites.push({ segment: i, type: SPRITE_TYPES.COLUMN, offset: 1.65 });
+    sprites.push({ segment: i, type: SPRITE_TYPES.COLUMN, offset: -1.65 });
   }
   return sprites;
 }
@@ -166,18 +166,18 @@ function generateDesertSprites(totalSegs, startOffset) {
     sprites.push({
       segment: i,
       type: rightTypes[(i * 7) % rightTypes.length],
-      offset: 1.3 + (((i * 13) % 100) / 100) * 0.8,
+      offset: 1.8 + (((i * 13) % 100) / 100) * 0.8,
     });
   }
   for (let i = start + 6; i < totalSegs - 45; i += 12) {
     sprites.push({
       segment: i,
       type: leftTypes[(i * 11) % leftTypes.length],
-      offset: -1.3 - (((i * 17) % 100) / 100) * 0.8,
+      offset: -1.8 - (((i * 17) % 100) / 100) * 0.8,
     });
   }
   for (let i = 100; i < totalSegs - 100; i += 250) {
-    sprites.push({ segment: i, type: SPRITE_TYPES.BILLBOARD, offset: (i % 500 < 250 ? 1 : -1) * 2.0 });
+    sprites.push({ segment: i, type: SPRITE_TYPES.BILLBOARD, offset: (i % 500 < 250 ? 1 : -1) * 2.5 });
   }
   return sprites;
 }
@@ -192,18 +192,18 @@ function generateForestSprites(totalSegs, startOffset) {
     sprites.push({
       segment: i,
       type: rightTypes[(i * 7) % rightTypes.length],
-      offset: 1.2 + (((i * 13) % 100) / 100) * 0.5,
+      offset: 1.8 + (((i * 13) % 100) / 100) * 0.5,
     });
   }
   for (let i = start + 3; i < totalSegs - 45; i += 9) {
     sprites.push({
       segment: i,
       type: leftTypes[(i * 11) % leftTypes.length],
-      offset: -1.2 - (((i * 17) % 100) / 100) * 0.5,
+      offset: -1.8 - (((i * 17) % 100) / 100) * 0.5,
     });
   }
   for (let i = 80; i < totalSegs - 100; i += 180) {
-    sprites.push({ segment: i, type: SPRITE_TYPES.BILLBOARD, offset: (i % 360 < 180 ? 1 : -1) * 1.9 });
+    sprites.push({ segment: i, type: SPRITE_TYPES.BILLBOARD, offset: (i % 360 < 180 ? 1 : -1) * 2.4 });
   }
   return sprites;
 }
@@ -218,22 +218,22 @@ function generateNightSprites(totalSegs, startOffset) {
     sprites.push({
       segment: i,
       type: rightTypes[(i * 7) % rightTypes.length],
-      offset: 1.15 + (((i * 13) % 100) / 100) * 0.4,
+      offset: 1.8 + (((i * 13) % 100) / 100) * 0.4,
     });
   }
   for (let i = start + 5; i < totalSegs - 45; i += 12) {
     sprites.push({
       segment: i,
       type: leftTypes[(i * 11) % leftTypes.length],
-      offset: -1.15 - (((i * 17) % 100) / 100) * 0.4,
+      offset: -1.8 - (((i * 17) % 100) / 100) * 0.4,
     });
   }
   for (let i = 2; i < totalSegs - 45; i += 6) {
-    sprites.push({ segment: i, type: SPRITE_TYPES.COLUMN, offset: 1.08 });
-    sprites.push({ segment: i, type: SPRITE_TYPES.COLUMN, offset: -1.08 });
+    sprites.push({ segment: i, type: SPRITE_TYPES.COLUMN, offset: 1.65 });
+    sprites.push({ segment: i, type: SPRITE_TYPES.COLUMN, offset: -1.65 });
   }
   for (let i = 100; i < totalSegs - 100; i += 200) {
-    sprites.push({ segment: i, type: SPRITE_TYPES.BILLBOARD, offset: (i % 400 < 200 ? 1 : -1) * 1.8 });
+    sprites.push({ segment: i, type: SPRITE_TYPES.BILLBOARD, offset: (i % 400 < 200 ? 1 : -1) * 2.4 });
   }
   return sprites;
 }

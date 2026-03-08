@@ -153,7 +153,7 @@ export function createGame(canvas, trackDef) {
     state.steer = steerDir;
 
     if (steerDir !== 0) {
-      state.playerX += steerDir * dt * 2.0 * (state.speed / MAX_SPEED);
+      state.playerX += steerDir * dt * 2.5 * (state.speed / MAX_SPEED);
     }
 
     if (seg) {

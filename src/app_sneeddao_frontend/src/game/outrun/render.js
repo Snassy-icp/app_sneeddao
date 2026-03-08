@@ -179,8 +179,14 @@ export function render(ctx, state) {
     seg.screen.scale = scale;
     seg.clip = maxY;
 
-    // Hill clipping: skip if above previous drawn segment
+    // Hill clipping: skip drawing but still update prev coords
+    // so the next visible strip connects properly
     if (screenY >= maxY || scale <= 0) {
+      prevScreenX = screenX;
+      prevScreenY = screenY;
+      prevScreenW = screenW;
+      prevRoadScale = seg.roadScale || 1;
+      prevFork = seg.fork;
       continue;
     }
 

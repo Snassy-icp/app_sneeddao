@@ -16,12 +16,12 @@ export const RUMBLE_LENGTH = 3; // segments per rumble strip band
 
 // Player
 export const MAX_SPEED = SEGMENT_LENGTH * 70;
-export const ACCEL = MAX_SPEED / 2;
+export const ACCEL = MAX_SPEED / 3;
 export const BRAKE_DECEL = -MAX_SPEED;
 export const NATURAL_DECEL = -MAX_SPEED / 50;
 export const OFF_ROAD_DECEL = -MAX_SPEED / 8;
 export const OFF_ROAD_MAX = MAX_SPEED / 2.5;
-export const CENTRIFUGAL_FORCE = 0.15;
+export const CENTRIFUGAL_FORCE = 0.10;
 export const OFF_ROAD_THRESHOLD = 1.2;
 export const PLAYER_Z = CAMERA_HEIGHT * CAMERA_DEPTH;
 
@@ -99,5 +99,5 @@ export const THEMES = {
 };
 
 // Road projection
-export const CURVE_SCALE = 1500;
+export const CURVE_SCALE = 200;
 export const FOG_DENSITY = 5;

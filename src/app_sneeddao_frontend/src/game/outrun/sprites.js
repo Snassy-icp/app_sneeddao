@@ -114,8 +114,8 @@ export const TRAFFIC_CAR_COUNT = TRAFFIC_CARS.length;
 const TYPE_TO_ATLAS = {
   palm_tree:      'palm_tree',
   pine_tree:      'green_tree',    // reuse green tree for pine
-  bush:           'bush',
-  rock:           'rocks',
+  bush:           'bush_flower',
+  rock:           'rock_large',
   sign_right:     'sign_easel',
   sign_left:      'sign_round',
   column:         'small_tree',
