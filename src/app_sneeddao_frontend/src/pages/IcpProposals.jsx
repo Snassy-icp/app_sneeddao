@@ -14,7 +14,7 @@ import {
     getNnsActionTypeName, getNnsBallotForNeuron, formatNnsVote,
     getNnsNeuronId, getNnsNeuronVotingPower, hasNnsVotingAccess,
     voteOnNnsProposal, formatIcpE8s, NNS_GOVERNANCE_CANISTER_ID,
-    fetchKnownNeurons
+    fetchKnownNeurons, fetchUserNnsNeurons
 } from '../utils/NnsUtils';
 import { FaGavel, FaSearch, FaFilter, FaDownload, FaChevronDown, FaChevronRight, FaExternalLinkAlt, FaCheck, FaTimes, FaClock, FaLayerGroup, FaVoteYea } from 'react-icons/fa';
 
@@ -94,7 +94,7 @@ const statusOptions = [
 function IcpProposals() {
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
-    const { neuronCache } = useWallet();
+    const { getNeuronsForGovernance } = useWallet();
     const navigate = useNavigate();
     const { neuronNames, neuronNicknames, verifiedNames, principalNames, principalNicknames } = useNaming();
 
@@ -131,9 +131,23 @@ function IcpProposals() {
     // Status filter for API call
     const includeStatus = statusFilter ? [statusFilter] : [];
 
-    // Get NNS neurons from wallet context
-    const nnsNeurons = neuronCache?.get(NNS_GOVERNANCE_CANISTER_ID) || [];
+    // Actively fetch NNS neurons (not passive cache read - cache may not be populated yet)
+    const [nnsNeurons, setNnsNeurons] = useState([]);
     const userPrincipal = identity?.getPrincipal()?.toString();
+
+    useEffect(() => {
+        if (!isAuthenticated || !identity) return;
+        (async () => {
+            try {
+                const neurons = getNeuronsForGovernance
+                    ? await getNeuronsForGovernance(NNS_GOVERNANCE_CANISTER_ID)
+                    : await fetchUserNnsNeurons(identity);
+                setNnsNeurons(neurons || []);
+            } catch (err) {
+                console.warn('Failed to load NNS neurons for proposals page:', err);
+            }
+        })();
+    }, [isAuthenticated, identity, getNeuronsForGovernance]);
 
     // Format VP in compact form (K, M suffixes)
     const formatCompactVP = (vp) => {

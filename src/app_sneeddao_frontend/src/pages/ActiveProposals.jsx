@@ -479,14 +479,14 @@ function ActiveProposals() {
     const displayedSnsProposalsData = useMemo(() => {
         if (!showOnlyVotable) return snsProposalsData;
         return snsProposalsData
-            .map(({ snsInfo, proposals, neurons, nervousSystemParams, logo }) => {
+            .map(({ snsInfo, proposals, neurons, nervousSystemParams, logo, isNns }) => {
                 const filteredProposals = proposals.filter(p => {
                     const key = `${snsInfo.rootCanisterId}_${p.id[0]?.id?.toString()}`;
                     const elig = proposalEligibility[key];
                     if (!elig || elig.loading) return true;
                     return elig.eligibleCount > 0;
                 });
-                return { snsInfo, proposals: filteredProposals, neurons, nervousSystemParams, logo };
+                return { snsInfo, proposals: filteredProposals, neurons, nervousSystemParams, logo, isNns };
             })
             .filter(d => d.proposals.length > 0);
     }, [snsProposalsData, proposalEligibility, showOnlyVotable]);
@@ -555,7 +555,7 @@ function ActiveProposals() {
                         {!loading && snsProposalsData.length > 0 && (
                             <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '1rem' }}>
                                 <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
-                                    <span style={{ color: proposalPrimary, fontWeight: '600' }}>{displayedSnsProposalsData.length}</span> SNS{displayedSnsProposalsData.length !== 1 ? 'es' : ''} {showOnlyVotable ? 'with votable proposals' : 'with proposals'}
+                                    <span style={{ color: proposalPrimary, fontWeight: '600' }}>{displayedSnsProposalsData.length}</span> DAO{displayedSnsProposalsData.length !== 1 ? 's' : ''} {showOnlyVotable ? 'with votable proposals' : 'with proposals'}
                                 </div>
                                 <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
                                     <span style={{ color: proposalAccent, fontWeight: '600' }}>
