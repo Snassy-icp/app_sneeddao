@@ -99,5 +99,5 @@ export const THEMES = {
 };
 
 // Road projection
-export const CURVE_SCALE = 200;
+export const CURVE_SCALE = 80;
 export const FOG_DENSITY = 5;

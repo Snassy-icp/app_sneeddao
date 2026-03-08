@@ -136,6 +136,10 @@ export function render(ctx, state) {
   drawSky(ctx, W, H, theme, state.skyOffset || 0);
   drawBackground(ctx, W, H, theme, state.bgOffset || 0, state.hillOffset || 0);
 
+  // Fill bottom half with grass to prevent any gap at screen bottom
+  ctx.fillStyle = theme.ground.light || '#10AA10';
+  ctx.fillRect(0, H * 0.48, W, H * 0.52);
+
   // --- Correct pseudo-3D road projection ---
   const cameraX = playerX * ROAD_WIDTH;
   const cameraY = CAMERA_HEIGHT + playerY;
