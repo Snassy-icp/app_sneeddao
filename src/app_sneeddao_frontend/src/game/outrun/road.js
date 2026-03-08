@@ -16,6 +16,7 @@ export function createSegment(n, lanes) {
     color: Math.floor(n / RUMBLE_LENGTH) % 2 ? 'dark' : 'light',
     looped: false,
     fork: null,
+    tunnel: null,
     clip: 0,
   };
 }
@@ -63,6 +64,10 @@ export function buildRoad(definition) {
         n += hLen;
         break;
       }
+      case 'tunnel':
+        addTunnel(segments, section.length || 60, n, secLanes);
+        n += section.length || 60;
+        break;
       case 'fork':
         addFork(segments, section.length || 40, n);
         n += section.length || 40;
@@ -134,6 +139,24 @@ function addFork(segments, length, startIndex) {
       widen: Math.min(1, t * 5),
       split: Math.min(1, Math.max(0, (t - 0.05) * 3)),
     };
+    segments.push(seg);
+  }
+}
+
+function addTunnel(segments, length, startIndex, lanes) {
+  const enterLen = Math.min(15, Math.floor(length * 0.1));
+  const exitLen = Math.min(15, Math.floor(length * 0.1));
+  const insideLen = length - enterLen - exitLen;
+
+  for (let i = 0; i < length; i++) {
+    const seg = createSegment(startIndex + i, lanes);
+    if (i < enterLen) {
+      seg.tunnel = { progress: i / enterLen, phase: 'enter' };
+    } else if (i >= enterLen + insideLen) {
+      seg.tunnel = { progress: 1 - (i - enterLen - insideLen) / exitLen, phase: 'exit' };
+    } else {
+      seg.tunnel = { progress: 1, phase: 'inside' };
+    }
     segments.push(seg);
   }
 }

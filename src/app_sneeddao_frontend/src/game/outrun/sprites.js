@@ -43,17 +43,17 @@ export const SPRITE_TYPES = {
 };
 
 // --- Atlas coordinates ---
-// Player car rear views (from 104648.png, row 1)
+// Player car rear views — 3×3 grid: turn (straight/moderate/hard) × slope (uphill/flat/downhill)
 const PLAYER_FRAMES = [
-  { x: 153, y: 0, w: 79, h: 44 }, // 0: hard left (unused — use flipped frame 8)
-  { x: 233, y: 0, w: 77, h: 44 }, // 1: left (unused — use flipped frame 7)
-  { x: 311, y: 0, w: 78, h: 44 }, // 2: slight left (unused)
-  { x: 390, y: 0, w: 79, h: 44 }, // 3: slight left variant (unused)
-  { x: 471, y: 0, w: 79, h: 44 }, // 4: CENTER (straight)
-  { x: 551, y: 0, w: 79, h: 44 }, // 5: slight right
-  { x: 631, y: 0, w: 81, h: 44 }, // 6: slight right variant
-  { x: 713, y: 0, w: 81, h: 44 }, // 7: right
-  { x: 795, y: 0, w: 81, h: 44 }, // 8: hard right
+  { x: 153, y: 0, w: 79, h: 44 }, // 0: straight, uphill
+  { x: 233, y: 0, w: 77, h: 44 }, // 1: straight, flat
+  { x: 311, y: 0, w: 78, h: 44 }, // 2: straight, downhill
+  { x: 390, y: 0, w: 79, h: 44 }, // 3: moderate right, uphill (flip for left)
+  { x: 471, y: 0, w: 79, h: 44 }, // 4: moderate right, flat (flip for left)
+  { x: 551, y: 0, w: 79, h: 44 }, // 5: moderate right, downhill (flip for left)
+  { x: 631, y: 0, w: 81, h: 44 }, // 6: hard right, uphill (flip for left)
+  { x: 713, y: 0, w: 81, h: 44 }, // 7: hard right, flat (flip for left)
+  { x: 795, y: 0, w: 81, h: 44 }, // 8: hard right, downhill (flip for left)
 ];
 
 // Crash/tumble frames (row 4 of player sheet)
@@ -163,7 +163,7 @@ export function getSpriteWidth(type) {
 let billboardCounter = 0;
 
 // Draw a scenery sprite from atlas. x,y = bottom-center on screen, scale = pixel multiplier.
-export function drawSprite(ctx, type, x, y, _unused, resolvedScale) {
+export function drawSprite(ctx, type, x, y, _unused, resolvedScale, flip) {
   const scale = resolvedScale || 1;
 
   // Determine atlas key
@@ -190,11 +190,19 @@ export function drawSprite(ctx, type, x, y, _unused, resolvedScale) {
   const dx = x - dw / 2;
   const dy = y - dh;
 
-  ctx.drawImage(scenerySheet, atlas.x, atlas.y, atlas.w, atlas.h, dx, dy, dw, dh);
+  if (flip) {
+    ctx.save();
+    ctx.translate(dx + dw, dy);
+    ctx.scale(-1, 1);
+    ctx.drawImage(scenerySheet, atlas.x, atlas.y, atlas.w, atlas.h, 0, 0, dw, dh);
+    ctx.restore();
+  } else {
+    ctx.drawImage(scenerySheet, atlas.x, atlas.y, atlas.w, atlas.h, dx, dy, dw, dh);
+  }
 }
 
 // Draw a traffic car sprite
-export function drawCar(ctx, x, y, scale, color, colorIndex) {
+export function drawCar(ctx, x, y, scale, color, colorIndex, flip) {
   const idx = (colorIndex != null) ? (colorIndex % TRAFFIC_CARS.length) : 0;
   const car = TRAFFIC_CARS[idx];
 
@@ -215,23 +223,38 @@ export function drawCar(ctx, x, y, scale, color, colorIndex) {
   const dx = x - dw / 2;
   const dy = y - dh;
 
-  ctx.drawImage(scenerySheet, car.x, car.y, car.w, car.h, dx, dy, dw, dh);
+  if (flip) {
+    ctx.save();
+    ctx.translate(dx + dw, dy);
+    ctx.scale(-1, 1);
+    ctx.drawImage(scenerySheet, car.x, car.y, car.w, car.h, 0, 0, dw, dh);
+    ctx.restore();
+  } else {
+    ctx.drawImage(scenerySheet, car.x, car.y, car.w, car.h, dx, dy, dw, dh);
+  }
 }
 
-// Get player car steer frame + flip flag from steer value (-1..1).
-// Only frames 4-8 (center + right) are used; left turns flip horizontally.
-function getPlayerFrame(steer) {
+// Get player car frame + flip flag from steer (-1..1) and road slope.
+// 3×3 grid: turnGroup (0=straight, 1=moderate, 2=hard) × hillOffset (0=up, 1=flat, 2=down)
+function getPlayerFrame(steer, slope) {
   const abs = Math.abs(steer);
-  let frameIdx;
-  if (abs < 0.1) frameIdx = 4;       // center
-  else if (abs < 0.3) frameIdx = 5;   // slight turn
-  else if (abs < 0.6) frameIdx = 7;   // turn
-  else frameIdx = 8;                   // hard turn
-  return { frameIdx, flip: steer < -0.1 };
+  let turnGroup;
+  if (abs < 0.15) turnGroup = 0;       // straight (frames 0-2)
+  else if (abs < 0.5) turnGroup = 1;   // moderate turn (frames 3-5)
+  else turnGroup = 2;                   // hard turn (frames 6-8)
+
+  let hillOffset;
+  if (slope > 300) hillOffset = 0;      // uphill
+  else if (slope < -300) hillOffset = 2; // downhill
+  else hillOffset = 1;                   // flat
+
+  const frameIdx = turnGroup * 3 + hillOffset;
+  const flip = turnGroup > 0 && steer < 0;
+  return { frameIdx, flip };
 }
 
 // Draw the player's car (seen from behind)
-export function drawPlayerCar(ctx, canvasW, canvasH, steer, speed, maxSpeed, crash) {
+export function drawPlayerCar(ctx, canvasW, canvasH, steer, speed, maxSpeed, crash, slope) {
   const x = canvasW / 2;
   const baseY = canvasH - 10;
 
@@ -250,7 +273,7 @@ export function drawPlayerCar(ctx, canvasW, canvasH, steer, speed, maxSpeed, cra
     return;
   }
 
-  const { frameIdx, flip } = getPlayerFrame(steer);
+  const { frameIdx, flip } = getPlayerFrame(steer, slope || 0);
   const frame = PLAYER_FRAMES[frameIdx];
   const PLAYER_SCALE = 2.7;
   const dw = frame.w * PLAYER_SCALE;

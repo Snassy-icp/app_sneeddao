@@ -64,7 +64,8 @@ export const THEMES = {
     sky: ['#72D7EE', '#B0E0FF'],
     horizon: '#87CEEB',
     mountains: '#5B8C5A',
-    ground: { light: '#10AA10', dark: '#009A00' },
+    ground: { light: '#1E90FF', dark: '#1878D8' },     // Blue water (far ground)
+    shoulder: { light: '#C2B280', dark: '#A99B6A' },    // Sandy shoulder
     road: { light: '#6B6B6B', dark: '#696969' },
     rumble: { light: '#E8473C', dark: '#BBBBBB' },
     lane: '#CCCCCC',
@@ -73,7 +74,8 @@ export const THEMES = {
     sky: ['#FDB813', '#FFE4B5'],
     horizon: '#DEB887',
     mountains: '#8B7355',
-    ground: { light: '#C2B280', dark: '#A99B6A' },
+    ground: { light: '#C2B280', dark: '#A99B6A' },      // Sand
+    shoulder: { light: '#D4C494', dark: '#BBA87A' },     // Lighter sand shoulder
     road: { light: '#6B6B6B', dark: '#696969' },
     rumble: { light: '#E8473C', dark: '#BBBBBB' },
     lane: '#CCCCCC',
@@ -82,7 +84,8 @@ export const THEMES = {
     sky: ['#4A90D9', '#87CEEB'],
     horizon: '#6B8E23',
     mountains: '#2E5B2E',
-    ground: { light: '#1A8A1A', dark: '#0A7A0A' },
+    ground: { light: '#4CAF50', dark: '#388E3C' },       // Meadow/field green
+    shoulder: { light: '#1A8A1A', dark: '#0A7A0A' },     // Darker grass shoulder
     road: { light: '#555555', dark: '#505050' },
     rumble: { light: '#E8473C', dark: '#BBBBBB' },
     lane: '#CCCCCC',
@@ -91,7 +94,8 @@ export const THEMES = {
     sky: ['#0B0B3B', '#1a1a4e'],
     horizon: '#1a1a2e',
     mountains: '#111133',
-    ground: { light: '#0A3A0A', dark: '#052A05' },
+    ground: { light: '#0A3A0A', dark: '#052A05' },       // Dark
+    shoulder: { light: '#0D4D0D', dark: '#073707' },      // Slightly lighter dark shoulder
     road: { light: '#444444', dark: '#3a3a3a' },
     rumble: { light: '#D03030', dark: '#888888' },
     lane: '#999999',

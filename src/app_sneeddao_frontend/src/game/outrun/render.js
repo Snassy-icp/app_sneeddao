@@ -34,7 +34,8 @@ let fogBandCache = null;
 let fogBandThemeKey = '';
 
 function getFogBands(theme, fogBase) {
-  const key = theme.ground.light + theme.ground.dark + fogBase;
+  const shoulder = theme.shoulder || theme.ground;
+  const key = theme.ground.light + theme.ground.dark + shoulder.light + shoulder.dark + fogBase;
   if (fogBandThemeKey === key && fogBandCache) return fogBandCache;
   const bands = [];
   for (let b = 0; b < FOG_BANDS; b++) {
@@ -42,6 +43,8 @@ function getFogBands(theme, fogBase) {
     bands.push({
       grassLight: blendRGB(theme.ground.light, fogBase, fogAmt),
       grassDark: blendRGB(theme.ground.dark, fogBase, fogAmt),
+      shoulderLight: blendRGB(shoulder.light, fogBase, fogAmt),
+      shoulderDark: blendRGB(shoulder.dark, fogBase, fogAmt),
       roadLight: blendRGB(theme.road.light, fogBase, fogAmt),
       roadDark: blendRGB(theme.road.dark, fogBase, fogAmt),
       rumbleLight: blendRGB(theme.rumble.light, fogBase, fogAmt),
@@ -85,7 +88,18 @@ function blendRGB(hex, fogHex, amt) {
   return `rgb(${r},${g},${b})`;
 }
 
+function darkenColor(colorStr, amount) {
+  const c = parseHex(colorStr);
+  const factor = 1 - amount;
+  const r = (c.r * factor) | 0;
+  const g = (c.g * factor) | 0;
+  const b = (c.b * factor) | 0;
+  return `rgb(${r},${g},${b})`;
+}
+
 function blendThemes(from, to, t) {
+  const fromShoulder = from.shoulder || from.ground;
+  const toShoulder = to.shoulder || to.ground;
   return {
     sky: [blendRGB(from.sky[0], to.sky[0], t), blendRGB(from.sky[1], to.sky[1], t)],
     horizon: blendRGB(from.horizon, to.horizon, t),
@@ -93,6 +107,10 @@ function blendThemes(from, to, t) {
     ground: {
       light: blendRGB(from.ground.light, to.ground.light, t),
       dark: blendRGB(from.ground.dark, to.ground.dark, t),
+    },
+    shoulder: {
+      light: blendRGB(fromShoulder.light, toShoulder.light, t),
+      dark: blendRGB(fromShoulder.dark, toShoulder.dark, t),
     },
     road: {
       light: blendRGB(from.road.light, to.road.light, t),
@@ -153,6 +171,7 @@ export function render(ctx, state) {
   let prevScreenX = 0, prevScreenY = H, prevScreenW = 0;
   let prevRoadScale = 1;
   let prevFork = null;
+  let prevTunnel = null;
 
   // Don't wrap past track end if it ends with a fork (except during title demo)
   const trackEndsFork = segments.length > 0 && segments[segments.length - 1].fork != null;
@@ -198,6 +217,7 @@ export function render(ctx, state) {
       prevScreenW = screenW;
       prevRoadScale = seg.roadScale || 1;
       prevFork = seg.fork;
+      prevTunnel = seg.tunnel;
       continue;
     }
 
@@ -214,7 +234,8 @@ export function render(ctx, state) {
       drawSegmentStrip(ctx, W, seg.color, fogBands[bandIdx],
         prevScreenX, prevScreenY, effW1,
         screenX, screenY, effW2,
-        fogAmount, seg.fork, prevFork, seg.lanes || LANE_COUNT);
+        fogAmount, seg.fork, prevFork, seg.lanes || LANE_COUNT,
+        seg.tunnel, prevTunnel);
     }
 
     // Collect sprites for back-to-front pass
@@ -223,7 +244,7 @@ export function render(ctx, state) {
       const spriteX = screenX + (scale * sp.offset * ROAD_WIDTH * W / 2);
       if (spriteX > -200 && spriteX < W + 200) {
         spritePool[spriteCount++] = makeSpriteItem(
-          sp.type, null, null, spriteX, screenY, screenW * (seg.roadScale || 1), maxY);
+          sp.type, null, null, spriteX, screenY, screenW * (seg.roadScale || 1), maxY, sp.offset < 0);
       }
     }
 
@@ -233,7 +254,7 @@ export function render(ctx, state) {
         const carScreenX = screenX + (scale * car.offset * ROAD_WIDTH * W / 2);
         if (carScreenX > -100 && carScreenX < W + 100) {
           spritePool[spriteCount++] = makeSpriteItem(
-            null, car.color, car.colorIndex, carScreenX, screenY, screenW, maxY);
+            null, car.color, car.colorIndex, carScreenX, screenY, screenW, maxY, car.offset < playerX);
         }
       }
     }
@@ -244,6 +265,7 @@ export function render(ctx, state) {
     prevScreenW = screenW;
     prevRoadScale = seg.roadScale || 1;
     prevFork = seg.fork;
+    prevTunnel = seg.tunnel;
     maxY = screenY;
   }
 
@@ -252,7 +274,7 @@ export function render(ctx, state) {
     const item = spritePool[i];
     if (item.carColor !== null) {
       const carScale = item.roadW * 0.002;
-      if (carScale > 0.02) drawCar(ctx, item.screenX, item.screenY, carScale, item.carColor, item.colorIndex);
+      if (carScale > 0.02) drawCar(ctx, item.screenX, item.screenY, carScale, item.carColor, item.colorIndex, item.flip);
     } else {
       const spriteScale = item.roadW * 0.8;
       if (spriteScale < 4) continue;
@@ -264,13 +286,18 @@ export function render(ctx, state) {
         ctx.rect(0, 0, W, item.clip);
         ctx.clip();
       }
-      drawSprite(ctx, item.type, item.screenX, item.screenY, 0, spriteScale);
+      drawSprite(ctx, item.type, item.screenX, item.screenY, 0, spriteScale, item.flip);
       if (needsClip) ctx.restore();
     }
   }
 
+  // Compute road slope at player position for sprite selection
+  const segIdx = Math.floor(position / SEGMENT_LENGTH) % segments.length;
+  const aheadIdx = (segIdx + 5) % segments.length;
+  const playerSlope = (segments[aheadIdx].world.y || 0) - (segments[segIdx].world.y || 0);
+
   const crashData = state.gameState === 'crash' ? state.crash : null;
-  drawPlayerCar(ctx, W, H, steer, speed, MAX_SPEED, crashData);
+  drawPlayerCar(ctx, W, H, steer, speed, MAX_SPEED, crashData, playerSlope);
   drawHUD(ctx, W, H, speed, time, stage, state.gameState);
 
   if (state.gameState === 'title') drawTitleScreen(ctx, W, H);
@@ -281,11 +308,11 @@ export function render(ctx, state) {
 const POOL_SIZE = 300;
 const spritePool = [];
 for (let i = 0; i < POOL_SIZE; i++) {
-  spritePool[i] = { type: null, carColor: null, colorIndex: null, screenX: 0, screenY: 0, roadW: 0, clip: 0 };
+  spritePool[i] = { type: null, carColor: null, colorIndex: null, screenX: 0, screenY: 0, roadW: 0, clip: 0, flip: false };
 }
 
-function makeSpriteItem(type, carColor, colorIndex, sx, sy, rw, clip) {
-  return { type, carColor, colorIndex, screenX: sx, screenY: sy, roadW: rw, clip };
+function makeSpriteItem(type, carColor, colorIndex, sx, sy, rw, clip, flip) {
+  return { type, carColor, colorIndex, screenX: sx, screenY: sy, roadW: rw, clip, flip: !!flip };
 }
 
 function drawSky(ctx, w, h, theme, offset) {
@@ -334,22 +361,37 @@ function drawBackground(ctx, w, h, theme, bgOffset, hillOffset) {
   ctx.fill();
 }
 
-function drawSegmentStrip(ctx, w, color, band, x1, y1, w1, x2, y2, w2, fogAmount, fork, prevFork, lanes) {
+function drawSegmentStrip(ctx, w, color, band, x1, y1, w1, x2, y2, w2, fogAmount, fork, prevFork, lanes, tunnel, prevTunnel) {
   const isLight = color === 'light';
   const stripH = y1 - y2;
   if (stripH <= 0) return;
 
+  // Tunnel darkness factor for road/rumble/lane color darkening
+  const tunnelDark = tunnel ? tunnel.progress * 0.4 : 0;
+
   const grassColor = isLight ? band.grassLight : band.grassDark;
 
+  // Far ground (water/sand/fields)
   ctx.fillStyle = grassColor;
   ctx.fillRect(0, y2, w, stripH);
 
-  drawPolygon(ctx, x1 - w1, y1, x1 + w1, y1, x2 + w2, y2, x2 - w2, y2,
-    isLight ? band.roadLight : band.roadDark);
-
+  // Shoulder strips (grass/sand between rumble and far ground)
+  const sh1 = w1 * 1.8;
+  const sh2 = w2 * 1.8;
   const rum1 = w1 * 1.15;
   const rum2 = w2 * 1.15;
-  const rumbleColor = isLight ? band.rumbleLight : band.rumbleDark;
+  const shoulderColor = isLight ? band.shoulderLight : band.shoulderDark;
+  drawPolygon(ctx, x1 - sh1, y1, x1 - rum1, y1, x2 - rum2, y2, x2 - sh2, y2, shoulderColor);
+  drawPolygon(ctx, x1 + rum1, y1, x1 + sh1, y1, x2 + sh2, y2, x2 + rum2, y2, shoulderColor);
+
+  // Road surface
+  let roadColor = isLight ? band.roadLight : band.roadDark;
+  if (tunnelDark > 0) roadColor = darkenColor(roadColor, tunnelDark);
+  drawPolygon(ctx, x1 - w1, y1, x1 + w1, y1, x2 + w2, y2, x2 - w2, y2, roadColor);
+
+  // Rumble strips
+  let rumbleColor = isLight ? band.rumbleLight : band.rumbleDark;
+  if (tunnelDark > 0) rumbleColor = darkenColor(rumbleColor, tunnelDark);
   drawPolygon(ctx, x1 - rum1, y1, x1 - w1, y1, x2 - w2, y2, x2 - rum2, y2, rumbleColor);
   drawPolygon(ctx, x1 + w1, y1, x1 + rum1, y1, x2 + rum2, y2, x2 + w2, y2, rumbleColor);
 
@@ -357,11 +399,13 @@ function drawSegmentStrip(ctx, w, color, band, x1, y1, w1, x2, y2, w2, fogAmount
   if (isLight && fogAmount < 0.6) {
     const laneW1 = Math.max(1, w1 * 0.012);
     const laneW2 = Math.max(1, w2 * 0.012);
+    let laneColor = band.lane;
+    if (tunnelDark > 0) laneColor = darkenColor(laneColor, tunnelDark);
     for (let i = 1; i < lanes; i++) {
       const lx1 = x1 + (w1 * 2 * i / lanes) - w1;
       const lx2 = x2 + (w2 * 2 * i / lanes) - w2;
       drawPolygon(ctx, lx1 - laneW1, y1, lx1 + laneW1, y1,
-                       lx2 + laneW2, y2, lx2 - laneW2, y2, band.lane);
+                       lx2 + laneW2, y2, lx2 - laneW2, y2, laneColor);
     }
   }
 
@@ -383,6 +427,25 @@ function drawSegmentStrip(ctx, w, color, band, x1, y1, w1, x2, y2, w2, fogAmount
       drawPolygon(ctx, x1 + dw1, y1, x1 + dw1 + irw1, y1,
                        x2 + dw2 + irw2, y2, x2 + dw2, y2, rumbleColor);
     }
+  }
+
+  // Tunnel walls and ceiling
+  if (tunnel && tunnel.progress > 0) {
+    const prevProg = prevTunnel ? prevTunnel.progress : 0;
+    const wallH1 = stripH * 3 * prevProg;
+    const wallH2 = stripH * 3 * tunnel.progress;
+    const wallAlpha = 0.85 * tunnel.progress;
+    const wallColor = `rgba(40,30,25,${wallAlpha})`;
+
+    // Left wall
+    drawPolygon(ctx, x1 - w1, y1, x1 - w1, y1 - wallH1,
+                     x2 - w2, y2 - wallH2, x2 - w2, y2, wallColor);
+    // Right wall
+    drawPolygon(ctx, x1 + w1, y1, x1 + w1, y1 - wallH1,
+                     x2 + w2, y2 - wallH2, x2 + w2, y2, wallColor);
+    // Ceiling
+    drawPolygon(ctx, x1 - w1, y1 - wallH1, x1 + w1, y1 - wallH1,
+                     x2 + w2, y2 - wallH2, x2 - w2, y2 - wallH2, wallColor);
   }
 }
 
