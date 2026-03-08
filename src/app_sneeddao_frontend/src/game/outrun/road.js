@@ -176,7 +176,8 @@ export function findSegment(segments, z) {
 }
 
 export function interpolateY(segments, z) {
-  const idx = Math.floor(z / SEGMENT_LENGTH) % segments.length;
+  if (segments.length === 0) return 0;
+  const idx = ((Math.floor(z / SEGMENT_LENGTH) % segments.length) + segments.length) % segments.length;
   const nextIdx = (idx + 1) % segments.length;
   const t = ((z % SEGMENT_LENGTH) + SEGMENT_LENGTH) % SEGMENT_LENGTH / SEGMENT_LENGTH;
   const y0 = segments[idx].world.y || 0;

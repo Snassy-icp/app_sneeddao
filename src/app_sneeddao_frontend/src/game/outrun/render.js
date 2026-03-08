@@ -145,7 +145,8 @@ export function render(ctx, state) {
     theme = THEMES[state.theme] || THEMES.beach;
   }
 
-  const baseSegmentIndex = Math.floor(position / SEGMENT_LENGTH) % segments.length;
+  if (segments.length === 0) return;
+  const baseSegmentIndex = ((Math.floor(position / SEGMENT_LENGTH) % segments.length) + segments.length) % segments.length;
   const playerY = interpolateY(segments, position);
   const fogBase = theme.sky[1];
   const fogBands = getFogBands(theme, fogBase);
@@ -293,7 +294,7 @@ export function render(ctx, state) {
   }
 
   // Compute road slope at player position for sprite selection
-  const segIdx = Math.floor(position / SEGMENT_LENGTH) % segments.length;
+  const segIdx = ((Math.floor(position / SEGMENT_LENGTH) % segments.length) + segments.length) % segments.length;
   const aheadIdx = (segIdx + 5) % segments.length;
   const playerSlope = (segments[aheadIdx].world.y || 0) - (segments[segIdx].world.y || 0);
 
