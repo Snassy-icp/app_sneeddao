@@ -13,6 +13,7 @@ import { formatE8s } from '../utils/NeuronUtils';
 import { priceService } from '../services/PriceService';
 import { formatCyclesCompact } from '../utils/NeuronManagerSettings';
 import { FaGlobe, FaVoteYea, FaComments, FaRss, FaExternalLinkAlt, FaSearch, FaCoins, FaServer, FaUsers, FaHistory, FaShieldAlt, FaArrowRight, FaLink, FaCube, FaArchive, FaCode, FaExchangeAlt, FaCopy, FaCheck, FaChevronDown, FaChevronUp, FaList, FaInfoCircle, FaCog, FaKey, FaGift, FaClock, FaUserCog, FaDollarSign, FaSitemap, FaBox, FaSpinner } from 'react-icons/fa';
+import { useDenomination } from '../contexts/DenominationContext';
 
 // Custom CSS for animations
 const customStyles = `
@@ -98,6 +99,7 @@ const PERMISSION_INFO = {
 function Sns() {
     const { identity } = useAuth();
     const { theme } = useTheme();
+    const { formatValue: denomFormatValue, formatValueCompact: denomFormatCompact } = useDenomination();
     const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
     const [searchParams, setSearchParams] = useSearchParams();
     const [snsList, setSnsList] = useState([]);
@@ -983,7 +985,7 @@ function Sns() {
                                                 )}
                                                 {tokenPriceUSD !== null && (
                                                     <span style={{ color: theme.colors.success }}>
-                                                        ${tokenPriceUSD < 0.01 ? tokenPriceUSD.toFixed(4) : tokenPriceUSD.toFixed(2)}
+                                                        {denomFormatValue(tokenPriceUSD)}
                                                     </span>
                                                 )}
                                             </div>
@@ -1033,7 +1035,7 @@ function Sns() {
                                     )}
                                     {tokenPriceUSD !== null && (
                                         <span style={{ color: theme.colors.success, fontWeight: '600' }}>
-                                            ${tokenPriceUSD < 0.01 ? tokenPriceUSD.toFixed(4) : tokenPriceUSD.toFixed(2)}
+                                            {denomFormatValue(tokenPriceUSD)}
                                         </span>
                                     )}
                                 </div>
@@ -1287,14 +1289,21 @@ function Sns() {
                                                                 </div>
                                                                 {tokenPriceUSD !== null && (
                                                                     <div>
-                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', marginBottom: '2px' }}>Price in USD</div>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', marginBottom: '2px' }}>Price</div>
                                                                         <div style={{ color: theme.colors.success, fontWeight: '700', fontSize: '1.1rem' }}>
-                                                                            ${tokenPriceUSD < 0.0001 
-                                                                                ? tokenPriceUSD.toExponential(4) 
-                                                                                : tokenPriceUSD < 1 
-                                                                                    ? tokenPriceUSD.toFixed(6) 
-                                                                                    : tokenPriceUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })
-                                                                            }
+                                                                            {denomFormatValue(tokenPriceUSD)}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {tokenPriceUSD !== null && selectedSnsDetails?.totalSupply != null && selectedSnsDetails?.tokenDecimals != null && (
+                                                                    <div>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', marginBottom: '2px' }}>FDV</div>
+                                                                        <div style={{ color: theme.colors.success, fontWeight: '700', fontSize: '1.1rem' }}>
+                                                                            {(() => {
+                                                                                const supply = Number(selectedSnsDetails.totalSupply) / Math.pow(10, selectedSnsDetails.tokenDecimals);
+                                                                                const fdv = supply * tokenPriceUSD;
+                                                                                return denomFormatCompact(fdv) || denomFormatValue(fdv);
+                                                                            })()}
                                                                         </div>
                                                                     </div>
                                                                 )}
@@ -2388,10 +2397,7 @@ function Sns() {
                                                                 </span>
                                                                 {snsPrices.get(sns.canisters.ledger).usd !== null && (
                                                                     <span style={{ color: theme.colors.success }}>
-                                                                        ${snsPrices.get(sns.canisters.ledger).usd < 0.01 
-                                                                            ? snsPrices.get(sns.canisters.ledger).usd.toFixed(4)
-                                                                            : snsPrices.get(sns.canisters.ledger).usd.toFixed(2)
-                                                                        }
+                                                                        {denomFormatValue(snsPrices.get(sns.canisters.ledger).usd)}
                                                                     </span>
                                                                 )}
                                                             </>
