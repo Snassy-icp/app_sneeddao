@@ -373,9 +373,11 @@ Billboard rotation cycle in code: `billboard1 → billboard2 → billboard3 → 
 
 ---
 
-### 2.6 Traffic Cars (from scenery sheet, right side)
+### 2.6 Traffic Vehicles (from scenery sheet, right side)
 
-Small rear-view car sprites for AI traffic. Each has a dominant color for fallback rendering.
+Rear-view vehicle sprites for AI traffic. Includes passenger cars, a truck, and a flatbed.
+
+#### Passenger Cars **[coded]**
 
 | Index | Name | x | y | w | h | Hex Color | Status | Description |
 |-------|------|------|------|-----|-----|-----------|--------|-------------|
@@ -389,6 +391,17 @@ Small rear-view car sprites for AI traffic. Each has a dominant color for fallba
 | 7 | car_blue2 | 1201 | 1014 | 80 | 56 | #354269 | **[coded]** | Dark blue car |
 | 8 | car_red5 | 1291 | 1014 | 80 | 45 | #7f1a15 | **[coded]** | Red car variant |
 | 9 | car_red6 | 1381 | 1014 | 80 | 45 | #821c18 | **[coded]** | Red car variant |
+
+#### Truck & Flatbed **[approx, not coded]**
+
+Located on the right edge between the bush (y~630) and the pink car (y:756). These are larger/taller than the passenger cars and would make great slow-moving traffic obstacles.
+
+| Name | x | y | w | h | Hex Color | Description |
+|------|------|------|-----|-----|-----------|-------------|
+| truck | 1375 | 640 | 88 | 58 | #7B6B4A | Brown/tan delivery truck, boxy rear, taller than cars. Visible tailgate and cargo body. |
+| flatbed | 1375 | 702 | 88 | 52 | #4A7A3A | Green flatbed / utility vehicle (Jeep-style). Boxy cab with open cargo bed. Olive/army green. |
+
+Potential use: slow-moving traffic that's harder to pass (wider hitbox, visually distinct). The truck could move at 0.2–0.3× MAX_SPEED and the flatbed at 0.25–0.35× MAX_SPEED for variety.
 
 #### Small Detail Cars (near SEGA sign) **[approx, not coded]**
 
@@ -432,6 +445,8 @@ These tiny cars appear near the SEGA sign and could be used for minimap or dista
 | Female extended tumble | ~12 | player | More crash variety |
 | Female ground poses | 2 | player | Post-crash scene |
 | Head variants | ~5 | player | Reactive passenger heads |
+| Truck (brown) | 1 | scenery | Slow-moving traffic, wider hitbox |
+| Flatbed (green) | 1 | scenery | Slow-moving traffic, visually distinct |
 | Tree stump | 1 | scenery | Additional road-side variety |
 | Rock boulder | 1 | scenery | Additional obstacle |
 | Tiny detail cars | 3 | scenery | Minimap or far-distance traffic |

@@ -150,13 +150,18 @@ function addTunnel(segments, length, startIndex, lanes) {
 
   for (let i = 0; i < length; i++) {
     const seg = createSegment(startIndex + i, lanes);
+    let progress, phase;
     if (i < enterLen) {
-      seg.tunnel = { progress: i / enterLen, phase: 'enter' };
+      progress = i / enterLen;
+      phase = 'enter';
     } else if (i >= enterLen + insideLen) {
-      seg.tunnel = { progress: 1 - (i - enterLen - insideLen) / exitLen, phase: 'exit' };
+      progress = 1 - (i - enterLen - insideLen) / exitLen;
+      phase = 'exit';
     } else {
-      seg.tunnel = { progress: 1, phase: 'inside' };
+      progress = 1;
+      phase = 'inside';
     }
+    seg.tunnel = { progress, phase, pillar: (i % 6 === 0 && progress >= 0.8) };
     segments.push(seg);
   }
 }

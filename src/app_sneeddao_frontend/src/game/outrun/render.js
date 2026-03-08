@@ -337,8 +337,8 @@ function drawSky(ctx, w, h, theme, offset) {
 
   // Draw cloud layer on top (medium parallax, has alpha)
   if (bg.clouds.complete && bg.clouds.naturalWidth) {
-    const cloudY = skyH * 0.15;
-    const cloudH = skyH * 0.55;
+    const cloudH = skyH * 0.35;
+    const cloudY = skyH - cloudH;
     drawMirrorLayer(ctx, bg.clouds, offset * 0.25, cloudY, w, cloudH);
   }
 }
@@ -353,7 +353,7 @@ function drawBackground(ctx, w, h, theme, bgOffset, hillOffset) {
   }
 
   // Mountains layer (faster parallax), positioned at horizon
-  const mtH = horizonY * 0.45;
+  const mtH = horizonY * 0.18;
   const mtY = horizonY - mtH;
   drawMirrorLayer(ctx, bg.mountains, bgOffset * 0.4, mtY, w, mtH);
 }
@@ -394,12 +394,14 @@ function drawMirrorLayer(ctx, img, scrollX, y, viewW, drawH) {
   const scale = drawH / imgH;
   const scaledW = imgW * scale;
   const period = scaledW * 2;
-  let ox = ((scrollX % period) + period) % period;
+  const ox = ((scrollX % period) + period) % period;
+  const baseTile = Math.floor(ox / scaledW);
 
-  for (let i = -1; i <= 2; i++) {
-    const baseX = -ox + i * scaledW;
+  for (let i = 0; i <= 2; i++) {
+    const tileIdx = baseTile + i;
+    const baseX = tileIdx * scaledW - ox;
     if (baseX + scaledW < 0 || baseX > viewW) continue;
-    const isFlipped = ((Math.floor((ox / scaledW) + i) % 2) + 2) % 2 === 1;
+    const isFlipped = ((tileIdx % 2) + 2) % 2 === 1;
     if (isFlipped) {
       ctx.save();
       ctx.translate(baseX + scaledW, y);
@@ -504,8 +506,8 @@ function drawSegmentStrip(ctx, w, color, band, x1, y1, w1, x2, y2, w2, fogAmount
   // Tunnel walls and ceiling
   if (tunnel && tunnel.progress > 0) {
     const prevProg = prevTunnel ? prevTunnel.progress : 0;
-    const wallH1 = stripH * 3 * prevProg;
-    const wallH2 = stripH * 3 * tunnel.progress;
+    const wallH1 = w1 * 1.2 * prevProg;
+    const wallH2 = w2 * 1.2 * tunnel.progress;
     const wallAlpha = 0.85 * tunnel.progress;
     const wallColor = `rgba(40,30,25,${wallAlpha})`;
 
@@ -515,9 +517,20 @@ function drawSegmentStrip(ctx, w, color, band, x1, y1, w1, x2, y2, w2, fogAmount
     // Right wall
     drawPolygon(ctx, x1 + w1, y1, x1 + w1, y1 - wallH1,
                      x2 + w2, y2 - wallH2, x2 + w2, y2, wallColor);
-    // Ceiling
+    // Ceiling with alternating bands
+    const ceilColor = isLight
+      ? `rgba(60,50,40,${wallAlpha})`
+      : `rgba(30,22,18,${wallAlpha})`;
     drawPolygon(ctx, x1 - w1, y1 - wallH1, x1 + w1, y1 - wallH1,
-                     x2 + w2, y2 - wallH2, x2 - w2, y2 - wallH2, wallColor);
+                     x2 + w2, y2 - wallH2, x2 - w2, y2 - wallH2, ceilColor);
+
+    // Tunnel pillars
+    if (tunnel.pillar) {
+      const pillarW = Math.max(2, w2 * 0.06);
+      ctx.fillStyle = `rgba(80,70,60,${0.9 * tunnel.progress})`;
+      ctx.fillRect(x2 - w2 - pillarW, y2 - wallH2, pillarW * 2, wallH2);
+      ctx.fillRect(x2 + w2 - pillarW, y2 - wallH2, pillarW * 2, wallH2);
+    }
   }
 }
 

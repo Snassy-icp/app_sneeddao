@@ -84,8 +84,29 @@ const CRASH_FRAMES = [
 ];
 
 // Driving overlay heads (rear view, drawn on top of car body)
-const DRIVER_HEAD = { x: 425, y: 739, w: 11, h: 12 };
-const BLONDE_HEAD = { x: 478, y: 738, w: 13, h: 13 };
+const DRIVER_HEAD_STRAIGHT = { x: 425, y: 739, w: 11, h: 12 };
+const DRIVER_HEAD_LOOK_LEFT = { x: 445, y: 739, w: 11, h: 12 };
+const DRIVER_HEAD_LOOK_RIGHT = { x: 460, y: 739, w: 14, h: 13 };
+const BLONDE_HEAD_NORMAL = { x: 478, y: 738, w: 13, h: 13 };
+const BLONDE_HEAD_WIND = { x: 520, y: 738, w: 12, h: 14 };
+
+// Overhead car frames for spin crash
+const OVERHEAD_FRAMES = [
+  { x: 0,   y: 285, w: 150, h: 85 },
+  { x: 155, y: 285, w: 145, h: 85 },
+  { x: 305, y: 285, w: 140, h: 85 },
+  { x: 450, y: 285, w: 135, h: 85 },
+  { x: 590, y: 285, w: 140, h: 85 },
+  { x: 735, y: 285, w: 145, h: 85 },
+  { x: 880, y: 285, w: 110, h: 85 },
+];
+
+// Per-frame head offsets indexed by turnGroup
+const HEAD_OFFSETS = [
+  { driverX: -0.12, passengerX: 0.15 },   // straight
+  { driverX: -0.09, passengerX: 0.17 },   // moderate turn
+  { driverX: -0.06, passengerX: 0.20 },   // hard turn
+];
 
 // Male crash tumble frames
 const MALE_TUMBLE = [
@@ -164,6 +185,8 @@ const TRAFFIC_CARS = [
   { x: 1201, y: 1014, w: 80, h: 56, color: '#354269' },
   { x: 1291, y: 1014, w: 80, h: 45, color: '#7f1a15' },
   { x: 1381, y: 1014, w: 80, h: 45, color: '#821c18' },
+  { x: 1375, y: 640,  w: 88, h: 58, color: '#7B6B4A' },  // 10: truck
+  { x: 1375, y: 702,  w: 88, h: 52, color: '#4A7A3A' },  // 11: flatbed
 ];
 
 export const TRAFFIC_CAR_COUNT = TRAFFIC_CARS.length;
@@ -308,7 +331,7 @@ function getPlayerFrame(steer, slope) {
 
   const frameIdx = turnGroup * 3 + hillOffset;
   const flip = turnGroup > 0 && steer < 0;
-  return { frameIdx, flip };
+  return { frameIdx, flip, turnGroup };
 }
 
 // Draw the player's car (seen from behind)
@@ -317,7 +340,11 @@ export function drawPlayerCar(ctx, canvasW, canvasH, steer, speed, maxSpeed, cra
   const baseY = canvasH - 10;
 
   if (crash && crash.timer > 0) {
-    drawCrashingCar(ctx, x, baseY, crash);
+    if (crash.type === 'spin') {
+      drawSpinCrash(ctx, x, baseY, crash);
+    } else {
+      drawCrashingCar(ctx, x, baseY, crash);
+    }
     return;
   }
 
@@ -331,7 +358,7 @@ export function drawPlayerCar(ctx, canvasW, canvasH, steer, speed, maxSpeed, cra
     return;
   }
 
-  const { frameIdx, flip } = getPlayerFrame(steer, slope || 0);
+  const { frameIdx, flip, turnGroup } = getPlayerFrame(steer, slope || 0);
   const frame = PLAYER_FRAMES[frameIdx];
   const PLAYER_SCALE = 2.7;
   const dw = frame.w * PLAYER_SCALE;
@@ -356,33 +383,53 @@ export function drawPlayerCar(ctx, canvasW, canvasH, steer, speed, maxSpeed, cra
   }
 
   // Draw passengers (driver + passenger heads visible above car)
-  drawPassengerHeads(ctx, dx, dy, dw, dh, flip);
+  drawPassengerHeads(ctx, dx, dy, dw, dh, turnGroup, flip, speed, maxSpeed);
 }
 
-function drawPassengerHeads(ctx, carX, carY, carW, carH) {
+function drawPassengerHeads(ctx, carX, carY, carW, carH, turnGroup, flip, speed, maxSpeed) {
   if (!sheetsLoaded || !playerSheet.complete) return;
 
   const headScale = carW / 110;
   const cx = carX + carW / 2;
   const headY = carY + carH * 0.28;
 
-  // Guy always on left, lady always on right (LHD, viewed from behind)
-  // Positions and sprites never flip — they stay fixed regardless of car turn
-  const driverOffX = -carW * 0.15;
-  const passengerOffX = carW * 0.12;
+  const offsets = HEAD_OFFSETS[turnGroup] || HEAD_OFFSETS[0];
+  let driverOffX = offsets.driverX * carW;
+  let passengerOffX = offsets.passengerX * carW;
+
+  // Select driver head based on turn
+  let driverHead;
+  if (turnGroup === 0) {
+    driverHead = DRIVER_HEAD_STRAIGHT;
+  } else if (flip) {
+    driverHead = DRIVER_HEAD_LOOK_LEFT;
+  } else {
+    driverHead = DRIVER_HEAD_LOOK_RIGHT;
+  }
+
+  // Select passenger head with hair animation at speed
+  let passengerHead;
+  if (speed > maxSpeed * 0.6 && ((Date.now() >> 7) & 1)) {
+    passengerHead = BLONDE_HEAD_WIND;
+  } else {
+    passengerHead = BLONDE_HEAD_NORMAL;
+  }
+
+  if (flip) {
+    driverOffX = -driverOffX;
+    passengerOffX = -passengerOffX;
+  }
 
   // Draw driver head
-  const head = DRIVER_HEAD;
-  const dw = head.w * headScale;
-  const dh = head.h * headScale;
-  ctx.drawImage(playerSheet, head.x, head.y, head.w, head.h,
+  const dw = driverHead.w * headScale;
+  const dh = driverHead.h * headScale;
+  ctx.drawImage(playerSheet, driverHead.x, driverHead.y, driverHead.w, driverHead.h,
     cx + driverOffX - dw / 2, headY - dh, dw, dh);
 
   // Draw passenger head
-  const pHead = BLONDE_HEAD;
-  const pw = pHead.w * headScale;
-  const ph = pHead.h * headScale;
-  ctx.drawImage(playerSheet, pHead.x, pHead.y, pHead.w, pHead.h,
+  const pw = passengerHead.w * headScale;
+  const ph = passengerHead.h * headScale;
+  ctx.drawImage(playerSheet, passengerHead.x, passengerHead.y, passengerHead.w, passengerHead.h,
     cx + passengerOffX - pw / 2, headY - ph, pw, ph);
 }
 
@@ -454,9 +501,9 @@ function drawCrashingCar(ctx, cx, baseY, crash) {
 
 function drawEjectedCharacter(ctx, cx, baseY, time, frames, direction) {
   if (!sheetsLoaded || !playerSheet.complete) return;
-  const vx = direction * 120;
-  const vy = 250;
-  const gravity = 350;
+  const vx = direction * 80;
+  const vy = 320;
+  const gravity = 400;
   const x = cx + vx * time;
   const heightAboveGround = vy * time - 0.5 * gravity * time * time;
   if (heightAboveGround < -50) return;
@@ -523,6 +570,53 @@ function drawSparks(ctx, cx, baseY, timer) {
     const sy = baseY - 5 + Math.sin(angle) * dist * 0.3;
     const size = 1 + Math.random() * 2;
     ctx.fillRect(sx, sy, size, size);
+  }
+}
+
+function drawSpinCrash(ctx, cx, baseY, crash) {
+  // Shadow on ground
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(cx, baseY + 4, 70, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Lateral slide
+  const slideX = Math.sin((crash.spinAngle || 0) * 0.5) * 30;
+
+  if (!sheetsLoaded || !playerSheet.complete || !playerSheet.naturalWidth) {
+    ctx.save();
+    ctx.translate(cx + slideX, baseY - 40);
+    ctx.rotate(crash.spinAngle || 0);
+    ctx.fillStyle = '#E8473C';
+    ctx.fillRect(-52, -20, 104, 40);
+    ctx.restore();
+    return;
+  }
+
+  // Select overhead frame based on spin angle
+  const angle = ((crash.spinAngle || 0) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+  const frameIdx = Math.floor((angle / (Math.PI * 2)) * OVERHEAD_FRAMES.length) % OVERHEAD_FRAMES.length;
+  const frame = OVERHEAD_FRAMES[frameIdx];
+  const SPIN_SCALE = 1.8;
+  const dw = frame.w * SPIN_SCALE;
+  const dh = frame.h * SPIN_SCALE;
+
+  ctx.drawImage(playerSheet, frame.x, frame.y, frame.w, frame.h,
+    cx + slideX - dw / 2, baseY - dh, dw, dh);
+
+  // Tire smoke particles during spin
+  if (Math.abs(crash.spinSpeed || 0) > 1) {
+    const smokeAlpha = Math.min(0.4, Math.abs(crash.spinSpeed) * 0.02);
+    ctx.fillStyle = `rgba(200,190,170,${smokeAlpha})`;
+    for (let i = 0; i < 4; i++) {
+      const sa = (crash.spinAngle || 0) + i * Math.PI * 0.5;
+      const sx = cx + slideX + Math.cos(sa) * 40;
+      const sy = baseY - 5 + Math.sin(sa) * 8;
+      const r = 5 + Math.random() * 6;
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, r, r * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 }
 

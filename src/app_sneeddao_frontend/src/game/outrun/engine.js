@@ -56,12 +56,16 @@ export function createGame(canvas, trackDef) {
     const safeZone = SEGMENT_LENGTH * 20;
     for (let i = 0; i < TOTAL_CARS; i++) {
       const z = safeZone + Math.random() * (total - safeZone * 2);
+      const colorIndex = i % TRAFFIC_CAR_COUNT;
+      const isTruck = (colorIndex === 10 || colorIndex === 11);
       state.cars.push({
         offset: -0.7 + Math.random() * 1.4,
         z,
-        speed: MAX_SPEED * (0.3 + Math.random() * 0.4),
+        speed: isTruck
+          ? MAX_SPEED * (0.2 + Math.random() * 0.15)
+          : MAX_SPEED * (0.3 + Math.random() * 0.4),
         color: randomChoice(CAR_COLORS),
-        colorIndex: i % TRAFFIC_CAR_COUNT,
+        colorIndex,
       });
     }
   }
@@ -189,6 +193,12 @@ export function createGame(canvas, trackDef) {
       state.hillOffset -= curveFactor * dt * 120;
     }
 
+    // Wrap parallax offsets to prevent floating-point instability
+    const WRAP = 100000;
+    if (Math.abs(state.skyOffset) > WRAP) state.skyOffset %= WRAP;
+    if (Math.abs(state.bgOffset) > WRAP) state.bgOffset %= WRAP;
+    if (Math.abs(state.hillOffset) > WRAP) state.hillOffset %= WRAP;
+
     if (state.collisionCooldown > 0) {
       state.collisionCooldown -= dt;
     }
@@ -204,9 +214,10 @@ export function createGame(canvas, trackDef) {
         const spriteW = getSpriteWidth(seg.sprite.type) / ROAD_WIDTH;
         const spritePos = seg.sprite.offset;
         if (overlap(state.playerX, 0.3, spritePos, spriteW * 2, 1.0)) {
-          if (state.speed > MAX_SPEED * 0.4) {
-            // High-speed crash
-            triggerCrash();
+          if (state.speed > MAX_SPEED * 0.65) {
+            triggerCrash('tumble');
+          } else if (state.speed > MAX_SPEED * 0.4) {
+            triggerCrash('spin');
           } else {
             if (state.speed > MAX_SPEED * 0.15) state.fingerWag = 2.0;
             state.speed = Math.max(0, state.speed * 0.3);
@@ -221,7 +232,8 @@ export function createGame(canvas, trackDef) {
         const checkIdx = ((playerSegIdx + di) % state.segments.length + state.segments.length) % state.segments.length;
         const checkSeg = state.segments[checkIdx];
         for (const car of checkSeg.cars) {
-          if (overlap(state.playerX, 0.3, car.offset, 0.3, 0.8)) {
+          const carHalfW = (car.colorIndex >= 10) ? 0.45 : 0.3;
+          if (overlap(state.playerX, 0.3, car.offset, carHalfW, 0.8)) {
             if (state.speed > car.speed) {
               state.speed = Math.max(car.speed, state.speed * 0.5);
               state.collisionCooldown = 1.0;
@@ -259,24 +271,46 @@ export function createGame(canvas, trackDef) {
     }
   }
 
-  function triggerCrash() {
+  function triggerCrash(type) {
     const speedRatio = state.speed / MAX_SPEED;
-    state.crash = {
-      timer: 0,
-      airY: 0,
-      velY: 400 + speedRatio * 300,
-      rotation: 0,
-      rotSpeed: (5 + Math.random() * 3) * (state.playerX > 0 ? 1 : -1),
-      bounces: 0,
-      settled: false,
-      settledAt: 0,
-    };
+    if (type === 'spin') {
+      state.crash = {
+        type: 'spin',
+        timer: 0,
+        airY: 0,
+        velY: 0,
+        rotation: 0,
+        rotSpeed: 0,
+        bounces: 0,
+        settled: false,
+        settledAt: 0,
+        spinAngle: 0,
+        spinSpeed: (12 + Math.random() * 6) * (state.playerX > 0 ? 1 : -1),
+      };
+    } else {
+      state.crash = {
+        type: 'tumble',
+        timer: 0,
+        airY: 0,
+        velY: 400 + speedRatio * 300,
+        rotation: 0,
+        rotSpeed: (5 + Math.random() * 3) * (state.playerX > 0 ? 1 : -1),
+        bounces: 0,
+        settled: false,
+        settledAt: 0,
+      };
+    }
     state.gameState = 'crash';
   }
 
   function updateCrash(dt) {
     const c = state.crash;
     c.timer += dt;
+
+    if (c.type === 'spin') {
+      updateSpinCrash(dt);
+      return;
+    }
 
     if (!c.settled) {
       // Gravity
@@ -312,7 +346,37 @@ export function createGame(canvas, trackDef) {
     // End crash 2 seconds after settling
     if (c.settled && c.timer > c.settledAt + 2.0) {
       state.collisionCooldown = 2.0;
-      state.crash = { timer: 0, airY: 0, velY: 0, rotation: 0, rotSpeed: 0, bounces: 0, settled: false, settledAt: 0 };
+      state.crash = { type: null, timer: 0, airY: 0, velY: 0, rotation: 0, rotSpeed: 0, bounces: 0, settled: false, settledAt: 0 };
+      state.fingerWag = 2.5;
+      state.gameState = 'playing';
+    }
+  }
+
+  function updateSpinCrash(dt) {
+    const c = state.crash;
+    c.airY = 0;
+    c.spinAngle += c.spinSpeed * dt;
+    c.spinSpeed *= (1 - 1.5 * dt);
+
+    // Decelerate faster than tumble
+    state.speed *= (1 - 3.0 * dt);
+    if (state.speed < 10) state.speed = 0;
+    state.position += state.speed * dt;
+
+    const total = trackLength(state.segments);
+    if (state.position >= total) state.position -= total;
+
+    // Settle when spin slows enough or timeout
+    if (!c.settled && (Math.abs(c.spinSpeed) < 0.5 || c.timer > 2.5)) {
+      c.settled = true;
+      c.settledAt = c.timer;
+      state.speed = 0;
+    }
+
+    // End spin crash 1.5 seconds after settling
+    if (c.settled && c.timer > c.settledAt + 1.5) {
+      state.collisionCooldown = 2.0;
+      state.crash = { type: null, timer: 0, airY: 0, velY: 0, rotation: 0, rotSpeed: 0, bounces: 0, settled: false, settledAt: 0 };
       state.fingerWag = 2.5;
       state.gameState = 'playing';
     }
