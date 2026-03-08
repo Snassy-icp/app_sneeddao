@@ -343,54 +343,39 @@ export function drawPlayerCar(ctx, canvasW, canvasH, steer, speed, maxSpeed, cra
   drawPassengerHeads(ctx, dx, dy, dw, dh, flip);
 }
 
-function drawPassengerHeads(ctx, carX, carY, carW, carH, flip) {
+function drawPassengerHeads(ctx, carX, carY, carW, carH) {
   if (!sheetsLoaded || !playerSheet.complete) return;
 
   const headScale = carW / 110;
   const cx = carX + carW / 2;
-  const headY = carY + carH * 0.08;
+  const headY = carY + carH * 0.28;
 
-  // Driver on right (RHD), passenger on left (from behind)
-  let driverOffX = carW * 0.17;
-  let passengerOffX = -carW * 0.12;
-  if (flip) { driverOffX = -driverOffX; passengerOffX = -passengerOffX; }
+  // Guy always on left, lady always on right (LHD, viewed from behind)
+  // Positions and sprites never flip — they stay fixed regardless of car turn
+  const driverOffX = -carW * 0.15;
+  const passengerOffX = carW * 0.12;
 
   // Draw driver head
   const head = DRIVER_HEAD;
   const dw = head.w * headScale;
   const dh = head.h * headScale;
-  const ddx = cx + driverOffX - dw / 2;
-  const ddy = headY - dh;
+  ctx.drawImage(playerSheet, head.x, head.y, head.w, head.h,
+    cx + driverOffX - dw / 2, headY - dh, dw, dh);
 
-  if (flip) {
-    ctx.save();
-    ctx.translate(ddx + dw, ddy);
-    ctx.scale(-1, 1);
-    ctx.drawImage(playerSheet, head.x, head.y, head.w, head.h, 0, 0, dw, dh);
-    ctx.restore();
-  } else {
-    ctx.drawImage(playerSheet, head.x, head.y, head.w, head.h, ddx, ddy, dw, dh);
-  }
-
-  // Draw passenger head (blonde or brunette)
+  // Draw passenger head
   const pHead = BLONDE_HEAD;
   const pw = pHead.w * headScale;
   const ph = pHead.h * headScale;
-  const pdx = cx + passengerOffX - pw / 2;
-  const pdy = headY - ph;
-
-  if (flip) {
-    ctx.save();
-    ctx.translate(pdx + pw, pdy);
-    ctx.scale(-1, 1);
-    ctx.drawImage(playerSheet, pHead.x, pHead.y, pHead.w, pHead.h, 0, 0, pw, ph);
-    ctx.restore();
-  } else {
-    ctx.drawImage(playerSheet, pHead.x, pHead.y, pHead.w, pHead.h, pdx, pdy, pw, ph);
-  }
+  ctx.drawImage(playerSheet, pHead.x, pHead.y, pHead.w, pHead.h,
+    cx + passengerOffX - pw / 2, headY - ph, pw, ph);
 }
 
 function drawCrashingCar(ctx, cx, baseY, crash) {
+  if (crash.settled) {
+    drawSettledCrashScene(ctx, cx, baseY, crash);
+    return;
+  }
+
   const liftPixels = crash.airY * 0.6;
   const carY = baseY - liftPixels;
 
@@ -461,14 +446,56 @@ function drawEjectedCharacter(ctx, cx, baseY, time, frames, direction) {
   if (heightAboveGround < -50) return;
   const y = baseY - Math.max(0, heightAboveGround);
 
-  const frameIdx = Math.floor(time * 4) % frames.length;
+  const frameIdx = Math.floor(time * 6) % frames.length;
   const frame = frames[frameIdx];
-  const scale = 1.8;
+  const scale = 1.5;
   const dw = frame.w * scale;
   const dh = frame.h * scale;
 
+  // Rotate for tumble effect
+  const rotation = time * 8 * direction;
+  ctx.save();
+  ctx.translate(x, y - dh / 2);
+  ctx.rotate(rotation);
   ctx.drawImage(playerSheet, frame.x, frame.y, frame.w, frame.h,
-    x - dw / 2, y - dh, dw, dh);
+    -dw / 2, -dh / 2, dw, dh);
+  ctx.restore();
+}
+
+function drawSettledCrashScene(ctx, cx, baseY) {
+  if (!sheetsLoaded || !playerSheet.complete) return;
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(cx, baseY + 4, 90, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Car on ground (side view crash frame)
+  const carFrame = CRASH_FRAMES[0];
+  const cs = 2.0;
+  const cw = carFrame.w * cs;
+  const ch = carFrame.h * cs;
+  ctx.drawImage(playerSheet, carFrame.x, carFrame.y, carFrame.w, carFrame.h,
+    cx - cw / 2, baseY - ch, cw, ch);
+
+  // Male character lying on ground to the left (horizontal frame)
+  const mf = MALE_TUMBLE[MALE_TUMBLE.length - 1];
+  const sc = 1.5;
+  const mw = mf.w * sc;
+  const mh = mf.h * sc;
+  ctx.drawImage(playerSheet, mf.x, mf.y, mf.w, mf.h,
+    cx - cw / 2 - mw - 8, baseY - mh, mw, mh);
+
+  // Female character collapsed on ground to the right (tilted)
+  const ff = FEMALE_TUMBLE[0];
+  const fw = ff.w * sc;
+  const fh = ff.h * sc;
+  ctx.save();
+  ctx.translate(cx + cw / 2 + fh / 2 + 8, baseY - fw / 4);
+  ctx.rotate(-Math.PI * 0.4);
+  ctx.drawImage(playerSheet, ff.x, ff.y, ff.w, ff.h, -fw / 2, -fh / 2, fw, fh);
+  ctx.restore();
 }
 
 function drawSparks(ctx, cx, baseY, timer) {

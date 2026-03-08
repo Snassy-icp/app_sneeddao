@@ -37,7 +37,7 @@ export function createGame(canvas, trackDef) {
     themeTo: null,
     themeBlendSegs: 0,
     // Crash
-    crash: { timer: 0, airY: 0, velY: 0, rotation: 0, rotSpeed: 0, bounces: 0 },
+    crash: { timer: 0, airY: 0, velY: 0, rotation: 0, rotSpeed: 0, bounces: 0, settled: false, settledAt: 0 },
     fingerWag: 0,
   };
 
@@ -268,6 +268,8 @@ export function createGame(canvas, trackDef) {
       rotation: 0,
       rotSpeed: (5 + Math.random() * 3) * (state.playerX > 0 ? 1 : -1),
       bounces: 0,
+      settled: false,
+      settledAt: 0,
     };
     state.gameState = 'crash';
   }
@@ -276,32 +278,41 @@ export function createGame(canvas, trackDef) {
     const c = state.crash;
     c.timer += dt;
 
-    // Gravity
-    c.velY -= 1200 * dt;
-    c.airY += c.velY * dt;
-    c.rotation += c.rotSpeed * dt;
+    if (!c.settled) {
+      // Gravity
+      c.velY -= 1200 * dt;
+      c.airY += c.velY * dt;
+      c.rotation += c.rotSpeed * dt;
 
-    // Bounce on ground
-    if (c.airY <= 0 && c.velY < 0) {
-      c.airY = 0;
-      c.velY = Math.abs(c.velY) * 0.35;
-      c.rotSpeed *= 0.5;
-      c.bounces++;
+      // Bounce on ground
+      if (c.airY <= 0 && c.velY < 0) {
+        c.airY = 0;
+        c.velY = Math.abs(c.velY) * 0.35;
+        c.rotSpeed *= 0.5;
+        c.bounces++;
+      }
+
+      // Decelerate
+      state.speed *= (1 - 2.5 * dt);
+      if (state.speed < 10) state.speed = 0;
+      state.position += state.speed * dt;
+
+      const total = trackLength(state.segments);
+      if (state.position >= total) state.position -= total;
+
+      // Settle after enough bounces or timeout
+      if (c.bounces >= 3 || c.timer > 3.5) {
+        c.settled = true;
+        c.settledAt = c.timer;
+        c.airY = 0;
+        state.speed = 0;
+      }
     }
 
-    // Decelerate
-    state.speed *= (1 - 2.5 * dt);
-    if (state.speed < 10) state.speed = 0;
-    state.position += state.speed * dt;
-
-    const total = trackLength(state.segments);
-    if (state.position >= total) state.position -= total;
-
-    // Settle after enough bounces or timeout
-    if (c.bounces >= 3 || c.timer > 3.5) {
-      state.speed = 0;
+    // End crash 2 seconds after settling
+    if (c.settled && c.timer > c.settledAt + 2.0) {
       state.collisionCooldown = 2.0;
-      state.crash = { timer: 0, airY: 0, velY: 0, rotation: 0, rotSpeed: 0, bounces: 0 };
+      state.crash = { timer: 0, airY: 0, velY: 0, rotation: 0, rotSpeed: 0, bounces: 0, settled: false, settledAt: 0 };
       state.fingerWag = 2.5;
       state.gameState = 'playing';
     }
