@@ -121,6 +121,7 @@ function blendThemes(from, to, t) {
       dark: blendRGB(from.rumble.dark, to.rumble.dark, t),
     },
     lane: blendRGB(from.lane, to.lane, t),
+    waterSide: t < 0.5 ? (from.waterSide || null) : (to.waterSide || null),
   };
 }
 
@@ -235,7 +236,7 @@ export function render(ctx, state) {
         prevScreenX, prevScreenY, effW1,
         screenX, screenY, effW2,
         fogAmount, seg.fork, prevFork, seg.lanes || LANE_COUNT,
-        seg.tunnel, prevTunnel);
+        seg.tunnel, prevTunnel, theme.waterSide);
     }
 
     // Collect sprites for back-to-front pass
@@ -361,7 +362,7 @@ function drawBackground(ctx, w, h, theme, bgOffset, hillOffset) {
   ctx.fill();
 }
 
-function drawSegmentStrip(ctx, w, color, band, x1, y1, w1, x2, y2, w2, fogAmount, fork, prevFork, lanes, tunnel, prevTunnel) {
+function drawSegmentStrip(ctx, w, color, band, x1, y1, w1, x2, y2, w2, fogAmount, fork, prevFork, lanes, tunnel, prevTunnel, waterSide) {
   const isLight = color === 'light';
   const stripH = y1 - y2;
   if (stripH <= 0) return;
@@ -370,19 +371,38 @@ function drawSegmentStrip(ctx, w, color, band, x1, y1, w1, x2, y2, w2, fogAmount
   const tunnelDark = tunnel ? tunnel.progress * 0.4 : 0;
 
   const grassColor = isLight ? band.grassLight : band.grassDark;
+  const shoulderColor = isLight ? band.shoulderLight : band.shoulderDark;
 
-  // Far ground (water/sand/fields)
-  ctx.fillStyle = grassColor;
-  ctx.fillRect(0, y2, w, stripH);
+  // Far ground — water only on one side for beach, or full-width for other themes
+  if (waterSide) {
+    // Fill base with land/shoulder color
+    ctx.fillStyle = shoulderColor;
+    ctx.fillRect(0, y2, w, stripH);
+    // Draw water only on the specified side, beyond 2.2x road width
+    const wm1 = w1 * 2.2;
+    const wm2 = w2 * 2.2;
+    if (waterSide === 'right') {
+      drawPolygon(ctx, x1 + wm1, y1, w + 10, y1, w + 10, y2, x2 + wm2, y2, grassColor);
+    } else {
+      drawPolygon(ctx, -10, y1, x1 - wm1, y1, x2 - wm2, y2, -10, y2, grassColor);
+    }
+  } else {
+    // Normal: far ground fills full width
+    ctx.fillStyle = grassColor;
+    ctx.fillRect(0, y2, w, stripH);
+  }
 
   // Shoulder strips (grass/sand between rumble and far ground)
   const sh1 = w1 * 1.8;
   const sh2 = w2 * 1.8;
   const rum1 = w1 * 1.15;
   const rum2 = w2 * 1.15;
-  const shoulderColor = isLight ? band.shoulderLight : band.shoulderDark;
-  drawPolygon(ctx, x1 - sh1, y1, x1 - rum1, y1, x2 - rum2, y2, x2 - sh2, y2, shoulderColor);
-  drawPolygon(ctx, x1 + rum1, y1, x1 + sh1, y1, x2 + sh2, y2, x2 + rum2, y2, shoulderColor);
+  if (!waterSide) {
+    // Only draw explicit shoulder polygons when there's no waterSide
+    // (with waterSide, the base fill IS the shoulder color already)
+    drawPolygon(ctx, x1 - sh1, y1, x1 - rum1, y1, x2 - rum2, y2, x2 - sh2, y2, shoulderColor);
+    drawPolygon(ctx, x1 + rum1, y1, x1 + sh1, y1, x2 + sh2, y2, x2 + rum2, y2, shoulderColor);
+  }
 
   // Road surface
   let roadColor = isLight ? band.roadLight : band.roadDark;
@@ -416,8 +436,10 @@ function drawSegmentStrip(ctx, w, color, band, x1, y1, w1, x2, y2, w2, fogAmount
     const dw1 = w1 * splitPrev * 0.6;
     const dw2 = w2 * splitCur * 0.6;
 
+    // Use shoulder/land color for fork divider (not water)
+    const dividerColor = waterSide ? shoulderColor : grassColor;
     drawPolygon(ctx, x1 - dw1, y1, x1 + dw1, y1,
-                     x2 + dw2, y2, x2 - dw2, y2, grassColor);
+                     x2 + dw2, y2, x2 - dw2, y2, dividerColor);
 
     if (dw2 > 1) {
       const irw1 = Math.max(0.5, dw1 * 0.2);

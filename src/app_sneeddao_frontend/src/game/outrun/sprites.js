@@ -296,6 +296,35 @@ export function drawPlayerCar(ctx, canvasW, canvasH, steer, speed, maxSpeed, cra
   } else {
     ctx.drawImage(playerSheet, frame.x, frame.y, frame.w, frame.h, dx, dy, dw, dh);
   }
+
+  // Draw passengers (driver + passenger heads visible above car)
+  drawPassengerHeads(ctx, dx, dy, dw, dh, flip);
+}
+
+function drawPassengerHeads(ctx, carX, carY, carW, carH, flip) {
+  const cx = carX + carW / 2;
+  const headY = carY + carH * 0.12;
+  const headR = carW * 0.025;
+
+  // Driver on right side (RHD), passenger on left (viewed from behind)
+  let driverOff = carW * 0.15;
+  let passengerOff = -carW * 0.15;
+  if (flip) {
+    driverOff = -driverOff;
+    passengerOff = -passengerOff;
+  }
+
+  // Driver head (dark hair)
+  ctx.fillStyle = '#1a0e05';
+  ctx.beginPath();
+  ctx.ellipse(cx + driverOff, headY, headR * 2, headR * 2.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Passenger head (blonde hair, slightly taller for flowing hair)
+  ctx.fillStyle = '#E8C840';
+  ctx.beginPath();
+  ctx.ellipse(cx + passengerOff, headY - headR * 0.5, headR * 2, headR * 3.2, 0, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function drawCrashingCar(ctx, cx, baseY, crash) {
@@ -330,7 +359,7 @@ function drawCrashingCar(ctx, cx, baseY, crash) {
   }
 
   const frame = CRASH_FRAMES[frameIdx];
-  const CRASH_SCALE = 1.5;
+  const CRASH_SCALE = 2.0;
   const dw = frame.w * CRASH_SCALE;
   const dh = frame.h * CRASH_SCALE;
 

@@ -69,6 +69,7 @@ export const THEMES = {
     road: { light: '#6B6B6B', dark: '#696969' },
     rumble: { light: '#E8473C', dark: '#BBBBBB' },
     lane: '#CCCCCC',
+    waterSide: 'right',                                  // Ocean on right side only
   },
   desert: {
     sky: ['#FDB813', '#FFE4B5'],
