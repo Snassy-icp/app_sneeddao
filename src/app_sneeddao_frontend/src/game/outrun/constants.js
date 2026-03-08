@@ -5,23 +5,23 @@ export const CANVAS_HEIGHT = 480;
 // Camera
 export const FOV = 100; // degrees — wide like the arcade
 export const CAMERA_DEPTH = 1 / Math.tan(((FOV / 2) * Math.PI) / 180);
-export const CAMERA_HEIGHT = 1500;
-export const DRAW_DISTANCE = 150; // segments rendered ahead (fog hides beyond ~100)
+export const CAMERA_HEIGHT = 1000;
+export const DRAW_DISTANCE = 200; // segments rendered ahead
 
 // Road geometry
 export const SEGMENT_LENGTH = 200; // world-units per segment
 export const ROAD_WIDTH = 2000; // half-width of the road in world units
-export const LANE_COUNT = 6;
+export const LANE_COUNT = 4;
 export const RUMBLE_LENGTH = 3; // segments per rumble strip band
 
 // Player
-export const MAX_SPEED = SEGMENT_LENGTH * 60;
+export const MAX_SPEED = SEGMENT_LENGTH * 70;
 export const ACCEL = MAX_SPEED / 2;
 export const BRAKE_DECEL = -MAX_SPEED;
 export const NATURAL_DECEL = -MAX_SPEED / 50;
 export const OFF_ROAD_DECEL = -MAX_SPEED / 8;
 export const OFF_ROAD_MAX = MAX_SPEED / 2.5;
-export const CENTRIFUGAL_FORCE = 0.08;
+export const CENTRIFUGAL_FORCE = 0.15;
 export const OFF_ROAD_THRESHOLD = 1.2;
 export const PLAYER_Z = CAMERA_HEIGHT * CAMERA_DEPTH;
 
@@ -30,7 +30,7 @@ export const TOTAL_CARS = 12;
 export const CAR_SPACING = 50; // minimum segment gap between AI cars
 
 // Timing
-export const STAGE_TIME = 75; // seconds per stage
+export const STAGE_TIME = 80; // seconds per stage
 export const TRANSITION_SEGS = 220;
 
 // Colors — alternating road band palettes
@@ -97,3 +97,7 @@ export const THEMES = {
     lane: '#999999',
   },
 };
+
+// Road projection
+export const CURVE_SCALE = 1500;
+export const FOG_DENSITY = 5;

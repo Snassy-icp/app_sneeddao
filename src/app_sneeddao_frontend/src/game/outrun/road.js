@@ -164,6 +164,12 @@ export function trackLength(segments) {
   return segments.length * SEGMENT_LENGTH;
 }
 
+export function getSegmentY(segments, z) {
+  if (segments.length === 0) return 0;
+  const idx = ((Math.floor(z / SEGMENT_LENGTH) % segments.length) + segments.length) % segments.length;
+  return segments[idx].world.y || 0;
+}
+
 export function addSpritesToSegments(segments, spriteList) {
   for (const sp of spriteList) {
     const idx = sp.segment % segments.length;

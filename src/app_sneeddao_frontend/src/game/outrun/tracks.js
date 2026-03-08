@@ -126,8 +126,8 @@ export function getStageTrack(stageNum) {
 function generateBeachSprites(totalSegs, startOffset) {
   const sprites = [];
   const start = startOffset || 8;
-  const rightTypes = [SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.BUSH, SPRITE_TYPES.ROCK];
-  const leftTypes  = [SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.BUSH, SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.BUSH];
+  const rightTypes = [SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.PALM_TREE2, SPRITE_TYPES.BUSH, SPRITE_TYPES.BUSH_FLOWER];
+  const leftTypes  = [SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.PALM_TREE2, SPRITE_TYPES.BUSH, SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.BUSH_FLOWER];
 
   for (let i = start; i < totalSegs - 45; i += 7) {
     sprites.push({
@@ -159,8 +159,8 @@ function generateBeachSprites(totalSegs, startOffset) {
 function generateDesertSprites(totalSegs, startOffset) {
   const sprites = [];
   const start = startOffset || 8;
-  const rightTypes = [SPRITE_TYPES.CACTUS, SPRITE_TYPES.ROCK, SPRITE_TYPES.DEAD_TREE, SPRITE_TYPES.CACTUS, SPRITE_TYPES.ROCK];
-  const leftTypes  = [SPRITE_TYPES.ROCK, SPRITE_TYPES.CACTUS, SPRITE_TYPES.DEAD_TREE, SPRITE_TYPES.ROCK, SPRITE_TYPES.CACTUS];
+  const rightTypes = [SPRITE_TYPES.CACTUS, SPRITE_TYPES.ROCK_LARGE, SPRITE_TYPES.DEAD_TREE, SPRITE_TYPES.CACTUS, SPRITE_TYPES.CLIFF];
+  const leftTypes  = [SPRITE_TYPES.ROCK_LARGE, SPRITE_TYPES.CACTUS, SPRITE_TYPES.DEAD_TREE_BARE, SPRITE_TYPES.CLIFF, SPRITE_TYPES.CACTUS];
 
   for (let i = start; i < totalSegs - 45; i += 8) {
     sprites.push({
@@ -185,8 +185,8 @@ function generateDesertSprites(totalSegs, startOffset) {
 function generateForestSprites(totalSegs, startOffset) {
   const sprites = [];
   const start = startOffset || 8;
-  const rightTypes = [SPRITE_TYPES.PINE_TREE, SPRITE_TYPES.PINE_TREE, SPRITE_TYPES.BUSH, SPRITE_TYPES.PINE_TREE, SPRITE_TYPES.ROCK];
-  const leftTypes  = [SPRITE_TYPES.PINE_TREE, SPRITE_TYPES.BUSH, SPRITE_TYPES.PINE_TREE, SPRITE_TYPES.PINE_TREE, SPRITE_TYPES.BUSH];
+  const rightTypes = [SPRITE_TYPES.GREEN_TREE, SPRITE_TYPES.PINE_TREE, SPRITE_TYPES.BUSH, SPRITE_TYPES.GREEN_TREE, SPRITE_TYPES.TOWER];
+  const leftTypes  = [SPRITE_TYPES.GREEN_TREE, SPRITE_TYPES.BUSH, SPRITE_TYPES.PINE_TREE, SPRITE_TYPES.GREEN_TREE, SPRITE_TYPES.BUSH_FLOWER];
 
   for (let i = start; i < totalSegs - 45; i += 6) {
     sprites.push({
@@ -211,8 +211,8 @@ function generateForestSprites(totalSegs, startOffset) {
 function generateNightSprites(totalSegs, startOffset) {
   const sprites = [];
   const start = startOffset || 8;
-  const rightTypes = [SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.COLUMN, SPRITE_TYPES.BUSH, SPRITE_TYPES.ROCK, SPRITE_TYPES.COLUMN];
-  const leftTypes  = [SPRITE_TYPES.COLUMN, SPRITE_TYPES.BUSH, SPRITE_TYPES.PALM_TREE, SPRITE_TYPES.COLUMN, SPRITE_TYPES.ROCK];
+  const rightTypes = [SPRITE_TYPES.TOWER, SPRITE_TYPES.COLUMN, SPRITE_TYPES.DEAD_TREE, SPRITE_TYPES.AUTUMN_TREE, SPRITE_TYPES.COLUMN];
+  const leftTypes  = [SPRITE_TYPES.COLUMN, SPRITE_TYPES.DEAD_TREE_BARE, SPRITE_TYPES.TOWER, SPRITE_TYPES.COLUMN, SPRITE_TYPES.AUTUMN_TREE];
 
   for (let i = start; i < totalSegs - 45; i += 10) {
     sprites.push({

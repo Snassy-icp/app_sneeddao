@@ -1,7 +1,26 @@
-// All sprites are drawn procedurally on canvas — no image assets needed.
-// Each sprite type has a draw(ctx, x, y, scale) function.
-// x,y is the bottom-center of the sprite on screen. scale controls size.
+// Atlas-based sprite system using PNG sprite sheets.
+// Falls back to colored rectangles if images fail to load.
 
+const playerSheet = new Image();
+const scenerySheet = new Image();
+let sheetsLoaded = false;
+
+export function loadSpriteSheets() {
+  return new Promise((resolve) => {
+    let loaded = 0;
+    const check = () => { if (++loaded >= 2) { sheetsLoaded = true; resolve(); } };
+    playerSheet.onload = check;
+    scenerySheet.onload = check;
+    playerSheet.onerror = check;
+    scenerySheet.onerror = check;
+    playerSheet.src = '/outrun-player.png';
+    scenerySheet.src = '/outrun-scenery.png';
+  });
+}
+
+export function areSheetsLoaded() { return sheetsLoaded; }
+
+// --- Sprite type enum ---
 export const SPRITE_TYPES = {
   PALM_TREE: 'palm_tree',
   PINE_TREE: 'pine_tree',
@@ -13,429 +32,277 @@ export const SPRITE_TYPES = {
   CACTUS: 'cactus',
   DEAD_TREE: 'dead_tree',
   BILLBOARD: 'billboard',
+  GREEN_TREE: 'green_tree',
+  TOWER: 'tower',
+  AUTUMN_TREE: 'autumn_tree',
+  PALM_TREE2: 'palm_tree2',
+  BUSH_FLOWER: 'bush_flower',
+  ROCK_LARGE: 'rock_large',
+  CLIFF: 'cliff',
+  DEAD_TREE_BARE: 'dead_tree_bare',
 };
 
+// --- Atlas coordinates ---
+// Player car rear views (from 104648.png, row 1)
+const PLAYER_FRAMES = [
+  { x: 153, y: 0,  w: 80, h: 60 }, // 0: hard left
+  { x: 233, y: 3,  w: 78, h: 57 }, // 1: left
+  { x: 311, y: 8,  w: 79, h: 52 }, // 2: slight left
+  { x: 390, y: 0,  w: 80, h: 60 }, // 3: slight left variant
+  { x: 471, y: 3,  w: 80, h: 57 }, // 4: straight center
+  { x: 551, y: 8,  w: 80, h: 52 }, // 5: slight right
+  { x: 631, y: 0,  w: 82, h: 60 }, // 6: slight right variant
+  { x: 713, y: 3,  w: 82, h: 57 }, // 7: right
+  { x: 795, y: 8,  w: 82, h: 52 }, // 8: hard right
+];
+
+// Crash/tumble frames (row 4 of player sheet)
+const CRASH_FRAMES = [
+  { x: 0,   y: 198, w: 143, h: 72 }, // side view left
+  { x: 144, y: 180, w: 144, h: 90 }, // flipping left
+  { x: 289, y: 186, w: 140, h: 84 }, // flipping mid
+  { x: 430, y: 232, w: 140, h: 48 }, // underside
+  { x: 571, y: 200, w: 140, h: 80 }, // flipping right
+  { x: 712, y: 192, w: 140, h: 78 }, // top-down
+  { x: 853, y: 180, w: 140, h: 90 }, // side view right
+];
+
+// Scenery atlas (from NicePng_bien-png_7723679.png)
+const SCENERY_ATLAS = {
+  palm_tree:   { sheet: 'scenery', x: 1,    y: 1,    w: 215, h: 535 },
+  billboard1:  { sheet: 'scenery', x: 231,  y: 4,    w: 375, h: 262 },
+  green_tree:  { sheet: 'scenery', x: 621,  y: 1,    w: 360, h: 360 },
+  tower:       { sheet: 'scenery', x: 994,  y: 1,    w: 190, h: 308 },
+  autumn_tree: { sheet: 'scenery', x: 1221, y: 54,   w: 230, h: 242 },
+  cliff:       { sheet: 'scenery', x: 231,  y: 276,  w: 308, h: 210 },
+  billboard2:  { sheet: 'scenery', x: 621,  y: 371,  w: 295, h: 168 },
+  sega_sign:   { sheet: 'scenery', x: 1001, y: 326,  w: 160, h: 135 },
+  billboard3:  { sheet: 'scenery', x: 1201, y: 306,  w: 268, h: 168 },
+  dead_tree:   { sheet: 'scenery', x: 1201, y: 486,  w: 143, h: 250 },
+  bush:        { sheet: 'scenery', x: 1365, y: 486,  w: 118, h: 144 },
+  small_tree:  { sheet: 'scenery', x: 21,   y: 551,  w: 88,  h: 330 },
+  billboard5:  { sheet: 'scenery', x: 148,  y: 553,  w: 322, h: 280 },
+  billboard6:  { sheet: 'scenery', x: 484,  y: 551,  w: 283, h: 190 },
+  rocks:       { sheet: 'scenery', x: 1201, y: 756,  w: 168, h: 241 },
+  billboard7:  { sheet: 'scenery', x: 1,    y: 893,  w: 286, h: 190 },
+  billboard8:  { sheet: 'scenery', x: 309,  y: 893,  w: 283, h: 190 },
+  rock_large:  { sheet: 'scenery', x: 617,  y: 893,  w: 296, h: 140 },
+  cactus:      { sheet: 'scenery', x: 928,  y: 893,  w: 227, h: 113 },
+  palm_tree2:  { sheet: 'scenery', x: 6,    y: 1093, w: 235, h: 155 },
+  bush_flower: { sheet: 'scenery', x: 251,  y: 1093, w: 232, h: 148 },
+  sign_easel:  { sheet: 'scenery', x: 1,    y: 1258, w: 230, h: 220 },
+  sign_round:  { sheet: 'scenery', x: 241,  y: 1258, w: 215, h: 220 },
+};
+
+// Traffic car sprites (from scenery sheet)
+const TRAFFIC_CARS = [
+  { x: 994,  y: 476,  w: 77, h: 41, color: '#821f1b' },
+  { x: 1082, y: 476,  w: 78, h: 41, color: '#84201a' },
+  { x: 991,  y: 527,  w: 77, h: 41, color: '#822019' },
+  { x: 1381, y: 756,  w: 86, h: 55, color: '#a56470' },
+  { x: 1379, y: 821,  w: 80, h: 59, color: '#3e569e' },
+  { x: 1381, y: 890,  w: 78, h: 57, color: '#5b433a' },
+  { x: 1379, y: 957,  w: 80, h: 45, color: '#821c17' },
+  { x: 1201, y: 1014, w: 80, h: 56, color: '#354269' },
+  { x: 1291, y: 1014, w: 80, h: 45, color: '#7f1a15' },
+  { x: 1381, y: 1014, w: 80, h: 45, color: '#821c18' },
+];
+
+export const TRAFFIC_CAR_COUNT = TRAFFIC_CARS.length;
+
+// Map sprite types to atlas entries (with billboard rotation)
+const TYPE_TO_ATLAS = {
+  palm_tree:      'palm_tree',
+  pine_tree:      'green_tree',    // reuse green tree for pine
+  bush:           'bush',
+  rock:           'rocks',
+  sign_right:     'sign_easel',
+  sign_left:      'sign_round',
+  column:         'small_tree',
+  cactus:         'cactus',
+  dead_tree:      'dead_tree',
+  billboard:      null,            // cycles through billboard variants
+  green_tree:     'green_tree',
+  tower:          'tower',
+  autumn_tree:    'autumn_tree',
+  palm_tree2:     'palm_tree2',
+  bush_flower:    'bush_flower',
+  rock_large:     'rock_large',
+  cliff:          'cliff',
+  dead_tree_bare: 'dead_tree',
+};
+
+const BILLBOARD_KEYS = [
+  'billboard1', 'billboard2', 'billboard3',
+  'billboard5', 'billboard6', 'billboard7', 'billboard8',
+];
+
+// Fallback colors for when sheets haven't loaded
+const FALLBACK_COLORS = {
+  palm_tree:   '#228B22', pine_tree:   '#0D5B0D', bush:        '#2D8B2D',
+  rock:        '#808080', sign_right:  '#E8473C', sign_left:   '#E8473C',
+  column:      '#5C3317', cactus:      '#2D6B2D', dead_tree:   '#5C3317',
+  billboard:   '#1a1a2e', green_tree:  '#228B22', tower:       '#8B8B6B',
+  autumn_tree: '#CC8833', palm_tree2:  '#228B22', bush_flower: '#CC66AA',
+  rock_large:  '#808080', cliff:       '#8B7355', dead_tree_bare: '#5C3317',
+};
+
+// Sprite collision widths (world units, used for overlap checks)
 const spriteWidth = {
-  palm_tree: 80,
-  pine_tree: 70,
-  bush: 60,
-  rock: 50,
-  sign_right: 40,
-  sign_left: 40,
-  column: 20,
-  cactus: 40,
-  dead_tree: 60,
-  billboard: 100,
+  palm_tree: 80, pine_tree: 70, bush: 60, rock: 50,
+  sign_right: 40, sign_left: 40, column: 20, cactus: 40,
+  dead_tree: 60, billboard: 100, green_tree: 90, tower: 60,
+  autumn_tree: 70, palm_tree2: 70, bush_flower: 60,
+  rock_large: 80, cliff: 90, dead_tree_bare: 50,
 };
 
 export function getSpriteWidth(type) {
   return spriteWidth[type] || 40;
 }
 
-export function drawSprite(ctx, type, x, y, scale, resolvedScale) {
-  const s = resolvedScale || scale * 300;
-  ctx.save();
-  ctx.translate(x, y);
+let billboardCounter = 0;
 
-  // LOD: distant sprites get simplified rendering
-  if (s < 18) {
-    drawSimplified(ctx, s, type);
-    ctx.restore();
+// Draw a scenery sprite from atlas. x,y = bottom-center on screen, scale = pixel multiplier.
+export function drawSprite(ctx, type, x, y, _unused, resolvedScale) {
+  const scale = resolvedScale || 1;
+
+  // Determine atlas key
+  let atlasKey = TYPE_TO_ATLAS[type];
+  if (type === 'billboard' || type === SPRITE_TYPES.BILLBOARD) {
+    atlasKey = BILLBOARD_KEYS[(billboardCounter++) % BILLBOARD_KEYS.length];
+  }
+
+  const atlas = atlasKey ? SCENERY_ATLAS[atlasKey] : null;
+
+  if (!atlas || !sheetsLoaded || !scenerySheet.complete || !scenerySheet.naturalWidth) {
+    // Fallback: colored rectangle
+    const color = FALLBACK_COLORS[type] || '#808080';
+    const fw = scale * 0.3;
+    const fh = scale * 0.5;
+    ctx.fillStyle = color;
+    ctx.fillRect(x - fw / 2, y - fh, fw, fh);
     return;
   }
 
-  switch (type) {
-    case 'palm_tree':
-      drawPalmTree(ctx, s);
-      break;
-    case 'pine_tree':
-      drawPineTree(ctx, s);
-      break;
-    case 'bush':
-      drawBush(ctx, s);
-      break;
-    case 'rock':
-      drawRock(ctx, s);
-      break;
-    case 'sign_right':
-    case 'sign_left':
-      drawSign(ctx, s);
-      break;
-    case 'column':
-      drawColumn(ctx, s);
-      break;
-    case 'cactus':
-      drawCactus(ctx, s);
-      break;
-    case 'dead_tree':
-      drawDeadTree(ctx, s);
-      break;
-    case 'billboard':
-      drawBillboard(ctx, s);
-      break;
-    default:
-      drawBush(ctx, s);
+  const pixelScale = scale / atlas.h;
+  const dw = atlas.w * pixelScale;
+  const dh = atlas.h * pixelScale;
+  const dx = x - dw / 2;
+  const dy = y - dh;
+
+  ctx.drawImage(scenerySheet, atlas.x, atlas.y, atlas.w, atlas.h, dx, dy, dw, dh);
+}
+
+// Draw a traffic car sprite
+export function drawCar(ctx, x, y, scale, color, colorIndex) {
+  const idx = (colorIndex != null) ? (colorIndex % TRAFFIC_CARS.length) : 0;
+  const car = TRAFFIC_CARS[idx];
+
+  if (!sheetsLoaded || !scenerySheet.complete || !scenerySheet.naturalWidth) {
+    // Fallback: colored rectangle
+    const s = scale * 300;
+    const w = s * 0.25;
+    const h = s * 0.15;
+    ctx.fillStyle = color || car.color;
+    ctx.fillRect(x - w, y - h * 2, w * 2, h);
+    return;
   }
 
-  ctx.restore();
-}
-
-const simplifiedColors = {
-  palm_tree:  ['#8B6914', '#228B22'],
-  pine_tree:  ['#5C3317', '#0D5B0D'],
-  bush:       [null,      '#2D8B2D'],
-  rock:       [null,      '#808080'],
-  sign_right: ['#AAA',    '#E8473C'],
-  sign_left:  ['#AAA',    '#E8473C'],
-  column:     ['#DDD',    null],
-  cactus:     ['#2D6B2D', null],
-  dead_tree:  ['#5C3317', null],
-  billboard:  ['#777',    '#1a1a2e'],
-};
-
-function drawSimplified(ctx, s, type) {
-  const colors = simplifiedColors[type] || [null, '#228B22'];
-  if (colors[0]) {
-    ctx.fillStyle = colors[0];
-    ctx.fillRect(-s * 0.04, -s * 0.5, s * 0.08, s * 0.5);
-  }
-  if (colors[1]) {
-    ctx.fillStyle = colors[1];
-    ctx.beginPath();
-    ctx.ellipse(0, colors[0] ? -s * 0.5 : -s * 0.1, s * 0.15, s * 0.12, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
-function drawPalmTree(ctx, s) {
-  const trunkW = s * 0.06;
-  const trunkH = s * 0.7;
-  // Trunk — slight curve
-  ctx.fillStyle = '#8B6914';
-  ctx.beginPath();
-  ctx.moveTo(-trunkW, 0);
-  ctx.quadraticCurveTo(-trunkW * 1.5, -trunkH * 0.5, -trunkW * 0.3, -trunkH);
-  ctx.lineTo(trunkW * 0.3, -trunkH);
-  ctx.quadraticCurveTo(trunkW * 1.5, -trunkH * 0.5, trunkW, 0);
-  ctx.fill();
-
-  // Leaves
-  ctx.fillStyle = '#228B22';
-  const leafY = -trunkH;
-  for (let angle = -2.5; angle <= 2.5; angle += 0.5) {
-    ctx.beginPath();
-    const lx = Math.sin(angle) * s * 0.4;
-    const ly = leafY + Math.cos(angle) * s * 0.1 - s * 0.05;
-    ctx.ellipse(lx, ly, s * 0.22, s * 0.06, angle * 0.3, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // Coconuts
-  ctx.fillStyle = '#654321';
-  for (let i = -1; i <= 1; i++) {
-    ctx.beginPath();
-    ctx.arc(i * s * 0.04, leafY + s * 0.02, s * 0.025, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
-function drawPineTree(ctx, s) {
-  const trunkW = s * 0.04;
-  const trunkH = s * 0.25;
-
-  ctx.fillStyle = '#5C3317';
-  ctx.fillRect(-trunkW, -trunkH, trunkW * 2, trunkH);
-
-  ctx.fillStyle = '#0D5B0D';
-  const layers = 4;
-  for (let i = 0; i < layers; i++) {
-    const layerY = -trunkH - i * s * 0.15;
-    const layerW = s * (0.2 - i * 0.03);
-    const layerH = s * 0.2;
-    ctx.beginPath();
-    ctx.moveTo(-layerW, layerY);
-    ctx.lineTo(0, layerY - layerH);
-    ctx.lineTo(layerW, layerY);
-    ctx.fill();
-  }
-}
-
-function drawBush(ctx, s) {
-  ctx.fillStyle = '#2D8B2D';
-  ctx.beginPath();
-  ctx.ellipse(0, -s * 0.12, s * 0.2, s * 0.14, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#1E6B1E';
-  ctx.beginPath();
-  ctx.ellipse(-s * 0.08, -s * 0.08, s * 0.12, s * 0.1, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.ellipse(s * 0.1, -s * 0.1, s * 0.13, s * 0.11, 0, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawRock(ctx, s) {
-  ctx.fillStyle = '#808080';
-  ctx.beginPath();
-  ctx.moveTo(-s * 0.15, 0);
-  ctx.lineTo(-s * 0.18, -s * 0.08);
-  ctx.lineTo(-s * 0.1, -s * 0.18);
-  ctx.lineTo(s * 0.05, -s * 0.2);
-  ctx.lineTo(s * 0.16, -s * 0.12);
-  ctx.lineTo(s * 0.15, 0);
-  ctx.fill();
-
-  ctx.fillStyle = '#999';
-  ctx.beginPath();
-  ctx.moveTo(-s * 0.05, -s * 0.05);
-  ctx.lineTo(-s * 0.02, -s * 0.16);
-  ctx.lineTo(s * 0.06, -s * 0.14);
-  ctx.lineTo(s * 0.04, -s * 0.04);
-  ctx.fill();
-}
-
-function drawSign(ctx, s) {
-  const postW = s * 0.02;
-  const postH = s * 0.35;
-  ctx.fillStyle = '#AAA';
-  ctx.fillRect(-postW, -postH, postW * 2, postH);
-
-  ctx.fillStyle = '#E8473C';
-  ctx.fillRect(-s * 0.12, -postH - s * 0.12, s * 0.24, s * 0.16);
-
-  ctx.fillStyle = '#FFF';
-  ctx.font = `bold ${Math.max(8, s * 0.08)}px monospace`;
-  ctx.textAlign = 'center';
-  ctx.fillText('SNEED', 0, -postH - s * 0.02);
-}
-
-function drawColumn(ctx, s) {
-  ctx.fillStyle = '#DDD';
-  ctx.fillRect(-s * 0.025, -s * 0.55, s * 0.05, s * 0.55);
-  ctx.fillStyle = '#E8473C';
-  ctx.fillRect(-s * 0.035, -s * 0.55, s * 0.07, s * 0.04);
-  ctx.fillRect(-s * 0.035, -s * 0.1, s * 0.07, s * 0.04);
-}
-
-function drawCactus(ctx, s) {
-  ctx.fillStyle = '#2D6B2D';
-  ctx.fillRect(-s * 0.03, -s * 0.35, s * 0.06, s * 0.35);
-
-  ctx.beginPath();
-  ctx.moveTo(s * 0.03, -s * 0.2);
-  ctx.quadraticCurveTo(s * 0.15, -s * 0.2, s * 0.12, -s * 0.35);
-  ctx.lineTo(s * 0.08, -s * 0.35);
-  ctx.quadraticCurveTo(s * 0.11, -s * 0.22, s * 0.03, -s * 0.17);
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.moveTo(-s * 0.03, -s * 0.15);
-  ctx.quadraticCurveTo(-s * 0.13, -s * 0.15, -s * 0.1, -s * 0.28);
-  ctx.lineTo(-s * 0.07, -s * 0.28);
-  ctx.quadraticCurveTo(-s * 0.09, -s * 0.17, -s * 0.03, -s * 0.12);
-  ctx.fill();
-}
-
-function drawDeadTree(ctx, s) {
-  ctx.strokeStyle = '#5C3317';
-  ctx.lineWidth = Math.max(1, s * 0.03);
-  ctx.lineCap = 'round';
-
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(0, -s * 0.5);
-  ctx.stroke();
-
-  ctx.lineWidth = Math.max(1, s * 0.02);
-  const branches = [
-    [0, -s * 0.35, -s * 0.15, -s * 0.5],
-    [0, -s * 0.35, s * 0.12, -s * 0.52],
-    [0, -s * 0.45, -s * 0.1, -s * 0.55],
-    [0, -s * 0.45, s * 0.08, -s * 0.58],
-  ];
-  for (const [x1, y1, x2, y2] of branches) {
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-  }
-}
-
-function drawBillboard(ctx, s) {
-  const postW = s * 0.02;
-  const postH = s * 0.3;
-  ctx.fillStyle = '#777';
-  ctx.fillRect(-s * 0.15, -postH, postW, postH);
-  ctx.fillRect(s * 0.15 - postW, -postH, postW, postH);
-
-  ctx.fillStyle = '#1a1a2e';
-  ctx.fillRect(-s * 0.22, -postH - s * 0.2, s * 0.44, s * 0.22);
-
-  ctx.fillStyle = '#4DE84D';
-  ctx.font = `bold ${Math.max(8, s * 0.09)}px monospace`;
-  ctx.textAlign = 'center';
-  ctx.fillText('SNEED DAO', 0, -postH - s * 0.06);
-}
-
-// Draw an AI car — colored rectangle with windshield
-export function drawCar(ctx, x, y, scale, color) {
   const s = scale * 300;
-  const w = s * 0.25;
-  const h = s * 0.15;
+  const pixelScale = s * 0.006;
+  const dw = car.w * pixelScale;
+  const dh = car.h * pixelScale;
+  const dx = x - dw / 2;
+  const dy = y - dh;
 
-  ctx.save();
-  ctx.translate(x, y);
+  ctx.drawImage(scenerySheet, car.x, car.y, car.w, car.h, dx, dy, dw, dh);
+}
 
-  // Body
-  ctx.fillStyle = color;
-  ctx.fillRect(-w, -h * 2, w * 2, h);
-
-  // Roof
-  ctx.fillStyle = shadeColor(color, -30);
-  ctx.fillRect(-w * 0.7, -h * 2.6, w * 1.4, h * 0.7);
-
-  // Windshield
-  ctx.fillStyle = '#8ED6FF';
-  ctx.fillRect(-w * 0.55, -h * 2.5, w * 1.1, h * 0.45);
-
-  // Wheels
-  ctx.fillStyle = '#222';
-  ctx.fillRect(-w * 1.05, -h * 1.3, w * 0.2, h * 0.4);
-  ctx.fillRect(w * 0.85, -h * 1.3, w * 0.2, h * 0.4);
-
-  ctx.restore();
+// Get player car steer frame index from steer value (-1..1)
+function getPlayerFrame(steer) {
+  if (steer < -0.6) return 0;
+  if (steer < -0.3) return 1;
+  if (steer < -0.1) return 2;
+  if (steer > 0.6) return 8;
+  if (steer > 0.3) return 7;
+  if (steer > 0.1) return 5;
+  return 4;
 }
 
 // Draw the player's car (seen from behind)
 export function drawPlayerCar(ctx, canvasW, canvasH, steer, speed, maxSpeed, crash) {
   const x = canvasW / 2;
   const baseY = canvasH - 10;
-  const w = 52;
-  const h = 32;
 
   if (crash && crash.timer > 0) {
-    drawCrashingCar(ctx, x, baseY, w, h, crash);
+    drawCrashingCar(ctx, x, baseY, crash);
     return;
   }
 
-  const tilt = steer * 3;
   const bounce = speed > 0 ? Math.sin(Date.now() * 0.02) * (speed / maxSpeed) * 2 : 0;
+  const tilt = steer * 3;
 
-  ctx.save();
-  ctx.translate(x + tilt * 4, baseY + bounce);
+  if (!sheetsLoaded || !playerSheet.complete || !playerSheet.naturalWidth) {
+    // Fallback: simple colored rect
+    ctx.fillStyle = '#E8473C';
+    ctx.fillRect(x - 52 + tilt * 4, baseY - 32 + bounce, 104, 32);
+    return;
+  }
+
+  const frame = PLAYER_FRAMES[getPlayerFrame(steer)];
+  const PLAYER_SCALE = 2.0;
+  const dw = frame.w * PLAYER_SCALE;
+  const dh = frame.h * PLAYER_SCALE;
+  const dx = x - dw / 2 + tilt * 4;
+  const dy = baseY - dh + bounce;
 
   // Shadow
   ctx.fillStyle = 'rgba(0,0,0,0.3)';
   ctx.beginPath();
-  ctx.ellipse(0, 4, w * 1.1, 6, 0, 0, Math.PI * 2);
+  ctx.ellipse(x + tilt * 4, baseY + 4, dw * 0.55, 6, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  drawCarBody(ctx, w, h);
-
-  // Tail lights
-  ctx.fillStyle = '#FF2020';
-  ctx.fillRect(-w + 2, -h * 0.6, 8, 6);
-  ctx.fillRect(w - 10, -h * 0.6, 8, 6);
-
-  if (speed < maxSpeed * 0.5 && speed > 0) {
-    ctx.fillStyle = '#FF6060';
-    ctx.fillRect(-w + 2, -h * 0.6, 8, 6);
-    ctx.fillRect(w - 10, -h * 0.6, 8, 6);
-  }
-
-  if (speed > maxSpeed * 0.3) {
-    ctx.fillStyle = 'rgba(200,200,200,0.3)';
-    ctx.beginPath();
-    ctx.ellipse(-w * 0.3, 4, 4 + Math.random() * 3, 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // Wheels
-  ctx.fillStyle = '#111';
-  ctx.fillRect(-w - 4, -6, 8, 10);
-  ctx.fillRect(w - 4, -6, 8, 10);
-
-  if (Math.abs(steer) > 0.1) {
-    const lean = steer > 0 ? 1 : -1;
-    ctx.fillStyle = 'rgba(0,0,0,0.1)';
-    ctx.fillRect(lean > 0 ? w * 0.3 : -w, -h, w * 0.7, h);
-  }
-
-  ctx.restore();
+  ctx.drawImage(playerSheet, frame.x, frame.y, frame.w, frame.h, dx, dy, dw, dh);
 }
 
-function drawCarBody(ctx, w, h) {
-  ctx.fillStyle = '#E8473C';
-  ctx.beginPath();
-  ctx.moveTo(-w, 0);
-  ctx.lineTo(-w + 4, -h);
-  ctx.lineTo(w - 4, -h);
-  ctx.lineTo(w, 0);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.fillStyle = '#C63030';
-  ctx.beginPath();
-  ctx.moveTo(-w * 0.55, -h);
-  ctx.lineTo(-w * 0.4, -h * 1.55);
-  ctx.lineTo(w * 0.4, -h * 1.55);
-  ctx.lineTo(w * 0.55, -h);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.fillStyle = '#1a1a3e';
-  ctx.beginPath();
-  ctx.moveTo(-w * 0.42, -h * 1.02);
-  ctx.lineTo(-w * 0.33, -h * 1.45);
-  ctx.lineTo(w * 0.33, -h * 1.45);
-  ctx.lineTo(w * 0.42, -h * 1.02);
-  ctx.closePath();
-  ctx.fill();
-}
-
-function drawCrashingCar(ctx, cx, baseY, w, h, crash) {
+function drawCrashingCar(ctx, cx, baseY, crash) {
   const liftPixels = crash.airY * 0.6;
   const carY = baseY - liftPixels;
-  const scaleImpact = crash.airY < 5 && crash.bounces > 0 ? 1.1 : 1.0;
 
-  // Shadow on the ground (shrinks as car rises)
+  // Shadow on the ground
   const shadowScale = Math.max(0.3, 1 - crash.airY / 600);
   ctx.fillStyle = `rgba(0,0,0,${0.3 * shadowScale})`;
   ctx.beginPath();
-  ctx.ellipse(cx, baseY + 4, w * 1.1 * shadowScale, 6 * shadowScale, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx, baseY + 4, 60 * shadowScale, 6 * shadowScale, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Sparks/debris on bounce
+  // Sparks on bounce
   if (crash.airY < 10 && crash.bounces > 0 && crash.bounces <= 3) {
-    drawSparks(ctx, cx, baseY, w, crash.timer);
+    drawSparks(ctx, cx, baseY, crash.timer);
   }
 
-  // Car body — rotated and airborne
-  ctx.save();
-  ctx.translate(cx, carY - h * 0.5);
-  ctx.rotate(crash.rotation);
-  ctx.scale(scaleImpact, scaleImpact);
-
-  drawCarBody(ctx, w, h);
-
-  // Wheels visible from angle
-  ctx.fillStyle = '#111';
-  ctx.fillRect(-w - 3, -3, 6, 8);
-  ctx.fillRect(w - 3, -3, 6, 8);
-
-  // Undercarriage visible when flipped
+  // Pick crash frame based on rotation
   const normalizedRot = ((crash.rotation % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-  if (normalizedRot > Math.PI * 0.3 && normalizedRot < Math.PI * 1.7) {
-    ctx.fillStyle = '#333';
-    ctx.fillRect(-w * 0.8, -2, w * 1.6, h * 0.3);
-    ctx.fillStyle = '#555';
-    ctx.fillRect(-w * 0.3, 0, w * 0.15, h * 0.15);
-    ctx.fillRect(w * 0.15, 0, w * 0.15, h * 0.15);
+  const frameIdx = Math.floor((normalizedRot / (Math.PI * 2)) * CRASH_FRAMES.length) % CRASH_FRAMES.length;
+
+  if (!sheetsLoaded || !playerSheet.complete || !playerSheet.naturalWidth) {
+    // Fallback
+    ctx.save();
+    ctx.translate(cx, carY - 30);
+    ctx.rotate(crash.rotation);
+    ctx.fillStyle = '#E8473C';
+    ctx.fillRect(-52, -16, 104, 32);
+    ctx.restore();
+    return;
   }
 
-  ctx.restore();
+  const frame = CRASH_FRAMES[frameIdx];
+  const CRASH_SCALE = 1.5;
+  const dw = frame.w * CRASH_SCALE;
+  const dh = frame.h * CRASH_SCALE;
+
+  ctx.drawImage(playerSheet, frame.x, frame.y, frame.w, frame.h,
+    cx - dw / 2, carY - dh, dw, dh);
 
   // Dust cloud at base
   if (crash.timer < 1.5) {
@@ -452,27 +319,16 @@ function drawCrashingCar(ctx, cx, baseY, w, h, crash) {
   }
 }
 
-function drawSparks(ctx, cx, baseY, w, timer) {
+function drawSparks(ctx, cx, baseY, timer) {
   ctx.fillStyle = '#FFD700';
-  const sparkCount = 8;
-  for (let i = 0; i < sparkCount; i++) {
-    const angle = (i / sparkCount) * Math.PI * 2 + timer * 5;
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2 + timer * 5;
     const dist = 10 + Math.sin(timer * 10 + i) * 20;
     const sx = cx + Math.cos(angle) * dist;
     const sy = baseY - 5 + Math.sin(angle) * dist * 0.3;
     const size = 1 + Math.random() * 2;
     ctx.fillRect(sx, sy, size, size);
   }
-}
-
-function shadeColor(color, percent) {
-  let h = color.replace('#', '');
-  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
-  const num = parseInt(h, 16);
-  const r = Math.min(255, Math.max(0, (num >> 16) + percent));
-  const g = Math.min(255, Math.max(0, ((num >> 8) & 0x00FF) + percent));
-  const b = Math.min(255, Math.max(0, (num & 0x0000FF) + percent));
-  return `rgb(${r},${g},${b})`;
 }
 
 export const CAR_COLORS = ['#2266DD', '#DDDD22', '#22DD44', '#DD22DD', '#FF8800', '#22DDDD', '#FFFFFF', '#FF4466'];

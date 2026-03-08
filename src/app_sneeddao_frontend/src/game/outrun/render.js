@@ -1,9 +1,9 @@
 import {
   CAMERA_DEPTH, CAMERA_HEIGHT,
   DRAW_DISTANCE, SEGMENT_LENGTH, ROAD_WIDTH,
-  MAX_SPEED, THEMES, LANE_COUNT,
+  MAX_SPEED, THEMES, LANE_COUNT, CURVE_SCALE,
 } from './constants.js';
-import { project, exponentialFog } from './utils.js';
+import { exponentialFog } from './utils.js';
 import { interpolateY, trackLength } from './road.js';
 import { drawSprite, drawCar, drawPlayerCar } from './sprites.js';
 
@@ -108,8 +108,8 @@ function blendThemes(from, to, t) {
 
 export function render(ctx, state) {
   const { segments, playerX, position, speed, steer, time, stage } = state;
-  const width = ctx.canvas.width;
-  const height = ctx.canvas.height;
+  const W = ctx.canvas.width;
+  const H = ctx.canvas.height;
   const totalLength = trackLength(segments);
 
   // Theme blending during transition
@@ -120,7 +120,6 @@ export function render(ctx, state) {
     const baseIdx = Math.floor(position / SEGMENT_LENGTH);
     const t = Math.min(1, baseIdx / state.themeBlendSegs);
     theme = blendThemes(fromTheme, toTheme, t);
-    // Invalidate gradient cache during blend
     cachedGradientKey = '';
     fogBandThemeKey = '';
   } else {
@@ -132,85 +131,111 @@ export function render(ctx, state) {
   const fogBase = theme.sky[1];
   const fogBands = getFogBands(theme, fogBase);
 
-  ctx.clearRect(0, 0, width, height);
+  ctx.clearRect(0, 0, W, H);
 
-  drawSky(ctx, width, height, theme, state.skyOffset || 0);
-  drawBackground(ctx, width, height, theme, state.bgOffset || 0, state.hillOffset || 0);
+  drawSky(ctx, W, H, theme, state.skyOffset || 0);
+  drawBackground(ctx, W, H, theme, state.bgOffset || 0, state.hillOffset || 0);
 
-  let maxY = height;
-  let x = 0;
-  let dx = 0;
+  // --- Correct pseudo-3D road projection ---
+  const cameraX = playerX * ROAD_WIDTH;
+  const cameraY = CAMERA_HEIGHT + playerY;
+  const cameraZ = position;
+
+  let maxY = H;
+  let curveOffset = 0;
   let spriteCount = 0;
+
+  // Previous segment screen coords for strip drawing
+  let prevScreenX = 0, prevScreenY = H, prevScreenW = 0;
+  let prevRoadScale = 1;
+  let prevFork = null;
 
   for (let n = 0; n < DRAW_DISTANCE; n++) {
     const idx = (baseSegmentIndex + n) % segments.length;
     const seg = segments[idx];
     const looped = (baseSegmentIndex + n) >= segments.length;
 
-    const camX = playerX * ROAD_WIDTH * 2;
-    const camY = CAMERA_HEIGHT + playerY;
-    const camZ = position - (looped ? totalLength : 0);
+    // World Z with loop handling
+    const worldZ = seg.world.z + (looped ? totalLength : 0);
+    const relZ = worldZ - cameraZ;
 
-    project(seg, camX, camY, camZ, CAMERA_DEPTH, width, height, ROAD_WIDTH);
+    if (relZ <= 0) continue;
 
-    x += dx;
-    dx += seg.curve;
-    dx *= 0.985;
-    seg.screen.x += x * seg.screen.w * 0.004;
+    // Perspective scale
+    const scale = CAMERA_DEPTH / relZ;
 
+    // Accumulate curve offset
+    curveOffset += seg.curve;
+
+    // Project to screen
+    const screenX = W / 2 + scale * (-cameraX + curveOffset * CURVE_SCALE) * W / 2;
+    const screenY = H / 2 - scale * (seg.world.y - cameraY) * H / 2;
+    const screenW = scale * ROAD_WIDTH * W / 2;
+
+    // Store projected coords on segment for sprite positioning
+    seg.screen.x = screenX;
+    seg.screen.y = screenY;
+    seg.screen.w = screenW;
+    seg.screen.scale = scale;
     seg.clip = maxY;
 
-    if (seg.screen.y >= maxY || seg.screen.scale <= 0 || seg.camera.z <= CAMERA_DEPTH) {
+    // Hill clipping: skip if above previous drawn segment
+    if (screenY >= maxY || scale <= 0) {
       continue;
     }
 
-    const prevIdx = n === 0 ? idx : ((baseSegmentIndex + n - 1) % segments.length);
-    const prev = n === 0 ? seg : segments[prevIdx];
-
+    // Draw road strip between previous and current segment
     if (n > 0) {
       const fogAmount = 1 - exponentialFog(n / DRAW_DISTANCE, 5);
       const bandIdx = Math.min(FOG_BANDS - 1, (fogAmount * (FOG_BANDS - 1)) | 0);
 
-      // Effective road width: base projection * roadScale * fork widening
-      let effW1 = prev.screen.w * (prev.roadScale || 1);
-      let effW2 = seg.screen.w * (seg.roadScale || 1);
-      if (prev.fork) effW1 *= (1 + prev.fork.widen * 0.5);
+      let effW1 = prevScreenW * prevRoadScale;
+      let effW2 = screenW * (seg.roadScale || 1);
+      if (prevFork) effW1 *= (1 + prevFork.widen * 0.5);
       if (seg.fork) effW2 *= (1 + seg.fork.widen * 0.5);
 
-      drawSegmentStrip(ctx, width, seg.color, fogBands[bandIdx],
-        prev.screen.x, prev.screen.y, effW1,
-        seg.screen.x, seg.screen.y, effW2,
-        fogAmount, seg.fork, prev.fork, seg.lanes || LANE_COUNT);
+      drawSegmentStrip(ctx, W, seg.color, fogBands[bandIdx],
+        prevScreenX, prevScreenY, effW1,
+        screenX, screenY, effW2,
+        fogAmount, seg.fork, prevFork, seg.lanes || LANE_COUNT);
     }
 
-    if (seg.sprite && seg.screen.w > 1) {
+    // Collect sprites for back-to-front pass
+    if (seg.sprite && screenW > 1) {
       const sp = seg.sprite;
-      const spriteX = seg.screen.x + (seg.screen.scale * sp.offset * ROAD_WIDTH * width / 2);
-      if (spriteX > -200 && spriteX < width + 200) {
+      const spriteX = screenX + (scale * sp.offset * ROAD_WIDTH * W / 2);
+      if (spriteX > -200 && spriteX < W + 200) {
         spritePool[spriteCount++] = makeSpriteItem(
-          sp.type, null, spriteX, seg.screen.y, seg.screen.w * (seg.roadScale || 1), maxY);
+          sp.type, null, null, spriteX, screenY, screenW * (seg.roadScale || 1), maxY);
       }
     }
 
     for (let ci = 0; ci < seg.cars.length; ci++) {
-      if (seg.screen.w > 1) {
+      if (screenW > 1) {
         const car = seg.cars[ci];
-        const carScreenX = seg.screen.x + (seg.screen.scale * car.offset * ROAD_WIDTH * width / 2);
-        if (carScreenX > -100 && carScreenX < width + 100) {
+        const carScreenX = screenX + (scale * car.offset * ROAD_WIDTH * W / 2);
+        if (carScreenX > -100 && carScreenX < W + 100) {
           spritePool[spriteCount++] = makeSpriteItem(
-            null, car.color, carScreenX, seg.screen.y, seg.screen.w, maxY);
+            null, car.color, car.colorIndex, carScreenX, screenY, screenW, maxY);
         }
       }
     }
 
-    maxY = seg.screen.y;
+    // Update for next iteration
+    prevScreenX = screenX;
+    prevScreenY = screenY;
+    prevScreenW = screenW;
+    prevRoadScale = seg.roadScale || 1;
+    prevFork = seg.fork;
+    maxY = screenY;
   }
 
+  // Draw sprites back-to-front (far to near)
   for (let i = spriteCount - 1; i >= 0; i--) {
     const item = spritePool[i];
-    if (item.carColor) {
+    if (item.carColor !== null) {
       const carScale = item.roadW * 0.002;
-      if (carScale > 0.02) drawCar(ctx, item.screenX, item.screenY, carScale, item.carColor);
+      if (carScale > 0.02) drawCar(ctx, item.screenX, item.screenY, carScale, item.carColor, item.colorIndex);
     } else {
       const spriteScale = item.roadW * 0.8;
       if (spriteScale < 4) continue;
@@ -219,7 +244,7 @@ export function render(ctx, state) {
       if (needsClip) {
         ctx.save();
         ctx.beginPath();
-        ctx.rect(0, 0, width, item.clip);
+        ctx.rect(0, 0, W, item.clip);
         ctx.clip();
       }
       drawSprite(ctx, item.type, item.screenX, item.screenY, 0, spriteScale);
@@ -228,23 +253,23 @@ export function render(ctx, state) {
   }
 
   const crashData = state.gameState === 'crash' ? state.crash : null;
-  drawPlayerCar(ctx, width, height, steer, speed, MAX_SPEED, crashData);
-  drawHUD(ctx, width, height, speed, time, stage, state.gameState);
+  drawPlayerCar(ctx, W, H, steer, speed, MAX_SPEED, crashData);
+  drawHUD(ctx, W, H, speed, time, stage, state.gameState);
 
-  if (state.gameState === 'fork') drawForkOverlay(ctx, width, height, state.forkTimer, state.forkChoice);
-  if (state.gameState === 'title') drawTitleScreen(ctx, width, height);
-  else if (state.gameState === 'countdown') drawCountdown(ctx, width, height, state.countdown);
-  else if (state.gameState === 'gameover') drawGameOver(ctx, width, height);
+  if (state.gameState === 'fork') drawForkOverlay(ctx, W, H, state.forkTimer, state.forkChoice);
+  if (state.gameState === 'title') drawTitleScreen(ctx, W, H);
+  else if (state.gameState === 'countdown') drawCountdown(ctx, W, H, state.countdown);
+  else if (state.gameState === 'gameover') drawGameOver(ctx, W, H);
 }
 
 const POOL_SIZE = 300;
 const spritePool = [];
 for (let i = 0; i < POOL_SIZE; i++) {
-  spritePool[i] = { type: null, carColor: null, screenX: 0, screenY: 0, roadW: 0, clip: 0 };
+  spritePool[i] = { type: null, carColor: null, colorIndex: null, screenX: 0, screenY: 0, roadW: 0, clip: 0 };
 }
 
-function makeSpriteItem(type, carColor, sx, sy, rw, clip) {
-  return { type, carColor, screenX: sx, screenY: sy, roadW: rw, clip };
+function makeSpriteItem(type, carColor, colorIndex, sx, sy, rw, clip) {
+  return { type, carColor, colorIndex, screenX: sx, screenY: sy, roadW: rw, clip };
 }
 
 function drawSky(ctx, w, h, theme, offset) {

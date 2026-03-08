@@ -6,7 +6,7 @@ import {
 } from './constants.js';
 import { clamp, randomChoice, overlap } from './utils.js';
 import { buildRoad, findSegment, trackLength, addSpritesToSegments, getSegmentIndex } from './road.js';
-import { getSpriteWidth, CAR_COLORS } from './sprites.js';
+import { getSpriteWidth, CAR_COLORS, loadSpriteSheets, TRAFFIC_CAR_COUNT } from './sprites.js';
 import { render, resetRenderCache } from './render.js';
 import { getStageTrack, THEME_ORDER } from './tracks.js';
 
@@ -62,6 +62,7 @@ export function createGame(canvas, trackDef) {
         z,
         speed: MAX_SPEED * (0.3 + Math.random() * 0.4),
         color: randomChoice(CAR_COLORS),
+        colorIndex: i % TRAFFIC_CAR_COUNT,
       });
     }
   }
@@ -156,7 +157,8 @@ export function createGame(canvas, trackDef) {
     }
 
     if (seg) {
-      state.playerX -= (seg.curve * CENTRIFUGAL_FORCE * dt * state.speed / MAX_SPEED);
+      const speedRatio = state.speed / MAX_SPEED;
+      state.playerX -= seg.curve * CENTRIFUGAL_FORCE * dt * speedRatio * speedRatio;
     }
 
     state.playerX = clamp(state.playerX, -2.5, 2.5);
@@ -183,6 +185,14 @@ export function createGame(canvas, trackDef) {
     state.skyOffset += (steerDir * state.speed / MAX_SPEED) * dt * 80;
     state.bgOffset += (steerDir * state.speed / MAX_SPEED) * dt * 160;
     state.hillOffset += (steerDir * state.speed / MAX_SPEED) * dt * 240;
+
+    // Curve-based parallax
+    if (seg) {
+      const curveFactor = seg.curve * state.speed / MAX_SPEED;
+      state.skyOffset  -= curveFactor * dt * 40;
+      state.bgOffset   -= curveFactor * dt * 80;
+      state.hillOffset -= curveFactor * dt * 120;
+    }
 
     if (state.collisionCooldown > 0) {
       state.collisionCooldown -= dt;
@@ -414,9 +424,10 @@ export function createGame(canvas, trackDef) {
     animFrameId = requestAnimationFrame(frame);
   }
 
-  function start(input) {
+  async function start(input) {
     state._input = input;
     resetRenderCache();
+    await loadSpriteSheets();
     init();
     lastTime = performance.now();
     animFrameId = requestAnimationFrame(frame);
