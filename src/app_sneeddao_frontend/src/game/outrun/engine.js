@@ -38,6 +38,7 @@ export function createGame(canvas, trackDef) {
     themeBlendSegs: 0,
     // Crash
     crash: { timer: 0, airY: 0, velY: 0, rotation: 0, rotSpeed: 0, bounces: 0 },
+    fingerWag: 0,
   };
 
   function init() {
@@ -91,6 +92,7 @@ export function createGame(canvas, trackDef) {
     state.themeFrom = null;
     state.themeTo = null;
     state.themeBlendSegs = 0;
+    state.fingerWag = 0;
     state.theme = trackDef.theme || 'beach';
     state.trackDef = trackDef;
     init();
@@ -191,6 +193,11 @@ export function createGame(canvas, trackDef) {
       state.collisionCooldown -= dt;
     }
 
+    if (state.fingerWag > 0) {
+      state.fingerWag -= dt;
+      if (state.speed > MAX_SPEED * 0.15) state.fingerWag = 0;
+    }
+
     if (state.collisionCooldown <= 0) {
       // Sprite collision
       if (seg && seg.sprite && Math.abs(state.playerX) > 0.8) {
@@ -201,6 +208,7 @@ export function createGame(canvas, trackDef) {
             // High-speed crash
             triggerCrash();
           } else {
+            if (state.speed > MAX_SPEED * 0.15) state.fingerWag = 2.0;
             state.speed = Math.max(0, state.speed * 0.3);
             state.collisionCooldown = 0.8;
           }
@@ -294,6 +302,7 @@ export function createGame(canvas, trackDef) {
       state.speed = 0;
       state.collisionCooldown = 2.0;
       state.crash = { timer: 0, airY: 0, velY: 0, rotation: 0, rotSpeed: 0, bounces: 0 };
+      state.fingerWag = 2.5;
       state.gameState = 'playing';
     }
   }

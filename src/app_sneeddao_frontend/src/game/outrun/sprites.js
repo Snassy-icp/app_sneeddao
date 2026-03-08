@@ -67,6 +67,48 @@ const CRASH_FRAMES = [
   { x: 853, y: 180, w: 140, h: 90 }, // side view right
 ];
 
+// Driving overlay heads (rear view, drawn on top of car body)
+const DRIVER_HEAD = { x: 425, y: 739, w: 11, h: 12 };
+const BLONDE_HEAD = { x: 478, y: 738, w: 13, h: 13 };
+
+// Male crash tumble frames
+const MALE_TUMBLE = [
+  { x: 235, y: 378, w: 17, h: 57 },
+  { x: 270, y: 377, w: 49, h: 63 },
+  { x: 356, y: 376, w: 74, h: 64 },
+  { x: 431, y: 376, w: 43, h: 64 },
+  { x: 475, y: 376, w: 75, h: 64 },
+  { x: 530, y: 472, w: 60, h: 29 },
+];
+
+// Female crash tumble frames
+const FEMALE_TUMBLE = [
+  { x: 300, y: 585, w: 23, h: 30 },
+  { x: 382, y: 589, w: 23, h: 26 },
+  { x: 406, y: 578, w: 18, h: 37 },
+  { x: 425, y: 578, w: 30, h: 37 },
+];
+
+// Finger-wag scene frames (both characters together)
+const FINGER_WAG = [
+  { x: 300, y: 615, w: 19, h: 55 },
+  { x: 320, y: 615, w: 23, h: 55 },
+  { x: 344, y: 615, w: 55, h: 55 },
+  { x: 400, y: 615, w: 52, h: 55 },
+  { x: 453, y: 615, w: 49, h: 55 },
+  { x: 503, y: 615, w: 43, h: 55 },
+];
+
+let passengerVariant = 'blonde';
+
+export function setPassengerVariant(variant) {
+  passengerVariant = variant;
+}
+
+export function getPassengerVariant() {
+  return passengerVariant;
+}
+
 // Scenery atlas (from NicePng_bien-png_7723679.png)
 const SCENERY_ATLAS = {
   palm_tree:   { sheet: 'scenery', x: 1,    y: 1,    w: 215, h: 535 },
@@ -302,29 +344,50 @@ export function drawPlayerCar(ctx, canvasW, canvasH, steer, speed, maxSpeed, cra
 }
 
 function drawPassengerHeads(ctx, carX, carY, carW, carH, flip) {
-  const cx = carX + carW / 2;
-  const headY = carY + carH * 0.12;
-  const headR = carW * 0.025;
+  if (!sheetsLoaded || !playerSheet.complete) return;
 
-  // Driver on right side (RHD), passenger on left (viewed from behind)
-  let driverOff = carW * 0.15;
-  let passengerOff = -carW * 0.15;
+  const headScale = carW / 110;
+  const cx = carX + carW / 2;
+  const headY = carY + carH * 0.08;
+
+  // Driver on right (RHD), passenger on left (from behind)
+  let driverOffX = carW * 0.17;
+  let passengerOffX = -carW * 0.12;
+  if (flip) { driverOffX = -driverOffX; passengerOffX = -passengerOffX; }
+
+  // Draw driver head
+  const head = DRIVER_HEAD;
+  const dw = head.w * headScale;
+  const dh = head.h * headScale;
+  const ddx = cx + driverOffX - dw / 2;
+  const ddy = headY - dh;
+
   if (flip) {
-    driverOff = -driverOff;
-    passengerOff = -passengerOff;
+    ctx.save();
+    ctx.translate(ddx + dw, ddy);
+    ctx.scale(-1, 1);
+    ctx.drawImage(playerSheet, head.x, head.y, head.w, head.h, 0, 0, dw, dh);
+    ctx.restore();
+  } else {
+    ctx.drawImage(playerSheet, head.x, head.y, head.w, head.h, ddx, ddy, dw, dh);
   }
 
-  // Driver head (dark hair)
-  ctx.fillStyle = '#1a0e05';
-  ctx.beginPath();
-  ctx.ellipse(cx + driverOff, headY, headR * 2, headR * 2.6, 0, 0, Math.PI * 2);
-  ctx.fill();
+  // Draw passenger head (blonde or brunette)
+  const pHead = BLONDE_HEAD;
+  const pw = pHead.w * headScale;
+  const ph = pHead.h * headScale;
+  const pdx = cx + passengerOffX - pw / 2;
+  const pdy = headY - ph;
 
-  // Passenger head (blonde hair, slightly taller for flowing hair)
-  ctx.fillStyle = '#E8C840';
-  ctx.beginPath();
-  ctx.ellipse(cx + passengerOff, headY - headR * 0.5, headR * 2, headR * 3.2, 0, 0, Math.PI * 2);
-  ctx.fill();
+  if (flip) {
+    ctx.save();
+    ctx.translate(pdx + pw, pdy);
+    ctx.scale(-1, 1);
+    ctx.drawImage(playerSheet, pHead.x, pHead.y, pHead.w, pHead.h, 0, 0, pw, ph);
+    ctx.restore();
+  } else {
+    ctx.drawImage(playerSheet, pHead.x, pHead.y, pHead.w, pHead.h, pdx, pdy, pw, ph);
+  }
 }
 
 function drawCrashingCar(ctx, cx, baseY, crash) {
@@ -379,6 +442,33 @@ function drawCrashingCar(ctx, cx, baseY, crash) {
       ctx.fill();
     }
   }
+
+  // Draw ejected characters
+  if (crash.timer > 0.3) {
+    const ejectTime = crash.timer - 0.3;
+    drawEjectedCharacter(ctx, cx, baseY, ejectTime, MALE_TUMBLE, -1);
+    drawEjectedCharacter(ctx, cx, baseY, ejectTime, FEMALE_TUMBLE, 1);
+  }
+}
+
+function drawEjectedCharacter(ctx, cx, baseY, time, frames, direction) {
+  if (!sheetsLoaded || !playerSheet.complete) return;
+  const vx = direction * 120;
+  const vy = 250;
+  const gravity = 350;
+  const x = cx + vx * time;
+  const heightAboveGround = vy * time - 0.5 * gravity * time * time;
+  if (heightAboveGround < -50) return;
+  const y = baseY - Math.max(0, heightAboveGround);
+
+  const frameIdx = Math.floor(time * 4) % frames.length;
+  const frame = frames[frameIdx];
+  const scale = 1.8;
+  const dw = frame.w * scale;
+  const dh = frame.h * scale;
+
+  ctx.drawImage(playerSheet, frame.x, frame.y, frame.w, frame.h,
+    x - dw / 2, y - dh, dw, dh);
 }
 
 function drawSparks(ctx, cx, baseY, timer) {
@@ -391,6 +481,20 @@ function drawSparks(ctx, cx, baseY, timer) {
     const size = 1 + Math.random() * 2;
     ctx.fillRect(sx, sy, size, size);
   }
+}
+
+export function drawFingerWag(ctx, canvasW, canvasH, timer) {
+  if (!sheetsLoaded || !playerSheet.complete) return;
+
+  const frameIdx = Math.floor(timer * 3) % FINGER_WAG.length;
+  const frame = FINGER_WAG[frameIdx];
+  const scale = 2.5;
+  const dw = frame.w * scale;
+  const dh = frame.h * scale;
+  const x = canvasW / 2 - dw / 2;
+  const y = canvasH - 10 - dh;
+
+  ctx.drawImage(playerSheet, frame.x, frame.y, frame.w, frame.h, x, y, dw, dh);
 }
 
 export const CAR_COLORS = ['#2266DD', '#DDDD22', '#22DD44', '#DD22DD', '#FF8800', '#22DDDD', '#FFFFFF', '#FF4466'];

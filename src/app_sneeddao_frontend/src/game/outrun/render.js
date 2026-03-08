@@ -5,7 +5,7 @@ import {
 } from './constants.js';
 import { exponentialFog } from './utils.js';
 import { interpolateY, trackLength } from './road.js';
-import { drawSprite, drawCar, drawPlayerCar } from './sprites.js';
+import { drawSprite, drawCar, drawPlayerCar, drawFingerWag } from './sprites.js';
 
 let cachedGradient = null;
 let cachedGradientKey = '';
@@ -299,6 +299,11 @@ export function render(ctx, state) {
 
   const crashData = state.gameState === 'crash' ? state.crash : null;
   drawPlayerCar(ctx, W, H, steer, speed, MAX_SPEED, crashData, playerSlope);
+
+  if (state.fingerWag > 0 && speed < MAX_SPEED * 0.15) {
+    drawFingerWag(ctx, W, H, state.fingerWag);
+  }
+
   drawHUD(ctx, W, H, speed, time, stage, state.gameState);
 
   if (state.gameState === 'title') drawTitleScreen(ctx, W, H);
