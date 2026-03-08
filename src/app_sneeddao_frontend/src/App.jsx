@@ -129,6 +129,9 @@ import SneedAppAdmin from './pages/admin/SneedAppAdmin';
 // Bot pages
 import TradingBot from './pages/TradingBot';
 
+// Game pages
+import OutRun from './pages/OutRun';
+
 // Component to set up global naming function
 function GlobalNamingSetup() {
     const { getNeuronDisplayName } = useNaming();
@@ -243,6 +246,9 @@ function App() {
 
                     {/* Bot routes */}
                     <Route path="/trading_bot/:canisterId" element={<TradingBot />} />
+
+                    {/* Game routes */}
+                    <Route path="/outrun" element={<OutRun />} />
 
                     {/* Swap route */}
                     <Route path="/swap" element={<Swap />} />
