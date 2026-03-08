@@ -62,6 +62,7 @@ function ActiveProposals() {
     const [refreshing, setRefreshing] = useState(false);
     const [snsLogos, setSnsLogos] = useState({});
     const [showOnlyVotable, setShowOnlyVotable] = useState(true); // default: only proposals you can vote on
+    const [bulkVotingStates, setBulkVotingStates] = useState({}); // { rootCanisterId: { status: 'idle'|'voting'|'success'|'error', progress: '2/5', vote: 1|2 } }
     const hasFetchedRef = useRef(false);
     
     // Get all SNSes with user's neurons that have voting power (shared with notifications)
@@ -458,6 +459,147 @@ function ActiveProposals() {
         window.dispatchEvent(new CustomEvent('votableProposalsRefresh'));
     };
 
+    // Bulk vote on all eligible proposals for a DAO
+    const bulkVoteAll = useCallback(async (snsInfo, proposals, neurons, nervousSystemParams, vote, isNns = false) => {
+        if (!identity) return;
+
+        // Find votable proposals (have eligible neurons)
+        const votableProposals = proposals.filter(p => {
+            const proposalId = p.id?.[0]?.id?.toString();
+            const key = `${snsInfo.rootCanisterId}_${proposalId}`;
+            const elig = proposalEligibility[key];
+            return elig && elig.eligibleCount > 0;
+        });
+
+        if (votableProposals.length === 0) return;
+
+        const rootId = snsInfo.rootCanisterId;
+        setBulkVotingStates(prev => ({ ...prev, [rootId]: { status: 'voting', progress: `0/${votableProposals.length}`, vote } }));
+
+        let completed = 0;
+        let failed = 0;
+
+        for (const proposal of votableProposals) {
+            const proposalId = proposal.id?.[0]?.id?.toString();
+            const key = `${snsInfo.rootCanisterId}_${proposalId}`;
+
+            // Skip if already voted this session
+            if (votedProposals.has(key)) {
+                completed++;
+                continue;
+            }
+
+            // Set individual proposal to voting state
+            setQuickVotingStates(prev => ({ ...prev, [key]: 'voting' }));
+
+            try {
+                const userPrincipal = identity.getPrincipal().toString();
+
+                if (isNns) {
+                    const eligibleNeurons = neurons.filter(neuron => {
+                        if (!hasNnsVotingAccess(neuron, userPrincipal)) return false;
+                        const vp = getNnsNeuronVotingPower(neuron);
+                        if (vp === 0n) return false;
+                        const neuronId = getNnsNeuronId(neuron);
+                        if (!neuronId) return false;
+                        const ballot = getNnsBallotForNeuron(proposal.ballots, neuronId);
+                        if (ballot && Number(ballot.vote) !== 0) return false;
+                        return true;
+                    });
+
+                    let successCount = 0;
+                    for (const neuron of eligibleNeurons) {
+                        const neuronId = getNnsNeuronId(neuron);
+                        const result = await voteOnNnsProposal(identity, neuronId, proposalId, vote);
+                        if (result.success) successCount++;
+                    }
+
+                    if (successCount > 0) {
+                        const votedVP = eligibleNeurons.reduce((sum, n) => sum + Number(getNnsNeuronVotingPower(n)), 0);
+                        setQuickVotingStates(prev => ({ ...prev, [key]: 'success' }));
+                        setVotedProposals(prev => new Set([...prev, key]));
+                        setProposalEligibility(prev => ({
+                            ...prev,
+                            [key]: { loading: false, eligibleCount: 0, totalVP: 0, votedCount: successCount, votedVP }
+                        }));
+                    } else {
+                        setQuickVotingStates(prev => ({ ...prev, [key]: 'error' }));
+                        failed++;
+                    }
+                } else {
+                    const snsGovActor = createSnsGovernanceActor(snsInfo.canisters.governance, {
+                        agentOptions: { identity }
+                    });
+
+                    const eligibleNeurons = neurons.filter(neuron => {
+                        const hasVotePerm = neuron.permissions?.some(p => {
+                            const permPrincipal = safePrincipalString(p.principal);
+                            if (!permPrincipal || permPrincipal !== userPrincipal) return false;
+                            return (p.permission_type || []).includes(4);
+                        });
+                        if (!hasVotePerm) return false;
+
+                        const votingPower = nervousSystemParams ? calculateVotingPower(neuron, nervousSystemParams) : 0;
+                        if (votingPower === 0) return false;
+
+                        const neuronIdHex = uint8ArrayToHex(neuron.id?.[0]?.id);
+                        const ballot = proposal.ballots?.find(([id]) => id === neuronIdHex);
+                        if (ballot && ballot[1]) {
+                            const hasVoted = ballot[1].cast_timestamp_seconds && Number(ballot[1].cast_timestamp_seconds) > 0;
+                            if (hasVoted) return false;
+                        }
+                        return true;
+                    });
+
+                    let successCount = 0;
+                    for (const neuron of eligibleNeurons) {
+                        try {
+                            const neuronIdBytes = neuron.id[0].id;
+                            await snsGovActor.manage_neuron({
+                                subaccount: Array.from(neuronIdBytes),
+                                command: [{ RegisterVote: { vote, proposal: [proposal.id[0]] } }]
+                            });
+                            successCount++;
+                        } catch (e) {
+                            console.error('Vote error:', e);
+                        }
+                    }
+
+                    if (successCount > 0) {
+                        const votedVP = eligibleNeurons.reduce((sum, n) => {
+                            return sum + (nervousSystemParams ? calculateVotingPower(n, nervousSystemParams) : 0);
+                        }, 0);
+                        setQuickVotingStates(prev => ({ ...prev, [key]: 'success' }));
+                        setVotedProposals(prev => new Set([...prev, key]));
+                        setProposalEligibility(prev => ({
+                            ...prev,
+                            [key]: { loading: false, eligibleCount: 0, totalVP: 0, votedCount: successCount, votedVP }
+                        }));
+                    } else {
+                        setQuickVotingStates(prev => ({ ...prev, [key]: 'error' }));
+                        failed++;
+                    }
+                }
+            } catch (err) {
+                console.error('Bulk vote error for proposal', proposalId, ':', err);
+                setQuickVotingStates(prev => ({ ...prev, [key]: 'error' }));
+                failed++;
+            }
+
+            completed++;
+            setBulkVotingStates(prev => ({ ...prev, [rootId]: { status: 'voting', progress: `${completed}/${votableProposals.length}`, vote } }));
+        }
+
+        const finalStatus = failed === votableProposals.length ? 'error' : 'success';
+        setBulkVotingStates(prev => ({ ...prev, [rootId]: { status: finalStatus, progress: `${completed}/${votableProposals.length}`, vote } }));
+        window.dispatchEvent(new CustomEvent('votableProposalsRefresh'));
+
+        // Clear bulk status after delay
+        setTimeout(() => {
+            setBulkVotingStates(prev => ({ ...prev, [rootId]: { status: 'idle' } }));
+        }, 4000);
+    }, [identity, proposalEligibility, votedProposals]);
+
     // Count total votable proposals
     const totalVotableCount = useMemo(() => {
         let count = 0;
@@ -808,6 +950,76 @@ function ActiveProposals() {
                                 {/* Proposals List */}
                                 {isExpanded && (
                                     <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                        {/* Bulk Vote Buttons */}
+                                        {votableCount > 0 && (() => {
+                                            const bulkState = bulkVotingStates[snsInfo.rootCanisterId];
+                                            const isBulkVoting = bulkState?.status === 'voting';
+                                            const isBulkSuccess = bulkState?.status === 'success';
+                                            const isBulkError = bulkState?.status === 'error';
+
+                                            return (
+                                                <div style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    padding: '0.6rem 0.75rem',
+                                                    background: theme.colors.tertiaryBg,
+                                                    borderRadius: '10px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                }}>
+                                                    <span style={{
+                                                        fontSize: '0.8rem',
+                                                        color: theme.colors.secondaryText,
+                                                        fontWeight: '500'
+                                                    }}>
+                                                        {isBulkVoting ? (
+                                                            <><FaSync size={10} style={{ marginRight: '6px', animation: 'spin 1s linear infinite' }} />Voting {bulkState.progress}...</>
+                                                        ) : isBulkSuccess ? (
+                                                            <><FaCheck size={10} style={{ marginRight: '6px', color: proposalAccent }} />All votes cast!</>
+                                                        ) : isBulkError ? (
+                                                            <><FaTimes size={10} style={{ marginRight: '6px', color: '#ef4444' }} />Some votes failed</>
+                                                        ) : (
+                                                            <>{votableCount} votable proposal{votableCount !== 1 ? 's' : ''}</>
+                                                        )}
+                                                    </span>
+                                                    {!isBulkVoting && !isBulkSuccess && (
+                                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (confirm(`Adopt all ${votableCount} votable proposal${votableCount !== 1 ? 's' : ''} for ${snsInfo.name}?`))
+                                                                        bulkVoteAll(snsInfo, proposals, neurons, nervousSystemParams, 1, isNns);
+                                                                }}
+                                                                style={{
+                                                                    display: 'flex', alignItems: 'center', gap: '4px',
+                                                                    padding: '0.3rem 0.65rem', borderRadius: '6px', border: 'none',
+                                                                    background: proposalAccent, color: 'white',
+                                                                    cursor: 'pointer', fontSize: '0.75rem', fontWeight: '600',
+                                                                }}
+                                                            >
+                                                                <FaCheck size={9} /> Adopt All
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (confirm(`Reject all ${votableCount} votable proposal${votableCount !== 1 ? 's' : ''} for ${snsInfo.name}?`))
+                                                                        bulkVoteAll(snsInfo, proposals, neurons, nervousSystemParams, 2, isNns);
+                                                                }}
+                                                                style={{
+                                                                    display: 'flex', alignItems: 'center', gap: '4px',
+                                                                    padding: '0.3rem 0.65rem', borderRadius: '6px', border: 'none',
+                                                                    background: '#ef4444', color: 'white',
+                                                                    cursor: 'pointer', fontSize: '0.75rem', fontWeight: '600',
+                                                                }}
+                                                            >
+                                                                <FaTimes size={9} /> Reject All
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
+
                                         {proposals.map((proposal, index) => {
                                             const proposalId = proposal.id?.[0]?.id?.toString();
                                             const key = `${snsInfo.rootCanisterId}_${proposalId}`;
