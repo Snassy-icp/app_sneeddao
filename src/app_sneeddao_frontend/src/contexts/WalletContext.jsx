@@ -13,6 +13,7 @@ import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { getTokenLogo, get_token_conversion_rate, get_token_icp_rate, get_available, get_available_backend } from '../utils/TokenUtils';
 import { fetchUserNeuronsForSns, uint8ArrayToHex } from '../utils/NeuronUtils';
+import { fetchUserNnsNeurons, NNS_GOVERNANCE_CANISTER_ID } from '../utils/NnsUtils';
 import { getTipTokensReceivedByUser, getTrackedCanisters, getCanisterGroups, convertGroupsFromBackend, getCanisterInfo } from '../utils/BackendUtils';
 import { fetchAndCacheSnsData, getAllSnses, getSnsById, buildSnsCanisterToRootMap, fetchSnsCyclesFromRoot } from '../utils/SnsUtils';
 import { getNeuronsFromCacheByIds, saveNeuronsToCache, getAllNeuronsForSns, normalizeId } from '../hooks/useNeuronsCache';
@@ -979,7 +980,10 @@ export const WalletProvider = ({ children }) => {
                 // This is the user-specific call that returns only neurons where the user
                 // is a hotkey/controller. The IndexedDB cache stores ALL neurons for an SNS
                 // (global data), but we need the user-specific list from the network.
-                const neurons = await fetchUserNeuronsForSns(identity, govId);
+                // For NNS governance, use the NNS-specific fetch function
+                const neurons = govId === NNS_GOVERNANCE_CANISTER_ID
+                    ? await fetchUserNnsNeurons(identity)
+                    : await fetchUserNeuronsForSns(identity, govId);
                 
                 // Cache the neurons in memory
                 neuronCacheRef.current.set(govId, neurons);
@@ -1066,23 +1070,33 @@ export const WalletProvider = ({ children }) => {
             // Fetch neurons for each SNS in parallel (fire and forget for speed)
             for (const sns of snsList) {
                 if (neuronCacheFetchSessionRef.current !== sessionId) return;
-                
+
                 const governanceCanisterId = sns.canisters?.governance;
                 if (!governanceCanisterId) continue;
-                
+
                 const normalizedGovId = normalizeId(governanceCanisterId);
-                
+
                 // Skip if already cached with actual neurons (not just empty array) or in-flight
                 const existingNeurons = neuronCacheRef.current.get(normalizedGovId);
                 if (existingNeurons && existingNeurons.length > 0) continue;
                 if (neuronFetchPromisesRef.current.has(normalizedGovId)) continue;
-                
+
                 // Fire and forget - don't await, let them load in parallel
                 fetchAndCacheNeurons(normalizedGovId).catch(err => {
                     console.warn(`[WalletContext] Failed to fetch neurons for ${sns.name || governanceCanisterId}:`, err);
                 });
             }
-            
+
+            // Also fetch NNS (ICP) neurons alongside SNS neurons
+            if (neuronCacheFetchSessionRef.current === sessionId) {
+                const nnsNeurons = neuronCacheRef.current.get(NNS_GOVERNANCE_CANISTER_ID);
+                if ((!nnsNeurons || nnsNeurons.length === 0) && !neuronFetchPromisesRef.current.has(NNS_GOVERNANCE_CANISTER_ID)) {
+                    fetchAndCacheNeurons(NNS_GOVERNANCE_CANISTER_ID).catch(err => {
+                        console.warn('[WalletContext] Failed to fetch NNS neurons:', err);
+                    });
+                }
+            }
+
             setNeuronCacheInitialized(true);
         } catch (error) {
             console.warn('[WalletContext] Error fetching all SNS neurons:', error);

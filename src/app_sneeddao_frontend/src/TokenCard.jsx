@@ -14,10 +14,16 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { NeuronDisplay } from './components/NeuronDisplay';
 import { useWalletOptional } from './contexts/WalletContext';
 import { useNeuronsOptional } from './contexts/NeuronsContext';
-import { fetchUserNeuronsForSns } from './utils/NeuronUtils';
+import { fetchUserNeuronsForSns, safePrincipalString } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
 import { VotingPowerCalculator } from './utils/VotingPowerUtils';
 import { getUserPermissionIcons, getStateIcon, getOwnershipPriority, PERM } from './utils/NeuronPermissionUtils.jsx';
+import {
+    NNS_GOVERNANCE_CANISTER_ID, fetchUserNnsNeurons, getNnsNeuronId,
+    getNnsNeuronVotingPower, getNnsNeuronDissolveState, isNnsHotkeyNeuron,
+    isNnsControllerNeuron, hasNnsVotingAccess, addNnsHotkey, removeNnsHotkey,
+    createNnsGovActor
+} from './utils/NnsUtils';
 import { Link } from 'react-router-dom';
 import { FaDollarSign, FaLock, FaBrain, FaInfoCircle, FaTint, FaSeedling, FaHourglassHalf, FaGift, FaExpandAlt, FaSync, FaQuestionCircle, FaPlus, FaBan, FaPlay, FaStop, FaWallet, FaExchangeAlt, FaArrowDown, FaArrowUp, FaChevronDown, FaChevronRight, FaExclamationTriangle, FaCog, FaClock, FaCut, FaPaperPlane, FaShoppingCart, FaTag } from 'react-icons/fa';
 import SwapModal from './components/SwapModal';
@@ -187,6 +193,12 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [showSplitNeuronDialog, setShowSplitNeuronDialog] = useState(false);
     const [splitNeuronAmount, setSplitNeuronAmount] = useState('');
 
+    // NNS (ICP) neuron hotkey management state
+    const [nnsHotkeyInput, setNnsHotkeyInput] = useState('');
+    const [nnsHotkeyBusy, setNnsHotkeyBusy] = useState(false);
+    const [nnsHotkeyError, setNnsHotkeyError] = useState('');
+    const [nnsHotkeySuccess, setNnsHotkeySuccess] = useState('');
+
     // Debug logging for wrap/unwrap buttons
     /*console.log('TokenCard Debug:', {
         symbol: token.symbol,
@@ -243,6 +255,15 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         if (!neuron.id || !neuron.id[0] || !neuron.id[0].id) return '';
         const idBytes = neuron.id[0].id;
         return Array.from(idBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    };
+
+    // Get a unique string key for a neuron (works for both SNS hex IDs and NNS BigInt IDs)
+    const getNeuronKey = (neuron) => {
+        if (isICP) {
+            const id = getNnsNeuronId(neuron);
+            return id !== null ? id.toString() : '';
+        }
+        return getNeuronIdHex(neuron);
     };
 
     const getNeuronStake = (neuron) => {
@@ -317,26 +338,26 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
 
     // Report neuron totals (stake + maturity) in USD to parent component
     useEffect(() => {
-        if (onNeuronTotalsChange && isSnsToken && token.conversion_rate) {
+        if (onNeuronTotalsChange && (isSnsToken || isICP) && token.conversion_rate) {
             const totalStake = getTotalNeuronStake();
             const totalMaturity = getTotalNeuronMaturity();
-            const collectableMaturity = getCollectableMaturity();
-            
+            const collectableMaturity = isICP ? 0n : getCollectableMaturity();
+
             // Convert to USD (do raw calculation without formatting)
             const divisor = 10n ** BigInt(token.decimals);
             const stakedValue = Number(totalStake) / Number(divisor) * token.conversion_rate;
             const maturityValue = Number(totalMaturity) / Number(divisor) * token.conversion_rate;
             const collectableMaturityValue = Number(collectableMaturity) / Number(divisor) * token.conversion_rate;
             const totalUsdValue = stakedValue + maturityValue;
-            
+
             onNeuronTotalsChange({
                 total: totalUsdValue,
                 staked: stakedValue,
                 maturity: maturityValue,
                 collectableMaturity: collectableMaturityValue
             });
-        } else if (onNeuronTotalsChange && !isSnsToken) {
-            // If not an SNS token, report 0
+        } else if (onNeuronTotalsChange && !isSnsToken && !isICP) {
+            // If not an SNS token or ICP, report 0
             onNeuronTotalsChange({
                 total: 0,
                 staked: 0,
@@ -344,7 +365,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 collectableMaturity: 0
             });
         }
-    }, [neurons, token.conversion_rate, token.decimals, isSnsToken, onNeuronTotalsChange, identity]);
+    }, [neurons, token.conversion_rate, token.decimals, isSnsToken, isICP, onNeuronTotalsChange, identity]);
 
     // Auto-expand Liquid section when deposited balance comes in (if currently collapsed)
     useEffect(() => {
@@ -607,7 +628,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
 
     const refetchNeurons = async () => {
         if (!governanceCanisterId || !identity) return;
-        
+
         try {
             // Refresh WalletContext cache (used by VP bar, wallet tokens)
             let loadedNeurons;
@@ -616,6 +637,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             } else if (clearNeuronCache && getNeuronsForGovernance) {
                 clearNeuronCache(governanceCanisterId);
                 loadedNeurons = await getNeuronsForGovernance(governanceCanisterId);
+            } else if (isICP) {
+                loadedNeurons = await fetchUserNnsNeurons(identity);
             } else {
                 loadedNeurons = await fetchUserNeuronsForSns(identity, governanceCanisterId);
             }
@@ -1208,13 +1231,149 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isSnsToken, isAuthenticated, identity, token.ledger_canister_id, token.symbol, getNeuronsForGovernance, getCachedNeurons, neuronCacheInitialized]);
 
+    // Fetch neurons for ICP token (NNS governance)
+    useEffect(() => {
+        if (!isICP || !isAuthenticated || !identity) return;
+
+        setGovernanceCanisterId(NNS_GOVERNANCE_CANISTER_ID);
+
+        // Try to get cached NNS neurons instantly
+        const cachedNeurons = getCachedNeurons ? getCachedNeurons(NNS_GOVERNANCE_CANISTER_ID) : null;
+        const hasCachedData = cachedNeurons && cachedNeurons.length > 0;
+
+        if (hasCachedData) {
+            setNeurons(cachedNeurons);
+            setNeuronsLoading(false);
+            if (onNeuronsLoaded) onNeuronsLoaded(cachedNeurons);
+        } else {
+            setNeuronsLoading(true);
+        }
+
+        // Fetch fresh data
+        (async () => {
+            try {
+                const freshNeurons = getNeuronsForGovernance
+                    ? await getNeuronsForGovernance(NNS_GOVERNANCE_CANISTER_ID)
+                    : await fetchUserNnsNeurons(identity);
+
+                setNeurons(freshNeurons);
+                setNeuronsLoading(false);
+                if (onNeuronsLoaded) onNeuronsLoaded(freshNeurons);
+            } catch (error) {
+                console.error('[TokenCard] Error fetching NNS neurons:', error);
+                setNeuronsLoading(false);
+            }
+        })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isICP, isAuthenticated, identity, getNeuronsForGovernance, getCachedNeurons, neuronCacheInitialized]);
+
+    // NNS neuron management helper
+    const manageNnsNeuron = async (neuronId, command) => {
+        if (!identity) return { ok: false, err: 'Not authenticated' };
+        try {
+            const nnsGovActor = createNnsGovActor(identity);
+            const resp = await nnsGovActor.manage_neuron({
+                id: [{ id: BigInt(neuronId) }],
+                command: [command],
+                neuron_id_or_subaccount: []
+            });
+            if (resp?.command?.[0]?.Error) {
+                return { ok: false, err: resp.command[0].Error.error_message };
+            }
+            return { ok: true, response: resp };
+        } catch (e) {
+            return { ok: false, err: e.message || String(e) };
+        }
+    };
+
+    const nnsStartDissolving = async (neuronId) => {
+        setNeuronActionBusy(true);
+        const result = await manageNnsNeuron(neuronId, { Configure: { operation: [{ StartDissolving: {} }] } });
+        if (result.ok) { await refetchNeurons(); } else { alert(`Error: ${result.err}`); }
+        setNeuronActionBusy(false);
+    };
+
+    const nnsStopDissolving = async (neuronId) => {
+        setNeuronActionBusy(true);
+        const result = await manageNnsNeuron(neuronId, { Configure: { operation: [{ StopDissolving: {} }] } });
+        if (result.ok) { await refetchNeurons(); } else { alert(`Error: ${result.err}`); }
+        setNeuronActionBusy(false);
+    };
+
+    const nnsDisburse = async (neuronId) => {
+        setNeuronActionBusy(true);
+        const result = await manageNnsNeuron(neuronId, { Disburse: { to_account: [], amount: [] } });
+        if (result.ok) {
+            alert('Neuron disbursed! Tokens will appear in your wallet shortly.');
+            await refetchNeurons();
+            if (handleRefreshToken) await handleRefreshToken(token);
+        } else {
+            alert(`Error disbursing: ${result.err}`);
+        }
+        setNeuronActionBusy(false);
+    };
+
+    const nnsDisburseMaturity = async (neuronId) => {
+        setNeuronActionBusy(true);
+        const result = await manageNnsNeuron(neuronId, {
+            SpawnOrMergeMaturity: { percentage_to_spawn: [100] }
+        });
+        if (result.ok) {
+            alert('Maturity spawn initiated! A new neuron will be created with the maturity.');
+            await refetchNeurons();
+        } else {
+            // Try older Spawn command as fallback
+            const result2 = await manageNnsNeuron(neuronId, {
+                Spawn: { percentage_to_spawn: [100], new_controller: [], nonce: [] }
+            });
+            if (result2.ok) {
+                alert('Maturity spawn initiated!');
+                await refetchNeurons();
+            } else {
+                alert(`Error spawning maturity: ${result2.err}`);
+            }
+        }
+        setNeuronActionBusy(false);
+    };
+
+    const handleAddNnsHotkey = async (neuronId) => {
+        if (!nnsHotkeyInput.trim()) return;
+        setNnsHotkeyBusy(true);
+        setNnsHotkeyError('');
+        setNnsHotkeySuccess('');
+        const result = await addNnsHotkey(identity, neuronId, nnsHotkeyInput.trim());
+        if (result.success) {
+            setNnsHotkeySuccess('Hotkey added successfully');
+            setNnsHotkeyInput('');
+            await refetchNeurons();
+        } else {
+            setNnsHotkeyError(result.error);
+        }
+        setNnsHotkeyBusy(false);
+    };
+
+    const handleRemoveNnsHotkey = async (neuronId, hotkeyPrincipal) => {
+        if (!confirm(`Remove hotkey ${hotkeyPrincipal}?`)) return;
+        setNnsHotkeyBusy(true);
+        setNnsHotkeyError('');
+        setNnsHotkeySuccess('');
+        const result = await removeNnsHotkey(identity, neuronId, hotkeyPrincipal);
+        if (result.success) {
+            setNnsHotkeySuccess('Hotkey removed');
+            await refetchNeurons();
+        } else {
+            setNnsHotkeyError(result.error);
+        }
+        setNnsHotkeyBusy(false);
+    };
+
     return (
         <div className={`card ${refreshClass}`}>
             <div className="card-header" onClick={handleHeaderClick}>
                 <div className="header-logo-column" style={{ 
                     alignSelf: 'flex-start', 
                     minWidth: '48px', 
-                    minHeight: isSnsToken ? '56px' : '48px', 
+                    minHeight: (isSnsToken || isICP) ? '56px' : '48px',
                     display: 'flex', 
                     alignItems: 'flex-start', 
                     justifyContent: 'center',
@@ -1276,8 +1435,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     <div className="header-row-1" style={{ minWidth: 0 }}>
                         <span className="token-name">{token.name || token.symbol}</span>
                         <span className="token-usd-value">
-                            {((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable)) > 0n && token.conversion_rate > 0 && 
-                                denomFormatValue(computeUsdValue((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate))
+                            {((token.available || 0n) + (token.locked || 0n) + ((isSnsToken || isICP) ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable)) > 0n && token.conversion_rate > 0 && 
+                                denomFormatValue(computeUsdValue((token.available || 0n) + (token.locked || 0n) + ((isSnsToken || isICP) ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate))
                             }
                         </span>
                     </div>
@@ -1285,7 +1444,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     <div className="header-row-2">
                         <div className="amount-symbol">
                             {!hideAvailable && (
-                                <span className="token-amount">{formatAmount((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)} {token.symbol}</span>
+                                <span className="token-amount">{formatAmount((token.available || 0n) + (token.locked || 0n) + ((isSnsToken || isICP) ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)} {token.symbol}</span>
                             )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -1372,7 +1531,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         e.stopPropagation();
                                         await handleRefreshToken(token);
                                         // Also refresh neurons if it's an SNS token
-                                        if (isSnsToken && refetchNeurons) {
+                                        if ((isSnsToken || isICP) && refetchNeurons) {
                                             await refetchNeurons();
                                         }
                                     }}
@@ -1767,8 +1926,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     )}
                 </button>
 
-                {/* Neurons Tab - Only for SNS tokens */}
-                {isSnsToken && (
+                {/* Neurons Tab - For SNS tokens and ICP */}
+                {(isSnsToken || isICP) && (
                     <button
                         onClick={() => setActiveTab(activeTab === 'neurons' ? null : 'neurons')}
                         style={{
@@ -2002,7 +2161,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             <div className="balance-value">{formatAmount(token.locked || 0n, token.decimals)}{getUSD(token.locked || 0n, token.decimals, token.conversion_rate, denomFormatValue)}</div>
                                         </div>
                                     )}
-                                    {isSnsToken && neurons.length > 0 && (
+                                    {(isSnsToken || isICP) && neurons.length > 0 && (
                                         <>
                                             <div className="balance-item">
                                                 <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
@@ -3064,6 +3223,597 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 </>
                             )}
                         </div>
+                </div>
+            )}
+
+            {/* NNS Neurons Tab Content - For ICP token */}
+            {activeTab === 'neurons' && isICP && (
+                <div className="neurons-section" style={{ marginBottom: '15px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {getTotalNeuronStake() > 0n && (
+                                <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem', fontWeight: '600' }}>
+                                    Total: {formatAmount(getTotalNeuronStake(), token.decimals)} ICP
+                                </span>
+                            )}
+                        </div>
+                        <Link
+                            to="/help/icp-neuron-manager"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                                color: theme.colors.mutedText,
+                                textDecoration: 'none',
+                                fontSize: '0.85rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                transition: 'all 0.2s ease',
+                                gap: '4px'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.color = theme.colors.accent;
+                                e.currentTarget.style.background = `${theme.colors.accent}15`;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.color = theme.colors.mutedText;
+                                e.currentTarget.style.background = 'transparent';
+                            }}
+                            title="Learn about ICP Neurons"
+                        >
+                            <FaQuestionCircle size={12} style={{ marginRight: '4px' }} /> Help
+                        </Link>
+                    </div>
+                    <div>
+                        {neuronsLoading ? (
+                            <div className="spinner-container">
+                                <div className="spinner"></div>
+                            </div>
+                        ) : (
+                            <>
+                                {/* Hide empty neurons checkbox */}
+                                {neurons.length > 0 && (
+                                    <label style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        cursor: 'pointer',
+                                        color: theme.colors.secondaryText,
+                                        fontSize: '0.85rem',
+                                        marginBottom: '12px',
+                                        userSelect: 'none'
+                                    }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={hideEmptyNeurons}
+                                            onChange={(e) => setHideEmptyNeurons(e.target.checked)}
+                                            style={{ cursor: 'pointer' }}
+                                        />
+                                        Hide empty neurons
+                                    </label>
+                                )}
+
+                                {neurons.length > 0 ? (() => {
+                                    const userPrincipal = identity?.getPrincipal()?.toString();
+                                    const filteredNeurons = neurons
+                                        .filter(neuron => !hideEmptyNeurons || !isNeuronEmpty(neuron))
+                                        .sort((a, b) => {
+                                            // Sort: controller first, then hotkey
+                                            if (!userPrincipal) return 0;
+                                            const aIsController = isNnsControllerNeuron(a, userPrincipal);
+                                            const bIsController = isNnsControllerNeuron(b, userPrincipal);
+                                            if (aIsController && !bIsController) return -1;
+                                            if (!aIsController && bIsController) return 1;
+                                            return 0;
+                                        });
+
+                                    if (filteredNeurons.length === 0) {
+                                        return <p style={{ color: theme.colors.mutedText, fontStyle: 'italic', margin: '10px 0' }}>All neurons hidden by filter</p>;
+                                    }
+
+                                    // Use neuron key for selection
+                                    const effectiveId = (selectedNeuronId && filteredNeurons.some(n => getNeuronKey(n) === selectedNeuronId))
+                                        ? selectedNeuronId
+                                        : getNeuronKey(filteredNeurons[0]);
+                                    const neuron = filteredNeurons.find(n => getNeuronKey(n) === effectiveId);
+                                    const nnsId = getNnsNeuronId(neuron);
+                                    const stake = getNeuronStake(neuron);
+                                    const dissolveDelay = getDissolveDelaySeconds(neuron);
+                                    const state = getNeuronState(neuron);
+                                    const votingPower = getNnsNeuronVotingPower(neuron);
+                                    const isController = userPrincipal && isNnsControllerNeuron(neuron, userPrincipal);
+                                    const isHotkey = userPrincipal && isNnsHotkeyNeuron(neuron, userPrincipal);
+
+                                    return (
+                                        <>
+                                            {/* Neuron selector dropdown */}
+                                            <div ref={neuronDropdownRef} style={{ marginBottom: '12px', position: 'relative' }}>
+                                                <div
+                                                    onClick={() => filteredNeurons.length > 1 && setNeuronDropdownOpen(prev => !prev)}
+                                                    style={{
+                                                        cursor: filteredNeurons.length > 1 ? 'pointer' : 'default',
+                                                        padding: '10px 12px',
+                                                        background: theme.colors.cardBg,
+                                                        border: `1px solid ${neuronDropdownOpen ? theme.colors.accent : theme.colors.border}`,
+                                                        borderRadius: neuronDropdownOpen ? '8px 8px 0 0' : '8px',
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center',
+                                                        transition: 'border-color 0.15s ease',
+                                                    }}
+                                                >
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, minWidth: 0 }}>
+                                                        <div style={{
+                                                            color: theme.colors.primaryText,
+                                                            fontWeight: '500',
+                                                            fontSize: '0.85rem',
+                                                            overflow: 'hidden',
+                                                            textOverflow: 'ellipsis',
+                                                            whiteSpace: 'nowrap',
+                                                        }}>
+                                                            Neuron {nnsId?.toString()}
+                                                            <span style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', marginLeft: '6px' }}>
+                                                                {filteredNeurons.length > 1 ? `(${filteredNeurons.length} neurons)` : '(1 neuron)'}
+                                                            </span>
+                                                        </div>
+                                                        <div style={{
+                                                            color: theme.colors.accent,
+                                                            fontWeight: '600',
+                                                            fontSize: '0.9rem'
+                                                        }}>
+                                                            {formatAmount(stake, token.decimals)} ICP
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                                                        <span
+                                                            style={{ fontSize: '0.75rem', padding: '2px 6px', borderRadius: '4px', background: isController ? `${theme.colors.accent}20` : `${theme.colors.warning}20`, color: isController ? theme.colors.accent : theme.colors.warning }}
+                                                            title={isController ? 'You are the controller' : 'You are a hotkey'}
+                                                        >
+                                                            {isController ? 'Controller' : 'Hotkey'}
+                                                        </span>
+                                                        <span style={{ fontSize: '1.1rem', cursor: 'help' }} title={state}>
+                                                            {getStateIcon(state).icon}
+                                                        </span>
+                                                        {filteredNeurons.length > 1 && (
+                                                            <span style={{
+                                                                color: theme.colors.mutedText,
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                transform: neuronDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                                                                transition: 'transform 0.2s ease'
+                                                            }}>
+                                                                <FaChevronDown size={11} />
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Dropdown options */}
+                                                {neuronDropdownOpen && filteredNeurons.length > 1 && (
+                                                    <div style={{
+                                                        position: 'absolute',
+                                                        top: '100%',
+                                                        left: 0,
+                                                        right: 0,
+                                                        zIndex: 50,
+                                                        border: `1px solid ${theme.colors.accent}`,
+                                                        borderTop: 'none',
+                                                        borderRadius: '0 0 8px 8px',
+                                                        background: theme.colors.secondaryBg,
+                                                        maxHeight: '220px',
+                                                        overflowY: 'auto',
+                                                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                                    }}>
+                                                        {filteredNeurons.map((n) => {
+                                                            const nId = getNeuronKey(n);
+                                                            const nStake = getNeuronStake(n);
+                                                            const nState = getNeuronState(n);
+                                                            const isSelected = nId === effectiveId;
+                                                            const nIsController = userPrincipal && isNnsControllerNeuron(n, userPrincipal);
+                                                            return (
+                                                                <div
+                                                                    key={nId}
+                                                                    onClick={() => {
+                                                                        setSelectedNeuronId(nId);
+                                                                        setNeuronDropdownOpen(false);
+                                                                        setNnsHotkeyError('');
+                                                                        setNnsHotkeySuccess('');
+                                                                    }}
+                                                                    style={{
+                                                                        padding: '8px 12px',
+                                                                        cursor: 'pointer',
+                                                                        display: 'flex',
+                                                                        justifyContent: 'space-between',
+                                                                        alignItems: 'center',
+                                                                        background: isSelected ? theme.colors.tertiaryBg : theme.colors.secondaryBg,
+                                                                        borderBottom: `1px solid ${theme.colors.border}`,
+                                                                        transition: 'background 0.1s ease',
+                                                                    }}
+                                                                    onMouseEnter={(e) => {
+                                                                        if (!isSelected) e.currentTarget.style.background = theme.colors.tertiaryBg;
+                                                                    }}
+                                                                    onMouseLeave={(e) => {
+                                                                        e.currentTarget.style.background = isSelected ? theme.colors.tertiaryBg : theme.colors.secondaryBg;
+                                                                    }}
+                                                                >
+                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', flex: 1, minWidth: 0 }}>
+                                                                        <div style={{
+                                                                            color: theme.colors.primaryText,
+                                                                            fontWeight: isSelected ? '600' : '500',
+                                                                            fontSize: '0.8rem',
+                                                                        }}>
+                                                                            Neuron {nId}
+                                                                        </div>
+                                                                        <div style={{
+                                                                            color: isSelected ? theme.colors.accent : theme.colors.secondaryText,
+                                                                            fontWeight: '600',
+                                                                            fontSize: '0.8rem'
+                                                                        }}>
+                                                                            {formatAmount(nStake, token.decimals)} ICP
+                                                                        </div>
+                                                                    </div>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                                                        <span style={{
+                                                                            fontSize: '0.65rem',
+                                                                            padding: '1px 4px',
+                                                                            borderRadius: '3px',
+                                                                            background: nIsController ? `${theme.colors.accent}20` : `${theme.colors.warning}20`,
+                                                                            color: nIsController ? theme.colors.accent : theme.colors.warning
+                                                                        }}>
+                                                                            {nIsController ? 'Ctrl' : 'HK'}
+                                                                        </span>
+                                                                        <span style={{ fontSize: '0.9rem', cursor: 'help' }} title={nState}>
+                                                                            {getStateIcon(nState).icon}
+                                                                        </span>
+                                                                        {isSelected && (
+                                                                            <span style={{ color: theme.colors.accent, fontSize: '0.7rem', fontWeight: '700' }}>✓</span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Selected NNS neuron detail */}
+                                            <div style={{
+                                                border: `1px solid ${theme.colors.border}`,
+                                                borderRadius: '8px',
+                                                overflow: 'hidden',
+                                            }}>
+                                                <div style={{
+                                                    padding: '12px',
+                                                    background: theme.colors.primaryBg,
+                                                }}>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                            <span style={{ color: theme.colors.secondaryText }}>Neuron ID:</span>
+                                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontFamily: 'monospace' }}>
+                                                                {nnsId?.toString()}
+                                                            </span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                            <span style={{ color: theme.colors.secondaryText }}>Stake:</span>
+                                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
+                                                                {formatAmount(stake, token.decimals)} ICP
+                                                            </span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                            <span style={{ color: theme.colors.secondaryText }}>Dissolve Delay:</span>
+                                                            <span style={{ color: theme.colors.primaryText }}>
+                                                                {format_duration(dissolveDelay * 1000)}
+                                                            </span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                            <span style={{ color: theme.colors.secondaryText }}>State:</span>
+                                                            <span style={{ color: theme.colors.primaryText }}>{state}</span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                            <span style={{ color: theme.colors.secondaryText }}>Voting Power:</span>
+                                                            <span style={{ color: theme.colors.primaryText }}>
+                                                                {formatAmount(votingPower, token.decimals)}
+                                                            </span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                            <span style={{ color: theme.colors.secondaryText }}>Age:</span>
+                                                            <span style={{ color: theme.colors.primaryText }}>
+                                                                {format_duration(Date.now() - Number(neuron.aging_since_timestamp_seconds || 0n) * 1000)}
+                                                            </span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                            <span style={{ color: theme.colors.secondaryText }}>Maturity:</span>
+                                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
+                                                                {formatAmount(neuron.maturity_e8s_equivalent || 0n, token.decimals)} ICP
+                                                            </span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                            <span style={{ color: theme.colors.secondaryText }}>Role:</span>
+                                                            <span style={{
+                                                                color: isController ? theme.colors.accent : theme.colors.warning,
+                                                                fontWeight: '600'
+                                                            }}>
+                                                                {isController ? 'Controller' : isHotkey ? 'Hotkey' : 'Viewer'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Disbursing Maturity */}
+                                                    {neuron.disburse_maturity_in_progress && neuron.disburse_maturity_in_progress.length > 0 && (
+                                                        <div style={{
+                                                            marginTop: '12px',
+                                                            padding: '10px',
+                                                            backgroundColor: theme.colors.tertiaryBg,
+                                                            borderRadius: '6px',
+                                                            border: `1px solid ${theme.colors.accent}40`
+                                                        }}>
+                                                            <div style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '6px',
+                                                                marginBottom: '8px',
+                                                                color: theme.colors.accent,
+                                                                fontWeight: '600',
+                                                                fontSize: '0.9rem'
+                                                            }}>
+                                                                <FaHourglassHalf size={12} />
+                                                                <span>Disbursing Maturity</span>
+                                                            </div>
+                                                            {neuron.disburse_maturity_in_progress.map((disbursement, idx) => {
+                                                                const amount = BigInt(disbursement.amount_e8s || 0n);
+                                                                const finalizeTimestamp = disbursement.finalize_disbursement_timestamp_seconds?.[0] || disbursement.finalize_disbursement_timestamp_seconds;
+                                                                const finalizeDate = finalizeTimestamp ? new Date(Number(finalizeTimestamp) * 1000) : null;
+                                                                const timeRemaining = finalizeDate ? finalizeDate - new Date() : 0;
+                                                                return (
+                                                                    <div key={idx} style={{
+                                                                        display: 'flex',
+                                                                        justifyContent: 'space-between',
+                                                                        paddingTop: idx > 0 ? '6px' : '0',
+                                                                        borderTop: idx > 0 ? `1px solid ${theme.colors.border}` : 'none'
+                                                                    }}>
+                                                                        <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
+                                                                            {formatAmount(amount, token.decimals)} ICP
+                                                                        </span>
+                                                                        <span style={{
+                                                                            color: timeRemaining > 0 ? theme.colors.accent : theme.colors.success,
+                                                                            fontSize: '0.85rem'
+                                                                        }}>
+                                                                            {timeRemaining > 0 ? format_duration(timeRemaining) : 'Ready'}
+                                                                        </span>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Action Buttons */}
+                                                    {(isController || isHotkey) && (
+                                                        <div style={{
+                                                            marginTop: '16px',
+                                                            paddingTop: '12px',
+                                                            borderTop: `1px solid ${theme.colors.border}`,
+                                                            display: 'flex',
+                                                            gap: '8px',
+                                                            flexWrap: 'wrap'
+                                                        }}>
+                                                            {isController && state === 'Locked' && (
+                                                                <button
+                                                                    onClick={() => nnsStartDissolving(nnsId)}
+                                                                    disabled={neuronActionBusy}
+                                                                    style={{
+                                                                        background: theme.colors.warning,
+                                                                        color: theme.colors.primaryBg,
+                                                                        border: 'none',
+                                                                        borderRadius: '6px',
+                                                                        padding: '8px 12px',
+                                                                        cursor: neuronActionBusy ? 'wait' : 'pointer',
+                                                                        fontSize: '0.85rem',
+                                                                        fontWeight: '500',
+                                                                        opacity: neuronActionBusy ? 0.6 : 1
+                                                                    }}
+                                                                >
+                                                                    <FaPlay size={10} style={{ marginRight: '4px' }} /> Start Dissolving
+                                                                </button>
+                                                            )}
+                                                            {isController && state === 'Dissolving' && (
+                                                                <button
+                                                                    onClick={() => nnsStopDissolving(nnsId)}
+                                                                    disabled={neuronActionBusy}
+                                                                    style={{
+                                                                        background: theme.colors.success,
+                                                                        color: theme.colors.primaryBg,
+                                                                        border: 'none',
+                                                                        borderRadius: '6px',
+                                                                        padding: '8px 12px',
+                                                                        cursor: neuronActionBusy ? 'wait' : 'pointer',
+                                                                        fontSize: '0.85rem',
+                                                                        fontWeight: '500',
+                                                                        opacity: neuronActionBusy ? 0.6 : 1
+                                                                    }}
+                                                                >
+                                                                    <FaStop size={10} style={{ marginRight: '4px' }} /> Stop Dissolving
+                                                                </button>
+                                                            )}
+                                                            {isController && state === 'Dissolved' && stake > 0n && (
+                                                                <button
+                                                                    onClick={() => nnsDisburse(nnsId)}
+                                                                    disabled={neuronActionBusy}
+                                                                    style={{
+                                                                        background: theme.colors.accent,
+                                                                        color: theme.colors.primaryBg,
+                                                                        border: 'none',
+                                                                        borderRadius: '6px',
+                                                                        padding: '8px 12px',
+                                                                        cursor: neuronActionBusy ? 'wait' : 'pointer',
+                                                                        fontSize: '0.85rem',
+                                                                        fontWeight: '500',
+                                                                        opacity: neuronActionBusy ? 0.6 : 1
+                                                                    }}
+                                                                >
+                                                                    <FaWallet size={10} style={{ marginRight: '4px' }} /> Disburse
+                                                                </button>
+                                                            )}
+                                                            {isController && (neuron.maturity_e8s_equivalent || 0n) > 0n && (
+                                                                <button
+                                                                    onClick={() => nnsDisburseMaturity(nnsId)}
+                                                                    disabled={neuronActionBusy}
+                                                                    style={{
+                                                                        background: theme.colors.accent,
+                                                                        color: theme.colors.primaryBg,
+                                                                        border: 'none',
+                                                                        borderRadius: '6px',
+                                                                        padding: '8px 12px',
+                                                                        cursor: neuronActionBusy ? 'wait' : 'pointer',
+                                                                        fontSize: '0.85rem',
+                                                                        fontWeight: '500',
+                                                                        opacity: neuronActionBusy ? 0.6 : 1
+                                                                    }}
+                                                                >
+                                                                    <FaSeedling size={10} style={{ marginRight: '4px' }} /> Spawn Maturity
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Hotkeys Section */}
+                                                    {(isController || isHotkey) && (
+                                                        <div style={{
+                                                            marginTop: '16px',
+                                                            paddingTop: '12px',
+                                                            borderTop: `1px solid ${theme.colors.border}`,
+                                                        }}>
+                                                            <div style={{
+                                                                color: theme.colors.primaryText,
+                                                                fontWeight: '600',
+                                                                fontSize: '0.9rem',
+                                                                marginBottom: '8px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '6px'
+                                                            }}>
+                                                                <FaCog size={12} /> Hotkeys
+                                                            </div>
+
+                                                            {/* Current hotkeys list */}
+                                                            {neuron.hot_keys && neuron.hot_keys.length > 0 ? (
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
+                                                                    {neuron.hot_keys.map((hk, idx) => {
+                                                                        const hkStr = safePrincipalString(hk);
+                                                                        return (
+                                                                            <div key={idx} style={{
+                                                                                display: 'flex',
+                                                                                justifyContent: 'space-between',
+                                                                                alignItems: 'center',
+                                                                                padding: '6px 10px',
+                                                                                background: theme.colors.tertiaryBg,
+                                                                                borderRadius: '6px',
+                                                                                fontSize: '0.8rem',
+                                                                            }}>
+                                                                                <span style={{
+                                                                                    color: theme.colors.primaryText,
+                                                                                    fontFamily: 'monospace',
+                                                                                    overflow: 'hidden',
+                                                                                    textOverflow: 'ellipsis',
+                                                                                    whiteSpace: 'nowrap',
+                                                                                    flex: 1,
+                                                                                    marginRight: '8px'
+                                                                                }}>
+                                                                                    {hkStr}
+                                                                                </span>
+                                                                                {isController && (
+                                                                                    <button
+                                                                                        onClick={() => handleRemoveNnsHotkey(nnsId, hkStr)}
+                                                                                        disabled={nnsHotkeyBusy}
+                                                                                        style={{
+                                                                                            background: 'transparent',
+                                                                                            color: theme.colors.error || '#e74c3c',
+                                                                                            border: `1px solid ${theme.colors.error || '#e74c3c'}`,
+                                                                                            borderRadius: '4px',
+                                                                                            padding: '3px 8px',
+                                                                                            cursor: nnsHotkeyBusy ? 'wait' : 'pointer',
+                                                                                            fontSize: '0.75rem',
+                                                                                            flexShrink: 0,
+                                                                                            opacity: nnsHotkeyBusy ? 0.6 : 1
+                                                                                        }}
+                                                                                    >
+                                                                                        Remove
+                                                                                    </button>
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            ) : (
+                                                                <p style={{ color: theme.colors.mutedText, fontStyle: 'italic', fontSize: '0.85rem', margin: '4px 0 10px' }}>
+                                                                    No hotkeys
+                                                                </p>
+                                                            )}
+
+                                                            {/* Add hotkey form - only for controller */}
+                                                            {isController && (
+                                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="Principal ID to add as hotkey"
+                                                                        value={nnsHotkeyInput}
+                                                                        onChange={(e) => setNnsHotkeyInput(e.target.value)}
+                                                                        style={{
+                                                                            flex: 1,
+                                                                            padding: '8px 10px',
+                                                                            borderRadius: '6px',
+                                                                            border: `1px solid ${theme.colors.border}`,
+                                                                            background: theme.colors.secondaryBg,
+                                                                            color: theme.colors.primaryText,
+                                                                            fontSize: '0.8rem',
+                                                                            fontFamily: 'monospace',
+                                                                        }}
+                                                                    />
+                                                                    <button
+                                                                        onClick={() => handleAddNnsHotkey(nnsId)}
+                                                                        disabled={nnsHotkeyBusy || !nnsHotkeyInput.trim()}
+                                                                        style={{
+                                                                            background: theme.colors.accent,
+                                                                            color: theme.colors.primaryBg,
+                                                                            border: 'none',
+                                                                            borderRadius: '6px',
+                                                                            padding: '8px 12px',
+                                                                            cursor: (nnsHotkeyBusy || !nnsHotkeyInput.trim()) ? 'not-allowed' : 'pointer',
+                                                                            fontSize: '0.8rem',
+                                                                            fontWeight: '500',
+                                                                            flexShrink: 0,
+                                                                            opacity: (nnsHotkeyBusy || !nnsHotkeyInput.trim()) ? 0.6 : 1
+                                                                        }}
+                                                                    >
+                                                                        <FaPlus size={10} style={{ marginRight: '4px' }} /> Add
+                                                                    </button>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Hotkey status messages */}
+                                                            {nnsHotkeyError && (
+                                                                <div style={{ color: theme.colors.error || '#e74c3c', fontSize: '0.8rem', marginTop: '6px' }}>
+                                                                    {nnsHotkeyError}
+                                                                </div>
+                                                            )}
+                                                            {nnsHotkeySuccess && (
+                                                                <div style={{ color: theme.colors.success || '#2ecc71', fontSize: '0.8rem', marginTop: '6px' }}>
+                                                                    {nnsHotkeySuccess}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </>
+                                    );
+                                })() : (
+                                    <p style={{ color: theme.colors.mutedText, fontStyle: 'italic', margin: '10px 0' }}>
+                                        No neurons found
+                                    </p>
+                                )}
+                            </>
+                        )}
+                    </div>
                 </div>
             )}
 

@@ -5,12 +5,18 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useWallet } from '../contexts/WalletContext';
 import Header from '../components/Header';
 import { getAllSnses, fetchSnsLogo } from '../utils/SnsUtils';
-import { getRelevantSnses } from '../utils/VotableProposalsUtils';
+import { getRelevantSnses, getRelevantNnsNeurons } from '../utils/VotableProposalsUtils';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { HttpAgent } from '@dfinity/agent';
 import { uint8ArrayToHex, safePrincipalString } from '../utils/NeuronUtils';
 import { calculateVotingPower } from '../utils/VotingPowerUtils';
 import { isProposalAcceptingVotes, getProposalStatus, getVotingTimeRemaining } from '../utils/ProposalUtils';
+import {
+    createNnsGovActor, isNnsProposalAcceptingVotes, getNnsProposalStatus,
+    getNnsVotingTimeRemaining, hasNnsVotingAccess, getNnsNeuronId,
+    getNnsNeuronVotingPower, getNnsBallotForNeuron, voteOnNnsProposal,
+    NNS_GOVERNANCE_CANISTER_ID
+} from '../utils/NnsUtils';
 import { FaGavel, FaChevronDown, FaChevronRight, FaCheck, FaTimes, FaClock, FaSync, FaVoteYea, FaBrain, FaExternalLinkAlt, FaFilter } from 'react-icons/fa';
 
 // Custom CSS for animations
@@ -60,6 +66,7 @@ function ActiveProposals() {
     
     // Get all SNSes with user's neurons that have voting power (shared with notifications)
     const relevantSnses = useMemo(() => getRelevantSnses(neuronCache, identity), [neuronCache, identity]);
+    const relevantNnsNeurons = useMemo(() => getRelevantNnsNeurons(neuronCache, identity), [neuronCache, identity]);
 
     // Fetch proposals for all relevant SNSes
     const fetchAllProposals = useCallback(async () => {
@@ -72,7 +79,7 @@ function ActiveProposals() {
         setError('');
 
         try {
-            if (relevantSnses.length === 0) {
+            if (relevantSnses.length === 0 && relevantNnsNeurons.length === 0) {
                 setSnsProposalsData([]);
                 setLoading(false);
                 return;
@@ -141,12 +148,47 @@ function ActiveProposals() {
 
             // Filter out nulls and SNSes with no active proposals
             const validResults = results.filter(r => r && r.proposals.length > 0);
-            
+
+            // Also fetch NNS proposals if user has NNS neurons
+            if (relevantNnsNeurons.length > 0) {
+                try {
+                    const nnsGovActor = createNnsGovActor(identity);
+                    const nnsResponse = await nnsGovActor.list_proposals({
+                        include_reward_status: [1], // ACCEPT_VOTES only
+                        omit_large_fields: [true],
+                        before_proposal: [],
+                        limit: 50,
+                        exclude_topic: [],
+                        include_all_manage_neuron_proposals: [],
+                        include_status: [],
+                    });
+
+                    const nnsActiveProposals = (nnsResponse.proposal_info || []).filter(p => isNnsProposalAcceptingVotes(p));
+
+                    if (nnsActiveProposals.length > 0) {
+                        validResults.push({
+                            snsInfo: {
+                                name: 'Internet Computer (NNS)',
+                                rootCanisterId: 'nns',
+                                canisters: { governance: NNS_GOVERNANCE_CANISTER_ID }
+                            },
+                            proposals: nnsActiveProposals,
+                            neurons: relevantNnsNeurons,
+                            nervousSystemParams: null,
+                            logo: null,
+                            isNns: true
+                        });
+                    }
+                } catch (err) {
+                    console.warn('Error fetching NNS proposals for active proposals:', err);
+                }
+            }
+
             // Sort by number of votable proposals (most first)
             validResults.sort((a, b) => b.proposals.length - a.proposals.length);
-            
+
             setSnsProposalsData(validResults);
-            
+
             // Expand all sections by default
             setExpandedSns(new Set(validResults.map(r => r.snsInfo.rootCanisterId)));
             
@@ -166,11 +208,11 @@ function ActiveProposals() {
             const updates = {};
             const userPrincipal = identity?.getPrincipal()?.toString();
 
-            for (const { snsInfo, proposals, neurons, nervousSystemParams } of snsProposalsData) {
+            for (const { snsInfo, proposals, neurons, nervousSystemParams, isNns } of snsProposalsData) {
                 for (const proposal of proposals) {
-                    const proposalId = proposal.id[0]?.id?.toString();
+                    const proposalId = proposal.id?.[0]?.id?.toString();
                     const key = `${snsInfo.rootCanisterId}_${proposalId}`;
-                    
+
                     // Skip - we already have voted state from quickVote this session
                     if (votedProposals.has(key)) continue;
 
@@ -179,37 +221,58 @@ function ActiveProposals() {
                     let votedCount = 0;
                     let votedVP = 0;
 
-                    for (const neuron of neurons) {
-                        // Check if user has vote permission
-                        const hasVotePerm = neuron.permissions?.some(p => {
-                            const permPrincipal = safePrincipalString(p.principal);
-                            if (!permPrincipal || permPrincipal !== userPrincipal) return false;
-                            const permTypes = p.permission_type || [];
-                            return permTypes.includes(4);
-                        });
-                        if (!hasVotePerm) continue;
+                    if (isNns) {
+                        // NNS neuron eligibility check
+                        for (const neuron of neurons) {
+                            if (!hasNnsVotingAccess(neuron, userPrincipal)) continue;
 
-                        // Calculate voting power
-                        const votingPower = nervousSystemParams ? 
-                            calculateVotingPower(neuron, nervousSystemParams) : 0;
-                        if (votingPower === 0) continue;
+                            const votingPower = Number(getNnsNeuronVotingPower(neuron));
+                            if (votingPower === 0) continue;
 
-                        // Check if already voted
-                        const neuronIdHex = uint8ArrayToHex(neuron.id?.[0]?.id);
-                        const ballot = proposal.ballots?.find(([id, _]) => id === neuronIdHex);
-                        
-                        if (ballot && ballot[1]) {
-                            const ballotData = ballot[1];
-                            const hasVoted = ballotData.cast_timestamp_seconds && Number(ballotData.cast_timestamp_seconds) > 0;
-                            if (hasVoted) {
+                            const neuronId = getNnsNeuronId(neuron);
+                            if (!neuronId) continue;
+
+                            const ballot = getNnsBallotForNeuron(proposal.ballots, neuronId);
+                            if (ballot && Number(ballot.vote) !== 0) {
                                 votedCount++;
                                 votedVP += votingPower;
                                 continue;
                             }
-                        }
 
-                        eligibleCount++;
-                        totalVP += votingPower;
+                            eligibleCount++;
+                            totalVP += votingPower;
+                        }
+                    } else {
+                        // SNS neuron eligibility check
+                        for (const neuron of neurons) {
+                            const hasVotePerm = neuron.permissions?.some(p => {
+                                const permPrincipal = safePrincipalString(p.principal);
+                                if (!permPrincipal || permPrincipal !== userPrincipal) return false;
+                                const permTypes = p.permission_type || [];
+                                return permTypes.includes(4);
+                            });
+                            if (!hasVotePerm) continue;
+
+                            const votingPower = nervousSystemParams ?
+                                calculateVotingPower(neuron, nervousSystemParams) : 0;
+                            if (votingPower === 0) continue;
+
+                            const neuronIdHex = uint8ArrayToHex(neuron.id?.[0]?.id);
+                            const ballot = proposal.ballots?.find(([id, _]) => id === neuronIdHex);
+
+                            if (ballot && ballot[1]) {
+                                const ballotData = ballot[1];
+                                const hasVoted = ballotData.cast_timestamp_seconds && Number(ballotData.cast_timestamp_seconds) > 0;
+                                if (hasVoted) {
+                                    votedCount++;
+                                    votedVP += votingPower;
+                                    continue;
+                                }
+                            }
+
+                            eligibleCount++;
+                            totalVP += votingPower;
+                        }
                     }
 
                     updates[key] = { loading: false, eligibleCount, totalVP, votedCount, votedVP };
@@ -233,87 +296,123 @@ function ActiveProposals() {
         }
     }, [isAuthenticated, identity, neuronCache.size, fetchAllProposals]);
 
-    // Quick vote function
-    const quickVote = useCallback(async (snsInfo, proposal, neurons, nervousSystemParams, vote) => {
-        const proposalId = proposal.id[0]?.id?.toString();
+    // Quick vote function - handles both SNS and NNS proposals
+    const quickVote = useCallback(async (snsInfo, proposal, neurons, nervousSystemParams, vote, isNns = false) => {
+        const proposalId = proposal.id?.[0]?.id?.toString();
         const key = `${snsInfo.rootCanisterId}_${proposalId}`;
-        
+
         if (!proposalId || !identity) return;
 
         setQuickVotingStates(prev => ({ ...prev, [key]: 'voting' }));
 
         try {
-            const snsGovActor = createSnsGovernanceActor(snsInfo.canisters.governance, {
-                agentOptions: { identity }
-            });
-
             const userPrincipal = identity.getPrincipal().toString();
 
-            // Filter eligible neurons
-            const eligibleNeurons = neurons.filter(neuron => {
-                const hasVotePerm = neuron.permissions?.some(p => {
-                    const permPrincipal = safePrincipalString(p.principal);
-                    if (!permPrincipal || permPrincipal !== userPrincipal) return false;
-                    const permTypes = p.permission_type || [];
-                    return permTypes.includes(4);
+            if (isNns) {
+                // NNS voting path
+                const eligibleNeurons = neurons.filter(neuron => {
+                    if (!hasNnsVotingAccess(neuron, userPrincipal)) return false;
+                    const vp = getNnsNeuronVotingPower(neuron);
+                    if (vp === 0n) return false;
+                    const neuronId = getNnsNeuronId(neuron);
+                    if (!neuronId) return false;
+                    const ballot = getNnsBallotForNeuron(proposal.ballots, neuronId);
+                    if (ballot && Number(ballot.vote) !== 0) return false;
+                    return true;
                 });
-                if (!hasVotePerm) return false;
 
-                const votingPower = nervousSystemParams ? 
-                    calculateVotingPower(neuron, nervousSystemParams) : 0;
-                if (votingPower === 0) return false;
-
-                const neuronIdHex = uint8ArrayToHex(neuron.id?.[0]?.id);
-                const ballot = proposal.ballots?.find(([id, _]) => id === neuronIdHex);
-                
-                if (ballot && ballot[1]) {
-                    const ballotData = ballot[1];
-                    const hasVoted = ballotData.cast_timestamp_seconds && Number(ballotData.cast_timestamp_seconds) > 0;
-                    if (hasVoted) return false;
+                if (eligibleNeurons.length === 0) {
+                    setQuickVotingStates(prev => ({ ...prev, [key]: 'error' }));
+                    return;
                 }
 
-                return true;
-            });
-
-            if (eligibleNeurons.length === 0) {
-                setQuickVotingStates(prev => ({ ...prev, [key]: 'error' }));
-                return;
-            }
-
-            let successCount = 0;
-
-            for (const neuron of eligibleNeurons) {
-                try {
-                    const manageNeuronRequest = {
-                        subaccount: neuron.id[0]?.id,
-                        command: [{
-                            RegisterVote: {
-                                vote: vote,
-                                proposal: [{ id: BigInt(proposalId) }]
-                            }
-                        }]
-                    };
-
-                    await snsGovActor.manage_neuron(manageNeuronRequest);
-                    successCount++;
-                } catch (e) {
-                    console.error('Vote error:', e);
+                let successCount = 0;
+                for (const neuron of eligibleNeurons) {
+                    const neuronId = getNnsNeuronId(neuron);
+                    const result = await voteOnNnsProposal(identity, neuronId, proposalId, vote);
+                    if (result.success) successCount++;
                 }
-            }
 
-            if (successCount > 0) {
-                const votedVP = eligibleNeurons.reduce((sum, n) => 
-                    sum + (nervousSystemParams ? calculateVotingPower(n, nervousSystemParams) : 0), 0);
-                setQuickVotingStates(prev => ({ ...prev, [key]: 'success' }));
-                setVotedProposals(prev => new Set([...prev, key]));
-                setProposalEligibility(prev => ({ 
-                    ...prev, 
-                    [key]: { loading: false, eligibleCount: 0, totalVP: 0, votedCount: successCount, votedVP } 
-                }));
-                // Notify header to refresh votable proposals count immediately
-                window.dispatchEvent(new CustomEvent('votableProposalsRefresh'));
+                if (successCount > 0) {
+                    const votedVP = eligibleNeurons.reduce((sum, n) => sum + Number(getNnsNeuronVotingPower(n)), 0);
+                    setQuickVotingStates(prev => ({ ...prev, [key]: 'success' }));
+                    setVotedProposals(prev => new Set([...prev, key]));
+                    setProposalEligibility(prev => ({
+                        ...prev,
+                        [key]: { loading: false, eligibleCount: 0, totalVP: 0, votedCount: successCount, votedVP }
+                    }));
+                    window.dispatchEvent(new CustomEvent('votableProposalsRefresh'));
+                } else {
+                    setQuickVotingStates(prev => ({ ...prev, [key]: 'error' }));
+                }
             } else {
-                setQuickVotingStates(prev => ({ ...prev, [key]: 'error' }));
+                // SNS voting path (existing logic)
+                const snsGovActor = createSnsGovernanceActor(snsInfo.canisters.governance, {
+                    agentOptions: { identity }
+                });
+
+                const eligibleNeurons = neurons.filter(neuron => {
+                    const hasVotePerm = neuron.permissions?.some(p => {
+                        const permPrincipal = safePrincipalString(p.principal);
+                        if (!permPrincipal || permPrincipal !== userPrincipal) return false;
+                        const permTypes = p.permission_type || [];
+                        return permTypes.includes(4);
+                    });
+                    if (!hasVotePerm) return false;
+
+                    const votingPower = nervousSystemParams ?
+                        calculateVotingPower(neuron, nervousSystemParams) : 0;
+                    if (votingPower === 0) return false;
+
+                    const neuronIdHex = uint8ArrayToHex(neuron.id?.[0]?.id);
+                    const ballot = proposal.ballots?.find(([id, _]) => id === neuronIdHex);
+
+                    if (ballot && ballot[1]) {
+                        const ballotData = ballot[1];
+                        const hasVoted = ballotData.cast_timestamp_seconds && Number(ballotData.cast_timestamp_seconds) > 0;
+                        if (hasVoted) return false;
+                    }
+
+                    return true;
+                });
+
+                if (eligibleNeurons.length === 0) {
+                    setQuickVotingStates(prev => ({ ...prev, [key]: 'error' }));
+                    return;
+                }
+
+                let successCount = 0;
+                for (const neuron of eligibleNeurons) {
+                    try {
+                        const manageNeuronRequest = {
+                            subaccount: neuron.id[0]?.id,
+                            command: [{
+                                RegisterVote: {
+                                    vote: vote,
+                                    proposal: [{ id: BigInt(proposalId) }]
+                                }
+                            }]
+                        };
+                        await snsGovActor.manage_neuron(manageNeuronRequest);
+                        successCount++;
+                    } catch (e) {
+                        console.error('Vote error:', e);
+                    }
+                }
+
+                if (successCount > 0) {
+                    const votedVP = eligibleNeurons.reduce((sum, n) =>
+                        sum + (nervousSystemParams ? calculateVotingPower(n, nervousSystemParams) : 0), 0);
+                    setQuickVotingStates(prev => ({ ...prev, [key]: 'success' }));
+                    setVotedProposals(prev => new Set([...prev, key]));
+                    setProposalEligibility(prev => ({
+                        ...prev,
+                        [key]: { loading: false, eligibleCount: 0, totalVP: 0, votedCount: successCount, votedVP }
+                    }));
+                    window.dispatchEvent(new CustomEvent('votableProposalsRefresh'));
+                } else {
+                    setQuickVotingStates(prev => ({ ...prev, [key]: 'error' }));
+                }
             }
 
             setTimeout(() => {
@@ -447,7 +546,7 @@ function ActiveProposals() {
                                     Active Proposals
                                 </h1>
                                 <p style={{ color: theme.colors.secondaryText, fontSize: '0.95rem', margin: '0.25rem 0 0 0' }}>
-                                    Vote on open proposals across all your SNS neurons
+                                    Vote on open proposals across all your SNS and ICP neurons
                                 </p>
                             </div>
                         </div>
@@ -600,7 +699,7 @@ function ActiveProposals() {
                     )}
 
                     {/* SNS Sections */}
-                    {isAuthenticated && !loading && displayedSnsProposalsData.map(({ snsInfo, proposals, neurons, nervousSystemParams, logo }) => {
+                    {isAuthenticated && !loading && displayedSnsProposalsData.map(({ snsInfo, proposals, neurons, nervousSystemParams, logo, isNns }) => {
                         const isExpanded = expandedSns.has(snsInfo.rootCanisterId);
                         
                         // Count votable proposals for this SNS
@@ -710,9 +809,9 @@ function ActiveProposals() {
                                 {isExpanded && (
                                     <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                         {proposals.map((proposal, index) => {
-                                            const proposalId = proposal.id[0]?.id?.toString();
+                                            const proposalId = proposal.id?.[0]?.id?.toString();
                                             const key = `${snsInfo.rootCanisterId}_${proposalId}`;
-                                            const status = getProposalStatus(proposal);
+                                            const status = isNns ? getNnsProposalStatus(proposal) : getProposalStatus(proposal);
                                             const statusStyle = getStatusStyle(status);
                                             const eligibility = proposalEligibility[key];
                                             const votingState = quickVotingStates[key];
@@ -722,6 +821,15 @@ function ActiveProposals() {
                                             const votedCount = eligibility?.votedCount || 0;
                                             const votedVP = eligibility?.votedVP || 0;
                                             const isEnabled = !isLoading && eligibleCount > 0;
+                                            const proposalLink = isNns
+                                                ? `/icp_proposal?proposalid=${proposalId}`
+                                                : `/proposal?proposalid=${proposalId}&sns=${snsInfo.rootCanisterId}`;
+                                            const proposalTitle = isNns
+                                                ? (proposal.proposal?.[0]?.title?.[0] || 'Untitled Proposal')
+                                                : (proposal.proposal?.[0]?.title || 'Untitled Proposal');
+                                            const timeRemaining = isNns
+                                                ? getNnsVotingTimeRemaining(proposal)
+                                                : getVotingTimeRemaining(proposal);
                                             
                                             return (
                                                 <div
@@ -745,7 +853,7 @@ function ActiveProposals() {
                                                         flexWrap: 'wrap'
                                                     }}>
                                                         <Link 
-                                                            to={`/proposal?proposalid=${proposalId}&sns=${snsInfo.rootCanisterId}`}
+                                                            to={proposalLink}
                                                             style={{
                                                                 color: proposalPrimary,
                                                                 fontWeight: '600',
@@ -783,13 +891,13 @@ function ActiveProposals() {
                                                             fontWeight: '500'
                                                         }}>
                                                             <FaClock size={9} />
-                                                            {getVotingTimeRemaining(proposal)}
+                                                            {timeRemaining}
                                                         </span>
                                                     </div>
                                                     
                                                     {/* Title */}
                                                     <Link 
-                                                        to={`/proposal?proposalid=${proposalId}&sns=${snsInfo.rootCanisterId}`}
+                                                        to={proposalLink}
                                                         style={{
                                                             color: theme.colors.primaryText,
                                                             textDecoration: 'none',
@@ -800,7 +908,7 @@ function ActiveProposals() {
                                                             marginBottom: '0.75rem'
                                                         }}
                                                     >
-                                                        {proposal.proposal[0]?.title || 'Untitled Proposal'}
+                                                        {proposalTitle}
                                                     </Link>
                                                     
                                                     {/* Vote Buttons */}
@@ -867,7 +975,7 @@ function ActiveProposals() {
                                                             ) : (
                                                                 <>
                                                                     <button
-                                                                        onClick={() => isEnabled && quickVote(snsInfo, proposal, neurons, nervousSystemParams, 1)}
+                                                                        onClick={() => isEnabled && quickVote(snsInfo, proposal, neurons, nervousSystemParams, 1, isNns)}
                                                                         disabled={!isEnabled}
                                                                         style={{
                                                                             display: 'flex',
@@ -890,7 +998,7 @@ function ActiveProposals() {
                                                                     </button>
                                                                     
                                                                     <button
-                                                                        onClick={() => isEnabled && quickVote(snsInfo, proposal, neurons, nervousSystemParams, 2)}
+                                                                        onClick={() => isEnabled && quickVote(snsInfo, proposal, neurons, nervousSystemParams, 2, isNns)}
                                                                         disabled={!isEnabled}
                                                                         style={{
                                                                             display: 'flex',
@@ -915,7 +1023,7 @@ function ActiveProposals() {
                                                             )}
                                                             
                                                             <Link
-                                                                to={`/proposal?proposalid=${proposalId}&sns=${snsInfo.rootCanisterId}`}
+                                                                to={proposalLink}
                                                                 style={{
                                                                     display: 'flex',
                                                                     alignItems: 'center',

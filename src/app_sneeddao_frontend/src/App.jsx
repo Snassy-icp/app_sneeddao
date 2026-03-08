@@ -99,6 +99,8 @@ import Canisters from './pages/Canisters';
 import Apps from './pages/Apps';
 import CreateIcpNeuron from './pages/CreateIcpNeuron';
 import IcpNeuronManager from './pages/IcpNeuronManager';
+import IcpProposals from './pages/IcpProposals';
+import IcpProposal from './pages/IcpProposal';
 import LockWizard from './pages/LockWizard';
 import SnsJailbreak from './pages/SnsJailbreak';
 import SnsJailbreakList from './pages/SnsJailbreakList';
@@ -200,6 +202,8 @@ function App() {
                     <Route path="/partners" element={<Partners />} />
                     <Route path="/projects" element={<Projects />} />
                     <Route path="/proposals" element={<Proposals />} />
+                    <Route path="/icp_proposals" element={<IcpProposals />} />
+                    <Route path="/icp_proposal" element={<IcpProposal />} />
                     <Route path="/active_proposals" element={<ActiveProposals />} />
                     <Route path="/premium" element={<Premium />} />
                     <Route path="/rewards" element={<Rewards />} />
