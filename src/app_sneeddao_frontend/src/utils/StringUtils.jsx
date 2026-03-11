@@ -75,11 +75,36 @@ const subaccountToHex = (subaccount) => {
     }).join('');
 };
 
-export { 
+/** Format a BigInt amount as a plain decimal string (no commas) suitable for input fields. */
+const formatAmountRaw = (amount, decimals) => {
+    const balanceBigInt = BigInt(amount);
+    const decimalsBigInt = BigInt(decimals);
+    const divisor = 10n ** decimalsBigInt;
+    const integerPart = (balanceBigInt / divisor).toString();
+    let fractionalPart = (balanceBigInt % divisor).toString().padStart(Number(decimals), '0');
+    fractionalPart = fractionalPart.replace(/0+$/, '');
+
+    if (fractionalPart) {
+        return `${integerPart}.${fractionalPart}`;
+    }
+    return integerPart;
+};
+
+/** Parse a decimal string (e.g. "1.5") into a BigInt in base units, using string manipulation to avoid float precision loss. */
+const parseAmountToBigInt = (input, decimals) => {
+    const str = String(input).replace(/,/g, ''); // strip any commas
+    const [integerPart, decimalPart = ''] = str.split('.');
+    const paddedDecimal = decimalPart.padEnd(decimals, '0').slice(0, decimals);
+    return BigInt((integerPart || '0') + paddedDecimal);
+};
+
+export {
     toJsonString,
     formatAmount,
+    formatAmountRaw,
     formatAmountWithConversion,
     computeUsdValue,
+    parseAmountToBigInt,
     getUSD,
     subaccountToHex
 };
