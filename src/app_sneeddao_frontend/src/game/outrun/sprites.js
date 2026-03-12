@@ -185,8 +185,8 @@ const TRAFFIC_CARS = [
   { x: 1201, y: 1014, w: 80, h: 56, color: '#354269' },
   { x: 1291, y: 1014, w: 80, h: 45, color: '#7f1a15' },
   { x: 1381, y: 1014, w: 80, h: 45, color: '#821c18' },
-  { x: 1375, y: 640,  w: 88, h: 58, color: '#7B6B4A' },  // 10: truck
-  { x: 1375, y: 702,  w: 88, h: 52, color: '#4A7A3A' },  // 11: flatbed
+  { x: 1361, y: 560,  w: 114, h: 70, color: '#632000' },  // 10: truck
+  { x: 1361, y: 640,  w: 100, h: 78, color: '#428242' },  // 11: jeep
 ];
 
 export const TRAFFIC_CAR_COUNT = TRAFFIC_CARS.length;
