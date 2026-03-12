@@ -16,7 +16,7 @@ import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBr
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { useNavigate } from 'react-router-dom';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
-import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
+import { createActor as createManagerActor } from 'declarations/sneed_icp_staking_bot';
 import { createActor as createTradingBotActor } from 'external/sneed_trading_bot';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings, getCanisterManagerSettings } from '../utils/NeuronManagerSettings';
 import { buildSnsCanisterToRootMap, fetchSnsCyclesFromRoot, getSnsById } from '../utils/SnsUtils';

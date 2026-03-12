@@ -30,7 +30,7 @@ import TokenSelector from '../components/TokenSelector';
 import priceService from '../services/PriceService';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
-import { createActor as createNeuronManagerActor } from 'declarations/sneed_icp_neuron_manager';
+import { createActor as createNeuronManagerActor } from 'declarations/sneed_icp_staking_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createTradingBotActor } from 'external/sneed_trading_bot';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
