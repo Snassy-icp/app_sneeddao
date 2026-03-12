@@ -1,7 +1,7 @@
 // WrapUnwrapModal.jsx
 import React, { useState, useEffect } from 'react';
 import ConfirmationModal from './ConfirmationModal';
-import { formatAmount } from './utils/StringUtils';
+import { formatAmount, formatAmountRaw, parseAmountToBigInt } from './utils/StringUtils';
 import { useTheme } from './contexts/ThemeContext';
 
 // Constants for GLDT and sGLDT canister IDs
@@ -45,10 +45,10 @@ function WrapUnwrapModal({ show, onClose, onWrap, onUnwrap, token, gldtToken }) 
   const handleSetMax = () => {
     if (isWrapMode) {
       // For wrap: max = entire frontend GLDT balance only
-      setAmount(formatAmount(token.balance, token.decimals));
+      setAmount(formatAmountRaw(token.balance, token.decimals));
     } else if (isUnwrapMode) {
       // For unwrap: max = full frontend sGLDT balance only (no tx fee for burning)
-      setAmount(formatAmount(token.balance, token.decimals));
+      setAmount(formatAmountRaw(token.balance, token.decimals));
     }
   };
 
@@ -56,12 +56,8 @@ function WrapUnwrapModal({ show, onClose, onWrap, onUnwrap, token, gldtToken }) 
     if (!amount || !gldtToken) return '';
     
     try {
-      // Convert to BigInt safely - handle decimal inputs by multiplying first then flooring
-      const amountFloat = parseFloat(amount);
-      if (isNaN(amountFloat)) return '';
-      
-      const scaledAmount = amountFloat * (10 ** token.decimals);
-      const bigIntAmount = BigInt(Math.floor(scaledAmount));
+      const bigIntAmount = parseAmountToBigInt(amount, token.decimals);
+      if (bigIntAmount <= 0n) return '';
       
       if (isWrapMode) {
         // Wrapping: costs 2 GLDT tx fees total, gets back (amount - 2 tx fees) sGLDT
@@ -94,15 +90,17 @@ function WrapUnwrapModal({ show, onClose, onWrap, onUnwrap, token, gldtToken }) 
       return;
     }
 
-    // Convert to BigInt safely - handle decimal inputs
-    const amountFloat = parseFloat(amount);
-    if (isNaN(amountFloat) || amountFloat <= 0) {
+    let bigIntAmount;
+    try {
+      bigIntAmount = parseAmountToBigInt(amount, token.decimals);
+    } catch {
+      setErrorText("Invalid amount! Please enter a valid number.");
+      return;
+    }
+    if (bigIntAmount <= 0n) {
       setErrorText("Invalid amount! Please enter a positive amount.");
       return;
     }
-    
-    const scaledAmount = amountFloat * (10 ** token.decimals);
-    const bigIntAmount = BigInt(Math.floor(scaledAmount));
 
     if (!gldtToken) {
       setErrorText("GLDT token not found. Please add GLDT to your wallet first.");
@@ -112,14 +110,14 @@ function WrapUnwrapModal({ show, onClose, onWrap, onUnwrap, token, gldtToken }) 
     // Check minimum amounts
     if (isWrapMode) {
       // Minimum wrap: 0.7 GLDT
-      const minWrapAmount = BigInt(Math.floor(0.7 * (10 ** token.decimals))); // 0.7 GLDT
+      const minWrapAmount = parseAmountToBigInt('0.7', token.decimals); // 0.7 GLDT
       if (bigIntAmount < minWrapAmount) {
         setErrorText("Minimum wrap amount is 0.7 GLDT.");
         return;
       }
     } else if (isUnwrapMode) {
       // Minimum unwrap: 0.4 sGLDT  
-      const minUnwrapAmount = BigInt(Math.floor(0.4 * (10 ** token.decimals))); // 0.4 sGLDT
+      const minUnwrapAmount = parseAmountToBigInt('0.4', token.decimals); // 0.4 sGLDT
       if (bigIntAmount < minUnwrapAmount) {
         setErrorText("Minimum unwrap amount is 0.4 sGLDT.");
         return;

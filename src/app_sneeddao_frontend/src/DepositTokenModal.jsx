@@ -1,7 +1,7 @@
 // DepositTokenModal.jsx
 import React, { useState, useEffect } from 'react';
 import ConfirmationModal from './ConfirmationModal';
-import { formatAmount } from './utils/StringUtils';
+import { formatAmount, formatAmountRaw, parseAmountToBigInt } from './utils/StringUtils';
 import { useTheme } from './contexts/ThemeContext';
 
 // Accent colors matching wallet page
@@ -30,7 +30,7 @@ function DepositTokenModal({ show, onClose, onDeposit, token }) {
     if (max < 0n) {
       setAmount('0');
     } else {
-      setAmount(formatAmount(max, token.decimals));
+      setAmount(formatAmountRaw(max, token.decimals));
     }
   };
 
@@ -42,14 +42,17 @@ function DepositTokenModal({ show, onClose, onDeposit, token }) {
       return;
     }
 
-    const amountFloat = parseFloat(amount);
-    if (isNaN(amountFloat) || amountFloat <= 0) {
+    let bigIntAmount;
+    try {
+      bigIntAmount = parseAmountToBigInt(amount, token.decimals);
+    } catch {
+      setErrorText("Invalid amount! Please enter a valid number.");
+      return;
+    }
+    if (bigIntAmount <= 0n) {
       setErrorText("Invalid amount! Please enter a positive amount.");
       return;
     }
-    
-    const scaledAmount = amountFloat * (10 ** token.decimals);
-    const bigIntAmount = BigInt(Math.floor(scaledAmount));
     const maxAllowed = BigInt(token.balance) - BigInt(token.fee);
 
     if (bigIntAmount > maxAllowed) {

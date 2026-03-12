@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import ConfirmationModal from './ConfirmationModal';
 import { get_short_timezone, format_duration, dateToReadable, getInitialExpiry } from './utils/DateUtils';
-import { formatAmount } from './utils/StringUtils';
+import { formatAmount, formatAmountRaw, parseAmountToBigInt } from './utils/StringUtils';
 import { useTheme } from './contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
@@ -289,7 +289,7 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
         }
 
         if (max < 0n) { max = 0n; }
-        setNewLockAmount(formatAmount(max, token.decimals));
+        setNewLockAmount(formatAmountRaw(max, token.decimals));
     };
     
     // Helper function to pay the fee
@@ -358,15 +358,18 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
             return;
         }
 
-        // Convert to BigInt safely - handle decimal inputs from formatAmount
-        const amountFloat = parseFloat(newLockAmount);
-        if (isNaN(amountFloat) || amountFloat <= 0) {
+        // Convert to BigInt safely using string parsing (no float math)
+        let bigIntAmount;
+        try {
+            bigIntAmount = parseAmountToBigInt(newLockAmount, token.decimals);
+        } catch {
+            setErrorText("Invalid amount! Please enter a valid number.");
+            return;
+        }
+        if (bigIntAmount <= 0n) {
             setErrorText("Invalid amount! Please enter a positive amount.");
             return;
         }
-        
-        const scaledAmount = amountFloat * (10 ** token.decimals);
-        const bigIntAmount = BigInt(Math.floor(scaledAmount));
 
         if (bigIntAmount > token.available_backend) {
             if (bigIntAmount > BigInt(token.available) - BigInt(token.fee)) {
@@ -397,9 +400,7 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
                 setErrorText('');
                 
                 // Determine if deposit is needed
-                const amountFloat = parseFloat(newLockAmount);
-                const scaledAmount = amountFloat * (10 ** token.decimals);
-                const bigIntAmount = BigInt(Math.floor(scaledAmount));
+                const bigIntAmount = parseAmountToBigInt(newLockAmount, token.decimals);
                 const needsDeposit = bigIntAmount > (token.available_backend || 0n);
                 
                 // Build progress steps based on what's needed
