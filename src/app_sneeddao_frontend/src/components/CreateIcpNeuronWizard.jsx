@@ -5,7 +5,7 @@ import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
 import { FaCheck, FaSpinner, FaArrowRight, FaArrowLeft, FaWallet, FaGasPump, FaBrain, FaClock, FaRocket } from 'react-icons/fa';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
-import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
+import { createActor as createManagerActor } from 'declarations/sneed_icp_staking_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import { useTheme } from '../contexts/ThemeContext';

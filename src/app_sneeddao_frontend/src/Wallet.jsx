@@ -52,7 +52,7 @@ import { getCachedLocks, setCachedLocks } from './hooks/useLocksCache';
 import priceService from './services/PriceService';
 import ConsolidateModal from './ConsolidateModal';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
-import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
+import { createActor as createManagerActor } from 'declarations/sneed_icp_staking_bot';
 import { createActor as createTradingBotActor } from 'external/sneed_trading_bot';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import { useNaming } from './NamingContext';

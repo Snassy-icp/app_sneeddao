@@ -9,7 +9,7 @@ import { createActor as createRllActor, canisterId as rllCanisterId } from 'decl
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
-import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
+import { createActor as createManagerActor } from 'declarations/sneed_icp_staking_bot';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { getTokenLogo, get_token_conversion_rate, get_token_icp_rate, get_available, get_available_backend } from '../utils/TokenUtils';
 import { fetchUserNeuronsForSns, uint8ArrayToHex } from '../utils/NeuronUtils';

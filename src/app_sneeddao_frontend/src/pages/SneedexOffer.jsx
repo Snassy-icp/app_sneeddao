@@ -40,7 +40,7 @@ import { getCanisterInfo as getCanisterInfoViaBackend } from '../utils/BackendUt
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import priceService from '../services/PriceService';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
-import { createActor as createNeuronManagerActor } from 'declarations/sneed_icp_neuron_manager';
+import { createActor as createNeuronManagerActor } from 'declarations/sneed_icp_staking_bot';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { createActor as createICRC1Actor } from 'external/icrc1_ledger';
 import { fetchAndCacheSnsData, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';

@@ -17,7 +17,7 @@ import { normalizeId } from './hooks/useNeuronsCache';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
-import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
+import { createActor as createManagerActor } from 'declarations/sneed_icp_staking_bot';
 import { createActor as createTradingBotActor } from 'external/sneed_trading_bot';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { uint8ArrayToHex } from './utils/NeuronUtils';
