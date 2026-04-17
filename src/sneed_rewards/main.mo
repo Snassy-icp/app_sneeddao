@@ -24,103 +24,103 @@ import Hash "mo:base/Hash";
 
 import T "Types";
 
-shared (deployer) actor class SneedRLL() = this {
+shared (deployer) persistent actor class SneedRLL() = this {
 
   private func this_canister_id() : Principal {
       Principal.fromActor(this);
   };
     
   // The Sneed SNS governance canister principal
-  let sneed_governance_canister_id = Principal.fromText("fi3zi-fyaaa-aaaaq-aachq-cai");
+  transient let sneed_governance_canister_id = Principal.fromText("fi3zi-fyaaa-aaaaq-aachq-cai");
 
-  let SWAPRUNNER_CANISTER_ID : Text = "tt72q-zqaaa-aaaaj-az4va-cai";
+  transient let SWAPRUNNER_CANISTER_ID : Text = "tt72q-zqaaa-aaaaj-az4va-cai";
 
 
   // Admin principals
-  stable var admin_principals : [Principal] = [
+  var admin_principals : [Principal] = [
     sneed_governance_canister_id, // sneed_governance_canister_id
     Principal.fromText("d7zib-qo5mr-qzmpb-dtyof-l7yiu-pu52k-wk7ng-cbm3n-ffmys-crbkz-nae"), // Sneed team admin
   ];
 
   // Imported neurons (stable)
-  stable var stable_neurons : [(Blob, T.Neuron)]= []; // Neuron id
-  stable var stable_owners : [(Blob, Principal)]= []; // Neuron id
-  stable var stable_props : [(Int, T.ProposalData)]= []; // Proposal id
+  var stable_neurons : [(Blob, T.Neuron)]= []; // Neuron id
+  var stable_owners : [(Blob, Principal)]= []; // Neuron id
+  var stable_props : [(Int, T.ProposalData)]= []; // Proposal id
 
-  stable var stable_balances : [(Principal, T.LocalBalances)]= []; // Owner (Principal) id
+  var stable_balances : [(Principal, T.LocalBalances)]= []; // Owner (Principal) id
 
-  stable var imported_proposal_max : Nat64 = 0;
+  var imported_proposal_max : Nat64 = 0;
 
-  stable var import_next_neuron_id : ?T.NeuronId = null;
+  var import_next_neuron_id : ?T.NeuronId = null;
 
-  stable var stable_whitelisted_tokens : [(Principal, T.TokenMetadata)] = [];
-  var whitelisted_tokens = Map.fromIter<Principal, T.TokenMetadata>(stable_whitelisted_tokens.vals(), 10, Principal.equal, Principal.hash);
+  var stable_whitelisted_tokens : [(Principal, T.TokenMetadata)] = [];
+  transient var whitelisted_tokens = Map.fromIter<Principal, T.TokenMetadata>(stable_whitelisted_tokens.vals(), 10, Principal.equal, Principal.hash);
 
-  stable var stable_known_tokens : [(Principal, T.TokenMetadata)] = [];
-  var known_tokens = Map.fromIter<Principal, T.TokenMetadata>(stable_known_tokens.vals(), 10, Principal.equal, Principal.hash);
+  var stable_known_tokens : [(Principal, T.TokenMetadata)] = [];
+  transient var known_tokens = Map.fromIter<Principal, T.TokenMetadata>(stable_known_tokens.vals(), 10, Principal.equal, Principal.hash);
 
   // Track total distributions per token
-  stable var stable_total_distributions : [(Principal, Nat)] = [];
-  var total_distributions = Map.fromIter<Principal, Nat>(stable_total_distributions.vals(), 10, Principal.equal, Principal.hash);
+  var stable_total_distributions : [(Principal, Nat)] = [];
+  transient var total_distributions = Map.fromIter<Principal, Nat>(stable_total_distributions.vals(), 10, Principal.equal, Principal.hash);
 
-  stable var stable_user_distributions : [(Principal, T.UserDistributions)] = [];
-  var user_distributions = Map.fromIter<Principal, T.UserDistributions>(stable_user_distributions.vals(), 100, Principal.equal, Principal.hash);
+  var stable_user_distributions : [(Principal, T.UserDistributions)] = [];
+  transient var user_distributions = Map.fromIter<Principal, T.UserDistributions>(stable_user_distributions.vals(), 100, Principal.equal, Principal.hash);
 
   // Distribution event log
-  stable var stable_distribution_events : [T.DistributionEvent] = [];
-  var distribution_events = Buffer.fromArray<T.DistributionEvent>(stable_distribution_events);
+  var stable_distribution_events : [T.DistributionEvent] = [];
+  transient var distribution_events = Buffer.fromArray<T.DistributionEvent>(stable_distribution_events);
 
   // User distribution event log
-  stable var stable_user_distribution_events : [T.UserDistributionEvent] = [];
-  var user_distribution_events = Buffer.fromArray<T.UserDistributionEvent>(stable_user_distribution_events);
+  var stable_user_distribution_events : [T.UserDistributionEvent] = [];
+  transient var user_distribution_events = Buffer.fromArray<T.UserDistributionEvent>(stable_user_distribution_events);
 
   // Event sequence counter
-  stable var event_sequence : Nat = 0;
+  var event_sequence : Nat = 0;
 
   // Claim and transfer event logs
-  stable var stable_claim_events : [T.ClaimEvent] = [];
-  var claim_events = Buffer.fromArray<T.ClaimEvent>(stable_claim_events);
+  var stable_claim_events : [T.ClaimEvent] = [];
+  transient var claim_events = Buffer.fromArray<T.ClaimEvent>(stable_claim_events);
 
   // Imported neurons
-  var neurons = Map.fromIter<Blob, T.Neuron>(stable_neurons.vals(), 100, Blob.equal, Blob.hash);
+  transient var neurons = Map.fromIter<Blob, T.Neuron>(stable_neurons.vals(), 100, Blob.equal, Blob.hash);
   // Owning principals for imported neurons
-  var owners = Map.fromIter<Blob, Principal>(stable_owners.vals(), 100, Blob.equal, Blob.hash);
+  transient var owners = Map.fromIter<Blob, Principal>(stable_owners.vals(), 100, Blob.equal, Blob.hash);
 
-  var props = Map.fromIter<Int, T.ProposalData>(stable_props.vals(), 100, Int.equal, Int.hash);
+  transient var props = Map.fromIter<Int, T.ProposalData>(stable_props.vals(), 100, Int.equal, Int.hash);
 
-  var balances = Map.fromIter<Principal, T.LocalBalances>(stable_balances.vals(), 100, Principal.equal, Principal.hash);
+  transient var balances = Map.fromIter<Principal, T.LocalBalances>(stable_balances.vals(), 100, Principal.equal, Principal.hash);
 
-  var import_neuron_ticks : Nat = 0;
-  var import_prop_ticks : Nat = 0;
-  var distribute_tokens_ticks : Nat = 0;
+  transient var import_neuron_ticks : Nat = 0;
+  transient var import_prop_ticks : Nat = 0;
+  transient var distribute_tokens_ticks : Nat = 0;
 
 
-  let sneed_exclude_principal = Principal.fromText("umo43-o3yqa-363iw-wroso-jm5az-kmfp2-rdzoj-q7il2-zfhcj-l35r7-oqe");
+  transient let sneed_exclude_principal = Principal.fromText("umo43-o3yqa-363iw-wroso-jm5az-kmfp2-rdzoj-q7il2-zfhcj-l35r7-oqe");
 
-  stable var MIN_FEE_MULTIPLIER : Nat = 10;
+  var MIN_FEE_MULTIPLIER : Nat = 10;
 
-  let sneed_gov_canister = actor (Principal.toText(sneed_governance_canister_id)) : actor {
+  transient let sneed_gov_canister = actor (Principal.toText(sneed_governance_canister_id)) : actor {
     get_proposal : shared query T.GetProposal -> async T.GetProposalResponse;
     get_neuron : shared query T.GetNeuron -> async T.GetNeuronResponse;
     list_neurons : shared query T.ListNeurons -> async T.ListNeuronsResponse;
   };  
 
   // SwapRunner actor
-  let swaprunner = actor(SWAPRUNNER_CANISTER_ID) : actor {
+  transient let swaprunner = actor(SWAPRUNNER_CANISTER_ID) : actor {
     get_all_tokens : shared query () -> async [(Principal, T.SwapRunnerTokenMetadata)];
   };  
 
-  let MAX_TICKS : Nat = 250; // maximum number of ticks for a longrunning function
+  transient let MAX_TICKS : Nat = 250; // maximum number of ticks for a longrunning function
 
   // Track token balance check state
-  stable var token_balance_check_timer_id : ?Nat = null;
-  stable var tokens_to_check : [(Principal, T.TokenMetadata)] = [];
-  stable var current_token_check_index : Nat = 0;
-  stable var token_check_ticks : Nat = 0;
+  var token_balance_check_timer_id : ?Nat = null;
+  var tokens_to_check : [(Principal, T.TokenMetadata)] = [];
+  var current_token_check_index : Nat = 0;
+  var token_check_ticks : Nat = 0;
 
   // Per-wallet known tokens tracking
-  stable var stable_wallet_known_tokens : [(Principal, [(Principal, T.TokenMetadata)])] = [];
-  var wallet_known_tokens = Map.HashMap<Principal, HashMap.HashMap<Principal, T.TokenMetadata>>(10, Principal.equal, Principal.hash);
+  var stable_wallet_known_tokens : [(Principal, [(Principal, T.TokenMetadata)])] = [];
+  transient var wallet_known_tokens = Map.HashMap<Principal, HashMap.HashMap<Principal, T.TokenMetadata>>(10, Principal.equal, Principal.hash);
 
   // Initialize wallet_known_tokens from stable storage
   for ((wallet, tokens) in stable_wallet_known_tokens.vals()) {
@@ -132,15 +132,15 @@ shared (deployer) actor class SneedRLL() = this {
   };
 
   // Track wallet token check state
-  stable var wallet_token_check_timer_id : ?Nat = null;
-  stable var wallet_tokens_to_check : [(Principal, T.TokenMetadata)] = [];
-  stable var current_wallet_token_check_index : Nat = 0;
-  stable var wallet_token_check_ticks : Nat = 0;
-  stable var current_wallet_being_checked : ?Principal = null;
+  var wallet_token_check_timer_id : ?Nat = null;
+  var wallet_tokens_to_check : [(Principal, T.TokenMetadata)] = [];
+  var current_wallet_token_check_index : Nat = 0;
+  var wallet_token_check_ticks : Nat = 0;
+  var current_wallet_being_checked : ?Principal = null;
 
   // Track per-token minimum distribution amounts
-  stable var stable_token_min_distributions : [(Principal, Nat)] = [];
-  var token_min_distributions = Map.HashMap<Principal, Nat>(10, Principal.equal, Principal.hash);
+  var stable_token_min_distributions : [(Principal, Nat)] = [];
+  transient var token_min_distributions = Map.HashMap<Principal, Nat>(10, Principal.equal, Principal.hash);
 
   // Initialize token_min_distributions from stable storage
   for ((token_id, min_amount) in stable_token_min_distributions.vals()) {
@@ -148,8 +148,8 @@ shared (deployer) actor class SneedRLL() = this {
   };
 
   // Track per-token maximum distribution amounts
-  stable var stable_token_max_distributions : [(Principal, Nat)] = [];
-  var token_max_distributions = Map.HashMap<Principal, Nat>(10, Principal.equal, Principal.hash);
+  var stable_token_max_distributions : [(Principal, Nat)] = [];
+  transient var token_max_distributions = Map.HashMap<Principal, Nat>(10, Principal.equal, Principal.hash);
 
   // Initialize token_max_distributions from stable storage
   for ((token_id, max_amount) in stable_token_max_distributions.vals()) {
@@ -351,7 +351,7 @@ shared (deployer) actor class SneedRLL() = this {
 
   
   // ORCHESTRATOR
-  stable var orchestrator_stage : {
+  var orchestrator_stage : {
     #idle;
     #importing_whitelist;
     #checking_balances;
@@ -361,15 +361,15 @@ shared (deployer) actor class SneedRLL() = this {
   } = #idle;
 
   // Track actual running state of imports and distribution
-  stable var distribution_cycle_timer_id : ?Nat = null;
-  stable var neuron_import_timer_id : ?Nat = null;
-  stable var proposal_import_timer_id : ?Nat = null;
-  stable var token_distribution_timer_id : ?Nat = null;
-  stable var current_distribution_token : ?Principal = null;
+  var distribution_cycle_timer_id : ?Nat = null;
+  var neuron_import_timer_id : ?Nat = null;
+  var proposal_import_timer_id : ?Nat = null;
+  var token_distribution_timer_id : ?Nat = null;
+  var current_distribution_token : ?Principal = null;
 
   // Track distribution progress
-  stable var processed_token_count : Nat = 0;
-  stable var total_tokens_to_process : Nat = 0;
+  var processed_token_count : Nat = 0;
+  var total_tokens_to_process : Nat = 0;
 
   // Helper method to cancel a timer and clear its ID
   private func cancel_timer(timer_id_ref : ?Nat) : ?Nat {
@@ -382,14 +382,14 @@ shared (deployer) actor class SneedRLL() = this {
     null;
   };
 
-  stable var main_loop_frequence_seconds : Nat = 60 * 60 * 24; // 24 hours
+  var main_loop_frequence_seconds : Nat = 60 * 60 * 24; // 24 hours
 
-  stable var main_loop_timer_id : ?Nat = null;
-  stable var main_loop_last_started : ?Nat = null;
-  stable var main_loop_last_stopped : ?Nat = null;
-  stable var main_loop_next_scheduled : ?Nat = null;
-  stable var cycle_last_started : ?Nat = null;
-  stable var cycle_last_ended : ?Nat = null;
+  var main_loop_timer_id : ?Nat = null;
+  var main_loop_last_started : ?Nat = null;
+  var main_loop_last_stopped : ?Nat = null;
+  var main_loop_next_scheduled : ?Nat = null;
+  var cycle_last_started : ?Nat = null;
+  var cycle_last_ended : ?Nat = null;
 
   public shared ({ caller }) func start_rll_main_loop() : async Result.Result<Text, Text> {
     assert is_admin(caller);
@@ -2238,9 +2238,9 @@ shared (deployer) actor class SneedRLL() = this {
     };
   };
 
-  var import_whitelisted_running = false;
-  var cntImportedWhitelist = 0;
-  var cntImportedWithBalance = 0;
+  transient var import_whitelisted_running = false;
+  transient var cntImportedWhitelist = 0;
+  transient var cntImportedWithBalance = 0;
 
 
 

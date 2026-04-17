@@ -75,44 +75,44 @@ persistent actor SneedSNSForum {
     };
 
     // Stable storage using stable Map and Vector structures
-    stable var stable_next_id : Nat = 1;
-    stable let stable_forums = Map.new<Nat, T.Forum>();
-    stable let stable_topics = Map.new<Nat, T.Topic>();
-    stable let stable_threads = Map.new<Nat, T.Thread>();
-    stable let stable_posts = Map.new<Nat, T.Post>();
-    stable let stable_votes = Map.new<T.VoteKey, T.Vote>();
-    stable let stable_tips = Map.new<Nat, T.Tip>();
-    stable let stable_polls = Map.new<Nat, T.Poll>();
-    stable let stable_poll_votes = Map.new<T.PollVoteKey, T.PollVote>();
-    stable let stable_admins = Vector.new<T.AdminInfo>();
-    stable var stable_principal_dedup : Dedup.DedupState = Dedup.empty();
-    stable var stable_neuron_dedup : Dedup.DedupState = Dedup.empty();
-    stable let stable_forum_topics = Map.new<Nat, Vector.Vector<Nat>>();
-    stable let stable_topic_subtopics = Map.new<Nat, Vector.Vector<Nat>>();
-    stable let stable_topic_threads = Map.new<Nat, Vector.Vector<Nat>>();
-    stable let stable_thread_posts = Map.new<Nat, Vector.Vector<Nat>>();
-    stable let stable_post_replies = Map.new<Nat, Vector.Vector<Nat>>();
-    stable let stable_post_tips = Map.new<Nat, Vector.Vector<Nat>>();
-    stable let stable_thread_tips = Map.new<Nat, Vector.Vector<Nat>>();
-    stable let stable_thread_polls = Map.new<Nat, Vector.Vector<Nat>>();
-    stable let stable_post_polls = Map.new<Nat, Vector.Vector<Nat>>();
-    stable let stable_tips_given = Map.new<Nat32, Vector.Vector<Nat>>();
-    stable let stable_tips_received = Map.new<Nat32, Vector.Vector<Nat>>();
-    stable let stable_user_last_seen_tips = Map.new<Nat32, Int>();
-    stable let stable_user_last_seen_replies = Map.new<Nat32, Int>();
-    stable let stable_proposal_topics = Map.new<Nat, T.ProposalTopicMapping>();
-    stable let stable_proposal_threads = Map.new<T.ProposalThreadKey, T.ProposalThreadMapping>();
-    stable let stable_thread_proposals = Map.new<Nat, (Nat32, Nat)>();
-    stable let stable_user_thread_reads = Map.new<Text, T.UserThreadReadData>();
-    stable var stable_text_limits : T.TextLimits = Lib.get_default_text_limits();
+    var stable_next_id : Nat = 1;
+    let stable_forums = Map.new<Nat, T.Forum>();
+    var stable_topics = Map.new<Nat, T.Topic>();
+    var stable_threads = Map.new<Nat, T.Thread>();
+    var stable_posts = Map.new<Nat, T.Post>();
+    var stable_votes = Map.new<T.VoteKey, T.Vote>();
+    let stable_tips = Map.new<Nat, T.Tip>();
+    var stable_polls = Map.new<Nat, T.Poll>();
+    var stable_poll_votes = Map.new<T.PollVoteKey, T.PollVote>();
+    var stable_admins = Vector.new<T.AdminInfo>();
+    var stable_principal_dedup : Dedup.DedupState = Dedup.empty();
+    var stable_neuron_dedup : Dedup.DedupState = Dedup.empty();
+    let stable_forum_topics = Map.new<Nat, Vector.Vector<Nat>>();
+    let stable_topic_subtopics = Map.new<Nat, Vector.Vector<Nat>>();
+    let stable_topic_threads = Map.new<Nat, Vector.Vector<Nat>>();
+    let stable_thread_posts = Map.new<Nat, Vector.Vector<Nat>>();
+    let stable_post_replies = Map.new<Nat, Vector.Vector<Nat>>();
+    let stable_post_tips = Map.new<Nat, Vector.Vector<Nat>>();
+    let stable_thread_tips = Map.new<Nat, Vector.Vector<Nat>>();
+    let stable_thread_polls = Map.new<Nat, Vector.Vector<Nat>>();
+    let stable_post_polls = Map.new<Nat, Vector.Vector<Nat>>();
+    let stable_tips_given = Map.new<Nat32, Vector.Vector<Nat>>();
+    let stable_tips_received = Map.new<Nat32, Vector.Vector<Nat>>();
+    let stable_user_last_seen_tips = Map.new<Nat32, Int>();
+    let stable_user_last_seen_replies = Map.new<Nat32, Int>();
+    let stable_proposal_topics = Map.new<Nat, T.ProposalTopicMapping>();
+    let stable_proposal_threads = Map.new<T.ProposalThreadKey, T.ProposalThreadMapping>();
+    let stable_thread_proposals = Map.new<Nat, (Nat32, Nat)>();
+    let stable_user_thread_reads = Map.new<Text, T.UserThreadReadData>();
+    var stable_text_limits : T.TextLimits = Lib.get_default_text_limits();
     
     // Premium configuration and cache
-    stable var stable_premium_config : T.PremiumConfig = {
+    var stable_premium_config : T.PremiumConfig = {
         sneed_premium_canister_id = null;
         premium_post_body_max_length = 50000;      // 50k chars for premium (vs 10k default)
         premium_thread_body_max_length = 50000;    // 50k chars for premium (vs 10k default)
     };
-    stable var stable_premium_cache = PremiumClient.emptyCache();
+    var stable_premium_cache = PremiumClient.emptyCache();
 
     // Runtime state that directly references stable storage
     private transient var state : T.ForumState = {
