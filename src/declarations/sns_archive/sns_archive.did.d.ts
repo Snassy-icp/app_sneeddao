@@ -1,6 +1,6 @@
-import type { Principal } from '@dfinity/principal';
-import type { ActorMethod } from '@dfinity/agent';
-import type { IDL } from '@dfinity/candid';
+import type { Principal } from '@icp-sdk/core/principal';
+import type { ActorMethod } from '@icp-sdk/core/agent';
+import type { IDL } from '@icp-sdk/core/candid';
 
 export interface Account {
   'owner' : Principal,
@@ -26,15 +26,46 @@ export interface Burn {
   'spender' : [] | [Account],
 }
 export interface DataCertificate {
+  /**
+   * See https://internetcomputer.org/docs/current/references/ic-interface-spec#certification
+   */
   'certificate' : Uint8Array | number[],
+  /**
+   * CBOR encoded hash_tree
+   */
   'hash_tree' : Uint8Array | number[],
 }
-export interface GetArchivesArgs { 'from' : [] | [Principal] }
+export interface GetArchivesArgs {
+  /**
+   * The last archive seen by the client.
+   * The Ledger will return archives coming
+   * after this one if set, otherwise it
+   * will return the first archives.
+   */
+  'from' : [] | [Principal],
+}
 export type GetArchivesResult = Array<
-  { 'end' : bigint, 'canister_id' : Principal, 'start' : bigint }
+  {
+    /**
+     * The last block in the archive
+     */
+    'end' : bigint,
+    /**
+     * The id of the archive
+     */
+    'canister_id' : Principal,
+    /**
+     * The first block in the archive
+     */
+    'start' : bigint,
+  }
 >;
 export type GetBlocksArgs = Array<{ 'start' : bigint, 'length' : bigint }>;
 export interface GetBlocksResult {
+  /**
+   * Total number of blocks in the
+   * block log
+   */
   'log_length' : bigint,
   'blocks' : Array<{ 'id' : bigint, 'block' : ICRC3Value }>,
   'archived_blocks' : Array<
@@ -71,6 +102,11 @@ export interface Transfer {
   'amount' : bigint,
   'spender' : [] | [Account],
 }
+/**
+ * This is not the ICRC-3 Value but a custom
+ * type with one more variant. For the ICRC-3
+ * type check ICRC3Value instead.
+ */
 export type Value = { 'Int' : bigint } |
   { 'Map' : Map } |
   { 'Nat' : bigint } |

@@ -17,7 +17,7 @@ import Timer "mo:base/Timer";
 import T "Types";
 import PremiumClient "../PremiumClient";
 
-shared (deployer) actor class AppSneedDaoBackend() = this {
+shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
   private func this_canister_id() : Principal {
       Principal.fromActor(this);
@@ -108,67 +108,67 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   };
 
   // stable memory
-  stable var stable_principal_swap_canisters : StablePrincipalSwapCanisters = [];
-  stable var stable_principal_ledger_canisters : StablePrincipalLedgerCanisters = [];
-  stable var stable_principal_tracked_canisters : StablePrincipalTrackedCanisters = [];
-  stable var stable_principal_canister_groups : StablePrincipalCanisterGroups = [];
-  stable var stable_principal_wallet_layouts : StablePrincipalWalletLayout = [];
-  stable var stable_whitelisted_tokens : [WhitelistedToken] = [];
-  stable var stable_admins : [Principal] = [deployer.caller];
-  stable var stable_blacklisted_words : [(Text, Bool)] = [];
+  var stable_principal_swap_canisters : StablePrincipalSwapCanisters = [];
+  var stable_principal_ledger_canisters : StablePrincipalLedgerCanisters = [];
+  var stable_principal_tracked_canisters : StablePrincipalTrackedCanisters = [];
+  var stable_principal_canister_groups : StablePrincipalCanisterGroups = [];
+  var stable_principal_wallet_layouts : StablePrincipalWalletLayout = [];
+  var stable_whitelisted_tokens : [WhitelistedToken] = [];
+  var stable_admins : [Principal] = [deployer.caller];
+  var stable_blacklisted_words : [(Text, Bool)] = [];
 
   // Stable storage for user settings (per-setting maps)
-  stable var stable_user_setting_principal_color_coding : [(Principal, Bool)] = [];
-  stable var stable_user_setting_neuron_color_coding : [(Principal, Bool)] = [];
-  stable var stable_user_setting_show_vp_bar : [(Principal, Bool)] = [];
-  stable var stable_user_setting_show_header_notifications : [(Principal, Bool)] = [];
-  stable var stable_user_setting_collectibles_threshold : [(Principal, Float)] = [];
-  stable var stable_user_setting_expand_quick_links_on_desktop : [(Principal, Bool)] = [];
-  stable var stable_user_setting_particle_effects_enabled : [(Principal, Bool)] = [];
-  stable var stable_user_setting_neuron_manager_cycle_threshold_red : [(Principal, Nat)] = [];
-  stable var stable_user_setting_neuron_manager_cycle_threshold_orange : [(Principal, Nat)] = [];
-  stable var stable_user_setting_canister_manager_cycle_threshold_red : [(Principal, Nat)] = [];
-  stable var stable_user_setting_canister_manager_cycle_threshold_orange : [(Principal, Nat)] = [];
-  stable var stable_user_setting_frontend_auto_update_enabled : [(Principal, Bool)] = [];
-  stable var stable_user_setting_frontend_clear_cache_on_update : [(Principal, Bool)] = [];
-  stable var stable_user_setting_frontend_update_check_interval_sec : [(Principal, Nat)] = [];
-  stable var stable_user_setting_frontend_update_countdown_sec : [(Principal, Nat)] = [];
-  stable var stable_user_setting_swap_slippage_tolerance : [(Principal, Float)] = [];
-  stable var stable_user_setting_always_show_remove_token : [(Principal, Bool)] = [];
+  var stable_user_setting_principal_color_coding : [(Principal, Bool)] = [];
+  var stable_user_setting_neuron_color_coding : [(Principal, Bool)] = [];
+  var stable_user_setting_show_vp_bar : [(Principal, Bool)] = [];
+  var stable_user_setting_show_header_notifications : [(Principal, Bool)] = [];
+  var stable_user_setting_collectibles_threshold : [(Principal, Float)] = [];
+  var stable_user_setting_expand_quick_links_on_desktop : [(Principal, Bool)] = [];
+  var stable_user_setting_particle_effects_enabled : [(Principal, Bool)] = [];
+  var stable_user_setting_neuron_manager_cycle_threshold_red : [(Principal, Nat)] = [];
+  var stable_user_setting_neuron_manager_cycle_threshold_orange : [(Principal, Nat)] = [];
+  var stable_user_setting_canister_manager_cycle_threshold_red : [(Principal, Nat)] = [];
+  var stable_user_setting_canister_manager_cycle_threshold_orange : [(Principal, Nat)] = [];
+  var stable_user_setting_frontend_auto_update_enabled : [(Principal, Bool)] = [];
+  var stable_user_setting_frontend_clear_cache_on_update : [(Principal, Bool)] = [];
+  var stable_user_setting_frontend_update_check_interval_sec : [(Principal, Nat)] = [];
+  var stable_user_setting_frontend_update_countdown_sec : [(Principal, Nat)] = [];
+  var stable_user_setting_swap_slippage_tolerance : [(Principal, Float)] = [];
+  var stable_user_setting_always_show_remove_token : [(Principal, Bool)] = [];
   // Per-notification-type visibility settings
-  stable var stable_user_setting_notify_replies : [(Principal, Bool)] = [];
-  stable var stable_user_setting_notify_tips : [(Principal, Bool)] = [];
-  stable var stable_user_setting_notify_messages : [(Principal, Bool)] = [];
-  stable var stable_user_setting_notify_collectibles : [(Principal, Bool)] = [];
-  stable var stable_user_setting_notify_votable_proposals : [(Principal, Bool)] = [];
-  stable var stable_user_setting_notify_outdated_bots : [(Principal, Bool)] = [];
-  stable var stable_user_setting_notify_low_cycles : [(Principal, Bool)] = [];
-  stable var stable_user_setting_notify_bot_chores : [(Principal, Bool)] = [];
-  stable var stable_user_setting_notify_bot_log_errors : [(Principal, Bool)] = [];
-  stable var stable_user_setting_notify_bot_log_warnings : [(Principal, Bool)] = [];
-  stable var stable_user_setting_notify_updates : [(Principal, Bool)] = [];
-  stable var stable_user_setting_denomination_token : [(Principal, Text)] = [];
+  var stable_user_setting_notify_replies : [(Principal, Bool)] = [];
+  var stable_user_setting_notify_tips : [(Principal, Bool)] = [];
+  var stable_user_setting_notify_messages : [(Principal, Bool)] = [];
+  var stable_user_setting_notify_collectibles : [(Principal, Bool)] = [];
+  var stable_user_setting_notify_votable_proposals : [(Principal, Bool)] = [];
+  var stable_user_setting_notify_outdated_bots : [(Principal, Bool)] = [];
+  var stable_user_setting_notify_low_cycles : [(Principal, Bool)] = [];
+  var stable_user_setting_notify_bot_chores : [(Principal, Bool)] = [];
+  var stable_user_setting_notify_bot_log_errors : [(Principal, Bool)] = [];
+  var stable_user_setting_notify_bot_log_warnings : [(Principal, Bool)] = [];
+  var stable_user_setting_notify_updates : [(Principal, Bool)] = [];
+  var stable_user_setting_denomination_token : [(Principal, Text)] = [];
   
   // Per-user per-canister last-seen log ID (for cross-device bot log alert tracking)
-  stable var stable_user_last_seen_log_id : [(Principal, [(Principal, Nat)])] = [];
+  var stable_user_last_seen_log_id : [(Principal, [(Principal, Nat)])] = [];
 
   // Stable storage for neuron names and nicknames
-  stable var stable_neuron_names : [(NeuronNameKey, (Text, Bool))] = [];
-  stable var stable_neuron_nicknames : [(Principal, [(NeuronNameKey, Text)])] = [];
+  var stable_neuron_names : [(NeuronNameKey, (Text, Bool))] = [];
+  var stable_neuron_nicknames : [(Principal, [(NeuronNameKey, Text)])] = [];
 
   // Stable storage for bans
-  stable var stable_ban_log : [BanLogEntry] = [];
-  stable var stable_banned_users : [(Principal, Int)] = [];
+  var stable_ban_log : [BanLogEntry] = [];
+  var stable_banned_users : [(Principal, Int)] = [];
 
   // Stable storage for principal names and nicknames
-  stable var stable_principal_names : [(Principal, (Text, Bool))] = [];
-  stable var stable_principal_nicknames : [(Principal, [(Principal, Text)])] = [];
+  var stable_principal_names : [(Principal, (Text, Bool))] = [];
+  var stable_principal_nicknames : [(Principal, [(Principal, Text)])] = [];
 
   // Stable storage for partners
-  stable var stable_partners : [Partner] = [];
+  var stable_partners : [Partner] = [];
 
   // Stable storage for projects
-  stable var stable_projects : [Project] = [];
+  var stable_projects : [Project] = [];
 
   // Jailbreak configuration types and storage
   type JailbreakConfig = {
@@ -192,41 +192,41 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     timestamp: Int;
   };
 
-  stable var stable_jailbreak_configs : [(Principal, [JailbreakConfig])] = [];
-  stable var stable_next_jailbreak_config_id : Nat = 1;
+  var stable_jailbreak_configs : [(Principal, [JailbreakConfig])] = [];
+  var stable_next_jailbreak_config_id : Nat = 1;
   
   // Jailbreak payment logs
-  stable var stable_jailbreak_payment_logs : [JailbreakPaymentLog] = [];
-  stable var stable_next_jailbreak_payment_log_id : Nat = 1;
+  var stable_jailbreak_payment_logs : [JailbreakPaymentLog] = [];
+  var stable_next_jailbreak_payment_log_id : Nat = 1;
   
   // Jailbreak fee settings (in e8s - 1 ICP = 100_000_000 e8s)
-  stable var stable_jailbreak_fee_premium : Nat = 0;      // Fee for premium members (default: free)
-  stable var stable_jailbreak_fee_regular : Nat = 0;      // Fee for regular users (default: free)
+  var stable_jailbreak_fee_premium : Nat = 0;      // Fee for premium members (default: free)
+  var stable_jailbreak_fee_regular : Nat = 0;      // Fee for regular users (default: free)
   // Fee recipient ICRC1 account (owner + optional subaccount). Null = canister keeps fees
-  stable var stable_jailbreak_fee_account_owner : ?Principal = null;
-  stable var stable_jailbreak_fee_account_subaccount : ?Blob = null;
+  var stable_jailbreak_fee_account_owner : ?Principal = null;
+  var stable_jailbreak_fee_account_subaccount : ?Blob = null;
   
   // Stable storage for user token registrations (user -> list of ledger IDs)
-  stable var stable_user_tokens : [(Principal, [Principal])] = [];
+  var stable_user_tokens : [(Principal, [Principal])] = [];
   
   // Authorized callers for "for" methods (e.g., Sneedex)
-  stable var stable_authorized_for_callers : [Principal] = [];
+  var stable_authorized_for_callers : [Principal] = [];
 
   // Nickname limits configuration and premium integration
-  stable var stable_sneed_premium_canister_id : ?Principal = null;
-  stable var stable_max_neuron_nicknames : Nat = 10;
-  stable var stable_max_principal_nicknames : Nat = 10;
-  stable var stable_premium_max_neuron_nicknames : Nat = 100;
-  stable var stable_premium_max_principal_nicknames : Nat = 100;
-  stable var stable_premium_cache = PremiumClient.emptyCache();
+  var stable_sneed_premium_canister_id : ?Principal = null;
+  var stable_max_neuron_nicknames : Nat = 10;
+  var stable_max_principal_nicknames : Nat = 10;
+  var stable_premium_max_neuron_nicknames : Nat = 100;
+  var stable_premium_max_principal_nicknames : Nat = 100;
+  var stable_premium_cache = PremiumClient.emptyCache();
   
   // Canister groups limits configuration
-  stable var stable_max_canister_groups : Nat = 5;          // Max folders/groups for regular users
-  stable var stable_max_canisters_per_group : Nat = 20;     // Max canisters in a single group
-  stable var stable_max_total_grouped_canisters : Nat = 50; // Max total canisters across all groups
-  stable var stable_premium_max_canister_groups : Nat = 50;
-  stable var stable_premium_max_canisters_per_group : Nat = 100;
-  stable var stable_premium_max_total_grouped_canisters : Nat = 500;
+  var stable_max_canister_groups : Nat = 5;          // Max folders/groups for regular users
+  var stable_max_canisters_per_group : Nat = 20;     // Max canisters in a single group
+  var stable_max_total_grouped_canisters : Nat = 50; // Max total canisters across all groups
+  var stable_premium_max_canister_groups : Nat = 50;
+  var stable_premium_max_canisters_per_group : Nat = 100;
+  var stable_premium_max_total_grouped_canisters : Nat = 500;
 
   // Runtime hashmaps for neuron names and nicknames
   transient var neuron_names = HashMap.HashMap<NeuronNameKey, (Text, Bool)>(100, func(k1: NeuronNameKey, k2: NeuronNameKey) : Bool {
