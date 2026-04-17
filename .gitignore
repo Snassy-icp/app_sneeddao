@@ -33,3 +33,6 @@ ref/
 
 # Scratch files in spec
 spec/scratch*
+
+# WSL problem files
+*:Zone.Identifier
