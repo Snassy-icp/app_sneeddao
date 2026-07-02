@@ -173,6 +173,26 @@ shared (deployer) persistent actor class SneedLock() = this {
   transient let archived_token_locks = HashMap.HashMap<T.LockId, ArchivedTokenLock>(1000, Nat.equal, Hash.hash);
   transient let archived_position_locks = HashMap.HashMap<T.LockId, ArchivedPositionLock>(1000, Nat.equal, Hash.hash);
 
+  // In-flight guard for a caller's token subaccount (transient — intentionally
+  // reset on upgrade). A caller's locked tokens sit in their own subaccount and
+  // are protected only by the balance-vs-sum_locked check in the transfer paths.
+  // On ICP every await is a commit point and concurrent ingress messages
+  // interleave, so without serialization two concurrent transfer_tokens (or
+  // transfer_token_lock_ownership) calls can each pass that check across the
+  // ledger awaits and collectively move out more than the unlocked balance,
+  // dipping into locked funds. This set serializes those operations per caller.
+  transient var token_op_locks = Map.new<Principal, ()>();
+
+  private func is_token_op_locked(p : Principal) : Bool {
+    Map.has(token_op_locks, phash, p);
+  };
+  private func lock_token_op(p : Principal) {
+    Map.set(token_op_locks, phash, p, ());
+  };
+  private func unlock_token_op(p : Principal) {
+    Map.delete(token_op_locks, phash, p);
+  };
+
   public query func get_all_token_locks() : async [T.FullyQualifiedLock] {
     get_fully_qualified_locks();
   };
@@ -701,6 +721,21 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     let from_subaccount = PrincipalToSubaccount(caller);
 
+    // Serialize with any other token operation on this caller's subaccount.
+    // Without this, two concurrent calls both read balance/sum_locked before
+    // either transfer settles, both pass the check, and together they move out
+    // more than the unlocked balance — draining locked funds.
+    if (is_token_op_locked(caller)) {
+      let error = #Err(#GenericError{
+        message = "A token operation is already in progress for caller: " # debug_show(caller);
+        error_code = 2;
+      });
+      log_error(caller, correlation_id, debug_show(error));
+      return error;
+    };
+    lock_token_op(caller);
+
+    try {
     // make sure to clean out any expired locks
     clear_expired_locks_for_principal(caller, correlation_id);
 
@@ -743,6 +778,9 @@ shared (deployer) persistent actor class SneedLock() = this {
     };
 
     return result;
+    } finally {
+      unlock_token_op(caller);
+    };
   };
 
   public shared ({ caller }) func transfer_position(to : Principal, swap_canister_id : Principal, position_id : T.PositionId) : async T.TransferPositionResult /*ClaimPositionResult*/ {
@@ -916,6 +954,20 @@ shared (deployer) persistent actor class SneedLock() = this {
     let correlation_id = get_next_correlation_id();
     log_info(caller, correlation_id, "Transferring token lock " # debug_show(lock_id) # " from " # debug_show(caller) # " to " # debug_show(to_principal) # " for token " # debug_show(token_type));
 
+    // Serialize with any other token operation on this caller's subaccount so a
+    // concurrent transfer_tokens / ownership transfer can't race this one and
+    // double-spend the tokens or duplicate the lock across the ledger awaits below.
+    if (is_token_op_locked(caller)) {
+      let error = #Err({
+        message = "A token operation is already in progress for caller: " # debug_show(caller);
+        transfer_error = null;
+      });
+      log_error(caller, correlation_id, debug_show(error));
+      return error;
+    };
+    lock_token_op(caller);
+
+    try {
     // Find the lock (without removing it yet)
     let lock = find_token_lock(caller, token_type, lock_id);
 
@@ -985,9 +1037,15 @@ shared (deployer) persistent actor class SneedLock() = this {
           return error;
         };
 
-        // All validations passed - now remove the lock from the caller
+        // All validations passed. Move the lock from the caller to the recipient
+        // BEFORE transferring the tokens. Recording the recipient's lock first
+        // guarantees that once the tokens land in the recipient's subaccount there
+        // is already a lock covering them, so the recipient can never observe the
+        // incoming tokens as unlocked (and withdraw them) in the window between the
+        // transfer settling and the lock being recorded.
         remove_token_lock(caller, token_type, lock_id);
-        log_info(caller, correlation_id, "Removed lock " # debug_show(lock_id) # " from " # debug_show(caller));
+        add_lock_for_principal(to_principal, token_type, found_lock);
+        log_info(caller, correlation_id, "Moved lock " # debug_show(lock_id) # " from " # debug_show(caller) # " to " # debug_show(to_principal) # " (pending token transfer)");
 
         // Transfer the tokens from caller's subaccount to recipient's subaccount
         let recipient_subaccount = PrincipalToSubaccount(to_principal);
@@ -1006,7 +1064,9 @@ shared (deployer) persistent actor class SneedLock() = this {
 
         switch (transfer_result) {
           case (#Err(transfer_error)) {
-            // Re-add the lock back to caller since transfer failed
+            // Roll back the optimistic lock move: the transfer failed, so remove
+            // the lock we added to the recipient and restore it to the caller.
+            remove_token_lock(to_principal, token_type, lock_id);
             add_lock_for_principal(caller, token_type, found_lock);
             let error = #Err({
               message = "Failed to transfer tokens from caller's subaccount to recipient's subaccount";
@@ -1016,17 +1076,17 @@ shared (deployer) persistent actor class SneedLock() = this {
             return error;
           };
           case (#Ok(tx_index)) {
+            // The lock was already recorded on the recipient above.
             log_info(caller, correlation_id, "Transferred " # Nat.toText(found_lock.amount) # " tokens from " # debug_show(caller) # " to " # debug_show(to_principal) # " with tx_index: " # debug_show(tx_index));
-
-            // Add the lock to the recipient
-            add_lock_for_principal(to_principal, token_type, found_lock);
-            log_info(caller, correlation_id, "Transferred lock " # debug_show(lock_id) # " from " # debug_show(caller) # " to " # debug_show(to_principal) # ": " # debug_show(found_lock));
 
             log_info(caller, correlation_id, "Successfully transferred token lock ownership from " # debug_show(caller) # " to " # debug_show(to_principal) # " for lock " # debug_show(lock_id));
             #Ok;
           };
         };
       };
+    };
+    } finally {
+      unlock_token_op(caller);
     };
   };
 
