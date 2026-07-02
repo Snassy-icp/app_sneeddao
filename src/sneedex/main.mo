@@ -56,11 +56,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // Bids storage
     var bids : [T.Bid] = [];
 
-    // In-flight guard for bid escrow withdrawals (transient — intentionally
-    // reset on upgrade). On ICP every await is a commit point and concurrent
-    // ingress messages interleave, so two withdrawBidEscrow calls on the same
-    // bid could each pass the reserve check across awaits and collectively
-    // drain the escrow below the bid amount. This set serializes them per bid.
+    // In-flight guard for bid escrow payouts (transient — intentionally reset
+    // on upgrade). On ICP every await is a commit point and concurrent ingress
+    // messages interleave, so any two operations that read the escrow and then
+    // transfer out of it (withdrawBidEscrow, refundBid, autoRefundBid) could
+    // each pass their pre-checks across awaits and collectively pay the escrow
+    // out more than once. This set serializes those payouts per bid.
     transient var bidEscrowLocks = Map.new<T.BidId, ()>();
 
     func isBidEscrowLocked(bidId : T.BidId) : Bool {
@@ -693,45 +694,58 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 if (bid.state != #Lost or not bid.tokens_escrowed) {
                     return;
                 };
-                
-                switch (getOffer(bid.offer_id)) {
-                    case null { /* Offer not found, ignore */ };
-                    case (?offer) {
-                        // Get fee and calculate refund amount
-                        let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
-                        let refundAmount = if (bid.amount > fee) { bid.amount - fee } else { 0 };
-                        
-                        if (refundAmount == 0) {
-                            return; // Amount too small to refund
-                        };
-                        
-                        let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
-                        let transferResult = await* AssetHandlers.transferTokens(
-                            offer.price_token_ledger,
-                            ?subaccount,
-                            { owner = bid.bidder; subaccount = null },
-                            refundAmount
-                        );
-                        
-                        switch (transferResult) {
-                            case (#err(_e)) { 
-                                // Transfer failed - user can manually refund later
+
+                // Serialize with any other payout on this bid (a duplicate
+                // auto-refund, a manual refundBid, or a withdrawal). Skip if one
+                // is already running — the state check above holds atomically with
+                // this lock acquisition, so a concurrent payout can't slip through.
+                if (isBidEscrowLocked(bid.id)) {
+                    return;
+                };
+                lockBidEscrow(bid.id);
+
+                try {
+                    switch (getOffer(bid.offer_id)) {
+                        case null { /* Offer not found, ignore */ };
+                        case (?offer) {
+                            // Get fee and calculate refund amount
+                            let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
+                            let refundAmount = if (bid.amount > fee) { bid.amount - fee } else { 0 };
+
+                            if (refundAmount == 0) {
+                                return; // Amount too small to refund
                             };
-                            case (#ok(_)) {
-                                // Update bid state to Refunded
-                                let updatedBid : T.Bid = {
-                                    id = bid.id;
-                                    offer_id = bid.offer_id;
-                                    bidder = bid.bidder;
-                                    amount = bid.amount;
-                                    state = #Refunded;
-                                    created_at = bid.created_at;
-                                    tokens_escrowed = bid.tokens_escrowed;
+
+                            let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
+                            let transferResult = await* AssetHandlers.transferTokens(
+                                offer.price_token_ledger,
+                                ?subaccount,
+                                { owner = bid.bidder; subaccount = null },
+                                refundAmount
+                            );
+
+                            switch (transferResult) {
+                                case (#err(_e)) {
+                                    // Transfer failed - user can manually refund later
                                 };
-                                updateBid(bid.id, updatedBid);
+                                case (#ok(_)) {
+                                    // Update bid state to Refunded
+                                    let updatedBid : T.Bid = {
+                                        id = bid.id;
+                                        offer_id = bid.offer_id;
+                                        bidder = bid.bidder;
+                                        amount = bid.amount;
+                                        state = #Refunded;
+                                        created_at = bid.created_at;
+                                        tokens_escrowed = bid.tokens_escrowed;
+                                    };
+                                    updateBid(bid.id, updatedBid);
+                                };
                             };
                         };
                     };
+                } finally {
+                    unlockBidEscrow(bid.id);
                 };
             };
         };
@@ -2449,13 +2463,44 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 switch (offer.buyout_price) {
                                     case (?buyout) {
                                         if (effectiveAmount >= buyout) {
-                                            // Buyout! Complete the offer
-                                            ignore await completeOfferInternal(bid.offer_id, bidId);
+                                            // Buyout! Attempt to complete the offer. Another
+                                            // buyout may already be in flight and have completed
+                                            // it first — completeOfferInternal now rejects unless
+                                            // the offer is still Active. If we lost that race, this
+                                            // bidder's tokens are already escrowed, so mark the bid
+                                            // Lost and refund it rather than returning a misleading
+                                            // success and stranding the payment.
+                                            switch (await completeOfferInternal(bid.offer_id, bidId)) {
+                                                case (#ok()) { /* won the buyout */ };
+                                                case (#err(_)) {
+                                                    switch (getBid(bidId)) {
+                                                        case (?currentBid) {
+                                                            if (currentBid.state != #Won) {
+                                                                let lostBid : T.Bid = {
+                                                                    id = currentBid.id;
+                                                                    offer_id = currentBid.offer_id;
+                                                                    bidder = currentBid.bidder;
+                                                                    amount = currentBid.amount;
+                                                                    state = #Lost;
+                                                                    created_at = currentBid.created_at;
+                                                                    tokens_escrowed = currentBid.tokens_escrowed;
+                                                                };
+                                                                updateBid(bidId, lostBid);
+                                                                if (currentBid.tokens_escrowed) {
+                                                                    scheduleAutoRefund<system>(bidId);
+                                                                };
+                                                            };
+                                                        };
+                                                        case null {};
+                                                    };
+                                                    return #err(#InvalidState("Offer was already completed by another buyer; your bid was marked lost and will be refunded"));
+                                                };
+                                            };
                                         };
                                     };
                                     case null {};
                                 };
-                                
+
                                 #ok();
                             };
                         };
@@ -2474,6 +2519,16 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         switch (getOffer(offerId)) {
             case null { return #err(#OfferNotFound) };
             case (?offer) {
+                // Only an Active offer may be settled. This check and the
+                // #Completed write below run with no intervening await, so they
+                // are atomic: a second concurrent settlement (e.g. two buyout
+                // confirmBid calls racing) sees a non-Active state here and is
+                // rejected instead of overwriting the recorded winner and
+                // stranding the first winner's escrowed payment.
+                if (offer.state != #Active) {
+                    return #err(#InvalidState("Offer is not active and cannot be completed"));
+                };
+
                 // Update offer state
                 let updatedOffer : T.Offer = {
                     id = offer.id;
@@ -3160,38 +3215,50 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 switch (getOffer(bid.offer_id)) {
                     case null { return #err(#OfferNotFound) };
                     case (?offer) {
-                        // Get fee and calculate refund amount (bid amount - fee)
-                        let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
-                        let refundAmount = if (bid.amount > fee) { bid.amount - fee } else { 0 };
-                        
-                        if (refundAmount == 0) {
-                            return #err(#InsufficientFunds({ available = bid.amount; required = fee }));
+                        // Serialize with any other payout on this bid (auto-refund
+                        // or withdrawal) so the escrow can't be paid out twice
+                        // across the transfer await.
+                        if (isBidEscrowLocked(bid.id)) {
+                            return #err(#InvalidState("An escrow operation is already in progress for this bid"));
                         };
-                        
-                        let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
-                        let transferResult = await* AssetHandlers.transferTokens(
-                            offer.price_token_ledger,
-                            ?subaccount,
-                            { owner = caller; subaccount = null },
-                            refundAmount
-                        );
-                        
-                        switch (transferResult) {
-                            case (#err(e)) { return #err(e) };
-                            case (#ok(_)) {
-                                let updatedBid : T.Bid = {
-                                    id = bid.id;
-                                    offer_id = bid.offer_id;
-                                    bidder = bid.bidder;
-                                    amount = bid.amount;
-                                    state = #Refunded;
-                                    created_at = bid.created_at;
-                                    tokens_escrowed = bid.tokens_escrowed;
-                                };
-                                
-                                updateBid(bid.id, updatedBid);
-                                #ok();
+                        lockBidEscrow(bid.id);
+
+                        try {
+                            // Get fee and calculate refund amount (bid amount - fee)
+                            let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
+                            let refundAmount = if (bid.amount > fee) { bid.amount - fee } else { 0 };
+
+                            if (refundAmount == 0) {
+                                return #err(#InsufficientFunds({ available = bid.amount; required = fee }));
                             };
+
+                            let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
+                            let transferResult = await* AssetHandlers.transferTokens(
+                                offer.price_token_ledger,
+                                ?subaccount,
+                                { owner = caller; subaccount = null },
+                                refundAmount
+                            );
+
+                            switch (transferResult) {
+                                case (#err(e)) { return #err(e) };
+                                case (#ok(_)) {
+                                    let updatedBid : T.Bid = {
+                                        id = bid.id;
+                                        offer_id = bid.offer_id;
+                                        bidder = bid.bidder;
+                                        amount = bid.amount;
+                                        state = #Refunded;
+                                        created_at = bid.created_at;
+                                        tokens_escrowed = bid.tokens_escrowed;
+                                    };
+
+                                    updateBid(bid.id, updatedBid);
+                                    #ok();
+                                };
+                            };
+                        } finally {
+                            unlockBidEscrow(bid.id);
                         };
                     };
                 };
@@ -3221,12 +3288,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     case (?offer) {
                         let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
 
-                        // In-flight guard: reject a second concurrent withdrawal on
+                        // In-flight guard: reject a second concurrent payout on
                         // the same bid. Without this, both calls read the balance
                         // before either transfer settles, both pass the reserve
                         // check, and together they drain the escrow below bid.amount.
                         if (isBidEscrowLocked(bid.id)) {
-                            return #err(#InvalidState("A withdrawal is already in progress for this bid"));
+                            return #err(#InvalidState("An escrow operation is already in progress for this bid"));
                         };
                         lockBidEscrow(bid.id);
 
