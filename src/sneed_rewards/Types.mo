@@ -78,6 +78,30 @@ type ClaimEvent = {
     error_message: ?Text;
 };
 
+// Recorded when a claim transfer's await THROWS (ambiguous outcome: the transfer
+// may or may not have executed on the ledger). The owners' balances are left
+// debited rather than re-credited (re-crediting a landed transfer would allow a
+// double-withdrawal); this ticket carries everything needed to resolve the case
+// manually — including the memo + created_at_time to match the transaction in the
+// ledger's get_transactions, and the per-owner breakdown to re-credit precisely if
+// it turns out the transfer never landed.
+type ClaimIncident = {
+    id: Nat;
+    sequence_number: Nat;        // the claim seq this transfer belonged to
+    token_id: Principal;         // ICRC1 ledger
+    recipient: Principal;        // account the transfer targeted (the claiming hotkey)
+    owners: [(Principal, Nat)];  // per-owner amounts debited (to re-credit on resolution)
+    total: Nat;                  // sum of debited owner balances
+    amount: Nat;                 // transfer amount attempted (total - fee)
+    fee: Nat;
+    memo: Blob;                  // stamped on the transfer; match key in get_transactions
+    created_at_time: Timestamp;  // stamped on the transfer
+    error_message: Text;         // the caught error
+    resolved: Bool;
+    landed: ?Bool;               // set on resolution: did the transfer actually execute?
+    resolved_at: ?Timestamp;
+};
+
 
 // ICRC1
 

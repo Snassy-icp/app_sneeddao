@@ -81,6 +81,48 @@ shared (deployer) actor class SneedRLL() = this {
   stable var stable_claim_events : [T.ClaimEvent] = [];
   var claim_events = Buffer.fromArray<T.ClaimEvent>(stable_claim_events);
 
+  // Incident tickets for claim transfers whose await threw (ambiguous outcome).
+  // Stored directly in a stable array (not a rotating buffer) — these are fund-loss
+  // evidence and must never be dropped. Growth is naturally bounded because a ticket
+  // is only ever created by a genuine ambiguous transfer failure, which requires a
+  // real (costly) transfer attempt that trapped — an attacker cannot cheaply spam them.
+  stable var claim_incidents : [T.ClaimIncident] = [];
+  stable var next_incident_id : Nat = 0;
+
+  private func create_claim_incident(
+    seq : Nat,
+    token_id : Principal,
+    recipient : Principal,
+    owners : [(Principal, Nat)],
+    total : Nat,
+    amount : Nat,
+    fee : Nat,
+    memo : Blob,
+    created_at_time : Nat64,
+    error_message : Text
+  ) : Nat {
+    let id = next_incident_id;
+    next_incident_id += 1;
+    let incident : T.ClaimIncident = {
+      id;
+      sequence_number = seq;
+      token_id;
+      recipient;
+      owners;
+      total;
+      amount;
+      fee;
+      memo;
+      created_at_time;
+      error_message;
+      resolved = false;
+      landed = null;
+      resolved_at = null;
+    };
+    claim_incidents := Array.append(claim_incidents, [incident]);
+    id;
+  };
+
   // Imported neurons
   var neurons = Map.fromIter<Blob, T.Neuron>(stable_neurons.vals(), 100, Blob.equal, Blob.hash);
   // Owning principals for imported neurons
@@ -1041,6 +1083,13 @@ shared (deployer) actor class SneedRLL() = this {
 
     let amount = if (total_balance >= fee) { total_balance - fee } else { 0 };
 
+    // Identifiers stamped onto the transfer so an ambiguous (thrown) outcome can be
+    // reconciled later: the memo is a unique per-claim match key for the ledger's
+    // get_transactions, and created_at_time is a deterministic time anchor. We do NOT
+    // rely on ledger dedup here — not all ICRC1 ledgers implement it correctly.
+    let claim_memo : Blob = Text.encodeUtf8("rll-claim:" # Nat.toText(seq));
+    let claim_created_at : Nat64 = Nat64.fromNat(Int.abs(Time.now()));
+
     // Log that we're about to attempt the transfer
     log_claim(seq, hotkey, icrc1_ledger_canister_id, amount, fee, #Pending, null, null);
 
@@ -1064,8 +1113,8 @@ shared (deployer) actor class SneedRLL() = this {
             };
             amount = amount;
             fee = ?fee;
-            memo = null;
-            created_at_time = null;
+            memo = ?claim_memo;
+            created_at_time = ?claim_created_at;
         };
 
 
@@ -1093,17 +1142,80 @@ shared (deployer) actor class SneedRLL() = this {
         return result;
 
     } catch e {
-        // Log error in claim
+        // Ambiguous outcome: the await threw, so the transfer MAY have executed on the
+        // ledger despite the error. We must NOT re-credit — restoring the balance after
+        // a transfer that actually landed would enable a double-withdrawal. Instead,
+        // leave the owners debited and record a persistent incident carrying everything
+        // needed to reconcile it manually (match the memo in the ledger's
+        // get_transactions; re-credit the recorded owners via resolve_claim_incident if
+        // it turns out the transfer never landed).
         log_claim(seq, hotkey, icrc1_ledger_canister_id, total_balance - fee, fee, #Failed, ?Error.message(e), null);
-        
-        for((owner, balance) in owner_balances.vals()) {
-            ignore increase_balance(owner, icrc1_ledger_canister_id, balance);
-        };
-        return #Err(#GenericError { error_code = 1; message = Error.message(e); });
+
+        let incident_id = create_claim_incident(
+            seq,
+            icrc1_ledger_canister_id,
+            hotkey,
+            owner_balances,
+            total_balance,
+            amount,
+            fee,
+            claim_memo,
+            claim_created_at,
+            Error.message(e)
+        );
+        return #Err(#GenericError {
+            error_code = 1;
+            message = "Transfer outcome unknown; balances were NOT re-credited. Incident #" # Nat.toText(incident_id) # " recorded for manual reconciliation. Underlying error: " # Error.message(e);
+        });
     };
   };
 
 
+
+  // Admin: list all recorded claim incidents (ambiguous-outcome transfer failures).
+  public query ({ caller }) func list_claim_incidents() : async [T.ClaimIncident] {
+    assert is_admin(caller);
+    claim_incidents;
+  };
+
+  // Admin: resolve an incident after checking the ledger (e.g. via get_transactions,
+  // matching the incident's memo). Pass landed = true if the transfer DID execute
+  // (nothing owed — just close it), or landed = false if it never executed, in which
+  // case the recorded owners are re-credited exactly what they were debited.
+  public shared ({ caller }) func resolve_claim_incident(id : Nat, landed : Bool) : async Result.Result<Text, Text> {
+    if (not is_admin(caller)) {
+      return #err("Caller is not admin");
+    };
+
+    var target : ?T.ClaimIncident = null;
+    claim_incidents := Array.map<T.ClaimIncident, T.ClaimIncident>(claim_incidents, func (inc) {
+      if (inc.id == id and not inc.resolved) {
+        target := ?inc;
+        {
+          inc with
+          resolved = true;
+          landed = ?landed;
+          resolved_at = ?Nat64.fromNat(Int.abs(Time.now()));
+        }
+      } else { inc }
+    });
+
+    switch (target) {
+      case (null) { #err("Incident #" # Nat.toText(id) # " not found or already resolved"); };
+      case (?inc) {
+        if (not landed) {
+          // Transfer never executed → make the owners whole by restoring exactly
+          // what was debited.
+          for ((owner, amt) in inc.owners.vals()) {
+            ignore increase_balance(owner, inc.token_id, amt);
+          };
+          #ok("Incident #" # Nat.toText(id) # " resolved: transfer did not land, " # Nat.toText(inc.owners.size()) # " owner balance(s) re-credited");
+        } else {
+          #ok("Incident #" # Nat.toText(id) # " resolved: transfer confirmed landed, no re-credit");
+        };
+      };
+    };
+  };
 
   // returns (owner, amount) pairs for balances of the owner accounts of neurons tagged by the given hotkey, for a given token
   private func get_hotkey_owner_balances(hotkey : Principal, icrc1_ledger_canister_id : Principal) : async [(Principal, Nat)] {
