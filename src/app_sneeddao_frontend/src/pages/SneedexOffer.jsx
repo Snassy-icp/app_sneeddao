@@ -1793,9 +1793,17 @@ function SneedexOffer() {
             
         } catch (e) {
             console.error('Failed during buyout process:', e);
-            setError(e.message || 'Failed to complete buyout');
             setBuyoutProgress('');
-            
+
+            // Refresh offer/bid state before showing the error. A buyout confirm
+            // can now legitimately fail when another buyer completes the offer
+            // first (our bid is marked lost and refunded server-side), so the
+            // on-screen offer may be stale. fetchOffer clears the error text
+            // itself, so set our message afterwards so it isn't clobbered.
+            await fetchOffer();
+            fetchUserBalance();
+            setError(e.message || 'Failed to complete buyout');
+
             // If reservation failed, clear pending bid
             if (!bidId) {
                 setPendingBid(null);
