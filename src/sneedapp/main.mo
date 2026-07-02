@@ -51,6 +51,22 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Authorized callers for "for" methods (e.g., Sneedex)
     var authorizedForCallersStable: [Principal] = [];
     transient var authorizedForCallers = HashMap.HashMap<Principal, Bool>(10, Principal.equal, Principal.hash);
+
+    // In-flight guard for a caller's payment subaccount (transient — intentionally
+    // reset on upgrade). Every await is a commit point and concurrent ingress
+    // messages interleave, so without this a caller could race withdrawUserPayment
+    // against a mint (draining the subaccount after the balance check but before
+    // the fee/publisher transfers settle) or run two mints at once and double-spend
+    // the same deposit. Any operation that reads-then-transfers from the caller's
+    // subaccount (mintCanister, createNeuronManager, withdrawUserPayment) holds
+    // this lock for the duration of its payment phase.
+    transient var paymentLocks = HashMap.HashMap<Principal, ()>(10, Principal.equal, Principal.hash);
+
+    func isPaymentLocked(p: Principal): Bool {
+        switch (paymentLocks.get(p)) { case (?_) { true }; case null { false } };
+    };
+    func lockPayment(p: Principal) { paymentLocks.put(p, ()) };
+    func unlockPayment(p: Principal) { paymentLocks.delete(p) };
     
     // Current manager version (set by admin when uploading WASM)
     var currentVersion: T.Version = { major = 0; minor = 0; patch = 0 };
@@ -1351,29 +1367,42 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     public shared ({ caller }) func withdrawUserPayment(): async T.TransferResult {
         let subaccount = principalToSubaccount(caller);
         let fee = Nat64.toNat(T.ICP_FEE);
-        
-        // Get balance in user's subaccount
-        let balance = await ledger.icrc1_balance_of({
-            owner = Principal.fromActor(this);
-            subaccount = ?subaccount;
-        });
-        
-        // Check if there's anything to withdraw (accounting for fee)
-        if (balance <= fee) {
-            return #Err(#InsufficientFunds({ balance = balance }));
+
+        // Refuse while a mint or another withdrawal for this caller is in flight.
+        // Without this, a withdrawal racing a mint can drain the subaccount after
+        // the mint's balance check but before its fee/publisher transfers settle,
+        // letting the caller keep the price while the canister is still minted.
+        if (isPaymentLocked(caller)) {
+            return #Err(#TemporarilyUnavailable);
         };
-        
-        // Withdraw to caller's main account (balance - fee)
-        let withdrawAmount = balance - fee;
-        
-        await ledger.icrc1_transfer({
-            to = { owner = caller; subaccount = null };
-            fee = ?fee;
-            memo = null;
-            from_subaccount = ?subaccount;
-            created_at_time = null;
-            amount = withdrawAmount;
-        });
+        lockPayment(caller);
+
+        try {
+            // Get balance in user's subaccount
+            let balance = await ledger.icrc1_balance_of({
+                owner = Principal.fromActor(this);
+                subaccount = ?subaccount;
+            });
+
+            // Check if there's anything to withdraw (accounting for fee)
+            if (balance <= fee) {
+                return #Err(#InsufficientFunds({ balance = balance }));
+            };
+
+            // Withdraw to caller's main account (balance - fee)
+            let withdrawAmount = balance - fee;
+
+            await ledger.icrc1_transfer({
+                to = { owner = caller; subaccount = null };
+                fee = ?fee;
+                memo = null;
+                from_subaccount = ?subaccount;
+                created_at_time = null;
+                amount = withdrawAmount;
+            });
+        } finally {
+            unlockPayment(caller);
+        };
     };
 
     // Transfer ICP to CMC and notify to top up this canister with cycles
@@ -1431,7 +1460,16 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         // Process payment if required
         if (paymentRequired) {
             let userSubaccount = principalToSubaccount(caller);
-            
+
+            // Serialize with any other operation on this caller's payment
+            // subaccount (a withdrawal or a second concurrent mint) so the
+            // deposit can't be drained or double-spent across the awaits below.
+            if (isPaymentLocked(caller)) {
+                return #Err(#TransferFailed("A payment operation is already in progress for this account; please retry"));
+            };
+            lockPayment(caller);
+
+            try {
             // Check if user is a Sneed Premium member for discounted pricing
             let isPremiumMember: Bool = switch (sneedPremiumCanisterId) {
                 case null { false };
@@ -1519,8 +1557,12 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 
                 switch (feeTransfer) {
                     case (#Err(_)) {
-                        // Log but don't fail - cycles portion already transferred
-                        // Note: profit tracking may be inaccurate if this fails
+                        // The subaccount was balance-checked and is locked, so a
+                        // failure here is a genuine ledger error rather than a
+                        // drain. Abort instead of completing the mint with the fee
+                        // unpaid; the caller's deposit stays in their subaccount
+                        // for them to withdraw.
+                        return #Err(#TransferFailed("Failed to transfer creation fee"));
                     };
                     case (#Ok(_)) {};
                 };
@@ -1538,6 +1580,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                         trackedCyclesReceivedFromCmc := cyclesReceived;
                     };
                 };
+            };
+            } finally {
+                unlockPayment(caller);
             };
         };
 
@@ -2368,7 +2413,16 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         // 5. Process payment
         if (paymentRequired) {
             let userSubaccount = principalToSubaccount(caller);
-            
+
+            // Serialize with any other operation on this caller's payment
+            // subaccount (a withdrawal or a second concurrent mint) so the
+            // deposit can't be drained or double-spent across the awaits below.
+            if (isPaymentLocked(caller)) {
+                return #Err(#TransferFailed("A payment operation is already in progress for this account; please retry"));
+            };
+            lockPayment(caller);
+
+            try {
             let isPremiumMember: Bool = switch (sneedPremiumCanisterId) {
                 case null { false };
                 case (?premCanisterId) {
@@ -2447,7 +2501,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                         amount = Nat64.toNat(profit);
                     });
                     switch (feeTransfer) {
-                        case (#Err(_)) {};
+                        case (#Err(_)) { return #Err(#TransferFailed("Failed to transfer DAO profit")) };
                         case (#Ok(_)) {};
                     };
                 };
@@ -2472,7 +2526,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                         amount = Nat64.toNat(daoCut);
                     });
                     switch (daoCutTransfer) {
-                        case (#Err(_)) {};
+                        case (#Err(_)) { return #Err(#TransferFailed("Failed to transfer DAO cut")) };
                         case (#Ok(_)) {};
                     };
                 };
@@ -2489,7 +2543,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                         amount = Nat64.toNat(publisherShare);
                     });
                     switch (pubTransfer) {
-                        case (#Err(_)) {};
+                        case (#Err(_)) { return #Err(#TransferFailed("Failed to transfer publisher share")) };
                         case (#Ok(_)) {};
                     };
                 };
@@ -2504,6 +2558,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                         trackedCyclesReceivedFromCmc := cyclesReceived;
                     };
                 };
+            };
+            } finally {
+                unlockPayment(caller);
             };
         };
 
