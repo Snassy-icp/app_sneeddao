@@ -12,7 +12,7 @@ import Buffer "mo:base/Buffer";
 import Debug "mo:base/Debug";
 
 import Map "mo:map/Map";
-import { phash } "mo:map/Map";
+import { phash; nhash } "mo:map/Map";
 
 import T "Types";
 import Utils "Utils";
@@ -53,8 +53,25 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // Offers storage
     var offers : [T.Offer] = [];
     
-    // Bids storage  
+    // Bids storage
     var bids : [T.Bid] = [];
+
+    // In-flight guard for bid escrow withdrawals (transient — intentionally
+    // reset on upgrade). On ICP every await is a commit point and concurrent
+    // ingress messages interleave, so two withdrawBidEscrow calls on the same
+    // bid could each pass the reserve check across awaits and collectively
+    // drain the escrow below the bid amount. This set serializes them per bid.
+    transient var bidEscrowLocks = Map.new<T.BidId, ()>();
+
+    func isBidEscrowLocked(bidId : T.BidId) : Bool {
+        Map.has(bidEscrowLocks, nhash, bidId);
+    };
+    func lockBidEscrow(bidId : T.BidId) {
+        Map.set(bidEscrowLocks, nhash, bidId, ());
+    };
+    func unlockBidEscrow(bidId : T.BidId) {
+        Map.delete(bidEscrowLocks, nhash, bidId);
+    };
     
     // Marketplace fee settings
     // Fee rate in basis points (100 = 1%, 250 = 2.5%, etc.)
@@ -2700,7 +2717,23 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 if (not Principal.equal(caller, bid.bidder)) {
                                     return #err(#NotAuthorized);
                                 };
-                                
+
+                                // Gate asset release on the escrow still holding the
+                                // full bid amount. Even with the withdrawBidEscrow
+                                // guard in place, never hand over the assets unless the
+                                // seller is still guaranteed to be paid — otherwise a
+                                // drained escrow would let the winner take the assets
+                                // while claimWinningBid later fails.
+                                let winningEscrowSubaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
+                                let winningEscrowBalance = await* AssetHandlers.getTokenBalance(
+                                    offer.price_token_ledger,
+                                    self(),
+                                    ?winningEscrowSubaccount
+                                );
+                                if (winningEscrowBalance < bid.amount) {
+                                    return #err(#InvalidState("Winning bid escrow no longer holds the full bid amount; assets cannot be released"));
+                                };
+
                                 // Transfer all assets to the winner
                                 for (entry in offer.assets.vals()) {
                                     switch (entry.asset) {
@@ -3187,49 +3220,63 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     case null { return #err(#OfferNotFound) };
                     case (?offer) {
                         let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
-                        
-                        // Get current balance
-                        let balance = await* AssetHandlers.getTokenBalance(
-                            offer.price_token_ledger,
-                            self(),
-                            ?subaccount
-                        );
-                        
-                        // Get the ledger fee
-                        let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
-                        
-                        // Calculate minimum that must remain
-                        // After confirmation: bid amount + 1 fee (for eventual refund/claim transfer)
-                        let minimumReserved : Nat = if (bid.tokens_escrowed) {
-                            bid.amount + fee // Must keep bid amount + 1 fee for later transfer
-                        } else {
-                            0 // Nothing reserved yet
+
+                        // In-flight guard: reject a second concurrent withdrawal on
+                        // the same bid. Without this, both calls read the balance
+                        // before either transfer settles, both pass the reserve
+                        // check, and together they drain the escrow below bid.amount.
+                        if (isBidEscrowLocked(bid.id)) {
+                            return #err(#InvalidState("A withdrawal is already in progress for this bid"));
                         };
-                        
-                        let maxWithdrawable : Nat = if (balance > minimumReserved) {
-                            balance - minimumReserved
-                        } else {
-                            0
-                        };
-                        
-                        if (amount > maxWithdrawable) {
-                            return #err(#InsufficientFunds({ 
-                                available = maxWithdrawable;
-                                required = amount
-                            }));
-                        };
-                        
-                        // Perform transfer back to caller
-                        let transferResult = await* AssetHandlers.transferTokens(
-                            offer.price_token_ledger,
-                            ?subaccount,
-                            { owner = caller; subaccount = null },
-                            amount
-                        );
-                        
-                        switch (transferResult) {
-                            case (#err(e)) { return #err(e) };
-                            case (#ok(txId)) { return #ok(txId) };
+                        lockBidEscrow(bid.id);
+
+                        try {
+                            // Get current balance
+                            let balance = await* AssetHandlers.getTokenBalance(
+                                offer.price_token_ledger,
+                                self(),
+                                ?subaccount
+                            );
+
+                            // Get the ledger fee
+                            let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
+
+                            // Calculate minimum that must remain
+                            // After confirmation: bid amount + 1 fee (for eventual refund/claim transfer)
+                            let minimumReserved : Nat = if (bid.tokens_escrowed) {
+                                bid.amount + fee // Must keep bid amount + 1 fee for later transfer
+                            } else {
+                                0 // Nothing reserved yet
+                            };
+
+                            let maxWithdrawable : Nat = if (balance > minimumReserved) {
+                                balance - minimumReserved
+                            } else {
+                                0
+                            };
+
+                            if (amount > maxWithdrawable) {
+                                return #err(#InsufficientFunds({
+                                    available = maxWithdrawable;
+                                    required = amount
+                                }));
+                            };
+
+                            // Perform transfer back to caller
+                            let transferResult = await* AssetHandlers.transferTokens(
+                                offer.price_token_ledger,
+                                ?subaccount,
+                                { owner = caller; subaccount = null },
+                                amount
+                            );
+
+                            switch (transferResult) {
+                                case (#err(e)) { return #err(e) };
+                                case (#ok(txId)) { return #ok(txId) };
+                            };
+                        } finally {
+                            // Always release the lock, including on early return or trap.
+                            unlockBidEscrow(bid.id);
                         };
                     };
                 };
