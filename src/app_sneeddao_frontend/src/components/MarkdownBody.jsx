@@ -2,8 +2,17 @@ import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useTheme } from '../contexts/ThemeContext';
 
-function normalizeMarkdownInput(input) {
+// Convert HTML line breaks ("<br>", "<br/>", "<br />") into markdown paragraph
+// breaks. Proposal summaries from SNS/NNS APIs sometimes contain them, and
+// react-markdown (without rehype-raw) drops raw HTML nodes entirely.
+export function convertHtmlBreaks(text) {
+  if (!text) return '';
+  return text.toString().replace(/<br\s*\/?>/gi, '\n\n');
+}
+
+function normalizeMarkdownInput(input, hardBreaks) {
   const text = (input ?? '').toString().replace(/\r\n/g, '\n');
+  if (!hardBreaks) return text;
 
   // Preserve today's behavior (whiteSpace: pre-wrap) where single newlines show up as line breaks.
   // But keep *blank lines* as paragraph breaks.
@@ -26,17 +35,19 @@ function safeUrlTransform(url) {
   return u;
 }
 
-export default function MarkdownBody({ text, style }) {
+export default function MarkdownBody({ text, style, linkColor, hardBreaks = true }) {
   const { theme, isDark } = useTheme();
-  const content = useMemo(() => normalizeMarkdownInput(text), [text]);
+  const content = useMemo(() => normalizeMarkdownInput(text, hardBreaks), [text, hardBreaks]);
+  const accent = linkColor || theme.colors.accent;
+  const codeBg = isDark ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.08)';
 
   return (
-    <div style={{ 
-      color: theme.colors.primaryText, 
-      lineHeight: '1.4', 
+    <div style={{
+      color: theme.colors.primaryText,
+      lineHeight: '1.4',
       fontSize: '14px',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-      ...style 
+      ...style
     }}>
       <ReactMarkdown
         urlTransform={safeUrlTransform}
@@ -47,28 +58,69 @@ export default function MarkdownBody({ text, style }) {
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              style={{ color: theme.colors.accent, textDecoration: 'underline' }}
+              style={{ color: accent, textDecoration: 'underline', wordBreak: 'break-word' }}
               {...props}
             >
               {children}
             </a>
           ),
-          code: ({ inline, children, ...props }) => (
-            <code
+          h1: (props) => <h1 style={{ fontSize: '1.2rem', fontWeight: '700', color: 'inherit', margin: '1rem 0 0.5rem 0' }} {...props} />,
+          h2: (props) => <h2 style={{ fontSize: '1.1rem', fontWeight: '600', color: 'inherit', margin: '0.75rem 0 0.5rem 0' }} {...props} />,
+          h3: (props) => <h3 style={{ fontSize: '1rem', fontWeight: '600', color: 'inherit', margin: '0.5rem 0 0.25rem 0' }} {...props} />,
+          ul: (props) => <ul style={{ paddingLeft: '1.5rem', margin: '0.5rem 0' }} {...props} />,
+          ol: (props) => <ol style={{ paddingLeft: '1.5rem', margin: '0.5rem 0' }} {...props} />,
+          li: (props) => <li style={{ marginBottom: '2px', color: 'inherit' }} {...props} />,
+          blockquote: (props) => (
+            <blockquote
               style={{
-                backgroundColor: isDark ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.08)',
-                color: theme.colors.primaryText,
-                padding: inline ? '1px 4px' : '10px',
+                borderLeft: `3px solid ${accent}`,
+                paddingLeft: '1rem',
+                margin: '0.75rem 0',
+                color: theme.colors.secondaryText
+              }}
+              {...props}
+            />
+          ),
+          pre: ({ node, children, ...props }) => (
+            <pre
+              style={{
+                backgroundColor: codeBg,
+                padding: '10px',
                 borderRadius: '6px',
-                display: inline ? 'inline' : 'block',
-                overflowX: 'auto'
+                overflowX: 'auto',
+                margin: '0 0 8px 0'
               }}
               {...props}
             >
               {children}
-            </code>
+            </pre>
           ),
-          li: (props) => <li style={{ marginBottom: '2px', color: 'inherit' }} {...props} />
+          code: ({ className, children, ...props }) => {
+            // react-markdown v10 no longer passes an `inline` prop. Fenced/indented
+            // code has a language-* class or embedded newlines (and is wrapped in
+            // <pre>, which carries the block styling above).
+            const isBlock = /\blanguage-/.test(className || '') || String(children).includes('\n');
+            return (
+              <code
+                className={className}
+                style={isBlock ? {
+                  color: theme.colors.primaryText,
+                  fontFamily: 'monospace',
+                  fontSize: '0.9em'
+                } : {
+                  backgroundColor: codeBg,
+                  color: theme.colors.primaryText,
+                  padding: '1px 4px',
+                  borderRadius: '6px',
+                  fontFamily: 'monospace',
+                  fontSize: '0.9em'
+                }}
+                {...props}
+              >
+                {children}
+              </code>
+            );
+          }
         }}
       >
         {content}
@@ -76,4 +128,3 @@ export default function MarkdownBody({ text, style }) {
     </div>
   );
 }
-
