@@ -6,7 +6,7 @@ import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
 import { useNeurons } from '../contexts/NeuronsContext';
 import Header from '../components/Header';
-import ReactMarkdown from 'react-markdown';
+import MarkdownBody, { convertHtmlBreaks } from '../components/MarkdownBody';
 import { getSnsById, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
 import { useOptimizedSnsLoading } from '../hooks/useOptimizedSnsLoading';
 import { formatProposalIdLink, formatNeuronDisplayWithContext, uint8ArrayToHex } from '../utils/NeuronUtils';
@@ -965,12 +965,6 @@ function Proposals() {
     // getProposalStatus is now imported from ProposalUtils
     // It correctly handles executed proposals that are still accepting votes
 
-    // Helper function to convert HTML breaks to Markdown
-    const convertHtmlToMarkdown = (text) => {
-        if (!text) return '';
-        return text.replace(/<br>/g, '\n\n');
-    };
-
     // Add toggle function for summaries
     const toggleSummary = (proposalId) => {
         setExpandedSummaries(prev => {
@@ -1118,7 +1112,7 @@ function Proposals() {
 
             // Get summary (clean up HTML/Markdown)
             const summary = proposal.proposal?.[0]?.summary || '';
-            const cleanSummary = convertHtmlToMarkdown(summary).replace(/\n+/g, ' ').trim();
+            const cleanSummary = convertHtmlBreaks(summary).replace(/\n+/g, ' ').trim();
 
             // Extract raw payload
             const rawPayload = extractRawPayload(proposal);
@@ -2016,9 +2010,15 @@ function Proposals() {
                                             maxHeight: '400px',
                                             overflow: 'auto'
                                         }}>
-                                            <ReactMarkdown>
-                                                {convertHtmlToMarkdown(proposal.proposal[0]?.summary || 'No summary available')}
-                                            </ReactMarkdown>
+                                            <MarkdownBody
+                                                text={convertHtmlBreaks(proposal.proposal[0]?.summary || 'No summary available')}
+                                                hardBreaks={false}
+                                                style={{
+                                                    color: theme.colors.secondaryText,
+                                                    fontSize: '0.9rem',
+                                                    lineHeight: '1.6'
+                                                }}
+                                            />
                                         </div>
                                     )}
                                     
