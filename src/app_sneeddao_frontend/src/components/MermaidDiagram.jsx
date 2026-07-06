@@ -62,6 +62,9 @@ export default function MermaidDiagram({ code }) {
           startOnLoad: false,
           securityLevel: 'strict',
           theme: isDark ? 'dark' : 'default',
+          // Render labels as SVG text, never HTML — attacker HTML must not become DOM elements.
+          htmlLabels: false,
+          flowchart: { htmlLabels: false },
           maxTextSize: MAX_SOURCE_CHARS,
           maxEdges: MAX_EDGES,
         });
