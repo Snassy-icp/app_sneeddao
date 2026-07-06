@@ -10,7 +10,7 @@ import Header from './components/Header';
 import HotkeyNeurons from './components/HotkeyNeurons';
 import Discussion from './components/Discussion';
 import ThreadViewer from './components/ThreadViewer';
-import ReactMarkdown from 'react-markdown';
+import MarkdownBody, { convertHtmlBreaks } from './components/MarkdownBody';
 import './Wallet.css';
 import { getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
 import { useOptimizedSnsLoading } from './hooks/useOptimizedSnsLoading';
@@ -517,10 +517,6 @@ function Proposal() {
         return (Number(tally.total) * 0.03);
     };
 
-    const convertHtmlToMarkdown = (text) => {
-        if (!text) return '';
-        return text.replace(/<br>/g, '\n\n');
-    };
 
     const selectedSns = getSnsById(selectedSnsRoot);
 
@@ -1243,28 +1239,16 @@ function Proposal() {
                                             marginBottom: '1.5rem'
                                         }}>
                                             <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '0.75rem' }}>Summary</div>
-                                            <div style={{
-                                                color: theme.colors.primaryText,
-                                                fontSize: '0.95rem',
-                                                lineHeight: '1.6',
-                                                wordBreak: 'break-word'
-                                            }}>
-                                                <ReactMarkdown
-                                                    components={{
-                                                        a: ({node, ...props}) => (
-                                                            <a {...props} style={{
-                                                                color: proposalPrimary,
-                                                                wordBreak: 'break-all'
-                                                            }} target="_blank" rel="noopener noreferrer" />
-                                                        ),
-                                                        p: ({node, ...props}) => (
-                                                            <p {...props} style={{ margin: '0 0 0.75rem 0' }} />
-                                                        )
-                                                    }}
-                                                >
-                                                    {convertHtmlToMarkdown(proposalData.proposal?.[0]?.summary || 'No summary')}
-                                                </ReactMarkdown>
-                                            </div>
+                                            <MarkdownBody
+                                                text={convertHtmlBreaks(proposalData.proposal?.[0]?.summary || 'No summary')}
+                                                hardBreaks={false}
+                                                linkColor={proposalPrimary}
+                                                style={{
+                                                    fontSize: '0.95rem',
+                                                    lineHeight: '1.6',
+                                                    wordBreak: 'break-word'
+                                                }}
+                                            />
                                         </div>
                                         
                                         {/* External Links */}
