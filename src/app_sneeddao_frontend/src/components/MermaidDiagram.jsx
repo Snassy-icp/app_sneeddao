@@ -33,7 +33,8 @@ export default function MermaidDiagram({ code }) {
   const [error, setError] = useState(null);
   // useId is stable per instance; strip non-alphanumerics (useId contains
   // colons) because mermaid uses this id inside CSS selectors.
-  const renderId = 'mmd' + useId().replace(/[^a-zA-Z0-9]/g, '');
+  const idBase = 'mmd' + useId().replace(/[^a-zA-Z0-9]/g, '');
+  const runSeq = useRef(0);
 
   // MarkdownBody's hard-break normalization appends trailing "  " to lines
   // inside fenced blocks too; strip it so it never reaches the parser.
@@ -47,9 +48,16 @@ export default function MermaidDiagram({ code }) {
       return undefined;
     }
     let cancelled = false;
+    // Unique per render run (not just per instance): if source/isDark change
+    // while a previous mermaid.render() is still in flight, the two runs must
+    // not share a temp-element id, or one run's cleanup can delete the other
+    // run's in-flight scratch element.
+    const renderId = idBase + (runSeq.current += 1);
     setError(null);
     loadMermaid()
       .then((mermaid) => {
+        // initialize() writes global config; safe because every caller uses identical
+        // security/caps and isDark is page-global.
         mermaid.initialize({
           startOnLoad: false,
           securityLevel: 'strict',
@@ -70,7 +78,7 @@ export default function MermaidDiagram({ code }) {
         if (!cancelled) setError('Could not render diagram');
       });
     return () => { cancelled = true; };
-  }, [source, isDark, renderId]);
+  }, [source, isDark, idBase]);
 
   return (
     <div style={{ margin: '0 0 8px 0' }}>
