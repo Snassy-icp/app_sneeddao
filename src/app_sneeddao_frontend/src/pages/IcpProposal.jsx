@@ -5,7 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import Header from '../components/Header';
 import IcpHotkeyNeurons from '../components/IcpHotkeyNeurons';
-import ReactMarkdown from 'react-markdown';
+import MarkdownBody, { convertHtmlBreaks } from '../components/MarkdownBody';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { FaGavel, FaArrowLeft, FaExternalLinkAlt, FaCheck, FaTimes, FaClock, FaChevronDown, FaChevronRight, FaFilter, FaSort, FaSync, FaCopy } from 'react-icons/fa';
 import {
@@ -203,11 +203,6 @@ function IcpProposal() {
             return (displayValue / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
         }
         return displayValue.toFixed(displayValue < 10 ? 2 : 0).replace(/\.0$/, '');
-    };
-
-    const convertHtmlToMarkdown = (text) => {
-        if (!text) return '';
-        return text.replace(/<br>/g, '\n\n');
     };
 
     const copyToClipboard = useCallback((text) => {
@@ -467,29 +462,15 @@ function IcpProposal() {
                     }}>
                         Motion Text
                     </div>
-                    <div style={{
-                        color: theme.colors.primaryText,
-                        fontSize: '0.9rem',
-                        lineHeight: '1.6',
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word'
-                    }}>
-                        <ReactMarkdown
-                            components={{
-                                a: ({node, ...props}) => (
-                                    <a {...props} style={{
-                                        color: proposalPrimary,
-                                        wordBreak: 'break-all'
-                                    }} target="_blank" rel="noopener noreferrer" />
-                                ),
-                                p: ({node, ...props}) => (
-                                    <p {...props} style={{ margin: '0 0 0.75rem 0' }} />
-                                )
-                            }}
-                        >
-                            {convertHtmlToMarkdown(motionText)}
-                        </ReactMarkdown>
-                    </div>
+                    <MarkdownBody
+                        text={convertHtmlBreaks(motionText)}
+                        linkColor={proposalPrimary}
+                        style={{
+                            fontSize: '0.9rem',
+                            lineHeight: '1.6',
+                            wordBreak: 'break-word'
+                        }}
+                    />
                 </div>
             );
         }
@@ -1439,75 +1420,16 @@ function IcpProposal() {
                                                         border: `1px solid ${theme.colors.border}`,
                                                         borderTop: 'none'
                                                     }}>
-                                                        <div style={{
-                                                            color: theme.colors.primaryText,
-                                                            fontSize: '0.95rem',
-                                                            lineHeight: '1.6',
-                                                            wordBreak: 'break-word'
-                                                        }}>
-                                                            <ReactMarkdown
-                                                                components={{
-                                                                    a: ({node, ...props}) => (
-                                                                        <a {...props} style={{
-                                                                            color: proposalPrimary,
-                                                                            wordBreak: 'break-all'
-                                                                        }} target="_blank" rel="noopener noreferrer" />
-                                                                    ),
-                                                                    p: ({node, ...props}) => (
-                                                                        <p {...props} style={{ margin: '0 0 0.75rem 0' }} />
-                                                                    ),
-                                                                    h1: ({node, ...props}) => (
-                                                                        <h1 {...props} style={{ fontSize: '1.2rem', fontWeight: '700', color: theme.colors.primaryText, margin: '1rem 0 0.5rem 0' }} />
-                                                                    ),
-                                                                    h2: ({node, ...props}) => (
-                                                                        <h2 {...props} style={{ fontSize: '1.1rem', fontWeight: '600', color: theme.colors.primaryText, margin: '0.75rem 0 0.5rem 0' }} />
-                                                                    ),
-                                                                    h3: ({node, ...props}) => (
-                                                                        <h3 {...props} style={{ fontSize: '1rem', fontWeight: '600', color: theme.colors.primaryText, margin: '0.5rem 0 0.25rem 0' }} />
-                                                                    ),
-                                                                    ul: ({node, ...props}) => (
-                                                                        <ul {...props} style={{ paddingLeft: '1.5rem', margin: '0.5rem 0' }} />
-                                                                    ),
-                                                                    ol: ({node, ...props}) => (
-                                                                        <ol {...props} style={{ paddingLeft: '1.5rem', margin: '0.5rem 0' }} />
-                                                                    ),
-                                                                    li: ({node, ...props}) => (
-                                                                        <li {...props} style={{ marginBottom: '0.25rem' }} />
-                                                                    ),
-                                                                    code: ({node, inline, ...props}) => (
-                                                                        inline
-                                                                            ? <code {...props} style={{
-                                                                                background: theme.colors.secondaryBg,
-                                                                                padding: '2px 6px',
-                                                                                borderRadius: '4px',
-                                                                                fontSize: '0.85em',
-                                                                                fontFamily: 'monospace'
-                                                                            }} />
-                                                                            : <code {...props} style={{
-                                                                                display: 'block',
-                                                                                background: theme.colors.secondaryBg,
-                                                                                padding: '0.75rem',
-                                                                                borderRadius: '6px',
-                                                                                fontSize: '0.85em',
-                                                                                fontFamily: 'monospace',
-                                                                                overflowX: 'auto',
-                                                                                whiteSpace: 'pre-wrap',
-                                                                                wordBreak: 'break-all'
-                                                                            }} />
-                                                                    ),
-                                                                    blockquote: ({node, ...props}) => (
-                                                                        <blockquote {...props} style={{
-                                                                            borderLeft: `3px solid ${proposalPrimary}`,
-                                                                            paddingLeft: '1rem',
-                                                                            margin: '0.75rem 0',
-                                                                            color: theme.colors.secondaryText
-                                                                        }} />
-                                                                    )
-                                                                }}
-                                                            >
-                                                                {convertHtmlToMarkdown(summary)}
-                                                            </ReactMarkdown>
-                                                        </div>
+                                                        <MarkdownBody
+                                                            text={convertHtmlBreaks(summary)}
+                                                            hardBreaks={false}
+                                                            linkColor={proposalPrimary}
+                                                            style={{
+                                                                fontSize: '0.95rem',
+                                                                lineHeight: '1.6',
+                                                                wordBreak: 'break-word'
+                                                            }}
+                                                        />
                                                     </div>
                                                 )}
                                             </div>
