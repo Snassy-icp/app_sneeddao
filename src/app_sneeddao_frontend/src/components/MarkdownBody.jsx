@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useTheme } from '../contexts/ThemeContext';
+import MermaidDiagram from './MermaidDiagram';
 
 // Convert HTML line breaks ("<br>", "<br/>", "<br />") into markdown paragraph
 // breaks. Proposal summaries from SNS/NNS APIs sometimes contain them, and
@@ -33,6 +34,15 @@ function safeUrlTransform(url) {
   // Block JS/data/vbscript URLs.
   if (/^(javascript|data|vbscript):/i.test(u)) return '';
   return u;
+}
+
+// If this <pre> wraps a ```mermaid fence, return the diagram source, else null.
+function extractMermaidSource(preNode) {
+  const codeNode = (preNode?.children || []).find((child) => child.tagName === 'code');
+  const classNames = codeNode?.properties?.className;
+  const classList = Array.isArray(classNames) ? classNames : classNames ? [classNames] : [];
+  if (!classList.includes('language-mermaid')) return null;
+  return (codeNode.children || []).map((child) => child.value || '').join('');
 }
 
 export default function MarkdownBody({ text, style, linkColor, hardBreaks = true }) {
@@ -81,20 +91,26 @@ export default function MarkdownBody({ text, style, linkColor, hardBreaks = true
               {...props}
             />
           ),
-          pre: ({ node, children, ...props }) => (
-            <pre
-              style={{
-                backgroundColor: codeBg,
-                padding: '10px',
-                borderRadius: '6px',
-                overflowX: 'auto',
-                margin: '0 0 8px 0'
-              }}
-              {...props}
-            >
-              {children}
-            </pre>
-          ),
+          pre: ({ node, children, ...props }) => {
+            const mermaidSource = extractMermaidSource(node);
+            if (mermaidSource !== null) {
+              return <MermaidDiagram code={mermaidSource} />;
+            }
+            return (
+              <pre
+                style={{
+                  backgroundColor: codeBg,
+                  padding: '10px',
+                  borderRadius: '6px',
+                  overflowX: 'auto',
+                  margin: '0 0 8px 0'
+                }}
+                {...props}
+              >
+                {children}
+              </pre>
+            );
+          },
           code: ({ className, children, ...props }) => {
             // react-markdown v10 no longer passes an `inline` prop. Fenced/indented
             // code has a language-* class or embedded newlines (and is wrapped in
