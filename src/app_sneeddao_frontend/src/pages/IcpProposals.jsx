@@ -5,7 +5,7 @@ import { useWallet } from '../contexts/WalletContext';
 import { useNaming } from '../NamingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Header from '../components/Header';
-import ReactMarkdown from 'react-markdown';
+import MarkdownBody, { convertHtmlBreaks } from '../components/MarkdownBody';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import {
     createNnsGovActor, NNS_TOPICS, NNS_PROPOSAL_STATUS,
@@ -517,11 +517,6 @@ function IcpProposals() {
             }
             return newSet;
         });
-    };
-
-    const convertHtmlToMarkdown = (text) => {
-        if (!text) return '';
-        return text.replace(/<br>/g, '\n\n');
     };
 
     // Get status color and icon
@@ -1338,9 +1333,15 @@ function IcpProposals() {
                                             maxHeight: '400px',
                                             overflow: 'auto'
                                         }}>
-                                            <ReactMarkdown>
-                                                {convertHtmlToMarkdown(summary || 'No summary available')}
-                                            </ReactMarkdown>
+                                            <MarkdownBody
+                                                text={convertHtmlBreaks(summary || 'No summary available')}
+                                                hardBreaks={false}
+                                                style={{
+                                                    color: theme.colors.secondaryText,
+                                                    fontSize: '0.9rem',
+                                                    lineHeight: '1.6'
+                                                }}
+                                            />
                                         </div>
                                     )}
 
