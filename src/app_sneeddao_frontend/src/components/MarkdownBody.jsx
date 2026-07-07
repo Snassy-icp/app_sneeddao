@@ -62,8 +62,8 @@ export default function MarkdownBody({ text, style, linkColor, hardBreaks = true
       <ReactMarkdown
         urlTransform={safeUrlTransform}
         components={{
-          p: (props) => <p style={{ margin: '0 0 8px 0', color: 'inherit' }} {...props} />,
-          a: ({ href, children, ...props }) => (
+          p: ({ node, ...props }) => <p style={{ margin: '0 0 8px 0', color: 'inherit' }} {...props} />,
+          a: ({ node, href, children, ...props }) => (
             <a
               href={href}
               target="_blank"
@@ -74,13 +74,13 @@ export default function MarkdownBody({ text, style, linkColor, hardBreaks = true
               {children}
             </a>
           ),
-          h1: (props) => <h1 style={{ fontSize: '1.2rem', fontWeight: '700', color: 'inherit', margin: '1rem 0 0.5rem 0' }} {...props} />,
-          h2: (props) => <h2 style={{ fontSize: '1.1rem', fontWeight: '600', color: 'inherit', margin: '0.75rem 0 0.5rem 0' }} {...props} />,
-          h3: (props) => <h3 style={{ fontSize: '1rem', fontWeight: '600', color: 'inherit', margin: '0.5rem 0 0.25rem 0' }} {...props} />,
-          ul: (props) => <ul style={{ paddingLeft: '1.5rem', margin: '0.5rem 0' }} {...props} />,
-          ol: (props) => <ol style={{ paddingLeft: '1.5rem', margin: '0.5rem 0' }} {...props} />,
-          li: (props) => <li style={{ marginBottom: '2px', color: 'inherit' }} {...props} />,
-          blockquote: (props) => (
+          h1: ({ node, ...props }) => <h1 style={{ fontSize: '1.2rem', fontWeight: '700', color: 'inherit', margin: '1rem 0 0.5rem 0' }} {...props} />,
+          h2: ({ node, ...props }) => <h2 style={{ fontSize: '1.1rem', fontWeight: '600', color: 'inherit', margin: '0.75rem 0 0.5rem 0' }} {...props} />,
+          h3: ({ node, ...props }) => <h3 style={{ fontSize: '1rem', fontWeight: '600', color: 'inherit', margin: '0.5rem 0 0.25rem 0' }} {...props} />,
+          ul: ({ node, ...props }) => <ul style={{ paddingLeft: '1.5rem', margin: '0.5rem 0' }} {...props} />,
+          ol: ({ node, ...props }) => <ol style={{ paddingLeft: '1.5rem', margin: '0.5rem 0' }} {...props} />,
+          li: ({ node, ...props }) => <li style={{ marginBottom: '2px', color: 'inherit' }} {...props} />,
+          blockquote: ({ node, ...props }) => (
             <blockquote
               style={{
                 borderLeft: `3px solid ${accent}`,
@@ -111,7 +111,7 @@ export default function MarkdownBody({ text, style, linkColor, hardBreaks = true
               </pre>
             );
           },
-          code: ({ className, children, ...props }) => {
+          code: ({ node, className, children, ...props }) => {
             // react-markdown v10 no longer passes an `inline` prop. Fenced/indented
             // code has a language-* class or embedded newlines (and is wrapped in
             // <pre>, which carries the block styling above).

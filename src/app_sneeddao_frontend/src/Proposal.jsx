@@ -517,7 +517,6 @@ function Proposal() {
         return (Number(tally.total) * 0.03);
     };
 
-
     const selectedSns = getSnsById(selectedSnsRoot);
 
     // Get status color
