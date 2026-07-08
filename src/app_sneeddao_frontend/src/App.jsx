@@ -132,11 +132,6 @@ import TradingBot from './pages/TradingBot';
 // Game pages
 import OutRun from './pages/OutRun';
 
-// Dev-only markdown/mermaid fixture page; dead-code-eliminated from prod builds.
-const MarkdownTest = import.meta.env.DEV
-    ? React.lazy(() => import('./pages/MarkdownTest'))
-    : null;
-
 // Component to set up global naming function
 function GlobalNamingSetup() {
     const { getNeuronDisplayName } = useNaming();
@@ -294,14 +289,6 @@ function App() {
                     <Route path="/admin/admins" element={<AdminsAdmin />} />
                     <Route path="/admin/sns_jailbreak" element={<AdminSnsJailbreak />} />
                     <Route path="/admin/rewards" element={<RewardsAdmin />} />
-
-                    {import.meta.env.DEV && MarkdownTest && (
-                      <Route path="/dev/markdown-test" element={
-                        <React.Suspense fallback={null}>
-                          <MarkdownTest />
-                        </React.Suspense>
-                      } />
-                    )}
                   </Routes>
                   </Layout>
                   </FrontendUpdateProvider>
