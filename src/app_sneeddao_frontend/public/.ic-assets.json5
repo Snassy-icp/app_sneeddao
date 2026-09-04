@@ -4,6 +4,15 @@
         "ignore": false
     },
     {
+        // Internet Identity requires the alternative-origins file to be served
+        // as application/json. It has no file extension, so the asset canister
+        // would otherwise guess a content type and II would refuse to read it.
+        "match": ".well-known/ii-alternative-origins",
+        "headers": {
+            "Content-Type": "application/json"
+        }
+    },
+    {
         // version.json changes on each deploy and is polled by the frontend
         // update checker. It must never be cached by boundary nodes or browsers.
         "match": "version.json",
