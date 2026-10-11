@@ -255,9 +255,11 @@ function SneedlockInfo() {
         return filteredData;
     };
 
+    // USD figures on this page are estimates from current prices; mark them
+    // with an approximation sign rather than parentheses.
     const formatUSD = (value) => {
         if (value === undefined || value === null || isNaN(value)) return '';
-        return `(${denomFormatValue(value)})`;
+        return `≈ ${denomFormatValue(value)}`;
     };
 
     const getUSDValue = (amount, decimals, symbol) => {
