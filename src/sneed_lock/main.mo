@@ -2300,8 +2300,8 @@ shared (deployer) persistent actor class SneedLock() = this {
       return fail("Failed to query fees or position: " # Error.message(e));
     };
 
-    if (tokens_owed0 < token0_fee and tokens_owed1 < token1_fee) {
-      return fail("Insufficient rewards to claim. Token0: " # debug_show(tokens_owed0) # " (need >= " # debug_show(token0_fee) # "), Token1: " # debug_show(tokens_owed1) # " (need >= " # debug_show(token1_fee) # ")");
+    if (tokens_owed0 <= token0_fee and tokens_owed1 <= token1_fee) {
+      return fail("Insufficient rewards to claim. Token0: " # debug_show(tokens_owed0) # " (need > " # debug_show(token0_fee) # "), Token1: " # debug_show(tokens_owed1) # " (need > " # debug_show(token1_fee) # ")");
     };
 
     let subaccount = Blob.fromArray(PrincipalToSubaccount(caller));
@@ -2346,7 +2346,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       case (#Ok(request)) {
         switch (request.status) {
           case (#Completed(details)) {
-            #Ok({ request_id = request.request_id; amount0 = details.amount0_claimed; amount1 = details.amount1_claimed });
+            #Ok({ request_id = request.request_id; amount0 = details.amount0_claimed; amount1 = details.amount1_claimed; token0 = request.token0; token1 = request.token1 });
           };
           case _ { #Err("Unexpected claim state") };
         };

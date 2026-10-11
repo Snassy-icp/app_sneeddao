@@ -230,7 +230,7 @@ module {
     };
 
     public type ClaimFeesResult = {
-        #Ok : { request_id : ClaimRequestId; amount0 : Nat; amount1 : Nat };
+        #Ok : { request_id : ClaimRequestId; amount0 : Nat; amount1 : Nat; token0 : TokenType; token1 : TokenType };
         #Err : Text;
     };
 
