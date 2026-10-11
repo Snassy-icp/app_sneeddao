@@ -101,20 +101,33 @@ async function getTokenMetaForSwap(swapActor, backendActor, swapCanisterId) {
         const token0Actor = createLedgerActor(swapMeta.ok.token0.address);
         const token1Actor = createLedgerActor(swapMeta.ok.token1.address);
 
-        const [token0Meta, token1Meta] = await Promise.all([
-            getTokenMetaFromIcrc1(token0Actor),
-            getTokenMetaFromIcrc1(token1Actor)
+        // A ledger that cannot be queried (no code installed, stopped, or
+        // non-standard) must not make the whole pool unreadable: fall back to
+        // placeholder metadata for that side and skip caching the result.
+        const metaOrPlaceholder = async (actor, address) => {
+            try {
+                return { meta: await getTokenMetaFromIcrc1(actor), ok: true };
+            } catch (error) {
+                console.warn(`Ledger ${address} metadata unavailable, using placeholder:`, error?.message || error);
+                return { meta: [["symbol", { Text: "Unknown" }], ["decimals", { Nat: 8n }]], ok: false };
+            }
+        };
+        const [token0Result, token1Result] = await Promise.all([
+            metaOrPlaceholder(token0Actor, swapMeta.ok.token0.address),
+            metaOrPlaceholder(token1Actor, swapMeta.ok.token1.address)
         ]);
 
         const tokenMeta = {
-            token0: token0Meta,
-            token1: token1Meta
+            token0: token0Result.meta,
+            token1: token1Result.meta
         };
 
         console.log("TOKENMETA!!!", tokenMeta);
 
-        // Cache the result
-        await backendActor.set_cached_token_meta(canisterPrincipal, tokenMeta);
+        // Cache the result only when both sides are real
+        if (token0Result.ok && token1Result.ok) {
+            await backendActor.set_cached_token_meta(canisterPrincipal, tokenMeta);
+        }
         return tokenMeta;
     } catch (error) {
         console.error("Error fetching swap token metadata:", error);

@@ -325,6 +325,46 @@ function SneedlockInfo() {
         }
     }, [tokenMetadata]);
 
+    // A position lock whose pool or position data cannot be read (a ledger with
+    // no code, an unreachable pool, or a position no longer in the pool): clear
+    // the loading state for both tokens and list the lock as unavailable
+    // instead of spinning forever.
+    const markPositionLockUnavailable = (setter, { lockId, positionId, swapCanisterId, token0, token1, expiry, owner }) => {
+        setter(prevData => {
+            const newData = { ...prevData };
+            for (const [token, otherToken] of [[token0, token1], [token1, token0]]) {
+                const key = token.toText();
+                const existing = newData[key] || {
+                    tokenId: token,
+                    tokenLockAmount: 0n,
+                    positionLockAmount: 0n,
+                    tokenLockCount: 0,
+                    positionLockCount: 0,
+                    positionsLoading: false,
+                    tokenLocks: [],
+                    positionLocks: []
+                };
+                newData[key] = {
+                    ...existing,
+                    positionsLoading: false,
+                    positionLockCount: existing.positionLockCount + 1,
+                    positionLocks: [...existing.positionLocks, {
+                        id: lockId,
+                        positionId,
+                        swapCanisterId,
+                        amount: 0n,
+                        expiry,
+                        owner,
+                        otherToken,
+                        otherAmount: 0n,
+                        unavailable: true
+                    }]
+                };
+            }
+            return newData;
+        });
+    };
+
     async function fetchPositionDetails(swapCanisterId) {
         if (swapCanisterCache[swapCanisterId.toText()]) {
             return swapCanisterCache[swapCanisterId.toText()];
@@ -623,6 +663,9 @@ function SneedlockInfo() {
 
                 // Fetch position details
                 const canisterData = await fetchPositionDetails(swapCanisterId);
+                if (canisterData.error || !canisterData.positions.some(p => p.id === positionId)) {
+                    markPositionLockUnavailable(setActiveTokenData, { lockId, positionId, swapCanisterId, token0, token1, expiry, owner: lock[0].toText() });
+                }
                 if (!canisterData.error) {
                     const matchingPosition = canisterData.positions.find(p => p.id === positionId);
                     if (matchingPosition) {
@@ -843,6 +886,9 @@ function SneedlockInfo() {
                 const expiry = lock[2].expiry;
 
                 const canisterData = await fetchPositionDetails(swapCanisterId);
+                if (canisterData.error || !canisterData.positions.some(p => p.id === positionId)) {
+                    markPositionLockUnavailable(setExpiredTokenData, { lockId, positionId, swapCanisterId, token0, token1, expiry, owner: lock[0].toText() });
+                }
                 if (!canisterData.error) {
                     const matchingPosition = canisterData.positions.find(p => p.id === positionId);
                     if (matchingPosition) {
@@ -1536,6 +1582,11 @@ function SneedlockInfo() {
                                                                         Position Lock #{lock.positionId?.toString() || 'Unknown'}
                                                                     </div>
                                                                 </div>
+                                                                {lock.unavailable && (
+                                                                    <div style={{ color: '#f59e0b', fontSize: '0.8rem', margin: '0 0 8px 0' }}>
+                                                                        Position data unavailable: the pool or one of its token ledgers could not be read, so amounts are shown as 0.
+                                                                    </div>
+                                                                )}
                                                                 <div style={styles.lockDetails}>
                                                                     <div style={styles.lockDetail}>
                                                                         <div style={styles.lockDetailLabel}>Token 1</div>
