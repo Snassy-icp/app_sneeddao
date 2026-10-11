@@ -12,6 +12,7 @@ import { getAllSnses, getSnsByLedgerId } from '../utils/SnsUtils';
 import { PERM } from '../utils/NeuronPermissionUtils.jsx';
 import { formatAmount } from '../utils/StringUtils';
 import { get_token_conversion_rate } from '../utils/TokenUtils';
+import { readBackendWalletBaselines, forwardClaimedFees } from '../utils/FeeForwarding';
 
 // Module-level cache to persist across navigation/remounts
 let cachedResult = {
@@ -466,8 +467,11 @@ export function useCollectiblesNotifications() {
                     ? Principal.fromText(position.swapCanisterId)
                     : position.swapCanisterId;
                 
-                // Claim fees. The pool delivers them straight to the user's wallet
-                // subaccount on sneed_lock, so this is a single synchronous call.
+                // Snapshot backend-wallet balances so the pool's delivery can be recognised.
+                const baselines = await readBackendWalletBaselines([position.token0, position.token1], identity.getPrincipal());
+
+                // Claim fees. The pool delivers them straight to the user's backend
+                // wallet (their subaccount on sneed_lock), so this is a single call.
                 const claimResult = await sneedLockActor.claim_position_fees(
                     swapPrincipal,
                     BigInt(positionDetails.positionId)
@@ -476,6 +480,18 @@ export function useCollectiblesNotifications() {
                 if ('Err' in claimResult) {
                     throw new Error(claimResult.Err);
                 }
+                
+                // Best effort: move the claimed fees on to the frontend wallet.
+                // Anything not forwarded stays in the backend wallet.
+                const forwarding = await forwardClaimedFees({
+                    identity,
+                    claimed: [
+                        { ledger: claimResult.Ok.token0, amount: claimResult.Ok.amount0 },
+                        { ledger: claimResult.Ok.token1, amount: claimResult.Ok.amount1 }
+                    ],
+                    baselines
+                });
+                console.log('Fee forwarding:', forwarding);
                 
             } else if (subtype === 'unlocked') {
                 // Unlocked backend position - withdraw position first, then claim

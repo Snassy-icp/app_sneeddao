@@ -655,6 +655,8 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                                                 swapCanisterId: position.swapCanisterId,
                                                 positionId: positionDetails.positionId,
                                                 symbols: position.token0Symbol + '/' + position.token1Symbol,
+                                                token0: position.token0,
+                                                token1: position.token1,
                                                 onStatusUpdate: (status, requestId) => {
                                                     setClaimStatus(status);
                                                     if (requestId) setClaimRequestId(requestId);

@@ -36,6 +36,7 @@ import PositionCard from './PositionCard';
 import { get_available, get_available_backend, getTokenLogo, get_token_conversion_rate, get_token_icp_rate, getTokenTVL, getTokenMetaForSwap, rewardAmountOrZero, availableOrZero } from './utils/TokenUtils';
 import { registerTrackedCanister, unregisterTrackedCanister, getCanisterInfo } from './utils/BackendUtils';
 import { getPositionTVL, isLockedPosition } from "./utils/PositionUtils";
+import { readBackendWalletBaselines, forwardClaimedFees, describeForwarding } from './utils/FeeForwarding';
 import { headerStyles } from './styles/HeaderStyles';
 import { usePremiumStatus } from './hooks/usePremiumStatus';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
@@ -4746,7 +4747,7 @@ function Wallet() {
         }
     };
 
-    const handleClaimLockedPositionFees = async ({ swapCanisterId, positionId, symbols, onStatusUpdate }) => {
+    const handleClaimLockedPositionFees = async ({ swapCanisterId, positionId, symbols, onStatusUpdate, token0, token1 }) => {
         console.log('=== Claiming locked position fees ===');
         console.log('Position:', symbols, 'ID:', positionId);
         console.log('Swap Canister:', swapCanisterId);
@@ -4761,8 +4762,11 @@ function Wallet() {
                 ? Principal.fromText(swapCanisterId)
                 : swapCanisterId;
 
-            // Claim fees. The pool delivers them straight to the user's wallet
-            // subaccount on sneed_lock, so this is a single synchronous call.
+            // Snapshot backend-wallet balances so the pool's delivery can be recognised.
+            const baselines = await readBackendWalletBaselines([token0, token1], identity.getPrincipal());
+
+            // Claim fees. The pool delivers them straight to the user's backend
+            // wallet (their subaccount on sneed_lock), so this is a single call.
             onStatusUpdate('🎯 Claiming rewards...', null);
             const claimResult = await sneedLockActor.claim_position_fees(
                 swapPrincipal,
@@ -4779,7 +4783,22 @@ function Wallet() {
                 amount0: claimResult.Ok.amount0.toString(),
                 amount1: claimResult.Ok.amount1.toString()
             });
-            onStatusUpdate('✅ Completed', requestId);
+
+            // Best effort: move the claimed fees on to the frontend wallet. If the
+            // delivery has not landed in time or a transfer fails, the fees simply
+            // stay in the backend wallet.
+            onStatusUpdate('⏳ Waiting for the pool to deliver...', requestId);
+            const forwarding = await forwardClaimedFees({
+                identity,
+                claimed: [
+                    { ledger: claimResult.Ok.token0, amount: claimResult.Ok.amount0 },
+                    { ledger: claimResult.Ok.token1, amount: claimResult.Ok.amount1 }
+                ],
+                baselines,
+                onStatus: (status) => onStatusUpdate(status, requestId)
+            });
+            console.log('Fee forwarding:', toJsonString(forwarding));
+            onStatusUpdate(`✅ ${describeForwarding(forwarding)}`, requestId);
 
             // Refresh only this position
             const { token0Ledger, token1Ledger } = await refreshSinglePosition(swapCanisterId);
@@ -5571,6 +5590,8 @@ function Wallet() {
                     swapCanisterId: position.swapCanisterId,
                     positionId: positionDetails.positionId,
                     symbols: position.token0Symbol + '/' + position.token1Symbol,
+                    token0: position.token0,
+                    token1: position.token1,
                     onStatusUpdate: (status) => {
                         console.log('Claim status:', status);
                     }
