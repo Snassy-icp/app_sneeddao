@@ -70,7 +70,7 @@ const PositionLockCountdown = ({ expiryNanos }) => {
     );
 };
 
-const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleClaimLockedPositionFees, handleClaimUnlockedDepositedPositionFees, handleWithdrawPosition, handleWithdrawSwapBalance, handleTransferPositionOwnership, handleRefreshPosition, isRefreshing = false, swapCanisterBalance0, swapCanisterBalance1, token0Fee, token1Fee, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false, onOpenDetailModal }) => {
+const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleClaimLockedPositionFees, openAddLiquidityModal, handleClaimUnlockedDepositedPositionFees, handleWithdrawPosition, handleWithdrawSwapBalance, handleTransferPositionOwnership, handleRefreshPosition, isRefreshing = false, swapCanisterBalance0, swapCanisterBalance1, token0Fee, token1Fee, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false, onOpenDetailModal }) => {
 
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
@@ -692,6 +692,19 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                             </div>
                         )}
                         
+                        {/* Add liquidity to a locked backend position (active lock only) */}
+                        {!positionDetails.frontendOwnership && positionDetails.lockInfo && openAddLiquidityModal && !hideButtons &&
+                            Number(positionDetails.lockInfo.expiry / 1000000n) > Date.now() && (
+                            <div className="withdraw-button-container">
+                                <button
+                                    className="withdraw-button"
+                                    onClick={() => openAddLiquidityModal(position, positionDetails)}
+                                >
+                                    Add Liquidity
+                                </button>
+                            </div>
+                        )}
+
                         {/* Claim button for unlocked deposited positions */}
                         {!positionDetails.frontendOwnership && !positionDetails.lockInfo && handleClaimUnlockedDepositedPositionFees && !hideButtons && (
                             <div className="withdraw-button-container">

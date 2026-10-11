@@ -17,6 +17,7 @@ const PositionCardModal = ({
     openLockPositionModal,
     handleWithdrawPositionRewards,
     handleClaimLockedPositionFees,
+    openAddLiquidityModal,
     handleClaimUnlockedDepositedPositionFees,
     handleWithdrawPosition,
     handleWithdrawSwapBalance,
@@ -197,6 +198,7 @@ const PositionCardModal = ({
                         openLockPositionModal={openLockPositionModal}
                         handleWithdrawPositionRewards={handleWithdrawPositionRewards}
                         handleClaimLockedPositionFees={handleClaimLockedPositionFees}
+                        openAddLiquidityModal={openAddLiquidityModal}
                         handleClaimUnlockedDepositedPositionFees={handleClaimUnlockedDepositedPositionFees}
                         handleWithdrawPosition={handleWithdrawPosition}
                         handleWithdrawSwapBalance={handleWithdrawSwapBalance}

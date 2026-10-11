@@ -26,6 +26,7 @@ import ConfirmationModal from './ConfirmationModal';
 import TransferTokenLockModal from './TransferTokenLockModal';
 import WithdrawTokenModal from './WithdrawTokenModal';
 import DepositTokenModal from './DepositTokenModal';
+import AddLiquidityModal from './AddLiquidityModal';
 import { get_short_timezone, format_duration, bigDateToReadable, dateToReadable } from './utils/DateUtils';
 import { formatAmount, toJsonString, formatAmountWithConversion, parseAmountToBigInt } from './utils/StringUtils';
 import TokenCard from './TokenCard';
@@ -731,6 +732,8 @@ function Wallet() {
     const [selectedToken, setSelectedToken] = useState(null);
     const [showLockModal, setShowLockModal] = useState(false);
     const [showLockPositionModal, setShowLockPositionModal] = useState(false);
+    const [showAddLiquidityModal, setShowAddLiquidityModal] = useState(false);
+    const [addLiquidityTarget, setAddLiquidityTarget] = useState(null);
     const [showAddSwapModal, setShowAddSwapModal] = useState(false);
     const [showAddLedgerModal, setShowAddLedgerModal] = useState(false);
     const [showSendLiquidityPositionModal, setShowSendLiquidityPositionModal] = useState(false);
@@ -4503,6 +4506,44 @@ function Wallet() {
 
     };
 
+    const openAddLiquidityModal = (liquidityPosition, positionDetails) => {
+        setAddLiquidityTarget({ position: liquidityPosition, positionDetails });
+        setShowAddLiquidityModal(true);
+    };
+
+    // Add liquidity to a locked position from the backend wallet. The canister
+    // moves the tokens into the pool, adds in the position's existing range and
+    // returns whatever the pool could not use at the current price.
+    const handleAddLiquidityToLockedPosition = async ({ swapCanisterId, positionId, amount0, amount1 }) => {
+        const sneedLockActor = createSneedLockActor(sneedLockCanisterId, {
+            agentOptions: { identity }
+        });
+        const swapPrincipal = typeof swapCanisterId === 'string'
+            ? Principal.fromText(swapCanisterId)
+            : swapCanisterId;
+
+        const result = await sneedLockActor.add_liquidity_to_locked_position(
+            swapPrincipal,
+            BigInt(positionId),
+            BigInt(amount0),
+            BigInt(amount1)
+        );
+        console.log('Add liquidity result:', toJsonString(result));
+        if ('Err' in result) {
+            throw new Error(result.Err);
+        }
+
+        // Refresh the position and both token balances (best effort)
+        try {
+            const { token0Ledger, token1Ledger } = await refreshSinglePosition(swapCanisterId);
+            if (token0Ledger) await fetchBalancesAndLocks(token0Ledger);
+            if (token1Ledger) await fetchBalancesAndLocks(token1Ledger);
+        } catch (e) {
+            console.warn('Refresh after adding liquidity failed:', e);
+        }
+        return result.Ok;
+    };
+
     const handleWithdrawSwapBalance = async (liquidityPosition) => {
         console.log('=== Withdrawing swap canister balance ===');
         console.log('Swap Canister:', liquidityPosition.swapCanisterId);
@@ -6747,6 +6788,7 @@ function Wallet() {
                                 positionDetails={positionDetails}
                                 openSendLiquidityPositionModal={openSendLiquidityPositionModal}
                                 openLockPositionModal={openLockPositionModal}
+                                openAddLiquidityModal={openAddLiquidityModal}
                                 handleWithdrawPositionRewards={handleWithdrawPositionRewards}
                                 handleClaimLockedPositionFees={handleClaimLockedPositionFees}
                                 handleClaimUnlockedDepositedPositionFees={handleClaimUnlockedDepositedPositionFees}
@@ -10826,6 +10868,14 @@ function Wallet() {
                     identity={identity}
                     isPremium={isPremium}
                 />
+                <AddLiquidityModal
+                    show={showAddLiquidityModal}
+                    onClose={() => setShowAddLiquidityModal(false)}
+                    position={addLiquidityTarget?.position}
+                    positionDetails={addLiquidityTarget?.positionDetails}
+                    tokens={tokens}
+                    onAddLiquidity={handleAddLiquidityToLockedPosition}
+                />
                 <ConfirmationModal
                     show={showConfirmModal}
                     onClose={() => setShowConfirmModal(false)}
@@ -11024,6 +11074,10 @@ function Wallet() {
                         setShowPositionDetailModal(false);
                         // Open the lock modal
                         openLockPositionModal(position);
+                    }}
+                    openAddLiquidityModal={(pos, details) => {
+                        setShowPositionDetailModal(false);
+                        openAddLiquidityModal(pos, details);
                     }}
                     handleWithdrawPositionRewards={handleWithdrawPositionRewards}
                     handleClaimLockedPositionFees={handleClaimLockedPositionFees}
