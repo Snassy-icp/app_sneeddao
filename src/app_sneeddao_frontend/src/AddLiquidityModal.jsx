@@ -14,12 +14,13 @@ import { readBackendWalletBalance } from './utils/FeeForwarding';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { useTheme } from './contexts/ThemeContext';
+import { principalText } from './utils/IdUtils';
 
 const accent = '#3b82f6';
 const accentDark = '#2563eb';
 
-const idText = (p) => (p && p.toText ? p.toText() : (p?.toString?.() ?? String(p)));
-const toPrincipal = (p) => (typeof p === 'string' ? Principal.fromText(p) : p);
+const idText = (p) => principalText(p);
+const toPrincipal = (p) => Principal.fromText(principalText(p));
 
 // Plain decimal string (no locale separators) for prefilling an input.
 const toPlainAmount = (value, decimals) => {

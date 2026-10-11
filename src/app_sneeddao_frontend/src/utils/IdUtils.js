@@ -1,3 +1,16 @@
+import { Principal } from '@dfinity/principal';
+// Like normalizeId, but also revives Principal objects that lost their prototype
+// (e.g. positions restored from a cache), which show up as { _arr: ... }.
+export const principalText = (value) => {
+    if (value && typeof value === 'object' && typeof value.toText !== 'function' && value._arr) {
+        try {
+            const bytes = value._arr instanceof Uint8Array ? value._arr : Uint8Array.from(Object.values(value._arr));
+            return Principal.fromUint8Array(bytes).toText();
+        } catch (e) { /* fall through */ }
+    }
+    return normalizeId(value);
+};
+
 export const normalizeId = (canisterId) => {
     if (!canisterId) return '';
     if (typeof canisterId === 'string') return canisterId;

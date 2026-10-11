@@ -1,4 +1,5 @@
 import { Principal } from '@dfinity/principal';
+import { principalText } from './IdUtils';
 import { principalToSubAccount } from '@dfinity/utils';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
@@ -10,8 +11,8 @@ import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId 
 // Everything here is best effort: if any step fails or times out, the fees are
 // simply left in the backend wallet, from where the user can move them later.
 
-const toPrincipal = (p) => (typeof p === 'string' ? Principal.fromText(p) : p);
-const keyOf = (p) => toPrincipal(p).toText();
+const toPrincipal = (p) => Principal.fromText(principalText(p));
+const keyOf = (p) => principalText(p);
 
 // Balance of the user's backend wallet (sneed_lock subaccount) on a ledger.
 export const readBackendWalletBalance = async (ledgerId, userPrincipal) => {
