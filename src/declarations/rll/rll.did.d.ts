@@ -41,6 +41,22 @@ export interface ClaimEvent {
   'hotkey' : Principal,
   'amount' : bigint,
 }
+export interface ClaimIncident {
+  'id' : bigint,
+  'fee' : bigint,
+  'resolved' : boolean,
+  'total' : bigint,
+  'token_id' : Principal,
+  'owners' : Array<[Principal, bigint]>,
+  'sequence_number' : bigint,
+  'memo' : Uint8Array | number[],
+  'landed' : [] | [boolean],
+  'error_message' : string,
+  'recipient' : Principal,
+  'created_at_time' : Timestamp,
+  'amount' : bigint,
+  'resolved_at' : [] | [Timestamp],
+}
 export type ClaimStatus = { 'Failed' : null } |
   { 'Success' : null } |
   { 'Pending' : null };
@@ -465,11 +481,13 @@ export interface SneedRLL {
   'imported_owners_count' : ActorMethod<[], bigint>,
   'imported_props_count' : ActorMethod<[], bigint>,
   'list_admins' : ActorMethod<[], Array<Principal>>,
+  'list_claim_incidents' : ActorMethod<[], Array<ClaimIncident>>,
   'principal_is_admin' : ActorMethod<[Principal], boolean>,
   'remove_admin' : ActorMethod<[Principal], Result>,
   'remove_known_token' : ActorMethod<[Principal], undefined>,
   'remove_token_max_distribution' : ActorMethod<[Principal], Result>,
   'remove_token_min_distribution' : ActorMethod<[Principal], Result>,
+  'resolve_claim_incident' : ActorMethod<[bigint, boolean], Result>,
   'set_token_max_distribution' : ActorMethod<[Principal, bigint], Result>,
   'set_token_min_distribution' : ActorMethod<[Principal, bigint], Result>,
   'start_distribution_cycle' : ActorMethod<[], Result>,

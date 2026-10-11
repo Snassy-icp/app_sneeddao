@@ -249,6 +249,22 @@ export const idlFactory = ({ IDL }) => {
     'timestamp' : IDL.Int,
     'amount' : IDL.Nat,
   });
+  const ClaimIncident = IDL.Record({
+    'id' : IDL.Nat,
+    'fee' : IDL.Nat,
+    'resolved' : IDL.Bool,
+    'total' : IDL.Nat,
+    'token_id' : IDL.Principal,
+    'owners' : IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat)),
+    'sequence_number' : IDL.Nat,
+    'memo' : IDL.Vec(IDL.Nat8),
+    'landed' : IDL.Opt(IDL.Bool),
+    'error_message' : IDL.Text,
+    'recipient' : IDL.Principal,
+    'created_at_time' : Timestamp,
+    'amount' : IDL.Nat,
+    'resolved_at' : IDL.Opt(Timestamp),
+  });
   const SneedRLL = IDL.Service({
     'acceptsVote' : IDL.Func([ProposalData, IDL.Nat64], [IDL.Bool], ['query']),
     'add_admin' : IDL.Func([IDL.Principal], [Result], []),
@@ -643,11 +659,13 @@ export const idlFactory = ({ IDL }) => {
     'imported_owners_count' : IDL.Func([], [IDL.Nat], ['query']),
     'imported_props_count' : IDL.Func([], [IDL.Nat], ['query']),
     'list_admins' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
+    'list_claim_incidents' : IDL.Func([], [IDL.Vec(ClaimIncident)], ['query']),
     'principal_is_admin' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
     'remove_admin' : IDL.Func([IDL.Principal], [Result], []),
     'remove_known_token' : IDL.Func([IDL.Principal], [], []),
     'remove_token_max_distribution' : IDL.Func([IDL.Principal], [Result], []),
     'remove_token_min_distribution' : IDL.Func([IDL.Principal], [Result], []),
+    'resolve_claim_incident' : IDL.Func([IDL.Nat, IDL.Bool], [Result], []),
     'set_token_max_distribution' : IDL.Func(
         [IDL.Principal, IDL.Nat],
         [Result],

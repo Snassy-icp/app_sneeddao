@@ -386,11 +386,13 @@ type SneedRLL =
    imported_owners_count: () -> (nat) query;
    imported_props_count: () -> (nat) query;
    list_admins: () -> (vec principal) query;
+   list_claim_incidents: () -> (vec ClaimIncident) query;
    principal_is_admin: ("principal": principal) -> (bool) query;
    remove_admin: ("principal": principal) -> (Result);
    remove_known_token: (token_ledger_id: principal) -> ();
    remove_token_max_distribution: (token_id: principal) -> (Result);
    remove_token_min_distribution: (token_id: principal) -> (Result);
+   resolve_claim_incident: (id: nat, landed: bool) -> (Result);
    set_token_max_distribution: (token_id: principal, max_amount: nat) ->
     (Result);
    set_token_min_distribution: (token_id: principal, min_amount: nat) ->
@@ -585,6 +587,26 @@ type ClaimStatus =
    Failed;
    Pending;
    Success;
+ };
+type ClaimIncident = 
+ record {
+   amount: nat;
+   created_at_time: Timestamp;
+   error_message: text;
+   fee: nat;
+   id: nat;
+   landed: opt bool;
+   memo: blob;
+   owners: vec record {
+                 principal;
+                 nat;
+               };
+   recipient: principal;
+   resolved: bool;
+   resolved_at: opt Timestamp;
+   sequence_number: nat;
+   token_id: principal;
+   total: nat;
  };
 type ClaimEvent = 
  record {
