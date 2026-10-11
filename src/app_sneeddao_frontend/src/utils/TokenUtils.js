@@ -3,6 +3,7 @@ import { Principal } from "@dfinity/principal";
 import { formatAmountWithConversion } from './StringUtils';
 import priceService from '../services/PriceService';
 import { normalizeId } from '../hooks/useNeuronsCache';
+import { getLogo as getCachedLogo, setLogo as setCachedLogo } from '../hooks/useLogoCache';
 
 const get_available_backend = (token) => {
     const diff = BigInt(token.balance_backend) - BigInt(token.locked);
@@ -12,6 +13,28 @@ const get_available_backend = (token) => {
 const get_available = (token) => {
     const avail_backend = get_available_backend(token);
     return BigInt(token.balance) + avail_backend;
+}
+
+const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+
+// Resolve a token's logo with the same fallback chain everywhere:
+//   1. icrc1:logo from the ledger metadata (and remember it in the unified cache)
+//   2. the unified logo cache, which the wallet fills from whitelist and SNS data
+//   3. the bundled ICP symbol for the ICP ledger, whose metadata carries no logo
+// Returns '' when nothing is known; callers render a placeholder.
+async function resolveTokenLogo(ledgerId, metadata, symbol) {
+    const id = ledgerId?.toText?.() ?? ledgerId?.toString?.() ?? String(ledgerId);
+    const fromMetadata = metadata ? getTokenLogo(metadata) : '';
+    if (fromMetadata) {
+        try { await setCachedLogo(id, fromMetadata); } catch (e) { /* cache is best effort */ }
+        return fromMetadata;
+    }
+    try {
+        const cached = await getCachedLogo(id);
+        if (cached) return cached;
+    } catch (e) { /* cache is best effort */ }
+    if (id === ICP_LEDGER_ID || (symbol || '').toLowerCase() === 'icp') return 'icp_symbol.svg';
+    return '';
 }
 
 function getTokenLogo(metadata) {
@@ -269,6 +292,7 @@ export const calculateTotalAssetsValue = (
 
 export {
     get_available,
+    resolveTokenLogo,
     get_available_backend,
     getTokenLogo,
     getTokenMetaData,

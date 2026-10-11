@@ -34,7 +34,7 @@ import TokenCardModal from './components/TokenCardModal';
 import DappCardModal from './components/DappCardModal';
 import PositionCardModal from './components/PositionCardModal';
 import PositionCard from './PositionCard';
-import { get_available, get_available_backend, getTokenLogo, get_token_conversion_rate, get_token_icp_rate, getTokenTVL, getTokenMetaForSwap, rewardAmountOrZero, availableOrZero } from './utils/TokenUtils';
+import { get_available, get_available_backend, getTokenLogo, resolveTokenLogo, get_token_conversion_rate, get_token_icp_rate, getTokenTVL, getTokenMetaForSwap, rewardAmountOrZero, availableOrZero } from './utils/TokenUtils';
 import { registerTrackedCanister, unregisterTrackedCanister, getCanisterInfo } from './utils/BackendUtils';
 import { getPositionTVL, isLockedPosition } from "./utils/PositionUtils";
 import { readBackendWalletBaselines, forwardClaimedFees, describeForwarding } from './utils/FeeForwarding';
@@ -1864,9 +1864,10 @@ function Wallet() {
                     const token0Fee = await ledgerActor0.icrc1_fee();
                     const token1Fee = await ledgerActor1.icrc1_fee();
 
-                    // ICP does not produce a logo in metadata.
-                    if (token0Symbol?.toLowerCase() === "icp" && token0Logo === "") { token0Logo = "icp_symbol.svg"; }
-                    if (token1Symbol?.toLowerCase() === "icp" && token1Logo === "") { token1Logo = "icp_symbol.svg"; }
+                    // Fall back to the unified logo cache / bundled ICP symbol when the
+                    // ledger metadata carries no logo (ICP's does not).
+                    if (!token0Logo) { token0Logo = await resolveTokenLogo(icrc1_ledger0, null, token0Symbol); }
+                    if (!token1Logo) { token1Logo = await resolveTokenLogo(icrc1_ledger1, null, token1Symbol); }
 
                     // Fetch conversion rates for both tokens
                     const token0_conversion_rate = await get_token_conversion_rate(
