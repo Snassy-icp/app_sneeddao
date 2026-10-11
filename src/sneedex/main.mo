@@ -874,7 +874,14 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             case null { /* Bid not found, ignore */ };
                             case (?bid) {
                                 if (bid.state != #Won) { return }; // Already claimed
-                                
+
+                                // Serialize with any other payout from this escrow (a
+                                // concurrent manual claimWinningBid). Skip if one is
+                                // already running — the seller can always claim manually.
+                                if (isBidEscrowLocked(bid.id)) { return };
+                                lockBidEscrow(bid.id);
+
+                                try {
                                 let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
                                 let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
                                 
@@ -941,6 +948,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         updateBid(bid.id, updatedBid);
                                     };
                                 };
+                                } finally {
+                                    unlockBidEscrow(bid.id);
+                                };
                             };
                         };
                     };
@@ -948,7 +958,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             };
         };
     };
-    
+
     /// Auto-reclaim assets for expired/cancelled offers (called via Timer)
     /// Best effort - if it fails, seller can manually reclaim from GUI
     func autoReclaimAssets(offerId : T.OfferId) : async () {
@@ -2384,6 +2394,17 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             case null { amount };
                         };
                         
+                        // Hold this bid's escrow lock across the awaits below. Before
+                        // confirmation the withdrawal reserve is zero, so without the
+                        // lock the bidder could withdraw the escrow between the balance
+                        // verification and the bid being marked escrowed — confirming a
+                        // bid backed by nothing. Released in the finally block at the end.
+                        if (isBidEscrowLocked(bidId)) {
+                            return #err(#InvalidState("An escrow operation is already in progress for this bid"));
+                        };
+                        lockBidEscrow(bidId);
+
+                        try {
                         // Verify tokens in escrow (at least the effective amount)
                         let subaccount = Utils.bidEscrowSubaccount(caller, bidId);
                         let verifyResult = await* AssetHandlers.verifyTokenEscrow(
@@ -2392,16 +2413,22 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             subaccount,
                             effectiveAmount
                         );
-                        
+
                         switch (verifyResult) {
                             case (#err(e)) { return #err(e) };
-                            case (#ok(_)) {
-                                // If user sent more than buyout, refund the excess immediately
-                                if (amount > effectiveAmount) {
+                            case (#ok(escrowBalance)) {
+                                // Refund any excess above the effective amount immediately.
+                                // The excess is computed from the verified escrow balance,
+                                // never from the caller-declared `amount`: trusting the
+                                // declared amount would let a caller declare more than they
+                                // deposited and have the "excess" refund drain the escrow
+                                // below effectiveAmount while the bid is recorded as fully
+                                // escrowed.
+                                if (escrowBalance > effectiveAmount) {
                                     let ledger : T.ICRC1Actor = actor(Principal.toText(offer.price_token_ledger));
                                     let fee = await ledger.icrc1_fee();
-                                    let excessAmount = amount - effectiveAmount;
-                                    
+                                    let excessAmount = escrowBalance - effectiveAmount;
+
                                     // Only refund if excess is greater than fee
                                     if (excessAmount > fee) {
                                         let refundAmount = excessAmount - fee;
@@ -2415,18 +2442,46 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         });
                                     };
                                 };
-                                
+
+                                // Re-validate against current state: the offer may have been
+                                // completed (buyout, acceptBid or expiration) while the awaits
+                                // above were in flight. Confirming into a non-Active offer
+                                // would strand this bidder's escrowed tokens in a Pending bid
+                                // that nothing ever refunds. Mark it Lost and refund instead.
+                                let currentBid = switch (getBid(bidId)) {
+                                    case null { return #err(#BidNotFound) };
+                                    case (?b) { b };
+                                };
+                                let offerStillActive = switch (getOffer(bid.offer_id)) {
+                                    case (?o) { o.state == #Active };
+                                    case null { false };
+                                };
+                                if (not offerStillActive and currentBid.state != #Won) {
+                                    let lostBid : T.Bid = {
+                                        id = currentBid.id;
+                                        offer_id = currentBid.offer_id;
+                                        bidder = currentBid.bidder;
+                                        amount = effectiveAmount;
+                                        state = #Lost;
+                                        created_at = currentBid.created_at;
+                                        tokens_escrowed = true;
+                                    };
+                                    updateBid(bidId, lostBid);
+                                    scheduleAutoRefund<system>(bidId);
+                                    return #err(#InvalidState("Offer is no longer active; your escrowed tokens will be refunded"));
+                                };
+
                                 // Update bid with effective amount (capped at buyout)
                                 let updatedBid : T.Bid = {
-                                    id = bid.id;
-                                    offer_id = bid.offer_id;
-                                    bidder = bid.bidder;
+                                    id = currentBid.id;
+                                    offer_id = currentBid.offer_id;
+                                    bidder = currentBid.bidder;
                                     amount = effectiveAmount;
-                                    state = bid.state;
-                                    created_at = bid.created_at;
+                                    state = currentBid.state;
+                                    created_at = currentBid.created_at;
                                     tokens_escrowed = true;
                                 };
-                                
+
                                 updateBid(bidId, updatedBid);
                                 
                                 // Mark all lower confirmed bids as Lost (outbid) and schedule auto-refund
@@ -2504,12 +2559,15 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 #ok();
                             };
                         };
+                        } finally {
+                            unlockBidEscrow(bidId);
+                        };
                     };
                 };
             };
         };
     };
-    
+
     // ============================================
     // OFFER COMPLETION
     // ============================================
@@ -2779,14 +2837,22 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 // seller is still guaranteed to be paid — otherwise a
                                 // drained escrow would let the winner take the assets
                                 // while claimWinningBid later fails.
-                                let winningEscrowSubaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
-                                let winningEscrowBalance = await* AssetHandlers.getTokenBalance(
-                                    offer.price_token_ledger,
-                                    self(),
-                                    ?winningEscrowSubaccount
-                                );
-                                if (winningEscrowBalance < bid.amount) {
-                                    return #err(#InvalidState("Winning bid escrow no longer holds the full bid amount; assets cannot be released"));
+                                //
+                                // Only gate while the seller is still owed (#Won). Once
+                                // the seller has been paid (#ClaimedBySeller) the escrow
+                                // is legitimately empty and the buyer must still be able
+                                // to claim — this is the recovery path when auto-delivery
+                                // did not complete.
+                                if (bid.state == #Won) {
+                                    let winningEscrowSubaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
+                                    let winningEscrowBalance = await* AssetHandlers.getTokenBalance(
+                                        offer.price_token_ledger,
+                                        self(),
+                                        ?winningEscrowSubaccount
+                                    );
+                                    if (winningEscrowBalance < bid.amount) {
+                                        return #err(#InvalidState("Winning bid escrow no longer holds the full bid amount; assets cannot be released"));
+                                    };
                                 };
 
                                 // Transfer all assets to the winner
@@ -2912,13 +2978,22 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 if (bid.state != #Won) {
                                     return #err(#InvalidState("Bid is not in won state"));
                                 };
-                                
+
+                                // Serialize with any other payout from this escrow (the
+                                // auto-delivery timer or a concurrent manual claim) so the
+                                // seller payout cannot run twice across the transfer awaits.
+                                if (isBidEscrowLocked(bid.id)) {
+                                    return #err(#InvalidState("An escrow operation is already in progress for this bid"));
+                                };
+                                lockBidEscrow(bid.id);
+
+                                try {
                                 let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
                                 let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
-                                
+
                                 // Calculate marketplace fee using the rate locked at offer creation
                                 let marketplaceFee = bid.amount * offer.fee_rate_bps / 10000;
-                                
+
                                 // If there's a marketplace fee to collect, transfer it first
                                 if (marketplaceFee > 0) {
                                     // Transfer marketplace fee to fee recipient
@@ -2986,6 +3061,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         #ok();
                                     };
                                 };
+                                } finally {
+                                    unlockBidEscrow(bid.id);
+                                };
                             };
                         };
                     };
@@ -2999,6 +3077,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 // Find the winning bid from completed state
                                 for (b in getBidsForOffer(offerId).vals()) {
                                     if (b.state == #Won) {
+                                        // Serialize with any other payout from this escrow.
+                                        if (isBidEscrowLocked(b.id)) {
+                                            return #err(#InvalidState("An escrow operation is already in progress for this bid"));
+                                        };
+                                        lockBidEscrow(b.id);
+
+                                        try {
                                         let subaccount = Utils.bidEscrowSubaccount(b.bidder, b.id);
                                         
                                         // Calculate marketplace fee using the rate locked at offer creation
@@ -3065,6 +3150,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                                 updateBid(b.id, updatedBid);
                                                 return #ok();
                                             };
+                                        };
+                                        } finally {
+                                            unlockBidEscrow(b.id);
                                         };
                                     };
                                 };
