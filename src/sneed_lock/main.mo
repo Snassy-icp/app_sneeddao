@@ -12,7 +12,6 @@ import Nat8 "mo:base/Nat8";
 import Blob "mo:base/Blob";
 import Bool "mo:base/Bool";
 import Debug "mo:base/Debug";
-import Timer "mo:base/Timer";
 import Error "mo:base/Error";
 
 import Map "mo:map/Map";
@@ -67,10 +66,7 @@ shared (deployer) persistent actor class SneedLock() = this {
   type TransferTokenLockOwnershipResult = T.TransferTokenLockOwnershipResult;
   type TransferTokenLockOwnershipError = T.TransferTokenLockOwnershipError;
   type ClaimRequestId = T.ClaimRequestId;
-  type ClaimRequestStatusV2 = T.ClaimRequestStatusV2;  // Old version for migration
   type ClaimRequestStatus = T.ClaimRequestStatus;
-  type ClaimRequestV1 = T.ClaimRequestV1;  // Old version for migration
-  type ClaimRequestV2 = T.ClaimRequestV2;  // Old version for migration
   type ClaimRequest = T.ClaimRequest;
   type ClaimAndWithdrawResult = T.ClaimAndWithdrawResult;
   type QueueProcessingState = T.QueueProcessingState;
@@ -86,12 +82,6 @@ shared (deployer) persistent actor class SneedLock() = this {
   // dex consts
   transient let dex_icpswap : T.Dex = 1;
   // claim queue consts
-  transient let max_requests_per_batch : Nat = 10;
-  transient let claim_request_timeout_ns : Nat64 = 30 * minute_ns; // 30 minutes
-  transient let batch_pause_duration_ns : Nat64 = 10 * minute_ns; // 10 minutes
-  transient let claim_request_cooldown_ns : Nat64 = 5 * minute_ns; // 5 minutes cooldown between retry attempts
-  transient let max_claim_retry_attempts : Nat = 5; // Max retries before moving to failed buffer
-  transient let max_consecutive_empty_cycles : Nat = 3; // Pause after N empty processing cycles
 
   // stable memory
   stable var stableLocks : StableLocks = [];
@@ -105,21 +95,25 @@ shared (deployer) persistent actor class SneedLock() = this {
   stable var info_log : CircularBuffer = CircularBuffer.CircularBufferLogic.create(10_000);
   stable var next_correlation_id : Nat = 0;
   
-  // Claim queue stable state
-  stable var stable_claim_requests : StableClaimRequests = []; // Active requests (pending/processing)
-  stable var completed_claim_requests : StableClaimRequests = []; // Completed requests with structured data
-  stable var failed_claim_requests : StableClaimRequests = []; // Failed requests with structured data (pre-claim failures)
+  // Claim history (still in use)
+  stable var completed_claim_requests : StableClaimRequests = []; // Completed claims with structured data
+  stable var failed_claim_requests : StableClaimRequests = []; // Failed claims with structured data
   stable var next_claim_request_id : Nat = 0;
-  stable var claim_queue_processing_state : QueueProcessingState = #Active;
-  stable var claim_requests_processed_in_batch : Nat = 0;
-  stable var enforce_zero_balance_before_claim : Bool = true; // Safety check: balance must be 0 before claiming
-  stable var last_timer_execution_time : ?T.Timestamp = null; // When timer last executed
-  stable var last_timer_execution_correlation_id : ?Nat = null; // Correlation ID of last execution
-  stable var consecutive_empty_processing_cycles : Nat = 0; // Circuit breaker: track empty processing cycles
-  stable var is_processing_claim_queue : Bool = false; // Semaphore: prevents concurrent execution of process_claim_queue
+
+  // RETIRED claim-queue state. Fee claims are synchronous now (see
+  // claim_position_fees), so nothing reads or writes these any more. They are
+  // deliberately kept, with their original types, so the stable signature is
+  // unchanged across the upgrade and no state migration is involved.
+  stable var stable_claim_requests : StableClaimRequests = []; // retired: was the active request queue
+  stable var claim_queue_processing_state : QueueProcessingState = #Active; // retired
+  stable var claim_requests_processed_in_batch : Nat = 0; // retired
+  stable var enforce_zero_balance_before_claim : Bool = true; // retired (was never read)
+  stable var last_timer_execution_time : ?T.Timestamp = null; // retired
+  stable var last_timer_execution_correlation_id : ?Nat = null; // retired
+  stable var consecutive_empty_processing_cycles : Nat = 0; // retired
+  stable var is_processing_claim_queue : Bool = false; // retired
+  stable var claim_processing_timer_id : ?Nat = null; // retired
  
-  // shouldn't be stable but is for legacy reasons. 
-  stable var claim_processing_timer_id : ?Nat = null;
   
   // Admin management
   stable var admin_list : [Principal] = []; // List of additional admin principals
@@ -150,8 +144,6 @@ shared (deployer) persistent actor class SneedLock() = this {
   stable var payment_log : [T.PaymentLogEntry] = [];
   stable var next_payment_log_id : Nat = 0;
   
-  // Ephemeral timer state (not stable - timer IDs don't persist across upgrades)
-  transient var next_scheduled_timer_time : ?T.Timestamp = null;
 
   transient let admin = Principal.fromText("d7zib-qo5mr-qzmpb-dtyof-l7yiu-pu52k-wk7ng-cbm3n-ffmys-crbkz-nae");
   transient let sneed_governance = Principal.fromText("fi3zi-fyaaa-aaaaq-aachq-cai");
@@ -2215,138 +2207,48 @@ shared (deployer) persistent actor class SneedLock() = this {
   ////////////////
 
   // Helper: Get oldest pending request
-  private func get_oldest_pending_request() : ?ClaimRequest {
-    let now = TimeAsNat64(Time.now());
-    var skipped_swap_canisters : List.List<Principal> = List.nil();
-    
-    for (request in stable_claim_requests.vals()) {
-      // Only consider requests that are in an active processing state
-      let is_processable_status = switch (request.status) {
-        case (#Pending) { true };
-        case (#Processing) { true };
-        case (#BalanceRecorded(_)) { true };
-        case (#ClaimAttempted(_)) { true };
-        case (#ClaimVerified(_)) { true };
-        case (#Withdrawn(_)) { true };
-        case _ { false }; // Skip completed, failed, or timed out
-      };
-      
-      if (not is_processable_status) {
-        // Skip this request entirely
-      } else {
-        // Check if swap canister has been skipped
-        let swap_canister_skipped = List.some<Principal>(
-          skipped_swap_canisters,
-          func (p) { Principal.equal(p, request.swap_canister_id) }
-        );
-        
-        if (swap_canister_skipped) {
-          // Skip this request, swap canister already flagged
-        } else {
-          // Check cooldown
-          let in_cooldown = switch (request.last_attempted_at) {
-            case (?last_attempt) {
-              let elapsed : Nat64 = if (now >= last_attempt) {
-                now - last_attempt
-              } else {
-                0 : Nat64 // Clock skew protection
-              };
-              elapsed < claim_request_cooldown_ns
-            };
-            case null { false }; // Never attempted, not in cooldown
-          };
-          
-          if (in_cooldown) {
-            // Skip this request and mark its swap canister as skipped
-            skipped_swap_canisters := List.push(request.swap_canister_id, skipped_swap_canisters);
-          } else {
-            // This request is processable!
-            return ?request;
-          };
-        };
-      };
-    };
-    
-    // No processable requests found
-    null;
-  };
+  // ---------------------------------------------------------------------------
+  // Fee claims for locked positions
+  //
+  // ICPSwap's claimToSubaccount collects a position's accrued fees and has the
+  // pool deliver them straight to the caller's account at the given subaccount.
+  // sneed_lock passes the owner's wallet subaccount on this canister, so the fees
+  // land in the owner's own balance with no shared-account accounting here.
+  // Delivery is performed by the pool's withdraw queue shortly after the call
+  // returns. A bounded history of claims is kept for owners and admins.
+  // ---------------------------------------------------------------------------
 
-  // Helper: Update request in stable array
-  private func update_claim_request(updated_request : ClaimRequest) : () {
-    stable_claim_requests := Array.map<ClaimRequest, ClaimRequest>(
-      stable_claim_requests,
-      func (req) {
-        if (req.request_id == updated_request.request_id) {
-          updated_request
-        } else {
-          req
-        }
-      }
-    );
-  };
-
-  // Helper: Check if request has timed out
-  private func has_request_timed_out(request : ClaimRequest) : Bool {
-    switch (request.started_processing_at) {
-      case (?started_at) {
-        let now = TimeAsNat64(Time.now());
-        (now - started_at) > claim_request_timeout_ns
-      };
-      case null { false };
-    };
-  };
-
-  // Helper: Move completed request to array and remove from active
   private func archive_completed_request(request : ClaimRequest) : () {
-    // Add to completed requests array
     completed_claim_requests := Array.append(completed_claim_requests, [request]);
-    
-    // Keep only last 1000 to prevent unbounded growth
     if (completed_claim_requests.size() > 1000) {
       let start_index = completed_claim_requests.size() - 1000;
       completed_claim_requests := Array.subArray(completed_claim_requests, start_index, 1000);
     };
-
-    // Remove from active requests
-    stable_claim_requests := Array.filter<ClaimRequest>(stable_claim_requests, func (req) {
-      req.request_id != request.request_id
-    });
   };
 
   private func archive_failed_request(request : ClaimRequest) : () {
-    // Add to failed requests array (for pre-claim failures where no funds are stuck)
     failed_claim_requests := Array.append(failed_claim_requests, [request]);
-    
-    // Keep only last 1000 to prevent unbounded growth
     if (failed_claim_requests.size() > 1000) {
       let start_index = failed_claim_requests.size() - 1000;
       failed_claim_requests := Array.subArray(failed_claim_requests, start_index, 1000);
     };
-
-    // Remove from active requests
-    stable_claim_requests := Array.filter<ClaimRequest>(stable_claim_requests, func (req) {
-      req.request_id != request.request_id
-    });
   };
 
-  // Public: Request claim and withdraw
-  public shared ({ caller }) func request_claim_and_withdraw(
+  private func claim_position_fees_internal(
+    caller : Principal,
     swap_canister_id : T.SwapCanisterId,
-    position_id : T.PositionId
-  ) : async ClaimAndWithdrawResult {
-    let correlation_id = get_next_correlation_id();
-    log_info(caller, correlation_id, "Requesting claim and withdraw for position " # debug_show(position_id) # " on swap canister " # debug_show(swap_canister_id));
+    position_id : T.PositionId,
+    correlation_id : Nat
+  ) : async* { #Ok : ClaimRequest; #Err : Text } {
+    log_info(caller, correlation_id, "Claiming fees for position " # debug_show(position_id) # " on swap canister " # debug_show(swap_canister_id));
 
-    // Verify caller owns the position
     if (not has_claimed_position_impl(caller, swap_canister_id, position_id)) {
       let error = "Caller does not own position " # debug_show(position_id) # " on swap canister " # debug_show(swap_canister_id);
       log_error(caller, correlation_id, error);
       return #Err(error);
     };
 
-    // Get position lock to verify it's locked and get token info
-    let position_lock = get_position_lock(caller, swap_canister_id, position_id);
-    let (token0, token1) = switch (position_lock) {
+    let (token0, token1) = switch (get_position_lock(caller, swap_canister_id, position_id)) {
       case (?lock) { (lock.token0, lock.token1) };
       case null {
         let error = "Position " # debug_show(position_id) # " is not locked";
@@ -2355,445 +2257,123 @@ shared (deployer) persistent actor class SneedLock() = this {
       };
     };
 
-    // Create the request
     next_claim_request_id += 1;
+    let now = TimeAsNat64(Time.now());
     let request : ClaimRequest = {
       request_id = next_claim_request_id;
-      caller = caller;
-      swap_canister_id = swap_canister_id;
-      position_id = position_id;
-      token0 = token0;
-      token1 = token1;
-      status = #Pending;
-      created_at = TimeAsNat64(Time.now());
-      started_processing_at = null;
-      completed_at = null;
-      retry_count = 0;
-      last_attempted_at = null;
-    };
-
-    // Add to queue
-    stable_claim_requests := Array.append(stable_claim_requests, [request]);
-    log_info(caller, correlation_id, "Created claim request " # debug_show(request.request_id) # " for position " # debug_show(position_id));
-
-    // Start processing if not already running
-    ignore start_claim_queue_processor();
-
-    #Ok(request.request_id);
-  };
-
-  // Start the claim queue processor timer
-  private func start_claim_queue_processor() : async () {
-    switch (claim_processing_timer_id) {
-      case (?_) {
-        // Already running
-      };
-      case null {
-        // Start with 0 second delay
-        let timer_id = Timer.setTimer<system>(#seconds(0), process_claim_queue);
-        claim_processing_timer_id := ?timer_id;
-        next_scheduled_timer_time := ?TimeAsNat64(Time.now()); // Immediate execution
-      };
-    };
-  };
-
-  // Main queue processor function
-  private func process_claim_queue() : async () {
-    let correlation_id = get_next_correlation_id();
-    
-    // SEMAPHORE: Check if already processing to prevent concurrent execution
-    if (is_processing_claim_queue) {
-      log_info(Principal.fromText("2vxsx-fae"), correlation_id, "Claim queue already processing, skipping this invocation");
-      return;
-    };
-    
-    // SEMAPHORE: Acquire lock
-    is_processing_claim_queue := true;
-    
-    // Record execution
-    last_timer_execution_time := ?TimeAsNat64(Time.now());
-    last_timer_execution_correlation_id := ?correlation_id;
-    
-    // Check if processing is paused
-    switch (claim_queue_processing_state) {
-      case (#Paused(reason)) {
-        log_info(Principal.fromText("2vxsx-fae"), correlation_id, "Claim queue processing is paused: " # reason);
-        claim_processing_timer_id := null;
-        next_scheduled_timer_time := null;
-        is_processing_claim_queue := false; // SEMAPHORE: Release lock
-        return;
-      };
-      case (#Active) {};
-    };
-
-    // Get oldest pending request
-    switch (get_oldest_pending_request()) {
-      case null {
-        // No processable requests (either queue empty or all in cooldown)
-        // Check if there are any active requests at all
-        let has_active_requests = stable_claim_requests.size() > 0;
-        
-        if (has_active_requests) {
-          // Requests exist but none are processable (all in cooldown)
-          consecutive_empty_processing_cycles += 1;
-          log_info(Principal.fromText("2vxsx-fae"), correlation_id, "No processable requests (all in cooldown?), empty cycle count: " # debug_show(consecutive_empty_processing_cycles));
-          
-          if (consecutive_empty_processing_cycles >= max_consecutive_empty_cycles) {
-            // Circuit breaker: pause to prevent infinite loop
-            log_info(Principal.fromText("2vxsx-fae"), correlation_id, "Max consecutive empty cycles reached, pausing queue");
-            claim_queue_processing_state := #Paused("All requests in cooldown, max empty cycles exceeded");
-            claim_processing_timer_id := null;
-            next_scheduled_timer_time := null;
-            claim_requests_processed_in_batch := 0;
-            consecutive_empty_processing_cycles := 0;
-            is_processing_claim_queue := false; // SEMAPHORE: Release lock
-            return;
-          };
-          
-          // Schedule next check after cooldown period
-          let timer_id = Timer.setTimer<system>(#nanoseconds(Nat64.toNat(claim_request_cooldown_ns)), process_claim_queue);
-          claim_processing_timer_id := ?timer_id;
-          next_scheduled_timer_time := ?(TimeAsNat64(Time.now()) + claim_request_cooldown_ns);
-          is_processing_claim_queue := false; // SEMAPHORE: Release lock
-          return;
-        } else {
-          // Queue is truly empty
-          log_info(Principal.fromText("2vxsx-fae"), correlation_id, "Claim queue is empty, stopping processor");
-          claim_processing_timer_id := null;
-          next_scheduled_timer_time := null;
-          claim_requests_processed_in_batch := 0;
-          consecutive_empty_processing_cycles := 0;
-          is_processing_claim_queue := false; // SEMAPHORE: Release lock
-          return;
-        };
-      };
-      case (?request) {
-        // Check for timeout
-        if (has_request_timed_out(request)) {
-          let updated_request = {
-            request_id = request.request_id;
-            caller = request.caller;
-            swap_canister_id = request.swap_canister_id;
-            position_id = request.position_id;
-            token0 = request.token0;
-            token1 = request.token1;
-            status = #TimedOut;
-            created_at = request.created_at;
-            started_processing_at = request.started_processing_at;
-            completed_at = ?TimeAsNat64(Time.now());
-            retry_count = request.retry_count;
-            last_attempted_at = request.last_attempted_at;
-          };
-          archive_completed_request(updated_request);
-          log_error(request.caller, correlation_id, "Request " # debug_show(request.request_id) # " timed out");
-          
-          // Pause processing
-          claim_queue_processing_state := #Paused("Request " # debug_show(request.request_id) # " timed out");
-          claim_processing_timer_id := null;
-          next_scheduled_timer_time := null;
-          is_processing_claim_queue := false; // SEMAPHORE: Release lock
-          return;
-        };
-
-        // Process the request
-        await process_single_claim_request(request, correlation_id);
-
-        // Reset empty cycle counter (we successfully processed something)
-        consecutive_empty_processing_cycles := 0;
-
-        // Increment batch counter
-        claim_requests_processed_in_batch += 1;
-
-        // Check if we need to pause
-        if (claim_requests_processed_in_batch >= max_requests_per_batch) {
-          switch (get_oldest_pending_request()) {
-            case null {
-              // Queue is now empty, reset counter
-              claim_requests_processed_in_batch := 0;
-            };
-            case (?_) {
-              // More requests pending, schedule pause
-              log_info(Principal.fromText("2vxsx-fae"), correlation_id, "Processed " # debug_show(max_requests_per_batch) # " requests, pausing for 10 minutes");
-              claim_requests_processed_in_batch := 0;
-              let timer_id = Timer.setTimer<system>(#nanoseconds(Nat64.toNat(batch_pause_duration_ns)), process_claim_queue);
-              claim_processing_timer_id := ?timer_id;
-              next_scheduled_timer_time := ?(TimeAsNat64(Time.now()) + batch_pause_duration_ns);
-              is_processing_claim_queue := false; // SEMAPHORE: Release lock
-              return;
-            };
-          };
-        };
-
-        // Schedule next iteration immediately
-        let timer_id = Timer.setTimer<system>(#seconds(0), process_claim_queue);
-        claim_processing_timer_id := ?timer_id;
-        next_scheduled_timer_time := ?TimeAsNat64(Time.now()); // Immediate execution
-        is_processing_claim_queue := false; // SEMAPHORE: Release lock
-      };
-    };
-  };
-
-  // Process a single claim request
-  private func process_single_claim_request(request : ClaimRequest, correlation_id : Nat) : async () {
-    log_info(request.caller, correlation_id, "Processing claim request " # debug_show(request.request_id) # ", retry_count=" # debug_show(request.retry_count));
-
-    // Check if max retries exceeded
-    if (request.retry_count >= max_claim_retry_attempts) {
-      let error_msg = "Max retry attempts (" # debug_show(max_claim_retry_attempts) # ") exceeded";
-      log_error(request.caller, correlation_id, error_msg);
-      let failed_request = {
-        request with
-        status = #Failed(error_msg);
-        completed_at = ?TimeAsNat64(Time.now());
-      };
-      archive_failed_request(failed_request);
-      return;
-    };
-
-    // Update status to Processing, increment retry count, and record attempt time
-    let updated_request_processing = {
-      request with
+      caller;
+      swap_canister_id;
+      position_id;
+      token0;
+      token1;
       status = #Processing;
-      started_processing_at = ?TimeAsNat64(Time.now());
-      retry_count = request.retry_count + 1;
-      last_attempted_at = ?TimeAsNat64(Time.now());
+      created_at = now;
+      started_processing_at = ?now;
+      completed_at = null;
+      retry_count = 1;
+      last_attempted_at = ?now;
     };
-    update_claim_request(updated_request_processing);
 
-    // Get ICPSwap swap canister actor
-    let swap_canister = actor (Principal.toText(request.swap_canister_id)) : actor {
-      claim : (args : { positionId : Nat }) -> async { #ok : { amount0 : Nat; amount1 : Nat }; #err : T.SwapCanisterError };
+    func fail(message : Text) : { #Ok : ClaimRequest; #Err : Text } {
+      log_error(caller, correlation_id, message);
+      archive_failed_request({ request with status = #Failed(message); completed_at = ?TimeAsNat64(Time.now()) });
+      #Err(message);
+    };
+
+    let swap_canister = actor (Principal.toText(swap_canister_id)) : actor {
+      claimToSubaccount : (args : { positionId : Nat; subaccount : Blob }) -> async { #ok : { amount0 : Nat; amount1 : Nat }; #err : T.SwapCanisterError };
       getUserPosition : (positionId : Nat) -> async { #ok : { tokensOwed0 : Nat; tokensOwed1 : Nat; liquidity : Nat; feeGrowthInside0LastX128 : Nat; feeGrowthInside1LastX128 : Nat }; #err : T.SwapCanisterError };
     };
+    let token0_ledger = actor (Principal.toText(token0)) : actor { icrc1_fee : () -> async Nat };
+    let token1_ledger = actor (Principal.toText(token1)) : actor { icrc1_fee : () -> async Nat };
 
-    // Step 0: Get token ledger actors and fees
-    let token0_ledger = actor (Principal.toText(request.token0)) : actor { 
-      icrc1_fee : () -> async Nat;
-      icrc1_balance_of : (account : Account) -> async Nat;
-      icrc1_transfer : (args : TransferArgs) -> async T.TransferResult;
-    };
-    let token1_ledger = actor (Principal.toText(request.token1)) : actor { 
-      icrc1_fee : () -> async Nat;
-      icrc1_balance_of : (account : Account) -> async Nat;
-      icrc1_transfer : (args : TransferArgs) -> async T.TransferResult;
-    };
-    let token0_fee = await token0_ledger.icrc1_fee();
-    let token1_fee = await token1_ledger.icrc1_fee();
-
-    // Get current claimable amounts
-    let position_info_result = await swap_canister.getUserPosition(request.position_id);
-    let (tokens_owed0, tokens_owed1) = switch (position_info_result) {
-      case (#ok(info)) { (info.tokensOwed0, info.tokensOwed1) };
-      case (#err(err)) {
-        let error_msg = "Failed to get position info: " # debug_show(err);
-        log_error(request.caller, correlation_id, error_msg);
-        let failed_request = { updated_request_processing with status = #Failed(error_msg); completed_at = ?TimeAsNat64(Time.now()) };
-        archive_failed_request(failed_request);  // Pre-claim failure, no funds stuck
-        return;
+    // The pool charges the ledger fee on delivery and drops any amount at or
+    // below the fee, so only claim when at least one side is worth delivering.
+    let (token0_fee, token1_fee, tokens_owed0, tokens_owed1) = try {
+      let fee0 = await token0_ledger.icrc1_fee();
+      let fee1 = await token1_ledger.icrc1_fee();
+      switch (await swap_canister.getUserPosition(position_id)) {
+        case (#ok(info)) { (fee0, fee1, info.tokensOwed0, info.tokensOwed1) };
+        case (#err(err)) { return fail("Failed to get position info: " # debug_show(err)) };
       };
+    } catch (e) {
+      return fail("Failed to query fees or position: " # Error.message(e));
     };
 
-    // Check if at least one token has enough to claim (need at least 1x fee for transfer to user)
-    let token0_has_enough = tokens_owed0 >= token0_fee;
-    let token1_has_enough = tokens_owed1 >= token1_fee;
-
-    if (not token0_has_enough and not token1_has_enough) {
-      let error_msg = "Insufficient rewards to claim. Token0: " # debug_show(tokens_owed0) # " (need >= " # debug_show(token0_fee) # "), Token1: " # debug_show(tokens_owed1) # " (need >= " # debug_show(token1_fee) # ")";
-      log_error(request.caller, correlation_id, error_msg);
-      let failed_request = { updated_request_processing with status = #Failed(error_msg); completed_at = ?TimeAsNat64(Time.now()) };
-      archive_failed_request(failed_request);  // Pre-claim failure, no funds stuck
-      return;
+    if (tokens_owed0 < token0_fee and tokens_owed1 < token1_fee) {
+      return fail("Insufficient rewards to claim. Token0: " # debug_show(tokens_owed0) # " (need >= " # debug_show(token0_fee) # "), Token1: " # debug_show(tokens_owed1) # " (need >= " # debug_show(token1_fee) # ")");
     };
 
-    log_info(request.caller, correlation_id, "Position has claimable rewards - Token0: " # debug_show(tokens_owed0) # " (fee: " # debug_show(token0_fee) # ", enough: " # debug_show(token0_has_enough) # "), Token1: " # debug_show(tokens_owed1) # " (fee: " # debug_show(token1_fee) # ", enough: " # debug_show(token1_has_enough) # ")");
-
-    // Step 1: Record balance on token ledgers before claim
-    // Note: ICPSwap's claim() auto-withdraws to the caller's principal (sneed_lock), not to a subaccount
-    let canister_account : Account = { owner = this_canister_id(); subaccount = null };
-    let balance0_before = await token0_ledger.icrc1_balance_of(canister_account);
-    let balance1_before = await token1_ledger.icrc1_balance_of(canister_account);
-    
-    log_info(request.caller, correlation_id, "Balance before claim on sneed_lock principal: token0=" # debug_show(balance0_before) # ", token1=" # debug_show(balance1_before));
-
-    let updated_request_balance_recorded = {
-      updated_request_processing with
-      status = #BalanceRecorded({ balance0_before = balance0_before; balance1_before = balance1_before });
+    let subaccount = Blob.fromArray(PrincipalToSubaccount(caller));
+    let claim_result = try {
+      await swap_canister.claimToSubaccount({ positionId = position_id; subaccount });
+    } catch (e) {
+      // The pool either rolled the claim back or will still deliver to the
+      // owner's subaccount from its own queue; sneed_lock never holds the funds.
+      return fail("Claim call failed with unknown outcome: " # Error.message(e));
     };
-    update_claim_request(updated_request_balance_recorded);
-    log_info(request.caller, correlation_id, "Recorded balance before claim: token0=" # debug_show(balance0_before) # ", token1=" # debug_show(balance1_before));
 
-    // Step 2: Attempt claim
-    let claim_result = await swap_canister.claim({ positionId = request.position_id });
-    
-    let updated_request_claim_attempted = {
-      updated_request_balance_recorded with
-      status = #ClaimAttempted({ balance0_before = balance0_before; balance1_before = balance1_before; claim_attempt = 1 });
-    };
-    update_claim_request(updated_request_claim_attempted);
-
-    // Step 3: Verify claim by checking balance change on token ledgers
-    // ICPSwap's claim auto-withdraws to the caller (sneed_lock principal), so we check ledger balances
-    let balance0_after = await token0_ledger.icrc1_balance_of(canister_account);
-    let balance1_after = await token1_ledger.icrc1_balance_of(canister_account);
-    
-    let amount0_claimed = if (balance0_after >= balance0_before) {
-      balance0_after - balance0_before
-    } else { 
-      log_error(request.caller, correlation_id, "WARNING: Token0 balance decreased after claim! Before: " # debug_show(balance0_before) # ", After: " # debug_show(balance0_after));
-      0 
-    };
-    let amount1_claimed = if (balance1_after >= balance1_before) {
-      balance1_after - balance1_before
-    } else { 
-      log_error(request.caller, correlation_id, "WARNING: Token1 balance decreased after claim! Before: " # debug_show(balance1_before) # ", After: " # debug_show(balance1_after));
-      0 
-    };
-    
-    // Verify claim based on balance changes
-    let claim_error = switch (claim_result) {
+    switch (claim_result) {
+      case (#err(err)) { fail("Claim failed: " # debug_show(err)) };
       case (#ok(amounts)) {
-        log_info(request.caller, correlation_id, "Claim API returned success: amount0=" # debug_show(amounts.amount0) # ", amount1=" # debug_show(amounts.amount1) # ". Actual balance change: token0=" # debug_show(amount0_claimed) # ", token1=" # debug_show(amount1_claimed));
-        null
-      };
-      case (#err(err)) {
-        log_info(request.caller, correlation_id, "Claim API returned error: " # debug_show(err) # ". Actual balance change: token0=" # debug_show(amount0_claimed) # ", token1=" # debug_show(amount1_claimed));
-        ?err
-      };
-    };
-    
-    // Check if any funds were actually claimed
-    if (amount0_claimed == 0 and amount1_claimed == 0) {
-      let error_msg = switch (claim_error) {
-        case (?err) { "Claim failed with no balance change: " # debug_show(err) };
-        case null { "Claim succeeded but no balance change detected" };
-      };
-      log_error(request.caller, correlation_id, error_msg);
-      let failed_request = { updated_request_claim_attempted with status = #Failed(error_msg); completed_at = ?TimeAsNat64(Time.now()) };
-      archive_failed_request(failed_request);  // Claim failed, verified no funds stuck
-      return;
-    };
-    
-    log_info(request.caller, correlation_id, "Claim verified by balance change: token0=" # debug_show(amount0_claimed) # ", token1=" # debug_show(amount1_claimed));
-
-    let updated_request_verified = {
-      updated_request_claim_attempted with
-      status = #ClaimVerified({
-        balance0_before = balance0_before;
-        balance1_before = balance1_before;
-        amount0_claimed = amount0_claimed;
-        amount1_claimed = amount1_claimed;
-      });
-    };
-    update_claim_request(updated_request_verified);
-
-    // Step 4: Transfer claimed tokens to user's principal
-    // Funds are already on sneed_lock principal (auto-withdrawn by claim), so we use icrc1_transfer
-    let user_account : Account = { owner = request.caller; subaccount = null };
-    
-    var transferred0 : Nat = 0;
-    var transferred1 : Nat = 0;
-    var transfer0_tx_id : ?Nat = null;
-    var transfer1_tx_id : ?Nat = null;
-    var transfer_errors : Text = "";
-
-    // Transfer token0 if claimed amount is sufficient (need to cover transfer fee)
-    if (amount0_claimed > token0_fee) {
-      let transfer0_amount = amount0_claimed - token0_fee;
-      log_info(request.caller, correlation_id, "Transferring token0 to user: amount=" # debug_show(transfer0_amount) # ", fee=" # debug_show(token0_fee) # ", claimed=" # debug_show(amount0_claimed));
-      
-      let transfer0_args : TransferArgs = {
-        from_subaccount = null;  // Transfer from sneed_lock's main account
-        to = user_account;
-        amount = transfer0_amount;
-        fee = ?token0_fee;
-        memo = null;
-        created_at_time = null;
-      };
-      
-      let transfer0_result = await token0_ledger.icrc1_transfer(transfer0_args);
-      switch (transfer0_result) {
-        case (#Ok(tx_id)) {
-          transferred0 := transfer0_amount;
-          transfer0_tx_id := ?tx_id;
-          log_info(request.caller, correlation_id, "Transferred token0 to user: " # debug_show(transfer0_amount) # ", tx_id: " # debug_show(tx_id));
+        let delivered0 = if (amounts.amount0 > token0_fee) { amounts.amount0 - token0_fee } else { 0 };
+        let delivered1 = if (amounts.amount1 > token1_fee) { amounts.amount1 - token1_fee } else { 0 };
+        let completed : ClaimRequest = {
+          request with
+          status = #Completed({
+            amount0_claimed = amounts.amount0;
+            amount1_claimed = amounts.amount1;
+            amount0_transferred = delivered0;
+            amount1_transferred = delivered1;
+            transfer0_tx_id = null; // the pool performs the ledger transfers
+            transfer1_tx_id = null;
+          });
+          completed_at = ?TimeAsNat64(Time.now());
         };
-        case (#Err(err)) {
-          let error_msg = "Failed to transfer token0 to user: " # debug_show(err);
-          log_error(request.caller, correlation_id, error_msg);
-          transfer_errors := transfer_errors # error_msg # "; ";
-        };
+        archive_completed_request(completed);
+        log_info(caller, correlation_id, "Claimed fees for position " # debug_show(position_id) # ": token0=" # debug_show(amounts.amount0) # ", token1=" # debug_show(amounts.amount1) # "; delivered by the pool to the owner's wallet subaccount");
+        #Ok(completed);
       };
-    } else if (amount0_claimed > 0) {
-      let msg = "Token0 claimed amount (" # debug_show(amount0_claimed) # ") <= fee (" # debug_show(token0_fee) # "), cannot transfer";
-      log_info(request.caller, correlation_id, msg);
-      transfer_errors := transfer_errors # msg # "; ";
     };
-
-    // Transfer token1 if claimed amount is sufficient (need to cover transfer fee)
-    if (amount1_claimed > token1_fee) {
-      let transfer1_amount = amount1_claimed - token1_fee;
-      log_info(request.caller, correlation_id, "Transferring token1 to user: amount=" # debug_show(transfer1_amount) # ", fee=" # debug_show(token1_fee) # ", claimed=" # debug_show(amount1_claimed));
-      
-      let transfer1_args : TransferArgs = {
-        from_subaccount = null;  // Transfer from sneed_lock's main account
-        to = user_account;
-        amount = transfer1_amount;
-        fee = ?token1_fee;
-        memo = null;
-        created_at_time = null;
-      };
-      
-      let transfer1_result = await token1_ledger.icrc1_transfer(transfer1_args);
-      switch (transfer1_result) {
-        case (#Ok(tx_id)) {
-          transferred1 := transfer1_amount;
-          transfer1_tx_id := ?tx_id;
-          log_info(request.caller, correlation_id, "Transferred token1 to user: " # debug_show(transfer1_amount) # ", tx_id: " # debug_show(tx_id));
-        };
-        case (#Err(err)) {
-          let error_msg = "Failed to transfer token1 to user: " # debug_show(err);
-          log_error(request.caller, correlation_id, error_msg);
-          transfer_errors := transfer_errors # error_msg # "; ";
-        };
-      };
-    } else if (amount1_claimed > 0) {
-      let msg = "Token1 claimed amount (" # debug_show(amount1_claimed) # ") <= fee (" # debug_show(token1_fee) # "), cannot transfer";
-      log_info(request.caller, correlation_id, msg);
-      transfer_errors := transfer_errors # msg # "; ";
-    };
-    
-    // Check if transfers failed
-    if (transfer_errors != "") {
-      let error_msg = "Transfer errors: " # transfer_errors # " Tokens claimed but stuck on sneed_lock canister: token0=" # debug_show(amount0_claimed - transferred0) # ", token1=" # debug_show(amount1_claimed - transferred1);
-      log_error(request.caller, correlation_id, error_msg);
-      let failed_request = { updated_request_verified with status = #Failed(error_msg); completed_at = ?TimeAsNat64(Time.now()) };
-      update_claim_request(failed_request);  // Keep in active array - FUNDS ARE STUCK ON SNEED_LOCK!
-      return;
-    };
-
-    // Mark as completed with transfer details
-    let completed_request = {
-      updated_request_verified with
-      status = #Completed({
-        amount0_claimed = amount0_claimed;
-        amount1_claimed = amount1_claimed;
-        amount0_transferred = transferred0;
-        amount1_transferred = transferred1;
-        transfer0_tx_id = transfer0_tx_id;
-        transfer1_tx_id = transfer1_tx_id;
-      });
-      completed_at = ?TimeAsNat64(Time.now());
-    };
-    archive_completed_request(completed_request);
-    log_info(request.caller, correlation_id, "Completed claim request " # debug_show(request.request_id));
   };
 
-  // Query: Get all active claim requests for caller (pending/processing)
-  public query ({ caller }) func get_my_active_claim_requests() : async [ClaimRequest] {
-    Array.filter<ClaimRequest>(stable_claim_requests, func (req) { req.caller == caller });
+  /// Claim the accrued trading fees of a locked position. The pool delivers
+  /// them to the caller's wallet subaccount on this canister.
+  public shared ({ caller }) func claim_position_fees(swap_canister_id : T.SwapCanisterId, position_id : T.PositionId) : async T.ClaimFeesResult {
+    let correlation_id = get_next_correlation_id();
+    switch (await* claim_position_fees_internal(caller, swap_canister_id, position_id, correlation_id)) {
+      case (#Err(e)) { #Err(e) };
+      case (#Ok(request)) {
+        switch (request.status) {
+          case (#Completed(details)) {
+            #Ok({ request_id = request.request_id; amount0 = details.amount0_claimed; amount1 = details.amount1_claimed });
+          };
+          case _ { #Err("Unexpected claim state") };
+        };
+      };
+    };
   };
 
-  // Query: Get all active claim requests (no caller filter)
+  /// Compatibility entry point for older frontends: performs the claim
+  /// synchronously and returns the history id, which get_claim_request_status
+  /// then reports as completed or failed.
+  public shared ({ caller }) func request_claim_and_withdraw(swap_canister_id : T.SwapCanisterId, position_id : T.PositionId) : async ClaimAndWithdrawResult {
+    let correlation_id = get_next_correlation_id();
+    switch (await* claim_position_fees_internal(caller, swap_canister_id, position_id, correlation_id)) {
+      case (#Ok(request)) { #Ok(request.request_id) };
+      case (#Err(e)) { #Err(e) };
+    };
+  };
+
+  // Query: Get the caller's claim history (completed and failed)
+  public query ({ caller }) func get_my_claim_history() : async [ClaimRequest] {
+    Array.append(
+      Array.filter<ClaimRequest>(completed_claim_requests, func (req) { req.caller == caller }),
+      Array.filter<ClaimRequest>(failed_claim_requests, func (req) { req.caller == caller })
+    );
+  };
+
+  // Query: contents of the retired request queue (read-only; should be empty)
   public query func get_all_active_claim_requests() : async [ClaimRequest] {
     stable_claim_requests;
   };
@@ -2808,31 +2388,19 @@ shared (deployer) persistent actor class SneedLock() = this {
     failed_claim_requests;
   };
 
-  // Query: Get active claim request by ID (pending/processing)
-  public query func get_active_claim_request(request_id : ClaimRequestId) : async ?ClaimRequest {
-    Array.find<ClaimRequest>(stable_claim_requests, func (req) { req.request_id == request_id });
-  };
-
-  // Query: Get claim request status by ID (searches active, completed, and failed)
+  // Query: Get claim request status by ID (searches completed and failed history).
+  // Claims are synchronous now; the #Active variant is kept for interface compatibility.
   public query func get_claim_request_status(request_id : ClaimRequestId) : async ?{
     #Active : ClaimRequest;
     #Completed : ClaimRequest;
     #Failed : ClaimRequest;
   } {
-    // First check active requests
-    switch (Array.find<ClaimRequest>(stable_claim_requests, func (req) { req.request_id == request_id })) {
-      case (?active_req) { return ?#Active(active_req); };
+    switch (Array.find<ClaimRequest>(completed_claim_requests, func (req) { req.request_id == request_id })) {
+      case (?completed_req) { ?#Completed(completed_req) };
       case null {
-        // Search completed requests
-        switch (Array.find<ClaimRequest>(completed_claim_requests, func (req) { req.request_id == request_id })) {
-          case (?completed_req) { return ?#Completed(completed_req); };
-          case null {
-            // Search failed requests
-            switch (Array.find<ClaimRequest>(failed_claim_requests, func (req) { req.request_id == request_id })) {
-              case (?failed_req) { return ?#Failed(failed_req); };
-              case null { return null; };
-            };
-          };
+        switch (Array.find<ClaimRequest>(failed_claim_requests, func (req) { req.request_id == request_id })) {
+          case (?failed_req) { ?#Failed(failed_req) };
+          case null { null };
         };
       };
     };
@@ -2846,108 +2414,6 @@ shared (deployer) persistent actor class SneedLock() = this {
   // Query: Get specific failed claim request by ID
   public query func get_failed_claim_request(request_id : ClaimRequestId) : async ?ClaimRequest {
     Array.find<ClaimRequest>(failed_claim_requests, func (req) { req.request_id == request_id });
-  };
-
-  // Query: Get queue status
-  public query func get_claim_queue_status() : async {
-    processing_state : QueueProcessingState;
-    pending_count : Nat;
-    processing_count : Nat;
-    active_total : Nat;
-    completed_count : Nat;
-    failed_count : Nat;
-    consecutive_empty_cycles : Nat;
-    is_currently_processing : Bool; // Semaphore state
-  } {
-    var pending = 0;
-    var processing = 0;
-
-    for (req in stable_claim_requests.vals()) {
-      switch (req.status) {
-        case (#Pending) { pending += 1; };
-        case (#Processing) { processing += 1; };
-        case (#BalanceRecorded(_)) { processing += 1; };
-        case (#ClaimAttempted(_)) { processing += 1; };
-        case (#ClaimVerified(_)) { processing += 1; };
-        case (#Withdrawn(_)) { processing += 1; };
-        case _ {}; // Should not have completed/failed in active array
-      };
-    };
-
-    {
-      processing_state = claim_queue_processing_state;
-      pending_count = pending;
-      processing_count = processing;
-      active_total = stable_claim_requests.size();
-      completed_count = completed_claim_requests.size();
-      failed_count = failed_claim_requests.size();
-      consecutive_empty_cycles = consecutive_empty_processing_cycles;
-      is_currently_processing = is_processing_claim_queue;
-    };
-  };
-
-  // Admin: Resume queue processing
-  public shared ({ caller }) func admin_resume_claim_queue() : async () {
-    if (not isAdmin(caller)) {
-      Debug.trap("Only admin can resume claim queue processing");
-    };
-
-    let correlation_id = get_next_correlation_id();
-    log_info(caller, correlation_id, "Resuming claim queue processing");
-    
-    claim_queue_processing_state := #Active;
-    claim_requests_processed_in_batch := 0;
-    ignore start_claim_queue_processor();
-  };
-
-  // Admin: Pause queue processing
-  public shared ({ caller }) func admin_pause_claim_queue(reason : Text) : async () {
-    if (not isAdmin(caller)) {
-      Debug.trap("Only admin can pause claim queue processing");
-    };
-
-    let correlation_id = get_next_correlation_id();
-    log_info(caller, correlation_id, "Pausing claim queue processing: " # reason);
-    
-    claim_queue_processing_state := #Paused(reason);
-    
-    // Cancel existing timer
-    switch (claim_processing_timer_id) {
-      case (?timer_id) {
-        Timer.cancelTimer(timer_id);
-        claim_processing_timer_id := null;
-        next_scheduled_timer_time := null;
-      };
-      case null {};
-    };
-  };
-
-  // Admin: Emergency stop - immediately cancel timer
-  public shared ({ caller }) func admin_emergency_stop_timer() : async () {
-    if (not isAdmin(caller)) {
-      Debug.trap("Only admin can emergency stop timer");
-    };
-
-    let correlation_id = get_next_correlation_id();
-    
-    // Cancel timer immediately
-    switch (claim_processing_timer_id) {
-      case (?timer_id) {
-        Timer.cancelTimer(timer_id);
-        claim_processing_timer_id := null;
-        next_scheduled_timer_time := null;
-        log_info(caller, correlation_id, "EMERGENCY STOP: Timer " # debug_show(timer_id) # " cancelled");
-      };
-      case null {
-        log_info(caller, correlation_id, "EMERGENCY STOP: No active timer to cancel");
-      };
-    };
-
-    // Pause queue processing
-    claim_queue_processing_state := #Paused("Emergency stop activated");
-    claim_requests_processed_in_batch := 0;
-    
-    log_info(caller, correlation_id, "EMERGENCY STOP: Queue processing paused, timer cancelled");
   };
 
   // Admin: Clear completed requests array
@@ -2978,224 +2444,6 @@ shared (deployer) persistent actor class SneedLock() = this {
     log_info(caller, correlation_id, "Cleared failed claim requests, removed " # debug_show(before_count) # " entries");
     
     before_count;
-  };
-
-  // Admin: Remove specific active request (pending/processing only)
-  public shared ({ caller }) func admin_remove_active_claim_request(request_id : ClaimRequestId) : async Bool {
-    if (not isAdmin(caller)) {
-      Debug.trap("Only admin can remove claim requests");
-    };
-
-    let before_count = stable_claim_requests.size();
-    stable_claim_requests := Array.filter<ClaimRequest>(stable_claim_requests, func (req) {
-      req.request_id != request_id
-    });
-    let after_count = stable_claim_requests.size();
-
-    let removed = before_count != after_count;
-    if (removed) {
-      let correlation_id = get_next_correlation_id();
-      log_info(caller, correlation_id, "Removed active claim request " # debug_show(request_id));
-    };
-    
-    removed;
-  };
-
-  // Admin: Manually trigger claim queue processing (immediate execution)
-  public shared ({ caller }) func admin_trigger_claim_processing() : async Text {
-    if (not isAdmin(caller)) {
-      Debug.trap("Only admin can manually trigger claim processing");
-    };
-
-    let correlation_id = get_next_correlation_id();
-    
-    // Check if there are pending requests
-    let pending_request = get_oldest_pending_request();
-    if (pending_request == null) {
-      log_info(caller, correlation_id, "No pending requests in queue");
-      return "No pending requests to process";
-    };
-
-    // Check if already processing
-    switch (claim_processing_timer_id) {
-      case (?timer_id) {
-        log_info(caller, correlation_id, "Timer already active (ID: " # debug_show(timer_id) # ")");
-        return "Timer already active";
-      };
-      case null {
-        // Ensure queue is active
-        claim_queue_processing_state := #Active;
-        
-        // Start timer immediately
-        let timer_id = Timer.setTimer<system>(#seconds(0), process_claim_queue);
-        claim_processing_timer_id := ?timer_id;
-        next_scheduled_timer_time := ?TimeAsNat64(Time.now());
-        
-        log_info(caller, correlation_id, "Manually triggered claim processing (Timer ID: " # debug_show(timer_id) # ")");
-        return "Processing started with timer ID: " # debug_show(timer_id);
-      };
-    };
-  };
-
-  // Admin: Retry a specific claim request (reset to pending status)
-  public shared ({ caller }) func admin_retry_claim_request(request_id : ClaimRequestId) : async {
-    #Ok : Text;
-    #Err : Text;
-  } {
-    if (not isAdmin(caller)) {
-      Debug.trap("Only admin can retry claim requests");
-    };
-
-    let correlation_id = get_next_correlation_id();
-    
-    // Find the request in active requests
-    let request_opt = Array.find<ClaimRequest>(stable_claim_requests, func (req) {
-      req.request_id == request_id
-    });
-
-    switch (request_opt) {
-      case (?request) {
-        // Check if request is in a retryable state
-        let is_retryable = switch (request.status) {
-          case (#Failed(_)) { true };
-          case (#TimedOut) { true };
-          case (#Pending) { false }; // Already pending
-          case (#Processing) { false }; // Currently processing
-          case (#BalanceRecorded(_)) { false };
-          case (#ClaimAttempted(_)) { false };
-          case (#ClaimVerified(_)) { false };
-          case (#Withdrawn(_)) { false };
-          case (#Completed(_)) { false };
-        };
-
-        if (not is_retryable) {
-          let msg = "Request " # debug_show(request_id) # " is not in a retryable state (current status: " # debug_show(request.status) # ")";
-          log_info(caller, correlation_id, msg);
-          return #Err(msg);
-        };
-
-        // Reset to pending (preserve retry_count and last_attempted_at for cooldown tracking)
-        let updated_request : ClaimRequest = {
-          request_id = request.request_id;
-          caller = request.caller;
-          swap_canister_id = request.swap_canister_id;
-          position_id = request.position_id;
-          token0 = request.token0;
-          token1 = request.token1;
-          status = #Pending;
-          created_at = request.created_at;
-          started_processing_at = null;
-          completed_at = null;
-          retry_count = request.retry_count;  // Preserve retry count
-          last_attempted_at = request.last_attempted_at;  // Preserve for cooldown
-        };
-
-        // Update in array
-        stable_claim_requests := Array.map<ClaimRequest, ClaimRequest>(
-          stable_claim_requests,
-          func (req) {
-            if (req.request_id == request_id) {
-              updated_request
-            } else {
-              req
-            }
-          }
-        );
-
-        log_info(caller, correlation_id, "Reset claim request " # debug_show(request_id) # " to pending status");
-        
-        // If queue is active and no timer running, start it
-        switch (claim_queue_processing_state) {
-          case (#Active) {
-            switch (claim_processing_timer_id) {
-              case null {
-                ignore start_claim_queue_processor();
-                log_info(caller, correlation_id, "Started queue processor for retried request");
-              };
-              case (?_) {}; // Already running
-            };
-          };
-          case (#Paused(reason)) {
-            log_info(caller, correlation_id, "Queue is paused (" # reason # "), request reset but not processing");
-          };
-        };
-
-        #Ok("Request " # debug_show(request_id) # " reset to pending and queued for retry");
-      };
-      case null {
-        // Check completed requests
-        let completed_request_opt = Array.find<ClaimRequest>(completed_claim_requests, func (req) {
-          req.request_id == request_id
-        });
-        
-        switch (completed_request_opt) {
-          case (?req) {
-            let msg = "Request " # debug_show(request_id) # " is completed. It cannot be retried.";
-            log_info(caller, correlation_id, msg);
-            return #Err(msg);
-          };
-          case null {};
-        };
-        
-        // Check failed requests - these CAN be retried!
-        let failed_request_opt = Array.find<ClaimRequest>(failed_claim_requests, func (req) {
-          req.request_id == request_id
-        });
-        
-        switch (failed_request_opt) {
-          case (?failed_request) {
-            // Move from failed back to active with pending status
-            let retried_request : ClaimRequest = {
-              request_id = failed_request.request_id;
-              caller = failed_request.caller;
-              swap_canister_id = failed_request.swap_canister_id;
-              position_id = failed_request.position_id;
-              token0 = failed_request.token0;
-              token1 = failed_request.token1;
-              status = #Pending;
-              created_at = failed_request.created_at;
-              started_processing_at = null;
-              completed_at = null;
-              retry_count = 0;  // Reset retry count for manual retry
-              last_attempted_at = null;  // Clear cooldown
-            };
-            
-            // Add to active requests
-            stable_claim_requests := Array.append(stable_claim_requests, [retried_request]);
-            
-            // Remove from failed requests
-            failed_claim_requests := Array.filter<ClaimRequest>(failed_claim_requests, func (req) {
-              req.request_id != request_id
-            });
-            
-            log_info(caller, correlation_id, "Moved failed request " # debug_show(request_id) # " back to active queue with pending status");
-            
-            // Start queue processor if needed
-            switch (claim_queue_processing_state) {
-              case (#Active) {
-                switch (claim_processing_timer_id) {
-                  case null {
-                    ignore start_claim_queue_processor();
-                    log_info(caller, correlation_id, "Started queue processor for retried failed request");
-                  };
-                  case (?_) {}; // Already running
-                };
-              };
-              case (#Paused(reason)) {
-                log_info(caller, correlation_id, "Queue is paused (" # reason # "), request moved to active but not processing");
-              };
-            };
-            
-            return #Ok("Failed request " # debug_show(request_id) # " moved back to active queue for retry");
-          };
-          case null {
-            let msg = "Request " # debug_show(request_id) # " not found in active, completed, or failed requests.";
-            log_info(caller, correlation_id, msg);
-            return #Err(msg);
-          };
-        };
-      };
-    };
   };
 
   // Admin: Rescue stuck tokens from sneed_lock principal
@@ -3262,54 +2510,63 @@ shared (deployer) persistent actor class SneedLock() = this {
     };
   };
 
-  // Admin: Set zero balance enforcement flag
-  public shared ({ caller }) func admin_set_enforce_zero_balance_before_claim(enforce : Bool) : async () {
+  // Admin: inspect this canister's unused balance held inside a swap pool.
+  // Normally zero; a non-zero balance means a pool-side delivery failed after
+  // a claim and the amount is waiting in the pool under this canister's account.
+  public shared ({ caller }) func admin_get_pool_unused_balance(swap_canister_id : T.SwapCanisterId) : async { #Ok : { balance0 : Nat; balance1 : Nat }; #Err : Text } {
     if (not isAdmin(caller)) {
-      Debug.trap("Only admin can set zero balance enforcement");
+      Debug.trap("Only admin can query pool balances");
     };
+    let swap_canister = actor (Principal.toText(swap_canister_id)) : actor {
+      getUserUnusedBalance : (principal : Principal) -> async { #ok : { balance0 : Nat; balance1 : Nat }; #err : T.SwapCanisterError };
+    };
+    try {
+      switch (await swap_canister.getUserUnusedBalance(this_canister_id())) {
+        case (#ok(balances)) { #Ok(balances) };
+        case (#err(err)) { #Err(debug_show(err)) };
+      };
+    } catch (e) {
+      #Err(Error.message(e));
+    };
+  };
 
+  // Admin: deliver a stranded pool-side balance to a user's wallet subaccount.
+  // Attribution to the right user is done by the admin from the pool's
+  // transaction log (getTransactionsByOwner / getFailedTransactions).
+  public shared ({ caller }) func admin_withdraw_pool_balance_to_user(
+    swap_canister_id : T.SwapCanisterId,
+    token_ledger : T.TokenType,
+    amount : Nat,
+    user : Principal
+  ) : async { #Ok : Nat; #Err : Text } {
+    if (not isAdmin(caller)) {
+      Debug.trap("Only admin can withdraw pool balances");
+    };
     let correlation_id = get_next_correlation_id();
-    log_info(caller, correlation_id, "Setting enforce_zero_balance_before_claim from " # debug_show(enforce_zero_balance_before_claim) # " to " # debug_show(enforce));
-    
-    enforce_zero_balance_before_claim := enforce;
-  };
+    log_info(caller, correlation_id, "Admin withdrawing " # debug_show(amount) # " of " # debug_show(token_ledger) # " from pool " # debug_show(swap_canister_id) # " to the wallet subaccount of " # debug_show(user));
 
-  // Query: Get zero balance enforcement status
-  public query func get_enforce_zero_balance_before_claim() : async Bool {
-    enforce_zero_balance_before_claim;
-  };
-
-  // Query: Get timer status
-  public query func get_timer_status() : async {
-    timer_id : ?Nat;
-    last_execution_time : ?T.Timestamp;
-    last_execution_correlation_id : ?Nat;
-    next_scheduled_time : ?T.Timestamp;
-    time_since_last_execution_seconds : ?Nat64;
-    is_active : Bool;
-  } {
-    let now = TimeAsNat64(Time.now());
-    let time_since_last : ?Nat64 = switch (last_timer_execution_time) {
-      case (?last_time) {
-        if (now >= last_time) {
-          ?((now - last_time) / second_ns)
-        } else {
-          ?0
-        }
-      };
-      case null { null };
+    let ledger = actor (Principal.toText(token_ledger)) : actor { icrc1_fee : () -> async Nat };
+    let swap_canister = actor (Principal.toText(swap_canister_id)) : actor {
+      withdrawToSubaccount : (args : { token : Text; amount : Nat; fee : Nat; subaccount : Blob }) -> async { #ok : Nat; #err : T.SwapCanisterError };
     };
-
-    {
-      timer_id = claim_processing_timer_id;
-      last_execution_time = last_timer_execution_time;
-      last_execution_correlation_id = last_timer_execution_correlation_id;
-      next_scheduled_time = next_scheduled_timer_time;
-      time_since_last_execution_seconds = time_since_last;
-      is_active = switch (claim_processing_timer_id) {
-        case (?_) { true };
-        case null { false };
+    try {
+      let fee = await ledger.icrc1_fee();
+      let args = { token = Principal.toText(token_ledger); amount; fee; subaccount = Blob.fromArray(PrincipalToSubaccount(user)) };
+      switch (await swap_canister.withdrawToSubaccount(args)) {
+        case (#ok(accepted)) {
+          log_info(caller, correlation_id, "Pool withdrawal accepted: " # debug_show(accepted));
+          #Ok(accepted);
+        };
+        case (#err(err)) {
+          let msg = "Pool withdrawal failed: " # debug_show(err);
+          log_error(caller, correlation_id, msg);
+          #Err(msg);
+        };
       };
+    } catch (e) {
+      let msg = "Pool withdrawal call failed: " # Error.message(e);
+      log_error(caller, correlation_id, msg);
+      #Err(msg);
     };
   };
 

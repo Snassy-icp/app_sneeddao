@@ -187,20 +187,7 @@ module {
     // Claim and Withdraw Queue Types
     public type ClaimRequestId = Nat;
 
-    // Old status type before transaction IDs were added (for migration)
-    public type ClaimRequestStatusV2 = {
-        #Pending;
-        #Processing;
-        #BalanceRecorded : { balance0_before: Balance; balance1_before: Balance };
-        #ClaimAttempted : { balance0_before: Balance; balance1_before: Balance; claim_attempt: Nat };
-        #ClaimVerified : { balance0_before: Balance; balance1_before: Balance; amount0_claimed: Balance; amount1_claimed: Balance };
-        #Withdrawn : { amount0_claimed: Balance; amount1_claimed: Balance };
-        #Completed;  // Old version without transaction details
-        #Failed : Text;
-        #TimedOut;
-    };
 
-    // Current status type with transaction IDs
     public type ClaimRequestStatus = {
         #Pending;
         #Processing;
@@ -220,37 +207,8 @@ module {
         #TimedOut;
     };
 
-    // Old version for migration (can be removed after successful upgrade)
-    public type ClaimRequestV1 = {
-        request_id: ClaimRequestId;
-        caller: Principal;
-        swap_canister_id: SwapCanisterId;
-        position_id: PositionId;
-        token0: TokenType;
-        token1: TokenType;
-        status: ClaimRequestStatus;
-        created_at: Timestamp;
-        started_processing_at: ?Timestamp;
-        completed_at: ?Timestamp;
-    };
 
-    // Old version with retry tracking but old status type (for migration)
-    public type ClaimRequestV2 = {
-        request_id: ClaimRequestId;
-        caller: Principal;
-        swap_canister_id: SwapCanisterId;
-        position_id: PositionId;
-        token0: TokenType;
-        token1: TokenType;
-        status: ClaimRequestStatusV2;  // Uses old status type
-        created_at: Timestamp;
-        started_processing_at: ?Timestamp;
-        completed_at: ?Timestamp;
-        retry_count: Nat;
-        last_attempted_at: ?Timestamp;
-    };
 
-    // Current version with retry tracking and new status type
     public type ClaimRequest = {
         request_id: ClaimRequestId;
         caller: Principal;
@@ -270,6 +228,12 @@ module {
         #Ok : ClaimRequestId;
         #Err : Text;
     };
+
+    public type ClaimFeesResult = {
+        #Ok : { request_id : ClaimRequestId; amount0 : Nat; amount1 : Nat };
+        #Err : Text;
+    };
+
 
     public type QueueProcessingState = {
         #Active;
