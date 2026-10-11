@@ -234,6 +234,20 @@ module {
         #Err : Text;
     };
 
+    public type AddLiquidityResult = {
+        #Ok : {
+            position_id : PositionId;
+            credited0 : Nat;        // deposited into the pool account (after fees)
+            credited1 : Nat;
+            used0 : Nat;            // added to the position
+            used1 : Nat;
+            returned0 : Nat;        // sent back to the backend wallet (before the pool's delivery fee)
+            returned1 : Nat;
+            increase_error : ?Text; // set if the pool refused to add; everything was returned
+        };
+        #Err : Text;
+    };
+
 
     public type QueueProcessingState = {
         #Active;

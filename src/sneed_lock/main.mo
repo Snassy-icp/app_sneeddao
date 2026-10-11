@@ -186,6 +186,56 @@ shared (deployer) persistent actor class SneedLock() = this {
     Map.delete(token_op_locks, phash, p);
   };
 
+  // ---------------------------------------------------------------------------
+  // ICPSwap pool account coordination
+  //
+  // This canister has one account per pool, shared by every user whose locked
+  // position lives here. Two kinds of operation touch it: fee claims (the pool
+  // credits the fees to the account, then delivers them to the owner's wallet
+  // subaccount from its own withdraw queue a moment later) and liquidity
+  // additions (deposit, add, return the unused remainder).
+  //
+  // Serialization is a transient per-pool mutex held for the duration of one
+  // call and released in `finally`: no queue, no timers, no persisted state. A
+  // caller that finds the pool busy is told to retry.
+  //
+  // Exact accounting for a liquidity addition needs the account to be quiet:
+  // no claim delivery in transit. Claimed amounts at or below the ledger fee are
+  // credited by the pool but never delivered, so the account accumulates dust.
+  // `pool_quiescent_balances` tracks that expected resting level per pool; an
+  // addition starts only when the live balance equals it (anything above it is
+  // a delivery in transit) and measures its own leftover as the delta from it.
+  // The level is transient and re-baselined from the live balance after an
+  // upgrade; a balance below the level simply becomes the new level, since the
+  // only way it can drop is a delivery completing.
+  // ---------------------------------------------------------------------------
+  transient var pool_op_locks = Map.new<Principal, ()>();
+  private func is_pool_op_locked(p : Principal) : Bool { Map.has(pool_op_locks, phash, p) };
+  private func lock_pool_op(p : Principal) { Map.set(pool_op_locks, phash, p, ()) };
+  private func unlock_pool_op(p : Principal) { Map.delete(pool_op_locks, phash, p) };
+
+  transient var pool_quiescent_balances = Map.new<Principal, (Nat, Nat)>();
+
+  // Record dust that a claim credited but the pool will never deliver.
+  private func note_pool_dust(pool_id : Principal, dust0 : Nat, dust1 : Nat) {
+    switch (Map.get(pool_quiescent_balances, phash, pool_id)) {
+      case (?(l0, l1)) { Map.set(pool_quiescent_balances, phash, pool_id, (l0 + dust0, l1 + dust1)) };
+      case null {}; // not baselined yet; the first baseline will include it
+    };
+  };
+
+  type IcpSwapPool = actor {
+    getUserUnusedBalance : (principal : Principal) -> async { #ok : { balance0 : Nat; balance1 : Nat }; #err : T.SwapCanisterError };
+    deposit : (args : { token : Text; amount : Nat; fee : Nat }) -> async { #ok : Nat; #err : T.SwapCanisterError };
+    increaseLiquidity : (args : { positionId : Nat; amount0Desired : Text; amount1Desired : Text }) -> async { #ok : Nat; #err : T.SwapCanisterError };
+    withdrawToSubaccount : (args : { token : Text; amount : Nat; fee : Nat; subaccount : Blob }) -> async { #ok : Nat; #err : T.SwapCanisterError };
+  };
+  type Icrc1Ledger = actor {
+    icrc1_fee : () -> async Nat;
+    icrc1_balance_of : (account : Account) -> async Nat;
+    icrc1_transfer : (args : TransferArgs) -> async T.TransferResult;
+  };
+
   public query func get_all_token_locks() : async [T.FullyQualifiedLock] {
     get_fully_qualified_locks();
   };
@@ -2257,6 +2307,27 @@ shared (deployer) persistent actor class SneedLock() = this {
       };
     };
 
+    if (is_pool_op_locked(swap_canister_id)) {
+      let error = "Busy: another operation is in progress on this pool; please retry in a few seconds";
+      log_error(caller, correlation_id, error);
+      return #Err(error);
+    };
+    lock_pool_op(swap_canister_id);
+    try {
+      await* claim_position_fees_locked(caller, swap_canister_id, position_id, token0, token1, correlation_id);
+    } finally {
+      unlock_pool_op(swap_canister_id);
+    };
+  };
+
+  private func claim_position_fees_locked(
+    caller : Principal,
+    swap_canister_id : T.SwapCanisterId,
+    position_id : T.PositionId,
+    token0 : T.TokenType,
+    token1 : T.TokenType,
+    correlation_id : Nat
+  ) : async* { #Ok : ClaimRequest; #Err : Text } {
     next_claim_request_id += 1;
     let now = TimeAsNat64(Time.now());
     let request : ClaimRequest = {
@@ -2330,6 +2401,13 @@ shared (deployer) persistent actor class SneedLock() = this {
           });
           completed_at = ?TimeAsNat64(Time.now());
         };
+        // Claimed amounts at or below the fee are credited to this canister's
+        // pool account but never delivered: record them as resting dust.
+        note_pool_dust(
+          swap_canister_id,
+          if (amounts.amount0 > 0 and amounts.amount0 <= token0_fee) { amounts.amount0 } else { 0 },
+          if (amounts.amount1 > 0 and amounts.amount1 <= token1_fee) { amounts.amount1 } else { 0 }
+        );
         archive_completed_request(completed);
         log_info(caller, correlation_id, "Claimed fees for position " # debug_show(position_id) # ": token0=" # debug_show(amounts.amount0) # ", token1=" # debug_show(amounts.amount1) # "; delivered by the pool to the owner's wallet subaccount");
         #Ok(completed);
@@ -2371,6 +2449,252 @@ shared (deployer) persistent actor class SneedLock() = this {
       Array.filter<ClaimRequest>(completed_claim_requests, func (req) { req.caller == caller }),
       Array.filter<ClaimRequest>(failed_claim_requests, func (req) { req.caller == caller })
     );
+  };
+
+  // ---------------------------------------------------------------------------
+  // Adding liquidity to a locked position
+  // ---------------------------------------------------------------------------
+
+  // Move `amount` of `token` from the caller's backend wallet into this
+  // canister's account in the pool: an ICRC-1 transfer to the pool's deposit
+  // subaccount for this canister, then the pool's `deposit`. Returns the
+  // amount the pool credited.
+  private func move_tokens_into_pool(
+    caller : Principal,
+    correlation_id : Nat,
+    pool_id : Principal,
+    pool : IcpSwapPool,
+    ledger : Icrc1Ledger,
+    token : Principal,
+    amount : Nat,
+    fee : Nat
+  ) : async* { #Ok : Nat; #Err : Text } {
+    if (amount == 0) { return #Ok(0) };
+
+    let from_subaccount = PrincipalToSubaccount(caller);
+    let caller_account : Account = { owner = this_canister_id(); subaccount = ?Blob.fromArray(from_subaccount) };
+    let sum_locked = get_summed_locks_from_principal_and_token(caller, token);
+    let balance = try { await ledger.icrc1_balance_of(caller_account) } catch (e) {
+      return #Err("Failed to read backend wallet balance for " # debug_show(token) # ": " # Error.message(e));
+    };
+    if (balance < amount + fee + sum_locked) {
+      return #Err("Insufficient unlocked balance in backend wallet for " # debug_show(token) # ": balance " # debug_show(balance) # ", locked " # debug_show(sum_locked) # ", needed " # debug_show(amount + fee));
+    };
+
+    let to : Account = { owner = pool_id; subaccount = ?Blob.fromArray(PrincipalToSubaccount(this_canister_id())) };
+    let transfer = try {
+      await ledger.icrc1_transfer({ from_subaccount = ?Blob.fromArray(from_subaccount); to; amount; fee = ?fee; memo = null; created_at_time = null });
+    } catch (e) {
+      return #Err("Transfer of " # debug_show(amount) # " " # debug_show(token) # " to the pool deposit subaccount failed with unknown outcome: " # Error.message(e));
+    };
+    switch (transfer) {
+      case (#Err(e)) { return #Err("Transfer of " # debug_show(amount) # " " # debug_show(token) # " to the pool deposit subaccount failed: " # debug_show(e)) };
+      case (#Ok(_)) {};
+    };
+    log_info(caller, correlation_id, "Transferred " # debug_show(amount) # " " # debug_show(token) # " to the deposit subaccount of pool " # debug_show(pool_id));
+
+    let stuck = "ADMIN ACTION: " # debug_show(amount) # " " # debug_show(token) # " for " # debug_show(caller) # " sit in pool " # debug_show(pool_id) # "'s deposit subaccount; re-run admin_pool_deposit then admin_withdraw_pool_balance_to_user";
+    let deposited = try { await pool.deposit({ token = Principal.toText(token); amount; fee }) } catch (e) {
+      return #Err("Pool deposit call failed with unknown outcome: " # Error.message(e) # ". " # stuck);
+    };
+    switch (deposited) {
+      case (#err(e)) { #Err("Pool deposit failed: " # debug_show(e) # ". " # stuck) };
+      case (#ok(credited)) {
+        log_info(caller, correlation_id, "Pool credited " # debug_show(credited) # " " # debug_show(token));
+        #Ok(credited);
+      };
+    };
+  };
+
+  // Send `amount` of `token` from this canister's pool account to the caller's
+  // backend wallet. Amounts at or below the fee cannot be delivered and are
+  // reported back as dust for the quiescent level. Returns (delivered, dust).
+  private func return_pool_balance_to_caller(
+    caller : Principal,
+    correlation_id : Nat,
+    pool_id : Principal,
+    pool : IcpSwapPool,
+    token : Principal,
+    amount : Nat,
+    fee : Nat
+  ) : async* { #Ok : (Nat, Nat); #Err : Text } {
+    if (amount == 0) { return #Ok((0, 0)) };
+    if (amount <= fee) { return #Ok((0, amount)) };
+    let args = { token = Principal.toText(token); amount; fee; subaccount = Blob.fromArray(PrincipalToSubaccount(caller)) };
+    let stuck = "ADMIN ACTION: " # debug_show(amount) # " " # debug_show(token) # " for " # debug_show(caller) # " remain in this canister's account in pool " # debug_show(pool_id) # "; use admin_withdraw_pool_balance_to_user";
+    let result = try { await pool.withdrawToSubaccount(args) } catch (e) {
+      return #Err("Returning unused tokens failed with unknown outcome: " # Error.message(e) # ". " # stuck);
+    };
+    switch (result) {
+      case (#err(e)) { #Err("Returning unused tokens failed: " # debug_show(e) # ". " # stuck) };
+      case (#ok(_)) {
+        log_info(caller, correlation_id, "Returned " # debug_show(amount) # " " # debug_show(token) # " from pool " # debug_show(pool_id) # " to the caller's backend wallet");
+        #Ok((amount, 0));
+      };
+    };
+  };
+
+  private func add_liquidity_internal(
+    caller : Principal,
+    correlation_id : Nat,
+    pool_id : Principal,
+    position_id : T.PositionId,
+    token0 : Principal,
+    token1 : Principal,
+    amount0 : Nat,
+    amount1 : Nat
+  ) : async* T.AddLiquidityResult {
+    func err(message : Text) : T.AddLiquidityResult {
+      log_error(caller, correlation_id, message);
+      #Err(message);
+    };
+
+    let pool : IcpSwapPool = actor (Principal.toText(pool_id));
+    let ledger0 : Icrc1Ledger = actor (Principal.toText(token0));
+    let ledger1 : Icrc1Ledger = actor (Principal.toText(token1));
+
+    let (fee0, fee1) = try { (await ledger0.icrc1_fee(), await ledger1.icrc1_fee()) } catch (e) {
+      return err("Failed to query ledger fees: " # Error.message(e));
+    };
+    // Moving a token in costs one fee for the transfer and one inside the pool's
+    // deposit; anything smaller cannot end up as liquidity.
+    if (amount0 > 0 and amount0 <= 2 * fee0) { return err("amount0 must exceed twice the ledger fee (" # debug_show(fee0) # ")") };
+    if (amount1 > 0 and amount1 <= 2 * fee1) { return err("amount1 must exceed twice the ledger fee (" # debug_show(fee1) # ")") };
+
+    // Quiescence: the live balance must equal the expected resting level.
+    let live = try {
+      switch (await pool.getUserUnusedBalance(this_canister_id())) {
+        case (#ok(b)) { b };
+        case (#err(e)) { return err("Failed to read pool balance: " # debug_show(e)) };
+      };
+    } catch (e) { return err("Failed to read pool balance: " # Error.message(e)) };
+    let level = switch (Map.get(pool_quiescent_balances, phash, pool_id)) {
+      case null { (live.balance0, live.balance1) };
+      case (?(l0, l1)) { (Nat.min(l0, live.balance0), Nat.min(l1, live.balance1)) };
+    };
+    Map.set(pool_quiescent_balances, phash, pool_id, level);
+    if (live.balance0 > level.0 or live.balance1 > level.1) {
+      return err("Busy: a fee delivery from this pool is still in transit; please retry in a few seconds");
+    };
+
+    clear_expired_locks_for_principal(caller, correlation_id);
+
+    // Move both tokens in. If the second fails after the first was credited,
+    // return the first before giving up.
+    let credited0 = switch (await* move_tokens_into_pool(caller, correlation_id, pool_id, pool, ledger0, token0, amount0, fee0)) {
+      case (#Err(m)) { return err(m) };
+      case (#Ok(c)) { c };
+    };
+    let credited1 = switch (await* move_tokens_into_pool(caller, correlation_id, pool_id, pool, ledger1, token1, amount1, fee1)) {
+      case (#Err(m)) {
+        var note = "";
+        switch (await* return_pool_balance_to_caller(caller, correlation_id, pool_id, pool, token0, credited0, fee0)) {
+          case (#Ok((_, dust0))) { note_pool_dust(pool_id, dust0, 0); note := " token0 was returned to your backend wallet." };
+          case (#Err(m0)) { note := " Returning token0 also failed: " # m0 };
+        };
+        return err(m # note);
+      };
+      case (#Ok(c)) { c };
+    };
+
+    // Add liquidity. Whatever the outcome, the leftover is measured from the
+    // live balance afterwards, which is exact while the pool lock is held.
+    let increase_error : ?Text = try {
+      switch (await pool.increaseLiquidity({ positionId = position_id; amount0Desired = Nat.toText(credited0); amount1Desired = Nat.toText(credited1) })) {
+        case (#ok(_)) { null };
+        case (#err(e)) { ?("Pool refused to add liquidity: " # debug_show(e)) };
+      };
+    } catch (e) { ?("increaseLiquidity call failed with unknown outcome: " # Error.message(e)) };
+    switch (increase_error) {
+      case (?m) { log_error(caller, correlation_id, m) };
+      case null { log_info(caller, correlation_id, "Pool accepted liquidity for position " # debug_show(position_id) # " (desired " # debug_show(credited0) # " / " # debug_show(credited1) # ")") };
+    };
+
+    let after = try {
+      switch (await pool.getUserUnusedBalance(this_canister_id())) {
+        case (#ok(b)) { b };
+        case (#err(e)) { return err("Liquidity step done but reading the pool balance failed: " # debug_show(e) # ". ADMIN ACTION: check this canister's balance in pool " # debug_show(pool_id) # " for " # debug_show(caller)) };
+      };
+    } catch (e) { return err("Liquidity step done but reading the pool balance failed: " # Error.message(e)) };
+
+    func leftover(live_after : Nat, base : Nat, credited : Nat) : Nat {
+      let delta = if (live_after > base) { live_after - base } else { 0 };
+      if (delta > credited) { credited } else { delta };
+    };
+    let leftover0 = leftover(after.balance0, level.0, credited0);
+    let leftover1 = leftover(after.balance1, level.1, credited1);
+    let used0 = credited0 - leftover0;
+    let used1 = credited1 - leftover1;
+
+    var returned0 = 0; var returned1 = 0; var dust0 = 0; var dust1 = 0; var return_errors = "";
+    switch (await* return_pool_balance_to_caller(caller, correlation_id, pool_id, pool, token0, leftover0, fee0)) {
+      case (#Ok((r, d))) { returned0 := r; dust0 := d };
+      case (#Err(m)) { return_errors := return_errors # m # " " };
+    };
+    switch (await* return_pool_balance_to_caller(caller, correlation_id, pool_id, pool, token1, leftover1, fee1)) {
+      case (#Ok((r, d))) { returned1 := r; dust1 := d };
+      case (#Err(m)) { return_errors := return_errors # m # " " };
+    };
+    note_pool_dust(pool_id, dust0, dust1);
+
+    if (return_errors != "") {
+      // Liquidity may have been added; the unreturned remainder is still in
+      // this canister's pool account and the pool stays flagged busy until an
+      // admin returns it, since the live balance now exceeds the resting level.
+      return err("Added liquidity (used " # debug_show(used0) # " / " # debug_show(used1) # ") but returning the unused remainder failed: " # return_errors);
+    };
+
+    log_info(caller, correlation_id, "Add liquidity complete for position " # debug_show(position_id) # ": used " # debug_show(used0) # " / " # debug_show(used1) # ", returned " # debug_show(returned0) # " / " # debug_show(returned1));
+    #Ok({
+      position_id;
+      credited0; credited1;
+      used0; used1;
+      returned0; returned1;
+      increase_error;
+    });
+  };
+
+  /// Add liquidity to a locked ICPSwap position from the caller's backend
+  /// wallet. Amounts are in base units; either may be zero (out-of-range
+  /// positions take only one token). Tokens the pool does not use, because the
+  /// price moved since the amounts were chosen, are returned to the caller's
+  /// backend wallet. Only the current owner of the lock may add.
+  public shared ({ caller }) func add_liquidity_to_locked_position(
+    swap_canister_id : T.SwapCanisterId,
+    position_id : T.PositionId,
+    amount0 : Nat,
+    amount1 : Nat
+  ) : async T.AddLiquidityResult {
+    let correlation_id = get_next_correlation_id();
+    log_info(caller, correlation_id, "Add liquidity requested for position " # debug_show(position_id) # " on pool " # debug_show(swap_canister_id) # ": amount0=" # debug_show(amount0) # ", amount1=" # debug_show(amount1));
+
+    func err(message : Text) : T.AddLiquidityResult {
+      log_error(caller, correlation_id, message);
+      #Err(message);
+    };
+
+    if (not has_claimed_position_impl(caller, swap_canister_id, position_id)) {
+      return err("Caller does not own position " # debug_show(position_id) # " on swap canister " # debug_show(swap_canister_id));
+    };
+    let lock = switch (get_position_lock(caller, swap_canister_id, position_id)) {
+      case (?l) { l };
+      case null { return err("Position " # debug_show(position_id) # " is not locked") };
+    };
+    if (lock.expiry <= NowAsNat64()) {
+      return err("The lock on this position has expired; withdraw the position and add liquidity on ICPSwap directly");
+    };
+    if (amount0 == 0 and amount1 == 0) { return err("Nothing to add") };
+
+    if (is_token_op_locked(caller)) { return err("A token operation is already in progress for this caller; please retry") };
+    if (is_pool_op_locked(swap_canister_id)) { return err("Busy: another operation is in progress on this pool; please retry in a few seconds") };
+    lock_token_op(caller);
+    lock_pool_op(swap_canister_id);
+    try {
+      await* add_liquidity_internal(caller, correlation_id, swap_canister_id, position_id, lock.token0, lock.token1, amount0, amount1);
+    } finally {
+      unlock_pool_op(swap_canister_id);
+      unlock_token_op(caller);
+    };
   };
 
   // Query: contents of the retired request queue (read-only; should be empty)
@@ -2527,6 +2851,31 @@ shared (deployer) persistent actor class SneedLock() = this {
       };
     } catch (e) {
       #Err(Error.message(e));
+    };
+  };
+
+  // Admin: re-run a pool deposit for tokens that were transferred to the
+  // pool's deposit subaccount for this canister but never credited (a failed
+  // `deposit` during a liquidity addition). Credits this canister's pool
+  // account; follow up with admin_withdraw_pool_balance_to_user.
+  public shared ({ caller }) func admin_pool_deposit(swap_canister_id : T.SwapCanisterId, token_ledger : T.TokenType, amount : Nat) : async { #Ok : Nat; #Err : Text } {
+    if (not isAdmin(caller)) {
+      Debug.trap("Only admin can run pool deposits");
+    };
+    let correlation_id = get_next_correlation_id();
+    log_info(caller, correlation_id, "Admin re-running pool deposit of " # debug_show(amount) # " " # debug_show(token_ledger) # " into pool " # debug_show(swap_canister_id));
+    let pool : IcpSwapPool = actor (Principal.toText(swap_canister_id));
+    let ledger : Icrc1Ledger = actor (Principal.toText(token_ledger));
+    try {
+      let fee = await ledger.icrc1_fee();
+      switch (await pool.deposit({ token = Principal.toText(token_ledger); amount; fee })) {
+        case (#ok(credited)) { log_info(caller, correlation_id, "Pool credited " # debug_show(credited)); #Ok(credited) };
+        case (#err(e)) { let msg = "Pool deposit failed: " # debug_show(e); log_error(caller, correlation_id, msg); #Err(msg) };
+      };
+    } catch (e) {
+      let msg = "Pool deposit call failed: " # Error.message(e);
+      log_error(caller, correlation_id, msg);
+      #Err(msg);
     };
   };
 
