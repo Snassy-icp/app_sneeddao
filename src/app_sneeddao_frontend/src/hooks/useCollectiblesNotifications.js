@@ -466,34 +466,15 @@ export function useCollectiblesNotifications() {
                     ? Principal.fromText(position.swapCanisterId)
                     : position.swapCanisterId;
                 
-                const submitResult = await sneedLockActor.request_claim_and_withdraw(
+                // Claim fees. The pool delivers them straight to the user's wallet
+                // subaccount on sneed_lock, so this is a single synchronous call.
+                const claimResult = await sneedLockActor.claim_position_fees(
                     swapPrincipal,
                     BigInt(positionDetails.positionId)
                 );
                 
-                if (submitResult.Err) {
-                    throw new Error(submitResult.Err);
-                }
-                
-                // Poll for completion
-                const requestId = Number(submitResult.Ok);
-                let attempts = 0;
-                const maxAttempts = 60; // ~60 seconds max wait
-                
-                while (attempts < maxAttempts) {
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    const status = await sneedLockActor.get_claim_request_status(BigInt(requestId));
-                    
-                    if (status.Completed) {
-                        break;
-                    } else if (status.Failed) {
-                        throw new Error(status.Failed);
-                    }
-                    attempts++;
-                }
-                
-                if (attempts >= maxAttempts) {
-                    throw new Error('Claim request timed out. Check your wallet later.');
+                if ('Err' in claimResult) {
+                    throw new Error(claimResult.Err);
                 }
                 
             } else if (subtype === 'unlocked') {

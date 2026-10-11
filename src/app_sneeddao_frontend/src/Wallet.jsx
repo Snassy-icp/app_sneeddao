@@ -4761,114 +4761,25 @@ function Wallet() {
                 ? Principal.fromText(swapCanisterId)
                 : swapCanisterId;
 
-            // Submit claim request
-            console.log('Submitting claim request...');
-            const submitResult = await sneedLockActor.request_claim_and_withdraw(
+            // Claim fees. The pool delivers them straight to the user's wallet
+            // subaccount on sneed_lock, so this is a single synchronous call.
+            onStatusUpdate('🎯 Claiming rewards...', null);
+            const claimResult = await sneedLockActor.claim_position_fees(
                 swapPrincipal,
                 BigInt(positionId)
             );
+            console.log('Claim result:', toJsonString(claimResult));
 
-            console.log('Submit result:', toJsonString(submitResult));
-
-            if (submitResult.Err) {
-                throw new Error(submitResult.Err);
+            if ('Err' in claimResult) {
+                throw new Error(`Claim failed: ${claimResult.Err}`);
             }
 
-            const requestId = Number(submitResult.Ok);
-            console.log('Request submitted with ID:', requestId);
-            onStatusUpdate('⏳ Waiting in queue...', requestId);
-
-            // Poll for status updates
-            let isComplete = false;
-            let pollCount = 0;
-            const maxPolls = 120; // 10 minutes max (5 sec intervals)
-
-            while (!isComplete && pollCount < maxPolls) {
-                await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
-                pollCount++;
-
-                console.log(`Polling status (attempt ${pollCount})...`);
-                const statusResult = await sneedLockActor.get_claim_request_status(BigInt(requestId));
-
-                if (!statusResult || statusResult.length === 0) {
-                    console.log('Request not found');
-                    throw new Error('Request not found');
-                }
-
-                const status = statusResult[0];
-                
-                // Check for Completed status (now returns full ClaimRequest)
-                if ('Completed' in status) {
-                    const completedRequest = status.Completed;
-                    console.log('Request completed:', toJsonString(completedRequest));
-                    
-                    // Check if the status has transaction details
-                    if ('Completed' in completedRequest.status) {
-                        const details = completedRequest.status.Completed;
-                        console.log('Transfer details:', {
-                            amount0_claimed: details.amount0_claimed.toString(),
-                            amount0_transferred: details.amount0_transferred.toString(),
-                            amount1_claimed: details.amount1_claimed.toString(),
-                            amount1_transferred: details.amount1_transferred.toString(),
-                            transfer0_tx_id: details.transfer0_tx_id,
-                            transfer1_tx_id: details.transfer1_tx_id
-                        });
-                    }
-                    
-                    onStatusUpdate('✅ Completed', requestId);
-                    isComplete = true;
-                    break;
-                }
-
-                // Check for Failed status (now returns full ClaimRequest)
-                if ('Failed' in status) {
-                    const failedRequest = status.Failed;
-                    console.log('Request failed:', toJsonString(failedRequest));
-                    
-                    // Extract failure message from the status
-                    let failureMessage = 'Unknown failure';
-                    if ('Failed' in failedRequest.status) {
-                        failureMessage = failedRequest.status.Failed;
-                    } else if ('TimedOut' in failedRequest.status) {
-                        failureMessage = 'Request timed out';
-                    }
-                    
-                    throw new Error(`Claim failed: ${failureMessage}`);
-                }
-
-                // Check for Active status
-                if ('Active' in status) {
-                    const activeRequest = status.Active;
-                    const requestStatus = activeRequest.status;
-
-                    // Map status to user-friendly message
-                    let statusMessage = '⚙️ Processing...';
-                    if ('Pending' in requestStatus) {
-                        statusMessage = '⏳ Waiting in queue...';
-                    } else if ('Processing' in requestStatus) {
-                        statusMessage = '⚙️ Processing started';
-                    } else if ('BalanceRecorded' in requestStatus) {
-                        statusMessage = '📊 Recording balances...';
-                    } else if ('ClaimAttempted' in requestStatus) {
-                        statusMessage = '🎯 Claiming rewards...';
-                    } else if ('ClaimVerified' in requestStatus) {
-                        statusMessage = '✓ Verified, withdrawing...';
-                    } else if ('Withdrawn' in requestStatus) {
-                        statusMessage = '💰 Withdrawing...';
-                    } else if ('Failed' in requestStatus) {
-                        throw new Error(`Claim failed: ${requestStatus.Failed}`);
-                    } else if ('TimedOut' in requestStatus) {
-                        throw new Error('Request timed out');
-                    }
-
-                    console.log('Status:', statusMessage);
-                    onStatusUpdate(statusMessage, requestId);
-                }
-            }
-
-            if (!isComplete) {
-                throw new Error('Polling timeout - request may still be processing');
-            }
+            const requestId = Number(claimResult.Ok.request_id);
+            console.log('Claimed:', {
+                amount0: claimResult.Ok.amount0.toString(),
+                amount1: claimResult.Ok.amount1.toString()
+            });
+            onStatusUpdate('✅ Completed', requestId);
 
             // Refresh only this position
             const { token0Ledger, token1Ledger } = await refreshSinglePosition(swapCanisterId);

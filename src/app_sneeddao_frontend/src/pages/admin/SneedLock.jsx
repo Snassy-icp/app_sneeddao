@@ -27,15 +27,12 @@ export default function SneedLockAdmin() {
   const [failedClaimRequests, setFailedClaimRequests] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
   
-  // Timer state
-  const [timerStatus, setTimerStatus] = useState(null);
-  
-  // Admin functions state
-  const [claimQueueStatus, setClaimQueueStatus] = useState(null);
-  const [pauseReason, setPauseReason] = useState('');
-  const [removeRequestId, setRemoveRequestId] = useState('');
-  const [retryRequestId, setRetryRequestId] = useState('');
-  const [enforceZeroBalance, setEnforceZeroBalance] = useState(false);
+  // Pool-side recovery state (ICPSwap unused balance held under this canister)
+  const [poolSwapCanister, setPoolSwapCanister] = useState('');
+  const [poolBalance, setPoolBalance] = useState(null);
+  const [poolWithdrawToken, setPoolWithdrawToken] = useState('');
+  const [poolWithdrawAmount, setPoolWithdrawAmount] = useState('');
+  const [poolWithdrawUser, setPoolWithdrawUser] = useState('');
   
   // New admin function state
   const [addAdminPrincipal, setAddAdminPrincipal] = useState('');
@@ -100,12 +97,9 @@ export default function SneedLockAdmin() {
       const actor = getSneedLockActor();
       if (!actor) return;
 
-      const [infoRangeResult, errorRangeResult, queueStatus, enforceZero, timer, activeReqs, completedReqs, failedReqs, admins, icpFees, lockFeeStats] = await Promise.all([
+      const [infoRangeResult, errorRangeResult, activeReqs, completedReqs, failedReqs, admins, icpFees, lockFeeStats] = await Promise.all([
         actor.get_info_id_range(),
         actor.get_error_id_range(),
-        actor.get_claim_queue_status(),
-        actor.get_enforce_zero_balance_before_claim(),
-        actor.get_timer_status(),
         actor.get_all_active_claim_requests(),
         actor.get_all_completed_claim_requests(),
         actor.get_all_failed_claim_requests(),
@@ -119,9 +113,6 @@ export default function SneedLockAdmin() {
 
       setInfoRange(infoRangeData);
       setErrorRange(errorRangeData);
-      setClaimQueueStatus(queueStatus);
-      setEnforceZeroBalance(enforceZero);
-      setTimerStatus(timer);
       setActiveClaimRequests(activeReqs);
       setCompletedClaimRequests(completedReqs);
       setFailedClaimRequests(failedReqs);
@@ -229,131 +220,6 @@ export default function SneedLockAdmin() {
     }
   };
 
-  const handlePauseQueue = async (e) => {
-    e.preventDefault();
-    if (!pauseReason.trim()) {
-      setError('Please provide a reason for pausing the queue');
-      return;
-    }
-    
-    try {
-      setLoading(true);
-      setError('');
-      setSuccess('');
-      const actor = getSneedLockActor();
-      if (!actor) throw new Error('Failed to create actor');
-
-      await actor.admin_pause_claim_queue(pauseReason);
-      setSuccess('Claim queue paused successfully');
-      setPauseReason('');
-      
-      // Refresh queue status
-      const queueStatus = await actor.get_claim_queue_status();
-      setClaimQueueStatus(queueStatus);
-    } catch (err) {
-      console.error('Error pausing queue:', err);
-      setError('Failed to pause queue: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResumeQueue = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      setSuccess('');
-      const actor = getSneedLockActor();
-      if (!actor) throw new Error('Failed to create actor');
-
-      await actor.admin_resume_claim_queue();
-      setSuccess('Claim queue resumed successfully');
-      
-      // Refresh queue status
-      const queueStatus = await actor.get_claim_queue_status();
-      setClaimQueueStatus(queueStatus);
-    } catch (err) {
-      console.error('Error resuming queue:', err);
-      setError('Failed to resume queue: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRemoveClaimRequest = async (e) => {
-    e.preventDefault();
-    if (!removeRequestId) {
-      setError('Please provide a request ID');
-      return;
-    }
-    
-    try {
-      setLoading(true);
-      setError('');
-      setSuccess('');
-      const actor = getSneedLockActor();
-      if (!actor) throw new Error('Failed to create actor');
-
-      const result = await actor.admin_remove_active_claim_request(BigInt(removeRequestId));
-      if (result) {
-        setSuccess('Claim request removed successfully');
-        setRemoveRequestId('');
-      } else {
-        setError('Claim request not found or already removed');
-      }
-      
-      // Refresh queue status
-      const queueStatus = await actor.get_claim_queue_status();
-      setClaimQueueStatus(queueStatus);
-    } catch (err) {
-      console.error('Error removing claim request:', err);
-      setError('Failed to remove claim request: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleClearCompletedBuffer = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      setSuccess('');
-      const actor = getSneedLockActor();
-      if (!actor) throw new Error('Failed to create actor');
-
-      const cleared = await actor.admin_clear_completed_claim_requests_buffer();
-      setSuccess(`Cleared ${cleared} completed claim requests from buffer`);
-      
-      // Refresh queue status
-      const queueStatus = await actor.get_claim_queue_status();
-      setClaimQueueStatus(queueStatus);
-    } catch (err) {
-      console.error('Error clearing buffer:', err);
-      setError('Failed to clear buffer: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSetEnforceZeroBalance = async (value) => {
-    try {
-      setLoading(true);
-      setError('');
-      setSuccess('');
-      const actor = getSneedLockActor();
-      if (!actor) throw new Error('Failed to create actor');
-
-      await actor.admin_set_enforce_zero_balance_before_claim(value);
-      setEnforceZeroBalance(value);
-      setSuccess(`Enforce zero balance ${value ? 'enabled' : 'disabled'} successfully`);
-    } catch (err) {
-      console.error('Error setting enforce zero balance:', err);
-      setError('Failed to set enforce zero balance: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleReturnToken = async (e) => {
     e.preventDefault();
     if (!returnTokenLedger || !returnTokenAmount || !returnTokenUser) {
@@ -390,60 +256,12 @@ export default function SneedLockAdmin() {
     }
   };
 
-  const handleTriggerProcessing = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      setSuccess('');
-      const actor = getSneedLockActor();
-      if (!actor) throw new Error('Failed to create actor');
-
-      const result = await actor.admin_trigger_claim_processing();
-      setSuccess(`Processing triggered: ${result}`);
-      
-      // Refresh data
-      await fetchInitialData();
-    } catch (err) {
-      console.error('Error triggering processing:', err);
-      setError('Failed to trigger processing: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEmergencyStopTimer = async () => {
-    if (!window.confirm('Are you sure you want to EMERGENCY STOP the timer? This will stop all automatic processing!')) {
-      return;
-    }
-    
-    try {
-      setLoading(true);
-      setError('');
-      setSuccess('');
-      const actor = getSneedLockActor();
-      if (!actor) throw new Error('Failed to create actor');
-
-      await actor.admin_emergency_stop_timer();
-      setSuccess('Timer stopped successfully! Automatic processing is now disabled.');
-      
-      // Refresh timer status
-      const timer = await actor.get_timer_status();
-      setTimerStatus(timer);
-    } catch (err) {
-      console.error('Error stopping timer:', err);
-      setError('Failed to stop timer: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRetryRequest = async (e) => {
+  const handleCheckPoolBalance = async (e) => {
     e.preventDefault();
-    if (!retryRequestId) {
-      setError('Please provide a request ID');
+    if (!poolSwapCanister) {
+      setError('Please enter the swap pool canister ID');
       return;
     }
-    
     try {
       setLoading(true);
       setError('');
@@ -451,21 +269,54 @@ export default function SneedLockAdmin() {
       const actor = getSneedLockActor();
       if (!actor) throw new Error('Failed to create actor');
 
-      const result = await actor.admin_retry_claim_request(BigInt(retryRequestId));
-      
+      const result = await actor.admin_get_pool_unused_balance(Principal.fromText(poolSwapCanister));
       if ('Ok' in result) {
-        setSuccess(`Request retry initiated: ${result.Ok}`);
-        setRetryRequestId('');
+        setPoolBalance(result.Ok);
+        setSuccess('Pool balance fetched');
       } else {
-        setError(`Failed to retry request: ${result.Err}`);
+        setPoolBalance(null);
+        setError(`Failed to fetch pool balance: ${result.Err}`);
       }
-      
-      // Refresh claim requests
-      const activeReqs = await actor.get_all_active_claim_requests();
-      setActiveClaimRequests(activeReqs);
     } catch (err) {
-      console.error('Error retrying request:', err);
-      setError('Failed to retry request: ' + err.message);
+      console.error('Error fetching pool balance:', err);
+      setError('Failed to fetch pool balance: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleWithdrawPoolBalance = async (e) => {
+    e.preventDefault();
+    if (!poolSwapCanister || !poolWithdrawToken || !poolWithdrawAmount || !poolWithdrawUser) {
+      setError('Please fill in all pool withdrawal fields');
+      return;
+    }
+    if (!window.confirm(`Deliver ${poolWithdrawAmount} (base units) of ${poolWithdrawToken} from pool ${poolSwapCanister} to the wallet subaccount of ${poolWithdrawUser}?`)) {
+      return;
+    }
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+      const actor = getSneedLockActor();
+      if (!actor) throw new Error('Failed to create actor');
+
+      const result = await actor.admin_withdraw_pool_balance_to_user(
+        Principal.fromText(poolSwapCanister),
+        Principal.fromText(poolWithdrawToken),
+        BigInt(poolWithdrawAmount),
+        Principal.fromText(poolWithdrawUser)
+      );
+      if ('Ok' in result) {
+        setSuccess(`Pool withdrawal accepted: ${result.Ok.toString()}`);
+        setPoolWithdrawAmount('');
+        setPoolBalance(null);
+      } else {
+        setError(`Pool withdrawal failed: ${result.Err}`);
+      }
+    } catch (err) {
+      console.error('Error withdrawing pool balance:', err);
+      setError('Pool withdrawal failed: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -927,42 +778,6 @@ export default function SneedLockAdmin() {
             <div style={{ color: '#ffffff', fontSize: '13px' }}>{Number(request.retry_count)}</div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '5px', flexDirection: 'column' }}>
-          <button
-            onClick={() => {
-              setRetryRequestId(request.request_id.toString());
-              handleRetryRequest({ preventDefault: () => {} });
-            }}
-            style={{
-              backgroundColor: '#f39c12',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '6px 12px',
-              fontSize: '12px',
-              cursor: 'pointer'
-            }}
-          >
-            Retry
-          </button>
-          <button
-            onClick={() => {
-              setRemoveRequestId(request.request_id.toString());
-              handleRemoveClaimRequest({ preventDefault: () => {} });
-            }}
-            style={{
-              backgroundColor: '#e74c3c',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '6px 12px',
-              fontSize: '12px',
-              cursor: 'pointer'
-            }}
-          >
-            Remove
-          </button>
-        </div>
       </div>
       {renderStatusDetails(request.status)}
     </div>
@@ -971,7 +786,7 @@ export default function SneedLockAdmin() {
   const renderActiveClaimRequests = () => (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h2 style={{ color: '#ffffff', fontSize: '24px' }}>Active Claim Requests</h2>
+        <h2 style={{ color: '#ffffff', fontSize: '24px' }}>Legacy Claim Queue (retired, read-only)</h2>
         <button
           onClick={refreshClaimRequests}
           style={{
@@ -1203,136 +1018,12 @@ export default function SneedLockAdmin() {
                       <div style={{ color: '#ffffff', fontSize: '13px' }}>{Number(request.retry_count)}</div>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '5px', flexDirection: 'column' }}>
-                    <button
-                      onClick={() => {
-                        setRetryRequestId(request.request_id.toString());
-                        handleRetryRequest({ preventDefault: () => {} });
-                      }}
-                      style={{
-                        backgroundColor: '#f39c12',
-                        color: '#ffffff',
-                        border: 'none',
-                        borderRadius: '4px',
-                        padding: '6px 12px',
-                        fontSize: '12px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Retry
-                    </button>
-                  </div>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
-    </div>
-  );
-
-  const renderTimerStatus = () => (
-    <div>
-      <h2 style={{ color: '#ffffff', fontSize: '24px', marginBottom: '20px' }}>Timer Status</h2>
-      
-      {timerStatus && (
-        <div style={{
-          backgroundColor: '#2a2a2a',
-          borderRadius: '8px',
-          padding: '20px',
-          marginBottom: '20px',
-          border: '1px solid #3a3a3a'
-        }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
-            <div>
-              <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Timer Active</div>
-              <div style={{ 
-                color: timerStatus.is_active ? '#2ecc71' : '#e74c3c', 
-                fontSize: '20px',
-                fontWeight: 'bold'
-              }}>
-                {timerStatus.is_active ? 'ACTIVE' : 'STOPPED'}
-              </div>
-            </div>
-            
-            {timerStatus.timer_id.length > 0 && (
-              <div>
-                <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Timer ID</div>
-                <div style={{ color: '#ffffff', fontSize: '16px' }}>{Number(timerStatus.timer_id[0])}</div>
-              </div>
-            )}
-            
-            {timerStatus.last_execution_time.length > 0 && (
-              <div>
-                <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Last Execution</div>
-                <div style={{ color: '#ffffff', fontSize: '14px' }}>
-                  {formatTimestamp(timerStatus.last_execution_time[0])}
-                </div>
-              </div>
-            )}
-            
-            {timerStatus.time_since_last_execution_seconds.length > 0 && (
-              <div>
-                <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Time Since Last</div>
-                <div style={{ color: '#ffffff', fontSize: '16px' }}>
-                  {Number(timerStatus.time_since_last_execution_seconds[0])} seconds
-                </div>
-              </div>
-            )}
-            
-            {timerStatus.next_scheduled_time.length > 0 && (
-              <div>
-                <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Next Scheduled</div>
-                <div style={{ color: '#ffffff', fontSize: '14px' }}>
-                  {formatTimestamp(timerStatus.next_scheduled_time[0])}
-                </div>
-              </div>
-            )}
-            
-            {timerStatus.last_execution_correlation_id.length > 0 && (
-              <div>
-                <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Last Correlation ID</div>
-                <div style={{ color: '#ffffff', fontSize: '16px' }}>
-                  {Number(timerStatus.last_execution_correlation_id[0])}
-                </div>
-              </div>
-            )}
-          </div>
-          
-          <div style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
-            <button
-              onClick={handleTriggerProcessing}
-              disabled={loading}
-              style={{
-                backgroundColor: '#3498db',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '4px',
-                padding: '10px 20px',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                opacity: loading ? 0.6 : 1
-              }}
-            >
-              Trigger Processing Now
-            </button>
-            <button
-              onClick={handleEmergencyStopTimer}
-              disabled={loading || !timerStatus.is_active}
-              style={{
-                backgroundColor: '#e74c3c',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '4px',
-                padding: '10px 20px',
-                cursor: (loading || !timerStatus.is_active) ? 'not-allowed' : 'pointer',
-                opacity: (loading || !timerStatus.is_active) ? 0.6 : 1
-              }}
-            >
-              Emergency Stop Timer
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 
@@ -1719,139 +1410,7 @@ export default function SneedLockAdmin() {
     <div>
       <h2 style={{ color: '#ffffff', fontSize: '24px', marginBottom: '20px' }}>Admin Functions</h2>
       
-      {/* Claim Queue Status */}
-      {claimQueueStatus && (
-        <div style={{
-          backgroundColor: '#2a2a2a',
-          borderRadius: '8px',
-          padding: '20px',
-          marginBottom: '20px',
-          border: '1px solid #3a3a3a'
-        }}>
-          <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>Claim Queue Status</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px' }}>
-            <div>
-              <div style={{ color: '#888', fontSize: '12px' }}>Status</div>
-              <div style={{ color: 'Active' in claimQueueStatus.processing_state ? '#2ecc71' : '#e74c3c', fontSize: '16px' }}>
-                {'Active' in claimQueueStatus.processing_state ? 'Active' : 
-                 `Paused: ${claimQueueStatus.processing_state.Paused}`}
-              </div>
-            </div>
-            <div>
-              <div style={{ color: '#888', fontSize: '12px' }}>Currently Processing</div>
-              <div style={{ color: claimQueueStatus.is_currently_processing ? '#f39c12' : '#888', fontSize: '16px', fontWeight: claimQueueStatus.is_currently_processing ? 'bold' : 'normal' }}>
-                {claimQueueStatus.is_currently_processing ? 'YES' : 'NO'}
-              </div>
-            </div>
-            <div>
-              <div style={{ color: '#888', fontSize: '12px' }}>Pending</div>
-              <div style={{ color: '#ffffff', fontSize: '16px' }}>{Number(claimQueueStatus.pending_count)}</div>
-            </div>
-            <div>
-              <div style={{ color: '#888', fontSize: '12px' }}>Processing</div>
-              <div style={{ color: '#ffffff', fontSize: '16px' }}>{Number(claimQueueStatus.processing_count)}</div>
-            </div>
-            <div>
-              <div style={{ color: '#888', fontSize: '12px' }}>Active Total</div>
-              <div style={{ color: '#ffffff', fontSize: '16px' }}>{Number(claimQueueStatus.active_total)}</div>
-            </div>
-            <div>
-              <div style={{ color: '#888', fontSize: '12px' }}>Completed</div>
-              <div style={{ color: '#2ecc71', fontSize: '16px', fontWeight: 'bold' }}>{Number(claimQueueStatus.completed_count)}</div>
-            </div>
-            <div>
-              <div style={{ color: '#888', fontSize: '12px' }}>Failed</div>
-              <div style={{ color: '#e74c3c', fontSize: '16px', fontWeight: 'bold' }}>{Number(claimQueueStatus.failed_count)}</div>
-            </div>
-            <div>
-              <div style={{ color: '#888', fontSize: '12px' }}>Consecutive Empty Cycles</div>
-              <div style={{ color: '#ffffff', fontSize: '16px' }}>{Number(claimQueueStatus.consecutive_empty_cycles)}</div>
-            </div>
-          </div>
-          <div style={{ marginTop: '15px', display: 'flex', gap: '10px' }}>
-            {'Active' in claimQueueStatus.processing_state ? (
-              <>
-                <button
-                  onClick={() => document.getElementById('pause-form').style.display = 'block'}
-                  style={{
-                    backgroundColor: '#e74c3c',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: '4px',
-                    padding: '8px 16px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Pause Queue
-                </button>
-                <form
-                  id="pause-form"
-                  onSubmit={handlePauseQueue}
-                  style={{ display: 'none', flex: 1 }}
-                >
-                  <input
-                    type="text"
-                    placeholder="Reason for pausing"
-                    value={pauseReason}
-                    onChange={(e) => setPauseReason(e.target.value)}
-                    style={{
-                      padding: '8px',
-                      borderRadius: '4px',
-                      border: '1px solid #3a3a3a',
-                      backgroundColor: '#1a1a1a',
-                      color: '#ffffff',
-                      marginRight: '10px',
-                      width: '300px'
-                    }}
-                  />
-                  <button
-                    type="submit"
-                    style={{
-                      backgroundColor: '#e74c3c',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '4px',
-                      padding: '8px 16px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Confirm Pause
-                  </button>
-                </form>
-              </>
-            ) : (
-              <button
-                onClick={handleResumeQueue}
-                style={{
-                  backgroundColor: '#2ecc71',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  padding: '8px 16px',
-                  cursor: 'pointer'
-                }}
-              >
-                Resume Queue
-              </button>
-            )}
-            <button
-              onClick={handleClearCompletedBuffer}
-              style={{
-                backgroundColor: '#3498db',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '4px',
-                padding: '8px 16px',
-                cursor: 'pointer'
-              }}
-            >
-              Clear Completed Buffer
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Remove Claim Request */}
+      {/* Pool-side balance recovery */}
       <div style={{
         backgroundColor: '#2a2a2a',
         borderRadius: '8px',
@@ -1859,87 +1418,47 @@ export default function SneedLockAdmin() {
         marginBottom: '20px',
         border: '1px solid #3a3a3a'
       }}>
-        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>Remove Active Claim Request</h3>
-        <form onSubmit={handleRemoveClaimRequest} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>ICPSwap Pool Balance Recovery</h3>
+        <p style={{ color: '#888', fontSize: '13px', marginBottom: '15px' }}>
+          Fee claims are delivered by the pool straight to the owner's wallet subaccount. If a pool-side delivery
+          fails, the amount stays inside the pool under this canister's account. Check that balance here and, after
+          attributing it from the pool's transaction log, deliver it to the right user's wallet subaccount.
+        </p>
+        <form onSubmit={handleCheckPoolBalance} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', marginBottom: '15px' }}>
           <div style={{ flex: 1 }}>
-            <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
-              Request ID
-            </label>
+            <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>Swap pool canister ID</label>
             <input
               type="text"
-              placeholder="Enter request ID"
-              value={removeRequestId}
-              onChange={(e) => setRemoveRequestId(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '10px',
-                borderRadius: '4px',
-                border: '1px solid #3a3a3a',
-                backgroundColor: '#1a1a1a',
-                color: '#ffffff'
-              }}
+              placeholder="Swap pool canister principal"
+              value={poolSwapCanister}
+              onChange={(e) => setPoolSwapCanister(e.target.value)}
+              style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #3a3a3a', backgroundColor: '#1a1a1a', color: '#ffffff' }}
             />
           </div>
-          <button
-            type="submit"
-            style={{
-              backgroundColor: '#e74c3c',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '10px 20px',
-              cursor: 'pointer'
-            }}
-          >
-            Remove Request
+          <button type="submit" style={{ backgroundColor: '#3498db', color: '#ffffff', border: 'none', borderRadius: '4px', padding: '10px 20px', cursor: 'pointer' }}>
+            Check Balance
           </button>
         </form>
-      </div>
-
-      {/* Retry Claim Request */}
-      <div style={{
-        backgroundColor: '#2a2a2a',
-        borderRadius: '8px',
-        padding: '20px',
-        marginBottom: '20px',
-        border: '1px solid #3a3a3a'
-      }}>
-        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>Retry Claim Request</h3>
-        <p style={{ color: '#888', fontSize: '13px', marginBottom: '15px' }}>
-          Retry a failed or stuck claim request. This will reset its state and attempt processing again.
-        </p>
-        <form onSubmit={handleRetryRequest} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
-          <div style={{ flex: 1 }}>
-            <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
-              Request ID
-            </label>
-            <input
-              type="text"
-              placeholder="Enter request ID"
-              value={retryRequestId}
-              onChange={(e) => setRetryRequestId(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '10px',
-                borderRadius: '4px',
-                border: '1px solid #3a3a3a',
-                backgroundColor: '#1a1a1a',
-                color: '#ffffff'
-              }}
-            />
+        {poolBalance && (
+          <div style={{ color: '#ffffff', fontSize: '14px', marginBottom: '15px' }}>
+            Unused balance in pool: token0 = {poolBalance.balance0.toString()}, token1 = {poolBalance.balance1.toString()}
           </div>
-          <button
-            type="submit"
-            style={{
-              backgroundColor: '#f39c12',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '10px 20px',
-              cursor: 'pointer'
-            }}
-          >
-            Retry Request
+        )}
+        <form onSubmit={handleWithdrawPoolBalance} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', alignItems: 'flex-end' }}>
+          <div>
+            <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>Token ledger canister ID</label>
+            <input type="text" placeholder="Ledger principal" value={poolWithdrawToken} onChange={(e) => setPoolWithdrawToken(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #3a3a3a', backgroundColor: '#1a1a1a', color: '#ffffff' }} />
+          </div>
+          <div>
+            <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>Amount (base units)</label>
+            <input type="text" placeholder="e.g. 100000000" value={poolWithdrawAmount} onChange={(e) => setPoolWithdrawAmount(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #3a3a3a', backgroundColor: '#1a1a1a', color: '#ffffff' }} />
+          </div>
+          <div>
+            <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>User principal</label>
+            <input type="text" placeholder="Recipient user principal" value={poolWithdrawUser} onChange={(e) => setPoolWithdrawUser(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #3a3a3a', backgroundColor: '#1a1a1a', color: '#ffffff' }} />
+          </div>
+          <button type="submit" style={{ backgroundColor: '#f39c12', color: '#ffffff', border: 'none', borderRadius: '4px', padding: '10px 20px', cursor: 'pointer' }}>
+            Deliver to User
           </button>
         </form>
       </div>
@@ -2323,40 +1842,6 @@ export default function SneedLockAdmin() {
         </form>
       </div>
       
-      {/* Enforce Zero Balance */}
-      <div style={{
-        backgroundColor: '#2a2a2a',
-        borderRadius: '8px',
-        padding: '20px',
-        marginBottom: '20px',
-        border: '1px solid #3a3a3a'
-      }}>
-        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>Enforce Zero Balance Before Claim</h3>
-        <p style={{ color: '#888', fontSize: '14px', marginBottom: '15px' }}>
-          When enabled, users must have zero balance of both tokens in their subaccount before claiming position fees.
-        </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-          <span style={{ color: '#ffffff' }}>
-            Currently: <strong style={{ color: enforceZeroBalance ? '#2ecc71' : '#e74c3c' }}>
-              {enforceZeroBalance ? 'Enabled' : 'Disabled'}
-            </strong>
-          </span>
-          <button
-            onClick={() => handleSetEnforceZeroBalance(!enforceZeroBalance)}
-            style={{
-              backgroundColor: enforceZeroBalance ? '#e74c3c' : '#2ecc71',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '8px 16px',
-              cursor: 'pointer'
-            }}
-          >
-            {enforceZeroBalance ? 'Disable' : 'Enable'}
-          </button>
-        </div>
-      </div>
-
       {/* Premium Integration */}
       <div style={{
         backgroundColor: '#2a2a2a',
@@ -2786,7 +2271,7 @@ export default function SneedLockAdmin() {
           paddingBottom: '10px',
           flexWrap: 'wrap'
         }}>
-          {['queue', 'completed', 'failed', 'timer', 'payments', 'info', 'error', 'functions', 'settings'].map(tab => (
+          {['queue', 'completed', 'failed', 'payments', 'info', 'error', 'functions', 'settings'].map(tab => (
             <button
               key={tab}
               onClick={() => {
@@ -2808,10 +2293,9 @@ export default function SneedLockAdmin() {
                 transition: 'all 0.2s ease'
               }}
             >
-              {tab === 'queue' && 'Active Queue'}
+              {tab === 'queue' && 'Legacy Queue'}
               {tab === 'completed' && 'Completed'}
               {tab === 'failed' && 'Failed'}
-              {tab === 'timer' && 'Timer Status'}
               {tab === 'payments' && 'Payments'}
               {tab === 'info' && 'Info Logs'}
               {tab === 'error' && 'Error Logs'}
@@ -2831,7 +2315,6 @@ export default function SneedLockAdmin() {
             {activeTab === 'queue' && renderActiveClaimRequests()}
             {activeTab === 'completed' && renderCompletedClaimRequests()}
             {activeTab === 'failed' && renderFailedClaimRequests()}
-            {activeTab === 'timer' && renderTimerStatus()}
             {activeTab === 'payments' && renderPaymentLog()}
             {activeTab === 'info' && renderInfoLogs()}
             {activeTab === 'error' && renderErrorLogs()}
