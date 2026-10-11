@@ -1,13 +1,25 @@
 // AddLiquidityModal.jsx
-// Add liquidity to a locked ICPSwap position from the user's backend wallet.
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+// Add liquidity to a locked ICPSwap position. Funds come from the user's
+// backend wallet (their subaccount on sneed_lock) first and any shortfall is
+// moved over from the frontend wallet.
+//
+// The dialog reads every balance it needs directly from the ledgers and from
+// sneed_lock when it opens, keyed strictly by the position's own token ledgers.
+// It deliberately does not depend on the wallet page's token list, which is
+// rebuilt during refreshes and may not contain these tokens at all.
+import React, { useState, useEffect, useMemo } from 'react';
+import { Principal } from '@dfinity/principal';
 import { formatAmount, parseAmountToBigInt } from './utils/StringUtils';
+import { readBackendWalletBalance } from './utils/FeeForwarding';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { useTheme } from './contexts/ThemeContext';
 
 const accent = '#3b82f6';
 const accentDark = '#2563eb';
 
 const idText = (p) => (p && p.toText ? p.toText() : (p?.toString?.() ?? String(p)));
+const toPrincipal = (p) => (typeof p === 'string' ? Principal.fromText(p) : p);
 
 // Plain decimal string (no locale separators) for prefilling an input.
 const toPlainAmount = (value, decimals) => {
@@ -18,23 +30,31 @@ const toPlainAmount = (value, decimals) => {
   return fracPart ? `${intPart}.${fracPart}` : intPart;
 };
 
-function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, onAddLiquidity }) {
+// Balances for one token of the position: ledger fee, frontend wallet balance,
+// backend wallet balance and the part of it that is locked.
+const loadFunds = async (ledgerId, identity, lockedByLedger) => {
+  const principal = toPrincipal(ledgerId);
+  const ledger = createLedgerActor(principal);
+  const user = identity.getPrincipal();
+  const [fee, frontend, backend] = await Promise.all([
+    ledger.icrc1_fee().then(BigInt),
+    ledger.icrc1_balance_of({ owner: user, subaccount: [] }).then(BigInt),
+    readBackendWalletBalance(principal, user)
+  ]);
+  const locked = lockedByLedger.get(principal.toText()) ?? 0n;
+  const availableBackend = backend > locked ? backend - locked : 0n;
+  return { fee, frontend, backend, locked, availableBackend };
+};
+
+function AddLiquidityModal({ show, onClose, position, positionDetails, identity, onAddLiquidity }) {
   const { theme } = useTheme();
   const [amount0, setAmount0] = useState('');
   const [amount1, setAmount1] = useState('');
+  const [funds, setFunds] = useState(null);        // { f0, f1 } once loaded
+  const [fundsError, setFundsError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorText, setErrorText] = useState('');
   const [result, setResult] = useState(null);
-
-  useEffect(() => {
-    if (show) {
-      setAmount0('');
-      setAmount1('');
-      setErrorText('');
-      setResult(null);
-      setIsLoading(false);
-    }
-  }, [show]);
 
   const token0Id = position ? idText(position.token0) : null;
   const token1Id = position ? idText(position.token1) : null;
@@ -43,24 +63,34 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, o
   const symbol0 = position?.token0Symbol ?? 'token0';
   const symbol1 = position?.token1Symbol ?? 'token1';
 
-  // Wallet tokens for both sides. The wallet list is rebuilt during refreshes
-  // and can briefly lack an entry (or carry an error placeholder), so keep the
-  // last complete entry seen while the dialog is open.
-  const findWalletToken = (id) => (tokens || []).find(t =>
-    !t.error && t.fee !== undefined && idText(t.principal ?? t.ledger_canister_id) === id);
-  const lastToken0 = useRef(null);
-  const lastToken1 = useRef(null);
-  const walletToken0 = useMemo(() => {
-    const t = findWalletToken(token0Id);
-    if (t) lastToken0.current = t;
-    return t || lastToken0.current;
-  }, [tokens, token0Id]);
-  const walletToken1 = useMemo(() => {
-    const t = findWalletToken(token1Id);
-    if (t) lastToken1.current = t;
-    return t || lastToken1.current;
-  }, [tokens, token1Id]);
-  useEffect(() => { if (show) { lastToken0.current = null; lastToken1.current = null; } }, [show]);
+  // Load balances for exactly this position's two ledgers whenever the dialog opens.
+  useEffect(() => {
+    if (!show || !position || !identity) return;
+    let cancelled = false;
+    setAmount0('');
+    setAmount1('');
+    setErrorText('');
+    setResult(null);
+    setIsLoading(false);
+    setFunds(null);
+    setFundsError('');
+    (async () => {
+      try {
+        const sneedLock = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+        const summed = await sneedLock.get_summed_locks();
+        const lockedByLedger = new Map(summed.map(([ledger, amount]) => [idText(ledger), BigInt(amount)]));
+        const [f0, f1] = await Promise.all([
+          loadFunds(token0Id, identity, lockedByLedger),
+          loadFunds(token1Id, identity, lockedByLedger)
+        ]);
+        if (!cancelled) setFunds({ f0, f1 });
+      } catch (e) {
+        console.error('Failed to load balances for add liquidity:', e);
+        if (!cancelled) setFundsError('Could not load your balances. Please close and try again.');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [show, token0Id, token1Id, identity]);
 
   // Current position amounts define the ratio the pool will accept at the
   // current price. A zero on one side means the position is out of range and
@@ -69,14 +99,12 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, o
   const posAmount1 = positionDetails?.token1Amount !== undefined ? BigInt(positionDetails.token1Amount) : 0n;
   const needs0 = posAmount0 > 0n || posAmount1 === 0n;
   const needs1 = posAmount1 > 0n || posAmount0 === 0n;
-  const canMatch = posAmount0 > 0n && posAmount1 > 0n;
-
   const inRange = posAmount0 > 0n && posAmount1 > 0n;
 
   // The pool only ever adds at the position's current ratio, so the two inputs
   // stay linked both ways while the position is in range.
   const deriveOther = (value, fromSide) => {
-    if (!canMatch) return;
+    if (!inRange) return;
     let base;
     try { base = parseAmountToBigInt(value, fromSide === 0 ? decimals0 : decimals1); } catch { return; }
     if (base <= 0n) return;
@@ -87,45 +115,40 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, o
     }
   };
 
-  // Pure plan for one token: where the funds come from and which fees apply.
-  //   needs amount + fee in the backend wallet (fee = transfer into the pool);
-  //   any shortfall is topped up from the frontend wallet at one more fee.
-  const planToken = (amt, walletToken, symbol, decimals) => {
-    if (amt === 0n) return { topUp: 0n, feeCount: 0, fee: 0n, error: null };
-    if (!walletToken) return { topUp: 0n, feeCount: 0, fee: 0n, error: `${symbol}: add this token to your wallet first so its balances are known.` };
-    const fee = BigInt(walletToken.fee ?? 0);
-    if (amt <= 2n * fee) return { topUp: 0n, feeCount: 2, fee, error: `${symbol}: amount must exceed two transaction fees (${formatAmount(2n * fee, decimals)}).` };
-    const backend = BigInt(walletToken.available_backend ?? 0);
-    const frontend = BigInt(walletToken.balance ?? 0);
-    const needed = amt + fee;
-    if (needed <= backend) return { topUp: 0n, feeCount: 2, fee, error: null };
-    const topUp = needed - backend;
-    if (topUp + fee > frontend) {
-      return { topUp: 0n, feeCount: 3, fee, error: `${symbol}: not enough across both wallets. Maximum you can add is ${formatAmount(maxAddable(walletToken), decimals)} after fees.` };
-    }
-    return { topUp, feeCount: 3, fee, error: null };
-  };
-
   // Largest amount of one token that both wallets can fund after fees:
   // backend minus the pool-transfer fee, plus frontend minus its transfer fee.
-  const maxAddable = (walletToken) => {
-    if (!walletToken) return 0n;
-    const fee = BigInt(walletToken.fee ?? 0);
-    const backend = BigInt(walletToken.available_backend ?? 0);
-    const frontend = BigInt(walletToken.balance ?? 0);
-    const total = backend + (frontend > fee ? frontend - fee : 0n);
-    const max = total > fee ? total - fee : 0n;
-    return max > 2n * fee ? max : 0n;
+  const maxAddable = (f) => {
+    if (!f) return 0n;
+    const total = f.availableBackend + (f.frontend > f.fee ? f.frontend - f.fee : 0n);
+    const max = total > f.fee ? total - f.fee : 0n;
+    return max > 2n * f.fee ? max : 0n;
   };
 
-  // MAX: the most that both wallets can fund at the position's ratio. The
-  // side that runs out first is set to its exact maximum and the other side is
-  // derived from it once (floored), so the result is the same whichever token
-  // the user has "too much" of.
+  // Plan for one token: where the funds come from and which fees apply.
+  //   needs amount + fee in the backend wallet (fee = transfer into the pool);
+  //   any shortfall is topped up from the frontend wallet at one more fee.
+  const planToken = (amt, f, symbol, decimals) => {
+    if (amt === 0n) return { topUp: 0n, feeCount: 0, fee: 0n, error: null };
+    if (!f) return { topUp: 0n, feeCount: 0, fee: 0n, error: `${symbol}: balances not loaded yet.` };
+    if (amt <= 2n * f.fee) return { topUp: 0n, feeCount: 2, fee: f.fee, error: `${symbol}: amount must exceed two transaction fees (${formatAmount(2n * f.fee, decimals)}).` };
+    const needed = amt + f.fee;
+    if (needed <= f.availableBackend) return { topUp: 0n, feeCount: 2, fee: f.fee, error: null };
+    const topUp = needed - f.availableBackend;
+    if (topUp + f.fee > f.frontend) {
+      return { topUp: 0n, feeCount: 3, fee: f.fee, error: `${symbol}: not enough across both wallets. Maximum you can add is ${formatAmount(maxAddable(f), decimals)} after fees.` };
+    }
+    return { topUp, feeCount: 3, fee: f.fee, error: null };
+  };
+
+  // MAX: the most that both wallets can fund at the position's ratio. The side
+  // that runs out first is set to its exact maximum and the other is derived
+  // from it once (floored), so the result does not depend on which token the
+  // user holds more of.
   const handleMax = () => {
-    const max0 = maxAddable(walletToken0);
-    const max1 = maxAddable(walletToken1);
-    if (!canMatch) {
+    if (!funds) return;
+    const max0 = maxAddable(funds.f0);
+    const max1 = maxAddable(funds.f1);
+    if (!inRange) {
       if (needs0) setAmount0(toPlainAmount(max0, decimals0));
       if (needs1) setAmount1(toPlainAmount(max1, decimals1));
       return;
@@ -142,15 +165,17 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, o
 
   // Live plan for the fee breakdown shown under the inputs.
   const livePlan = useMemo(() => {
+    if (!funds) return null;
     const parse = (text, decimals) => { try { return text.trim() === '' ? 0n : parseAmountToBigInt(text, decimals); } catch { return null; } };
     const a0 = parse(amount0, decimals0);
     const a1 = parse(amount1, decimals1);
     if (a0 === null || a1 === null) return null;
-    return { a0, a1, p0: planToken(a0, walletToken0, symbol0, decimals0), p1: planToken(a1, walletToken1, symbol1, decimals1) };
-  }, [amount0, amount1, walletToken0, walletToken1]);
+    return { a0, a1, p0: planToken(a0, funds.f0, symbol0, decimals0), p1: planToken(a1, funds.f1, symbol1, decimals1) };
+  }, [amount0, amount1, funds]);
 
   const handleSubmit = async () => {
     setErrorText('');
+    if (!funds) { setErrorText('Balances are still loading.'); return; }
     let a0 = 0n, a1 = 0n;
     try {
       a0 = amount0.trim() === '' ? 0n : parseAmountToBigInt(amount0, decimals0);
@@ -163,13 +188,12 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, o
       setErrorText('Enter an amount for at least one token.');
       return;
     }
-    const p0 = planToken(a0, walletToken0, symbol0, decimals0);
-    const p1 = planToken(a1, walletToken1, symbol1, decimals1);
+    const p0 = planToken(a0, funds.f0, symbol0, decimals0);
+    const p1 = planToken(a1, funds.f1, symbol1, decimals1);
     if (p0.error || p1.error) {
       setErrorText([p0.error, p1.error].filter(Boolean).join(' '));
       return;
     }
-
     try {
       setIsLoading(true);
       const res = await onAddLiquidity({
@@ -179,8 +203,10 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, o
         amount1: a1,
         topUp0: p0.topUp,
         topUp1: p1.topUp,
-        walletToken0,
-        walletToken1
+        token0Ledger: token0Id,
+        token1Ledger: token1Id,
+        symbol0,
+        symbol1
       });
       setResult(res);
     } catch (error) {
@@ -194,7 +220,7 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, o
   if (!show || !position || !positionDetails) return null;
 
   const inputStyle = {
-    flex: '1',
+    width: '100%',
     padding: '0.875rem',
     background: theme.colors.secondaryBg,
     border: `1px solid ${theme.colors.border}`,
@@ -209,7 +235,7 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, o
     const needed = side === 0 ? needs0 : needs1;
     const symbol = side === 0 ? symbol0 : symbol1;
     const decimals = side === 0 ? decimals0 : decimals1;
-    const walletToken = side === 0 ? walletToken0 : walletToken1;
+    const f = funds ? (side === 0 ? funds.f0 : funds.f1) : null;
     const value = side === 0 ? amount0 : amount1;
     const setValue = side === 0 ? setAmount0 : setAmount1;
     return (
@@ -217,9 +243,9 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, o
         <label style={{ display: 'block', color: theme.colors.primaryText, marginBottom: '0.4rem', fontWeight: '500', fontSize: '0.9rem' }}>
           {symbol}
           <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginLeft: '0.5rem' }}>
-            {walletToken
-              ? `wallet: ${formatAmount(walletToken.balance ?? 0n, decimals)} · backend wallet: ${formatAmount(walletToken.available_backend ?? 0n, decimals)}`
-              : 'not in your wallet list'}
+            {f
+              ? `wallet: ${formatAmount(f.frontend, decimals)} · backend wallet: ${formatAmount(f.availableBackend, decimals)}${f.locked > 0n ? ` (+${formatAmount(f.locked, decimals)} locked)` : ''}`
+              : 'loading balances…'}
           </span>
         </label>
         {needed ? (
@@ -227,10 +253,10 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, o
             type="text"
             inputMode="decimal"
             value={value}
-            disabled={isLoading}
+            disabled={isLoading || !funds}
             onChange={(e) => { setValue(e.target.value); deriveOther(e.target.value, side); }}
             placeholder="0.00"
-            style={{ ...inputStyle, width: '100%' }}
+            style={inputStyle}
           />
         ) : (
           <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>
@@ -292,6 +318,10 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, o
               : `Out of range: only ${needs0 ? symbol0 : symbol1} is needed right now`}
           </div>
 
+          {fundsError && (
+            <div style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: '1rem' }}>{fundsError}</div>
+          )}
+
           {result ? (
             <div>
               <div style={{
@@ -324,11 +354,11 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, o
 
               <button
                 onClick={handleMax}
-                disabled={isLoading || (needs0 && !walletToken0) || (needs1 && !walletToken1)}
+                disabled={isLoading || !funds}
                 style={{
                   background: 'transparent', color: accent, border: `1px solid ${accent}`, borderRadius: '10px',
-                  padding: '0.5rem 1rem', cursor: isLoading ? 'not-allowed' : 'pointer', fontSize: '0.85rem', fontWeight: '600',
-                  marginBottom: '1rem'
+                  padding: '0.5rem 1rem', cursor: (isLoading || !funds) ? 'not-allowed' : 'pointer', fontSize: '0.85rem', fontWeight: '600',
+                  marginBottom: '1rem', opacity: (isLoading || !funds) ? 0.6 : 1
                 }}
               >
                 MAX — add as much as both wallets allow
@@ -346,11 +376,13 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, o
                       <div key={symbol}>
                         {symbol}: {plan.feeCount} transaction fee{plan.feeCount === 1 ? '' : 's'}
                         {plan.fee > 0n ? ` (${formatAmount(BigInt(plan.feeCount) * plan.fee, decimals)} ${symbol})` : ''}
-                        {plan.topUp > 0n
-                          ? (plan.topUp >= amt + plan.fee
-                              ? ' — all moved from your wallet'
-                              : ` — ${formatAmount(plan.topUp, decimals)} moved from your wallet, the rest from your backend wallet`)
-                          : ' — all from your backend wallet'}
+                        {plan.error
+                          ? ''
+                          : plan.topUp > 0n
+                            ? (plan.topUp >= amt + plan.fee
+                                ? ' — all moved from your wallet'
+                                : ` — ${formatAmount(plan.topUp, decimals)} moved from your wallet, the rest from your backend wallet`)
+                            : ' — all from your backend wallet'}
                       </div>
                     ))}
                   <div style={{ color: theme.colors.mutedText }}>
@@ -365,11 +397,11 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, o
 
               <button
                 onClick={handleSubmit}
-                disabled={isLoading}
+                disabled={isLoading || !funds}
                 style={{
                   width: '100%', background: `linear-gradient(135deg, ${accent}, ${accentDark})`, color: 'white',
-                  border: 'none', borderRadius: '10px', padding: '0.875rem', cursor: isLoading ? 'not-allowed' : 'pointer',
-                  fontWeight: '600', opacity: isLoading ? 0.7 : 1
+                  border: 'none', borderRadius: '10px', padding: '0.875rem', cursor: (isLoading || !funds) ? 'not-allowed' : 'pointer',
+                  fontWeight: '600', opacity: (isLoading || !funds) ? 0.7 : 1
                 }}
               >
                 {isLoading ? 'Adding liquidity…' : 'Add Liquidity'}

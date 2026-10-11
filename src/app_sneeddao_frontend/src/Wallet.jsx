@@ -4515,7 +4515,7 @@ function Wallet() {
     // Add liquidity to a locked position from the backend wallet. The canister
     // moves the tokens into the pool, adds in the position's existing range and
     // returns whatever the pool could not use at the current price.
-    const handleAddLiquidityToLockedPosition = async ({ swapCanisterId, positionId, amount0, amount1, topUp0 = 0n, topUp1 = 0n, walletToken0, walletToken1 }) => {
+    const handleAddLiquidityToLockedPosition = async ({ swapCanisterId, positionId, amount0, amount1, topUp0 = 0n, topUp1 = 0n, token0Ledger, token1Ledger, symbol0, symbol1 }) => {
         const sneedLockActor = createSneedLockActor(sneedLockCanisterId, {
             agentOptions: { identity }
         });
@@ -4526,10 +4526,11 @@ function Wallet() {
         // Move any shortfall from the frontend wallet into the backend wallet
         // first. The ledger transfer is final when the call returns, so the
         // canister sees the new balance on the add-liquidity call that follows.
-        const topUpBackendWallet = async (walletToken, amount) => {
+        const topUpBackendWallet = async (ledgerId, symbol, amount) => {
             if (!amount || amount <= 0n) return;
-            if (!walletToken) throw new Error('Cannot top up: token not in wallet list');
-            const ledgerActor = createLedgerActor(walletToken.ledger_canister_id, { agentOptions: { identity } });
+            if (!ledgerId) throw new Error('Cannot top up: token ledger unknown');
+            const ledgerPrincipal = typeof ledgerId === 'string' ? Principal.fromText(ledgerId) : ledgerId;
+            const ledgerActor = createLedgerActor(ledgerPrincipal, { agentOptions: { identity } });
             const result = await ledgerActor.icrc1_transfer({
                 to: { owner: Principal.fromText(sneedLockCanisterId), subaccount: [principalToSubAccount(identity.getPrincipal())] },
                 fee: [],
@@ -4539,12 +4540,12 @@ function Wallet() {
                 amount
             });
             if ('Err' in result) {
-                throw new Error(`Moving ${walletToken.symbol} to your backend wallet failed: ${toJsonString(result.Err)}`);
+                throw new Error(`Moving ${symbol} to your backend wallet failed: ${toJsonString(result.Err)}`);
             }
-            console.log(`Topped up backend wallet with ${amount.toString()} ${walletToken.symbol}`);
+            console.log(`Topped up backend wallet with ${amount.toString()} ${symbol}`);
         };
-        await topUpBackendWallet(walletToken0, BigInt(topUp0));
-        await topUpBackendWallet(walletToken1, BigInt(topUp1));
+        await topUpBackendWallet(token0Ledger, symbol0, BigInt(topUp0));
+        await topUpBackendWallet(token1Ledger, symbol1, BigInt(topUp1));
 
         const result = await sneedLockActor.add_liquidity_to_locked_position(
             swapPrincipal,
@@ -10899,7 +10900,7 @@ function Wallet() {
                     onClose={() => setShowAddLiquidityModal(false)}
                     position={addLiquidityTarget?.position}
                     positionDetails={addLiquidityTarget?.positionDetails}
-                    tokens={tokens}
+                    identity={identity}
                     onAddLiquidity={handleAddLiquidityToLockedPosition}
                 />
                 <ConfirmationModal
