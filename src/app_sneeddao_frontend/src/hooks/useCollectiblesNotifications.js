@@ -13,6 +13,7 @@ import { PERM } from '../utils/NeuronPermissionUtils.jsx';
 import { formatAmount } from '../utils/StringUtils';
 import { get_token_conversion_rate } from '../utils/TokenUtils';
 import { readBackendWalletBaselines, forwardClaimedFees } from '../utils/FeeForwarding';
+import { principalText } from '../utils/IdUtils';
 
 // Module-level cache to persist across navigation/remounts
 let cachedResult = {
@@ -463,9 +464,7 @@ export function useCollectiblesNotifications() {
                     agentOptions: { identity } 
                 });
                 
-                const swapPrincipal = typeof position.swapCanisterId === 'string' 
-                    ? Principal.fromText(position.swapCanisterId)
-                    : position.swapCanisterId;
+                const swapPrincipal = Principal.fromText(principalText(position.swapCanisterId));
                 
                 // Snapshot backend-wallet balances so the pool's delivery can be recognised.
                 const baselines = await readBackendWalletBaselines([position.token0, position.token1], identity.getPrincipal());

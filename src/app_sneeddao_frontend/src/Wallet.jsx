@@ -37,6 +37,7 @@ import PositionCard from './PositionCard';
 import { get_available, get_available_backend, getTokenLogo, resolveTokenLogo, get_token_conversion_rate, get_token_icp_rate, getTokenTVL, getTokenMetaForSwap, rewardAmountOrZero, availableOrZero } from './utils/TokenUtils';
 import { registerTrackedCanister, unregisterTrackedCanister, getCanisterInfo } from './utils/BackendUtils';
 import { getPositionTVL, isLockedPosition } from "./utils/PositionUtils";
+import { principalText } from './utils/IdUtils';
 import { readBackendWalletBaselines, forwardClaimedFees, describeForwarding } from './utils/FeeForwarding';
 import { headerStyles } from './styles/HeaderStyles';
 import { usePremiumStatus } from './hooks/usePremiumStatus';
@@ -4519,9 +4520,7 @@ function Wallet() {
         const sneedLockActor = createSneedLockActor(sneedLockCanisterId, {
             agentOptions: { identity }
         });
-        const swapPrincipal = typeof swapCanisterId === 'string'
-            ? Principal.fromText(swapCanisterId)
-            : swapCanisterId;
+        const swapPrincipal = Principal.fromText(principalText(swapCanisterId));
 
         // Move any shortfall from the frontend wallet into the backend wallet
         // first. The ledger transfer is final when the call returns, so the
@@ -4826,9 +4825,7 @@ function Wallet() {
             });
 
             // Convert swapCanisterId to Principal if it's a string
-            const swapPrincipal = typeof swapCanisterId === 'string' 
-                ? Principal.fromText(swapCanisterId)
-                : swapCanisterId;
+            const swapPrincipal = Principal.fromText(principalText(swapCanisterId));
 
             // Snapshot backend-wallet balances so the pool's delivery can be recognised.
             const baselines = await readBackendWalletBaselines([token0, token1], identity.getPrincipal());
