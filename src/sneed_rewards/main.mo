@@ -1142,15 +1142,29 @@ shared (deployer) actor class SneedRLL() = this {
         return result;
 
     } catch e {
-        // Ambiguous outcome: the await threw, so the transfer MAY have executed on the
-        // ledger despite the error. We must NOT re-credit — restoring the balance after
-        // a transfer that actually landed would enable a double-withdrawal. Instead,
-        // leave the owners debited and record a persistent incident carrying everything
-        // needed to reconcile it manually (match the memo in the ledger's
-        // get_transactions; re-credit the recorded owners via resolve_claim_incident if
-        // it turns out the transfer never landed).
         log_claim(seq, hotkey, icrc1_ledger_canister_id, total_balance - fee, fee, #Failed, ?Error.message(e), null);
 
+        // Classify the thrown call by its error code. These codes guarantee the
+        // call never executed (not delivered, or the ledger trapped and rolled
+        // back), so re-crediting the owners is safe and no manual step is needed.
+        let not_executed = switch (Error.code(e)) {
+            case (#system_fatal or #system_transient or #destination_invalid or #canister_error) { true };
+            case _ { false };
+        };
+        if (not_executed) {
+            for((owner, balance) in owner_balances.vals()) {
+                ignore increase_balance(owner, icrc1_ledger_canister_id, balance);
+            };
+            return #Err(#GenericError { error_code = 1; message = Error.message(e); });
+        };
+
+        // Ambiguous outcome: the await threw with a code that does not rule out the
+        // transfer having executed on the ledger. We must NOT re-credit — restoring the
+        // balance after a transfer that actually landed would enable a double-withdrawal.
+        // Instead, leave the owners debited and record a persistent incident carrying
+        // everything needed to reconcile it manually (match the memo in the ledger's
+        // get_transactions; re-credit the recorded owners via resolve_claim_incident if
+        // it turns out the transfer never landed).
         let incident_id = create_claim_incident(
             seq,
             icrc1_ledger_canister_id,
