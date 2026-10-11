@@ -1405,6 +1405,46 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         };
     };
 
+    // Undo internal payment transfers after a later payment step failed, so a
+    // failed payment never leaves the caller partially charged. Each entry is
+    // (source account inside this canister: null = main, ?blob = subaccount;
+    // amount moved there). Returns the total e8s that could NOT be returned —
+    // that ICP then still sits inside this canister's own accounts (never
+    // externally), so it can be returned manually.
+    func undoPaymentTransfers(userSubaccount: Blob, moved: [(?Blob, Nat64)]): async* Nat64 {
+        let fee = T.ICP_FEE;
+        var stuck: Nat64 = 0;
+        for ((fromSubaccount, amountE8s) in moved.vals()) {
+            // Dust at or below one ledger fee cannot be returned and was never
+            // material; skip it.
+            if (amountE8s > fee) {
+                let returned = try {
+                    switch (await ledger.icrc1_transfer({
+                        to = { owner = Principal.fromActor(this); subaccount = ?userSubaccount };
+                        fee = ?Nat64.toNat(fee);
+                        memo = null;
+                        from_subaccount = fromSubaccount;
+                        created_at_time = null;
+                        amount = Nat64.toNat(amountE8s - fee);
+                    })) {
+                        case (#Ok(_)) { true };
+                        case (#Err(_)) { false };
+                    };
+                } catch (_) { false };
+                if (not returned) { stuck += amountE8s };
+            };
+        };
+        stuck;
+    };
+
+    func paymentAbortMessage(step: Text, stuckE8s: Nat64): Text {
+        if (stuckE8s == 0) {
+            step # "; your deposit (less ledger fees) remains in your payment subaccount";
+        } else {
+            step # "; returning " # Nat64.toText(stuckE8s) # " e8s to your payment subaccount also failed - that ICP is held inside the factory canister pending manual return";
+        };
+    };
+
     // Transfer ICP to CMC and notify to top up this canister with cycles
     func topUpSelfWithCycles(icpAmountE8s: Nat64): async* T.NotifyTopUpResult {
         let selfPrincipal = Principal.fromActor(this);
@@ -1525,6 +1565,15 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             trackedIcpProfitE8s := feeAmount;
             trackedIcpTransferFeesE8s := totalTransferFees;
             
+            // Payment transfers. The subaccount is balance-checked and locked, so a
+            // failure here is a genuine ledger error rather than a drain. Exact
+            // accounting: either every transfer succeeds and the mint proceeds, or
+            // the mint aborts and everything already moved is returned to the
+            // caller's subaccount (less ledger fees). To make the undo possible,
+            // the transfer into an account this canister controls runs first and
+            // the single external transfer (the creation fee) runs last, so nothing
+            // leaves the canister until the internal step has landed.
+
             // Step 1: Transfer ICP for cycles to factory's main account (for later CMC top-up)
             if (actualIcpForCycles > 0) {
                 let cyclesTransfer = await ledger.icrc1_transfer({
@@ -1535,16 +1584,17 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     created_at_time = null;
                     amount = Nat64.toNat(actualIcpForCycles);
                 });
-                
+
                 switch (cyclesTransfer) {
                     case (#Err(_)) {
-                        return #Err(#TransferFailed("Failed to transfer ICP for cycles"));
+                        // Nothing has moved yet.
+                        return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer ICP for cycles", 0)));
                     };
                     case (#Ok(_)) {};
                 };
             };
-            
-            // Step 2: Transfer remaining ICP to fee destination
+
+            // Step 2: Transfer the creation fee to the fee destination (external, last)
             if (feeAmount > 0) {
                 let feeTransfer = await ledger.icrc1_transfer({
                     to = feeDestination;
@@ -1554,15 +1604,12 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     created_at_time = null;
                     amount = Nat64.toNat(feeAmount);
                 });
-                
+
                 switch (feeTransfer) {
                     case (#Err(_)) {
-                        // The subaccount was balance-checked and is locked, so a
-                        // failure here is a genuine ledger error rather than a
-                        // drain. Abort instead of completing the mint with the fee
-                        // unpaid; the caller's deposit stays in their subaccount
-                        // for them to withdraw.
-                        return #Err(#TransferFailed("Failed to transfer creation fee"));
+                        // Undo step 1 so the caller is not left partially charged.
+                        let stuck = await* undoPaymentTransfers(userSubaccount, [(null, actualIcpForCycles)]);
+                        return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer creation fee", stuck)));
                     };
                     case (#Ok(_)) {};
                 };
@@ -2470,7 +2517,17 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             } else { 0 };
             trackedIcpTransferFeesE8s := totalTransferFees;
             
-            // Transfer ICP for cycles to factory's main account
+            // Payment transfers. The subaccount is balance-checked and locked, so a
+            // failure here is a genuine ledger error rather than a drain. Exact
+            // accounting: either every transfer succeeds and the mint proceeds, or
+            // the mint aborts and everything already moved is returned to the
+            // caller's subaccount (less ledger fees). To make the undo possible,
+            // transfers into accounts this canister controls (main account for
+            // cycles, the publisher's revenue subaccount) run first and the single
+            // external transfer (DAO profit / DAO cut to the fee destination) runs
+            // last, so nothing leaves the canister until all internal steps landed.
+
+            // Step 1: Transfer ICP for cycles to factory's main account
             if (actualIcpForCycles > 0) {
                 let cyclesTransfer = await ledger.icrc1_transfer({
                     to = { owner = Principal.fromActor(this); subaccount = null };
@@ -2481,7 +2538,10 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     amount = Nat64.toNat(actualIcpForCycles);
                 });
                 switch (cyclesTransfer) {
-                    case (#Err(_)) { return #Err(#TransferFailed("Failed to transfer ICP for cycles")) };
+                    case (#Err(_)) {
+                        // Nothing has moved yet.
+                        return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer ICP for cycles", 0)));
+                    };
                     case (#Ok(_)) {};
                 };
             };
@@ -2491,6 +2551,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 trackedIcpProfitE8s := profit;
                 trackedDaoCutE8s := profit;
                 trackedPublisherRevenueE8s := 0;
+                // Step 2: Transfer DAO profit to the fee destination (external, last)
                 if (profit > 0) {
                     let feeTransfer = await ledger.icrc1_transfer({
                         to = feeDestination;
@@ -2501,7 +2562,11 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                         amount = Nat64.toNat(profit);
                     });
                     switch (feeTransfer) {
-                        case (#Err(_)) { return #Err(#TransferFailed("Failed to transfer DAO profit")) };
+                        case (#Err(_)) {
+                            // Undo step 1.
+                            let stuck = await* undoPaymentTransfers(userSubaccount, [(null, actualIcpForCycles)]);
+                            return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer DAO profit", stuck)));
+                        };
                         case (#Ok(_)) {};
                     };
                 };
@@ -2510,12 +2575,34 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 let effectiveCutBps = getEffectiveDaoCutBps(app);
                 let daoCut: Nat64 = Nat64.fromNat((Nat64.toNat(profit) * effectiveCutBps) / 10000);
                 let publisherShare: Nat64 = profit - daoCut;
-                
+
                 trackedIcpProfitE8s := profit;
                 trackedDaoCutE8s := daoCut;
                 trackedPublisherRevenueE8s := publisherShare;
 
-                // Transfer DAO cut to feeDestination
+                let revSubaccount = getRevenueSubaccount(app);
+
+                // Step 2: Transfer publisher share to revenue subaccount (internal)
+                if (publisherShare > 0) {
+                    let pubTransfer = await ledger.icrc1_transfer({
+                        to = { owner = Principal.fromActor(this); subaccount = ?revSubaccount };
+                        fee = ?Nat64.toNat(T.ICP_FEE);
+                        memo = null;
+                        from_subaccount = ?userSubaccount;
+                        created_at_time = null;
+                        amount = Nat64.toNat(publisherShare);
+                    });
+                    switch (pubTransfer) {
+                        case (#Err(_)) {
+                            // Undo step 1.
+                            let stuck = await* undoPaymentTransfers(userSubaccount, [(null, actualIcpForCycles)]);
+                            return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer publisher share", stuck)));
+                        };
+                        case (#Ok(_)) {};
+                    };
+                };
+
+                // Step 3: Transfer DAO cut to the fee destination (external, last)
                 if (daoCut > 0) {
                     let daoCutTransfer = await ledger.icrc1_transfer({
                         to = feeDestination;
@@ -2526,24 +2613,14 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                         amount = Nat64.toNat(daoCut);
                     });
                     switch (daoCutTransfer) {
-                        case (#Err(_)) { return #Err(#TransferFailed("Failed to transfer DAO cut")) };
-                        case (#Ok(_)) {};
-                    };
-                };
-
-                // Transfer publisher share to revenue subaccount
-                if (publisherShare > 0) {
-                    let revSubaccount = getRevenueSubaccount(app);
-                    let pubTransfer = await ledger.icrc1_transfer({
-                        to = { owner = Principal.fromActor(this); subaccount = ?revSubaccount };
-                        fee = ?Nat64.toNat(T.ICP_FEE);
-                        memo = null;
-                        from_subaccount = ?userSubaccount;
-                        created_at_time = null;
-                        amount = Nat64.toNat(publisherShare);
-                    });
-                    switch (pubTransfer) {
-                        case (#Err(_)) { return #Err(#TransferFailed("Failed to transfer publisher share")) };
+                        case (#Err(_)) {
+                            // Undo steps 2 and 1.
+                            let stuck = await* undoPaymentTransfers(userSubaccount, [
+                                (?revSubaccount, publisherShare),
+                                (null, actualIcpForCycles)
+                            ]);
+                            return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer DAO cut", stuck)));
+                        };
                         case (#Ok(_)) {};
                     };
                 };
