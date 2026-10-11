@@ -11,7 +11,7 @@ import Header from '../components/Header';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses } from '../utils/SnsUtils';
 import { formatAmount, subaccountToHex } from '../utils/StringUtils';
-import { getTokenLogo } from '../utils/TokenUtils';
+import { resolveTokenLogo } from '../utils/TokenUtils';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { Principal } from '@dfinity/principal';
 import { FaExchangeAlt, FaSearch, FaChevronLeft, FaChevronRight, FaArrowRight, FaArrowDown, FaCoins, FaFire, FaCheckCircle, FaClock, FaCopy, FaExternalLinkAlt } from 'react-icons/fa';
@@ -209,7 +209,7 @@ function Transaction() {
 
                 const name = metadata.find(([key]) => key === 'icrc1:name')?.[1]?.Text || '';
                 const symbol = metadata.find(([key]) => key === 'icrc1:symbol')?.[1]?.Text || '';
-                const logo = getTokenLogo(metadata);
+                const logo = await resolveTokenLogo(ledgerCanisterId, metadata, symbol);
 
                 setTokenMetadata({
                     name,

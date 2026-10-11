@@ -4,7 +4,7 @@ import { Principal } from '@dfinity/principal';
 import { useAuth } from './AuthContext';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
-import { getTokenLogo } from './utils/TokenUtils';
+import { resolveTokenLogo } from './utils/TokenUtils';
 import { useWhitelistTokens } from './contexts/WhitelistTokensContext';
 import './Help.css';
 import Header from './components/Header';
@@ -147,7 +147,7 @@ function ScanWallet() {
                 
                 // Get metadata for logo
                 const metadata = await ledgerActor.icrc1_metadata();
-                const logo = getTokenLogo(metadata);
+                const logo = await resolveTokenLogo(token.ledger_id, metadata, token.symbol);
 
                 setBalances(prev => ({
                     ...prev,

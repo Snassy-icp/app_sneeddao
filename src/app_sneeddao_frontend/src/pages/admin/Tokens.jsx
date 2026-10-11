@@ -6,7 +6,7 @@ import Header from '../../components/Header';
 import { Principal } from '@dfinity/principal';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
-import { getTokenLogo } from '../../utils/TokenUtils';
+import { resolveTokenLogo } from '../../utils/TokenUtils';
 import InfoModal from '../../components/InfoModal';
 import ConfirmationModal from '../../ConfirmationModal';
 import { 
@@ -95,8 +95,7 @@ export default function TokensAdmin() {
                     agentOptions: { identity }
                 });
                 const metadata = await ledgerActor.icrc1_metadata();
-                const logo = getTokenLogo(metadata);
-                logos[ledgerId] = token.symbol.toLowerCase() === 'icp' && !logo ? 'icp_symbol.svg' : logo;
+                logos[ledgerId] = await resolveTokenLogo(token.ledger_id, metadata, token.symbol);
             } catch (err) {
                 logos[ledgerId] = '';
             }
@@ -180,7 +179,7 @@ export default function TokensAdmin() {
                 }
             }
             
-            logo = getTokenLogo(metadata);
+            logo = await resolveTokenLogo(principal, metadata, symbol);
             
             setVerifiedToken({
                 ledger_id: principal,

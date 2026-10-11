@@ -5,7 +5,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { formatAmount } from '../utils/StringUtils';
-import { getTokenLogo, getTokenMetaForSwap, get_token_conversion_rate } from '../utils/TokenUtils';
+import { resolveTokenLogo, getTokenMetaForSwap, get_token_conversion_rate } from '../utils/TokenUtils';
 import Header from '../components/Header';
 import { Principal } from '@dfinity/principal';
 import { createActor as createNeutriniteDappActor, canisterId as neutriniteCanisterId } from 'external/neutrinite_dapp';
@@ -624,9 +624,9 @@ function SneedlockInfo() {
                     // Always try to fetch metadata directly from the ledger, even if not whitelisted
                     const ledgerActor = createLedgerActor(tokenKey, { agentOptions: { identity } });
                     const metadata = await ledgerActor.icrc1_metadata();
-                    const logo = getTokenLogo(metadata);
                     const symbol = await ledgerActor.icrc1_symbol();
                     const decimals = await ledgerActor.icrc1_decimals();
+                    const logo = await resolveTokenLogo(tokenKey, metadata, symbol);
                     
                     setTokenMetadata(prev => ({
                         ...prev,
@@ -850,9 +850,9 @@ function SneedlockInfo() {
                 try {
                     const ledgerActor = createLedgerActor(tokenKey, { agentOptions: { identity } });
                     const metadata = await ledgerActor.icrc1_metadata();
-                    const logo = getTokenLogo(metadata);
                     const symbol = await ledgerActor.icrc1_symbol();
                     const decimals = await ledgerActor.icrc1_decimals();
+                    const logo = await resolveTokenLogo(tokenKey, metadata, symbol);
                     
                     setTokenMetadata(prev => ({
                         ...prev,

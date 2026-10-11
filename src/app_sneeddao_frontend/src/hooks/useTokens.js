@@ -4,7 +4,7 @@ import { createActor as createBackendActor, canisterId as backendCanisterId } fr
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
-import { getTokenLogo, get_token_conversion_rate } from '../utils/TokenUtils';
+import { resolveTokenLogo, get_token_conversion_rate } from '../utils/TokenUtils';
 import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from '../utils/BackendUtils';
 import { normalizeId } from './useNeuronsCache';
@@ -34,7 +34,7 @@ export const useTokens = (identity) => {
                 })
             ]);
 
-            const logo = getTokenLogo(metadata);
+            const logo = await resolveTokenLogo(ledgerCanisterId, metadata, symbol);
             
             // Fetch conversion rate using the new price service
             const conversion_rate = await get_token_conversion_rate(

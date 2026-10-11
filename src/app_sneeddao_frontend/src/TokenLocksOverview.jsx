@@ -5,7 +5,7 @@ import { createActor as createBackendActor, canisterId as backendCanisterId } fr
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'declarations/sneed_lock';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
-import { getTokenLogo, getTokenMetaForSwap, get_token_conversion_rate } from './utils/TokenUtils';
+import { resolveTokenLogo, getTokenMetaForSwap, get_token_conversion_rate } from './utils/TokenUtils';
 import { lockFromLocks } from './utils/PositionUtils';
 import { formatAmount, getUSD } from './utils/StringUtils';
 import TokenCard from './TokenCard';
@@ -73,7 +73,7 @@ function TokenLocksOverview() {
                 // Fetch total supply
                 const totalSupply = await ledgerActor.icrc1_total_supply();
 
-                const logo = getTokenLogo(metadata);
+                const logo = await resolveTokenLogo(ledgerCanisterId, metadata, symbol);
                 
                 // Fetch conversion rate using the new price service
                 const conversion_rate = await get_token_conversion_rate(ledgerCanisterId, decimals);
@@ -164,8 +164,8 @@ function TokenLocksOverview() {
                                         ledgerActor0.icrc1_metadata(),
                                         ledgerActor1.icrc1_metadata()
                                     ]);
-                                    const token0Logo = getTokenLogo(metadata0);
-                                    const token1Logo = getTokenLogo(metadata1);
+                                    const token0Logo = await resolveTokenLogo(token0, metadata0, token0Symbol);
+                                    const token1Logo = await resolveTokenLogo(token1, metadata1, token1Symbol);
 
                                     // Fetch conversion rates for both tokens using the new price service
                                     const [token0_conversion_rate, token1_conversion_rate] = await Promise.all([

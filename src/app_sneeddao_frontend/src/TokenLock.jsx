@@ -4,7 +4,7 @@ import { useLocation, Link } from 'react-router-dom';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'declarations/sneed_lock';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
-import { getTokenLogo, get_token_conversion_rate } from './utils/TokenUtils';
+import { resolveTokenLogo, get_token_conversion_rate } from './utils/TokenUtils';
 import { getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 import { useNaming } from './NamingContext';
 import { useTheme } from './contexts/ThemeContext';
@@ -118,7 +118,7 @@ function TokenLock() {
                 ledgerActor.icrc1_decimals()
             ]);
 
-            const logo = getTokenLogo(metadata);
+            const logo = await resolveTokenLogo(ledgerCanisterId, metadata, symbol);
 
             const tokenLocks = await sneedLockActor.get_ledger_token_locks(Principal.fromText(ledgerCanisterId));
             const filteredLocks = lockIds
