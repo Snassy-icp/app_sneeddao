@@ -13,6 +13,7 @@ import Blob "mo:base/Blob";
 import Bool "mo:base/Bool";
 import Debug "mo:base/Debug";
 import Timer "mo:base/Timer";
+import Error "mo:base/Error";
 
 import Map "mo:map/Map";
 import { phash } "mo:map/Map";
@@ -1060,7 +1061,36 @@ shared (deployer) persistent actor class SneedLock() = this {
           created_at_time = null;
         };
 
-        let transfer_result = await icrc1_ledger_canister.icrc1_transfer(transfer_args);
+        // A thrown call (as opposed to a returned #Err) is handled by its error
+        // code. Codes that guarantee the call never executed (not delivered, or
+        // the ledger trapped and rolled back) are rolled back exactly like #Err.
+        // Any other code is ambiguous — the transfer may have landed — so the
+        // lock is kept on the recipient AND restored to the caller: whichever
+        // subaccount now holds the tokens is covered by a lock, at the cost of
+        // temporarily over-locking the other until expiry. Never leave either
+        // side's tokens unlocked.
+        let transfer_result = try {
+          await icrc1_ledger_canister.icrc1_transfer(transfer_args);
+        } catch e {
+          let not_executed = switch (Error.code(e)) {
+            case (#system_fatal or #system_transient or #destination_invalid or #canister_error) { true };
+            case _ { false };
+          };
+          if (not_executed) {
+            remove_token_lock(to_principal, token_type, lock_id);
+          };
+          add_lock_for_principal(caller, token_type, found_lock);
+          let error = #Err({
+            message = if (not_executed) {
+              "Ledger call failed (not executed); lock restored to caller: " # Error.message(e);
+            } else {
+              "Ledger call failed with unknown outcome; lock kept on both caller and recipient pending reconciliation (correlation id " # debug_show(correlation_id) # "): " # Error.message(e);
+            };
+            transfer_error = null;
+          });
+          log_error(caller, correlation_id, "Token transfer threw: " # debug_show(error));
+          return error;
+        };
 
         switch (transfer_result) {
           case (#Err(transfer_error)) {
