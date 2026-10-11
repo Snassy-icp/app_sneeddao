@@ -1422,6 +1422,7 @@ function Wallet() {
             var logo = getTokenLogo(metadata);
             const name = metadata.find(([key]) => key === 'icrc1:name')?.[1]?.Text || null;
             const symbol = await ledgerActor.icrc1_symbol();
+            if (!logo) { logo = await resolveTokenLogo(icrc1_ledger, null, symbol); }
             const decimals = await ledgerActor.icrc1_decimals();
             const fee = await ledgerActor.icrc1_fee();
             
@@ -3083,17 +3084,19 @@ function Wallet() {
             const icrc1_ledger0 = swap_meta.ok.token0.address;
             const ledgerActor0 = createLedgerActor(icrc1_ledger0);
             const metadata0 = await ledgerActor0.icrc1_metadata();
-            const token0Logo = getTokenLogo(metadata0);
+            let token0Logo = getTokenLogo(metadata0);
 
             const icrc1_ledger1 = swap_meta.ok.token1.address;
             const ledgerActor1 = createLedgerActor(icrc1_ledger1);
             const metadata1 = await ledgerActor1.icrc1_metadata();
-            const token1Logo = getTokenLogo(metadata1);
+            let token1Logo = getTokenLogo(metadata1);
 
             const token0Decimals = token_meta?.token0?.find(([key]) => key === "decimals")?.[1]?.Nat ?? 0;
             const token0Symbol = token_meta?.token0?.find(([key]) => key === "symbol")?.[1]?.Text ?? "Unknown";
             const token1Decimals = token_meta?.token1?.find(([key]) => key === "decimals")?.[1]?.Nat ?? 0;
             const token1Symbol = token_meta?.token1?.find(([key]) => key === "symbol")?.[1]?.Text ?? "Unknown";
+            if (!token0Logo) { token0Logo = await resolveTokenLogo(icrc1_ledger0, null, token0Symbol); }
+            if (!token1Logo) { token1Logo = await resolveTokenLogo(icrc1_ledger1, null, token1Symbol); }
 
             const token0Fee = await ledgerActor0.icrc1_fee();
             const token1Fee = await ledgerActor1.icrc1_fee();
@@ -5047,8 +5050,8 @@ function Wallet() {
             const token0Fee = await ledgerActor0.icrc1_fee();
             const token1Fee = await ledgerActor1.icrc1_fee();
 
-            if (token0Symbol?.toLowerCase() === "icp" && token0Logo === "") { token0Logo = "icp_symbol.svg"; }
-            if (token1Symbol?.toLowerCase() === "icp" && token1Logo === "") { token1Logo = "icp_symbol.svg"; }
+            if (!token0Logo) { token0Logo = await resolveTokenLogo(icrc1_ledger0, null, token0Symbol); }
+            if (!token1Logo) { token1Logo = await resolveTokenLogo(icrc1_ledger1, null, token1Symbol); }
 
             const token0_conversion_rate = await get_token_conversion_rate(icrc1_ledger0, token0Decimals);
             const token1_conversion_rate = await get_token_conversion_rate(icrc1_ledger1, token1Decimals);
