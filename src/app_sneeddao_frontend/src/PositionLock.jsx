@@ -5,7 +5,7 @@ import { createActor as createBackendActor, canisterId as backendCanisterId } fr
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'declarations/sneed_lock';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
-import { getTokenLogo, getTokenMetaForSwap, get_token_conversion_rate } from './utils/TokenUtils';
+import { resolveTokenLogo, getTokenMetaForSwap, get_token_conversion_rate } from './utils/TokenUtils';
 import { getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 import { useNaming } from './NamingContext';
 import { useTheme } from './contexts/ThemeContext';
@@ -143,11 +143,11 @@ function PositionLock() {
             
             const ledgerActor0 = createLedgerActor(icrc1_ledger0);
             const metadata0 = await ledgerActor0.icrc1_metadata();
-            const token0Logo = getTokenLogo(metadata0);
+            const token0Logo = await resolveTokenLogo(icrc1_ledger0, metadata0, token0Symbol);
 
             const ledgerActor1 = createLedgerActor(icrc1_ledger1);
             const metadata1 = await ledgerActor1.icrc1_metadata();
-            const token1Logo = getTokenLogo(metadata1);
+            const token1Logo = await resolveTokenLogo(icrc1_ledger1, metadata1, token1Symbol);
 
             // Fetch conversion rates for both tokens using the new price service
             const [token0_conversion_rate, token1_conversion_rate] = await Promise.all([
