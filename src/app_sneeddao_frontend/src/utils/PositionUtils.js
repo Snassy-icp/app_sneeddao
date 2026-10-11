@@ -1,4 +1,4 @@
-import { formatAmountWithConversion } from './StringUtils';
+import { computeUsdValue } from './StringUtils';
 
 function getIcpSwapLink(position) {
     return "https://info.icpswap.com/swap-scan/positions?pair=" + position.swapCanisterId;
@@ -32,8 +32,10 @@ function getPositionTVL(position, positionDetails, hideUnclaimedFees) {
     const decimals0 = Number(position.token0Decimals ?? 8);
     const decimals1 = Number(position.token1Decimals ?? 8);
 
-    let total0USD = parseFloat(formatAmountWithConversion(total0, decimals0, position.token0_conversion_rate));
-    let total1USD = parseFloat(formatAmountWithConversion(total1, decimals1, position.token1_conversion_rate));
+    // Compute numerically. Parsing the locale-formatted display string here
+    // used to truncate "3,971.73" to 3 and showed totals like $6.00.
+    let total0USD = computeUsdValue(total0, decimals0, position.token0_conversion_rate);
+    let total1USD = computeUsdValue(total1, decimals1, position.token1_conversion_rate);
 
     let total = total0USD + total1USD;
     return isNaN(total) ? 0 : total;

@@ -366,7 +366,7 @@ function Lock() {
                         positionDetails={positionDetails}
                         principalDisplayInfo={principalDisplayInfo}
                         hideButtons={true}
-                        hideUnclaimedFees={true}
+                        hideUnclaimedFees={false}
                         defaultExpanded={true}
                         defaultLocksExpanded={true}
                     />

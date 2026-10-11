@@ -99,19 +99,41 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
     
     // Preload logos
     useEffect(() => {
+        // A token without a logo is "loaded" immediately and gets a placeholder;
+        // otherwise the spinner never stops.
         if (position.token0Logo) {
             const img = new Image();
             img.onload = () => setLogo0Loaded(true);
             img.onerror = () => setLogo0Loaded(true);
             img.src = position.token0Logo;
+        } else {
+            setLogo0Loaded(true);
         }
         if (position.token1Logo) {
             const img = new Image();
             img.onload = () => setLogo1Loaded(true);
             img.onerror = () => setLogo1Loaded(true);
             img.src = position.token1Logo;
+        } else {
+            setLogo1Loaded(true);
         }
     }, [position.token0Logo, position.token1Logo]);
+
+    const renderLogo = (logo, symbol, className) => logo ? (
+        <img src={logo} alt={symbol} className={className} />
+    ) : (
+        <div
+            className={className}
+            title={symbol}
+            style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`,
+                color: theme.colors.primaryText, fontWeight: '700', fontSize: '0.8rem'
+            }}
+        >
+            {(symbol || '?').charAt(0).toUpperCase()}
+        </div>
+    );
 
     const handleHeaderClick = () => {
         setIsExpanded(!isExpanded);
@@ -174,16 +196,8 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                         <div className="spinner" style={{ width: '24px', height: '24px' }}></div>
                     ) : (
                         <div style={{ display: 'flex', alignItems: 'flex-start' }}>
-                            <img 
-                                src={position.token0Logo} 
-                                alt={position.token0Symbol} 
-                                className="swap-token-logo1"
-                            />
-                            <img 
-                                src={position.token1Logo} 
-                                alt={position.token1Symbol} 
-                                className="swap-token-logo2"
-                            />
+                            {renderLogo(position.token0Logo, position.token0Symbol, 'swap-token-logo1')}
+                            {renderLogo(position.token1Logo, position.token1Symbol, 'swap-token-logo2')}
                         </div>
                     )}
                 </div>
