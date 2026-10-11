@@ -2,7 +2,8 @@
   "canisters": {
     "app_sneeddao_backend": {
       "main": "src/app_sneeddao_backend/main.mo",
-      "type": "motoko"
+      "type": "motoko",
+      "args": "--enhanced-orthogonal-persistence"
     },
     "sneed_lock": {
       "main": "src/sneed_lock/main.mo",
@@ -10,11 +11,13 @@
     },
     "sneed_sns_forum": {
       "main": "src/sneed_sns_forum/main.mo",
-      "type": "motoko"
+      "type": "motoko",
+      "args": "--enhanced-orthogonal-persistence"
     },
     "sneed_sms": {
       "main": "src/sneed_sms/main.mo",
-      "type": "motoko"
+      "type": "motoko",
+      "args": "--enhanced-orthogonal-persistence"
     },
     "sneed_icp_staking_bot": {
       "main": "src/sneed_bots/sneed_icp_staking_bot/main.mo",

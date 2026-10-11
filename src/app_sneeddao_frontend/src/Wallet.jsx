@@ -27,7 +27,7 @@ import TransferTokenLockModal from './TransferTokenLockModal';
 import WithdrawTokenModal from './WithdrawTokenModal';
 import DepositTokenModal from './DepositTokenModal';
 import { get_short_timezone, format_duration, bigDateToReadable, dateToReadable } from './utils/DateUtils';
-import { formatAmount, toJsonString, formatAmountWithConversion } from './utils/StringUtils';
+import { formatAmount, toJsonString, formatAmountWithConversion, parseAmountToBigInt } from './utils/StringUtils';
 import TokenCard from './TokenCard';
 import TokenCardModal from './components/TokenCardModal';
 import DappCardModal from './components/DappCardModal';
@@ -3601,14 +3601,11 @@ function Wallet() {
             }
             const ledgerCanisterId = Principal.fromText(ledgerCanisterIdText);
             
-            // Convert to BigInt safely - handle decimal inputs
-            const amountFloat = parseFloat(amount);
-            const scaledAmount = amountFloat * (10 ** decimals);
-            const bigintAmount = BigInt(Math.floor(scaledAmount));
-            
+            // Convert to BigInt safely using string parsing (no float math)
+            const bigintAmount = parseAmountToBigInt(amount, decimals);
+
             console.log('Amount conversion:', {
-                amountFloat,
-                scaledAmount, 
+                amount,
                 bigintAmount: bigintAmount.toString()
             });
 
@@ -3905,11 +3902,9 @@ function Wallet() {
         console.log('Starting wrap operation:', { token: token.symbol, amount });
         
         const decimals = token.decimals;
-        // Convert to BigInt safely - handle decimal inputs
-        const amountFloat = parseFloat(amount);
-        const scaledAmount = amountFloat * (10 ** decimals);
-        const bigIntAmount = BigInt(Math.floor(scaledAmount));
-        
+        // Convert to BigInt safely using string parsing (no float math)
+        const bigIntAmount = parseAmountToBigInt(amount, decimals);
+
         // Step 1: Check existing allowance and approve if needed
         const gldtLedgerActor = createLedgerActor(GLDT_CANISTER_ID, {
             agentOptions: { identity }
@@ -3983,11 +3978,9 @@ function Wallet() {
         console.log('Starting unwrap operation:', { token: token.symbol, amount });
         
         const decimals = token.decimals;
-        // Convert to BigInt safely - handle decimal inputs  
-        const amountFloat = parseFloat(amount);
-        const scaledAmount = amountFloat * (10 ** decimals);
-        const bigIntAmount = BigInt(Math.floor(scaledAmount));
-        
+        // Convert to BigInt safely using string parsing (no float math)
+        const bigIntAmount = parseAmountToBigInt(amount, decimals);
+
         // Call withdraw on sGLDT canister
         const sgldtActor = createSgldtActor(SGLDT_CANISTER_ID, {
             agentOptions: { identity }
@@ -4042,11 +4035,9 @@ function Wallet() {
             const decimals = await token.decimals;
             console.log('Token decimals:', decimals);
             
-            // Convert to BigInt safely - handle decimal inputs
-            const amountFloat = parseFloat(amount);
-            const scaledAmount = amountFloat * (10 ** decimals);
-            const withdrawAmount = BigInt(Math.floor(scaledAmount));
-            
+            // Convert to BigInt safely using string parsing (no float math)
+            const withdrawAmount = parseAmountToBigInt(amount, decimals);
+
             console.log('Withdrawal calculation:', {
                 backendBalance: token.available_backend.toString(),
                 txFee: token.fee.toString(),
@@ -4111,11 +4102,9 @@ function Wallet() {
             const decimals = await token.decimals;
             console.log('Token decimals:', decimals);
             
-            // Convert to BigInt safely - handle decimal inputs
-            const amountFloat = parseFloat(amount);
-            const scaledAmount = amountFloat * (10 ** decimals);
-            const depositAmount = BigInt(Math.floor(scaledAmount));
-            
+            // Convert to BigInt safely using string parsing (no float math)
+            const depositAmount = parseAmountToBigInt(amount, decimals);
+
             console.log('Deposit calculation:', {
                 frontendBalance: token.balance.toString(),
                 txFee: token.fee.toString(),
@@ -4273,10 +4262,8 @@ function Wallet() {
         const ledger_canister_id = token.ledger_canister_id;
         const ledgerActor = createLedgerActor(ledger_canister_id, { agentOptions: { identity } });
         const decimals = await ledgerActor.icrc1_decimals();
-        // Convert to BigInt safely - handle decimal inputs
-        const amountFloat = parseFloat(amount);
-        const scaledAmount = amountFloat * (10 ** decimals);
-        const bigIntAmount = BigInt(Math.floor(scaledAmount));
+        // Convert to BigInt safely using string parsing (no float math)
+        const bigIntAmount = parseAmountToBigInt(amount, decimals);
         const available_balance_backend = get_available_backend(token);
         const bigIntAmountSendToBackend = bigIntAmount - available_balance_backend;
 

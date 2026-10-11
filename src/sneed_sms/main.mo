@@ -11,7 +11,7 @@ import Result "mo:base/Result";
 import Buffer "mo:base/Buffer";
 import Array "mo:base/Array";
 
-actor SneedSMS {
+persistent actor SneedSMS {
     // Types
     public type Result<T, E> = Result.Result<T, E>;
     
@@ -91,29 +91,29 @@ actor SneedSMS {
     };
 
     // Stable storage - using mops stable-compatible types
-    stable var stable_next_id: Nat = 1;
-    stable var stable_messages = Map.new<Nat, Message>();
-    stable var stable_admins = Vector.new<AdminInfo>();
-    stable var stable_principal_dedup : Dedup.DedupState = Dedup.empty();
-    stable var stable_sender_messages = Map.new<Nat32, Vector.Vector<Nat>>();
-    stable var stable_recipient_messages = Map.new<Nat32, Vector.Vector<Nat>>();
-    stable var stable_user_last_message_time = Map.new<Nat32, Int>();
-    stable var stable_user_last_seen_messages_timestamp = Map.new<Nat32, Int>();
-    stable var stable_rate_limit_minutes: Nat = 10;
-    stable var stable_max_subject_length: Nat = 200;
-    stable var stable_max_body_length: Nat = 5000;
-    stable var stable_max_recipients: Nat = 20;
+    var stable_next_id: Nat = 1;
+    var stable_messages = Map.new<Nat, Message>();
+    var stable_admins = Vector.new<AdminInfo>();
+    var stable_principal_dedup : Dedup.DedupState = Dedup.empty();
+    var stable_sender_messages = Map.new<Nat32, Vector.Vector<Nat>>();
+    var stable_recipient_messages = Map.new<Nat32, Vector.Vector<Nat>>();
+    var stable_user_last_message_time = Map.new<Nat32, Int>();
+    var stable_user_last_seen_messages_timestamp = Map.new<Nat32, Int>();
+    var stable_rate_limit_minutes: Nat = 10;
+    var stable_max_subject_length: Nat = 200;
+    var stable_max_body_length: Nat = 5000;
+    var stable_max_recipients: Nat = 20;
     
     // Premium config - stable storage
-    stable var stable_sneed_premium_canister_id: ?Principal = null;
-    stable var stable_premium_max_subject_length: Nat = 500;
-    stable var stable_premium_max_body_length: Nat = 20000;
-    stable var stable_premium_rate_limit_minutes: Nat = 1;
-    stable var stable_premium_max_recipients: Nat = 50;
+    var stable_sneed_premium_canister_id: ?Principal = null;
+    var stable_premium_max_subject_length: Nat = 500;
+    var stable_premium_max_body_length: Nat = 20000;
+    var stable_premium_rate_limit_minutes: Nat = 1;
+    var stable_premium_max_recipients: Nat = 50;
     
     // System notification config - authorized canisters that can send system notifications
-    stable var stable_authorized_senders : [Principal] = [];
-    stable var stable_system_sender_principal : ?Principal = null; // Principal shown as "sender" for system messages
+    var stable_authorized_senders : [Principal] = [];
+    var stable_system_sender_principal : ?Principal = null; // Principal shown as "sender" for system messages
     
     // Runtime config (mutable wrapper around stable values)
     transient var runtime_config : SMSConfig = {

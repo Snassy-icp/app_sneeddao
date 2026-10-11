@@ -37,5 +37,5 @@ spec/scratch*
 # Internal review reports in spec
 spec/reports/
 
-# Windows zone metadata files
+# Windows / WSL zone metadata files
 **/*:Zone.Identifier

@@ -25,6 +25,7 @@ import {
     MAX_CANISTER_TITLE_LENGTH,
     MAX_CANISTER_DESCRIPTION_LENGTH
 } from '../utils/SneedexUtils';
+import { toJsonString, formatAmountRaw, parseAmountToBigInt } from '../utils/StringUtils';
 import { getCanisterGroups, convertGroupsFromBackend, getCanisterInfo } from '../utils/BackendUtils';
 import TokenSelector from '../components/TokenSelector';
 import priceService from '../services/PriceService';
@@ -1862,7 +1863,7 @@ function SneedexCreate() {
         );
         
         // Transfer tokens to escrow
-        const amountBigInt = parseAmount(amount.toString(), decimals);
+        const amountBigInt = parseAmountToBigInt(amount.toString(), decimals);
         const transferResult = await ledgerActor.icrc1_transfer({
             to: {
                 owner: sneedexPrincipal,
@@ -1874,9 +1875,9 @@ function SneedexCreate() {
             from_subaccount: [],
             created_at_time: [],
         });
-        
+
         if ('Err' in transferResult) {
-            throw new Error(`Token transfer failed: ${JSON.stringify(transferResult.Err)}`);
+            throw new Error(`Token transfer failed: ${toJsonString(transferResult.Err)}`);
         }
         
         // Call backend to verify escrow
@@ -4412,11 +4413,10 @@ function SneedexCreate() {
                                                             onClick={() => {
                                                                 const decimals = parseInt(newAssetTokenDecimals) || 8;
                                                                 const token = whitelistedTokens.find(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)) === newAssetTokenLedger);
-                                                                const fee = token?.fee ? Number(token.fee) : 10000; // Default to 0.0001 if no fee found
-                                                                const maxAmount = Number(newAssetTokenBalance) - fee;
-                                                                if (maxAmount > 0) {
-                                                                    const maxFormatted = maxAmount / Math.pow(10, decimals);
-                                                                    setNewAssetTokenAmount(maxFormatted.toString());
+                                                                const fee = token?.fee ? BigInt(token.fee) : 10000n;
+                                                                const maxAmount = BigInt(newAssetTokenBalance) - fee;
+                                                                if (maxAmount > 0n) {
+                                                                    setNewAssetTokenAmount(formatAmountRaw(maxAmount, decimals));
                                                                 }
                                                             }}
                                                             style={{

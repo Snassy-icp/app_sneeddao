@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import './SendTokenModal.css';
 import { Principal } from "@dfinity/principal";
 import { HttpAgent } from "@dfinity/agent";
-import { formatAmount } from './utils/StringUtils';
+import { formatAmount, formatAmountRaw, parseAmountToBigInt } from './utils/StringUtils';
 import { useTheme } from './contexts/ThemeContext';
 import PrincipalInput from './components/PrincipalInput';
 import { PrincipalDisplay } from './utils/PrincipalUtils';
@@ -203,7 +203,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
 
     var max = token.available - feesNeeded;
     if (max < 0n) { max = 0n; }
-    setAmount(formatAmount(max, token.decimals));
+    setAmount(formatAmountRaw(max, token.decimals));
   };
 
   const handleConvertToExtendedAddress = () => {
@@ -268,14 +268,17 @@ function SendTokenModal({ show, onClose, onSend, token }) {
       return;
     }
 
-    const amountFloat = parseFloat(amount);
-    if (isNaN(amountFloat) || amountFloat <= 0) {
+    let bigIntAmount;
+    try {
+      bigIntAmount = parseAmountToBigInt(amount, token.decimals);
+    } catch {
+      setErrorText("Invalid amount! Please enter a valid number.");
+      return;
+    }
+    if (bigIntAmount <= 0n) {
       setErrorText("Invalid amount! Please enter a positive amount.");
       return;
     }
-
-    const scaledAmount = amountFloat * (10 ** token.decimals);
-    const bigIntAmount = BigInt(Math.floor(scaledAmount));
 
     const willNeedSplit = token.available > token.balance;
     const feesNeeded = willNeedSplit ? 2n * BigInt(token.fee) : BigInt(token.fee);

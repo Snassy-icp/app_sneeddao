@@ -5,7 +5,8 @@ import priceService from '../services/PriceService';
 import { normalizeId } from '../hooks/useNeuronsCache';
 
 const get_available_backend = (token) => {
-    return BigInt(Math.max(0, Number(BigInt(token.balance_backend) - BigInt(token.locked))));
+    const diff = BigInt(token.balance_backend) - BigInt(token.locked);
+    return diff > 0n ? diff : 0n;
 }
 
 const get_available = (token) => {
