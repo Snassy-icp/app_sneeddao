@@ -83,18 +83,30 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, o
       setErrorText('Enter an amount for at least one token.');
       return;
     }
-    const check = (amt, walletToken, symbol, decimals) => {
-      if (amt === 0n || !walletToken) return null;
+    // Funds come from the backend wallet first (fewest fees). If that does not
+    // cover the amount plus the fee for moving it into the pool, the shortfall
+    // is topped up from the frontend wallet, which costs one more fee there.
+    const plan = (amt, walletToken, symbol, decimals) => {
+      if (amt === 0n) return { topUp: 0n, error: null };
+      if (!walletToken) return { topUp: 0n, error: `${symbol}: add this token to your wallet first so its balances are known.` };
       const fee = BigInt(walletToken.fee ?? 0);
-      if (amt <= 2n * fee) return `${symbol}: amount must exceed two transaction fees (${formatAmount(2n * fee, decimals)}).`;
-      const available = BigInt(walletToken.available_backend ?? 0);
-      if (amt + fee > available) return `${symbol}: only ${formatAmount(available, decimals)} available in your backend wallet (one fee is needed on top of the amount).`;
-      return null;
+      if (amt <= 2n * fee) return { topUp: 0n, error: `${symbol}: amount must exceed two transaction fees (${formatAmount(2n * fee, decimals)}).` };
+      const backend = BigInt(walletToken.available_backend ?? 0);
+      const frontend = BigInt(walletToken.balance ?? 0);
+      const needed = amt + fee;
+      if (needed <= backend) return { topUp: 0n, error: null };
+      const topUp = needed - backend;
+      if (topUp + fee > frontend) {
+        const maxTotal = backend + (frontend > fee ? frontend - fee : 0n);
+        const maxAmount = maxTotal > fee ? maxTotal - fee : 0n;
+        return { topUp: 0n, error: `${symbol}: not enough across both wallets. Maximum you can add is ${formatAmount(maxAmount, decimals)} after fees.` };
+      }
+      return { topUp, error: null };
     };
-    const e0 = check(a0, walletToken0, symbol0, decimals0);
-    const e1 = check(a1, walletToken1, symbol1, decimals1);
-    if (e0 || e1) {
-      setErrorText([e0, e1].filter(Boolean).join(' '));
+    const p0 = plan(a0, walletToken0, symbol0, decimals0);
+    const p1 = plan(a1, walletToken1, symbol1, decimals1);
+    if (p0.error || p1.error) {
+      setErrorText([p0.error, p1.error].filter(Boolean).join(' '));
       return;
     }
 
@@ -104,7 +116,11 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, o
         swapCanisterId: position.swapCanisterId,
         positionId: positionDetails.positionId,
         amount0: a0,
-        amount1: a1
+        amount1: a1,
+        topUp0: p0.topUp,
+        topUp1: p1.topUp,
+        walletToken0,
+        walletToken1
       });
       setResult(res);
     } catch (error) {
@@ -142,7 +158,7 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, o
           {symbol}
           <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginLeft: '0.5rem' }}>
             {walletToken
-              ? `backend wallet: ${formatAmount(walletToken.available_backend ?? 0n, decimals)}`
+              ? `wallet: ${formatAmount(walletToken.balance ?? 0n, decimals)} · backend wallet: ${formatAmount(walletToken.available_backend ?? 0n, decimals)}`
               : 'not in your wallet list'}
           </span>
         </label>
@@ -199,9 +215,10 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, o
 
         <div style={{ padding: '1.5rem' }}>
           <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '1rem', lineHeight: 1.4 }}>
-            {symbol0}/{symbol1} position #{String(positionDetails.positionId)}. Tokens come from your backend wallet and
-            are added to the position in its existing price range. Anything the pool cannot use at the current price
-            is returned to your backend wallet.
+            {symbol0}/{symbol1} position #{String(positionDetails.positionId)}. Tokens are taken from your backend
+            wallet first and, if that is not enough, the rest is moved over from your wallet automatically. Liquidity
+            is added in the position's existing price range; anything the pool cannot use at the current price is
+            returned to your backend wallet.
           </div>
 
           {result ? (
@@ -257,7 +274,8 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, tokens, o
                 {isLoading ? 'Adding liquidity…' : 'Add Liquidity'}
               </button>
               <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginTop: '0.75rem' }}>
-                Each token costs two transaction fees to move into the pool, and one more if a remainder is returned.
+                Each token costs two transaction fees to move into the pool, one more if part of it comes from your
+                wallet, and one more if a remainder is returned.
               </div>
             </div>
           )}
