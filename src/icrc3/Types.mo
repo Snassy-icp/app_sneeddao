@@ -1,8 +1,8 @@
-/// Types of the ICRC-3 block log shared by sneed_lock and its archive canisters.
+/// Types of the ICRC-3 block log library (src/icrc3) shared by a logging canister and its archive canisters.
 ///
 /// The interface types follow the ICRC-3 standard verbatim
 /// (https://github.com/dfinity/ICRC-1/tree/main/standards/ICRC-3). The remaining
-/// types are the private protocol between sneed_lock and the archives it creates.
+/// types are the private protocol between the logging canister and the archives it creates.
 module {
 
   /// Generic ICRC-3 value. Blocks are always the `#Map` variant.

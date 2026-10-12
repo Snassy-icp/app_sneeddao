@@ -15,7 +15,7 @@ import Nat8 "mo:base/Nat8";
 import Text "mo:base/Text";
 import Sha256 "mo:sha2/Sha256";
 
-import T "Icrc3Types";
+import T "Types";
 
 module {
 

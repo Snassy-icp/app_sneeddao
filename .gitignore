@@ -44,3 +44,6 @@ spec/reports/
 src/app_sneeddao_frontend/public/api-docs/*.did
 src/app_sneeddao_frontend/public/api-docs/*.did.js
 src/app_sneeddao_frontend/public/.well-known/agent-skills/index.json
+
+# canister test artifacts
+test/canisters/build/

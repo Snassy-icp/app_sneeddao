@@ -1,12 +1,12 @@
-/// Archive canister of the Sneed Lock ICRC-3 block log.
+/// Archive canister of an ICRC-3 block log (shared library, see src/icrc3/Log.mo).
 ///
-/// Created by sneed_lock (the "parent") when its live block store fills up.
+/// Created by the logging canister (the "parent") when its live block store fills up.
 /// Stores one contiguous range of already encoded blocks in stable memory
 /// Regions, so capacity is bounded by the canister's stable memory allowance
 /// rather than the Motoko heap. The only write path is `append_blocks`, which
 /// accepts batches from the parent alone; blocks are never altered or removed.
 ///
-/// Design: spec/sneed_lock_icrc3.md
+/// Design: spec/sneed_lock_icrc3.md (the sneed_lock instance; the library is generic).
 import Blob "mo:base/Blob";
 import Buffer "mo:base/Buffer";
 import Cycles "mo:base/ExperimentalCycles";
@@ -16,7 +16,7 @@ import Nat64 "mo:base/Nat64";
 import Principal "mo:base/Principal";
 import Region "mo:base/Region";
 
-import T "Icrc3Types";
+import T "Types";
 
 shared ({ caller = parent }) persistent actor class Icrc3Archive(init : T.ArchiveInit) = this {
 

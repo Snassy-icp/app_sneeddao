@@ -185,7 +185,7 @@ admin_icrc3_repair_archive_controllers : () -> (vec record { principal; variant 
 
 ## Archive canister
 
-Source `src/sneed_lock/Icrc3Archive.mo`, an actor class instantiated by `sneed_lock`.
+Source `src/icrc3/Archive.mo`, an actor class instantiated by the library on behalf of `sneed_lock`.
 
 ```
 Archive(init : { first_index : nat; max_blocks : nat })
@@ -347,6 +347,18 @@ hash chain and the archive see identical bytes.
 5. Staging: upgrade the staging `sneed_lock`, confirm the import, create locks, run the
    verifier, force a spill with a low `max_live_blocks`, then restore defaults.
 6. Stable compatibility: `moc --stable-compatible` old vs new `.most` (passes).
+
+## Reuse in other canisters
+
+The implementation is a library, `src/icrc3`, with nothing specific to Sneed Lock in
+it. A canister adopts it by declaring one stable `Log.State`, one transient
+`Log.Runtime`, a `Log.Config` with its own block-type catalogue and documentation URL,
+an `Environment` (its principal, the extra archive controllers, the cycle reserve and
+its text-log functions), one-line public wrappers for the standard queries and the
+admin operations, `Log.ensureTimer` in the actor body and `postupgrade`, and
+`Log.append` at each committed action. `src/icrc3/README.md` has the recipe. Sneedex,
+Sneedapp and the rewards canister are the next candidates; each needs its own block
+catalogue designed and documented before instrumentation.
 
 ## Follow-ups outside this change
 

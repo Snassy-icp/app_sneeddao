@@ -22,11 +22,9 @@ import T "Types";
 import CircularBuffer "CircularBuffer";
 import PremiumClient "../PremiumClient";
 import Timer "mo:base/Timer";
-import Cycles "mo:base/ExperimentalCycles";
 
-import Icrc3Log "Icrc3Log";
-import Icrc3Archive "Icrc3Archive";
-import T3 "Icrc3Types";
+import Icrc3Log "../icrc3/Log";
+import T3 "../icrc3/Types";
 
 // TODO: figure out when new instances of actors are created, whether or not that depends on the client at all, and how this effects the persistent state of the actor.
 //       https://internetcomputer.org/docs/current/motoko/main/writing-motoko/actor-classes
@@ -151,11 +149,10 @@ shared (deployer) persistent actor class SneedLock() = this {
   stable var next_payment_log_id : Nat = 0;
 
   // ICRC-3 activity log: hash-chained, certified blocks of every action, with
-  // archive canisters for old blocks. See spec/sneed_lock_icrc3.md.
+  // archive canisters for old blocks. Library: src/icrc3; design and the block
+  // catalogue of this canister: spec/sneed_lock_icrc3.md.
   stable var icrc3 : Icrc3Log.State = Icrc3Log.init();
-  transient var icrc3_spilling : Bool = false;
-  transient var icrc3_timer_started : Bool = false;
-  transient let ICRC3_CYCLE_RESERVE : Nat = 2_000_000_000_000; // never spend below this
+  transient let icrc3_rt : Icrc3Log.Runtime = Icrc3Log.runtime();
   transient let sneed_sns_root = Principal.fromText("fp274-iaaaa-aaaaq-aacha-cai");
   
 
@@ -1798,26 +1795,44 @@ shared (deployer) persistent actor class SneedLock() = this {
   };
 
   ////////////////
-  // ICRC-3 activity log (spec/sneed_lock_icrc3.md)
+  // ICRC-3 activity log (library src/icrc3, design spec/sneed_lock_icrc3.md)
   ////////////////
 
-  type ArchiveActor = actor {
-    append_blocks : shared T3.AppendBlocksArgs -> async T3.AppendBlocksResult;
-    archive_status : shared query () -> async T3.ArchiveStatus;
-    deposit_cycles : shared () -> async ();
+  transient let icrc3_catalogue : Icrc3Log.Config = {
+    block_types_url = "https://app.sneeddao.com/api/sneed_lock#block-types";
+    block_types = [
+      "sneedlock_log_start",
+      "sneedlock_import_token_lock",
+      "sneedlock_import_position_lock",
+      "sneedlock_import_position_claim",
+      "sneedlock_token_lock_create",
+      "sneedlock_token_lock_transfer",
+      "sneedlock_token_withdraw",
+      "sneedlock_position_claim",
+      "sneedlock_position_lock_create",
+      "sneedlock_position_lock_extend",
+      "sneedlock_position_transfer",
+      "sneedlock_position_withdraw",
+      "sneedlock_fees_claim",
+      "sneedlock_liquidity_add",
+      "sneedlock_fee_pay",
+      "sneedlock_admin_token_return",
+      "sneedlock_admin_token_rescue",
+      "sneedlock_admin_pool_deposit",
+      "sneedlock_admin_pool_withdraw",
+      "sneedlock_config_update",
+    ];
   };
 
-  type ManagementCanister = actor {
-    update_settings : shared {
-      canister_id : Principal;
-      settings : {
-        controllers : ?[Principal];
-        compute_allocation : ?Nat;
-        memory_allocation : ?Nat;
-        freezing_threshold : ?Nat;
-      };
-      sender_canister_version : ?Nat64;
-    } -> async ();
+  private func icrc3_env() : Icrc3Log.Environment {
+    {
+      self = this_canister_id();
+      archive_controllers = [sneed_sns_root];
+      cycle_reserve = 2_000_000_000_000; // never spend this canister's balance below 2 T
+      new_correlation_id = get_next_correlation_id;
+      log_info = func(cid : Nat, message : Text) { log_info(this_canister_id(), cid, message) };
+      log_error = func(cid : Nat, message : Text) { log_error(this_canister_id(), cid, message) };
+    };
   };
 
   // Append one block for an action that has just been committed to local state.
@@ -1848,18 +1863,15 @@ shared (deployer) persistent actor class SneedLock() = this {
   };
 
   public query func icrc3_supported_block_types() : async [T3.BlockType] {
-    Icrc3Log.supportedBlockTypes();
+    Icrc3Log.supportedBlockTypes(icrc3_catalogue);
   };
 
   public query func icrc10_supported_standards() : async [T3.SupportedStandard] {
-    [
-      { name = "ICRC-3"; url = "https://github.com/dfinity/ICRC-1/tree/main/standards/ICRC-3" },
-      { name = "ICRC-10"; url = "https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-10/ICRC-10.md" },
-    ];
+    Icrc3Log.supportedStandards();
   };
 
   public query func icrc3_log_status() : async T3.LogStatus {
-    Icrc3Log.status(icrc3, icrc3_spilling);
+    Icrc3Log.status(icrc3, icrc3_rt);
   };
 
   // ---- administration ----
@@ -1883,10 +1895,8 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// Returns the number of blocks moved.
   public shared ({ caller }) func admin_icrc3_spill_now() : async { #Ok : Nat; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("Only admins can trigger a spill") };
-    if (icrc3_spilling) { return #Err("A spill is already in progress") };
-    let before = icrc3.live.first_index;
-    await* icrc3_spill(true);
-    #Ok(icrc3.live.first_index - before);
+    if (icrc3_rt.spilling) { return #Err("A spill is already in progress") };
+    #Ok(await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), true));
   };
 
   /// Write the log start and import blocks if that has not happened yet.
@@ -1899,176 +1909,22 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// Re-apply the intended controllers (this canister and SNS root) to every archive.
   public shared ({ caller }) func admin_icrc3_repair_archive_controllers() : async [(Principal, { #Ok; #Err : Text })] {
     if (not isAdmin(caller)) { Debug.trap("Only admins can repair archive controllers") };
-    var results : [(Principal, { #Ok; #Err : Text })] = [];
-    for (a in icrc3.archives.vals()) {
-      let r = await* icrc3_set_archive_controllers(a.canister_id);
-      results := Array.append(results, [(a.canister_id, r)]);
-    };
-    results;
+    await* Icrc3Log.repairArchiveControllers(icrc3, icrc3_env());
   };
 
-  // ---- background spill to archives ----
+  // ---- background work ----
 
   private func ensure_icrc3_timer<system>() {
-    if (icrc3_timer_started) { return };
-    icrc3_timer_started := true;
-    ignore Timer.recurringTimer<system>(#seconds (15 * 60), icrc3_timer_job);
+    Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job);
   };
 
   private func icrc3_timer_job() : async () {
-    await* icrc3_spill(false);
+    ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false);
   };
 
   private func schedule_icrc3_import<system>() {
     if (icrc3.history_imported) { return };
     ignore Timer.setTimer<system>(#seconds 0, func() : async () { ignore icrc3_import_history() });
-  };
-
-  private func icrc3_last_archive() : ?T3.ArchiveInfo {
-    let n = icrc3.archives.size();
-    if (n == 0) { null } else { ?icrc3.archives[n - 1] };
-  };
-
-  private func icrc3_archive_with_room() : ?T3.ArchiveInfo {
-    switch (icrc3_last_archive()) {
-      case (?a) { if (a.length < a.max_blocks) { ?a } else { null } };
-      case null { null };
-    };
-  };
-
-  private func icrc3_update_archive_length(canister_id : Principal, length : Nat) {
-    icrc3.archives := Array.map<T3.ArchiveInfo, T3.ArchiveInfo>(icrc3.archives, func(a) {
-      if (a.canister_id == canister_id) { { a with length } } else { a };
-    });
-  };
-
-  // Move batches of the oldest live blocks to the newest archive while the
-  // live store is at or above the threshold (or, when forced, while it holds
-  // anything). Blocks are forgotten locally only after the archive confirms.
-  private func icrc3_spill(force : Bool) : async* () {
-    if (icrc3_spilling) { return };
-    if (icrc3.live.count == 0 or (not force and icrc3.live.count < icrc3.settings.max_live_blocks)) { return };
-    icrc3_spilling := true;
-    let correlation_id = get_next_correlation_id();
-    let self = this_canister_id();
-    try {
-      var rounds = 0;
-      label spills while (rounds < 50 and icrc3.live.count > 0 and (force or icrc3.live.count >= icrc3.settings.max_live_blocks)) {
-        rounds += 1;
-        let archive = switch (icrc3_archive_with_room()) {
-          case (?a) { a };
-          case null {
-            switch (await* icrc3_create_archive(correlation_id)) {
-              case (#Ok(a)) { a };
-              case (#Err(e)) {
-                log_error(self, correlation_id, "ICRC-3 spill stopped: " # e);
-                break spills;
-              };
-            };
-          };
-        };
-        let first_index = icrc3.live.first_index;
-        if (first_index != archive.start + archive.length) {
-          log_error(self, correlation_id, "ICRC-3 spill stopped: live store starts at " # Nat.toText(first_index) # " but archive " # Principal.toText(archive.canister_id) # " expects " # Nat.toText(archive.start + archive.length));
-          break spills;
-        };
-        let room : Nat = if (archive.max_blocks > archive.length) { archive.max_blocks - archive.length } else { 0 };
-        let n = Nat.min(Nat.min(icrc3.settings.spill_batch_size, room), icrc3.live.count);
-        let blobs = Icrc3Log.oldestBlobs(icrc3, n);
-        let reader : ArchiveActor = actor (Principal.toText(archive.canister_id));
-        let result : T3.AppendBlocksResult = try {
-          await reader.append_blocks({ first_index; blocks = blobs });
-        } catch (e) {
-          #Err("append_blocks call failed: " # Error.message(e));
-        };
-        switch (result) {
-          case (#Ok(count)) {
-            icrc3_update_archive_length(archive.canister_id, count);
-            Icrc3Log.dropBelow(icrc3, archive.start + count);
-            log_info(self, correlation_id, "ICRC-3: moved " # Nat.toText(n) # " blocks from index " # Nat.toText(first_index) # " to archive " # Principal.toText(archive.canister_id) # ", which now holds " # Nat.toText(count));
-          };
-          case (#Err(e)) {
-            log_error(self, correlation_id, "ICRC-3 spill stopped: " # e);
-            break spills;
-          };
-        };
-        await* icrc3_top_up_if_needed(reader, archive.canister_id, correlation_id);
-      };
-    } finally {
-      icrc3_spilling := false;
-    };
-  };
-
-  private func icrc3_create_archive(correlation_id : Nat) : async* { #Ok : T3.ArchiveInfo; #Err : Text } {
-    let s = icrc3.settings;
-    let self = this_canister_id();
-    if (Cycles.balance() < s.archive_initial_cycles + ICRC3_CYCLE_RESERVE) {
-      return #Err("not enough cycles to create an archive (balance " # Nat.toText(Cycles.balance()) # ", need " # Nat.toText(s.archive_initial_cycles + ICRC3_CYCLE_RESERVE) # ")");
-    };
-    let first_index = icrc3.live.first_index;
-    switch (icrc3_last_archive()) {
-      case (?last) {
-        if (last.start + last.length != first_index) {
-          return #Err("archive chain is not contiguous: last archive ends at " # Nat.toText(last.start + last.length) # ", live store starts at " # Nat.toText(first_index));
-        };
-      };
-      case null {};
-    };
-    let created = try {
-      await (with cycles = s.archive_initial_cycles) Icrc3Archive.Icrc3Archive({ first_index; max_blocks = s.archive_max_blocks });
-    } catch (e) {
-      return #Err("archive creation failed: " # Error.message(e));
-    };
-    let canister_id = Principal.fromActor(created);
-    let info : T3.ArchiveInfo = { canister_id; start = first_index; length = 0; max_blocks = s.archive_max_blocks };
-    icrc3.archives := Array.append(icrc3.archives, [info]);
-    log_info(self, correlation_id, "ICRC-3: created archive " # Principal.toText(canister_id) # " for blocks from index " # Nat.toText(first_index) # " with " # Nat.toText(s.archive_initial_cycles) # " cycles");
-    switch (await* icrc3_set_archive_controllers(canister_id)) {
-      case (#Ok) {};
-      case (#Err(e)) { log_error(self, correlation_id, "ICRC-3: could not set the controllers of archive " # Principal.toText(canister_id) # ": " # e) };
-    };
-    #Ok(info);
-  };
-
-  private func icrc3_set_archive_controllers(canister_id : Principal) : async* { #Ok; #Err : Text } {
-    let ic : ManagementCanister = actor ("aaaaa-aa");
-    try {
-      await ic.update_settings({
-        canister_id;
-        settings = {
-          controllers = ?[this_canister_id(), sneed_sns_root];
-          compute_allocation = null;
-          memory_allocation = null;
-          freezing_threshold = null;
-        };
-        sender_canister_version = null;
-      });
-      #Ok;
-    } catch (e) {
-      #Err(Error.message(e));
-    };
-  };
-
-  private func icrc3_top_up_if_needed(reader : ArchiveActor, canister_id : Principal, correlation_id : Nat) : async* () {
-    let s = icrc3.settings;
-    let self = this_canister_id();
-    let status = try {
-      await reader.archive_status();
-    } catch (e) {
-      log_error(self, correlation_id, "ICRC-3: could not read the status of archive " # Principal.toText(canister_id) # ": " # Error.message(e));
-      return;
-    };
-    if (status.cycles >= s.archive_top_up_threshold) { return };
-    if (Cycles.balance() < s.archive_top_up_amount + ICRC3_CYCLE_RESERVE) {
-      log_error(self, correlation_id, "ICRC-3: archive " # Principal.toText(canister_id) # " is low on cycles (" # Nat.toText(status.cycles) # ") but this canister cannot spare " # Nat.toText(s.archive_top_up_amount));
-      return;
-    };
-    try {
-      await (with cycles = s.archive_top_up_amount) reader.deposit_cycles();
-      log_info(self, correlation_id, "ICRC-3: topped up archive " # Principal.toText(canister_id) # " with " # Nat.toText(s.archive_top_up_amount) # " cycles (it reported " # Nat.toText(status.cycles) # ", threshold " # Nat.toText(s.archive_top_up_threshold) # ")");
-    } catch (e) {
-      log_error(self, correlation_id, "ICRC-3: top-up of archive " # Principal.toText(canister_id) # " failed: " # Error.message(e));
-    };
   };
 
   // ---- one-time import of the state that existed before the log ----
