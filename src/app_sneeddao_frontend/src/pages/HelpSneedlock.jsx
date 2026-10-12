@@ -530,10 +530,12 @@ function HelpSneedlock() {
                         ) : lockFees ? (
                             <ul style={{ ...styles.list, marginBottom: 0 }}>
                                 <li style={styles.listItem}>
-                                    <strong style={styles.strong}>Standard fee:</strong> {formatIcp(lockFees.lock_fee_icp_e8s)} per lock
+                                    <strong style={styles.strong}>Token lock:</strong> {formatIcp(lockFees.token_lock_fee_icp_e8s)} per lock
+                                    {' '}(Premium members: {formatIcp(lockFees.premium_token_lock_fee_icp_e8s)})
                                 </li>
                                 <li style={styles.listItem}>
-                                    <strong style={styles.strong}>Premium member fee:</strong> {formatIcp(lockFees.premium_lock_fee_icp_e8s)} per lock
+                                    <strong style={styles.strong}>Position lock:</strong> {formatIcp(lockFees.position_lock_fee_icp_e8s)} per lock
+                                    {' '}(Premium members: {formatIcp(lockFees.premium_position_lock_fee_icp_e8s)})
                                 </li>
                             </ul>
                         ) : (
@@ -549,8 +551,11 @@ function HelpSneedlock() {
                             <span>
                                 <strong style={styles.strong}>Save with Sneed Premium!</strong> <Link to="/premium" style={styles.link}>Premium</Link> members 
                                 enjoy reduced lock fees.
-                                {lockFees && lockFees.lock_fee_icp_e8s > lockFees.premium_lock_fee_icp_e8s && (
-                                    <span> That's a savings of {formatIcp(lockFees.lock_fee_icp_e8s - lockFees.premium_lock_fee_icp_e8s)} per lock!</span>
+                                {lockFees && lockFees.token_lock_fee_icp_e8s > lockFees.premium_token_lock_fee_icp_e8s && (
+                                    <span> That's a savings of {formatIcp(lockFees.token_lock_fee_icp_e8s - lockFees.premium_token_lock_fee_icp_e8s)} per token lock
+                                    {lockFees.position_lock_fee_icp_e8s > lockFees.premium_position_lock_fee_icp_e8s && (
+                                        <> and {formatIcp(lockFees.position_lock_fee_icp_e8s - lockFees.premium_position_lock_fee_icp_e8s)} per position lock</>
+                                    )}!</span>
                                 )}
                             </span>
                         </p>
