@@ -350,7 +350,7 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                     {!hideButtons && (
                         <div className="action-buttons">
                             <a 
-                                href={getIcpSwapLink(position)} 
+                                href={getIcpSwapLink(position, positionDetails)} 
                                 target="_blank"
                                 style={{
                                     background: theme.colors.accent,

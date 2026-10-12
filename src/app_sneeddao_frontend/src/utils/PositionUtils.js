@@ -1,7 +1,23 @@
 import { computeUsdValue } from './StringUtils';
+import { principalText } from './IdUtils';
 
-function getIcpSwapLink(position) {
-    return "https://info.icpswap.com/swap-scan/positions?pair=" + position.swapCanisterId;
+// ICPSwap app links (the old info.icpswap.com swap-scan URLs no longer resolve).
+function getIcpSwapPoolLink(swapCanisterId) {
+    return `https://app.icpswap.com/info-swap/pool/details/${principalText(swapCanisterId)}`;
+}
+
+function getIcpSwapPositionLink(swapCanisterId, positionId) {
+    return `https://app.icpswap.com/liquidity/position/${String(positionId)}/${principalText(swapCanisterId)}`;
+}
+
+// Link for a position card: the position itself when its id is known,
+// otherwise the pool.
+function getIcpSwapLink(position, positionDetails) {
+    const positionId = positionDetails?.positionId;
+    if (positionId !== undefined && positionId !== null) {
+        return getIcpSwapPositionLink(position.swapCanisterId, positionId);
+    }
+    return getIcpSwapPoolLink(position.swapCanisterId);
 }
 
 const isLockedPosition = (position) => {
@@ -43,6 +59,8 @@ function getPositionTVL(position, positionDetails, hideUnclaimedFees) {
 
 export {
     getIcpSwapLink,
+    getIcpSwapPoolLink,
+    getIcpSwapPositionLink,
     isLockedPosition,
     lockFromLocks,
     getPositionTVL
