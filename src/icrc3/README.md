@@ -114,8 +114,9 @@ guarded by `icrc3.history_imported` (see `icrc3_import_history` in
   and `archive_top_up_amount + cycle_reserve` to top one up; otherwise it logs an
   error every spill check and the live store keeps growing on the heap.
 - Archives are controlled by the canister plus `archive_controllers` (for Sneed:
-  the SNS root). The parent that may append is fixed at first install and survives
-  upgrades by any controller. When an archive is created (text log line
+  the SNS root). Registering an archive with the SNS makes root the sole controller;
+  the library needs no controller rights afterwards. The parent that may append is
+  fixed at first install and survives upgrades by any controller. When an archive is created (text log line
   `ICRC-3: created archive …`, also listed by `icrc3_log_status`): add it to the
   ic-unicycle cycle monitoring and register it with the SNS by a
   `RegisterDappCanisters` proposal. Upgrade an archive by proposal with a wasm

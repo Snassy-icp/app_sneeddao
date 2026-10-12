@@ -211,10 +211,15 @@ deposit_cycles : () -> ();  // accepts attached cycles from anyone
 - `icrc3_get_blocks` decodes only the requested blocks, with the same 1000-block /
   1.5 MB cap, and returns an empty `archived_blocks` list.
 - Controllers: `sneed_lock` and the SNS root canister, set by `sneed_lock` right
-  after creation (`admin_icrc3_repair_archive_controllers` re-applies them). The
-  DAO therefore controls every archive the way it controls `sneed_lock`, and can hand
-  one over or reclaim it with the SNS's own `RegisterDappCanisters` /
-  `DeregisterDappCanisters` proposals; no custom hand-over method is needed.
+  after creation (`admin_icrc3_repair_archive_controllers` re-applies them while
+  `sneed_lock` is still a controller). That is only the precondition for the DAO
+  to take the archive over: a `RegisterDappCanisters` proposal makes SNS root the
+  *sole* controller (root removes every other controller when it registers a
+  canister) and only registered canisters can be upgraded by proposal. After
+  registration `sneed_lock` keeps no control over the archive and needs none:
+  appending is gated by the stored parent principal, top-ups go through
+  `deposit_cycles`, and the balance is read with the `archive_status` query.
+  Hand-over or reclaim later is a `DeregisterDappCanisters` proposal.
 - The parent (the only principal allowed to append) is stored in a stable variable
   at first install, so an upgrade performed by SNS root does not move the write
   permission to the upgrader. Init arguments passed on upgrade are ignored.
