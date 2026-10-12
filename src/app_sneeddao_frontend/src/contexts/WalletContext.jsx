@@ -1390,8 +1390,11 @@ export const WalletProvider = ({ children }) => {
                     const claimed_positions_for_swap = claimed_positions.filter(cp => normalizeId(cp.swap_canister_id) === normalizedSwapCanister);
                     const claimed_position_ids_for_swap = claimed_positions_for_swap.map(cp => cp.position_id);
                     
-                    // If no positions for this user in this swap, skip
-                    if (userPositionIds.length === 0 && claimed_position_ids_for_swap.length === 0) return;
+                    // Note: a registered pool in which the user holds no position is still
+                    // listed (with an empty positions array) so the wallet can show it as
+                    // "No Positions" and let the user remove it. Dropping it here left
+                    // "Add Swap Pair" appearing to do nothing.
+                    const hasAnyPosition = userPositionIds.length > 0 || claimed_position_ids_for_swap.length > 0;
 
                     // Get token metadata in parallel
                     const [ledgerActor0, ledgerActor1] = [
@@ -1425,7 +1428,7 @@ export const WalletProvider = ({ children }) => {
                     let userPositions = [];
                     let offset = 0;
                     const limit = 50;
-                    let hasMore = true;
+                    let hasMore = hasAnyPosition;
                     
                     while (hasMore && positionsFetchSessionRef.current === sessionId) {
                         const result = await swapActor.getUserPositionWithTokenAmount(offset, limit);
@@ -1445,7 +1448,7 @@ export const WalletProvider = ({ children }) => {
                         hasMore = allPositions.length === limit;
                     }
 
-                    if (userPositions.length === 0 || positionsFetchSessionRef.current !== sessionId) return;
+                    if (positionsFetchSessionRef.current !== sessionId) return;
 
                     // Build position details
                     const positionDetails = userPositions.map(compoundPosition => {
@@ -1486,11 +1489,34 @@ export const WalletProvider = ({ children }) => {
                     
                     addPositionProgressively(positionData, sessionId);
                     
-                    // Fetch conversion rates in background
-                    fetchPositionConversionRates(swap_canister, icrc1_ledger0, icrc1_ledger1, decimals0, decimals1, sessionId);
+                    // Fetch conversion rates in background (only useful when there is something to value)
+                    if (positionDetails.length > 0) {
+                        fetchPositionConversionRates(swap_canister, icrc1_ledger0, icrc1_ledger1, decimals0, decimals1, sessionId);
+                    }
                     
                 } catch (err) {
                     console.warn(`Could not fetch positions for swap ${swap_canister}:`, err);
+                    // Still list the registered pool so the user can see it failed and remove it.
+                    addPositionProgressively({
+                        swapCanisterId: swap_canister,
+                        token0: null,
+                        token1: null,
+                        token0Symbol: 'ERROR',
+                        token1Symbol: 'ERROR',
+                        token0Logo: '',
+                        token1Logo: '',
+                        token0Decimals: 0,
+                        token1Decimals: 0,
+                        token0Fee: 0n,
+                        token1Fee: 0n,
+                        token0_conversion_rate: 0,
+                        token1_conversion_rate: 0,
+                        swapCanisterBalance0: 0n,
+                        swapCanisterBalance1: 0n,
+                        positions: [],
+                        loading: false,
+                        error: String(err?.message || err)
+                    }, sessionId);
                 }
             });
 

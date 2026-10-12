@@ -103,7 +103,7 @@ function AddSwapCanisterModal({ show, onClose, onSubmit }) {
     setErrorText('');
 
     // Get the canister ID from either pair lookup or manual input
-    const canisterId = useManualInput ? swapCanisterId : swapCanisterId;
+    const canisterId = swapCanisterId.trim();
 
     if (canisterId == "") {
       if (useManualInput) {
@@ -119,25 +119,27 @@ function AddSwapCanisterModal({ show, onClose, onSubmit }) {
       setErrorText("Invalid canister id! Please enter a valid ICPSwap swap pool canister id.");
       return;
     }
+    setIsLoading(true);
     try {
       const swapActor = createIcpSwapActor(canisterId);
       const swap_meta = await swapActor.metadata();
+      if (!swap_meta || !('ok' in swap_meta)) throw new Error('metadata() did not return ok');
     } catch {
+      setIsLoading(false);
       setErrorText("Invalid ICPSwap swap pool canister id! Please enter a valid ICPSwap swap pool canister id.");
       return;
     }
 
     try {
-      setIsLoading(true);
-      setErrorText("");
       await onSubmit(canisterId);
     } catch (error) {
-      setErrorText("Error adding swap pool canister: " + error);
-    }
-    finally {
+      // Keep the dialog open so the user actually sees what went wrong.
       setIsLoading(false);
-      onClose();
+      setErrorText("Error adding swap pool canister: " + (error?.message || error));
+      return;
     }
+    setIsLoading(false);
+    onClose();
   };
 
   if (!show) {
