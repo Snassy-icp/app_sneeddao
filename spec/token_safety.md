@@ -4,7 +4,7 @@ Plan agreed on 2026-10-12. Three deliverables, built in this order:
 
 1. **Token safety page** (`/token-safety/<ledger>`): rates any ICRC ledger on the IC
    from public, verifiable data. Lives in the frontend; no new canister.
-2. **`sneed_registry`**: the registry of known wasm hashes, their sources and the
+2. **`sneed_wasm_registry`**: the registry of known wasm hashes, their sources and the
    evidence behind them (reproductions, audits, endorsements, flags). DAO-controlled,
    ICRC-3 logged.
 3. **`sneed_pad`**: the launchpad. Creates ledgers from vetted code, hands control to
@@ -78,7 +78,7 @@ Presentation: the same tree as `/health` (gates on top, dimensions below, each r
 stating what would raise the score). Scores are computed in the page from the raw
 evidence, never stored, so the page can always show why.
 
-## 2. `sneed_registry`
+## 2. `sneed_wasm_registry`
 
 Three layers:
 
@@ -169,7 +169,7 @@ with patchability.
    NNS-approved hashes from the SNS wasm canister, minting account, supply and
    metadata, holders from the ICRC-3 log (capped block count in the browser), locks
    from `sneed_lock`, ICPSwap pools and locked positions, status where observable.
-2. `sneed_registry` with the three-layer model, ICRC-3 log, bootstrap from SNS-W,
+2. `sneed_wasm_registry` with the three-layer model, ICRC-3 log, bootstrap from SNS-W,
    attestations and audits; the page switches from its built-in list to the registry.
 3. `sneed_guardian`.
 4. `sneed_pad`, tier by tier, with its own front-end ("Sneed Fun" as a brand if wanted).
