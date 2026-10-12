@@ -126,6 +126,7 @@ function LockWizard() {
     const [lockAmount, setLockAmount] = useState('');
     const [lockExpiry, setLockExpiry] = useState('');
     const [isLocking, setIsLocking] = useState(false);
+    const [lockProgress, setLockProgress] = useState([]); // [{ label, state: 'done'|'active'|'pending' }]
     const [lockError, setLockError] = useState('');
     const [lockSuccess, setLockSuccess] = useState(false);
     
@@ -695,11 +696,30 @@ function LockWizard() {
         setLockError('');
         
         let feePaid = false;
+        const plan = computeFeePlan();
+        const phases = [];
+        if (plan.need > 0n) phases.push('Paying the lock fee');
+        if (lockType === 'token') {
+            const amount = parsedLockAmount();
+            if (amount > selectedToken.available_backend) phases.push(`Moving ${selectedToken.symbol} to SneedLock`);
+            phases.push('Creating the lock');
+        } else {
+            if (selectedPosition.frontendOwnership) phases.push('Transferring the position to SneedLock');
+            phases.push('Creating the lock');
+        }
+        let phaseIndex = -1;
+        const nextPhase = () => {
+            phaseIndex += 1;
+            setLockProgress(phases.map((label, i) => ({ label, state: i < phaseIndex ? 'done' : i === phaseIndex ? 'active' : 'pending' })));
+        };
+        nextPhase();
         try {
             // 1. Pay the lock fee (no-op when free or already deposited)
-            const plan = computeFeePlan();
-            await payLockFee(plan);
-            feePaid = plan.need > 0n;
+            if (plan.need > 0n) {
+                await payLockFee(plan);
+                feePaid = true;
+                nextPhase();
+            }
 
             // 2. Create the lock. If the fee came out of the Sneed wallet's ICP and we are
             //    locking ICP, that much less of the backend balance is available for the lock.
@@ -709,9 +729,9 @@ function LockWizard() {
                     const used = plan.fromBackend + ICP_TX_FEE;
                     backendAvailable = backendAvailable > used ? backendAvailable - used : 0n;
                 }
-                await executeTokenLock(backendAvailable);
+                await executeTokenLock(backendAvailable, nextPhase);
             } else {
-                await executePositionLock();
+                await executePositionLock(nextPhase);
             }
             setLockSuccess(true);
         } catch (error) {
@@ -725,10 +745,11 @@ function LockWizard() {
             fetchPaymentInfo();
         } finally {
             setIsLocking(false);
+            setLockProgress([]);
         }
     };
 
-    const executeTokenLock = async (backendAvailable) => {
+    const executeTokenLock = async (backendAvailable, nextPhase) => {
         const ledgerActor = createLedgerActor(selectedToken.ledgerId, { agentOptions: { identity } });
         const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
         
@@ -752,6 +773,7 @@ function LockWizard() {
             if (result.Err) {
                 throw new Error(`Transfer failed: ${JSON.stringify(result.Err)}`);
             }
+            if (nextPhase) nextPhase();
         }
         
         // Create the lock
@@ -767,7 +789,7 @@ function LockWizard() {
         }
     };
 
-    const executePositionLock = async () => {
+    const executePositionLock = async (nextPhase) => {
         const swapActor = createIcpSwapActor(selectedPosition.swapCanisterId, { agentOptions: { identity } });
         const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
         
@@ -793,6 +815,7 @@ function LockWizard() {
             if (transferResult.err) {
                 throw new Error(`Unable to transfer position: ${JSON.stringify(transferResult.err)}`);
             }
+            if (nextPhase) nextPhase();
             
             const lockResult = await sneedLockActor.create_position_lock(
                 Principal.fromText(selectedPosition.swapCanisterId),
@@ -1777,6 +1800,31 @@ function LockWizard() {
                     </p>
                 </div>
 
+                {isLocking ? (
+                <div className="lock-fade-in" style={{ ...styles.configCard, textAlign: 'center' }}>
+                    <FaSpinner size={32} style={{ ...styles.spinner, color: lockPrimary, marginBottom: '0.75rem' }} />
+                    <h2 style={{ color: theme.colors.primaryText, fontSize: '1.2rem', fontWeight: 700, margin: '0 0 0.5rem 0' }}>
+                        Creating your lock
+                    </h2>
+                    <p style={{ color: theme.colors.mutedText, fontSize: '0.9rem', margin: '0 0 1.25rem 0' }}>
+                        This takes a few seconds per step. Please keep this page open.
+                    </p>
+                    <div style={{ display: 'inline-grid', gap: '10px', textAlign: 'left' }}>
+                        {lockProgress.map((phase, i) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', color: phase.state === 'pending' ? theme.colors.mutedText : theme.colors.primaryText, fontWeight: phase.state === 'active' ? 600 : 400 }}>
+                                {phase.state === 'done' ? (
+                                    <FaCheck size={14} style={{ color: theme.colors.success }} />
+                                ) : phase.state === 'active' ? (
+                                    <FaSpinner size={14} style={{ ...styles.spinner, color: lockPrimary }} />
+                                ) : (
+                                    <span style={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${theme.colors.border}`, display: 'inline-block' }} />
+                                )}
+                                {phase.label}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                ) : (
                 <div className="lock-fade-in" style={styles.configCard}>
                     {/* Summary of what's being locked */}
                     <div style={{ 
@@ -1869,6 +1917,7 @@ function LockWizard() {
                         </div>
                     )}
                 </div>
+                )}
 
                 <div style={styles.buttonRow}>
                     <button

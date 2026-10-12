@@ -439,17 +439,31 @@ function HelpSneedlock() {
                     </div>
                     
                     <ol style={styles.stepList}>
-                        <li style={styles.stepItem}><strong style={styles.strong}>Add Swap Pair:</strong> Add the ICPSwap canister for your liquidity pair</li>
-                        <li style={styles.stepItem}><strong style={styles.strong}>Transfer Position:</strong> Send LP position from ICPSwap to your Sneed Wallet principal</li>
-                        <li style={styles.stepItem}><strong style={styles.strong}>Select Position:</strong> Find it in Liquidity Positions section</li>
-                        <li style={styles.stepItem}><strong style={styles.strong}>Lock:</strong> Click "Lock Position" and set expiration date</li>
+                        <li style={styles.stepItem}><strong style={styles.strong}>Pick the pool:</strong> In the Lock Wizard, choose the two tokens of your pair (or enter the ICPSwap pool canister id). The pool is added to your wallet automatically.</li>
+                        <li style={styles.stepItem}><strong style={styles.strong}>Transfer Position:</strong> On ICPSwap, open the position under Liquidity, choose Details, then "Transfer position" to your Sneed Wallet principal. The wizard shows the exact steps and your principal.</li>
+                        <li style={styles.stepItem}><strong style={styles.strong}>Select Position:</strong> Pick the position in the wizard (or from the Liquidity Positions section of your wallet)</li>
+                        <li style={styles.stepItem}><strong style={styles.strong}>Lock:</strong> Set the expiration date and confirm. The lock fee is paid as part of this step.</li>
                     </ol>
                     
                     <div style={styles.successBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
                             <strong style={styles.strong}>💰 Claim Fees from Locked Positions:</strong> Locked LP positions continue earning trading fees. 
-                            You can claim those fees directly from your wallet even while the position remains locked!
+                            You can claim those fees directly from your wallet even while the position remains locked. Claimed fees are
+                            delivered to your Sneed wallet and forwarded to your frontend wallet when the amount covers the transfer fee.
                         </p>
+                    </div>
+
+                    <div style={{ ...styles.successBox, marginTop: '1rem' }}>
+                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>
+                            <strong style={styles.strong}>➕ Add Liquidity to a Locked Position:</strong> You can grow a position while it stays locked.
+                            Open the locked position in your wallet and choose "Add Liquidity". Enter the amounts of each token; the wizard
+                            uses tokens already in your Sneed wallet first and tops up the rest from your frontend wallet.
+                        </p>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}>Liquidity is added within the position's existing price range, so it must be in range for both tokens to be used. Out of range, only one token is accepted and the rest is returned.</li>
+                            <li style={styles.listItem}>Whatever ICPSwap does not use is returned to your Sneed wallet. Amounts below a token's transfer fee cannot be returned and stay in the pool.</li>
+                            <li style={styles.listItem}>The lock itself is unchanged: same position, same expiry. The added liquidity is locked with it.</li>
+                        </ul>
                     </div>
                 </div>
 
@@ -619,7 +633,8 @@ function HelpSneedlock() {
                     
                     <h4 style={styles.subsubheading}>Can I add more tokens to an existing lock?</h4>
                     <p style={styles.paragraph}>
-                        No. Each lock is independent. Create new locks for additional tokens—you can have multiple locks per token.
+                        For token locks, no. Each lock is independent. Create new locks for additional tokens—you can have multiple locks per token.
+                        For locked liquidity positions, yes: use "Add Liquidity" on the position in your wallet to add more to the locked position.
                     </p>
                 </div>
 
