@@ -155,8 +155,12 @@ export async function verifyTip(canisterId) {
     const root = new Uint8Array(await reconstruct(tree));
     if (!certified || !bytesEqual(new Uint8Array(certified), root)) throw new Error('certified data does not match the hash tree');
     const idxBytes = new Uint8Array(lookupResultToBuffer(lookup_path(['last_block_index'], tree)));
-    let lastIndex = 0n, shift = 0n;
-    for (const b of idxBytes) { lastIndex |= BigInt(b & 0x7f) << shift; shift += 7n; }
+    // ICRC-3 says LEB128; older ledger-suite versions wrote a big-endian u64.
+    // A valid LEB128 sets the continuation bit on every byte but the last.
+    const isLeb = idxBytes.length > 0 && idxBytes.every((b, i) => (i < idxBytes.length - 1) === ((b & 0x80) !== 0));
+    let lastIndex = 0n;
+    if (isLeb) { let shift = 0n; for (const b of idxBytes) { lastIndex |= BigInt(b & 0x7f) << shift; shift += 7n; } }
+    else for (const b of idxBytes) lastIndex = (lastIndex << 8n) | BigInt(b);
     const lastHash = new Uint8Array(lookupResultToBuffer(lookup_path(['last_block_hash'], tree)));
     return { lastIndex, lastHash };
 }
