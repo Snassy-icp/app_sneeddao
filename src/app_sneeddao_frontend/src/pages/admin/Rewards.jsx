@@ -681,7 +681,7 @@ export default function RewardsAdmin() {
         try {
             const actor = getRllActor();
             await actor.import_whitelisted_tokens_from_swaprunner();
-            showInfo('Success', 'Tokens imported from SwapRunner successfully.', 'success');
+            showInfo('Success', 'Tokens imported from the ICPSwap token list successfully.', 'success');
             await fetchTokens();
         } catch (err) {
             console.error('Error importing whitelisted tokens:', err);
@@ -2566,7 +2566,7 @@ export default function RewardsAdmin() {
                                         disabled={importing}
                                     >
                                         {importing ? <FaSpinner className="spin" /> : <FaFileImport />}
-                                        Import from SwapRunner
+                                        Import from ICPSwap token list
                                     </button>
                                 </div>
                                 

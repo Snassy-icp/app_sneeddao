@@ -112,7 +112,7 @@ export default function TokensAdmin() {
         }
     }, [isGlobalAdmin, whitelistedTokens, fetchTokenLogos]);
     
-    // Import from SwapRunner
+    // Import from ICPSwap's trusted token list (the backend reads it directly)
     const handleImportFromSwapRunner = async () => {
         setImporting(true);
         setImportResult(null);
@@ -131,11 +131,11 @@ export default function TokensAdmin() {
             setImportResult({
                 success: true,
                 message: importedCount > 0 
-                    ? `Successfully imported ${importedCount} new token(s) from SwapRunner!`
+                    ? `Successfully imported ${importedCount} new token(s) from ICPSwap's token list!`
                     : 'Import complete. No new tokens found.'
             });
         } catch (err) {
-            console.error('Error importing from SwapRunner:', err);
+            console.error('Error importing from ICPSwap token list:', err);
             setImportResult({
                 success: false,
                 message: `Failed to import: ${err.message || 'Unknown error'}`
@@ -621,17 +621,17 @@ export default function TokensAdmin() {
                         </div>
                     )}
 
-                    {/* Import from SwapRunner Section */}
+                    {/* Import from ICPSwap token list */}
                     <div style={styles.section}>
                         <h2 style={styles.sectionTitle}>
-                            <FaSync /> Import from SwapRunner
+                            <FaSync /> Import from ICPSwap token list
                         </h2>
                         <p style={{ color: theme.colors.secondaryText, marginBottom: '16px' }}>
-                            Import all available tokens from SwapRunner's token registry. This will add any new tokens 
+                            Import all tokens from ICPSwap's trusted token list (the backend also does this daily). This will add any new tokens 
                             that aren't already in your whitelist.
                         </p>
                         <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '16px' }}>
-                            SwapRunner Canister: <code style={{ backgroundColor: theme.colors.tertiaryBg, padding: '2px 6px', borderRadius: '4px' }}>tt72q-zqaaa-aaaaj-az4va-cai</code>
+                            ICPSwap token list canister: <code style={{ backgroundColor: theme.colors.tertiaryBg, padding: '2px 6px', borderRadius: '4px' }}>k37c6-riaaa-aaaag-qcyza-cai</code>
                         </p>
                         <button
                             onClick={handleImportFromSwapRunner}
@@ -644,7 +644,7 @@ export default function TokensAdmin() {
                                 </>
                             ) : (
                                 <>
-                                    <FaSync /> Import Tokens from SwapRunner
+                                    <FaSync /> Import Tokens from ICPSwap
                                 </>
                             )}
                         </button>
