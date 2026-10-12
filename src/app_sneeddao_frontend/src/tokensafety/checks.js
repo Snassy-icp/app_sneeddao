@@ -12,7 +12,9 @@ import { idlFactory as poolIdl } from 'external/icp_swap/icp_swap.did.js';
 import { idlFactory as sneedLockIdl } from 'declarations/sneed_lock/sneed_lock.did.js';
 import { actor, getAgent, ledgerIdl, IDL } from '../health/agent.js';
 import { verifyTip, createIcrc3Actor } from '../utils/icrc3/client.js';
-import { scanLedger, holdersByOwner } from './scan.js';
+import { holdersByOwner } from './scan.js';
+import { scanLedgerOffThread } from './scanClient.js';
+import { idlFactory as governanceIdl } from 'external/sns_governance/sns_governance.did.js';
 
 export const IDS = {
     snsw: 'qaa6y-5yaaa-aaaaa-aaafa-cai',
@@ -117,7 +119,13 @@ const loaders = {
         if (sns?.index) return { id: sns.index, how: 'SNS registry' };
         return null;
     },
-    scan: (ledgerId) => async (ctx) => scanLedger(ledgerId, { maxBlocks: ctx.config.maxScanBlocks, onProgress: ctx.config.onProgress, timeoutMs: ctx.config.callTimeoutSec * 1000 }),
+    scan: (ledgerId) => async (ctx) => scanLedgerOffThread(ledgerId, { maxBlocks: ctx.config.maxScanBlocks, onProgress: ctx.config.onProgress, timeoutMs: ctx.config.callTimeoutSec * 1000 }),
+    /// The DAO's name from its governance metadata.
+    snsName: (sns) => async (ctx) => {
+        const g = await actor(governanceIdl, sns.governance);
+        const m = await quiet(ctx.call(g.get_metadata({}), 'SNS metadata'), null);
+        return opt(m?.name) || null;
+    },
     locks: (ledgerId) => async (ctx) => {
         const lock = await actor(sneedLockIdl, IDS.sneedLock);
         const all = await ctx.call(lock.get_ledger_token_locks(Principal.fromText(ledgerId)), 'Sneed Lock token locks');
@@ -179,6 +187,13 @@ const loaders = {
     },
 };
 
+/// "Sneed DAO (SNS root fp274-…)" for a deployed SNS.
+async function daoLabel(sns, ctx) {
+    const name = await ctx.load(`snsname:${sns.root}`, loaders.snsName(sns));
+    const base = name ? (/\bdao\b/i.test(name) ? name : `${name} DAO`) : 'an unnamed SNS DAO';
+    return `${base} (SNS root ${sns.root})`;
+}
+
 // ---- controller classification ----
 async function classifyControllers(controllers, ctx) {
     const snsw = await ctx.load('snsw', loaders.snsw);
@@ -187,9 +202,9 @@ async function classifyControllers(controllers, ctx) {
     if (controllers.length === 1 && controllers[0] === IDS.nnsRoot) return { grade: 'pass', label: 'Controlled by the NNS (NNS root)', kind: 'nns' };
     if (controllers.length === 1 && snsw.byRoot.has(controllers[0])) {
         const sns = snsw.byRoot.get(controllers[0]);
-        return { grade: 'pass', label: `Controlled by the SNS DAO with root ${sns.root}${sns.root === IDS.sneedRoot ? ' (Sneed DAO)' : ''}`, kind: 'sns', sns };
+        return { grade: 'pass', label: `Controlled by ${await daoLabel(sns, ctx)}`, kind: 'sns', sns };
     }
-    const named = controllers.map((c) => (BLACKHOLES[c] ? BLACKHOLES[c] : snsw.byRoot.has(c) ? `SNS root ${c}` : c === IDS.nnsRoot ? 'NNS root' : c));
+    const named = await Promise.all(controllers.map(async (c) => (BLACKHOLES[c] ? BLACKHOLES[c] : snsw.byRoot.has(c) ? await daoLabel(snsw.byRoot.get(c), ctx) : c === IDS.nnsRoot ? 'NNS root' : c)));
     const canisters = controllers.filter((c) => c.length === 27);
     const users = controllers.filter((c) => c.length !== 27);
     if (controllers.length > 1 && controllers.some((c) => BLACKHOLES[c] || snsw.byRoot.has(c))) {
@@ -304,7 +319,7 @@ export function buildTokenTree(ledgerId, config) {
                     if (owner.length !== 27) return fail('A user principal: its holder can mint without limit', details);
                     const snsw = await ctx.load('snsw', loaders.snsw);
                     const sns = snsw.snses.find((s) => s.governance === owner);
-                    if (sns) return pass(`SNS governance of the DAO with root ${sns.root}: minting takes a proposal`, details);
+                    if (sns) return pass(`The SNS governance of ${await daoLabel(sns, ctx)}: minting takes a proposal`, details);
                     const st = await quiet(status(ctx, owner), null);
                     if (st) {
                         details.minting_canister_controllers = st.controllers;
@@ -355,7 +370,7 @@ export function buildTokenTree(ledgerId, config) {
         tags.set(IDS.sneedLock, 'Sneed Lock (locked)');
         tags.set(ledgerId, 'the ledger');
         const sns = snsw.byLedger.get(ledgerId);
-        if (sns) { tags.set(sns.governance, 'SNS governance (treasury and neurons)'); tags.set(sns.swap, 'SNS swap'); tags.set(sns.root, 'SNS root'); }
+        if (sns) { const dao = await daoLabel(sns, ctx); tags.set(sns.governance, `governance of ${dao} (treasury and neurons)`); tags.set(sns.swap, `swap of ${dao}`); tags.set(sns.root, `root of ${dao}`); }
         for (const p of pools) tags.set(p.id, `ICPSwap pool ${p.token0 === ledgerId ? p.token1 : p.token0}`);
         return tags;
     };
