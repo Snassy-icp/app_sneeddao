@@ -7,7 +7,7 @@ import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { FaHeartbeat, FaCheckCircle, FaExclamationTriangle, FaTimesCircle, FaMinusCircle, FaSpinner, FaChevronRight, FaChevronDown, FaRedo, FaCog, FaExternalLinkAlt, FaClock } from 'react-icons/fa';
 import { buildTree } from '../health/checks.js';
-import { runTree, statusOf, countLeaves } from '../health/runner.js';
+import { runTree, statusOf, countLeaves, isListing } from '../health/runner.js';
 import { loadConfig, saveConfig, DEFAULT_CONFIG, CONFIG_FIELDS } from '../health/config.js';
 
 const primary = '#10b981';
@@ -78,6 +78,7 @@ function Node({ node, results, depth, theme, expanded, toggle, onlyProblems }) {
                 <span style={{ fontWeight: isGroup ? 700 : 500, color: theme.colors.primaryText, fontSize: isGroup ? '0.95rem' : '0.88rem', flex: '0 1 auto' }}>{node.name}</span>
                 {isGroup ? (
                     <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        {node.loading && <Badge status="running" theme={theme}>listing checks…</Badge>}
                         {counts.fail > 0 && <Badge status="fail" theme={theme}>{counts.fail}</Badge>}
                         {counts.warn > 0 && <Badge status="warn" theme={theme}>{counts.warn}</Badge>}
                         {counts.pass > 0 && <Badge status="pass" theme={theme}>{counts.pass}</Badge>}
@@ -193,7 +194,7 @@ function Health() {
                     <div style={{ flex: 1, minWidth: 220 }}>
                         <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: theme.colors.primaryText }}>DAO Health</h1>
                         <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
-                            {running ? `Running ${done} of ${total} checks…` : finishedAt ? `${total} checks, finished ${new Date(finishedAt).toLocaleTimeString()} in ${((finishedAt - startedAt) / 1000).toFixed(1)} s` : 'Preparing checks…'}
+                            {running ? (total === 0 ? 'Listing checks…' : `Running ${done} of ${total} checks${state.tree && isListing(state.tree) ? ', listing more' : ''}…`) : finishedAt ? `${total} checks, finished ${new Date(finishedAt).toLocaleTimeString()} in ${((finishedAt - startedAt) / 1000).toFixed(1)} s` : 'Preparing checks…'}
                         </div>
                     </div>
                     <Badge status={overall} theme={theme}>{overall === 'pass' ? 'all systems go' : overall === 'warn' ? 'needs attention' : overall === 'fail' ? 'problems found' : headline.label}</Badge>
@@ -225,7 +226,7 @@ function Health() {
                     {state.tree ? (
                         <Node node={state.tree} results={state.results} depth={0} theme={theme} expanded={expanded} toggle={toggle} onlyProblems={onlyProblems} />
                     ) : (
-                        <div style={{ padding: '2rem', textAlign: 'center', color: theme.colors.mutedText }}><FaSpinner className="health-spin" /> Listing the DAO's canisters…</div>
+                        <div style={{ padding: '2rem', textAlign: 'center', color: theme.colors.mutedText }}><FaSpinner className="health-spin" /> Preparing checks…</div>
                     )}
                 </div>
 

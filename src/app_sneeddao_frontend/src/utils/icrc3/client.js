@@ -39,14 +39,18 @@ export const archiveIdlFactory = ({ IDL }) => IDL.Service({
     icrc3_get_blocks: IDL.Func([GetBlocksArgs], [GetBlocksResult], ['query']),
 });
 
-let agentPromise = null;
-export const getAgent = () => {
-    if (!agentPromise) agentPromise = HttpAgent.create({ host: HOST });
-    return agentPromise;
+// One agent per canister: agent-js keeps a single certificate-time watermark
+// per agent, and canisters on different subnets certify slightly different
+// times, so a shared agent can reject a lagging subnet's answer as a replay.
+const agents = new Map();
+export const getAgent = (canisterId = '') => {
+    const key = String(canisterId);
+    if (!agents.has(key)) agents.set(key, HttpAgent.create({ host: HOST }));
+    return agents.get(key);
 };
 
 export async function createIcrc3Actor(canisterId) {
-    const agent = await getAgent();
+    const agent = await getAgent(canisterId);
     return Actor.createActor(icrc3IdlFactory, { agent, canisterId });
 }
 
@@ -54,7 +58,7 @@ const archiveActors = new Map();
 async function archiveActor(canisterId, method) {
     const key = `${canisterId.toText()}:${method}`;
     if (!archiveActors.has(key)) {
-        const agent = await getAgent();
+        const agent = await getAgent(canisterId);
         const idl = ({ IDL }) => IDL.Service({ [method]: IDL.Func([GetBlocksArgs], [GetBlocksResult], ['query']) });
         archiveActors.set(key, Actor.createActor(idl, { agent, canisterId }));
     }
@@ -143,7 +147,7 @@ export async function verifyTip(canisterId) {
     const actor = await createIcrc3Actor(canisterId);
     const tip = await actor.icrc3_get_tip_certificate();
     if (tip.length === 0) return null;
-    const agent = await getAgent();
+    const agent = await getAgent(canisterId);
     const { certificate, hash_tree } = tip[0];
     const cert = await Certificate.create({ certificate: new Uint8Array(certificate).buffer, rootKey: agent.rootKey, canisterId });
     const certified = lookupResultToBuffer(cert.lookup(['canister', canisterId.toUint8Array(), 'certified_data']));

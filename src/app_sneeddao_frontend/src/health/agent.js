@@ -6,15 +6,20 @@ import { Principal } from '@dfinity/principal';
 
 export const HOST = 'https://icp-api.io';
 
-let agentPromise = null;
-export const getAgent = () => {
-    if (!agentPromise) agentPromise = HttpAgent.create({ host: HOST });
-    return agentPromise;
+// One agent per canister. agent-js keeps a single certificate-time watermark
+// per agent, so an agent shared across subnets rejects answers from a subnet
+// whose certified time lags behind the newest one seen ("Timestamp failed to
+// pass the watermark"). Separate agents keep each canister's clock to itself.
+const agents = new Map();
+export const getAgent = (canisterId) => {
+    const key = String(canisterId);
+    if (!agents.has(key)) agents.set(key, HttpAgent.createSync({ host: HOST }));
+    return agents.get(key);
 };
 
 export async function actor(idlFactory, canisterId) {
-    const agent = await getAgent();
-    return Actor.createActor(idlFactory, { agent, canisterId: typeof canisterId === 'string' ? Principal.fromText(canisterId) : canisterId });
+    const id = typeof canisterId === 'string' ? Principal.fromText(canisterId) : canisterId;
+    return Actor.createActor(idlFactory, { agent: getAgent(id.toText()), canisterId: id });
 }
 
 /// Reject after `ms` so a hanging canister cannot stall the whole run.
