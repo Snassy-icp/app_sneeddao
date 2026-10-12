@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaCoins, FaWater, FaArrowRight, FaArrowLeft, FaLock, FaCheck, FaSpinner, FaCrown, FaWallet, FaShieldAlt } from 'react-icons/fa';
+import { FaCoins, FaWater, FaArrowRight, FaArrowLeft, FaLock, FaCheck, FaSpinner, FaCrown, FaWallet, FaShieldAlt, FaCopy, FaExternalLinkAlt, FaSync, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
 import Header from '../components/Header';
@@ -10,7 +10,9 @@ import { createActor as createBackendActor, canisterId as backendCanisterId } fr
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
-import { getTokenLogo, getTokenMetaForSwap, get_token_conversion_rate } from '../utils/TokenUtils';
+import { resolveTokenLogo } from '../utils/TokenUtils';
+import TokenSelector from '../components/TokenSelector';
+import SwapPoolPicker, { SwapPoolSummary, describeSwapPool } from '../components/SwapPoolPicker';
 import { formatAmount } from '../utils/StringUtils';
 import { get_short_timezone, format_duration, dateToReadable, getInitialExpiry } from '../utils/DateUtils';
 import ConfirmationModal from '../ConfirmationModal';
@@ -84,11 +86,31 @@ function LockWizard() {
     
     // Step 2: Selection state
     const [tokens, setTokens] = useState([]);
-    const [liquidityPositions, setLiquidityPositions] = useState([]);
     const [loadingTokens, setLoadingTokens] = useState(false);
     const [loadingPositions, setLoadingPositions] = useState(false);
     const [selectedToken, setSelectedToken] = useState(null);
     const [selectedPosition, setSelectedPosition] = useState(null);
+    // Token selection: any known token, or only the ones registered in the wallet
+    const [tokenFilter, setTokenFilter] = useState('all'); // 'all' | 'wallet'
+    const [selectedTokenId, setSelectedTokenId] = useState('');
+    const [tokenCheckLoading, setTokenCheckLoading] = useState(false);
+    const [tokenCheckError, setTokenCheckError] = useState('');
+    // Pool selection: any ICPSwap pool (via picker), or only pools registered in the wallet
+    const [pairFilter, setPairFilter] = useState('all'); // 'all' | 'wallet'
+    const [walletPairs, setWalletPairs] = useState([]); // [{ poolId, pool, positions }]
+    const [selectedPoolId, setSelectedPoolId] = useState('');
+    const [selectedPool, setSelectedPool] = useState(null); // describeSwapPool() result
+    const [poolPositions, setPoolPositions] = useState(null); // null until loaded
+    const [poolCheckLoading, setPoolCheckLoading] = useState(false);
+    const [poolCheckError, setPoolCheckError] = useState('');
+    const [showTransferHelp, setShowTransferHelp] = useState(false);
+    const [copiedPid, setCopiedPid] = useState(false);
+    const [pickerResetKey, setPickerResetKey] = useState(0);
+    const registeredLedgersRef = useRef(new Set());
+    const registeredSwapsRef = useRef(new Set());
+    const summedLocksRef = useRef({});
+    const tokenCheckRequestRef = useRef(0);
+    const poolCheckRequestRef = useRef(0);
     
     // Step 3: Payment state
     const [lockFeeConfig, setLockFeeConfig] = useState(null);
@@ -243,69 +265,97 @@ function LockWizard() {
         return `${icp.toFixed(4)} ICP`;
     };
 
+    // ---- Step 2 helpers: wallet registration, token details, pool positions ----
+
+    const walletPid = identity ? identity.getPrincipal().toText() : '';
+
+    const ensureLedgerRegistered = async (ledgerId) => {
+        if (registeredLedgersRef.current.has(ledgerId)) return;
+        const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+        await backendActor.register_ledger_canister_id(Principal.fromText(ledgerId));
+        registeredLedgersRef.current.add(ledgerId);
+    };
+
+    const ensureSwapRegistered = async (swapId) => {
+        if (registeredSwapsRef.current.has(swapId)) return;
+        const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+        await backendActor.register_swap_canister_id(Principal.fromText(swapId));
+        registeredSwapsRef.current.add(swapId);
+    };
+
+    const loadSummedLocks = async () => {
+        const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+        const summedLocksList = await sneedLockActor.get_summed_locks();
+        const summedLocks = {};
+        for (const lock of summedLocksList) {
+            summedLocks[lock[0].toText ? lock[0].toText() : lock[0]] = lock[1];
+        }
+        summedLocksRef.current = summedLocks;
+        return summedLocks;
+    };
+
+    // Balances and metadata for one token, in the shape steps 3 and 4 expect
+    const loadTokenDetails = async (ledgerId, summedLocks) => {
+        const ledgerActor = createLedgerActor(ledgerId);
+        const subaccount = principalToSubAccount(identity.getPrincipal());
+        const [metadata, symbol, decimals, fee, balance, balanceBackend] = await Promise.all([
+            ledgerActor.icrc1_metadata(),
+            ledgerActor.icrc1_symbol(),
+            ledgerActor.icrc1_decimals(),
+            ledgerActor.icrc1_fee(),
+            ledgerActor.icrc1_balance_of({ owner: identity.getPrincipal(), subaccount: [] }),
+            ledgerActor.icrc1_balance_of({ owner: Principal.fromText(sneedLockCanisterId), subaccount: [subaccount] })
+        ]);
+
+        const logo = await resolveTokenLogo(ledgerId, metadata, symbol);
+        const locked = summedLocks[ledgerId] || 0n;
+        const total = balance + balanceBackend;
+        const available = total > locked ? total - locked : 0n;
+
+        return {
+            ledger_canister_id: Principal.fromText(ledgerId),
+            ledgerId,
+            symbol,
+            decimals: Number(decimals),
+            fee,
+            logo,
+            balance,
+            balance_backend: balanceBackend,
+            locked,
+            available,
+            available_backend: balanceBackend > locked ? balanceBackend - locked : 0n
+        };
+    };
+
+    // Tokens registered in the user's wallet (for the "tokens in my wallet" filter)
     const fetchTokens = async () => {
         setLoadingTokens(true);
         try {
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
-            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
-            
-            // Get summed locks
-            const summedLocksList = await sneedLockActor.get_summed_locks();
-            const summedLocks = {};
-            for (const lock of summedLocksList) {
-                summedLocks[lock[0].toText ? lock[0].toText() : lock[0]] = lock[1];
-            }
-            
-            // Get registered ledgers
-            const registeredLedgers = await backendActor.get_ledger_canister_ids();
-            
-            // Fetch details for each token
-            const tokenDetails = await Promise.all(registeredLedgers.map(async (ledger) => {
+            const [summedLocks, registeredLedgers] = await Promise.all([
+                loadSummedLocks(),
+                backendActor.get_ledger_canister_ids()
+            ]);
+            const ledgerIds = registeredLedgers.map(l => l.toText ? l.toText() : l.toString());
+            registeredLedgersRef.current = new Set(ledgerIds);
+
+            const tokenDetails = await Promise.all(ledgerIds.map(async (ledgerId) => {
                 try {
-                    const ledgerId = ledger.toText ? ledger.toText() : ledger.toString();
-                    const ledgerActor = createLedgerActor(ledgerId);
-                    
-                    const [metadata, symbol, decimals, fee, balance] = await Promise.all([
-                        ledgerActor.icrc1_metadata(),
-                        ledgerActor.icrc1_symbol(),
-                        ledgerActor.icrc1_decimals(),
-                        ledgerActor.icrc1_fee(),
-                        ledgerActor.icrc1_balance_of({ owner: identity.getPrincipal(), subaccount: [] })
-                    ]);
-                    
-                    let logo = getTokenLogo(metadata);
-                    if (symbol.toLowerCase() === 'icp' && !logo) logo = 'icp_symbol.svg';
-                    
-                    const subaccount = principalToSubAccount(identity.getPrincipal());
-                    const balanceBackend = await ledgerActor.icrc1_balance_of({ 
-                        owner: Principal.fromText(sneedLockCanisterId), 
-                        subaccount: [subaccount] 
-                    });
-                    
-                    const locked = summedLocks[ledgerId] || 0n;
-                    const available = balance + balanceBackend - locked;
-                    
-                    return {
-                        ledger_canister_id: ledger,
-                        ledgerId,
-                        symbol,
-                        decimals,
-                        fee,
-                        logo,
-                        balance,
-                        balance_backend: balanceBackend,
-                        locked,
-                        available,
-                        available_backend: balanceBackend > locked ? balanceBackend - locked : 0n
-                    };
+                    return await loadTokenDetails(ledgerId, summedLocks);
                 } catch (err) {
-                    console.error('Error fetching token:', err);
+                    console.error('Error fetching token:', ledgerId, err);
                     return null;
                 }
             }));
-            
-            // Filter out failed fetches and tokens with no available balance
-            setTokens(tokenDetails.filter(t => t && t.available > 0n));
+
+            setTokens(prev => {
+                const loaded = tokenDetails.filter(Boolean);
+                // Keep a token the user already picked in this session even if it failed to reload
+                for (const t of prev) {
+                    if (!loaded.some(l => l.ledgerId === t.ledgerId)) loaded.push(t);
+                }
+                return loaded;
+            });
         } catch (error) {
             console.error('Error fetching tokens:', error);
         } finally {
@@ -313,109 +363,189 @@ function LockWizard() {
         }
     };
 
+    const handleTokenChosen = async (ledgerId) => {
+        if (!ledgerId) return;
+        const requestId = ++tokenCheckRequestRef.current;
+        setSelectedTokenId(ledgerId);
+        setSelectedToken(null);
+        setTokenCheckError('');
+        setTokenCheckLoading(true);
+        try {
+            await ensureLedgerRegistered(ledgerId);
+            const summedLocks = await loadSummedLocks();
+            const token = await loadTokenDetails(ledgerId, summedLocks);
+            if (tokenCheckRequestRef.current !== requestId) return;
+            setSelectedToken(token);
+            setTokens(prev => {
+                const idx = prev.findIndex(t => t.ledgerId === ledgerId);
+                if (idx >= 0) return prev.map((t, i) => i === idx ? token : t);
+                return [...prev, token];
+            });
+        } catch (error) {
+            if (tokenCheckRequestRef.current !== requestId) return;
+            console.error('Error loading token:', ledgerId, error);
+            setTokenCheckError('Could not load this token. Make sure the id is an ICRC-1 ledger canister. ' + (error?.message || ''));
+        } finally {
+            if (tokenCheckRequestRef.current === requestId) setTokenCheckLoading(false);
+        }
+    };
+
+    // Unlocked positions in one pool that the user can lock: owned by the user on ICPSwap,
+    // or already transferred to SneedLock and claimed by the user but not (or no longer) locked.
+    const loadPoolPositions = async (poolId, pool, claimedForSwap) => {
+        const swapActor = createIcpSwapActor(poolId, { agentOptions: { identity } });
+        const userPositionIds = (await swapActor.getUserPositionIdsByPrincipal(identity.getPrincipal())).ok || [];
+        const claimedIds = claimedForSwap.map(p => p.position_id);
+        const found = [];
+
+        let offset = 0;
+        const limit = 50;
+        let hasMore = userPositionIds.length > 0 || claimedIds.length > 0;
+        while (hasMore) {
+            const posResult = await swapActor.getUserPositionWithTokenAmount(offset, limit);
+            const positions = posResult.ok?.content || [];
+            for (const pos of positions) {
+                const isOwned = userPositionIds.includes(pos.id);
+                const isClaimed = claimedIds.includes(pos.id);
+                if (!isOwned && !isClaimed) continue;
+                const claimInfo = claimedForSwap.find(c => c.position_id === pos.id);
+                const lockInfo = claimInfo?.position_lock?.[0];
+                const isLocked = lockInfo?.expiry !== undefined && lockInfo.expiry > BigInt(Date.now()) * 1000000n;
+                if (isLocked) continue;
+                found.push({
+                    swapCanisterId: poolId,
+                    id: pos.id,
+                    token0: Principal.fromText(pool.token0.ledgerId),
+                    token1: Principal.fromText(pool.token1.ledgerId),
+                    token0Symbol: pool.token0.symbol,
+                    token1Symbol: pool.token1.symbol,
+                    token0Logo: pool.token0.logo,
+                    token1Logo: pool.token1.logo,
+                    token0Decimals: pool.token0.decimals,
+                    token1Decimals: pool.token1.decimals,
+                    token0Amount: pos.token0Amount,
+                    token1Amount: pos.token1Amount,
+                    symbols: `${pool.token0.symbol}/${pool.token1.symbol}`,
+                    frontendOwnership: isOwned
+                });
+            }
+            offset += limit;
+            hasMore = positions.length === limit;
+        }
+        return found;
+    };
+
+    const groupClaimedBySwap = (claimedPositions) => {
+        const claimedBySwap = {};
+        for (const pos of claimedPositions) {
+            const swapId = pos.swap_canister_id.toText ? pos.swap_canister_id.toText() : String(pos.swap_canister_id);
+            if (!claimedBySwap[swapId]) claimedBySwap[swapId] = [];
+            claimedBySwap[swapId].push(pos);
+        }
+        return claimedBySwap;
+    };
+
+    // Pools registered in the user's wallet (for the "pools in my wallet" filter)
     const fetchPositions = async () => {
         setLoadingPositions(true);
         try {
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
-            
-            const swapCanisters = await backendActor.get_swap_canister_ids();
-            const claimedPositions = await sneedLockActor.get_claimed_positions_for_principal(identity.getPrincipal());
-            
-            const claimedBySwap = {};
-            for (const pos of claimedPositions) {
-                const swapId = pos.swap_canister_id.toText ? pos.swap_canister_id.toText() : pos.swap_canister_id;
-                if (!claimedBySwap[swapId]) claimedBySwap[swapId] = [];
-                claimedBySwap[swapId].push(pos);
-            }
-            
-            const allPositions = [];
-            
-            await Promise.all(swapCanisters.map(async (swapCanister) => {
+
+            const [swapCanisters, claimedPositions] = await Promise.all([
+                backendActor.get_swap_canister_ids(),
+                sneedLockActor.get_claimed_positions_for_principal(identity.getPrincipal())
+            ]);
+            const swapIds = swapCanisters.map(s => s.toText ? s.toText() : s.toString());
+            registeredSwapsRef.current = new Set(swapIds);
+            const claimedBySwap = groupClaimedBySwap(claimedPositions);
+
+            const pairs = await Promise.all(swapIds.map(async (poolId) => {
                 try {
-                    const swapId = swapCanister.toText ? swapCanister.toText() : swapCanister.toString();
-                    const swapActor = createIcpSwapActor(swapId, { agentOptions: { identity } });
-                    
-                    const tokenMeta = await getTokenMetaForSwap(swapActor, backendActor, swapId);
-                    const swapMeta = await swapActor.metadata();
-                    
-                    const icrc1Ledger0 = swapMeta.ok.token0.address;
-                    const icrc1Ledger1 = swapMeta.ok.token1.address;
-                    
-                    const ledgerActor0 = createLedgerActor(icrc1Ledger0);
-                    const ledgerActor1 = createLedgerActor(icrc1Ledger1);
-                    
-                    const [metadata0, metadata1] = await Promise.all([
-                        ledgerActor0.icrc1_metadata(),
-                        ledgerActor1.icrc1_metadata()
-                    ]);
-                    
-                    let token0Logo = getTokenLogo(metadata0);
-                    let token1Logo = getTokenLogo(metadata1);
-                    
-                    const token0Symbol = tokenMeta?.token0?.find(([key]) => key === "symbol")?.[1]?.Text ?? "Unknown";
-                    const token1Symbol = tokenMeta?.token1?.find(([key]) => key === "symbol")?.[1]?.Text ?? "Unknown";
-                    const token0Decimals = tokenMeta?.token0?.find(([key]) => key === "decimals")?.[1]?.Nat ?? 8;
-                    const token1Decimals = tokenMeta?.token1?.find(([key]) => key === "decimals")?.[1]?.Nat ?? 8;
-                    
-                    if (token0Symbol?.toLowerCase() === 'icp' && !token0Logo) token0Logo = 'icp_symbol.svg';
-                    if (token1Symbol?.toLowerCase() === 'icp' && !token1Logo) token1Logo = 'icp_symbol.svg';
-                    
-                    const userPositionIds = (await swapActor.getUserPositionIdsByPrincipal(identity.getPrincipal())).ok || [];
-                    const claimedForSwap = claimedBySwap[swapId] || [];
-                    const claimedIds = claimedForSwap.map(p => p.position_id);
-                    
-                    let offset = 0;
-                    const limit = 10;
-                    let hasMore = true;
-                    
-                    while (hasMore) {
-                        const posResult = await swapActor.getUserPositionWithTokenAmount(offset, limit);
-                        const positions = posResult.ok?.content || [];
-                        
-                        for (const pos of positions) {
-                            const isOwned = userPositionIds.includes(pos.id);
-                            const isClaimed = claimedIds.includes(pos.id);
-                            
-                            if (isOwned || isClaimed) {
-                                // Check if already locked
-                                const claimInfo = claimedForSwap.find(c => c.position_id === pos.id);
-                                const isLocked = claimInfo?.lock_info?.unlock_timestamp > BigInt(Date.now()) * 1000000n;
-                                
-                                if (!isLocked) {
-                                    allPositions.push({
-                                        swapCanisterId: swapId,
-                                        id: pos.id,
-                                        token0: Principal.fromText(icrc1Ledger0),
-                                        token1: Principal.fromText(icrc1Ledger1),
-                                        token0Symbol,
-                                        token1Symbol,
-                                        token0Logo,
-                                        token1Logo,
-                                        token0Decimals,
-                                        token1Decimals,
-                                        token0Amount: pos.token0Amount,
-                                        token1Amount: pos.token1Amount,
-                                        symbols: `${token0Symbol}/${token1Symbol}`,
-                                        frontendOwnership: isOwned
-                                    });
-                                }
-                            }
-                        }
-                        
-                        offset += limit;
-                        hasMore = positions.length === limit;
-                    }
+                    const pool = await describeSwapPool(poolId);
+                    const positions = await loadPoolPositions(poolId, pool, claimedBySwap[poolId] || []);
+                    return { poolId, pool, positions };
                 } catch (err) {
-                    console.error('Error fetching positions for swap:', swapCanister, err);
+                    console.error('Error fetching positions for swap:', poolId, err);
+                    return null;
                 }
             }));
-            
-            setLiquidityPositions(allPositions);
+
+            setWalletPairs(pairs.filter(Boolean));
         } catch (error) {
             console.error('Error fetching positions:', error);
         } finally {
             setLoadingPositions(false);
+        }
+    };
+
+    const clearPoolSelection = () => {
+        setSelectedPoolId('');
+        setSelectedPool(null);
+        setPoolPositions(null);
+        setPoolCheckError('');
+        setPoolCheckLoading(false);
+        setSelectedPosition(null);
+    };
+
+    const handlePoolChosen = async (poolId, pool) => {
+        const requestId = ++poolCheckRequestRef.current;
+        setSelectedPoolId(poolId);
+        setSelectedPool(pool);
+        setSelectedPosition(null);
+        setPoolPositions(null);
+        setPoolCheckError('');
+        setPoolCheckLoading(true);
+        try {
+            // Make sure the pool and both of its tokens show up in the user's wallet from now on
+            await ensureSwapRegistered(poolId);
+            await ensureLedgerRegistered(pool.token0.ledgerId);
+            await ensureLedgerRegistered(pool.token1.ledgerId);
+
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+            const claimedPositions = await sneedLockActor.get_claimed_positions_for_principal(identity.getPrincipal());
+            const claimedForSwap = groupClaimedBySwap(claimedPositions)[poolId] || [];
+            const positions = await loadPoolPositions(poolId, pool, claimedForSwap);
+            if (poolCheckRequestRef.current !== requestId) return;
+            setPoolPositions(positions);
+            if (positions.length === 1) setSelectedPosition(positions[0]);
+            setWalletPairs(prev => {
+                const entry = { poolId, pool, positions };
+                const idx = prev.findIndex(p => p.poolId === poolId);
+                if (idx >= 0) return prev.map((p, i) => i === idx ? entry : p);
+                return [...prev, entry];
+            });
+        } catch (error) {
+            if (poolCheckRequestRef.current !== requestId) return;
+            console.error('Error loading pool positions:', poolId, error);
+            setPoolCheckError('Could not load your positions in this pool. ' + (error?.message || ''));
+        } finally {
+            if (poolCheckRequestRef.current === requestId) setPoolCheckLoading(false);
+        }
+    };
+
+    // The pool picker reports every change; act once a pool is verified, clear when it is not
+    const handlePickerChange = useCallback((poolId, pool, status) => {
+        if (status === 'ready' && pool) {
+            handlePoolChosen(poolId, pool);
+        } else if (!poolId || status === 'error') {
+            clearPoolSelection();
+        } else {
+            // resolving: show nothing yet
+            setSelectedPosition(null);
+            setPoolPositions(null);
+            setPoolCheckError('');
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [identity]);
+
+    const copyWalletPid = async () => {
+        try {
+            await navigator.clipboard.writeText(walletPid);
+            setCopiedPid(true);
+            setTimeout(() => setCopiedPid(false), 1500);
+        } catch (e) {
+            console.warn('Clipboard unavailable', e);
         }
     };
 
@@ -614,6 +744,11 @@ function LockWizard() {
             if (step === 1) {
                 setSelectedToken(null);
                 setSelectedPosition(null);
+                setSelectedTokenId('');
+                setTokenCheckError('');
+                clearPoolSelection();
+                setShowTransferHelp(false);
+                setPickerResetKey(k => k + 1);
                 setLockAmount('');
                 setLockSuccess(false);
                 setPaymentError('');
@@ -1074,129 +1209,168 @@ function LockWizard() {
         </>
     );
 
-    const renderStep2 = () => {
-        const isLoading = lockType === 'token' ? loadingTokens : loadingPositions;
-        const items = lockType === 'token' ? tokens : liquidityPositions;
-        const selectedItem = lockType === 'token' ? selectedToken : selectedPosition;
-        
+    // ---- Step 2 rendering ----
+
+    const renderWalletPid = (compact = false) => (
+        <div style={{
+            display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+            padding: compact ? '6px 10px' : '10px 12px',
+            background: theme.colors.secondaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '10px',
+        }}>
+            <code style={{ fontFamily: 'monospace', fontSize: compact ? '0.8rem' : '0.9rem', color: theme.colors.primaryText, wordBreak: 'break-all', flex: 1, minWidth: 0 }}>
+                {walletPid}
+            </code>
+            <button
+                type="button"
+                onClick={copyWalletPid}
+                style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0,
+                    background: copiedPid ? theme.colors.success : lockPrimary, color: 'white', border: 'none',
+                    borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
+                }}
+            >
+                {copiedPid ? <FaCheck size={11} /> : <FaCopy size={11} />}
+                {copiedPid ? 'Copied' : 'Copy'}
+            </button>
+        </div>
+    );
+
+    const renderFilterToggle = (value, onChange, options) => (
+        <div style={{
+            display: 'flex', gap: '6px', padding: '4px', marginBottom: '1rem',
+            background: theme.colors.secondaryBg, borderRadius: '10px',
+        }}>
+            {options.map(opt => (
+                <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => onChange(opt.value)}
+                    style={{
+                        flex: 1, padding: '8px 12px', border: 'none', borderRadius: '8px', cursor: 'pointer',
+                        fontSize: '0.85rem', fontWeight: 500, transition: 'all 0.2s ease',
+                        background: value === opt.value ? lockPrimary : 'transparent',
+                        color: value === opt.value ? 'white' : theme.colors.mutedText,
+                    }}
+                >
+                    {opt.label}
+                </button>
+            ))}
+        </div>
+    );
+
+    const infoCard = (children, tone = 'info') => {
+        const color = tone === 'warn' ? '#f59e0b' : lockPrimary;
+        return (
+            <div style={{
+                padding: '14px 16px', borderRadius: '12px', marginBottom: '1rem', fontSize: '0.9rem',
+                background: `${color}12`, border: `1px solid ${color}40`, color: theme.colors.primaryText, lineHeight: 1.5,
+            }}>
+                {children}
+            </div>
+        );
+    };
+
+    const renderCheckingRow = (text) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: theme.colors.mutedText, marginBottom: '1rem', fontSize: '0.9rem' }}>
+            <FaSpinner style={{ ...styles.spinner, color: lockPrimary }} /> {text}
+        </div>
+    );
+
+    const smallActionButton = (label, onClick, icon) => (
+        <button
+            type="button"
+            onClick={onClick}
+            style={{
+                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                background: 'transparent', color: lockPrimary, border: `1px solid ${lockPrimary}60`,
+                borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
+            }}
+        >
+            {icon} {label}
+        </button>
+    );
+
+    const renderTokenStep = () => {
+        const walletSubset = tokens.map(t => ({ ledger_id: t.ledgerId, symbol: t.symbol, name: t.symbol, decimals: t.decimals, fee: t.fee }));
+        const hasFunds = !!selectedToken && selectedToken.available > 0n;
         return (
             <>
-                <div className="lock-fade-in" style={styles.hero}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px', marginBottom: '0.75rem' }}>
-                        <div style={{
-                            width: '48px',
-                            height: '48px',
-                            borderRadius: '14px',
-                            background: `linear-gradient(135deg, ${lockPrimary}30, ${lockPrimary}10)`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                        }}>
-                            {lockType === 'token' ? <FaCoins size={22} style={{ color: lockPrimary }} /> : <FaWater size={22} style={{ color: lockPrimary }} />}
-                        </div>
-                        <h1 style={{ ...styles.title, margin: 0, justifyContent: 'flex-start' }}>
-                            Select {lockType === 'token' ? 'Token' : 'Position'}
-                        </h1>
-                    </div>
-                    <p style={styles.subtitle}>
-                        Choose the {lockType === 'token' ? 'token' : 'liquidity position'} you want to lock
-                    </p>
+                {renderFilterToggle(tokenFilter, setTokenFilter, [
+                    { value: 'all', label: 'All known tokens' },
+                    { value: 'wallet', label: loadingTokens ? 'Tokens in my wallet…' : `Tokens in my wallet (${tokens.length})` },
+                ])}
+
+                <div style={{ marginBottom: '1rem' }}>
+                    <TokenSelector
+                        value={selectedTokenId}
+                        onChange={handleTokenChosen}
+                        placeholder={tokenFilter === 'wallet' ? 'Select a token from your wallet' : 'Search any token, or add one by ledger id'}
+                        allowCustom={true}
+                        tokenSubset={tokenFilter === 'wallet' ? walletSubset : undefined}
+                    />
                 </div>
 
-                {isLoading ? (
-                    <div style={styles.loadingContainer}>
-                        <FaSpinner size={32} style={{ ...styles.spinner, color: theme.colors.accent }} />
-                        <p style={{ color: theme.colors.mutedText }}>
-                            Loading {lockType === 'token' ? 'tokens' : 'positions'}...
-                        </p>
-                    </div>
-                ) : items.length === 0 ? (
-                    <div style={styles.emptyState}>
-                        <p style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>
-                            No {lockType === 'token' ? 'tokens' : 'positions'} available to lock
-                        </p>
-                        <p style={{ fontSize: '0.9rem' }}>
-                            {lockType === 'token' 
-                                ? 'Add tokens to your wallet first' 
-                                : 'Create liquidity positions first'}
-                        </p>
-                    </div>
-                ) : (
-                    <div style={styles.tokenList}>
-                        {lockType === 'token' ? (
-                            tokens.map((token) => (
-                                <div
-                                    key={token.ledgerId}
-                                    style={styles.tokenItem(selectedToken?.ledgerId === token.ledgerId)}
-                                    onClick={() => setSelectedToken(token)}
-                                >
-                                    <img 
-                                        src={token.logo || '/icp_symbol.svg'} 
-                                        alt={token.symbol}
-                                        style={styles.tokenLogo}
-                                        onError={(e) => { e.target.src = '/icp_symbol.svg'; }}
-                                    />
-                                    <div style={styles.tokenInfo}>
-                                        <div style={styles.tokenSymbol}>{token.symbol}</div>
-                                        <div style={styles.tokenBalance}>
-                                            Available: {formatAmount(token.available, token.decimals)} {token.symbol}
-                                        </div>
-                                    </div>
-                                    {selectedToken?.ledgerId === token.ledgerId && (
-                                        <FaCheck style={{ color: theme.colors.accent }} />
+                {tokenCheckLoading && renderCheckingRow('Checking your balance...')}
+                {tokenCheckError && <div style={styles.errorBox}>{tokenCheckError}</div>}
+
+                {selectedToken && !tokenCheckLoading && (
+                    <>
+                        <div style={{ ...styles.tokenItem(true), cursor: 'default', marginBottom: '1rem' }}>
+                            {selectedToken.logo ? (
+                                <img src={selectedToken.logo} alt={selectedToken.symbol} style={styles.tokenLogo}
+                                    onError={(e) => { e.target.style.visibility = 'hidden'; }} />
+                            ) : (
+                                <div style={{ ...styles.tokenLogo, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `${lockPrimary}30`, color: lockPrimary, fontWeight: 700 }}>
+                                    {selectedToken.symbol.charAt(0)}
+                                </div>
+                            )}
+                            <div style={styles.tokenInfo}>
+                                <div style={styles.tokenSymbol}>{selectedToken.symbol}</div>
+                                <div style={styles.tokenBalance}>
+                                    Available to lock: <strong style={{ color: theme.colors.primaryText }}>{formatAmount(selectedToken.available, selectedToken.decimals)} {selectedToken.symbol}</strong>
+                                    {selectedToken.locked > 0n && (
+                                        <span> · {formatAmount(selectedToken.locked, selectedToken.decimals)} already locked</span>
                                     )}
                                 </div>
-                            ))
+                            </div>
+                            {smallActionButton('Check again', () => handleTokenChosen(selectedToken.ledgerId), <FaSync size={11} />)}
+                        </div>
+
+                        {!hasFunds ? infoCard(
+                            <>
+                                <div style={{ fontWeight: 600, marginBottom: '6px' }}>Your Sneed wallet holds no {selectedToken.symbol} yet</div>
+                                <p style={{ margin: '0 0 10px 0' }}>
+                                    SneedLock can only lock tokens held by the principal you are logged in with on this site.
+                                    Send the {selectedToken.symbol} you want to lock to your Sneed wallet principal:
+                                </p>
+                                {renderWalletPid()}
+                                <p style={{ margin: '10px 0 0 0', color: theme.colors.mutedText, fontSize: '0.85rem' }}>
+                                    Any wallet or exchange that supports ICRC-1 transfers can send to this principal. The tokens
+                                    arrive within seconds. Then press <strong>Check again</strong> and continue.
+                                </p>
+                            </>, 'warn'
                         ) : (
-                            liquidityPositions.map((pos) => (
-                                <div
-                                    key={`${pos.swapCanisterId}-${pos.id}`}
-                                    style={styles.positionItem(selectedPosition?.id === pos.id && selectedPosition?.swapCanisterId === pos.swapCanisterId)}
-                                    onClick={() => setSelectedPosition(pos)}
-                                >
-                                    <div style={styles.positionLogos}>
-                                        <img 
-                                            src={pos.token0Logo || '/icp_symbol.svg'} 
-                                            alt={pos.token0Symbol}
-                                            style={styles.positionLogo(0)}
-                                            onError={(e) => { e.target.src = '/icp_symbol.svg'; }}
-                                        />
-                                        <img 
-                                            src={pos.token1Logo || '/icp_symbol.svg'} 
-                                            alt={pos.token1Symbol}
-                                            style={styles.positionLogo(1)}
-                                            onError={(e) => { e.target.src = '/icp_symbol.svg'; }}
-                                        />
-                                    </div>
-                                    <div style={styles.tokenInfo}>
-                                        <div style={styles.tokenSymbol}>
-                                            {pos.symbols} #{pos.id.toString()}
-                                        </div>
-                                        <div style={styles.tokenBalance}>
-                                            {formatAmount(pos.token0Amount, pos.token0Decimals)} {pos.token0Symbol} / {formatAmount(pos.token1Amount, pos.token1Decimals)} {pos.token1Symbol}
-                                        </div>
-                                    </div>
-                                    {selectedPosition?.id === pos.id && selectedPosition?.swapCanisterId === pos.swapCanisterId && (
-                                        <FaCheck style={{ color: theme.colors.accent }} />
-                                    )}
+                            <div style={{ marginBottom: '1rem', fontSize: '0.85rem', color: theme.colors.mutedText }}>
+                                <div style={{ marginBottom: '6px' }}>
+                                    Want to lock more than this? Send {selectedToken.symbol} to your Sneed wallet principal and press Check again:
                                 </div>
-                            ))
+                                {renderWalletPid(true)}
+                            </div>
                         )}
-                    </div>
+                    </>
                 )}
 
                 <div style={styles.buttonRow}>
-                    <button
-                        style={styles.backButton}
-                        onClick={() => goToStep(1)}
-                    >
+                    <button style={styles.backButton} onClick={() => goToStep(1)}>
                         <FaArrowLeft />
                         Back
                     </button>
                     <button
-                        style={styles.continueButton(!!selectedItem)}
-                        onClick={() => selectedItem && setCurrentStep(3)}
-                        disabled={!selectedItem}
+                        style={styles.continueButton(hasFunds)}
+                        onClick={() => hasFunds && setCurrentStep(3)}
+                        disabled={!hasFunds}
                     >
                         Continue
                         <FaArrowRight />
@@ -1205,6 +1379,207 @@ function LockWizard() {
             </>
         );
     };
+
+    const renderTransferSteps = (pool, compact) => (
+        <ol style={{ margin: compact ? '8px 0 0 0' : '10px 0 0 0', paddingLeft: '1.3rem', display: 'grid', gap: compact ? '4px' : '8px' }}>
+            <li>
+                Open ICPSwap and go to <strong>Liquidity</strong>{' '}
+                <a href="https://app.icpswap.com/liquidity" target="_blank" rel="noopener noreferrer"
+                    style={{ color: lockPrimary, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    app.icpswap.com/liquidity <FaExternalLinkAlt size={10} />
+                </a>
+            </li>
+            <li>Find your <strong>{pool.token0.symbol}/{pool.token1.symbol}</strong> position and open its <strong>Details</strong>.</li>
+            <li>Choose <strong>Transfer position</strong>.</li>
+            <li>
+                <div style={{ marginBottom: '6px' }}>Paste your Sneed wallet principal as the recipient:</div>
+                {renderWalletPid(compact)}
+            </li>
+            <li>Confirm on ICPSwap, come back here and press <strong>Check again</strong>.</li>
+        </ol>
+    );
+
+    const renderPositionStep = () => {
+        const canContinue = !!selectedPosition;
+        const positionsLoaded = Array.isArray(poolPositions);
+        return (
+            <>
+                {renderFilterToggle(pairFilter, (v) => { setPairFilter(v); if (v === 'all') { clearPoolSelection(); setPickerResetKey(k => k + 1); } else { clearPoolSelection(); } }, [
+                    { value: 'all', label: 'Any ICPSwap pool' },
+                    { value: 'wallet', label: loadingPositions ? 'Pools in my wallet…' : `Pools in my wallet (${walletPairs.length})` },
+                ])}
+
+                {pairFilter === 'all' ? (
+                    <SwapPoolPicker onPoolChange={handlePickerChange} resetKey={pickerResetKey} accentColor={lockPrimary} />
+                ) : (
+                    loadingPositions && walletPairs.length === 0 ? (
+                        renderCheckingRow('Loading the pools in your wallet...')
+                    ) : walletPairs.length === 0 ? (
+                        <div style={{ ...styles.emptyState, padding: '2rem', marginBottom: '1rem' }}>
+                            <p style={{ margin: 0 }}>No pools in your wallet yet. Switch to <strong>Any ICPSwap pool</strong> to pick one.</p>
+                        </div>
+                    ) : (
+                        <div style={styles.tokenList}>
+                            {walletPairs.map(({ poolId, pool, positions }) => (
+                                <div
+                                    key={poolId}
+                                    style={styles.positionItem(selectedPoolId === poolId)}
+                                    onClick={() => handlePoolChosen(poolId, pool)}
+                                >
+                                    <div style={styles.positionLogos}>
+                                        {[pool.token0, pool.token1].map((t, i) => t.logo ? (
+                                            <img key={i} src={t.logo} alt={t.symbol} style={styles.positionLogo(i)}
+                                                onError={(e) => { e.target.style.visibility = 'hidden'; }} />
+                                        ) : (
+                                            <div key={i} style={{ ...styles.positionLogo(i), display: 'flex', alignItems: 'center', justifyContent: 'center', background: `${lockPrimary}30`, color: lockPrimary, fontWeight: 700 }}>
+                                                {t.symbol.charAt(0)}
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div style={styles.tokenInfo}>
+                                        <div style={styles.tokenSymbol}>{pool.token0.symbol}/{pool.token1.symbol}</div>
+                                        <div style={styles.tokenBalance}>
+                                            {positions.length === 0 ? 'No positions to lock' : `${positions.length} position${positions.length === 1 ? '' : 's'} available to lock`}
+                                        </div>
+                                    </div>
+                                    {selectedPoolId === poolId && <FaCheck style={{ color: theme.colors.accent }} />}
+                                </div>
+                            ))}
+                        </div>
+                    )
+                )}
+
+                {selectedPool && pairFilter === 'wallet' && (
+                    <div style={{ marginBottom: '1rem' }}>
+                        <SwapPoolSummary pool={selectedPool} accentColor={lockPrimary} compact />
+                    </div>
+                )}
+
+                {selectedPool && poolCheckLoading && renderCheckingRow(`Looking for your ${selectedPool.token0.symbol}/${selectedPool.token1.symbol} positions...`)}
+                {poolCheckError && <div style={styles.errorBox}>{poolCheckError}</div>}
+
+                {selectedPool && positionsLoaded && !poolCheckLoading && poolPositions.length === 0 && infoCard(
+                    <>
+                        <div style={{ fontWeight: 600, marginBottom: '6px' }}>
+                            No {selectedPool.token0.symbol}/{selectedPool.token1.symbol} position in your Sneed wallet yet
+                        </div>
+                        <p style={{ margin: 0 }}>
+                            SneedLock can only lock positions owned by the principal you are logged in with on this site.
+                            A position you created on ICPSwap belongs to your ICPSwap login, so move it over first. It takes a minute:
+                        </p>
+                        {renderTransferSteps(selectedPool, false)}
+                        <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+                            <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>
+                                The position stays yours. Once it is in your Sneed wallet you can lock it here and manage it from the Wallet page.
+                            </span>
+                            {smallActionButton('Check again', () => handlePoolChosen(selectedPoolId, selectedPool), <FaSync size={11} />)}
+                        </div>
+                    </>, 'warn'
+                )}
+
+                {selectedPool && positionsLoaded && !poolCheckLoading && poolPositions.length > 0 && (
+                    <>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
+                            <div style={{ fontWeight: 600, color: theme.colors.primaryText }}>Choose the position to lock</div>
+                            {smallActionButton('Check again', () => handlePoolChosen(selectedPoolId, selectedPool), <FaSync size={11} />)}
+                        </div>
+                        <div style={styles.tokenList}>
+                            {poolPositions.map((pos) => {
+                                const isSel = selectedPosition?.id === pos.id && selectedPosition?.swapCanisterId === pos.swapCanisterId;
+                                return (
+                                    <div
+                                        key={`${pos.swapCanisterId}-${pos.id}`}
+                                        style={styles.positionItem(isSel)}
+                                        onClick={() => setSelectedPosition(pos)}
+                                    >
+                                        <div style={styles.positionLogos}>
+                                            {[pos.token0Logo, pos.token1Logo].map((logo, i) => logo ? (
+                                                <img key={i} src={logo} alt="" style={styles.positionLogo(i)}
+                                                    onError={(e) => { e.target.style.visibility = 'hidden'; }} />
+                                            ) : (
+                                                <div key={i} style={{ ...styles.positionLogo(i), display: 'flex', alignItems: 'center', justifyContent: 'center', background: `${lockPrimary}30`, color: lockPrimary, fontWeight: 700 }}>
+                                                    {(i === 0 ? pos.token0Symbol : pos.token1Symbol).charAt(0)}
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div style={styles.tokenInfo}>
+                                            <div style={styles.tokenSymbol}>
+                                                {pos.symbols} #{pos.id.toString()}
+                                                {!pos.frontendOwnership && (
+                                                    <span style={{ marginLeft: 8, fontSize: '0.75rem', color: theme.colors.mutedText, fontWeight: 400 }}>already in SneedLock</span>
+                                                )}
+                                            </div>
+                                            <div style={styles.tokenBalance}>
+                                                {formatAmount(pos.token0Amount, pos.token0Decimals)} {pos.token0Symbol} / {formatAmount(pos.token1Amount, pos.token1Decimals)} {pos.token1Symbol}
+                                            </div>
+                                        </div>
+                                        {isSel && <FaCheck style={{ color: theme.colors.accent }} />}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <div style={{ marginBottom: '1rem', fontSize: '0.85rem', color: theme.colors.mutedText }}>
+                            <button
+                                type="button"
+                                onClick={() => setShowTransferHelp(v => !v)}
+                                style={{ background: 'none', border: 'none', color: lockPrimary, cursor: 'pointer', padding: 0, fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                            >
+                                {showTransferHelp ? <FaChevronUp size={10} /> : <FaChevronDown size={10} />}
+                                Have another {selectedPool.token0.symbol}/{selectedPool.token1.symbol} position on ICPSwap? How to move it here
+                            </button>
+                            {showTransferHelp && renderTransferSteps(selectedPool, true)}
+                        </div>
+                    </>
+                )}
+
+                <div style={styles.buttonRow}>
+                    <button style={styles.backButton} onClick={() => goToStep(1)}>
+                        <FaArrowLeft />
+                        Back
+                    </button>
+                    <button
+                        style={styles.continueButton(canContinue)}
+                        onClick={() => canContinue && setCurrentStep(3)}
+                        disabled={!canContinue}
+                    >
+                        Continue
+                        <FaArrowRight />
+                    </button>
+                </div>
+            </>
+        );
+    };
+
+    const renderStep2 = () => (
+        <>
+            <div className="lock-fade-in" style={styles.hero}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px', marginBottom: '0.75rem' }}>
+                    <div style={{
+                        width: '48px',
+                        height: '48px',
+                        borderRadius: '14px',
+                        background: `linear-gradient(135deg, ${lockPrimary}30, ${lockPrimary}10)`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                    }}>
+                        {lockType === 'token' ? <FaCoins size={22} style={{ color: lockPrimary }} /> : <FaWater size={22} style={{ color: lockPrimary }} />}
+                    </div>
+                    <h1 style={{ ...styles.title, margin: 0, justifyContent: 'flex-start' }}>
+                        Select {lockType === 'token' ? 'Token' : 'Position'}
+                    </h1>
+                </div>
+                <p style={styles.subtitle}>
+                    {lockType === 'token'
+                        ? 'Pick the token you want to lock. We check that your Sneed wallet holds it.'
+                        : 'Pick the pool, then the liquidity position you want to lock.'}
+                </p>
+            </div>
+
+            {lockType === 'token' ? renderTokenStep() : renderPositionStep()}
+        </>
+    );
 
     // Step 3: Payment
     const renderStep3 = () => {
