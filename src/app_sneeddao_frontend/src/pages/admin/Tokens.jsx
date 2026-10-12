@@ -5,6 +5,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import Header from '../../components/Header';
 import { Principal } from '@dfinity/principal';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
+import { Actor, HttpAgent } from '@dfinity/agent';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { resolveTokenLogo } from '../../utils/TokenUtils';
 import InfoModal from '../../components/InfoModal';
@@ -113,6 +114,36 @@ export default function TokensAdmin() {
     }, [isGlobalAdmin, whitelistedTokens, fetchTokenLogos]);
     
     // Import from ICPSwap's trusted token list (the backend reads it directly)
+    // Daily token list maintenance (backend timer): status and run-now.
+    const [maintenance, setMaintenance] = useState({ status: null, running: false, error: null });
+    const maintenanceActor = useCallback(() => {
+        if (!identity) return null;
+        const agent = new HttpAgent({ identity, host: 'https://icp-api.io' });
+        // Not in the checked-in declarations yet: declare the two methods here.
+        const idl = ({ IDL }) => IDL.Service({
+            get_token_list_status: IDL.Func([], [IDL.Record({
+                tokens: IDL.Nat, interval_seconds: IDL.Nat, timer_scheduled: IDL.Bool, refresh_running: IDL.Bool,
+                last_import: IDL.Int, last_refresh_started: IDL.Int, last_refresh_done: IDL.Int, last_error: IDL.Text,
+            })], ['query']),
+            run_token_list_maintenance_now: IDL.Func([], [], []),
+        });
+        return Actor.createActor(idl, { agent, canisterId: backendCanisterId });
+    }, [identity]);
+    const loadMaintenanceStatus = useCallback(async () => {
+        const a = maintenanceActor(); if (!a) return;
+        try { setMaintenance((m) => ({ ...m, status: await a.get_token_list_status(), error: null })); }
+        catch (e) { setMaintenance((m) => ({ ...m, status: null, error: /has no query method|method not found/i.test(String(e?.message || e)) ? 'The backend build without the daily job is still deployed.' : String(e?.message || e) })); }
+    }, [maintenanceActor]);
+    useEffect(() => { loadMaintenanceStatus(); }, [loadMaintenanceStatus]);
+    const handleRunMaintenanceNow = async () => {
+        const a = maintenanceActor(); if (!a) return;
+        setMaintenance((m) => ({ ...m, running: true, error: null }));
+        try { await a.run_token_list_maintenance_now(); await loadMaintenanceStatus(); await refreshWhitelist(); }
+        catch (e) { setMaintenance((m) => ({ ...m, error: String(e?.message || e) })); }
+        finally { setMaintenance((m) => ({ ...m, running: false })); }
+    };
+    const whenNs = (t) => (t && t > 0n ? new Date(Number(t / 1000000n)).toLocaleString() : 'never');
+
     const handleImportFromSwapRunner = async () => {
         setImporting(true);
         setImportResult(null);
@@ -620,6 +651,27 @@ export default function TokensAdmin() {
                             {error}
                         </div>
                     )}
+
+                    {/* Daily maintenance */}
+                    <div style={styles.section}>
+                        <h2 style={styles.sectionTitle}><FaSync /> Daily token list maintenance</h2>
+                        <p style={{ color: theme.colors.secondaryText, marginBottom: '12px' }}>
+                            The backend imports ICPSwap's token list and refreshes every token's metadata once a day on its own timer. Run it now instead of waiting.
+                        </p>
+                        {maintenance.status ? (
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '12px', lineHeight: 1.6 }}>
+                                <div>Tokens: {Number(maintenance.status.tokens)} · timer {maintenance.status.timer_scheduled ? 'scheduled' : 'NOT scheduled'} · every {Number(maintenance.status.interval_seconds) / 3600} h{maintenance.status.refresh_running ? ' · refresh running now' : ''}</div>
+                                <div>Last import: {whenNs(maintenance.status.last_import)} · last metadata refresh: {whenNs(maintenance.status.last_refresh_done)}</div>
+                                {maintenance.status.last_error && <div style={{ color: '#ef4444' }}>Last error: {maintenance.status.last_error}</div>}
+                            </div>
+                        ) : maintenance.error ? (
+                            <div style={{ color: '#f59e0b', fontSize: '0.85rem', marginBottom: '12px' }}>{maintenance.error}</div>
+                        ) : null}
+                        <button onClick={handleRunMaintenanceNow} style={{ ...styles.button, ...styles.primaryButton }} disabled={maintenance.running || !maintenance.status}>
+                            {maintenance.running ? <><FaSpinner className="spin" /> Running…</> : <><FaSync /> Run daily maintenance now</>}
+                        </button>
+                        <button onClick={loadMaintenanceStatus} style={{ ...styles.button, marginLeft: 8 }} disabled={maintenance.running}>Refresh status</button>
+                    </div>
 
                     {/* Import from ICPSwap token list */}
                     <div style={styles.section}>
