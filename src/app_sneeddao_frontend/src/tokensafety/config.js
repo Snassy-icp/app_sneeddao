@@ -17,6 +17,12 @@ export const DEFAULT_CONFIG = {
     minLiquidityUsd: 1000,     // a pool thinner than this cannot really be traded: warning whatever the market cap
     liquidityGoodPctOfMcap: 5, // depth at or above this share of market cap passes
     deepLiquidityUsd: 50000,   // depth at or above this passes whatever the share
+    daoTopWarnPct: 25,         // one principal's share of SNS voting power: warning above this
+    daoTopFailPct: 50,         // ... failure above this (can pass proposals alone)
+    daoInfluenceFailPct: 50,   // one neuron's own plus following voting power above this: failure
+    daoLowParticipationPct: 10, // average voting power cast on recent proposals below this: warning
+    maxNeuronPages: 300,       // SNS neurons are read 100 at a time; stop after this many pages
+    dormantWarnPct: 40,        // share of supply in accounts funded by one source that never sent anything: warning
     cyclesOrangeT: 2,          // warn below this many T cycles (when observable)
     cyclesRedT: 0.5,           // fail below this many T cycles
     callTimeoutSec: 45,
@@ -37,6 +43,12 @@ export const CONFIG_FIELDS = [
     ['minLiquidityUsd', 'Minimum liquidity (USD)', 'A main pool thinner than this is a warning whatever the market cap'],
     ['liquidityGoodPctOfMcap', 'Good depth (% of market cap)', 'Main pool depth at or above this share of market cap passes'],
     ['deepLiquidityUsd', 'Deep liquidity (USD)', 'Main pool depth at or above this passes whatever the share'],
+    ['daoTopWarnPct', 'DAO: one principal warning (%)', 'Share of SNS voting power held by one principal'],
+    ['daoTopFailPct', 'DAO: one principal failure (%)', 'Above this one principal can pass proposals alone'],
+    ['daoInfluenceFailPct', 'DAO: following influence failure (%)', 'One neuron\'s own plus following voting power'],
+    ['daoLowParticipationPct', 'DAO: low participation (%)', 'Average voting power cast on recent proposals below this'],
+    ['maxNeuronPages', 'Max neuron pages', 'SNS neurons are read 100 at a time'],
+    ['dormantWarnPct', 'Dormant airdrop supply (%)', 'Supply in accounts funded by one source that never sent anything'],
     ['cyclesOrangeT', 'Cycles warning (T)', 'When cycles are observable'],
     ['cyclesRedT', 'Cycles failure (T)', ''],
     ['callTimeoutSec', 'Call timeout (s)', ''],

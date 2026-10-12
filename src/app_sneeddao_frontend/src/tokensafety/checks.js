@@ -11,7 +11,7 @@ import { idlFactory as rootIdl } from 'external/sns_root/sns_root.did.js';
 import { idlFactory as factoryIdl } from 'external/icp_swap_factory/icp_swap_factory.did.js';
 import { idlFactory as poolIdl } from 'external/icp_swap/icp_swap.did.js';
 import { idlFactory as sneedLockIdl } from 'declarations/sneed_lock/sneed_lock.did.js';
-import { actor, getAgent, ledgerIdl, IDL } from '../health/agent.js';
+import { actor, getAgent, ledgerIdl, IDL, hex, accountIdentifierHex } from '../health/agent.js';
 import { verifyTip, createIcrc3Actor } from '../utils/icrc3/client.js';
 import { holdersByOwner } from './scan.js';
 import { scanLedgerOffThread } from './scanClient.js';
@@ -160,6 +160,29 @@ const loaders = {
         const unseen = hidden > revealed ? hidden - revealed : 0n;
         return { hidden, share: pct(hidden, m.supply), revealed, unseen, unseenShare: pct(unseen, m.supply), deficits };
     },
+    snsParams: (sns) => async (ctx) => {
+        const g = await actor(governanceIdl, sns.governance);
+        return ctx.call(g.get_nervous_system_parameters(null), 'nervous system parameters');
+    },
+    /// Every neuron of the SNS, 100 per page, up to maxNeuronPages.
+    neurons: (sns) => async (ctx) => {
+        const g = await actor(governanceIdl, sns.governance);
+        const out = []; let start = []; let truncated = false;
+        for (let page = 0; ; page++) {
+            if (page >= ctx.config.maxNeuronPages) { truncated = true; break; }
+            const r = await ctx.call(g.list_neurons({ of_principal: [], limit: 100, start_page_at: start }), `neurons page ${page}`);
+            out.push(...r.neurons);
+            if (r.neurons.length < 100) break;
+            const last = opt(r.neurons[r.neurons.length - 1].id); if (!last) break;
+            start = [last];
+        }
+        return { neurons: out, truncated };
+    },
+    proposals: (sns) => async (ctx) => {
+        const g = await actor(governanceIdl, sns.governance);
+        const r = await ctx.call(g.list_proposals({ limit: 20, before_proposal: [], exclude_type: [], include_reward_status: [], include_status: [], include_topics: [] }), 'proposals');
+        return r.proposals;
+    },
     /// The DAO's name from its governance metadata.
     snsName: (sns) => async (ctx) => {
         const g = await actor(governanceIdl, sns.governance);
@@ -271,6 +294,70 @@ function positionAmounts(liquidity, tickLower, tickUpper, sqrtPriceX96) {
     if (sp <= sl) return { amount0: L * (su - sl) / (sl * su), amount1: 0, inRange: false };
     if (sp >= su) return { amount0: 0, amount1: L * (su - sl), inRange: false };
     return { amount0: L * (su - sp) / (sp * su), amount1: L * (sp - sl), inRange: true };
+}
+
+// ---- SNS neurons: voting power and control ----
+const SEC = 1000;
+/// Seconds until a neuron's stake can be liquid: its dissolve delay, or the
+/// time left when it is dissolving, plus any vesting still running.
+function neuronLockSeconds(n, nowSec) {
+    const ds = opt(n.dissolve_state);
+    let lock = 0;
+    if (ds && 'DissolveDelaySeconds' in ds) lock = Number(ds.DissolveDelaySeconds);
+    else if (ds && 'WhenDissolvedTimestampSeconds' in ds) lock = Math.max(0, Number(ds.WhenDissolvedTimestampSeconds) - nowSec);
+    const vesting = opt(n.vesting_period_seconds);
+    if (vesting !== undefined) lock = Math.max(lock, Number(n.created_timestamp_seconds) + Number(vesting) - nowSec);
+    return lock;
+}
+/// Voting power as governance computes it: stake times dissolve-delay and age bonuses.
+function neuronVotingPower(n, params, nowSec) {
+    const stake = Number(n.cached_neuron_stake_e8s) + Number(opt(n.staked_maturity_e8s_equivalent) ?? 0n);
+    const ds = opt(n.dissolve_state);
+    const dd = ds && 'DissolveDelaySeconds' in ds ? Number(ds.DissolveDelaySeconds) : ds ? Math.max(0, Number(ds.WhenDissolvedTimestampSeconds) - nowSec) : 0;
+    const maxDd = Number(opt(params.max_dissolve_delay_seconds) ?? 0n); const maxDdBonus = Number(opt(params.max_dissolve_delay_bonus_percentage) ?? 0n);
+    const maxAge = Number(opt(params.max_neuron_age_for_age_bonus) ?? 0n); const maxAgeBonus = Number(opt(params.max_age_bonus_percentage) ?? 0n);
+    const minToVote = Number(opt(params.neuron_minimum_dissolve_delay_to_vote_seconds) ?? 0n);
+    const ddBonus = maxDd > 0 ? Math.min(dd, maxDd) / maxDd * maxDdBonus / 100 : 0;
+    const age = ds && 'DissolveDelaySeconds' in ds ? Math.max(0, nowSec - Number(n.aging_since_timestamp_seconds)) : 0;
+    const ageBonus = maxAge > 0 ? Math.min(age, maxAge) / maxAge * maxAgeBonus / 100 : 0;
+    const vp = stake * (1 + ddBonus) * (1 + ageBonus) * Number(n.voting_power_percentage_multiplier) / 100;
+    return { stake, dd, vp, votable: dd >= minToVote && stake > 0 };
+}
+/// The principal that controls a neuron: one with ManagePrincipals (2), else the first listed.
+function neuronController(n) {
+    const perms = n.permissions.filter((p) => opt(p.principal));
+    const manager = perms.find((p) => p.permission_type.some((t) => Number(t) === 2));
+    return (manager || perms[0]) ? opt((manager || perms[0]).principal).toText() : null;
+}
+const neuronIdHex = (n) => { const id = opt(n.id); return id ? hex(id.id) : null; };
+
+/// Everything the DAO checks need, computed once per run.
+async function daoTable(ctx, sns) {
+    const [params, { neurons, truncated }] = await Promise.all([ctx.load(`params:${sns.root}`, loaders.snsParams(sns)), ctx.load(`neurons:${sns.root}`, loaders.neurons(sns))]);
+    const nowSec = Date.now() / SEC;
+    const rows = neurons.map((n) => ({ id: neuronIdHex(n), principal: neuronController(n), created: Number(n.created_timestamp_seconds), vesting: Number(opt(n.vesting_period_seconds) ?? 0n), lockSec: neuronLockSeconds(n, nowSec), followsCatchAll: (n.followees.find(([f]) => Number(f) === 0)?.[1]?.followees || []).map((f) => hex(f.id)), ...neuronVotingPower(n, params, nowSec) }));
+    const totalVp = rows.reduce((a, r) => a + (r.votable ? r.vp : 0), 0);
+    const totalStake = rows.reduce((a, r) => a + r.stake, 0);
+    const byPrincipal = new Map();
+    for (const r of rows) { if (!r.votable) continue; const k = r.principal || 'unknown'; byPrincipal.set(k, (byPrincipal.get(k) || 0) + r.vp); }
+    const principals = [...byPrincipal.entries()].sort((a, b) => b[1] - a[1]);
+    // influence: a neuron's own power plus every votable neuron that follows it on the catch-all topic
+    const influence = new Map(rows.filter((r) => r.votable && r.id).map((r) => [r.id, r.vp]));
+    for (const r of rows) if (r.votable) for (const f of r.followsCatchAll) if (influence.has(f) && f !== r.id) influence.set(f, influence.get(f) + r.vp);
+    const topInfluence = [...influence.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id, v]) => ({ id, vp: v, principal: rows.find((r) => r.id === id)?.principal }));
+    const earliest = rows.length ? Math.min(...rows.map((r) => r.created)) : null;
+    const genesis = rows.filter((r) => earliest !== null && r.created - earliest < 86400 && r.vesting > 0);
+    return { params, rows, truncated, totalVp, totalStake, principals, topInfluence, earliest, genesis, nowSec };
+}
+
+/// Which SNS stands behind this token: its own, or the one whose root controls the ledger.
+async function snsBehind(ledgerId, ctx) {
+    const snsw = await ctx.load('snsw', loaders.snsw);
+    const own = snsw.byLedger.get(ledgerId);
+    if (own) return { sns: own, how: 'its own token' };
+    const st = await ctx.load(`status:${ledgerId}`, loaders.status(ledgerId));
+    if (st.controllers.length === 1 && snsw.byRoot.has(st.controllers[0])) return { sns: snsw.byRoot.get(st.controllers[0]), how: 'controls the ledger' };
+    return null;
 }
 
 // ---- the tree ----
@@ -462,6 +549,65 @@ export function buildTokenTree(ledgerId, config) {
                 top_holders: free.slice(0, 20).map(show),
             };
             const sumTop = (n) => free.slice(0, n).reduce((a, h) => a + h.balance, 0n);
+
+            // ---- distribution by origin: where each balance came from ----
+            // A satellite received everything from one sender and never sent anything;
+            // it is folded into its funder. Pools, locks and treasuries are never funders here.
+            const originLeaves = () => {
+                const stats = scan.accounts || new Map();
+                const genesisOwners = new Set((u?.deficits || []).map((d) => d.owner));
+                const poolOwners = new Set([...tags.entries()].filter(([, l]) => l.startsWith('ICPSwap pool')).map(([o]) => o));
+                const ownerOf = (key) => scan.owners.get(key) || (stats.get(key)?.owner) || key;
+                const folded = new Map(); // owner -> balance after folding satellites
+                const satellites = new Map(); // funder owner -> { count, balance }
+                let dormantOneSource = 0n; let bought = 0n; let mintedDirect = 0n; let fromGenesis = 0n; let fromOthers = 0n; let neverMoved = 0n;
+                for (const [key, bal] of scan.balances) {
+                    const owner = ownerOf(key);
+                    if (tags.has(owner)) continue;
+                    const st = stats.get(key);
+                    const funder = st?.firstFrom && st.firstFrom !== 'mint' ? ownerOf(st.firstFrom) : null;
+                    const viaPool = st ? [...st.senders].some((o) => poolOwners.has(o)) : false;
+                    if (st && st.outCount === 0) neverMoved += bal;
+                    if (viaPool) bought += bal; else if (st?.firstFrom === 'mint') mintedDirect += bal; else if (funder && genesisOwners.has(funder)) fromGenesis += bal; else fromOthers += bal;
+                    const isSatellite = st && st.senders.size === 1 && st.outCount === 0 && funder && !tags.has(funder) && funder !== owner;
+                    if (isSatellite) {
+                        dormantOneSource += bal;
+                        folded.set(funder, (folded.get(funder) || 0n) + bal);
+                        const sat = satellites.get(funder) || { count: 0, balance: 0n }; sat.count += 1; sat.balance += bal; satellites.set(funder, sat);
+                    } else folded.set(owner, (folded.get(owner) || 0n) + bal);
+                }
+                const foldedTop = [...folded.entries()].sort((a, b) => (a[1] < b[1] ? 1 : -1));
+                const fanout = [...satellites.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 10);
+                const odetails = {
+                    method: 'A satellite account received its whole balance from one sender and never sent anything; it is counted as its funder\'s. Pools, locks and treasuries are excluded as funders.',
+                    satellites: [...satellites.values()].reduce((a, v) => a + v.count, 0), supply_in_satellites: `${fmtUnits(dormantOneSource, m.decimals, 0)} (${pct(dormantOneSource, m.supply).toFixed(2)}%)`,
+                    largest_funders: fanout.map(([f, v]) => `${f}: funded ${v.count} dormant account(s) holding ${fmtUnits(v.balance, m.decimals, 0)} (${pct(v.balance, m.supply).toFixed(2)}%)`),
+                    top_after_folding: foldedTop.slice(0, 10).map(([o, b]) => `${o}: ${fmtUnits(b, m.decimals, 0)} (${pct(b, m.supply).toFixed(2)}%)${satellites.has(o) ? ` incl. ${satellites.get(o).count} satellite(s)` : ''}`),
+                    by_origin: { bought_from_a_pool: `${pct(bought, m.supply).toFixed(2)}%`, minted_directly: `${pct(mintedDirect, m.supply).toFixed(2)}%`, received_from_a_genesis_account: `${pct(fromGenesis, m.supply).toFixed(2)}%`, received_from_other_holders: `${pct(fromOthers, m.supply).toFixed(2)}%` },
+                    never_sent_anything: `${pct(neverMoved, m.supply).toFixed(2)}%`,
+                };
+                if (stats.size === 0) return [];
+                const top1Folded = foldedTop.length ? pct(foldedTop[0][1], m.supply) : 0;
+                const top10Folded = pct(foldedTop.slice(0, 10).reduce((a, [, b]) => a + b, 0n), m.supply);
+                const rawTop1 = free.length ? pct(free[0].balance, m.supply) : 0;
+                return [
+                    {
+                        id: 'dist:folded', name: 'Largest holder after folding satellites', run: async () => {
+                            const worst = Math.max(top1Folded, unseenShare);
+                            const sgrade = worst >= c.topHolderFailPct ? 'fail' : worst >= c.topHolderWarnPct ? 'warn' : 'pass';
+                            const grew = top1Folded - rawTop1;
+                            return { status: sgrade, summary: `${top1Folded.toFixed(2)}% held by ${foldedTop[0]?.[0] || 'nobody'}${grew > 0.5 ? ` (up from ${rawTop1.toFixed(2)}% once its ${satellites.get(foldedTop[0][0])?.count || 0} satellite accounts are counted)` : ''}; ten largest ${top10Folded.toFixed(2)}%`, details: odetails };
+                        },
+                    },
+                    {
+                        id: 'dist:origin', name: 'Where balances came from', run: async () => {
+                            const dormantShare = pct(dormantOneSource, m.supply);
+                            const sgrade = dormantShare >= c.dormantWarnPct ? 'warn' : 'pass';
+                            return { status: sgrade, summary: `${pct(bought, m.supply).toFixed(1)}% bought from a pool, ${pct(mintedDirect, m.supply).toFixed(1)}% minted directly, ${pct(fromGenesis, m.supply).toFixed(1)}% from genesis accounts, ${pct(fromOthers, m.supply).toFixed(1)}% from other holders; ${dormantShare.toFixed(1)}% sits in single-source accounts that never moved`, details: odetails };
+                        },
+                    },
+                ];
+            };
             return [
                 {
                     id: 'dist:recon', name: 'Holders rebuilt from the log', run: async () => {
@@ -495,6 +641,7 @@ export function buildTokenTree(ledgerId, config) {
                     },
                 },
                 { id: 'dist:count', name: 'Number of holders', run: async () => (free.length < c.minHolders ? warn : pass)(`${free.length.toLocaleString('en-US')} owners with a balance`, details) },
+                ...originLeaves(),
             ];
         },
     };
@@ -503,29 +650,55 @@ export function buildTokenTree(ledgerId, config) {
         id: 'locks', name: 'Locks (Sneed Lock)',
         children: [
             {
-                id: 'locks:share', name: 'Supply locked', link: '/sneedlock', run: async (ctx) => {
-                    const [m, locks] = await Promise.all([meta(ctx), ctx.load('locks', loaders.locks(ledgerId))]);
+                id: 'locks:share', name: 'Supply locked', link: '/sneedlock', timeoutMs: SCAN_TIMEOUT_MS, run: async (ctx) => {
+                    // Sneed Lock locks and SNS neuron stake count alike: both are tokens that cannot move for a known time.
+                    const [m, locks, snsRel] = await Promise.all([meta(ctx), ctx.load('locks', loaders.locks(ledgerId)), snsBehind(ledgerId, ctx)]);
                     const now = Date.now();
-                    const long = locks.filter((l) => l.expiryMs - now >= c.minLockDays * 86400e3);
+                    const minSec = c.minLockDays * 86400;
+                    const long = locks.filter((l) => l.expiryMs - now >= minSec * 1000);
                     const total = locks.reduce((a, l) => a + l.amount, 0n);
                     const longSum = long.reduce((a, l) => a + l.amount, 0n);
+                    let neuronTotal = 0n; let neuronLong = 0n; let neuronCount = 0; let neuronNote = null;
+                    if (snsRel && snsRel.how === 'its own token') {
+                        const t = await daoTable(ctx, snsRel.sns);
+                        for (const r of t.rows) { const st = BigInt(Math.round(r.stake)); neuronTotal += st; neuronCount += 1; if (r.lockSec >= minSec) neuronLong += st; }
+                        neuronNote = `${neuronCount} SNS neurons${t.truncated ? ' (first pages only)' : ''}`;
+                    }
                     const weighted = locks.reduce((a, l) => a + Number(l.amount) * Math.min(1, (l.expiryMs - now) / (365 * 86400e3)), 0);
-                    const details = { active_locks: locks.length, locked: fmtUnits(total, m.decimals, 0), locked_at_least_min_days: fmtUnits(longSum, m.decimals, 0), year_weighted_locked: fmtUnits(BigInt(Math.round(weighted)), m.decimals, 0), largest: locks.sort((x, y) => (x.amount < y.amount ? 1 : -1)).slice(0, 10).map((l) => `#${l.lockId} ${l.owner}: ${fmtUnits(l.amount, m.decimals, 0)} until ${new Date(l.expiryMs).toISOString().slice(0, 10)}`) };
-                    if (locks.length === 0) return warn('Nothing locked in Sneed Lock', details);
-                    const share = pct(longSum, m.supply);
-                    return (share >= c.lockedSupplyGoodPct ? pass : warn)(`${share.toFixed(2)}% of supply locked for at least ${c.minLockDays} days (${pct(total, m.supply).toFixed(2)}% in total, ${locks.length} locks)`, details);
+                    const details = {
+                        sneed_lock: { active_locks: locks.length, locked: fmtUnits(total, m.decimals, 0), locked_at_least_min_days: fmtUnits(longSum, m.decimals, 0), year_weighted: fmtUnits(BigInt(Math.round(weighted)), m.decimals, 0), largest: [...locks].sort((x, y) => (x.amount < y.amount ? 1 : -1)).slice(0, 10).map((l) => `#${l.lockId} ${l.owner}: ${fmtUnits(l.amount, m.decimals, 0)} until ${new Date(l.expiryMs).toISOString().slice(0, 10)}`) },
+                        sns_neurons: neuronNote ? { neurons: neuronNote, staked: fmtUnits(neuronTotal, m.decimals, 0), staked_at_least_min_days: fmtUnits(neuronLong, m.decimals, 0) } : 'not an SNS token',
+                    };
+                    const combinedLong = longSum + neuronLong;
+                    if (locks.length === 0 && neuronTotal === 0n) return warn('Nothing locked in Sneed Lock and no SNS neurons', details);
+                    const share = pct(combinedLong, m.supply);
+                    const parts = [];
+                    if (longSum > 0n) parts.push(`${pct(longSum, m.supply).toFixed(2)}% in Sneed Lock`);
+                    if (neuronLong > 0n) parts.push(`${pct(neuronLong, m.supply).toFixed(2)}% staked in SNS neurons`);
+                    return (share >= c.lockedSupplyGoodPct ? pass : warn)(`${share.toFixed(2)}% of supply locked for at least ${c.minLockDays} days (${parts.join(', ')})`, details);
                 },
             },
             {
-                id: 'locks:cliffs', name: 'Unlock cliffs ahead', run: async (ctx) => {
-                    const [m, locks] = await Promise.all([meta(ctx), ctx.load('locks', loaders.locks(ledgerId))]);
+                id: 'locks:cliffs', name: 'Unlock cliffs ahead', timeoutMs: SCAN_TIMEOUT_MS, run: async (ctx) => {
+                    const [m, locks, snsRel] = await Promise.all([meta(ctx), ctx.load('locks', loaders.locks(ledgerId)), snsBehind(ledgerId, ctx)]);
                     const now = Date.now();
-                    const soon = locks.filter((l) => l.expiryMs - now <= c.cliffWindowDays * 86400e3);
-                    const sum = soon.reduce((a, l) => a + l.amount, 0n);
+                    const windowSec = c.cliffWindowDays * 86400;
+                    const soon = locks.filter((l) => l.expiryMs - now <= windowSec * 1000);
+                    let sum = soon.reduce((a, l) => a + l.amount, 0n);
+                    const details = { window_days: c.cliffWindowDays, sneed_lock_unlocking: soon.map((l) => `#${l.lockId} ${l.owner}: ${fmtUnits(l.amount, m.decimals, 0)} on ${new Date(l.expiryMs).toISOString().slice(0, 10)}`) };
+                    let dissolving = 0;
+                    if (snsRel && snsRel.how === 'its own token') {
+                        const t = await daoTable(ctx, snsRel.sns);
+                        // neurons already dissolving (or vesting) that become liquid inside the window
+                        const ds = t.rows.filter((r) => r.lockSec <= windowSec && r.stake > 0 && (r.lockSec > 0 || r.dd === 0));
+                        const dissolvingStake = ds.filter((r) => r.lockSec > 0).reduce((a, r) => a + BigInt(Math.round(r.stake)), 0n);
+                        dissolving = ds.filter((r) => r.lockSec > 0).length;
+                        sum += dissolvingStake;
+                        details.sns_neurons_dissolving_in_window = { neurons: dissolving, stake: fmtUnits(dissolvingStake, m.decimals, 0) };
+                    }
                     const share = pct(sum, m.supply);
-                    const details = { window_days: c.cliffWindowDays, unlocking: soon.map((l) => `#${l.lockId} ${l.owner}: ${fmtUnits(l.amount, m.decimals, 0)} on ${new Date(l.expiryMs).toISOString().slice(0, 10)}`) };
-                    if (soon.length === 0) return pass(`No unlocks in the next ${c.cliffWindowDays} days`, details);
-                    return (share >= c.cliffWarnPct ? warn : pass)(`${share.toFixed(2)}% of supply unlocks within ${c.cliffWindowDays} days (${soon.length} lock(s))`, details);
+                    if (soon.length === 0 && dissolving === 0) return pass(`No unlocks in the next ${c.cliffWindowDays} days`, details);
+                    return (share >= c.cliffWarnPct ? warn : pass)(`${share.toFixed(2)}% of supply unlocks within ${c.cliffWindowDays} days (${soon.length} lock(s)${dissolving ? `, ${dissolving} dissolving neuron(s)` : ''})`, details);
                 },
             },
         ],
@@ -573,30 +746,62 @@ export function buildTokenTree(ledgerId, config) {
                     },
                 },
                 {
-                    id: 'lp:locked', name: 'Liquidity locked', link: '/sneedlock', run: async (ctx2) => {
-                        const plocks = await ctx2.load('positionLocks', loaders.positionLocks(ledgerId));
-                        const inMain = plocks.filter((l) => l.pool === main.id);
+                    id: 'lp:control', name: 'Liquidity under safe control', link: '/sneedlock', run: async (ctx2) => {
+                        // Every position in the main pool is classified by who can withdraw it:
+                        // Sneed Lock with time left, a DAO (SNS governance/root or a canister only
+                        // an SNS root controls), nobody (burned), or immutable code known not to
+                        // move positions. Everything else can be pulled by its owner.
                         if (main.error) return skip('Main pool metadata unavailable');
                         const pool = await actor(poolIdl, main.id);
+                        const page = await ctx2.call(pool.getUserPositionWithTokenAmount(0n, 500n), 'pool positions');
+                        if (!('ok' in page)) return fail('Could not list the pool\'s positions', details);
+                        const all = page.ok.content.map((p) => ({ id: BigInt(p.id), liquidity: BigInt(p.liquidity), tickLower: Number(p.tickLower), tickUpper: Number(p.tickUpper), ...positionAmounts(p.liquidity, Number(p.tickLower), Number(p.tickUpper), main.sqrtPriceX96) }));
+                        const live = all.filter((p) => p.liquidity > 0n).sort((a, b) => (a.liquidity < b.liquidity ? 1 : -1));
+                        const inspect = live.slice(0, 60);
+                        const [plocks, snsw, ownersHex] = await Promise.all([
+                            ctx2.load('positionLocks', loaders.positionLocks(ledgerId)), ctx2.load('snsw', loaders.snsw),
+                            Promise.all(inspect.map(async (p) => { const r = await quiet(ctx2.call(pool.getUserByPositionId(p.id), `owner of position ${p.id}`), null); return r && 'ok' in r ? r.ok : null; })),
+                        ]);
+                        // candidates whose ICP account identifier we can compute
+                        const cand = new Map();
+                        const addCand = (principal, label, cls) => { try { cand.set(accountIdentifierHex(principal, null), { principal, label, cls }); } catch { /* not a principal */ } };
+                        addCand(IDS.sneedLock, 'Sneed Lock', 'sneedlock');
+                        addCand('2vxsx-fae', 'the anonymous principal (nobody can act as it)', 'burned');
+                        addCand(main.id, 'the pool itself', 'burned');
+                        for (const [id, name] of Object.entries(BLACKHOLES)) addCand(id, `the ${name} canister (immutable, cannot move positions)`, 'immutable');
+                        for (const sns of snsw.snses) { const nm = sns.root === IDS.sneedRoot ? 'Sneed DAO' : `the SNS with root ${sns.root}`; if (sns.governance) addCand(sns.governance, `governance of ${nm}`, 'dao'); if (sns.root) addCand(sns.root, `root of ${nm}`, 'dao'); }
+                        addCand('ok64y-uiaaa-aaaag-qdcbq-cai', 'the Sneed DeFi canister (controlled only by Sneed root)', 'dao');
                         const now = Date.now();
-                        const positions = await Promise.all(inMain.map(async (l) => {
-                            const r = await quiet(ctx2.call(pool.getUserPosition(l.positionId), `position ${l.positionId}`), null);
-                            if (!r || !('ok' in r)) return { ...l, error: 'position not found' };
-                            const p = r.ok;
-                            const amounts = positionAmounts(p.liquidity, Number(p.tickLower), Number(p.tickUpper), main.sqrtPriceX96);
-                            return { ...l, liquidity: BigInt(p.liquidity), tickLower: Number(p.tickLower), tickUpper: Number(p.tickUpper), ...amounts, daysLeft: days(l.expiryMs - now) };
-                        }));
-                        const active = positions.filter((p) => !p.error && p.inRange && p.daysLeft >= c.minLockDays);
-                        const lockedL = active.reduce((a, p) => a + p.liquidity, 0n);
-                        const share = main.liquidity > 0n ? Number((lockedL * 10000n) / main.liquidity) / 100 : 0;
-                        const details2 = { ...details, pool_active_liquidity: main.liquidity.toString(), current_tick: main.tick, locked_positions: positions.map((p) => p.error ? `#${p.lockId} position ${p.positionId}: ${p.error}` : `#${p.lockId} position ${p.positionId} by ${p.owner}: ${p.inRange ? 'in range' : 'OUT of range'} [${p.tickLower}, ${p.tickUpper}], ${p.daysLeft} days left, about ${fmtUnits(BigInt(Math.round(p.amount0)), main.token0 === ledgerId ? m.decimals : 8, 0)} / ${fmtUnits(BigInt(Math.round(p.amount1)), main.token1 === ledgerId ? m.decimals : 8, 0)}`) };
-                        if (inMain.length === 0) {
-                            const deep = main.tvlUsd !== null && main.tvlUsd >= c.minLiquidityUsd;
-                            const why = plocks.length ? `Locked positions exist only in other pools (${plocks.length})` : 'No liquidity position of this token is locked in Sneed Lock';
-                            return (deep ? warn : fail)(`${why} (Sneed Lock holds no position in pool ${main.id})${deep ? '; the pool is deep today but all of it can be withdrawn' : ''}`, details2);
-                        }
-                        const s = share >= c.liquidityLockedGoodPct ? 'pass' : 'warn';
-                        return { status: s, summary: `${share.toFixed(1)}% of the main pool's active liquidity is locked in range for at least ${c.minLockDays} days (${active.length} of ${inMain.length} locked positions count)`, details: details2, link: '/sneedlock' };
+                        const classified = inspect.map((p, i) => {
+                            const hx = ownersHex[i];
+                            const k = hx ? cand.get(hx) : null;
+                            let cls = 'other'; let who = hx ? `account ${hx.slice(0, 10)}… (a user or a canister we cannot name)` : 'unknown';
+                            if (k) { cls = k.cls; who = k.label; }
+                            if (k?.cls === 'sneedlock') {
+                                const lock = plocks.find((l) => l.pool === main.id && l.positionId === p.id);
+                                if (!lock) { cls = 'other'; who = 'Sneed Lock, but no active lock on this position'; }
+                                else if (lock.expiryMs - now < c.minLockDays * 86400e3) { cls = 'other'; who = `Sneed Lock, lock #${lock.lockId} ends in ${days(lock.expiryMs - now)} days (under ${c.minLockDays})`; }
+                                else who = `Sneed Lock, lock #${lock.lockId} for ${days(lock.expiryMs - now)} more days`;
+                            }
+                            return { ...p, cls, who };
+                        });
+                        const safeCls = new Set(['sneedlock', 'dao', 'burned', 'immutable']);
+                        const activeL = classified.filter((p) => p.inRange).reduce((a, p) => a + p.liquidity, 0n);
+                        const safeL = classified.filter((p) => p.inRange && safeCls.has(p.cls)).reduce((a, p) => a + p.liquidity, 0n);
+                        const share = main.liquidity > 0n ? Number((safeL * 10000n) / main.liquidity) / 100 : 0;
+                        const byCls = {};
+                        for (const p of classified) if (p.inRange) byCls[p.cls] = (byCls[p.cls] || 0n) + p.liquidity;
+                        const details2 = {
+                            ...details, pool_active_liquidity: main.liquidity.toString(), positions_with_liquidity: live.length, inspected: inspect.length, current_tick: main.tick,
+                            in_range_liquidity_by_control: Object.fromEntries(Object.entries(byCls).map(([k, v]) => [k, main.liquidity > 0n ? `${(Number((v * 10000n) / main.liquidity) / 100).toFixed(1)}%` : '0%'])),
+                            positions: classified.map((p) => `#${p.id}: ${p.inRange ? 'in range' : 'OUT of range'} [${p.tickLower}, ${p.tickUpper}], ${main.liquidity > 0n ? (Number((p.liquidity * 10000n) / main.liquidity) / 100).toFixed(1) : '0'}% of active liquidity, held by ${p.who}`),
+                            note: 'Burned means no one can ever act as the owner. Immutable means code with no controllers that is known not to move positions. A canister with no controllers but unknown code is not safe: it may expose a method that transfers the position.',
+                        };
+                        if (live.length === 0) return fail('The pool has no positions with liquidity', details2);
+                        if (activeL === 0n) return warn('No position is in range at the current price', details2);
+                        const s = share >= c.liquidityLockedGoodPct ? 'pass' : safeL > 0n ? 'warn' : (main.tvlUsd !== null && main.tvlUsd >= c.minLiquidityUsd ? 'warn' : 'fail');
+                        const parts = Object.entries(byCls).filter(([k]) => safeCls.has(k)).map(([k, v]) => `${(Number((v * 10000n) / (main.liquidity || 1n)) / 100).toFixed(1)}% ${k === 'sneedlock' ? 'in Sneed Lock' : k === 'dao' ? 'DAO-owned' : k}`);
+                        return { status: s, summary: `${share.toFixed(1)}% of the main pool's active liquidity cannot be pulled by a private owner${parts.length ? ` (${parts.join(', ')})` : ''}; ${(100 - share).toFixed(1)}% can be withdrawn`, details: details2, link: '/sneedlock' };
                     },
                 },
             ];
@@ -631,7 +836,85 @@ export function buildTokenTree(ledgerId, config) {
         },
     };
 
-    return { id: 'token', name: `Token ${ledgerId}`, children: [gates, minting, supply, distribution, locksGroup, liquidity, cycles] };
+    const dao = {
+        id: 'dao', name: 'The DAO behind it (SNS governance)',
+        children: async (ctx) => {
+            const rel = await snsBehind(ledgerId, ctx);
+            if (!rel) return [{ id: 'dao:none', name: 'SNS governance', run: async () => skip('No SNS stands behind this ledger (not an SNS token, and no SNS root controls it)') }];
+            const label = await daoLabel(rel.sns, ctx);
+            const link = `https://dashboard.internetcomputer.org/sns/${rel.sns.root}`;
+            const T = (ctx2) => daoTable(ctx2, rel.sns);
+            const sharePct = (v, t) => (t > 0 ? (v / t) * 100 : 0);
+            const vpText = (v) => (v / 1e8).toLocaleString('en-US', { maximumFractionDigits: 0 });
+            return [
+                {
+                    id: 'dao:info', name: 'DAO', link, run: async (ctx2) => {
+                        const t = await T(ctx2);
+                        const principals = t.principals.length;
+                        const age = t.earliest ? days(Date.now() - t.earliest * SEC) : null;
+                        const details = { dao: label, relation: rel.how, neurons: t.rows.length, truncated: t.truncated, principals_with_voting_power: principals, total_voting_power: vpText(t.totalVp), total_stake: vpText(t.totalStake), oldest_neuron_days: age, min_dissolve_delay_to_vote_days: Number(opt(t.params.neuron_minimum_dissolve_delay_to_vote_seconds) ?? 0n) / 86400 };
+                        return pass(`${label}, ${rel.how}: ${t.rows.length.toLocaleString('en-US')} neurons, ${principals.toLocaleString('en-US')} voting principals, ${age !== null ? `${age} days old` : 'age unknown'}${t.truncated ? ' (first neuron pages only)' : ''}`, details);
+                    },
+                },
+                {
+                    id: 'dao:top', name: 'Largest voting principal', link, run: async (ctx2) => {
+                        const t = await T(ctx2);
+                        if (t.totalVp === 0) return fail('No votable voting power', { dao: label });
+                        const [p, v] = t.principals[0];
+                        const share = sharePct(v, t.totalVp);
+                        const ten = sharePct(t.principals.slice(0, 10).reduce((a, [, x]) => a + x, 0), t.totalVp);
+                        const details = { dao: label, largest: t.principals.slice(0, 10).map(([pp, vv]) => `${pp}: ${sharePct(vv, t.totalVp).toFixed(2)}% (${vpText(vv)})`), ten_largest_pct: ten.toFixed(2) };
+                        const sgrade = share >= c.daoTopFailPct ? 'fail' : share >= c.daoTopWarnPct ? 'warn' : 'pass';
+                        return { status: sgrade, summary: `${share.toFixed(2)}% of voting power controlled by ${p}${share >= 50 ? ': it can pass any proposal alone' : ''}; ten largest ${ten.toFixed(2)}%`, details, link };
+                    },
+                },
+                {
+                    id: 'dao:following', name: 'Influence after following', link, run: async (ctx2) => {
+                        const t = await T(ctx2);
+                        if (t.totalVp === 0) return skip('No votable voting power');
+                        const top = t.topInfluence[0];
+                        const share = top ? sharePct(top.vp, t.totalVp) : 0;
+                        const details = { dao: label, note: 'A neuron\'s own voting power plus every neuron that follows it on the catch-all topic (one level).', most_influential: t.topInfluence.map((x) => `neuron ${x.id.slice(0, 12)}… (${x.principal || 'unknown principal'}): ${sharePct(x.vp, t.totalVp).toFixed(2)}%`) };
+                        const sgrade = share >= c.daoInfluenceFailPct ? 'fail' : share >= c.daoTopWarnPct ? 'warn' : 'pass';
+                        return { status: sgrade, summary: top ? `${share.toFixed(2)}% of voting power follows or is neuron ${top.id.slice(0, 12)}… (${top.principal || 'unknown principal'})` : 'No following', details, link };
+                    },
+                },
+                {
+                    id: 'dao:votable', name: 'Stake that can vote', link, run: async (ctx2) => {
+                        const t = await T(ctx2);
+                        const votable = t.rows.filter((r) => r.votable).reduce((a, r) => a + r.stake, 0);
+                        const share = sharePct(votable, t.totalStake);
+                        return (share < 50 ? warn : pass)(`${share.toFixed(1)}% of staked tokens sit in neurons with enough dissolve delay to vote`, { dao: label, votable_stake: vpText(votable), total_stake: vpText(t.totalStake) });
+                    },
+                },
+                {
+                    id: 'dao:genesis', name: 'Genesis (developer) neurons', link, run: async (ctx2) => {
+                        const t = await T(ctx2);
+                        const g = t.genesis;
+                        const gStake = g.reduce((a, r) => a + r.stake, 0);
+                        const share = sharePct(gStake, t.totalStake);
+                        const latestVest = g.length ? Math.max(...g.map((r) => r.created + r.vesting)) : null;
+                        const details = { dao: label, genesis_neurons_with_vesting: g.length, stake: vpText(gStake), share_of_stake_pct: share.toFixed(2), vesting_ends_latest: latestVest ? new Date(latestVest * SEC).toISOString().slice(0, 10) : null, by_principal: Object.entries(g.reduce((acc, r) => { acc[r.principal || 'unknown'] = (acc[r.principal || 'unknown'] || 0) + r.stake; return acc; }, {})).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([pp, v]) => `${pp}: ${vpText(v)}`) };
+                        if (g.length === 0) return pass('No vesting genesis neurons', details);
+                        return (share >= c.topHolderWarnPct ? warn : pass)(`${g.length} genesis neuron(s) with vesting hold ${share.toFixed(1)}% of stake, vesting until ${details.vesting_ends_latest}`, details);
+                    },
+                },
+                {
+                    id: 'dao:participation', name: 'Participation in recent proposals', link, run: async (ctx2) => {
+                        const [t, props] = await Promise.all([T(ctx2), ctx2.load(`proposals:${rel.sns.root}`, loaders.proposals(rel.sns))]);
+                        if (props.length === 0) return warn('No proposals yet', { dao: label });
+                        const rates = props.map((pr) => { const tally = opt(pr.latest_tally); if (!tally || Number(tally.total) === 0) return null; return (Number(tally.yes) + Number(tally.no)) / Number(tally.total) * 100; }).filter((x) => x !== null);
+                        const avg = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : 0;
+                        const recent = props.filter((pr) => Date.now() - Number(pr.proposal_creation_timestamp_seconds) * SEC < 30 * 86400e3).length;
+                        const details = { dao: label, proposals_sampled: props.length, proposals_last_30_days: recent, cast_vs_total_pct_per_proposal: rates.map((r) => r.toFixed(1)) };
+                        return (avg < c.daoLowParticipationPct ? warn : pass)(`On average ${avg.toFixed(1)}% of voting power was cast on the last ${rates.length} proposals; ${recent} proposal(s) in the last 30 days`, details);
+                    },
+                },
+            ];
+        },
+    };
+
+    return { id: 'token', name: `Token ${ledgerId}`, children: [gates, dao, minting, supply, distribution, locksGroup, liquidity, cycles] };
 }
 
 /// Headline rating from the tree's statuses: gates cap everything.
@@ -643,6 +926,7 @@ export function rateTree(tree, statusOf) {
     if (gateParts.controllers === 'fail' || gateParts.code === 'fail') {
         return { label: 'Unverifiable', color: '#ef4444', note: gateParts.code === 'fail' && gateParts.controllers === 'fail' ? 'unknown code that unknown principals can replace' : gateParts.code === 'fail' ? 'the code is not a known build' : 'someone other than a DAO or blackhole controls the code' };
     }
+    if (by.dao === 'fail') return { label: 'Captured DAO', color: '#ef4444', note: 'one party controls the DAO that controls the code' };
     const dims = ['minting', 'distribution', 'locks', 'liquidity', 'cycles'].map((k) => by[k]);
     const fails = dims.filter((s) => s === 'fail').length;
     const warns = dims.filter((s) => s === 'warn').length;

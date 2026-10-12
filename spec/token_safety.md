@@ -57,16 +57,43 @@ The archive chain is verified through the ICRC-3 tip certificate.
   limit. Minting account owner: a principal that cannot act (the ledger itself,
   anonymous, a blackholed canister) is best; DAO governance is good; a user principal
   fails. Show mints after launch from the block log, and the fee collector if set.
-- **Distribution.** Holders reconstructed from the ICRC-3 log (index-ng has no
-  top-holders endpoint). Tag known accounts before measuring concentration: minting
-  account, treasuries, DEX pools, the lock canister. Sybil wallets make this a weak
-  signal; weight it lightly. Long term: a scanner canister following registered ledgers.
-- **Whale locks.** Share of circulating supply locked in `sneed_lock`, weighted by
-  remaining duration, plus the unlock timeline. A lock expiring next week is sell
-  pressure, not safety.
-- **Liquidity.** ICPSwap positions locked in `sneed_lock`: depth relative to market
-  cap, share of the pool that is locked, lock duration, and whether the position's
-  range covers the current price (an out-of-range position provides nothing).
+- **Distribution.** Holders reconstructed from the block log: the ledger suite's
+  `get_blocks` (2000 a request), ICRC-3, or the `get_transactions` family of
+  NatLabs-style ledgers (walked sequentially, since their archives ignore ranges and
+  duplicate records). Supply created outside the log (init-argument balances) is
+  measured and told apart from supply the log has since traced. Tag known accounts
+  before measuring concentration: minting account, treasuries, DEX pools, the lock
+  canister. Long term: a scanner canister following registered ledgers.
+- **Locked supply.** Tokens that cannot move for a known time, from two equal sources:
+  `sneed_lock` locks and SNS neuron stake (dissolve delay, or time left when
+  dissolving, plus vesting). Weighted by remaining duration, plus the unlock timeline
+  including neurons that become liquid inside the window. A lock expiring next week
+  is sell pressure, not safety.
+- **Liquidity.** Depth of the main ICPSwap pool relative to market cap (a pool holding
+  5% of the market cap is deep however small the token; an absolute floor catches
+  pools too thin to trade). Then every position in the pool is classified by who can
+  withdraw it, and these count as safe alike: locked in `sneed_lock` with time left;
+  owned by a DAO (SNS governance or root, or a canister only an SNS root controls,
+  such as Sneed's DeFi canister); burned (owned by the anonymous principal or the pool
+  itself, so no one can ever act as the owner); or owned by immutable code known not
+  to move positions (the blackhole canisters). A canister with no controllers but
+  unknown code is **not** safe: it may expose a method that transfers the position,
+  and only the registry can clear it. Out-of-range positions provide nothing. Owners
+  are matched by ICP account identifier, which is what the pool reports.
+- **The DAO behind it.** For an SNS token, or a ledger an SNS root controls, the
+  governance that controls the code is rated: largest voting principal (neurons are
+  attributed to the principal with ManagePrincipals), influence after catch-all
+  following (own power plus followers, one level), stake able to vote, genesis
+  neurons with vesting, and participation on recent proposals. A captured DAO caps
+  the rating like a failed gate.
+- **Distribution by origin.** Facts about where balances came from, never a Sybil
+  verdict: a satellite account received its whole balance from one sender and never
+  sent anything, and is folded into its funder for a second largest-holder figure;
+  supply is split into bought from a pool, minted directly, received from a genesis
+  account, or from other holders; and the share sitting in single-source dormant
+  accounts is reported. Exchange hot wallets will need registry tags to avoid false
+  positives; a determined actor routing through a DEX defeats this, so it stays a
+  warning-level signal.
 - **Cycles and memory.** Observable only through the blackhole canister, an SNS root
   summary, `sneed_guardian`, or a self-reported status method. "Not observable" is
   shown as such. The ledger also needs a cycle reserve to spawn archives.

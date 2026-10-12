@@ -87,6 +87,10 @@ export function applyBlock(block, state) {
     if (ts !== undefined) { if (state.firstTs === null) state.firstTs = ts; state.lastTs = ts; }
     const from = accountOf(field(tx, 'from'));
     const to = accountOf(field(tx, 'to'));
+    // Per-account origin statistics for the distribution-by-origin checks.
+    const stat = (acct) => { let st = state.accounts.get(acct.key); if (!st) { st = { owner: acct.owner, firstFrom: null, senders: new Set(), inCount: 0, outCount: 0, firstTs: ts ?? null, lastTs: ts ?? null, received: 0n, sent: 0n }; state.accounts.set(acct.key, st); } if (ts !== undefined) st.lastTs = ts; return st; };
+    const noteIn = (acct, fromAcct, amount) => { if (!acct) return; const st = stat(acct); st.inCount += 1; st.received += amount; if (fromAcct) { if (!st.firstFrom) st.firstFrom = fromAcct.key; st.senders.add(fromAcct.owner); } else if (!st.firstFrom) st.firstFrom = 'mint'; };
+    const noteOut = (acct, amount) => { if (!acct) return; const st = stat(acct); st.outCount += 1; st.sent += amount; };
     const add = (acct, delta) => {
         if (!acct) return;
         const next = (state.balances.get(acct.key) || 0n) + delta;
@@ -103,11 +107,11 @@ export function applyBlock(block, state) {
     const collect = (f) => { if (f > 0n && (feeCol || field(block, 'fee_col_block') !== undefined) && state.feeCollector) add(state.feeCollector, f); else state.feesBurned += f; };
     switch (btype) {
         case '1xfer': case '2xfer': case 'xfer': case 'transfer':
-            add(from, -(amt + fee)); add(to, amt); collect(fee); state.fees += fee; state.transfers += 1; return 'xfer';
+            add(from, -(amt + fee)); add(to, amt); collect(fee); noteOut(from, amt); noteIn(to, from, amt); state.fees += fee; state.transfers += 1; return 'xfer';
         case '1mint': case 'mint':
-            add(to, amt); state.minted += amt; state.mints += 1; state.mintEvents.push({ ts, amt, to: to?.key }); return 'mint';
+            add(to, amt); noteIn(to, null, amt); state.minted += amt; state.mints += 1; state.mintEvents.push({ ts, amt, to: to?.key }); return 'mint';
         case '1burn': case 'burn':
-            add(from, -amt); state.burned += amt; state.burns += 1; return 'burn';
+            add(from, -amt); noteOut(from, amt); state.burned += amt; state.burns += 1; return 'burn';
         case '2approve': case 'approve':
             add(from, -fee); collect(fee); state.fees += fee; state.approves += 1; return 'approve';
         default:
@@ -178,7 +182,7 @@ export async function walkTransactions(txLedger, total, { onProgress, timeoutMs,
 
 /// Scan the whole log of `ledgerId` (up to maxBlocks). Reports progress as
 /// (blocksDone, total). Returns { skipped, total, mode } when too large.
-/** @param {string} ledgerId @param {{ maxBlocks?: number, onProgress?: (done: number, total: number) => void, concurrency?: number, timeoutMs?: number }} [options] */
+/** @param {string} ledgerId @param {{ maxBlocks?: number, onProgress?: (done: number, total: number) => void, concurrency?: number, timeoutMs?: number, defaultFee?: bigint }} [options] */
 export async function scanLedger(ledgerId, options = {}) {
     const { maxBlocks, onProgress, concurrency = 6, timeoutMs = 60000, defaultFee = 0n } = options;
     const ledger = await actor(legacyIdl, ledgerId);
@@ -206,7 +210,7 @@ export async function scanLedger(ledgerId, options = {}) {
     }
     if (maxBlocks !== undefined && total > maxBlocks) return { skipped: true, total, mode };
 
-    const state = { balances: new Map(), owners: new Map(), deficits: new Map(), rawFinal: new Map(), feeCollector: null, feesBurned: 0n, netSupply: 0n, gaps: 0, firstTs: null, lastTs: null, minted: 0n, burned: 0n, fees: 0n, mints: 0, burns: 0, transfers: 0, approves: 0, unknown: 0, mintEvents: [], total, mode };
+    const state = { balances: new Map(), owners: new Map(), accounts: new Map(), deficits: new Map(), rawFinal: new Map(), feeCollector: null, feesBurned: 0n, netSupply: 0n, gaps: 0, firstTs: null, lastTs: null, minted: 0n, burned: 0n, fees: 0n, mints: 0, burns: 0, transfers: 0, approves: 0, unknown: 0, mintEvents: [], total, mode };
     if (mode === 'transactions') {
         const { blocks, gaps } = await walkTransactions(txLedger, total, { onProgress, timeoutMs, defaultFee });
         state.total = blocks.length + gaps;
