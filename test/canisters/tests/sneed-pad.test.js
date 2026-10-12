@@ -1,0 +1,212 @@
+// sneed_pad: launching tokens from the ledger suite with one ICRC-2 payment.
+// The ledger and index wasms are the real, NNS-approved ones (fetched by
+// build.sh from the SNS wasm canister); the ICP ledger, the CMC, the SNS wasm
+// canister and SNS governance are mocks.
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { readFileSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
+import { Principal } from '@icp-sdk/core/principal';
+import {
+  createPic, install, actorAs, account, admin, alice, bob, carol, ICP_LEDGER_ID, SNEED_GOVERNANCE, SNEED_SNS_ROOT, T, unwrap, errOf, BUILD,
+} from '../lib/pic.js';
+import { ledgerIdl, ledgerInit, cmcIdl, snsWasmIdl, padIdl, mintedLedgerIdl, mintedIndexIdl, governanceIdl } from '../lib/idl.js';
+import { fetchBlocks, btype, txField, archiveIdl } from '../lib/icrc3.js';
+
+const ICP_FEE = 10_000n;
+const ledgerGz = resolve(BUILD, 'ledger.wasm.gz');
+const indexGz = resolve(BUILD, 'index.wasm.gz');
+const haveWasms = existsSync(ledgerGz) && existsSync(indexGz);
+const sha256 = (bytes) => Uint8Array.from(createHash('sha256').update(bytes).digest());
+
+let pic, icpId, cmcId, snsWasmId, govId, padId;
+let icp, cmc, snsWasm, gov, pad, padAlice, padBob;
+let ledgerHash, indexHash;
+const NEURON = Uint8Array.from({ length: 32 }, (_, i) => i + 1);
+
+const config = (over = {}) => ({
+  name: 'Test Token', symbol: 'TST', decimals: 8, transfer_fee: 10_000n, logo: ['data:image/png;base64,iVBORw0KGgo='],
+  allocations: [{ account: account(alice), amount: 1_000_000_000_000n }, { account: account(bob), amount: 500_000_000_000n }],
+  minting: { nobody: null }, fee_collector: [], control: { keep: null }, with_index: false,
+  ...over,
+});
+
+describe.skipIf(!haveWasms)('sneed_pad', () => {
+  beforeAll(async () => {
+    ({ pic } = await createPic());
+    icpId = await install(pic, { name: 'MockLedger', initTypes: ledgerInit, initArgs: [{ fee: ICP_FEE, symbol: 'ICP', decimals: 8 }], targetCanisterId: ICP_LEDGER_ID });
+    cmcId = await install(pic, { name: 'MockCmc' });
+    snsWasmId = await install(pic, { name: 'MockSnsWasm' });
+    govId = await install(pic, { name: 'MockSnsGovernance', targetCanisterId: SNEED_GOVERNANCE });
+    padId = await install(pic, { name: 'sneed_pad', cycles: 200n * T });
+    icp = actorAs(pic, ledgerIdl, icpId, admin);
+    cmc = actorAs(pic, cmcIdl, cmcId, admin);
+    snsWasm = actorAs(pic, snsWasmIdl, snsWasmId, admin);
+    gov = actorAs(pic, governanceIdl, govId, admin);
+    pad = actorAs(pic, padIdl, padId, admin);
+    padAlice = actorAs(pic, padIdl, padId, alice);
+    padBob = actorAs(pic, padIdl, padId, bob);
+    const ledgerBytes = readFileSync(ledgerGz); const indexBytes = readFileSync(indexGz);
+    ledgerHash = sha256(ledgerBytes); indexHash = sha256(indexBytes);
+    await snsWasm.set_wasm(ledgerHash, Uint8Array.from(ledgerBytes));
+    await snsWasm.set_wasm(indexHash, Uint8Array.from(indexBytes));
+    unwrap(await pad.admin_set_canisters({ icp_ledger: [icpId], cmc: [cmcId], sns_wasm: [snsWasmId], governance: [govId], root: [SNEED_SNS_ROOT], blackhole: [carol] }));
+    unwrap(await pad.admin_set_config({ creation_fee_e8s: [500_000_000n], ledger_cycles: [3n * T], index_cycles: [2n * T], fee_destination: [account(bob)], cycle_reserve: [2n * T], paused: [] }));
+    await icp.mint(account(alice), 100n * 100_000_000n);
+  }, 120_000);
+  afterAll(async () => { await pic?.tearDown(); });
+
+  it('needs the DAO-approved wasms before it can launch anything', async () => {
+    expect(errOf(await padAlice.create_token(config()))).toMatch(/no ledger wasm/);
+    expect(errOf(await pad.admin_set_wasm_hashes([new Uint8Array(5)], []))).toMatch(/32 bytes/);
+    unwrap(await pad.admin_set_wasm_hashes([ledgerHash], [indexHash]));
+    const fetched = unwrap(await pad.admin_fetch_wasms());
+    expect(Number(fetched.ledger_bytes)).toBeGreaterThan(100_000);
+    expect(Number(fetched.index_bytes)).toBeGreaterThan(100_000);
+    const cfg = await pad.get_config();
+    expect(Array.from(cfg.ledger_wasm_hash[0])).toEqual(Array.from(ledgerHash));
+  });
+
+  it('refuses wasm bytes whose hash does not match', async () => {
+    const bogus = Uint8Array.from({ length: 32 }, () => 7);
+    await snsWasm.set_wasm(bogus, Uint8Array.from([0, 97, 115, 109]));
+    unwrap(await pad.admin_set_wasm_hashes([], [bogus]));
+    expect(errOf(await pad.admin_fetch_wasms())).toMatch(/hash/);
+    unwrap(await pad.admin_set_wasm_hashes([], [indexHash]));
+    unwrap(await pad.admin_fetch_wasms());
+  });
+
+  it('validates the configuration and quotes the price', async () => {
+    expect(errOf(await padAlice.get_quote(config({ symbol: '' })))).toMatch(/symbol/);
+    expect(errOf(await padAlice.get_quote(config({ decimals: 19 })))).toMatch(/decimals/);
+    expect(errOf(await padAlice.get_quote(config({ allocations: [] })))).toMatch(/allocation/);
+    expect(errOf(await padAlice.get_quote(config({ logo: ['https://x/y.png'] })))).toMatch(/data:image/);
+    const q = unwrap(await padAlice.get_quote(config()));
+    // 3 T cycles at 3.5 XDR/ICP with 5% headroom: 0.9 ICP
+    expect(q.icp_for_cycles_e8s).toBe(90_000_000n);
+    expect(q.creation_fee_e8s).toBe(500_000_000n);
+    expect(q.total_e8s).toBe(500_000_000n + 90_000_000n + 3n * ICP_FEE);
+    const qi = unwrap(await padAlice.get_quote(config({ with_index: true })));
+    expect(qi.icp_for_cycles_e8s).toBe(150_000_000n);
+  });
+
+  it('does nothing without an ICRC-2 allowance', async () => {
+    expect(errOf(await padAlice.create_token(config()))).toMatch(/approve/);
+    expect((await pad.list_launches(0n, 10n)).total).toBe(0n);
+  });
+
+  it('launches a token the creator keeps control of, paying once', async () => {
+    const q = unwrap(await padAlice.get_quote(config()));
+    const icpAlice = actorAs(pic, ledgerIdl, icpId, alice);
+    unwrap(await icpAlice.icrc2_approve({ from_subaccount: [], spender: account(padId), amount: q.total_e8s + ICP_FEE, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] }));
+    const before = await icp.icrc1_balance_of(account(alice));
+    const launch = unwrap(await padAlice.create_token(config()));
+    expect(launch.status).toEqual({ created: null });
+    expect(launch.ledger.length).toBe(1);
+    expect(launch.index.length).toBe(0);
+    expect(launch.controllers.map((p) => p.toText())).toEqual([alice.toText()]);
+    expect(launch.steps.map(([s]) => s)).toEqual(['paid', 'cycles', 'fee', 'ledger_created', 'ledger_installed', 'controllers_set']);
+    // the ledger is real and configured as asked
+    const ledgerId = launch.ledger[0];
+    const l = actorAs(pic, mintedLedgerIdl, ledgerId, alice);
+    expect(await l.icrc1_name()).toBe('Test Token');
+    expect(await l.icrc1_symbol()).toBe('TST');
+    expect(await l.icrc1_decimals()).toBe(8);
+    expect(await l.icrc1_fee()).toBe(10_000n);
+    expect(await l.icrc1_total_supply()).toBe(1_500_000_000_000n);
+    expect(await l.icrc1_balance_of(account(alice))).toBe(1_000_000_000_000n);
+    expect(await l.icrc1_balance_of(account(bob))).toBe(500_000_000_000n);
+    expect((await l.icrc1_minting_account())[0].owner.toText()).toBe(ledgerId.toText()); // nobody can mint
+    expect((await l.icrc1_metadata()).find(([k]) => k === 'icrc1:logo')[1]).toEqual({ Text: 'data:image/png;base64,iVBORw0KGgo=' });
+    expect((await l.icrc1_supported_standards()).map((s) => s.name)).toContain('ICRC-3');
+    const controllers = (await pic.canisterStatus({ canisterId: ledgerId, sender: alice })).settings.controllers;
+    expect(controllers.map((p) => p.toText())).toEqual([alice.toText()]);
+    // the money: creator paid the total plus the approval fee, the fee reached its destination, the CMC was notified
+    const after = await icp.icrc1_balance_of(account(alice));
+    expect(before - after).toBe(q.total_e8s + ICP_FEE);
+    expect(await icp.icrc1_balance_of(account(bob))).toBe(500_000_000n - ICP_FEE);
+    expect(await icp.icrc1_balance_of(account(padId))).toBe(2n * ICP_FEE);
+    const notes = await cmc.get_notifications();
+    expect(notes.length).toBe(1);
+    expect(notes[0][1].toText()).toBe(padId.toText());
+    // bookkeeping
+    expect((await pad.get_launch_by_ledger(ledgerId))[0].id).toBe(launch.id);
+    expect((await pad.get_launches_by_creator(alice)).length).toBe(1);
+    // the activity log
+    const st = await pad.icrc3_log_status();
+    const blocks = [...(await fetchBlocks(pad, (id) => actorAs(pic, archiveIdl, id, admin), 0n, st.log_length - 1n)).values()];
+    const create = blocks.find((b) => btype(b) === 'sneedpad_token_create');
+    expect(create).toBeTruthy();
+    expect(txField(create, 'symbol')).toEqual({ Text: 'TST' });
+    expect(txField(create, 'supply')).toEqual({ Nat: 1_500_000_000_000n });
+    expect(blocks.some((b) => btype(b) === 'sneedpad_control_set')).toBe(true);
+  }, 120_000);
+
+  it('launches a token with an index, blackholed', async () => {
+    const q = unwrap(await padAlice.get_quote(config({ with_index: true, control: { blackhole: null }, symbol: 'BLK' })));
+    const icpAlice = actorAs(pic, ledgerIdl, icpId, alice);
+    unwrap(await icpAlice.icrc2_approve({ from_subaccount: [], spender: account(padId), amount: q.total_e8s + ICP_FEE, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] }));
+    const launch = unwrap(await padAlice.create_token(config({ with_index: true, control: { blackhole: null }, symbol: 'BLK' })));
+    expect(launch.index.length).toBe(1);
+    expect(launch.controllers.map((p) => p.toText())).toEqual([carol.toText()]); // the configured "blackhole"
+    const idx = actorAs(pic, mintedIndexIdl, launch.index[0], alice);
+    expect((await idx.ledger_id()).toText()).toBe(launch.ledger[0].toText());
+    expect((await pic.canisterStatus({ canisterId: launch.ledger[0], sender: carol })).settings.controllers.map((p) => p.toText())).toEqual([carol.toText()]);
+    expect((await pic.canisterStatus({ canisterId: launch.index[0], sender: carol })).settings.controllers.map((p) => p.toText())).toEqual([carol.toText()]);
+    // the index syncs the genesis blocks once its timer runs
+    for (let i = 0; i < 20; i++) { await pic.advanceTime(10_000); await pic.tick(2); }
+    const st = await idx.status();
+    expect(Number(st.num_blocks_synced)).toBeGreaterThanOrEqual(2);
+  }, 180_000);
+
+  it('hands a token to Sneed DAO and registers it through the hotkeyed neuron', async () => {
+    await gov.add_hotkey(NEURON, padId);
+    unwrap(await pad.admin_set_registration_neuron([NEURON]));
+    const q = unwrap(await padAlice.get_quote(config({ control: { sneed_dao: null }, minting: { sneed_dao: null }, symbol: 'DAO' })));
+    const icpAlice = actorAs(pic, ledgerIdl, icpId, alice);
+    unwrap(await icpAlice.icrc2_approve({ from_subaccount: [], spender: account(padId), amount: q.total_e8s + ICP_FEE, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] }));
+    const launch = unwrap(await padAlice.create_token(config({ control: { sneed_dao: null }, minting: { sneed_dao: null }, symbol: 'DAO' })));
+    expect(launch.controllers.map((p) => p.toText())).toEqual([SNEED_SNS_ROOT.toText()]);
+    expect(launch.registration_proposal.length).toBe(1);
+    const l = actorAs(pic, mintedLedgerIdl, launch.ledger[0], alice);
+    expect((await l.icrc1_minting_account())[0].owner.toText()).toBe(govId.toText());
+    const proposals = await gov.list_proposals();
+    const mine = proposals.find((p) => p.canister_ids.some((c) => c.toText() === launch.ledger[0].toText()));
+    expect(mine).toBeTruthy();
+    expect(mine.title).toMatch(/Register the ledger of Test Token \(DAO\) launched on Sneed Pad/);
+    expect(mine.proposer.toText()).toBe(padId.toText());
+    const reg = await pad.get_ledger_registration_status();
+    expect(reg.registrations.find((r) => r.canister_id.toText() === launch.ledger[0].toText()).proposal_id.length).toBe(1);
+  }, 120_000);
+
+  it('still launches when the CMC refuses the top-up, and says so in its log', async () => {
+    await cmc.set_mode({ refund: null });
+    const q = unwrap(await padAlice.get_quote(config({ symbol: 'CMC' })));
+    const icpAlice = actorAs(pic, ledgerIdl, icpId, alice);
+    unwrap(await icpAlice.icrc2_approve({ from_subaccount: [], spender: account(padId), amount: q.total_e8s + ICP_FEE, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] }));
+    const launch = unwrap(await padAlice.create_token(config({ symbol: 'CMC' })));
+    expect(launch.status).toEqual({ created: null });
+    expect(launch.steps.map(([s]) => s)).not.toContain('cycles');
+    const log = await pad.get_text_log(20n);
+    expect(log.some((line) => /CMC notify failed/.test(line))).toBe(true);
+    await cmc.set_mode({ ok: null });
+  }, 120_000);
+
+  it('refuses while paused and for anonymous callers', async () => {
+    unwrap(await pad.admin_set_config({ creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [true] }));
+    expect(errOf(await padAlice.create_token(config()))).toMatch(/paused/);
+    unwrap(await pad.admin_set_config({ creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [false] }));
+    expect(errOf(await padBob.admin_set_config({ creation_fee_e8s: [1n], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [] }))).toMatch(/admin only/);
+  });
+
+  it('keeps every launch across an upgrade', async () => {
+    const before = await pad.list_launches(0n, 100n);
+    expect(Number(before.total)).toBeGreaterThanOrEqual(4);
+    await pic.upgradeCanister({ sender: admin, canisterId: padId, wasm: readFileSync(resolve(BUILD, 'sneed_pad.wasm')) });
+    const after = await pad.list_launches(0n, 100n);
+    expect(after.total).toBe(before.total);
+    expect(after.launches.map((l) => l.id)).toEqual(before.launches.map((l) => l.id));
+    const cfg = await pad.get_config();
+    expect(Number(cfg.ledger_wasm_bytes)).toBeGreaterThan(100_000);
+  }, 120_000);
+});

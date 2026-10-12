@@ -77,6 +77,46 @@ shared ({ caller = deployer }) persistent actor class MockLedger(init : { fee : 
     #Ok(index);
   };
 
+  // ---- ICRC-2: approvals and transfer_from (owner-level, default subaccount only) ----
+  public type ApproveArgs = { from_subaccount : ?Blob; spender : Account; amount : Nat; expected_allowance : ?Nat; expires_at : ?Nat64; fee : ?Nat; memo : ?Blob; created_at_time : ?Nat64 };
+  public type TransferFromArgs = { spender_subaccount : ?Blob; from : Account; to : Account; amount : Nat; fee : ?Nat; memo : ?Blob; created_at_time : ?Nat64 };
+  public type TransferFromError = {
+    #BadFee : { expected_fee : Nat }; #BadBurn : { min_burn_amount : Nat }; #InsufficientFunds : { balance : Nat };
+    #InsufficientAllowance : { allowance : Nat }; #TooOld; #CreatedInFuture : { ledger_time : Nat64 }; #Duplicate : { duplicate_of : Nat };
+    #TemporarilyUnavailable; #GenericError : { error_code : Nat; message : Text };
+  };
+  transient let allowances = HashMap.HashMap<Text, Nat>(16, Text.equal, Text.hash);
+  func allowanceKey(owner : Account, spender : Account) : Text { key(owner) # ">" # key(spender) };
+
+  public shared ({ caller }) func icrc2_approve(args : ApproveArgs) : async { #Ok : Nat; #Err : TransferError } {
+    let from : Account = { owner = caller; subaccount = args.from_subaccount };
+    let b = balance(from);
+    if (b < fee) { return #Err(#InsufficientFunds({ balance = b })) };
+    balances.put(key(from), b - fee);
+    allowances.put(allowanceKey(from, args.spender), args.amount);
+    let index = txs.size();
+    txs.add({ index; from; to = from; amount = 0; fee });
+    #Ok(index);
+  };
+  public query func icrc2_allowance(args : { account : Account; spender : Account }) : async { allowance : Nat; expires_at : ?Nat64 } {
+    { allowance = switch (allowances.get(allowanceKey(args.account, args.spender))) { case (?a) a; case null 0 }; expires_at = null };
+  };
+  public shared ({ caller }) func icrc2_transfer_from(args : TransferFromArgs) : async { #Ok : Nat; #Err : TransferFromError } {
+    if (paused) { return #Err(#TemporarilyUnavailable) };
+    let spender : Account = { owner = caller; subaccount = args.spender_subaccount };
+    let k = allowanceKey(args.from, spender);
+    let allowance = switch (allowances.get(k)) { case (?a) a; case null 0 };
+    if (allowance < args.amount + fee) { return #Err(#InsufficientAllowance({ allowance })) };
+    let b = balance(args.from);
+    if (b < args.amount + fee) { return #Err(#InsufficientFunds({ balance = b })) };
+    balances.put(key(args.from), b - args.amount - fee);
+    balances.put(key(args.to), balance(args.to) + args.amount);
+    allowances.put(k, allowance - args.amount - fee);
+    let index = txs.size();
+    txs.add({ index; from = args.from; to = args.to; amount = args.amount; fee });
+    #Ok(index);
+  };
+
   // ---- test helpers ----
 
   public shared func mint(to : Account, amount : Nat) : async Nat {

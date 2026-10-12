@@ -57,6 +57,8 @@ module {
     new_correlation_id : () -> Nat;
     log_info : (Nat, Text) -> ();
     log_error : (Nat, Text) -> ();
+    /// Optional: the proposal text for a canister; null means the archive wording below.
+    describe : ?((Principal, Nat) -> { title : Text; summary : Text });
   };
 
   // SNS governance reduced to what is sent and read. Variants with fewer tags
@@ -158,17 +160,21 @@ module {
 
   func submit(governance : Governance, neuron : Blob, r : Registration, env : Environment) : async* { #Ok : Nat64; #Err : Text } {
     let id = Principal.toText(r.canister_id);
-    let proposal : Proposal = {
-      title = "Register ICRC-3 archive " # id # " of " # env.name;
-      url = env.doc_url;
-      summary = env.name # " created the canister `" # id # "` as an archive of its ICRC-3 activity log. It holds the blocks from index " # Nat.toText(r.start) # " onwards.\n\n"
-        # "Adopting this proposal registers the archive as a dapp canister of the DAO: SNS root becomes its sole controller, so the DAO can inspect and upgrade it by proposal. "
-        # env.name # " keeps writing to it as the archive's parent and tops up its cycles from its own balance.\n\n"
-        # "This proposal was submitted automatically by " # env.name # " through a hotkeyed neuron when the archive was created.\n\n"
-        # "Operator checklist: add `" # id # "` to the DAO's cycle monitoring.\n\n"
-        # "Documentation: " # env.doc_url;
-      action = ?#RegisterDappCanisters({ canister_ids = [r.canister_id] });
+    let text = switch (env.describe) {
+      case (?d) { d(r.canister_id, r.start) };
+      case null {
+        {
+          title = "Register ICRC-3 archive " # id # " of " # env.name;
+          summary = env.name # " created the canister `" # id # "` as an archive of its ICRC-3 activity log. It holds the blocks from index " # Nat.toText(r.start) # " onwards.\n\n"
+            # "Adopting this proposal registers the archive as a dapp canister of the DAO: SNS root becomes its sole controller, so the DAO can inspect and upgrade it by proposal. "
+            # env.name # " keeps writing to it as the archive's parent and tops up its cycles from its own balance.\n\n"
+            # "This proposal was submitted automatically by " # env.name # " through a hotkeyed neuron when the archive was created.\n\n"
+            # "Operator checklist: add `" # id # "` to the DAO's cycle monitoring.\n\n"
+            # "Documentation: " # env.doc_url;
+        };
+      };
     };
+    let proposal : Proposal = { title = text.title; url = env.doc_url; summary = text.summary; action = ?#RegisterDappCanisters({ canister_ids = [r.canister_id] }) };
     try {
       let res = await governance.manage_neuron({ subaccount = neuron; command = ?#MakeProposal(proposal) });
       switch (res.command) {

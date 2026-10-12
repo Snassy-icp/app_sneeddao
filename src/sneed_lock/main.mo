@@ -1836,6 +1836,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       new_correlation_id = get_next_correlation_id;
       log_info = func(cid : Nat, message : Text) { log_info(this_canister_id(), cid, message) };
       log_error = func(cid : Nat, message : Text) { log_error(this_canister_id(), cid, message) };
+      describe = null;
     };
   };
 

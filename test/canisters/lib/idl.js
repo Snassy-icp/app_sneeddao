@@ -21,6 +21,8 @@ export const ledgerIdl = ({ IDL }) => IDL.Service({
   icrc1_symbol: IDL.Func([], [IDL.Text], ['query']),
   icrc1_balance_of: IDL.Func([Account], [IDL.Nat], ['query']),
   icrc1_transfer: IDL.Func([TransferArgs], [IDL.Variant({ Ok: IDL.Nat, Err: TransferError })], []),
+  icrc2_approve: IDL.Func([IDL.Record({ from_subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)), spender: Account, amount: IDL.Nat, expected_allowance: IDL.Opt(IDL.Nat), expires_at: IDL.Opt(IDL.Nat64), fee: IDL.Opt(IDL.Nat), memo: IDL.Opt(IDL.Vec(IDL.Nat8)), created_at_time: IDL.Opt(IDL.Nat64) })], [IDL.Variant({ Ok: IDL.Nat, Err: TransferError })], []),
+  icrc2_allowance: IDL.Func([IDL.Record({ account: Account, spender: Account })], [IDL.Record({ allowance: IDL.Nat, expires_at: IDL.Opt(IDL.Nat64) })], ['query']),
   mint: IDL.Func([Account, IDL.Nat], [IDL.Nat], []),
   set_fee: IDL.Func([IDL.Nat], [], []),
   set_paused: IDL.Func([IDL.Bool], [], []),
@@ -60,4 +62,69 @@ export const demoIdl = ({ IDL }) => IDL.Service({
   record_many: IDL.Func([IDL.Nat], [IDL.Nat], []),
   logs: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Nat, IDL.Text))], ['query']),
   whoami: IDL.Func([], [IDL.Principal], ['query']),
+});
+
+// ---- sneed_pad and its mocks ----
+export const cmcIdl = ({ IDL }) => IDL.Service({
+  get_icp_xdr_conversion_rate: IDL.Func([], [IDL.Record({ data: IDL.Record({ xdr_permyriad_per_icp: IDL.Nat64, timestamp_seconds: IDL.Nat64 }), hash_tree: IDL.Vec(IDL.Nat8), certificate: IDL.Vec(IDL.Nat8) })], ['query']),
+  set_rate: IDL.Func([IDL.Nat64], [], []),
+  set_mode: IDL.Func([IDL.Variant({ ok: IDL.Null, refund: IDL.Null })], [], []),
+  get_notifications: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Nat64, IDL.Principal))], ['query']),
+});
+export const snsWasmIdl = ({ IDL }) => IDL.Service({
+  set_wasm: IDL.Func([IDL.Vec(IDL.Nat8), IDL.Vec(IDL.Nat8)], [], []),
+});
+const MintingPolicy = IDL.Variant({ nobody: IDL.Null, sneed_dao: IDL.Null, principal: IDL.Principal });
+const ControlChoice = IDL.Variant({ keep: IDL.Null, blackhole: IDL.Null, sneed_dao: IDL.Null });
+export const TokenConfig = IDL.Record({
+  name: IDL.Text, symbol: IDL.Text, decimals: IDL.Nat8, transfer_fee: IDL.Nat, logo: IDL.Opt(IDL.Text),
+  allocations: IDL.Vec(IDL.Record({ account: Account, amount: IDL.Nat })),
+  minting: MintingPolicy, fee_collector: IDL.Opt(Account), control: ControlChoice, with_index: IDL.Bool,
+});
+const Quote = IDL.Record({ creation_fee_e8s: IDL.Nat, ledger_cycles: IDL.Nat, index_cycles: IDL.Nat, icp_for_cycles_e8s: IDL.Nat, ledger_fees_e8s: IDL.Nat, total_e8s: IDL.Nat, xdr_permyriad_per_icp: IDL.Nat64 });
+const Launch = IDL.Record({
+  id: IDL.Nat, creator: IDL.Principal, created_at: IDL.Int, config: TokenConfig, quote: Quote, paid_e8s: IDL.Nat,
+  ledger: IDL.Opt(IDL.Principal), index: IDL.Opt(IDL.Principal), ledger_wasm_hash: IDL.Opt(IDL.Vec(IDL.Nat8)), index_wasm_hash: IDL.Opt(IDL.Vec(IDL.Nat8)),
+  controllers: IDL.Vec(IDL.Principal), registration_proposal: IDL.Opt(IDL.Nat64), status: IDL.Variant({ created: IDL.Null, failed: IDL.Text }), steps: IDL.Vec(IDL.Tuple(IDL.Text, IDL.Int)),
+});
+const PadConfig = IDL.Record({
+  ledger_wasm_hash: IDL.Opt(IDL.Vec(IDL.Nat8)), index_wasm_hash: IDL.Opt(IDL.Vec(IDL.Nat8)), ledger_wasm_bytes: IDL.Nat, index_wasm_bytes: IDL.Nat,
+  creation_fee_e8s: IDL.Nat, ledger_cycles: IDL.Nat, index_cycles: IDL.Nat, fee_destination: Account, cycle_reserve: IDL.Nat, paused: IDL.Bool,
+});
+const Registration = IDL.Record({ canister_id: IDL.Principal, start: IDL.Nat, proposal_id: IDL.Opt(IDL.Nat64), attempts: IDL.Nat, last_error: IDL.Opt(IDL.Text) });
+const RegistrationStatus = IDL.Record({ governance: IDL.Principal, neuron: IDL.Opt(IDL.Vec(IDL.Nat8)), registrations: IDL.Vec(Registration) });
+export const padIdl = ({ IDL }) => IDL.Service({
+  ...icrc3Service(IDL),
+  get_quote: IDL.Func([TokenConfig], [IDL.Variant({ Ok: Quote, Err: IDL.Text })], []),
+  create_token: IDL.Func([TokenConfig], [IDL.Variant({ Ok: Launch, Err: IDL.Text })], []),
+  get_launch: IDL.Func([IDL.Nat], [IDL.Opt(Launch)], ['query']),
+  list_launches: IDL.Func([IDL.Nat, IDL.Nat], [IDL.Record({ total: IDL.Nat, launches: IDL.Vec(Launch) })], ['query']),
+  get_launches_by_creator: IDL.Func([IDL.Principal], [IDL.Vec(Launch)], ['query']),
+  get_launch_by_ledger: IDL.Func([IDL.Principal], [IDL.Opt(Launch)], ['query']),
+  get_config: IDL.Func([], [PadConfig], ['query']),
+  get_cycle_balance: IDL.Func([], [IDL.Nat], ['query']),
+  get_text_log: IDL.Func([IDL.Nat], [IDL.Vec(IDL.Text)], ['query']),
+  get_ledger_registration_status: IDL.Func([], [RegistrationStatus], ['query']),
+  admin_set_wasm_hashes: IDL.Func([IDL.Opt(IDL.Vec(IDL.Nat8)), IDL.Opt(IDL.Vec(IDL.Nat8))], [IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })], []),
+  admin_fetch_wasms: IDL.Func([], [IDL.Variant({ Ok: IDL.Record({ ledger_bytes: IDL.Nat, index_bytes: IDL.Nat }), Err: IDL.Text })], []),
+  admin_set_config: IDL.Func([IDL.Record({ creation_fee_e8s: IDL.Opt(IDL.Nat), ledger_cycles: IDL.Opt(IDL.Nat), index_cycles: IDL.Opt(IDL.Nat), fee_destination: IDL.Opt(Account), cycle_reserve: IDL.Opt(IDL.Nat), paused: IDL.Opt(IDL.Bool) })], [IDL.Variant({ Ok: PadConfig, Err: IDL.Text })], []),
+  admin_set_canisters: IDL.Func([IDL.Record({ icp_ledger: IDL.Opt(IDL.Principal), cmc: IDL.Opt(IDL.Principal), sns_wasm: IDL.Opt(IDL.Principal), governance: IDL.Opt(IDL.Principal), root: IDL.Opt(IDL.Principal), blackhole: IDL.Opt(IDL.Principal) })], [IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })], []),
+  admin_set_registration_neuron: IDL.Func([IDL.Opt(IDL.Vec(IDL.Nat8))], [IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })], []),
+  admin_withdraw_icp: IDL.Func([Account, IDL.Nat], [IDL.Variant({ Ok: IDL.Nat, Err: IDL.Text })], []),
+});
+// The ledgers the pad mints: just what the tests read back.
+export const mintedLedgerIdl = ({ IDL }) => IDL.Service({
+  icrc1_name: IDL.Func([], [IDL.Text], ['query']),
+  icrc1_symbol: IDL.Func([], [IDL.Text], ['query']),
+  icrc1_decimals: IDL.Func([], [IDL.Nat8], ['query']),
+  icrc1_fee: IDL.Func([], [IDL.Nat], ['query']),
+  icrc1_total_supply: IDL.Func([], [IDL.Nat], ['query']),
+  icrc1_balance_of: IDL.Func([Account], [IDL.Nat], ['query']),
+  icrc1_minting_account: IDL.Func([], [IDL.Opt(Account)], ['query']),
+  icrc1_metadata: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Text, IDL.Variant({ Nat: IDL.Nat, Int: IDL.Int, Text: IDL.Text, Blob: IDL.Vec(IDL.Nat8) })))], ['query']),
+  icrc1_supported_standards: IDL.Func([], [IDL.Vec(IDL.Record({ name: IDL.Text, url: IDL.Text }))], ['query']),
+});
+export const mintedIndexIdl = ({ IDL }) => IDL.Service({
+  ledger_id: IDL.Func([], [IDL.Principal], ['query']),
+  status: IDL.Func([], [IDL.Record({ num_blocks_synced: IDL.Nat })], ['query']),
 });

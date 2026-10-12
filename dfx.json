@@ -157,6 +157,10 @@
           "staging": "qaa6y-5yaaa-aaaaa-aaafa-cai"
         }
       }
+    },
+    "sneed_pad": {
+      "main": "src/sneed_pad/main.mo",
+      "type": "motoko"
     }
   },
   "networks": {
@@ -166,7 +170,7 @@
       ],
       "type": "persistent"
     }
-  },  
+  },
   "defaults": {
     "build": {
       "args": "",

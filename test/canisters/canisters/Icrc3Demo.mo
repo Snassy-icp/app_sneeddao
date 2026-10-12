@@ -52,6 +52,7 @@ shared ({ caller = deployer }) persistent actor class Icrc3Demo(init : { extra_c
       new_correlation_id = new_cid;
       log_info = func(cid : Nat, m : Text) { lines.add((cid, "info: " # m)) };
       log_error = func(cid : Nat, m : Text) { lines.add((cid, "error: " # m)) };
+      describe = null;
     };
   };
 

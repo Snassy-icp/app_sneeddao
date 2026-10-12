@@ -19,13 +19,20 @@ cp .dfx/ic/canisters/sneed_lock/service.did.js "$OUT/sneed_lock.did.js"
 
 MOC="$(dfx +"$DFX_VERSION" cache show)/moc"
 PKGS="$(mops sources)"
-for c in MockLedger MockSwapPool MockSnsGovernance Icrc3Demo; do
+for c in MockLedger MockSwapPool MockSnsGovernance MockCmc MockSnsWasm Icrc3Demo; do
   echo "== $c"
   # shellcheck disable=SC2086
   "$MOC" -c $PKGS -o "$OUT/$c.wasm" "$HERE/canisters/$c.mo" 2>&1 | grep -i "error" -A5 || true
   test -s "$OUT/$c.wasm"
 done
 # the archive actor class on its own, as a DAO proposal would upgrade it
+echo "== sneed_pad"
+"$MOC" -c $PKGS -o "$OUT/sneed_pad.wasm" "$ROOT/src/sneed_pad/main.mo" 2>&1 | grep -i "error" -A5 || true
+test -s "$OUT/sneed_pad.wasm"
+echo "== ledger suite wasms (from the SNS wasm canister, needs network; skipped when present)"
+if [ ! -s "$OUT/ledger.wasm.gz" ] || [ ! -s "$OUT/index.wasm.gz" ]; then
+  node --import "$HERE/lib/loader-register.mjs" "$HERE/lib/fetch-ledger-suite.mjs" "$OUT" || echo "   (could not fetch; sneed_pad tests will be skipped)"
+fi
 echo "== Icrc3Archive"
 # shellcheck disable=SC2086
 "$MOC" -c $PKGS -o "$OUT/Icrc3Archive.wasm" "$ROOT/src/icrc3/Archive.mo" 2>&1 | grep -i "error" -A5 || true
