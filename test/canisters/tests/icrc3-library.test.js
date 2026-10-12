@@ -293,6 +293,36 @@ describe('timer', () => {
 });
 
 describe('upgrade', () => {
+  it('an archive upgraded by a co-controller keeps its parent, range and blocks, and still takes the parent\'s batches', async () => {
+    const { IDL } = await import('@icp-sdk/core/candid');
+    const { wasm } = await import('../lib/pic.js');
+    const archives = await demo.icrc3_get_archives({ from: [] });
+    expect(archives.length).toBeGreaterThan(0);
+    const before = await Promise.all(archives.map((a) => archiveActor(a.canister_id).archive_status()));
+    // the SNS root co-controller upgrades every archive, with init args that must be ignored
+    const bogus = IDL.encode([IDL.Record({ first_index: IDL.Nat, max_blocks: IDL.Nat })], [{ first_index: 999_999n, max_blocks: 1n }]);
+    for (const a of archives) {
+      await pic.upgradeCanister({ sender: EXTRA, canisterId: a.canister_id, wasm: wasm('Icrc3Archive'), arg: bogus });
+    }
+    const after = await Promise.all(archives.map((a) => archiveActor(a.canister_id).archive_status()));
+    for (let i = 0; i < archives.length; i++) {
+      expect(after[i].parent.toText()).toBe(demoId.toText());
+      expect(after[i].first_index).toBe(before[i].first_index);
+      expect(after[i].max_blocks).toBe(before[i].max_blocks);
+      expect(after[i].block_count).toBe(before[i].block_count);
+      expect(after[i].data_bytes).toBe(before[i].data_bytes);
+    }
+    await verify();
+    // the parent can still spill into the upgraded chain
+    const liveBefore = (await status()).live_blocks;
+    unwrap(await setSettings({ max_live_blocks: [1n] }));
+    await demoAlice.record_many(2n);
+    expect(unwrap(await demo.admin_icrc3_spill_now())).toBeGreaterThan(0n);
+    expect((await status()).live_blocks).toBeLessThan(liveBefore + 2n);
+    unwrap(await setSettings({ max_live_blocks: [4n] }));
+    await verify();
+  });
+
   it('keeps the log, archives and settings, re-certifies the tip and restarts the timer', async () => {
     const before = await status();
     const tipBefore = await verifyTip(demo, demoId, rootKey);

@@ -210,11 +210,23 @@ deposit_cycles : () -> ();  // accepts attached cycles from anyone
   allowance (currently 500 GiB).
 - `icrc3_get_blocks` decodes only the requested blocks, with the same 1000-block /
   1.5 MB cap, and returns an empty `archived_blocks` list.
-- Controllers: `sneed_lock` and the SNS root canister (the latter so the DAO can
-  upgrade or inspect archives by proposal). Upgrades of archives are a `sneed_lock`
-  upgrade concern: when the archive code changes, `sneed_lock` reinstalls its embedded
-  class on each archive with `#upgrade`, keeping the Regions. Not needed for the first
-  release.
+- Controllers: `sneed_lock` and the SNS root canister, set by `sneed_lock` right
+  after creation (`admin_icrc3_repair_archive_controllers` re-applies them). The
+  DAO therefore controls every archive the way it controls `sneed_lock`, and can hand
+  one over or reclaim it with the SNS's own `RegisterDappCanisters` /
+  `DeregisterDappCanisters` proposals; no custom hand-over method is needed.
+- The parent (the only principal allowed to append) is stored in a stable variable
+  at first install, so an upgrade performed by SNS root does not move the write
+  permission to the upgrader. Init arguments passed on upgrade are ignored.
+- Upgrading an archive is a DAO proposal (`UpgradeSnsControlledCanister`) with a
+  wasm compiled from `src/icrc3/Archive.mo` on its own and any well-typed init
+  argument. Upgrading `sneed_lock` with a changed `Archive.mo` only affects archives
+  created afterwards; existing ones keep their code, and the append protocol is
+  designed to stay compatible across versions.
+- Operations on every new archive (the text log line `ICRC-3: created archive …`
+  and `icrc3_log_status` list them): add it to the DAO's ic-unicycle cycle
+  monitoring, and register it with the SNS by a `RegisterDappCanisters` proposal so
+  it appears among the DAO's canisters and can be upgraded by proposal.
 
 ## Spill protocol
 
@@ -312,6 +324,8 @@ hash chain and the archive see identical bytes.
   collector, no timer that pays anyone. Any future donation to library authors or
   infrastructure is a separate, explicit DAO decision.
 - `icrc3_log_status` exposes the archive cycle balances so the DAO can watch them.
+  Each new archive must also be added to the DAO's ic-unicycle monitoring, which
+  is the independent safety net if `sneed_lock` itself runs low and cannot top up.
 
 ## Security considerations
 

@@ -25,4 +25,9 @@ for c in MockLedger MockSwapPool Icrc3Demo; do
   "$MOC" -c $PKGS -o "$OUT/$c.wasm" "$HERE/canisters/$c.mo" 2>&1 | grep -i "error" -A5 || true
   test -s "$OUT/$c.wasm"
 done
+# the archive actor class on its own, as a DAO proposal would upgrade it
+echo "== Icrc3Archive"
+# shellcheck disable=SC2086
+"$MOC" -c $PKGS -o "$OUT/Icrc3Archive.wasm" "$ROOT/src/icrc3/Archive.mo" 2>&1 | grep -i "error" -A5 || true
+test -s "$OUT/Icrc3Archive.wasm"
 echo "== done: $(ls "$OUT" | tr '\n' ' ')"

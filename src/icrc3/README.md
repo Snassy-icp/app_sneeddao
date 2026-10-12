@@ -113,7 +113,14 @@ guarded by `icrc3.history_imported` (see `icrc3_import_history` in
 - The canister needs `archive_initial_cycles + cycle_reserve` to create an archive
   and `archive_top_up_amount + cycle_reserve` to top one up; otherwise it logs an
   error every spill check and the live store keeps growing on the heap.
-- Archives are controlled by the canister plus `archive_controllers`. Register
-  them with the SNS as dapp canisters when the DAO should manage them by proposal.
+- Archives are controlled by the canister plus `archive_controllers` (for Sneed:
+  the SNS root). The parent that may append is fixed at first install and survives
+  upgrades by any controller. When an archive is created (text log line
+  `ICRC-3: created archive …`, also listed by `icrc3_log_status`): add it to the
+  ic-unicycle cycle monitoring and register it with the SNS by a
+  `RegisterDappCanisters` proposal. Upgrade an archive by proposal with a wasm
+  compiled from `Archive.mo` alone (`moc -c $(mops sources) Archive.mo`); the init
+  argument is ignored on upgrade. A changed `Archive.mo` in the logging canister
+  affects only archives created afterwards.
 - Verifier: the JavaScript in the API doc works against any canister using this
   library (change the canister id).

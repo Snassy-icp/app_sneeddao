@@ -18,7 +18,12 @@ import Region "mo:base/Region";
 
 import T "Types";
 
-shared ({ caller = parent }) persistent actor class Icrc3Archive(init : T.ArchiveInit) = this {
+shared ({ caller = installer }) persistent actor class Icrc3Archive(init : T.ArchiveInit) = this {
+
+  // The parent is whoever installed the canister the first time. It is stable
+  // so that an upgrade performed by another controller (the DAO's SNS root,
+  // by proposal) does not move the write permission to the upgrader.
+  stable let parent : Principal = installer;
 
   // Global index of the first block held here and the capacity in blocks.
   // Captured at install; ignored on upgrade (the fields are stable).
