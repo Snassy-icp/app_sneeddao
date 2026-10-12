@@ -157,7 +157,6 @@ shared (deployer) persistent actor class SneedLock() = this {
   transient let sneed_sns_root = Principal.fromText("fp274-iaaaa-aaaaq-aacha-cai");
   
 
-  transient let admin = Principal.fromText("d7zib-qo5mr-qzmpb-dtyof-l7yiu-pu52k-wk7ng-cbm3n-ffmys-crbkz-nae");
   transient let sneed_governance = Principal.fromText("fi3zi-fyaaa-aaaaq-aachq-cai");
 
   transient let icrc1_sneed_ledger_canister_id = Principal.fromText("hvgxa-wqaaa-aaaaq-aacia-cai");
@@ -2109,11 +2108,6 @@ shared (deployer) persistent actor class SneedLock() = this {
   private func isAdmin(principal : Principal) : Bool {
     // Check if principal is a controller
     if (Principal.isController(principal)) {
-      return true;
-    };
-    
-    // Check if principal is the hardcoded admin
-    if (Principal.equal(principal, admin)) {
       return true;
     };
     
