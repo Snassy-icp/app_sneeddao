@@ -250,7 +250,7 @@ function MoneyGraph({ source, start, theme }) {
                         {!['mint', 'burn'].includes(hover) && <div style={{ color: theme.colors.mutedText }}>{hover}</div>}
                         {hoverNode.tag && <div>{hoverNode.tag}</div>}
                         <div>balance {fmt(hoverNode.balance)} {share(hoverNode.balance)}</div>
-                        {edgesOf.current.has(hover) ? <div>received {fmt(hoverNode.received)} from {hoverNode.inCount} · sent {fmt(hoverNode.sent)} to {hoverNode.outCount}{hoverNode.truncated ? ' (long history, most recent only)' : ''}</div> : <div style={{ color: theme.colors.mutedText }}>not expanded yet, click to read</div>}
+                        {edgesOf.current.has(hover) ? <div>received {fmt(hoverNode.received)} from {hoverNode.inCount} sender{hoverNode.inCount === 1 ? '' : 's'} · sent {fmt(hoverNode.sent)} to {hoverNode.outCount} recipient{hoverNode.outCount === 1 ? '' : 's'}{hoverNode.truncated ? ' (long history, most recent only)' : ''}</div> : <div style={{ color: theme.colors.mutedText }}>not expanded yet, click to read</div>}
                         {hoverNode.satellites > 0 && <div style={{ color: COLORS.hub }}>funded {hoverNode.satellites} dormant single-source account(s)</div>}
                         {hoverNode.sprayTo > 0 && <div style={{ color: COLORS.spray }}>sent to {hoverNode.sprayTo} other wallets (not canisters)</div>}
                         {hoverNode.satelliteOf && <div style={{ color: COLORS.satellite }}>satellite of {label(hoverNode.satelliteOf)}</div>}
