@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaCoins, FaWater, FaArrowRight, FaArrowLeft, FaLock, FaCheck, FaSpinner, FaCrown, FaWallet, FaShieldAlt, FaSync, FaChevronDown, FaChevronUp } from 'react-icons/fa';
+import { FaCoins, FaWater, FaArrowRight, FaArrowLeft, FaLock, FaCheck, FaSpinner, FaCrown, FaShieldAlt, FaSync, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
 import Header from '../components/Header';
@@ -80,7 +80,7 @@ function LockWizard() {
     // Premium status
     const { isPremium, loading: loadingPremium } = usePremiumStatus(identity);
     
-    // Wizard state - now 4 steps: Type -> Select -> Payment -> Configure
+    // Wizard state - 3 steps: Type -> Select -> Configure & Lock (fee shown and paid with the lock)
     const [currentStep, setCurrentStep] = useState(1);
     const [lockType, setLockType] = useState(null); // 'token' or 'position'
     const [isHovering, setIsHovering] = useState(null);
@@ -112,17 +112,17 @@ function LockWizard() {
     const tokenCheckRequestRef = useRef(0);
     const poolCheckRequestRef = useRef(0);
     
-    // Step 3: Payment state
-    const [lockFeeConfig, setLockFeeConfig] = useState(null);
+    // Lock fee state (shown and paid in step 3, together with the lock)
     const [requiredFee, setRequiredFee] = useState(0n);
+    const [feeIsPremium, setFeeIsPremium] = useState(false);
     const [paymentBalance, setPaymentBalance] = useState(0n);
     const [paymentSubaccount, setPaymentSubaccount] = useState(null);
     const [loadingPayment, setLoadingPayment] = useState(false);
-    const [isPayingFee, setIsPayingFee] = useState(false);
     const [paymentError, setPaymentError] = useState('');
     const [icpWalletBalance, setIcpWalletBalance] = useState(0n);
+    const [icpBackendAvailable, setIcpBackendAvailable] = useState(0n);
     
-    // Step 4: Lock configuration state
+    // Step 3: Lock configuration state
     const [lockAmount, setLockAmount] = useState('');
     const [lockExpiry, setLockExpiry] = useState('');
     const [isLocking, setIsLocking] = useState(false);
@@ -134,9 +134,9 @@ function LockWizard() {
     const [confirmAction, setConfirmAction] = useState(null);
     const [confirmMessage, setConfirmMessage] = useState('');
 
-    // Reset expiry when entering step 4 (Configure)
+    // Reset expiry when entering step 3 (Configure & Lock)
     useEffect(() => {
-        if (currentStep === 4) {
+        if (currentStep === 3) {
             setLockExpiry(getInitialExpiry());
             setLockError('');
         }
@@ -156,107 +156,163 @@ function LockWizard() {
         }
     }, [currentStep, lockType, isAuthenticated, identity]);
 
-    // Fetch payment info when entering step 3 (Payment)
+    // Fetch the lock fee and ICP balances when entering step 3 (Configure & Lock)
     useEffect(() => {
         if (currentStep === 3 && isAuthenticated && identity) {
             fetchPaymentInfo();
         }
     }, [currentStep, isAuthenticated, identity, lockType]);
 
+    const ICP_TX_FEE = 10_000n; // 0.0001 ICP ledger transfer fee
+
+    // Load everything the fee panel needs: the fee for this user and lock type, what is
+    // already deposited, and how much ICP the user has in the Sneed wallet and the frontend wallet.
     const fetchPaymentInfo = async () => {
         setLoadingPayment(true);
         setPaymentError('');
         try {
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
             const icpLedgerActor = createLedgerActor(ICP_LEDGER_ID, { agentOptions: { identity } });
-            
-            // Get fee configuration
-            const feeConfig = await sneedLockActor.get_lock_fees_icp();
-            setLockFeeConfig(feeConfig);
-            
-            // Determine required fee based on lock type and premium status
+            const principal = identity.getPrincipal();
             const isPositionLock = lockType === 'position';
+
+            // The canister knows the user's premium status and the fee table; ask it directly.
             let fee;
-            if (isPremium) {
-                fee = isPositionLock ? feeConfig.premium_position_lock_fee_icp_e8s : feeConfig.premium_token_lock_fee_icp_e8s;
-            } else {
-                fee = isPositionLock ? feeConfig.position_lock_fee_icp_e8s : feeConfig.token_lock_fee_icp_e8s;
+            let premium = isPremium;
+            try {
+                const effective = await sneedLockActor.getEffectiveLockFee(principal, isPositionLock);
+                fee = BigInt(effective.fee_e8s);
+                premium = effective.is_premium;
+            } catch (e) {
+                console.warn('getEffectiveLockFee failed, falling back to fee table:', e);
+                const feeConfig = await sneedLockActor.get_lock_fees_icp();
+                fee = BigInt(isPremium
+                    ? (isPositionLock ? feeConfig.premium_position_lock_fee_icp_e8s : feeConfig.premium_token_lock_fee_icp_e8s)
+                    : (isPositionLock ? feeConfig.position_lock_fee_icp_e8s : feeConfig.token_lock_fee_icp_e8s));
             }
             setRequiredFee(fee);
-            
-            // Get payment subaccount
-            const subaccount = await sneedLockActor.getPaymentSubaccount(identity.getPrincipal());
+            setFeeIsPremium(premium);
+
+            const subaccount = await sneedLockActor.getPaymentSubaccount(principal);
             setPaymentSubaccount(subaccount);
-            
-            // Get current payment balance
-            const payBal = await sneedLockActor.getPaymentBalance(identity.getPrincipal());
+
+            const [payBal, walletBal, backendBal, summedLocksList] = await Promise.all([
+                sneedLockActor.getPaymentBalance(principal),
+                icpLedgerActor.icrc1_balance_of({ owner: principal, subaccount: [] }),
+                icpLedgerActor.icrc1_balance_of({ owner: Principal.fromText(sneedLockCanisterId), subaccount: [principalToSubAccount(principal)] }),
+                sneedLockActor.get_summed_locks()
+            ]);
+            let lockedIcp = 0n;
+            for (const lock of summedLocksList) {
+                const id = lock[0].toText ? lock[0].toText() : String(lock[0]);
+                if (id === ICP_LEDGER_ID) lockedIcp = lock[1];
+            }
             setPaymentBalance(BigInt(payBal));
-            
-            // Get ICP wallet balance
-            const walletBal = await icpLedgerActor.icrc1_balance_of({
-                owner: identity.getPrincipal(),
-                subaccount: []
-            });
             setIcpWalletBalance(BigInt(walletBal));
+            setIcpBackendAvailable(BigInt(backendBal) > lockedIcp ? BigInt(backendBal) - lockedIcp : 0n);
         } catch (error) {
             console.error('Error fetching payment info:', error);
-            setPaymentError('Failed to load payment information');
+            setPaymentError('Could not load the lock fee information. ' + (error?.message || ''));
         } finally {
             setLoadingPayment(false);
         }
     };
 
-    const handlePayFee = async () => {
-        if (!identity || !paymentSubaccount) return;
-        
-        setIsPayingFee(true);
-        setPaymentError('');
-        
-        try {
-            const icpLedgerActor = createLedgerActor(ICP_LEDGER_ID, { agentOptions: { identity } });
-            
-            // Calculate amount to send (required fee minus any existing balance, plus ICP transaction fee)
-            const existingBalance = paymentBalance;
-            const amountNeeded = BigInt(requiredFee) - existingBalance;
-            const icpTxFee = 10_000n; // 0.0001 ICP
-            const amountToSend = amountNeeded + icpTxFee;
-            
-            if (icpWalletBalance < amountToSend) {
-                setPaymentError(`Insufficient ICP balance. Need ${formatIcp(amountToSend)}, have ${formatIcp(icpWalletBalance)}`);
-                setIsPayingFee(false);
-                return;
+    // Parse the amount typed in step 3 as e8s-style integer (0n when not valid yet)
+    const parsedLockAmount = () => {
+        if (lockType !== 'token' || !selectedToken) return 0n;
+        const amountFloat = parseFloat(lockAmount);
+        if (isNaN(amountFloat) || amountFloat <= 0) return 0n;
+        return BigInt(Math.floor(amountFloat * (10 ** selectedToken.decimals)));
+    };
+
+    // Decide where the ICP for the lock fee comes from. The Sneed wallet's ICP (the user's
+    // SneedLock subaccount) is preferred; the frontend wallet covers what is missing. Each
+    // transfer costs one ledger fee, paid by the sending account, so a source is only used if
+    // it can cover its share plus that fee. When the token being locked is ICP itself, the ICP
+    // the lock will consume is reserved first so the fee cannot eat into it.
+    const computeFeePlan = () => {
+        const fee = BigInt(requiredFee);
+        const paid = paymentBalance;
+        const need = fee > paid ? fee - paid : 0n;
+
+        let backendAvail = icpBackendAvailable;
+        let frontendAvail = icpWalletBalance;
+        let backendUsedByLock = 0n;
+        if (lockType === 'token' && selectedToken && selectedToken.ledgerId === ICP_LEDGER_ID) {
+            const amount = parsedLockAmount();
+            backendUsedByLock = amount < selectedToken.available_backend ? amount : selectedToken.available_backend;
+            backendAvail = backendAvail > backendUsedByLock ? backendAvail - backendUsedByLock : 0n;
+            const toSend = amount - backendUsedByLock;
+            if (toSend > 0n) {
+                const reserve = toSend + ICP_TX_FEE;
+                frontendAvail = frontendAvail > reserve ? frontendAvail - reserve : 0n;
             }
-            
-            // Transfer ICP to payment subaccount
+        }
+
+        const plan = { fee, paid, need, fromBackend: 0n, fromFrontend: 0n, txFees: 0n, sufficient: true, shortfall: 0n, backendAvail, frontendAvail };
+        if (need === 0n) return plan;
+
+        if (backendAvail >= need + ICP_TX_FEE) {
+            plan.fromBackend = need;
+            plan.txFees = ICP_TX_FEE;
+        } else if (frontendAvail >= need + ICP_TX_FEE) {
+            plan.fromFrontend = need;
+            plan.txFees = ICP_TX_FEE;
+        } else {
+            const usableBackend = backendAvail > ICP_TX_FEE ? backendAvail - ICP_TX_FEE : 0n;
+            plan.fromBackend = usableBackend < need ? usableBackend : need;
+            plan.fromFrontend = need - plan.fromBackend;
+            plan.txFees = (plan.fromBackend > 0n ? ICP_TX_FEE : 0n) + (plan.fromFrontend > 0n ? ICP_TX_FEE : 0n);
+            const frontendRequired = plan.fromFrontend > 0n ? plan.fromFrontend + ICP_TX_FEE : 0n;
+            if (frontendAvail < frontendRequired) {
+                plan.sufficient = false;
+                plan.shortfall = frontendRequired - frontendAvail;
+            }
+        }
+        return plan;
+    };
+
+    // Move the ICP for the fee into the payment subaccount and verify it arrived.
+    const payLockFee = async (plan) => {
+        if (plan.need === 0n) return;
+        if (!plan.sufficient) {
+            throw new Error(`Not enough ICP for the lock fee. You need ${formatIcp(plan.shortfall)} more.`);
+        }
+        const principal = identity.getPrincipal();
+        const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+        const paymentAccount = { owner: Principal.fromText(sneedLockCanisterId), subaccount: [paymentSubaccount] };
+
+        if (plan.fromBackend > 0n) {
+            const result = await sneedLockActor.transfer_tokens(
+                Principal.fromText(sneedLockCanisterId),
+                [paymentSubaccount],
+                Principal.fromText(ICP_LEDGER_ID),
+                plan.fromBackend
+            );
+            if (result.Err) {
+                throw new Error(`Could not move ICP from your Sneed wallet for the fee: ${JSON.stringify(result.Err, (k, v) => typeof v === 'bigint' ? v.toString() : v)}`);
+            }
+        }
+        if (plan.fromFrontend > 0n) {
+            const icpLedgerActor = createLedgerActor(ICP_LEDGER_ID, { agentOptions: { identity } });
             const result = await icpLedgerActor.icrc1_transfer({
-                to: { owner: Principal.fromText(sneedLockCanisterId), subaccount: [paymentSubaccount] },
+                to: paymentAccount,
                 fee: [],
                 memo: [],
                 from_subaccount: [],
                 created_at_time: [],
-                amount: amountToSend - icpTxFee // The fee will be deducted by the ledger
+                amount: plan.fromFrontend
             });
-            
             if (result.Err) {
-                throw new Error(`Transfer failed: ${JSON.stringify(result.Err)}`);
+                throw new Error(`Could not send ICP from your wallet for the fee: ${JSON.stringify(result.Err, (k, v) => typeof v === 'bigint' ? v.toString() : v)}`);
             }
-            
-            // Refresh payment balance
-            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
-            const newBalance = await sneedLockActor.getPaymentBalance(identity.getPrincipal());
-            setPaymentBalance(BigInt(newBalance));
-            
-            // Refresh wallet balance
-            const walletBal = await icpLedgerActor.icrc1_balance_of({
-                owner: identity.getPrincipal(),
-                subaccount: []
-            });
-            setIcpWalletBalance(BigInt(walletBal));
-        } catch (error) {
-            console.error('Payment error:', error);
-            setPaymentError(error.message || 'Failed to send payment');
-        } finally {
-            setIsPayingFee(false);
+        }
+
+        const newBalance = BigInt(await sneedLockActor.getPaymentBalance(principal));
+        setPaymentBalance(newBalance);
+        if (newBalance < plan.fee) {
+            throw new Error(`The fee deposit has not fully arrived yet (${formatIcp(newBalance)} of ${formatIcp(plan.fee)}). Nothing is lost: the deposit stays in your payment balance. Please try again in a moment.`);
         }
     };
 
@@ -538,6 +594,702 @@ function LockWizard() {
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [identity]);
+
+    const handleSetMax = () => {
+        if (!selectedToken) return;
+        
+        let max = selectedToken.available_backend;
+        if (selectedToken.available > selectedToken.available_backend) {
+            let frontendMax = selectedToken.available - selectedToken.available_backend - selectedToken.fee;
+            if (frontendMax < 0n) frontendMax = 0n;
+            max += frontendMax;
+        }
+        if (max < 0n) max = 0n;
+        
+        setLockAmount(formatAmount(max, selectedToken.decimals));
+    };
+
+    const validateLock = () => {
+        setLockError('');
+        
+        if (lockType === 'token') {
+            if (!lockAmount) {
+                setLockError("Please enter an amount.");
+                return false;
+            }
+            
+            const amountFloat = parseFloat(lockAmount);
+            if (isNaN(amountFloat) || amountFloat <= 0) {
+                setLockError("Please enter a valid positive amount.");
+                return false;
+            }
+            
+            const scaledAmount = amountFloat * (10 ** selectedToken.decimals);
+            const bigIntAmount = BigInt(Math.floor(scaledAmount));
+            
+            if (bigIntAmount > selectedToken.available) {
+                setLockError("Insufficient available balance.");
+                return false;
+            }
+        }
+        
+        if (!lockExpiry) {
+            setLockError("Please enter an expiration date.");
+            return false;
+        }
+        
+        if (new Date(lockExpiry) < new Date()) {
+            setLockError("Expiration must be in the future.");
+            return false;
+        }
+        
+        return true;
+    };
+
+    const describeFeePlan = (plan) => {
+        if (plan.fee === 0n) return 'No lock fee applies.';
+        if (plan.need === 0n) return `The ${formatIcp(plan.fee)} lock fee is already deposited.`;
+        const parts = [];
+        if (plan.paid > 0n) parts.push(`${formatIcp(plan.paid)} already deposited`);
+        if (plan.fromBackend > 0n) parts.push(`${formatIcp(plan.fromBackend)} from your Sneed wallet ICP`);
+        if (plan.fromFrontend > 0n) parts.push(`${formatIcp(plan.fromFrontend)} from your ICP wallet`);
+        return `A lock fee of ${formatIcp(plan.fee)} will be paid: ${parts.join(', ')}` +
+            (plan.txFees > 0n ? ` (plus ${formatIcp(plan.txFees)} in ledger transfer fees).` : '.');
+    };
+
+    const handleLock = async () => {
+        if (!validateLock()) return;
+        if (loadingPayment) {
+            setLockError('Still loading the lock fee information, one moment...');
+            return;
+        }
+        const plan = computeFeePlan();
+        if (!plan.sufficient) {
+            setLockError(`Not enough ICP for the lock fee. You need ${formatIcp(plan.shortfall)} more ICP in your wallet.`);
+            return;
+        }
+        
+        const expiryDate = new Date(lockExpiry);
+        const duration = format_duration(expiryDate - new Date());
+        
+        if (lockType === 'token') {
+            setConfirmMessage(
+                `You are about to lock ${lockAmount} ${selectedToken.symbol} ` +
+                `until ${dateToReadable(expiryDate)} ${get_short_timezone()} ` +
+                `(for ${duration}). ` + describeFeePlan(plan)
+            );
+        } else {
+            setConfirmMessage(
+                `You are about to lock position #${selectedPosition.id} (${selectedPosition.symbols}) ` +
+                `until ${dateToReadable(expiryDate)} ${get_short_timezone()} ` +
+                `(for ${duration}). ` + describeFeePlan(plan)
+            );
+        }
+        
+        setConfirmAction(() => executeLock);
+        setShowConfirmModal(true);
+    };
+
+    const executeLock = async () => {
+        setIsLocking(true);
+        setLockError('');
+        
+        let feePaid = false;
+        try {
+            // 1. Pay the lock fee (no-op when free or already deposited)
+            const plan = computeFeePlan();
+            await payLockFee(plan);
+            feePaid = plan.need > 0n;
+
+            // 2. Create the lock. If the fee came out of the Sneed wallet's ICP and we are
+            //    locking ICP, that much less of the backend balance is available for the lock.
+            if (lockType === 'token') {
+                let backendAvailable = selectedToken.available_backend;
+                if (selectedToken.ledgerId === ICP_LEDGER_ID && plan.fromBackend > 0n) {
+                    const used = plan.fromBackend + ICP_TX_FEE;
+                    backendAvailable = backendAvailable > used ? backendAvailable - used : 0n;
+                }
+                await executeTokenLock(backendAvailable);
+            } else {
+                await executePositionLock();
+            }
+            setLockSuccess(true);
+        } catch (error) {
+            console.error('Lock error:', error);
+            let message = error.message || 'An error occurred while creating the lock.';
+            if (feePaid) {
+                message += ' Your ICP fee deposit is kept in your payment balance and will be used when you try again.';
+            }
+            setLockError(message);
+            // Refresh balances so the fee panel reflects what was deposited
+            fetchPaymentInfo();
+        } finally {
+            setIsLocking(false);
+        }
+    };
+
+    const executeTokenLock = async (backendAvailable) => {
+        const ledgerActor = createLedgerActor(selectedToken.ledgerId, { agentOptions: { identity } });
+        const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+        
+        const amountFloat = parseFloat(lockAmount);
+        const scaledAmount = amountFloat * (10 ** selectedToken.decimals);
+        const bigIntAmount = BigInt(Math.floor(scaledAmount));
+        const amountToSendToBackend = bigIntAmount - backendAvailable;
+        
+        // Transfer to backend if needed
+        if (amountToSendToBackend > 0n) {
+            const subaccount = principalToSubAccount(identity.getPrincipal());
+            const result = await ledgerActor.icrc1_transfer({
+                to: { owner: Principal.fromText(sneedLockCanisterId), subaccount: [subaccount] },
+                fee: [],
+                memo: [],
+                from_subaccount: [],
+                created_at_time: [],
+                amount: amountToSendToBackend
+            });
+            
+            if (result.Err) {
+                throw new Error(`Transfer failed: ${JSON.stringify(result.Err)}`);
+            }
+        }
+        
+        // Create the lock
+        const expiryBigInt = BigInt(new Date(lockExpiry).getTime()) * 1000000n;
+        const result = await sneedLockActor.create_lock(
+            bigIntAmount,
+            selectedToken.ledger_canister_id,
+            expiryBigInt
+        );
+        
+        if (result.Err) {
+            throw new Error(result.Err.message || JSON.stringify(result.Err));
+        }
+    };
+
+    const executePositionLock = async () => {
+        const swapActor = createIcpSwapActor(selectedPosition.swapCanisterId, { agentOptions: { identity } });
+        const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+        
+        const expiryBigInt = BigInt(new Date(lockExpiry).getTime()) * 1000000n;
+        
+        if (selectedPosition.frontendOwnership) {
+            // Position is owned by user - need to claim and transfer
+            const claimed = await sneedLockActor.claim_position(
+                Principal.fromText(selectedPosition.swapCanisterId), 
+                selectedPosition.id
+            );
+            
+            if (!claimed) {
+                throw new Error("Unable to claim position.");
+            }
+            
+            const transferResult = await swapActor.transferPosition(
+                identity.getPrincipal(),
+                Principal.fromText(sneedLockCanisterId),
+                selectedPosition.id
+            );
+            
+            if (transferResult.err) {
+                throw new Error(`Unable to transfer position: ${JSON.stringify(transferResult.err)}`);
+            }
+            
+            const lockResult = await sneedLockActor.create_position_lock(
+                Principal.fromText(selectedPosition.swapCanisterId),
+                dex_icpswap,
+                selectedPosition.id,
+                expiryBigInt,
+                selectedPosition.token0,
+                selectedPosition.token1
+            );
+            
+            if (lockResult.Err) {
+                throw new Error(lockResult.Err.message || JSON.stringify(lockResult.Err));
+            }
+        } else {
+            // Position already claimed - just create lock
+            const lockResult = await sneedLockActor.create_position_lock(
+                Principal.fromText(selectedPosition.swapCanisterId),
+                dex_icpswap,
+                selectedPosition.id,
+                expiryBigInt,
+                selectedPosition.token0,
+                selectedPosition.token1
+            );
+            
+            if (lockResult.Err) {
+                throw new Error(lockResult.Err.message || JSON.stringify(lockResult.Err));
+            }
+        }
+    };
+
+    const goToStep = (step) => {
+        if (step < currentStep) {
+            setCurrentStep(step);
+            if (step === 1) {
+                setSelectedToken(null);
+                setSelectedPosition(null);
+                setSelectedTokenId('');
+                setTokenCheckError('');
+                clearPoolSelection();
+                setShowTransferHelp(false);
+                setPickerResetKey(k => k + 1);
+                setLockAmount('');
+                setLockSuccess(false);
+                setPaymentError('');
+            } else if (step === 2) {
+                setLockAmount('');
+                setLockSuccess(false);
+                setPaymentError('');
+            }
+        }
+    };
+
+    const styles = {
+        container: {
+            maxWidth: '800px',
+            margin: '0 auto',
+            padding: '1.5rem 1rem',
+            color: theme.colors.primaryText,
+        },
+        hero: {
+            textAlign: 'center',
+            marginBottom: '1.5rem',
+        },
+        title: {
+            fontSize: '1.75rem',
+            marginBottom: '0.5rem',
+            color: theme.colors.primaryText,
+            fontWeight: '700',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '12px',
+        },
+        subtitle: {
+            fontSize: '1rem',
+            color: theme.colors.secondaryText,
+            marginBottom: '0.5rem',
+            lineHeight: '1.6',
+        },
+        stepProgress: {
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'center',
+            gap: '0',
+            marginBottom: '1.5rem',
+            padding: '1.25rem',
+            background: theme.colors.cardGradient,
+            borderRadius: '16px',
+            border: `1px solid ${theme.colors.border}`,
+            boxShadow: theme.colors.cardShadow,
+        },
+        stepCircle: (stepNum, isActive, isCompleted) => ({
+            width: '44px',
+            height: '44px',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: '600',
+            fontSize: '1rem',
+            background: isCompleted 
+                ? `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)` 
+                : isActive 
+                    ? `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})` 
+                    : theme.colors.tertiaryBg,
+            color: isCompleted || isActive ? '#fff' : theme.colors.mutedText,
+            border: 'none',
+            cursor: isCompleted ? 'pointer' : 'default',
+            transition: 'all 0.3s ease',
+            boxShadow: isActive ? `0 4px 16px ${lockPrimary}50` : isCompleted ? `0 4px 12px ${theme.colors.success}40` : 'none',
+        }),
+        stepLine: (isCompleted) => ({
+            width: '40px',
+            height: '3px',
+            background: isCompleted 
+                ? `linear-gradient(90deg, ${theme.colors.success}, ${theme.colors.success}dd)` 
+                : theme.colors.border,
+            transition: 'all 0.3s ease',
+            marginTop: '20px',
+            borderRadius: '2px',
+        }),
+        stepLabel: (isActive) => ({
+            fontSize: '0.7rem',
+            fontWeight: isActive ? '600' : '500',
+            color: isActive ? theme.colors.primaryText : theme.colors.mutedText,
+            marginTop: '8px',
+            textAlign: 'center',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+        }),
+        optionsGrid: {
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+            gap: '1rem',
+            marginBottom: '1.5rem',
+        },
+        optionCard: (isSelected, isHovered) => ({
+            background: isSelected 
+                ? `linear-gradient(135deg, ${lockPrimary}15, ${lockPrimary}05)` 
+                : theme.colors.cardGradient,
+            border: `2px solid ${isSelected ? lockPrimary : isHovered ? `${lockPrimary}50` : theme.colors.border}`,
+            borderRadius: '16px',
+            padding: '1.5rem',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            transform: isHovered ? 'translateY(-4px)' : 'translateY(0)',
+            boxShadow: isSelected || isHovered 
+                ? `0 12px 40px ${lockPrimary}20` 
+                : theme.colors.cardShadow,
+        }),
+        optionIcon: (isSelected) => ({
+            fontSize: '2.5rem',
+            marginBottom: '0.75rem',
+            color: isSelected ? lockPrimary : theme.colors.mutedText,
+            transition: 'color 0.3s ease',
+        }),
+        optionTitle: {
+            fontSize: '1.15rem',
+            fontWeight: '600',
+            marginBottom: '0.5rem',
+            color: theme.colors.primaryText,
+        },
+        optionDescription: {
+            fontSize: '0.85rem',
+            color: theme.colors.secondaryText,
+            lineHeight: '1.5',
+        },
+        tokenList: {
+            display: 'grid',
+            gap: '10px',
+            marginBottom: '1.5rem',
+        },
+        tokenItem: (isSelected) => ({
+            display: 'flex',
+            alignItems: 'center',
+            gap: '14px',
+            padding: '14px',
+            background: isSelected ? `linear-gradient(135deg, ${lockPrimary}15, ${lockPrimary}05)` : theme.colors.cardGradient,
+            border: `2px solid ${isSelected ? lockPrimary : theme.colors.border}`,
+            borderRadius: '14px',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            boxShadow: isSelected ? `0 4px 16px ${lockPrimary}20` : 'none',
+        }),
+        tokenLogo: {
+            width: '44px',
+            height: '44px',
+            borderRadius: '50%',
+            objectFit: 'cover',
+            border: `2px solid ${theme.colors.border}`,
+        },
+        tokenInfo: {
+            flex: 1,
+        },
+        tokenSymbol: {
+            fontSize: '1.05rem',
+            fontWeight: '600',
+            color: theme.colors.primaryText,
+        },
+        tokenBalance: {
+            fontSize: '0.85rem',
+            color: theme.colors.mutedText,
+        },
+        positionItem: (isSelected) => ({
+            display: 'flex',
+            alignItems: 'center',
+            gap: '14px',
+            padding: '14px',
+            background: isSelected ? `linear-gradient(135deg, ${lockPrimary}15, ${lockPrimary}05)` : theme.colors.cardGradient,
+            border: `2px solid ${isSelected ? lockPrimary : theme.colors.border}`,
+            borderRadius: '14px',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            boxShadow: isSelected ? `0 4px 16px ${lockPrimary}20` : 'none',
+        }),
+        positionLogos: {
+            display: 'flex',
+            alignItems: 'center',
+        },
+        positionLogo: (index) => ({
+            width: '36px',
+            height: '36px',
+            borderRadius: '50%',
+            objectFit: 'cover',
+            marginLeft: index > 0 ? '-12px' : '0',
+            border: `3px solid ${theme.colors.primaryBg}`,
+        }),
+        configCard: {
+            background: theme.colors.cardGradient,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '16px',
+            padding: '1.5rem',
+            marginBottom: '1.25rem',
+            boxShadow: theme.colors.cardShadow,
+        },
+        inputGroup: {
+            marginBottom: '1.25rem',
+        },
+        label: {
+            display: 'block',
+            color: theme.colors.primaryText,
+            marginBottom: '8px',
+            fontWeight: '600',
+            fontSize: '0.9rem',
+        },
+        inputRow: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            flexWrap: 'wrap',
+        },
+        input: {
+            flex: 1,
+            minWidth: '150px',
+            padding: '12px 14px',
+            background: theme.colors.primaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '10px',
+            color: theme.colors.primaryText,
+            fontSize: '1rem',
+            outline: 'none',
+        },
+        maxButton: {
+            background: `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})`,
+            color: '#fff',
+            border: 'none',
+            borderRadius: '10px',
+            padding: '12px 16px',
+            cursor: 'pointer',
+            fontWeight: '600',
+            fontSize: '0.85rem',
+            boxShadow: `0 4px 12px ${lockPrimary}30`,
+        },
+        buttonRow: {
+            display: 'flex',
+            gap: '12px',
+            marginTop: '1.5rem',
+            flexWrap: 'wrap',
+        },
+        backButton: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            flex: 1,
+            minWidth: '120px',
+            padding: '14px 20px',
+            background: theme.colors.cardGradient || theme.colors.secondaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '12px',
+            color: theme.colors.primaryText,
+            fontSize: '0.95rem',
+            fontWeight: '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+        },
+        continueButton: (isEnabled) => ({
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            flex: 2,
+            minWidth: '180px',
+            padding: '14px 24px',
+            background: isEnabled 
+                ? `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})` 
+                : theme.colors.tertiaryBg,
+            border: 'none',
+            borderRadius: '12px',
+            color: isEnabled ? '#fff' : theme.colors.mutedText,
+            fontSize: '0.95rem',
+            fontWeight: '600',
+            cursor: isEnabled ? 'pointer' : 'not-allowed',
+            transition: 'all 0.2s ease',
+            boxShadow: isEnabled ? `0 4px 20px ${lockPrimary}40` : 'none',
+        }),
+        errorBox: {
+            color: theme.colors.error,
+            padding: '14px',
+            background: `${theme.colors.error}15`,
+            border: `1px solid ${theme.colors.error}30`,
+            borderRadius: '12px',
+            marginBottom: '1rem',
+            fontSize: '0.9rem',
+        },
+        successCard: {
+            textAlign: 'center',
+            padding: '2.5rem 1.5rem',
+            background: `linear-gradient(135deg, ${theme.colors.success}10 0%, ${theme.colors.cardGradient || theme.colors.cardBackground} 100%)`,
+            border: `2px solid ${theme.colors.success}40`,
+            borderRadius: '20px',
+            boxShadow: `0 8px 32px ${theme.colors.success}20`,
+        },
+        successIcon: {
+            width: '80px',
+            height: '80px',
+            borderRadius: '50%',
+            background: `linear-gradient(135deg, ${theme.colors.success}30, ${theme.colors.success}10)`,
+            border: `2px solid ${theme.colors.success}40`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 1.5rem',
+        },
+        spinner: {
+            animation: 'spin 1s linear infinite',
+        },
+        loadingContainer: {
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '3rem',
+            gap: '1rem',
+        },
+        emptyState: {
+            textAlign: 'center',
+            padding: '3rem',
+            color: theme.colors.mutedText,
+            background: theme.colors.cardGradient,
+            borderRadius: '16px',
+            border: `1px solid ${theme.colors.border}`,
+        },
+        loginPrompt: {
+            textAlign: 'center',
+            padding: '2.5rem 1.5rem',
+            background: theme.colors.cardGradient,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '20px',
+            boxShadow: theme.colors.cardShadow,
+        },
+    };
+
+    if (!isAuthenticated) {
+        return (
+            <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                <style>{customStyles}</style>
+                <Header customLogo="/sneedlock-logo4.png" />
+                <main style={styles.container}>
+                    <div className="lock-fade-in" style={styles.loginPrompt}>
+                        <div className="lock-float" style={{
+                            width: '72px',
+                            height: '72px',
+                            borderRadius: '18px',
+                            background: `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            margin: '0 auto 1.5rem',
+                            boxShadow: `0 8px 32px ${lockPrimary}50`,
+                        }}>
+                            <FaLock size={28} style={{ color: '#fff' }} />
+                        </div>
+                        <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.75rem', fontSize: '1.5rem', fontWeight: '700' }}>
+                            Lock Wizard
+                        </h2>
+                        <p style={{ fontSize: '1rem', color: theme.colors.secondaryText, marginBottom: '1.5rem', lineHeight: '1.6' }}>
+                            Please log in to access the Lock Wizard
+                        </p>
+                    </div>
+                </main>
+            </div>
+        );
+    }
+
+    const stepLabels = ['Type', 'Select', 'Lock'];
+    
+    const renderStepProgress = () => (
+        <div className="lock-fade-in" style={styles.stepProgress}>
+            {[1, 2, 3].map((stepNum, index) => (
+                <React.Fragment key={stepNum}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <div 
+                            style={styles.stepCircle(stepNum, stepNum === currentStep, stepNum < currentStep)}
+                            onClick={() => stepNum < currentStep && goToStep(stepNum)}
+                        >
+                            {stepNum < currentStep ? <FaCheck size={16} /> : stepNum}
+                        </div>
+                        <div style={styles.stepLabel(stepNum === currentStep)}>
+                            {stepLabels[stepNum - 1]}
+                        </div>
+                    </div>
+                    {index < 2 && <div style={styles.stepLine(stepNum < currentStep)} />}
+                </React.Fragment>
+            ))}
+        </div>
+    );
+
+    const renderStep1 = () => (
+        <>
+            <div className="lock-fade-in" style={styles.hero}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px', marginBottom: '0.75rem' }}>
+                    <div className="lock-float" style={{
+                        width: '48px',
+                        height: '48px',
+                        borderRadius: '14px',
+                        background: `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: `0 4px 16px ${lockPrimary}40`,
+                    }}>
+                        <FaLock size={20} style={{ color: '#fff' }} />
+                    </div>
+                    <h1 style={{ ...styles.title, margin: 0, justifyContent: 'flex-start' }}>
+                        Lock Wizard
+                    </h1>
+                </div>
+                <p style={styles.subtitle}>
+                    What would you like to lock?
+                </p>
+            </div>
+
+            <div className="lock-fade-in" style={styles.optionsGrid}>
+                <div
+                    style={styles.optionCard(lockType === 'token', isHovering === 'token')}
+                    onClick={() => setLockType('token')}
+                    onMouseEnter={() => setIsHovering('token')}
+                    onMouseLeave={() => setIsHovering(null)}
+                >
+                    <div style={styles.optionIcon(lockType === 'token')}>
+                        <FaCoins />
+                    </div>
+                    <h3 style={styles.optionTitle}>Lock Tokens</h3>
+                    <p style={styles.optionDescription}>
+                        Lock ICRC-1 tokens for vesting, commitment proof, or trust-building.
+                    </p>
+                </div>
+
+                <div
+                    style={styles.optionCard(lockType === 'position', isHovering === 'position')}
+                    onClick={() => setLockType('position')}
+                    onMouseEnter={() => setIsHovering('position')}
+                    onMouseLeave={() => setIsHovering(null)}
+                >
+                    <div style={styles.optionIcon(lockType === 'position')}>
+                        <FaWater />
+                    </div>
+                    <h3 style={styles.optionTitle}>Lock Liquidity Position</h3>
+                    <p style={styles.optionDescription}>
+                        Lock LP positions while still earning fees.
+                    </p>
+                </div>
+            </div>
+
+            <div style={styles.buttonRow}>
+                <button
+                    style={styles.continueButton(!!lockType)}
+                    onClick={() => lockType && setCurrentStep(2)}
+                    disabled={!lockType}
+                >
+                    Continue
+                    <FaArrowRight />
+                </button>
+            </div>
+        </>
+    );
 
     // ---- Step 2 rendering ----
 
@@ -874,223 +1626,86 @@ function LockWizard() {
         </>
     );
 
-    // Step 3: Payment
-    const renderStep3 = () => {
-        const feeAmount = BigInt(requiredFee);
-        const hasSufficientPayment = paymentBalance >= feeAmount;
-        const isFreeToLock = feeAmount === 0n;
-        
+    // Fee panel inside the Configure & Lock step: what the lock costs and where the ICP comes from
+    const renderFeePanel = () => {
+        const plan = computeFeePlan();
+        const row = (label, value, valueColor) => (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', fontSize: '0.9rem' }}>
+                <span style={{ color: theme.colors.secondaryText }}>{label}</span>
+                <span style={{ color: valueColor || theme.colors.primaryText, fontWeight: 500, textAlign: 'right' }}>{value}</span>
+            </div>
+        );
         return (
-            <>
-                <div className="lock-fade-in" style={styles.hero}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px', marginBottom: '0.75rem' }}>
-                        <div style={{
-                            width: '48px',
-                            height: '48px',
-                            borderRadius: '14px',
-                            background: `linear-gradient(135deg, ${lockPrimary}30, ${lockPrimary}10)`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                        }}>
-                            <FaWallet size={22} style={{ color: lockPrimary }} />
-                        </div>
-                        <h1 style={{ ...styles.title, margin: 0, justifyContent: 'flex-start' }}>
-                            Payment
-                        </h1>
-                    </div>
-                    <p style={styles.subtitle}>
-                        {isFreeToLock 
-                            ? '✨ No payment required for this lock!' 
-                            : 'Send the required ICP to proceed with your lock'}
-                    </p>
-                </div>
-
-                <div className="lock-fade-in" style={styles.configCard}>
-                    {/* Premium status */}
-                    <div style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'space-between',
-                        paddingBottom: '1rem',
-                        borderBottom: `1px solid ${theme.colors.border}`,
-                        marginBottom: '1.5rem'
-                    }}>
-                        <div>
-                            <span style={{ color: theme.colors.secondaryText, marginRight: '10px' }}>Status:</span>
-                            {loadingPremium ? (
-                                <FaSpinner style={styles.spinner} />
-                            ) : isPremium ? (
-                                <PremiumBadge size="small" />
-                            ) : (
-                                <span style={{ color: theme.colors.mutedText }}>Standard User</span>
-                            )}
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                            <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>Lock Type</div>
-                            <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                                {lockType === 'token' ? 'Token Lock' : 'Position Lock'}
-                            </div>
-                        </div>
-                    </div>
-
+            <div style={{
+                background: theme.colors.secondaryBg,
+                borderRadius: '12px',
+                padding: '1rem 1.25rem',
+                marginBottom: '1rem',
+                display: 'grid',
+                gap: '8px'
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ color: theme.colors.secondaryText, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                        Lock fee
+                        {!loadingPayment && (feeIsPremium ? <PremiumBadge size="small" /> : <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>standard</span>)}
+                    </span>
                     {loadingPayment ? (
-                        <div style={styles.loadingContainer}>
-                            <FaSpinner size={32} style={{ ...styles.spinner, color: theme.colors.accent }} />
-                            <p style={{ color: theme.colors.mutedText }}>Loading payment information...</p>
-                        </div>
+                        <FaSpinner style={{ ...styles.spinner, color: lockPrimary }} />
                     ) : (
-                        <>
-                            {/* Fee breakdown */}
-                            <div style={{ 
-                                background: theme.colors.secondaryBg, 
-                                borderRadius: '12px', 
-                                padding: '1.5rem',
-                                marginBottom: '1.5rem'
-                            }}>
-                                <div style={{ 
-                                    display: 'flex', 
-                                    justifyContent: 'space-between', 
-                                    alignItems: 'center',
-                                    marginBottom: '1rem'
-                                }}>
-                                    <span style={{ color: theme.colors.secondaryText }}>Lock Fee:</span>
-                                    <span style={{ 
-                                        color: isFreeToLock ? theme.colors.success : theme.colors.primaryText,
-                                        fontSize: '1.2rem',
-                                        fontWeight: 'bold'
-                                    }}>
-                                        {isFreeToLock ? 'FREE' : formatIcp(feeAmount)}
-                                    </span>
-                                </div>
-                                
-                                {!isFreeToLock && (
-                                    <>
-                                        <div style={{ 
-                                            display: 'flex', 
-                                            justifyContent: 'space-between', 
-                                            alignItems: 'center',
-                                            marginBottom: '1rem'
-                                        }}>
-                                            <span style={{ color: theme.colors.secondaryText }}>Payment Deposited:</span>
-                                            <span style={{ 
-                                                color: hasSufficientPayment ? theme.colors.success : theme.colors.warning,
-                                                fontWeight: '500'
-                                            }}>
-                                                {formatIcp(paymentBalance)}
-                                            </span>
-                                        </div>
-                                        
-                                        <div style={{ 
-                                            display: 'flex', 
-                                            justifyContent: 'space-between', 
-                                            alignItems: 'center',
-                                            paddingTop: '1rem',
-                                            borderTop: `1px solid ${theme.colors.border}`
-                                        }}>
-                                            <span style={{ color: theme.colors.secondaryText }}>Your ICP Wallet:</span>
-                                            <span style={{ color: theme.colors.primaryText }}>
-                                                {formatIcp(icpWalletBalance)}
-                                            </span>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-
-                            {/* Payment status / action */}
-                            {!isFreeToLock && (
-                                <div style={{ 
-                                    background: hasSufficientPayment 
-                                        ? `${theme.colors.success}15` 
-                                        : `${theme.colors.warning}15`,
-                                    border: `1px solid ${hasSufficientPayment ? theme.colors.success : theme.colors.warning}30`,
-                                    borderRadius: '12px',
-                                    padding: '1rem',
-                                    marginBottom: '1rem'
-                                }}>
-                                    {hasSufficientPayment ? (
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                            <FaCheck style={{ color: theme.colors.success }} />
-                                            <span style={{ color: theme.colors.success }}>
-                                                Payment ready! You can proceed to configure your lock.
-                                            </span>
-                                        </div>
-                                    ) : (
-                                        <div>
-                                            <p style={{ color: theme.colors.warning, marginBottom: '1rem' }}>
-                                                Please deposit {formatIcp(feeAmount - paymentBalance)} more ICP to proceed.
-                                            </p>
-                                            <button
-                                                onClick={handlePayFee}
-                                                disabled={isPayingFee || icpWalletBalance < (feeAmount - paymentBalance + 10_000n)}
-                                                style={{
-                                                    background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}dd)`,
-                                                    color: theme.colors.primaryBg,
-                                                    border: 'none',
-                                                    borderRadius: '8px',
-                                                    padding: '12px 24px',
-                                                    fontWeight: '600',
-                                                    cursor: isPayingFee ? 'not-allowed' : 'pointer',
-                                                    opacity: isPayingFee ? 0.7 : 1,
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '8px'
-                                                }}
-                                            >
-                                                {isPayingFee ? (
-                                                    <>
-                                                        <FaSpinner style={styles.spinner} />
-                                                        Sending...
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <FaWallet />
-                                                        Send {formatIcp(feeAmount - paymentBalance + 10_000n)}
-                                                    </>
-                                                )}
-                                            </button>
-                                            {icpWalletBalance < (feeAmount - paymentBalance + 10_000n) && (
-                                                <p style={{ color: theme.colors.error, fontSize: '0.85rem', marginTop: '0.5rem' }}>
-                                                    Insufficient ICP balance in wallet
-                                                </p>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {paymentError && (
-                                <div style={styles.errorBox}>
-                                    {paymentError}
-                                </div>
-                            )}
-                        </>
+                        <span style={{ color: plan.fee === 0n ? theme.colors.success : theme.colors.primaryText, fontSize: '1.1rem', fontWeight: 700 }}>
+                            {plan.fee === 0n ? 'FREE' : formatIcp(plan.fee)}
+                        </span>
                     )}
                 </div>
 
-                <div style={styles.buttonRow}>
-                    <button
-                        style={styles.backButton}
-                        onClick={() => goToStep(2)}
-                    >
-                        <FaArrowLeft />
-                        Back
-                    </button>
-                    <button
-                        style={styles.continueButton(isFreeToLock || hasSufficientPayment)}
-                        onClick={() => (isFreeToLock || hasSufficientPayment) && setCurrentStep(4)}
-                        disabled={!isFreeToLock && !hasSufficientPayment}
-                    >
-                        Continue
-                        <FaArrowRight />
-                    </button>
-                </div>
-            </>
+                {!loadingPayment && plan.fee > 0n && (
+                    <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: '8px', display: 'grid', gap: '6px' }}>
+                        {plan.paid > 0n && row('Already deposited', formatIcp(plan.paid > plan.fee ? plan.fee : plan.paid), theme.colors.success)}
+                        {plan.fromBackend > 0n && row('From your Sneed wallet ICP', formatIcp(plan.fromBackend))}
+                        {plan.fromFrontend > 0n && row('From your ICP wallet', formatIcp(plan.fromFrontend))}
+                        {plan.txFees > 0n && row('Ledger transfer fees', formatIcp(plan.txFees), theme.colors.mutedText)}
+                        {plan.need === 0n && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: theme.colors.success, fontSize: '0.85rem' }}>
+                                <FaCheck size={12} /> Fee already deposited. Nothing more to pay.
+                            </div>
+                        )}
+                        {plan.need > 0n && plan.sufficient && (
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                                Paid automatically when you create the lock. Your Sneed wallet holds {formatIcp(plan.backendAvail)} and your ICP wallet {formatIcp(plan.frontendAvail)} that can be used.
+                            </div>
+                        )}
+                        {!plan.sufficient && (
+                            <div style={{
+                                marginTop: '4px', padding: '10px 12px', borderRadius: '10px',
+                                background: `${theme.colors.error}12`, border: `1px solid ${theme.colors.error}40`,
+                                color: theme.colors.primaryText, fontSize: '0.85rem', display: 'grid', gap: '8px'
+                            }}>
+                                <div>
+                                    <strong>Not enough ICP for the fee.</strong> You need {formatIcp(plan.shortfall)} more.
+                                    Between your Sneed wallet ({formatIcp(plan.backendAvail)}) and your ICP wallet ({formatIcp(plan.frontendAvail)}) there is not enough to cover the fee and the ledger transfer fees.
+                                    Send ICP to your wallet principal and check again:
+                                </div>
+                                <WalletPrincipalBox compact accentColor={lockPrimary} />
+                                <div>
+                                    {smallActionButton('Check again', fetchPaymentInfo, <FaSync size={11} />)}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {paymentError && (
+                    <div style={{ color: theme.colors.error, fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                        <span>{paymentError}</span>
+                        {smallActionButton('Retry', fetchPaymentInfo, <FaSync size={11} />)}
+                    </div>
+                )}
+            </div>
         );
     };
 
-    // Step 4: Configure
-    const renderStep4 = () => {
+    // Step 3: Configure & Lock
+    const renderStep3 = () => {
         if (lockSuccess) {
             return (
                 <div className="lock-fade-in" style={styles.successCard}>
@@ -1154,7 +1769,7 @@ function LockWizard() {
                             <FaLock size={22} style={{ color: lockPrimary }} />
                         </div>
                         <h1 style={{ ...styles.title, margin: 0, justifyContent: 'flex-start' }}>
-                            Configure Lock
+                            Configure & Lock
                         </h1>
                     </div>
                     <p style={styles.subtitle}>
@@ -1246,6 +1861,8 @@ function LockWizard() {
                         />
                     </div>
 
+                    {renderFeePanel()}
+
                     {lockError && (
                         <div style={styles.errorBox}>
                             {lockError}
@@ -1256,16 +1873,16 @@ function LockWizard() {
                 <div style={styles.buttonRow}>
                     <button
                         style={styles.backButton}
-                        onClick={() => goToStep(3)}
+                        onClick={() => goToStep(2)}
                         disabled={isLocking}
                     >
                         <FaArrowLeft />
                         Back
                     </button>
                     <button
-                        style={styles.continueButton(!isLocking)}
+                        style={styles.continueButton(!isLocking && !loadingPayment && computeFeePlan().sufficient)}
                         onClick={handleLock}
-                        disabled={isLocking}
+                        disabled={isLocking || loadingPayment || !computeFeePlan().sufficient}
                     >
                         {isLocking ? (
                             <>
@@ -1358,7 +1975,6 @@ function LockWizard() {
                 {currentStep === 1 && renderStep1()}
                 {currentStep === 2 && renderStep2()}
                 {currentStep === 3 && renderStep3()}
-                {currentStep === 4 && renderStep4()}
             </main>
             <ConfirmationModal
                 show={showConfirmModal}
