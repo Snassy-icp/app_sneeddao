@@ -3,6 +3,8 @@
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
 import { Principal } from '@dfinity/principal';
+import { bigEndianCrc32 } from '@dfinity/utils';
+import { sha224 } from '@noble/hashes/sha256';
 
 export const HOST = 'https://icp-api.io';
 
@@ -73,6 +75,42 @@ export const sneedLockHealthIdl = ({ IDL }) => IDL.Service({
         registrations: IDL.Vec(IDL.Record({ canister_id: IDL.Principal, start: IDL.Nat, proposal_id: IDL.Opt(IDL.Nat64), attempts: IDL.Nat, last_error: IDL.Opt(IDL.Text) })),
     })], ['query']),
 });
+
+// The ICP index canister: transactions of one account, newest first. Accounts
+// in the operations are account identifiers (hex), see accountIdentifierHex.
+const Tokens = IDL.Record({ e8s: IDL.Nat64 });
+const TimeStamp = IDL.Record({ timestamp_nanos: IDL.Nat64 });
+const IcpOperation = IDL.Variant({
+    Approve: IDL.Record({ fee: Tokens, from: IDL.Text, allowance: Tokens, expires_at: IDL.Opt(TimeStamp), spender: IDL.Text, expected_allowance: IDL.Opt(Tokens) }),
+    Burn: IDL.Record({ from: IDL.Text, amount: Tokens, spender: IDL.Opt(IDL.Text) }),
+    Mint: IDL.Record({ to: IDL.Text, amount: Tokens }),
+    Transfer: IDL.Record({ to: IDL.Text, fee: Tokens, from: IDL.Text, amount: Tokens, spender: IDL.Opt(IDL.Text) }),
+});
+export const icpIndexIdl = ({ IDL }) => IDL.Service({
+    get_account_transactions: IDL.Func(
+        [IDL.Record({ account: Account, start: IDL.Opt(IDL.Nat), max_results: IDL.Nat })],
+        [IDL.Variant({
+            Ok: IDL.Record({
+                balance: IDL.Nat64,
+                transactions: IDL.Vec(IDL.Record({ id: IDL.Nat64, transaction: IDL.Record({ memo: IDL.Nat64, icrc1_memo: IDL.Opt(IDL.Vec(IDL.Nat8)), operation: IcpOperation, created_at_time: IDL.Opt(TimeStamp), timestamp: IDL.Opt(TimeStamp) }) })),
+                oldest_tx_id: IDL.Opt(IDL.Nat64),
+            }),
+            Err: IDL.Record({ message: IDL.Text }),
+        })],
+        ['query'],
+    ),
+});
+
+export const hex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+
+/// The ICP ledger account identifier (hex) of an ICRC-1 account.
+export const accountIdentifierHex = (owner, subaccount) => {
+    const principal = (typeof owner === 'string' ? Principal.fromText(owner) : owner).toUint8Array();
+    const sub = subaccount ? Uint8Array.from(subaccount) : new Uint8Array(32);
+    const domain = new TextEncoder().encode('account-id');
+    const digest = sha224(new Uint8Array([0x0a, ...domain, ...principal, ...sub]));
+    return hex(new Uint8Array([...bigEndianCrc32(digest), ...digest]));
+};
 
 export const stakingBotIdl = ({ IDL }) => IDL.Service({
     getVersion: IDL.Func([], [IDL.Reserved], ['query']),

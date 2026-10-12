@@ -14,7 +14,9 @@ export const DEFAULT_CONFIG = {
     rllFailPeriods: 2,         // no distribution for this many periods is a failure (one period is a warning)
     minNeuronDissolveDays: 720, // the DAO's ICP neuron must stay locked at least this long (it is a 2-year neuron today)
     vectorActivityDays: 14,    // the ICP neuron vector must have logged a successful operation this recently
-    buybackSlackFactor: 2,     // a buy is late after this many buy intervals
+    buybackSlackFactor: 2,     // a buy is late after this many buy intervals (when the exchange vector is visible)
+    buybackMaxAgeHours: 48,    // warn when no SNEED has arrived from the buyback pylon for this long
+    pickupHours: 6,            // funds delivered to a hidden pylon node must be picked up within this many hours
     indexLagBlocks: 100,       // SNS index may trail the ledger by this many blocks
     proposalWindowDays: 30,    // failed proposals inside this window are reported
     minTreasuryIcp: 1,         // warn when the ICP treasury holds less than this
@@ -33,7 +35,9 @@ export const CONFIG_FIELDS = [
     ['rllFailPeriods', 'RLL failure (periods)', 'Missing this many distribution periods is a failure'],
     ['minNeuronDissolveDays', 'Neuron dissolve delay (days)', 'Warn when the DAO ICP neuron is locked for less than this'],
     ['vectorActivityDays', 'Vector activity (days)', 'The ICP neuron vector must have a successful operation this recent'],
-    ['buybackSlackFactor', 'Buyback slack (x interval)', 'A buy is late after this many buy intervals without one'],
+    ['buybackSlackFactor', 'Buyback slack (x interval)', 'A buy is late after this many buy intervals without one (when the exchange vector is visible)'],
+    ['buybackMaxAgeHours', 'Buyback max age (hours)', 'Warn when no SNEED has arrived from the buyback pylon for this long'],
+    ['pickupHours', 'Vector pickup (hours)', 'Funds delivered to a pylon node that the pylon does not show must be picked up within this many hours'],
     ['indexLagBlocks', 'Index lag (blocks)', 'SNEED index may trail the ledger by this many blocks'],
     ['proposalWindowDays', 'Proposal window (days)', 'Failed proposals within this window are reported'],
     ['minTreasuryIcp', 'Minimum treasury ICP', 'Warn when the ICP treasury holds less than this'],

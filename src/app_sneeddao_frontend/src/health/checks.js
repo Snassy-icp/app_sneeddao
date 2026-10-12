@@ -11,7 +11,7 @@ import { idlFactory as exVectorIdl } from 'external/icrc55_exvector/icrc55_exvec
 import { idlFactory as poolIdl } from 'external/icp_swap/icp_swap.did.js';
 import { idlFactory as rllIdl } from 'declarations/rll/rll.did.js';
 import { verifyTip } from '../utils/icrc3/client.js';
-import { actor, withTimeout, ledgerIdl, swapIdl, pingIdl, archiveStatusIdl, sneedLockHealthIdl, stakingBotIdl, isMissingMethod, IDL, Principal } from './agent.js';
+import { actor, withTimeout, ledgerIdl, swapIdl, pingIdl, archiveStatusIdl, sneedLockHealthIdl, stakingBotIdl, icpIndexIdl, accountIdentifierHex, hex, isMissingMethod, IDL, Principal } from './agent.js';
 
 // ---- the DAO as the checks know it ----
 
@@ -21,6 +21,7 @@ export const IDS = {
     ledger: 'hvgxa-wqaaa-aaaaq-aacia-cai',
     index: 'h3e2i-naaaa-aaaaq-aacja-cai',
     icpLedger: 'ryjl3-tyaaa-aaaaa-aaaba-cai',
+    icpIndex: 'qhbym-qaaaa-aaaaa-aaafq-cai',
     nnsGovernance: 'rrkah-fqaaa-aaaaa-aaaaq-cai',
     backend: 'g7s5u-tqaaa-aaaad-qhktq-cai',
     sneedLock: 'pqsms-lqaaa-aaaal-ajjza-cai',
@@ -36,7 +37,7 @@ export const IDS = {
     stakingBot: 'utrgg-zqaaa-aaaad-aduma-cai',
     neuronManager: 'trw7l-7iaaa-aaaad-admeq-cai',
     neuronVector: '6jvpj-sqaaa-aaaaj-azwnq-cai',   // Neutrinite pylon: ICP neuron (node 1), ICP splitter (6), SNEED splitter (45)
-    buybackVector: 'togwv-zqaaa-aaaal-qr7aa-cai',  // ICPCoins exchange pylon: SNEED buyback (node 18)
+    buybackVector: 'togwv-zqaaa-aaaal-qr7aa-cai',  // ICPCoins exchange pylon: SNEED buyback (node 18; the pylon hides its nodes from anonymous callers)
     sneedIcpPool: 'osyzs-xiaaa-aaaag-qc76q-cai',
 };
 
@@ -78,6 +79,8 @@ const PYLONS = { '6jvpj-sqaaa-aaaaj-azwnq-cai': 'Neutrinite pylon', 'togwv-zqaaa
 const pylonIdl = (canister) => (canister === IDS.buybackVector ? exVectorIdl : vectorIdl);
 /// A pylon account subaccount names the node it belongs to: byte 0 is 1, the node id follows.
 const nodeIdOfSubaccount = (sub) => { const b = sub ? Uint8Array.from(sub) : null; if (!b || b.length !== 32 || b[0] !== 1) return null; return b[5] | (b[6] << 8) | (b[7] << 16) | (b[8] << 24); };
+const accountKey = (a) => { const sub = opt(a.subaccount); return `${a.owner.toText()}:${sub && Array.from(sub).some((b) => b !== 0) ? hex(sub) : ''}`; };
+const SYMBOLS = { 'ryjl3-tyaaa-aaaaa-aaaba-cai': 'ICP', 'hvgxa-wqaaa-aaaaq-aacia-cai': 'SNEED' };
 const nodeType = (node) => { const c = opt(node?.custom); return c ? Object.keys(c)[0].replace(/^devefi_(jes1_)?/, '') : 'unknown'; };
 const opt = (v) => (Array.isArray(v) ? v[0] : v);
 const hexToBytes = (hex) => Uint8Array.from(hex.match(/../g).map((h) => parseInt(h, 16)));
@@ -152,6 +155,35 @@ const loaders = {
         }));
         return out.sort((a, b) => a.canister.localeCompare(b.canister) || Number(a.node.id) - Number(b.node.id));
     },
+    /// Recent transactions of one account, newest first, normalised across the
+    /// ICP index (account identifiers) and the SNEED index (ICRC-1 accounts):
+    /// { self, balance, txs: [{ at, from, to, fromOwner, amount }] }, keys being
+    /// account-identifier hex on ICP and "owner:subaccount-hex" on SNEED. Null
+    /// when no index is known for the ledger.
+    accountTxs: (ledgerId, owner, subaccount, max = 40) => async (ctx) => {
+        const sub = subaccount && subaccount.some((b) => b !== 0) ? Uint8Array.from(subaccount) : null;
+        if (ledgerId === IDS.icpLedger) {
+            const index = await actor(icpIndexIdl, IDS.icpIndex);
+            const r = await ctx.call(index.get_account_transactions({ account: { owner, subaccount: sub ? [sub] : [] }, start: [], max_results: BigInt(max) }), 'ICP index');
+            if ('Err' in r) throw new Error(r.Err.message);
+            const txs = r.Ok.transactions.map(({ transaction: t }) => {
+                const k = Object.keys(t.operation)[0]; const op = t.operation[k];
+                return { at: Number(opt(t.timestamp)?.timestamp_nanos ?? 0n) / 1e6, kind: k, from: op.from || null, to: op.to || null, fromOwner: null, amount: op.amount?.e8s ?? 0n };
+            }).filter((t) => t.kind !== 'Approve');
+            return { self: accountIdentifierHex(owner, sub), balance: r.Ok.balance, txs };
+        }
+        if (ledgerId === IDS.ledger) {
+            const index = await actor(indexIdl, IDS.index);
+            const r = await ctx.call(index.get_account_transactions({ account: { owner, subaccount: sub ? [sub] : [] }, start: [], max_results: BigInt(max) }), 'SNEED index');
+            if ('Err' in r) throw new Error(r.Err.message);
+            const txs = r.Ok.transactions.map(({ transaction: t }) => {
+                const x = opt(t.transfer) || opt(t.mint) || opt(t.burn);
+                return { at: Number(t.timestamp) / 1e6, kind: t.kind, from: x?.from ? accountKey(x.from) : null, to: x?.to ? accountKey(x.to) : null, fromOwner: x?.from ? x.from.owner.toText() : null, amount: x?.amount ?? 0n };
+            }).filter((t) => t.kind !== 'approve');
+            return { self: accountKey({ owner, subaccount: sub ? [sub] : [] }), balance: r.Ok.balance, txs };
+        }
+        return null;
+    },
     nnsNeuron: async (ctx) => {
         const gov = await actor(nnsGovIdl, IDS.nnsGovernance);
         const r = await ctx.call(gov.get_neuron_info(NEURON_8Y), 'NNS neuron info');
@@ -224,10 +256,15 @@ const vectorExtras = {
         if (Date.now() - lastBuy > c.buybackSlackFactor * interval && !idle) return warn(`Funded but last buy ${ago(lastBuy)} (interval ${interval / 3600e3} h)`, details);
         return pass(`Last buy ${ago(lastBuy)}, ${fmtUnits(balance)} ICP waiting`, details);
     },
-    split: () => async (node, details, ctx) => {
-        // every destination that points at a pylon node must point at a node that exists and is active
+    split: (c) => async (node, details, ctx) => {
+        // Every destination that points at a pylon node must point at a node
+        // that exists and is active. A pylon that hides its nodes (the ICPCoins
+        // pylon answers null for every id) is checked through the ledger
+        // instead: what the splitter delivered there must have been picked up.
         const shares = opt(node.custom)?.devefi_split?.variables?.split || [];
         const problems = [];
+        const warnings = [];
+        const notes = [];
         let i = 0;
         for (const d of node.destinations || []) {
             const a = opt(d.endpoint?.ic?.account);
@@ -237,21 +274,47 @@ const vectorExtras = {
             const owner = a.owner.toText();
             const nodeId = PYLONS[owner] ? nodeIdOfSubaccount(opt(a.subaccount)) : null;
             if (nodeId === null) continue;
+            const where = `${share} to ${PYLONS[owner]} node ${nodeId}`;
             const target = await ctx.load(`vector:${owner}:${nodeId}`, loaders.vectorNode(owner, nodeId));
-            if (!target) {
-                const ledgerId = opt(d.endpoint?.ic?.ledger)?.toText?.() || d.endpoint?.ic?.ledger?.toText?.();
-                let stuck = null;
-                try { const l = await actor(ledgerIdl, ledgerId); stuck = await ctx.call(l.icrc1_balance_of({ owner: a.owner, subaccount: [Uint8Array.from(opt(a.subaccount))] }), 'stuck balance'); } catch { /* ignore */ }
-                problems.push(`${share} goes to ${PYLONS[owner]} node ${nodeId}, which does not exist${stuck !== null ? ` (${stuck.toString()} base units sitting there)` : ''}`);
-            } else if (!target.active) {
-                problems.push(`${share} goes to ${PYLONS[owner]} node ${nodeId}, which is inactive`);
+            if (target) {
+                if (!target.active) problems.push(`${where}, which is inactive`);
+                continue;
             }
+            const ledgerId = opt(d.endpoint?.ic?.ledger)?.toText?.() || d.endpoint?.ic?.ledger?.toText?.();
+            const v = await deliveryByLedger(ctx, c, ledgerId, a);
+            (v.status === 'fail' ? problems : v.status === 'warn' ? warnings : notes).push(`${where}: ${v.text}`);
         }
         details.split = shares.map((x) => `${x}%`).join(' / ');
+        if (notes.length) details.verified_by_ledger = notes;
         if (problems.length) return fail(problems.join('; '), details);
-        return pass(`Active, splits ${details.split}`, details);
+        if (warnings.length) return warn(warnings.join('; '), details);
+        return pass(`Active, splits ${details.split}${notes.length ? ` (${notes.length} destination${notes.length > 1 ? 's' : ''} verified by ledger)` : ''}`, details);
     },
 };
+
+/// When a pylon does not show a destination node, the ledger tells whether
+/// the node is alive: a live node sweeps what the splitter delivers.
+async function deliveryByLedger(ctx, c, ledgerId, account) {
+    const sub = opt(account.subaccount);
+    const r = await ctx.load(`txs:${ledgerId}:${account.owner.toText()}:${sub ? hex(sub) : ''}`, loaders.accountTxs(ledgerId, account.owner, sub));
+    const symbol = SYMBOLS[ledgerId] || 'tokens';
+    if (!r) {
+        // No index for this ledger: the balance alone tells whether something is stuck.
+        const l = await actor(ledgerIdl, ledgerId);
+        const balance = await ctx.call(l.icrc1_balance_of({ owner: account.owner, subaccount: sub ? [Uint8Array.from(sub)] : [] }), 'destination balance');
+        if (balance === 0n) return { status: 'pass', text: 'the pylon does not show this node; nothing is waiting on its account' };
+        return { status: 'warn', text: `the pylon does not show this node and ${balance.toString()} base units of ledger ${ledgerId} are waiting on its account (no index to tell since when)` };
+    }
+    const lastIn = r.txs.find((t) => t.to === r.self);
+    const lastOut = r.txs.find((t) => t.from === r.self);
+    if (!lastIn) return { status: 'pass', text: 'the pylon does not show this node; it has never received anything, nothing to verify' };
+    const delivered = `${fmtUnits(lastIn.amount)} ${symbol} delivered ${ago(lastIn.at)}`;
+    if (lastOut && lastOut.at >= lastIn.at) return { status: 'pass', text: `the pylon does not show this node, but the ledger does: ${delivered}, picked up ${ago(lastOut.at)}` };
+    const waiting = Date.now() - lastIn.at;
+    const text = `${delivered} and not picked up yet (${fmtUnits(r.balance)} ${symbol} on the account)`;
+    return { status: waiting > c.pickupHours * 3600e3 ? 'fail' : 'pass', text: waiting > c.pickupHours * 3600e3 ? `the pylon does not show this node and ${text}` : `the pylon does not show this node; ${text}, within the ${c.pickupHours} h allowed` };
+}
+
 
 // ---- the tree ----
 
@@ -436,11 +499,35 @@ export function buildTree(config) {
                 }));
             }
             leaves.push({
-                id: 'rev:buyback-present', name: 'SNEED buyback vector exists',
-                run: async () => {
+                id: 'rev:buyback', name: 'SNEED buyback delivering', link: 'https://beta.icpcoins.com/#/vectors',
+                run: async (ctx2) => {
+                    // The exchange vector lives on the ICPCoins pylon, which does
+                    // not show its nodes to anonymous callers; the SNEED ledger
+                    // shows its output: SNEED sent from that pylon to the DAO's
+                    // SNEED splitter(s) on the Neutrinite pylon.
                     const ex = nodes.filter(({ node }) => nodeType(node) === 'exchange');
-                    if (ex.length === 0) return fail(`No exchange vector controlled by governance on ${Object.values(PYLONS).join(' or ')}`);
-                    return pass(ex.map(({ canister, node }) => `${PYLONS[canister]} node ${node.id}`).join(', '));
+                    const sneedSplitters = nodes.filter(({ node }) => nodeType(node) === 'split' && opt(node.sources?.[0]?.endpoint?.ic)?.ledger?.toText?.() === IDS.ledger);
+                    if (sneedSplitters.length === 0) return fail('No SNEED splitter vector controlled by governance, so there is nowhere a buyback could deliver to');
+                    const buys = [];
+                    for (const { node } of sneedSplitters) {
+                        const a = opt(node.sources[0].endpoint.ic.account);
+                        const sub = opt(a.subaccount);
+                        const r = await ctx2.load(`txs:${IDS.ledger}:${a.owner.toText()}:${sub ? hex(sub) : ''}`, loaders.accountTxs(IDS.ledger, a.owner, sub));
+                        for (const t of r.txs) if (t.to === r.self && t.fromOwner === IDS.buybackVector) buys.push({ ...t, splitter: node.id });
+                    }
+                    buys.sort((x, y) => y.at - x.at);
+                    const dayAgo = Date.now() - 86400e3;
+                    const recent = buys.filter((b) => b.at >= dayAgo);
+                    const details = {
+                        exchange_vectors_visible: ex.map(({ canister, node }) => `${PYLONS[canister]} node ${node.id}`),
+                        note: 'The ICPCoins pylon does not show its nodes to anonymous callers; the buyback is verified by SNEED arriving from it at the DAO SNEED splitter.',
+                        last_buys: buys.slice(0, 5).map((b) => `${new Date(b.at).toISOString()} ${fmtUnits(b.amount, 8, 4)} SNEED to splitter #${b.splitter}`),
+                        buys_24h: recent.length, sneed_24h: fmtUnits(recent.reduce((acc, b) => acc + BigInt(b.amount), 0n), 8, 4),
+                    };
+                    if (buys.length === 0) return fail(`No SNEED from the ${PYLONS[IDS.buybackVector]} among the recent transfers of the DAO SNEED splitter(s)`, details);
+                    const age = Date.now() - buys[0].at;
+                    if (age > c.buybackMaxAgeHours * 3600e3) return warn(`Last buyback ${ago(buys[0].at)}, more than ${c.buybackMaxAgeHours} h ago`, details);
+                    return pass(`Last buyback ${fmtUnits(buys[0].amount, 8, 4)} SNEED ${ago(buys[0].at)}; ${recent.length} buys (${details.sneed_24h} SNEED) in 24 h`, details);
                 },
             });
             leaves.push(
