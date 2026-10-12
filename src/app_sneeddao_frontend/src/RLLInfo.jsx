@@ -689,8 +689,8 @@ const nodes = {
         items: [
             {
                 id: "1",
-                title: "8 Year ICP NNS Neuron",
-                description: "Long-term ICP staking neuron with 8-year dissolve delay",
+                title: "ICP NNS Neuron",
+                description: "Long-term ICP staking neuron (its current dissolve delay is shown below)",
                 inputs: ["ICP from Neuron Vector"],
                 outputs: ["Maturity to Neuron Vector"],
                 details: "Controlled by ICP Neuron Vector for maturity collection and compounding",
@@ -745,9 +745,9 @@ const nodes = {
                 description: "Distributes SNEED to multiple destinations with fixed proportions",
                 inputs: ["SNEED from Buyback"],
                 outputs: [
-                    "33% SNEED to Treasury",
-                    "34% SNEED to DeFi Canister",
-                    "33% SNEED to Burn Address"
+                    "10% SNEED to Burn Address",
+                    "10% SNEED to Treasury",
+                    "80% SNEED to RLL Distribution"
                 ],
                 canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-vilbrxq.1000000002d0000000000000000000000000000000000000000000000000000",
                 details: "Vector ID: 45 on Neuronpool",
@@ -759,7 +759,7 @@ const nodes = {
                 description: "Main DAO treasury for ICP and SNEED",
                 inputs: [
                     "ICP from Splitter (25%)", 
-                    "SNEED from Splitter (33%)"
+                    "SNEED from Splitter (10%)"
                 ],
                 outputs: ["Any via DAO proposal"],
                 canisterId: "fi3zi-fyaaa-aaaaq-aachq-cai",
@@ -771,8 +771,7 @@ const nodes = {
                 title: "Sneed DeFi Canister",
                 description: "Treasury extension for ICRC1 tokens",
                 inputs: [
-                    "SNEED from Splitter (34%)", 
-                    "Tokens from Revenue"
+                    "LP fees and other revenue (ICP, SNEED and other tokens)"
                 ],
                 outputs: [
                     "ICP to ICP Splitter Vector",
@@ -785,7 +784,7 @@ const nodes = {
                 id: "8",
                 title: "SNEED Burn Address",
                 description: "Permanent SNEED removal from circulation",
-                inputs: ["SNEED from Splitter (33%)"],
+                inputs: ["SNEED from Splitter (10%)"],
                 outputs: [],
                 canisterId: "fi3zi-fyaaa-aaaaq-aachq-cai"
             },
@@ -793,7 +792,7 @@ const nodes = {
                 id: "9",
                 title: "RLL Distribution Canister",
                 description: "Distributes tokens to DAO voting members",
-                inputs: ["Tokens from DeFi Canister"],
+                inputs: ["80% of bought SNEED from SNEED Splitter", "Tokens from DeFi Canister"],
                 outputs: ["100% to Sneed Members (Rewards claimable on app.sneeddao.com)"],
                 canisterId: "lvc4n-7aaaa-aaaam-adm6a-cai",
                 link: "https://app.sneeddao.com/rll"
@@ -809,7 +808,7 @@ const nodes = {
                 description: "Liquidity provision rewards from ICPSwap",
                 inputs: ["LP rewards"],
                 outputs: ["ICP and SNEED rewards to Revenue Collector"],
-                details: "Positions 24, 25 and 26",
+                details: "Every SNEED/ICP position held by the Sneed DeFi canister",
                 link: "https://app.icpswap.com/info-swap/pool/details/osyzs-xiaaa-aaaag-qc76q-cai"
             },
             {
@@ -818,7 +817,7 @@ const nodes = {
                 description: "Token and LP position locking product",
                 inputs: ["User interactions"],
                 outputs: ["ICP and SNEED revenue to Products"],
-                link: "https://app.sneeddao.com/wallet"
+                link: "https://app.sneeddao.com/sneedlock"
             },
             {
                 id: "14",
@@ -936,15 +935,15 @@ const edges = {
                 target: "6",
                 description: "SNEED to Treasury",
                 token: "SNEED",
-                percentage: "33%"
+                percentage: "10%"
             },
             {
                 id: "e7",
                 source: "5",
-                target: "7",
-                description: "SNEED to DeFi Canister",
+                target: "9",
+                description: "SNEED to RLL Distribution",
                 token: "SNEED",
-                percentage: "34%"
+                percentage: "80%"
             },
             {
                 id: "e8",
@@ -952,7 +951,7 @@ const edges = {
                 target: "8",
                 description: "SNEED to Burn Address",
                 token: "SNEED",
-                percentage: "33%"
+                percentage: "10%"
             }
         ]
     },
@@ -1026,8 +1025,8 @@ const initialNodes = [
         id: '1',
         type: 'default',
         data: { 
-            label: '8 Year ICP NNS Neuron',
-            description: "Long-term ICP staking neuron with 8-year dissolve delay",
+            label: 'ICP NNS Neuron',
+            description: "Long-term ICP staking neuron (its current dissolve delay is shown below)",
             inputs: ["ICP from Neuron Vector"],
             outputs: ["Maturity to Neuron Vector"],
             details: "Controlled by ICP Neuron Vector for maturity collection and compounding",
@@ -1107,9 +1106,9 @@ const initialNodes = [
             description: "Distributes SNEED to multiple destinations with fixed proportions",
             inputs: ["SNEED from Buyback"],
             outputs: [
-                "33% SNEED to Treasury",
-                "34% SNEED to DeFi Canister",
-                "33% SNEED to Burn Address"
+                "10% SNEED to Burn Address",
+                "10% SNEED to Treasury",
+                "80% SNEED to RLL Distribution"
             ],
             canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-vilbrxq.1000000002d0000000000000000000000000000000000000000000000000000",
             details: "Vector ID: 45 on Neuronpool",
@@ -1128,7 +1127,7 @@ const initialNodes = [
             description: "Main DAO treasury for ICP and SNEED",
             inputs: [
                 "ICP from Splitter (25%)", 
-                "SNEED from Splitter (33%)"
+                "SNEED from Splitter (10%)"
             ],
             outputs: ["Any via DAO proposal"],
             canisterId: "fi3zi-fyaaa-aaaaq-aachq-cai",
@@ -1147,8 +1146,7 @@ const initialNodes = [
             label: 'Sneed DeFi Canister',
             description: "Treasury extension for ICRC1 tokens",
             inputs: [
-                "SNEED from Splitter (34%)", 
-                "Tokens from Revenue"
+                "LP fees and other revenue (ICP, SNEED and other tokens)"
             ],
             outputs: [
                 "ICP to ICP Splitter Vector",
@@ -1168,7 +1166,7 @@ const initialNodes = [
         data: { 
             label: 'SNEED Burn Address',
             description: "Permanent SNEED removal from circulation",
-            inputs: ["SNEED from Splitter (33%)"],
+            inputs: ["SNEED from Splitter (10%)"],
             outputs: [],
             canisterId: "fi3zi-fyaaa-aaaaq-aachq-cai"
         },
@@ -1183,7 +1181,7 @@ const initialNodes = [
         data: { 
             label: 'RLL Distribution',
             description: "Distributes tokens to DAO voting members",
-            inputs: ["Tokens from DeFi Canister"],
+            inputs: ["80% of bought SNEED from SNEED Splitter", "Tokens from DeFi Canister"],
             outputs: ["100% to Sneed Members (Rewards claimable on app.sneeddao.com)"],
             canisterId: "lvc4n-7aaaa-aaaam-adm6a-cai",
             link: "https://app.sneeddao.com/rll"
@@ -1217,7 +1215,7 @@ const initialNodes = [
             description: "Liquidity provision rewards from ICPSwap",
             inputs: ["LP rewards"],
             outputs: ["ICP and SNEED rewards to Revenue Collector"],
-            details: "Positions 24, 25 and 26",
+            details: "Every SNEED/ICP position held by the Sneed DeFi canister",
             link: "https://app.icpswap.com/info-swap/pool/details/osyzs-xiaaa-aaaag-qc76q-cai"
         },
         position: { x: 300, y: 650 },
@@ -1247,7 +1245,7 @@ const initialNodes = [
             description: "Token and LP position locking product",
             inputs: ["User interactions"],
             outputs: ["ICP and SNEED revenue to Products"],
-            link: "https://app.sneeddao.com/wallet"
+            link: "https://app.sneeddao.com/sneedlock"
         },
         position: { x: 400, y: 750 },
         style: nodeStyles.revenue,
@@ -1378,42 +1376,42 @@ const initialEdges = [
         id: 'e6',
         source: '5',
         target: '6',
-        label: '33%',
+        label: '10%',
         type: 'smoothstep',
         style: edgeStyles.sneed,
         markerEnd: { type: MarkerType.ArrowClosed },
         data: {
             description: "SNEED to Treasury",
             token: "SNEED",
-            percentage: "33%"
+            percentage: "10%"
         }
     },
     {
         id: 'e7',
         source: '5',
-        target: '7',
-        label: '34%',
+        target: '9',
+        label: '80%',
         type: 'smoothstep',
         style: edgeStyles.sneed,
         markerEnd: { type: MarkerType.ArrowClosed },
         data: {
-            description: "SNEED to DeFi Canister",
+            description: "SNEED to RLL Distribution",
             token: "SNEED",
-            percentage: "34%"
+            percentage: "80%"
         }
     },
     {
         id: 'e8',
         source: '5',
         target: '8',
-        label: '33%',
+        label: '10%',
         type: 'smoothstep',
         style: edgeStyles.sneed,
         markerEnd: { type: MarkerType.ArrowClosed },
         data: {
             description: "SNEED to Burn Address",
             token: "SNEED",
-            percentage: "33%"
+            percentage: "10%"
         }
     },
 
@@ -1610,8 +1608,8 @@ function RLLInfo() {
                     });
                 });
 
-                // Add CLOWN token manually (used in ICP/CLOWN LP position)
-                allTokens.set('6rdgd-kyaaa-aaaaq-aaavq-cai', {
+                // Add CLOWN (Insane Clown Protocol) manually: the DeFi canister holds CLOWN/ICP positions
+                allTokens.set('iwv6l-6iaaa-aaaal-ajjjq-cai', {
                     symbol: 'CLOWN',
                     decimals: 8
                 });
@@ -1693,7 +1691,6 @@ function RLLInfo() {
                 const agent = new HttpAgent({
                     host: 'https://ic0.app'
                 });
-                await agent.fetchRootKey();
                 
                 const governanceCanister = createNnsGovActor('rrkah-fqaaa-aaaaa-aaaaq-cai', {
                     agentOptions: { agent }
@@ -1727,7 +1724,6 @@ function RLLInfo() {
                 const agent = new HttpAgent({
                     host: 'https://ic0.app'
                 });
-                await agent.fetchRootKey();
 
                 // ICP Treasury balance
                 const icpLedgerActor = createLedgerActor('ryjl3-tyaaa-aaaaa-aaaba-cai', {
@@ -1787,7 +1783,6 @@ function RLLInfo() {
                 const agent = new HttpAgent({
                     host: 'https://ic0.app'
                 });
-                await agent.fetchRootKey();
 
                 // Create actors for each vector
                 const vectors = {
@@ -1847,25 +1842,24 @@ function RLLInfo() {
                 const agent = new HttpAgent({
                     host: 'https://ic0.app'
                 });
-                await agent.fetchRootKey();
 
                 const swapCanisterId = 'osyzs-xiaaa-aaaag-qc76q-cai';
                 const swapActor = createIcpSwapActor(swapCanisterId, {
                     agentOptions: { agent }
                 });
                 
-                // Get positions 24, 25, and 26
-                const targetPositionIds = [24, 25, 26];
+                // Every position the Sneed DeFi canister holds in the SNEED/ICP pool
+                const [allPositions, mine] = await Promise.all([
+                    swapActor.getUserPositionWithTokenAmount(0, 500),
+                    swapActor.getUserPositionsByPrincipal(Principal.fromText('ok64y-uiaaa-aaaag-qdcbq-cai')),
+                ]);
                 const positions = [];
-                
-                const allPositions = await swapActor.getUserPositionWithTokenAmount(0, 50);
-                if (allPositions.ok) {
-                    for (const id of targetPositionIds) {
-                        const position = allPositions.ok.content.find(p => Number(p.id) === id);
-                        if (position) {
-                            positions.push(position);
-                        }
+                if (allPositions.ok && mine.ok) {
+                    const ids = new Set(mine.ok.map(p => Number(p.id)));
+                    for (const position of allPositions.ok.content) {
+                        if (ids.has(Number(position.id))) positions.push(position);
                     }
+                    positions.sort((a, b) => Number(b.liquidity || 0) - Number(a.liquidity || 0));
                 }
 
                 // Calculate totals
@@ -1904,7 +1898,6 @@ function RLLInfo() {
                 const agent = new HttpAgent({
                     host: 'https://ic0.app'
                 });
-                await agent.fetchRootKey();
 
                 const rllActor = createRllActor(rllCanisterId, {
                     agentOptions: { agent }
@@ -1974,7 +1967,6 @@ function RLLInfo() {
                 const agent = new HttpAgent({
                     host: 'https://ic0.app'
                 });
-                await agent.fetchRootKey();
 
                 const rllActor = createRllActor(rllCanisterId, {
                     agentOptions: { agent }
@@ -2777,16 +2769,27 @@ function RLLInfo() {
                 const agent = new HttpAgent({
                     host: 'https://ic0.app'
                 });
-                await agent.fetchRootKey();
 
                 // ICP/CLOWN position
                 const swapActor = createIcpSwapActor('bdki3-ciaaa-aaaag-qj67a-cai', {
                     agentOptions: { agent }
                 });
                 
-                const allPositions = await swapActor.getUserPositionWithTokenAmount(0, 200);
-                if (allPositions.ok) {
-                    const position = allPositions.ok.content.find(p => Number(p.id) === 168);
+                // Every position the DeFi canister holds in this pool, summed
+                const [allPositions, mine] = await Promise.all([
+                    swapActor.getUserPositionWithTokenAmount(0, 500),
+                    swapActor.getUserPositionsByPrincipal(Principal.fromText('ok64y-uiaaa-aaaag-qdcbq-cai')),
+                ]);
+                if (allPositions.ok && mine.ok) {
+                    const ids = new Set(mine.ok.map(p => Number(p.id)));
+                    const held = allPositions.ok.content.filter(p => ids.has(Number(p.id)));
+                    const position = held.length === 0 ? null : held.reduce((acc, p) => ({
+                        ids: [...acc.ids, Number(p.id)],
+                        token0Amount: acc.token0Amount + BigInt(p.token0Amount || 0),
+                        token1Amount: acc.token1Amount + BigInt(p.token1Amount || 0),
+                        tokensOwed0: acc.tokensOwed0 + BigInt(p.tokensOwed0 || 0),
+                        tokensOwed1: acc.tokensOwed1 + BigInt(p.tokensOwed1 || 0),
+                    }), { ids: [], token0Amount: 0n, token1Amount: 0n, tokensOwed0: 0n, tokensOwed1: 0n });
                     setOtherLpPositions(prev => ({
                         ...prev,
                         'ICP/CLOWN': {
@@ -2959,7 +2962,6 @@ function RLLInfo() {
                 const agent = new HttpAgent({
                     host: 'https://ic0.app'
                 });
-                await agent.fetchRootKey();
                 
                 const rllActor = createRllActor(rllCanisterId, {
                     agentOptions: { agent }
@@ -2986,7 +2988,6 @@ function RLLInfo() {
                     identity,
                     host: "https://ic0.app"
                 });
-                await agent.fetchRootKey();
 
                 const sneedLedgerActor = createLedgerActor('hvgxa-wqaaa-aaaaq-aacia-cai', {
                     agentOptions: { agent }
@@ -3873,7 +3874,7 @@ function RLLInfo() {
                                                             rel="noopener noreferrer"
                                                             style={{ color: theme.colors.accent, textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                         >
-                                                            8 Year Neuron:
+                                                            ICP Neuron:
                                                         </a>
                                                     </div>
                                                     <div style={{ fontSize: '1.1em' }}>
@@ -3983,7 +3984,7 @@ function RLLInfo() {
                                                                     rel="noopener noreferrer"
                                                                     style={{ color: theme.colors.accent, textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                                 >
-                                                                    ICP/CLOWN LP:
+                                                                    ICP/CLOWN LP{otherLpPositions['ICP/CLOWN'].position?.ids?.length ? ` (positions ${otherLpPositions['ICP/CLOWN'].position.ids.join(', ')})` : ''}:
                                                                 </a>
                                                             </div>
                                                             <div style={{ fontSize: '1em', marginLeft: '10px' }}>

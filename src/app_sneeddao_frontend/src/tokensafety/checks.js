@@ -600,7 +600,13 @@ export function buildTokenTree(ledgerId, config, header = null) {
                 }
                 const satelliteOf = new Map();
                 for (const [key] of scan.balances) { const st = stats.get(key); const owner = ownerOf(key); if (tags.has(owner) || !st) continue; const funder = st.firstFrom && st.firstFrom !== 'mint' ? ownerOf(st.firstFrom) : null; if (st.senders.size === 1 && st.outCount === 0 && funder && !tags.has(funder) && funder !== owner) satelliteOf.set(owner, funder); }
-                c.onOrigin?.({ satelliteOf, funders: satellites, genesisOwners });
+                // Wallet-to-wallet fan-out: a user principal (not a canister) that sent to many other user principals.
+                const isWallet = (id) => id.length !== 27 && !tags.has(id) && id !== 'mint' && id !== 'burn';
+                const sprayTo = new Map();
+                const sprayAmount = new Map();
+                for (const e of (scan.edges || new Map()).values()) { if (!isWallet(e.from) || !isWallet(e.to)) continue; sprayTo.set(e.from, (sprayTo.get(e.from) || 0) + 1); sprayAmount.set(e.from, (sprayAmount.get(e.from) || 0n) + e.amount); }
+                const sprayers = [...sprayTo.entries()].sort((a, b) => b[1] - a[1]);
+                c.onOrigin?.({ satelliteOf, funders: satellites, genesisOwners, sprayTo, sprayThreshold: c.fanoutWarnWallets });
                 const foldedTop = [...folded.entries()].sort((a, b) => (a[1] < b[1] ? 1 : -1));
                 const fanout = [...satellites.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 10);
                 const odetails = {
@@ -611,6 +617,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
                     by_origin: { bought_from_a_pool: `${pct(bought, m.supply).toFixed(2)}%`, minted_directly: `${pct(mintedDirect, m.supply).toFixed(2)}%`, received_from_a_genesis_account: `${pct(fromGenesis, m.supply).toFixed(2)}%`, received_from_other_holders: `${pct(fromOthers, m.supply).toFixed(2)}%` },
                     never_sent_anything: `${pct(neverMoved, m.supply).toFixed(2)}%`,
                 };
+                odetails.wallet_fan_out = sprayers.slice(0, 10).map(([f, n]) => `${f}: sent to ${n} other wallets, ${fmtUnits(sprayAmount.get(f), m.decimals, 0)} in total`);
                 if (stats.size === 0) return [];
                 const top1Folded = foldedTop.length ? pct(foldedTop[0][1], m.supply) : 0;
                 const top10Folded = pct(foldedTop.slice(0, 10).reduce((a, [, b]) => a + b, 0n), m.supply);
@@ -622,6 +629,14 @@ export function buildTokenTree(ledgerId, config, header = null) {
                             const sgrade = worst >= c.topHolderFailPct ? 'fail' : worst >= c.topHolderWarnPct ? 'warn' : 'pass';
                             const grew = top1Folded - rawTop1;
                             return { status: sgrade, summary: `${top1Folded.toFixed(2)}% held by ${foldedTop[0]?.[0] || 'nobody'}${grew > 0.5 ? ` (up from ${rawTop1.toFixed(2)}% once its ${satellites.get(foldedTop[0][0])?.count || 0} satellite accounts are counted)` : ''}; ten largest ${top10Folded.toFixed(2)}%`, details: odetails };
+                        },
+                    },
+                    {
+                        id: 'dist:fanout', name: 'Wallet-to-wallet fan-out', run: async () => {
+                            if (sprayers.length === 0) return pass('No wallet has sent to other wallets', odetails);
+                            const [top, n] = sprayers[0];
+                            const sgrade = n >= c.fanoutWarnWallets ? 'warn' : 'pass';
+                            return { status: sgrade, summary: `${top} sent to ${n} other wallets (${fmtUnits(sprayAmount.get(top), m.decimals, 0)} ${m.symbol} in total)${n >= c.fanoutWarnWallets ? '; manual airdrops look like this, so do split-up stashes' : ''}`, details: odetails, link: `/principal/${top}` };
                         },
                     },
                     {

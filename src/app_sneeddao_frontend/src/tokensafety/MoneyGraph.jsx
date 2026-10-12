@@ -13,7 +13,7 @@ import PrincipalInput from '../components/PrincipalInput';
 import { nsToMs } from './sources.js';
 
 const COLORS = {
-    node: '#22d3ee', pool: '#3b82f6', lock: '#f59e0b', dao: '#22c55e', mint: '#a78bfa', burn: '#64748b', hub: '#ef4444', satellite: '#94a3b8', genesis: '#f472b6', start: '#ffffff',
+    node: '#22d3ee', pool: '#3b82f6', lock: '#f59e0b', dao: '#22c55e', mint: '#a78bfa', burn: '#64748b', hub: '#ef4444', spray: '#fb923c', satellite: '#94a3b8', genesis: '#f472b6', start: '#ffffff',
 };
 const EXPAND = 12;
 const MAX_NODES = 400;
@@ -91,6 +91,15 @@ function MoneyGraph({ source, start, theme }) {
     const collapse = useCallback((id) => {
         setVisible((prev) => { const next = new Set(prev); for (const other of neighbours(id)) if (other !== focus) next.delete(other); alpha.current = 1; return next; });
     }, [neighbours, focus]);
+    /// Remove one node from the picture (it can be expanded again later).
+    const remove = useCallback((id) => {
+        setVisible((prev) => { const next = new Set(prev); next.delete(id); alpha.current = 1; return next; });
+        if (id === focus) setFocus(null);
+    }, [focus]);
+    /// Drop every node that has not been expanded, except the focus: cleans up behind you.
+    const prune = useCallback(() => {
+        setVisible((prev) => { const next = new Set([...prev].filter((id) => edgesOf.current.has(id) || id === focus)); alpha.current = 1; return next; });
+    }, [focus]);
 
     const restart = useCallback(async (rawId) => {
         if (!rawId) return;
@@ -190,7 +199,7 @@ function MoneyGraph({ source, start, theme }) {
     };
     const onUp = (ev) => {
         const d = drag.current; drag.current = null;
-        if (d?.id) { const p = pos.current.get(d.id); if (p) p.fixed = false; if (!d.moved) { if (ev.shiftKey) collapse(d.id); else { setFocus(d.id); expand(d.id); } } }
+        if (d?.id) { const p = pos.current.get(d.id); if (p) p.fixed = false; if (!d.moved) { if (ev.altKey || ev.ctrlKey || ev.metaKey) remove(d.id); else if (ev.shiftKey) collapse(d.id); else { setFocus(d.id); expand(d.id); } } }
     };
     const onWheel = (ev) => { ev.preventDefault(); const v = view.current; v.k = Math.min(4, Math.max(0.2, v.k * (ev.deltaY < 0 ? 1.1 : 0.9))); };
     const onDouble = (ev) => { ev.preventDefault(); const id = hit(toWorld(ev)); if (id && !['mint', 'burn'].includes(id)) { drag.current = null; navigate(getPrincipalProfileUrl(id)); } };
@@ -199,7 +208,7 @@ function MoneyGraph({ source, start, theme }) {
     const btn = (active) => ({ padding: '6px 10px', borderRadius: 8, border: `1px solid ${active ? '#10b981' : theme.colors.border}`, background: active ? '#10b98122' : 'transparent', color: theme.colors.primaryText, cursor: 'pointer', fontSize: '0.8rem' });
     const selectStyle = { ...btn(false), background: theme.colors.primaryBg, maxWidth: 260 };
     const optStyle = { background: theme.colors.primaryBg, color: theme.colors.primaryText };
-    const legend = [['node', 'holder'], ['pool', 'DEX pool'], ['lock', 'Sneed Lock'], ['dao', 'DAO / treasury'], ['mint', 'minting'], ['burn', 'burned'], ...(source.hasOrigin ? [['hub', 'funded 5+ dormant accounts'], ['satellite', 'satellite (one funder, never sent)'], ['genesis', 'genesis account (balance outside the log)']] : [])];
+    const legend = [['node', 'holder'], ['pool', 'DEX pool'], ['lock', 'Sneed Lock'], ['dao', 'DAO / treasury'], ['mint', 'minting'], ['burn', 'burned'], ...(source.hasOrigin ? [['hub', 'funded 5+ dormant accounts'], ['spray', 'wallet that sent to many wallets'], ['satellite', 'satellite: whole balance from one sender, never sent'], ['genesis', 'genesis account (balance outside the log)']] : [])];
     const c = source.candidates || { holders: [], hubs: [], mint: false };
     const counts = source.nodeCount !== null && source.nodeCount !== undefined ? `${visible.size} of ${source.nodeCount.toLocaleString('en-US')} principals, ${source.edgeCount.toLocaleString('en-US')} edges.` : `${visible.size} principals shown, ${edgesOf.current.size} expanded.`;
 
@@ -221,13 +230,14 @@ function MoneyGraph({ source, start, theme }) {
                     </select>
                 )}
                 {source.hasOrigin && <button type="button" style={btn(collapseSatellites)} onClick={() => { setCollapseSatellites((v) => !v); alpha.current = 1; }}>Fold satellites</button>}
+                <button type="button" style={btn(false)} onClick={prune} title="Remove every node you have not expanded">Prune</button>
                 {source.timeRange && (
                     <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: theme.colors.secondaryText }}>
                         until <input type="range" min={source.timeRange.minTs} max={source.timeRange.maxTs} step={3600000} value={until ?? source.timeRange.maxTs} onChange={(e) => { setUntil(Number(e.target.value) >= source.timeRange.maxTs ? null : Number(e.target.value)); alpha.current = 1; }} />
                         <span className="health-mono">{new Date(until ?? source.timeRange.maxTs).toISOString().slice(0, 10)}</span>
                     </label>
                 )}
-                <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: theme.colors.mutedText }}>{busy ? `Reading ${label(busy)}… ` : ''}{counts} Click expands, shift-click folds, double-click opens, drag moves, wheel zooms.</span>
+                <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: theme.colors.mutedText }}>{busy ? `Reading ${label(busy)}… ` : ''}{counts} Click expands, shift-click folds, alt-click removes, double-click opens, drag moves, wheel zooms.</span>
             </div>
             {error && <div style={{ padding: '6px 12px', color: '#ef4444', fontSize: '0.8rem' }}>{error}</div>}
             <div style={{ position: 'relative' }}>
@@ -242,6 +252,7 @@ function MoneyGraph({ source, start, theme }) {
                         <div>balance {fmt(hoverNode.balance)} {share(hoverNode.balance)}</div>
                         {edgesOf.current.has(hover) ? <div>received {fmt(hoverNode.received)} from {hoverNode.inCount} · sent {fmt(hoverNode.sent)} to {hoverNode.outCount}{hoverNode.truncated ? ' (long history, most recent only)' : ''}</div> : <div style={{ color: theme.colors.mutedText }}>not expanded yet, click to read</div>}
                         {hoverNode.satellites > 0 && <div style={{ color: COLORS.hub }}>funded {hoverNode.satellites} dormant single-source account(s)</div>}
+                        {hoverNode.sprayTo > 0 && <div style={{ color: COLORS.spray }}>sent to {hoverNode.sprayTo} other wallets (not canisters)</div>}
                         {hoverNode.satelliteOf && <div style={{ color: COLORS.satellite }}>satellite of {label(hoverNode.satelliteOf)}</div>}
                     </div>
                 )}

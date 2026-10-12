@@ -23,6 +23,7 @@ export const DEFAULT_CONFIG = {
     daoLowParticipationPct: 10, // average voting power cast on recent proposals below this: warning
     maxNeuronPages: 300,       // SNS neurons are read 100 at a time; stop after this many pages
     dormantWarnPct: 40,        // share of supply in accounts funded by one source that never sent anything: warning
+    fanoutWarnWallets: 25,     // a wallet (not a canister) that sent to this many other wallets: warning
     cyclesOrangeT: 2,          // warn below this many T cycles (when observable)
     cyclesRedT: 0.5,           // fail below this many T cycles
     callTimeoutSec: 45,
@@ -49,6 +50,7 @@ export const CONFIG_FIELDS = [
     ['daoLowParticipationPct', 'DAO: low participation (%)', 'Average voting power cast on recent proposals below this'],
     ['maxNeuronPages', 'Max neuron pages', 'SNS neurons are read 100 at a time'],
     ['dormantWarnPct', 'Dormant airdrop supply (%)', 'Supply in accounts funded by one source that never sent anything'],
+    ['fanoutWarnWallets', 'Wallet fan-out warning', 'A wallet (not a canister) that sent to this many other wallets'],
     ['cyclesOrangeT', 'Cycles warning (T)', 'When cycles are observable'],
     ['cyclesRedT', 'Cycles failure (T)', ''],
     ['callTimeoutSec', 'Call timeout (s)', ''],

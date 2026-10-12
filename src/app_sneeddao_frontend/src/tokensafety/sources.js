@@ -21,6 +21,7 @@ const kindOf = (id, tag, origin, funders) => {
     if (tag) return 'dao';
     if (origin?.satelliteOf?.has(id)) return 'satellite';
     if ((funders?.get(id)?.count || 0) >= 5) return 'hub';
+    if ((origin?.sprayTo?.get(id) || 0) >= (origin?.sprayThreshold || 10)) return 'spray';
     if (origin?.genesisOwners?.has(id)) return 'genesis';
     return 'node';
 };
@@ -44,6 +45,7 @@ export function scanSource(scan, tags, origin, token) {
         n.kind = kindOf(n.id, n.tag, origin, funders);
         n.satellites = funders.get(n.id)?.count || 0;
         n.satelliteOf = origin?.satelliteOf?.get(n.id) || null;
+        n.sprayTo = origin?.sprayTo?.get(n.id) || 0;
         n.inCount = n.in.length; n.outCount = n.out.length;
     }
     const holders = [...nodes.values()].filter((n) => !['mint', 'burn'].includes(n.id)).sort((a, b) => (a.balance < b.balance ? 1 : -1)).slice(0, 15);
