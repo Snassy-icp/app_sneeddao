@@ -14,7 +14,9 @@ export const DEFAULT_CONFIG = {
     cliffWindowDays: 30,       // unlocks within this window are reported
     cliffWarnPct: 10,          // ... when they exceed this share of supply
     liquidityLockedGoodPct: 50, // share of the main pool's active liquidity that is locked: good above this
-    minLiquidityUsd: 10000,    // pool depth below this is a warning
+    minLiquidityUsd: 1000,     // a pool thinner than this cannot really be traded: warning whatever the market cap
+    liquidityGoodPctOfMcap: 5, // depth at or above this share of market cap passes
+    deepLiquidityUsd: 50000,   // depth at or above this passes whatever the share
     cyclesOrangeT: 2,          // warn below this many T cycles (when observable)
     cyclesRedT: 0.5,           // fail below this many T cycles
     callTimeoutSec: 45,
@@ -32,7 +34,9 @@ export const CONFIG_FIELDS = [
     ['cliffWindowDays', 'Cliff window (days)', 'Unlocks inside this window are reported'],
     ['cliffWarnPct', 'Cliff warning (%)', 'Unlocks inside the window above this share of supply'],
     ['liquidityLockedGoodPct', 'Locked liquidity good (%)', 'Share of the main pool\'s active liquidity locked in Sneed Lock that earns a pass'],
-    ['minLiquidityUsd', 'Minimum liquidity (USD)', 'Main pool depth below this is a warning'],
+    ['minLiquidityUsd', 'Minimum liquidity (USD)', 'A main pool thinner than this is a warning whatever the market cap'],
+    ['liquidityGoodPctOfMcap', 'Good depth (% of market cap)', 'Main pool depth at or above this share of market cap passes'],
+    ['deepLiquidityUsd', 'Deep liquidity (USD)', 'Main pool depth at or above this passes whatever the share'],
     ['cyclesOrangeT', 'Cycles warning (T)', 'When cycles are observable'],
     ['cyclesRedT', 'Cycles failure (T)', ''],
     ['callTimeoutSec', 'Call timeout (s)', ''],

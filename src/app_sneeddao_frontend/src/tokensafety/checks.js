@@ -565,7 +565,10 @@ export function buildTokenTree(ledgerId, config) {
                     id: 'lp:depth', name: 'Pool depth', link: poolLink, run: async () => {
                         if (main.tvlUsd === null) return skip(main.other !== IDS.icpLedger ? 'No ICP pool, so no USD valuation' : 'ICP price unavailable (no ICP/ckUSDC pool found)', details);
                         const rel = mcap ? (main.tvlUsd / mcap) * 100 : null;
-                        const s = main.tvlUsd < c.minLiquidityUsd ? 'warn' : 'pass';
+                        // Depth is judged against the market cap: a pool holding a large share of
+                        // the token's value is deep however small the token. An absolute floor
+                        // catches pools too thin to trade at all.
+                        const s = main.tvlUsd < c.minLiquidityUsd ? 'warn' : (rel !== null && rel >= c.liquidityGoodPctOfMcap) || main.tvlUsd >= c.deepLiquidityUsd ? 'pass' : 'warn';
                         return { status: s, summary: `About $${Math.round(main.tvlUsd).toLocaleString('en-US')} in the main pool (${fmtUnits(main.balanceOther, 8, 0)} ICP + ${fmtUnits(main.balance, m.decimals, 0)} ${m.symbol} at $${icpUsd.toFixed(2)} per ICP)${rel !== null ? `, ${rel.toFixed(1)}% of a $${Math.round(mcap).toLocaleString('en-US')} market cap` : ''}`, details, link: poolLink };
                     },
                 },
