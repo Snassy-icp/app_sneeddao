@@ -6,6 +6,7 @@
 import { CanisterStatus } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { decodeIcrcAccount } from '@dfinity/ledger-icrc';
+import { sha256 } from '@noble/hashes/sha256';
 import { idlFactory as snswIdl } from 'declarations/nns_snsw/nns_snsw.did.js';
 import { idlFactory as rootIdl } from 'external/sns_root/sns_root.did.js';
 import { idlFactory as factoryIdl } from 'external/icp_swap_factory/icp_swap_factory.did.js';
@@ -224,9 +225,9 @@ const loaders = {
             return { id, token0: p.token0.address, token1: p.token1.address, fee: Number(p.fee), tick: Number(meta.ok.tick), sqrtPriceX96: BigInt(meta.ok.sqrtPriceX96), liquidity: BigInt(meta.ok.liquidity), inPool };
         }));
     },
-    balance: (ledgerId, owner) => async (ctx) => {
+    balance: (ledgerId, owner, subaccount = null) => async (ctx) => {
         const l = await actor(ledgerIdl, ledgerId);
-        return ctx.call(l.icrc1_balance_of({ owner: Principal.fromText(owner), subaccount: [] }), `balance of ${owner}`);
+        return ctx.call(l.icrc1_balance_of({ owner: Principal.fromText(owner), subaccount: subaccount ? [subaccount] : [] }), `balance of ${owner}`);
     },
     /// ICP in USD from the deepest ICPSwap ICP/ckUSDC pool (chain data, no oracle).
     icpUsd: async (ctx) => {
@@ -254,6 +255,13 @@ const loaders = {
         return out;
     },
 };
+
+/// The SNS keeps its own token's treasury in a governance subaccount derived
+/// as sha256(len("token-distribution") · "token-distribution" · governance · nonce 0).
+function snsTreasurySubaccount(governance) {
+    const domain = new TextEncoder().encode('token-distribution');
+    return sha256(new Uint8Array([domain.length, ...domain, ...Principal.fromText(governance).toUint8Array(), 0, 0, 0, 0, 0, 0, 0, 0]));
+}
 
 /// "Sneed DAO (SNS root fp274-…)" for a deployed SNS.
 async function daoLabel(sns, ctx) {
@@ -676,7 +684,17 @@ export function buildTokenTree(ledgerId, config, header = null) {
             for (const r of t.rows) { const st = BigInt(Math.round(r.stake)); total += st; if (r.lockSec >= minSec) long += st; weighted += r.stake * Math.min(1, r.lockSec / (365 * 86400)); }
             neurons = { count: t.rows.length, total, long, weighted, truncated: t.truncated, table: t, dao: await daoLabel(snsRel.sns, ctx) };
         }
-        return { m, sl, neurons, minSec, now };
+        // The SNS treasury: DAO-controlled, but one proposal away from circulation.
+        let treasury = null;
+        if (snsRel) {
+            const g = snsRel.sns.governance;
+            const [main, derived] = await Promise.all([
+                quiet(ctx.load(`bal:${ledgerId}:${g}`, loaders.balance(ledgerId, g)), null),
+                quiet(ctx.load(`bal:${ledgerId}:${g}:treasury`, loaders.balance(ledgerId, g, snsTreasurySubaccount(g))), null),
+            ]);
+            if (main !== null || derived !== null) treasury = { amount: (main ?? 0n) + (derived ?? 0n), main: main ?? 0n, derived: derived ?? 0n, dao: await daoLabel(snsRel.sns, ctx), governance: g };
+        }
+        return { m, sl, neurons, treasury, minSec, now };
     });
     const shareRow = (part, m) => `${fmtUnits(part, m.decimals, 0)} (${pct(part, m.supply).toFixed(2)}%)`;
 
@@ -685,15 +703,16 @@ export function buildTokenTree(ledgerId, config, header = null) {
         children: [
             {
                 id: 'locks:total', name: 'Locked for at least the minimum time', timeoutMs: SCAN_TIMEOUT_MS, run: async (ctx) => {
-                    const { m, sl, neurons } = await lockedSupply(ctx);
+                    const { m, sl, neurons, treasury } = await lockedSupply(ctx);
                     const combined = sl.long + (neurons?.long ?? 0n);
-                    const details = { minimum_days: c.minLockDays, sneed_lock: shareRow(sl.long, m), sns_neurons: neurons ? shareRow(neurons.long, m) : 'not an SNS token', combined: shareRow(combined, m) };
+                    const details = { minimum_days: c.minLockDays, sneed_lock: shareRow(sl.long, m), sns_neurons: neurons ? shareRow(neurons.long, m) : 'not an SNS token', combined: shareRow(combined, m), dao_treasury_not_counted: treasury ? shareRow(treasury.amount, m) : 'no SNS behind this token' };
                     if (sl.count === 0 && !(neurons && neurons.total > 0n)) return warn('Nothing locked in Sneed Lock and no SNS neurons', details);
                     const parts = [];
                     if (sl.long > 0n) parts.push(`${pct(sl.long, m.supply).toFixed(2)}% in Sneed Lock`);
                     if (neurons && neurons.long > 0n) parts.push(`${pct(neurons.long, m.supply).toFixed(2)}% in SNS neurons`);
                     const share = pct(combined, m.supply);
-                    return (share >= c.lockedSupplyGoodPct ? pass : warn)(`${share.toFixed(2)}% of supply locked for at least ${c.minLockDays} days${parts.length ? ` (${parts.join(' + ')})` : ''}`, details);
+                    const treasuryNote = treasury && treasury.amount > 0n ? `; a further ${pct(treasury.amount, m.supply).toFixed(2)}% sits in the DAO treasury, not counted as locked` : '';
+                    return (share >= c.lockedSupplyGoodPct ? pass : warn)(`${share.toFixed(2)}% of supply locked for at least ${c.minLockDays} days${parts.length ? ` (${parts.join(' + ')})` : ''}${treasuryNote}`, details);
                 },
             },
             {
@@ -711,6 +730,15 @@ export function buildTokenTree(ledgerId, config, header = null) {
                     const details = { dao: neurons.dao, neurons: neurons.count, truncated: neurons.truncated, staked: shareRow(neurons.total, m), staked_at_least_min_days: shareRow(neurons.long, m), year_weighted: fmtUnits(BigInt(Math.round(neurons.weighted)), m.decimals, 0), note: 'A neuron\'s lock is its dissolve delay, or the time left if it is dissolving, extended by vesting.' };
                     if (neurons.total === 0n) return skip('No stake in neurons', details);
                     return pass(`${pct(neurons.total, m.supply).toFixed(2)}% of supply staked in ${neurons.count.toLocaleString('en-US')} neurons, ${pct(neurons.long, m.supply).toFixed(2)}% with at least ${c.minLockDays} days of lock`, details);
+                },
+            },
+            {
+                id: 'locks:treasury', name: 'In the DAO treasury', timeoutMs: SCAN_TIMEOUT_MS, run: async (ctx) => {
+                    const { m, treasury } = await lockedSupply(ctx);
+                    if (!treasury) return skip('No SNS stands behind this token');
+                    const details = { dao: treasury.dao, governance: treasury.governance, in_default_account: shareRow(treasury.main, m), in_treasury_subaccount: shareRow(treasury.derived, m), balance: shareRow(treasury.amount, m), note: 'DAO-controlled, so safer than a private wallet, but a single adopted proposal can move it into circulation within days. It is not counted as locked.' };
+                    if (treasury.amount === 0n) return skip(`The treasury of ${treasury.dao} holds none of this token`, details);
+                    return pass(`${pct(treasury.amount, m.supply).toFixed(2)}% of supply held by the treasury of ${treasury.dao}: DAO-controlled, releasable by proposal`, details);
                 },
             },
             {

@@ -1,7 +1,7 @@
 // /tools/token_safety: rates any ICRC ledger from public, verifiable data.
 // Gates first (controllers, code), then minting, distribution, locks,
 // liquidity and cycles, as a tree of checks like /health.
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Header from '../components/Header';
 import TokenSelector from '../components/TokenSelector';
@@ -12,6 +12,7 @@ import { runTree, statusOf, countLeaves, isListing } from '../health/runner.js';
 import { loadConfig, saveConfig, DEFAULT_CONFIG, CONFIG_FIELDS } from '../tokensafety/config.js';
 import { STATUS, customStyles, Badge, Node, primary } from '../health/TreeView.jsx';
 import MoneyGraph from '../tokensafety/MoneyGraph.jsx';
+import { scanSource } from '../tokensafety/sources.js';
 import { FaProjectDiagram } from 'react-icons/fa';
 import { parsePrincipal } from '../utils/icrc3/client.js';
 
@@ -99,6 +100,7 @@ function TokenSafety() {
         if (id === ledgerId) run(id, config); else navigate(`/tools/token_safety/${id}`);
     };
 
+    const graphSource = useMemo(() => (graphData ? scanSource(graphData.scan, graphData.tags, graphData.origin, { symbol: header?.symbol || graphData.meta?.symbol, decimals: header?.decimals ?? graphData.meta?.decimals ?? 8 }) : null), [graphData, header]);
     const toggle = useCallback((id) => setExpanded((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; }), []);
     const counts = state.tree ? countLeaves(state.tree, state.results) : null;
     const total = counts ? Object.values(counts).reduce((a, b) => a + b, 0) : 0;
@@ -187,7 +189,7 @@ function TokenSafety() {
 
                         {showGraph && graphData && (
                             <div style={{ marginBottom: '1rem' }}>
-                                <MoneyGraph scan={graphData.scan} tags={graphData.tags} origin={graphData.origin} token={{ symbol: header?.symbol || graphData.meta?.symbol, decimals: header?.decimals ?? graphData.meta?.decimals ?? 8 }} start={null} theme={theme} />
+                                <MoneyGraph source={graphSource} start={null} theme={theme} />
                             </div>
                         )}
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useSns } from '../contexts/SnsContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
@@ -417,6 +417,11 @@ function Transactions() {
                                 animationDelay: '0.1s'
                             }}
                         >
+                            {selectedLedger && (
+                                <div style={{ marginBottom: 10, textAlign: 'right' }}>
+                                    <Link to={`/tools/money?ledger=${selectedLedger}${identity ? `&start=${identity.getPrincipal().toText()}` : ''}`} style={{ color: '#3b82f6', fontSize: '0.85rem', textDecoration: 'none' }}>Follow the money for this token →</Link>
+                                </div>
+                            )}
                             <TransactionList 
                                 snsRootCanisterId={selectedSnsRoot}
                                 ledgerCanisterId={selectedLedger}

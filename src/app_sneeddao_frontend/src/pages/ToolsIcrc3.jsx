@@ -619,6 +619,9 @@ function ToolsIcrc3() {
                         <button type="submit" style={styles.button(!loadingOverview)} disabled={loadingOverview}>
                             {loadingOverview ? <FaSpinner className="icrc3-spin" size={13} /> : <FaSearch size={13} />} Browse
                         </button>
+                        {canisterId && overview?.metadata && (
+                            <Link to={`/tools/money?ledger=${canisterId.toText()}`} style={{ ...styles.button(true), textDecoration: 'none' }}>Follow the money</Link>
+                        )}
                     </form>
                     {overviewError && <div style={{ marginTop: 10, color: theme.colors.error, fontSize: '0.88rem' }}>{overviewError}</div>}
                 </div>
