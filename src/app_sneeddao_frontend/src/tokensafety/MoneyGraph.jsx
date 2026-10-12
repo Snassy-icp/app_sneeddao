@@ -7,7 +7,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useNaming } from '../NamingContext';
-import { getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { getPrincipalDisplayInfoFromContext, getPrincipalProfileUrl } from '../utils/PrincipalUtils';
+import PrincipalInput from '../components/PrincipalInput';
 import { holdersByOwner } from './scan.js';
 
 const COLORS = {
@@ -209,24 +210,28 @@ function MoneyGraph({ scan, tags, origin, token, start, theme }) {
         if (d?.id) { const p = pos.current.get(d.id); if (p) p.fixed = false; if (!d.moved) { if (ev.shiftKey) collapse(d.id); else { setFocus(d.id); expand(d.id); } } }
     };
     const onWheel = (ev) => { ev.preventDefault(); const v = view.current; const k = Math.min(4, Math.max(0.2, v.k * (ev.deltaY < 0 ? 1.1 : 0.9))); v.k = k; };
-    const onDouble = (ev) => { const id = hit(toWorld(ev)); if (id && !['mint', 'burn'].includes(id)) navigate(`/principal/${id}`); };
+    const onDouble = (ev) => { ev.preventDefault(); const id = hit(toWorld(ev)); if (id && !['mint', 'burn'].includes(id)) { drag.current = null; navigate(getPrincipalProfileUrl(id)); } };
 
     const hoverNode = hover ? graph.nodes.get(hover) : null;
     const btn = (active) => ({ padding: '6px 10px', borderRadius: 8, border: `1px solid ${active ? '#10b981' : theme.colors.border}`, background: active ? '#10b98122' : 'transparent', color: theme.colors.primaryText, cursor: 'pointer', fontSize: '0.8rem' });
+    const selectStyle = { ...btn(false), background: theme.colors.primaryBg, maxWidth: 260 };
+    const optStyle = { background: theme.colors.primaryBg, color: theme.colors.primaryText };
     const legend = [['node', 'holder'], ['pool', 'DEX pool'], ['lock', 'Sneed Lock'], ['dao', 'DAO / treasury / minting account'], ['mint', 'minted'], ['burn', 'burned'], ['hub', 'funded 5+ dormant accounts'], ['satellite', 'satellite (one funder, never sent)'], ['genesis', 'genesis account (balance outside the log)']];
 
     return (
         <div ref={wrapRef} style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 14, background: theme.colors.cardBg, overflow: 'hidden' }}>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: 10, borderBottom: `1px solid ${theme.colors.border}` }}>
                 <form onSubmit={(e) => { e.preventDefault(); restart(startText.trim()); }} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <input value={startText} onChange={(e) => setStartText(e.target.value)} placeholder="Start at a principal" className="health-mono" style={{ width: 300, padding: '6px 8px', borderRadius: 8, border: `1px solid ${theme.colors.border}`, background: theme.colors.primaryBg, color: theme.colors.primaryText, fontSize: '0.8rem' }} />
+                    <div style={{ width: 320 }}>
+                        <PrincipalInput value={startText} onChange={setStartText} onSelect={(id) => restart(id)} placeholder="Start at a principal or name" defaultTab="all" style={{ width: '100%' }} inputStyle={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${theme.colors.border}`, background: theme.colors.primaryBg, color: theme.colors.primaryText, fontSize: '0.8rem', width: '100%', boxSizing: 'border-box' }} />
+                    </div>
                     <button type="submit" style={btn(false)}>Go</button>
                 </form>
-                <select value="" onChange={(e) => { if (e.target.value) restart(e.target.value); }} style={{ ...btn(false), maxWidth: 260 }}>
-                    <option value="">Start from…</option>
-                    <option value="mint">Minting</option>
-                    {candidates.hubs.length > 0 && <optgroup label="Funders of dormant accounts">{candidates.hubs.map((n) => <option key={n.id} value={n.id}>{label(n.id)} (+{n.satellites})</option>)}</optgroup>}
-                    <optgroup label="Largest holders">{candidates.holders.map((n) => <option key={n.id} value={n.id}>{label(n.id)} {share(n.balance)}</option>)}</optgroup>
+                <select value="" onChange={(e) => { if (e.target.value) restart(e.target.value); }} style={selectStyle}>
+                    <option value="" style={optStyle}>Start from…</option>
+                    <option value="mint" style={optStyle}>Minting</option>
+                    {candidates.hubs.length > 0 && <optgroup label="Funders of dormant accounts" style={optStyle}>{candidates.hubs.map((n) => <option key={n.id} value={n.id} style={optStyle}>{label(n.id)} (+{n.satellites})</option>)}</optgroup>}
+                    <optgroup label="Largest holders" style={optStyle}>{candidates.holders.map((n) => <option key={n.id} value={n.id} style={optStyle}>{label(n.id)} {share(n.balance)}</option>)}</optgroup>
                 </select>
                 <button type="button" style={btn(collapseSatellites)} onClick={() => { setCollapseSatellites((v) => !v); alpha.current = 1; }}>Fold satellites</button>
                 {graph.minTs !== null && graph.maxTs !== null && (
