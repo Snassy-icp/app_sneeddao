@@ -24,6 +24,40 @@ const legacyIdl = ({ IDL }) => IDL.Service({
 });
 const archiveIdl = (method) => ({ IDL }) => IDL.Service({ [method]: IDL.Func([GetBlocksArgs], [BlockRange], ['query']) });
 
+// The `get_transactions` family (NatLabs-style Motoko ledgers, and the
+// ledger suite's older endpoint): typed records instead of generic values.
+const Account = IDL.Record({ owner: IDL.Principal, subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)) });
+const Transaction = IDL.Record({
+    kind: IDL.Text, timestamp: IDL.Nat64,
+    index: IDL.Opt(IDL.Nat), // NatLabs ledgers number their records (a plain nat decodes into the opt)
+    mint: IDL.Opt(IDL.Record({ to: Account, amount: IDL.Nat, memo: IDL.Opt(IDL.Vec(IDL.Nat8)), created_at_time: IDL.Opt(IDL.Nat64) })),
+    burn: IDL.Opt(IDL.Record({ from: Account, amount: IDL.Nat, memo: IDL.Opt(IDL.Vec(IDL.Nat8)), created_at_time: IDL.Opt(IDL.Nat64), spender: IDL.Opt(Account) })),
+    transfer: IDL.Opt(IDL.Record({ from: Account, to: Account, amount: IDL.Nat, fee: IDL.Opt(IDL.Nat), memo: IDL.Opt(IDL.Vec(IDL.Nat8)), created_at_time: IDL.Opt(IDL.Nat64), spender: IDL.Opt(Account) })),
+    approve: IDL.Opt(IDL.Record({ from: Account, spender: Account, amount: IDL.Nat, fee: IDL.Opt(IDL.Nat), memo: IDL.Opt(IDL.Vec(IDL.Nat8)), created_at_time: IDL.Opt(IDL.Nat64), expected_allowance: IDL.Opt(IDL.Nat), expires_at: IDL.Opt(IDL.Nat64) })),
+});
+const TxRange = IDL.Record({ transactions: IDL.Vec(Transaction) });
+const txIdl = ({ IDL }) => IDL.Service({
+    get_total_tx: IDL.Func([], [IDL.Nat], ['query']), // NatLabs ledgers: the only true total
+    get_transactions: IDL.Func([GetBlocksArgs], [IDL.Record({
+        log_length: IDL.Nat, first_index: IDL.Nat, transactions: IDL.Vec(Transaction),
+        archived_transactions: IDL.Vec(IDL.Record({ start: IDL.Nat, length: IDL.Nat, callback: IDL.Func([GetBlocksArgs], [TxRange], ['query']) })),
+    })], ['query']),
+});
+const txArchiveIdl = (method) => ({ IDL }) => IDL.Service({ [method]: IDL.Func([GetBlocksArgs], [TxRange], ['query']) });
+
+/// A typed transaction as the generic block applyBlock understands.
+function txToBlock(t, defaultFee) {
+    const acct = (a) => ({ Array: [{ Blob: a.owner.toUint8Array() }, ...(a.subaccount?.[0] ? [{ Blob: Uint8Array.from(a.subaccount[0]) }] : [])] });
+    const entries = [];
+    const x = t.transfer?.[0] || t.mint?.[0] || t.burn?.[0] || t.approve?.[0];
+    if (!x) return { Map: [['btype', { Text: t.kind }], ['ts', { Nat64: t.timestamp }], ['tx', { Map: [] }]] };
+    entries.push(['amt', { Nat: x.amount }]);
+    if (x.from) entries.push(['from', acct(x.from)]);
+    if (x.to) entries.push(['to', acct(x.to)]);
+    if (t.transfer?.[0] || t.approve?.[0]) entries.push(['fee', { Nat: x.fee?.[0] !== undefined ? x.fee[0] : defaultFee }]);
+    return { Map: [['btype', { Text: t.kind }], ['ts', { Nat64: t.timestamp }], ['tx', { Map: entries }]] };
+}
+
 // ---- value helpers tolerant of both encodings ----
 const kind = (v) => (v ? Object.keys(v)[0] : undefined);
 const field = (map, key) => { if (!map || !('Map' in map)) return undefined; const e = map.Map.find(([k]) => k === key); return e ? e[1] : undefined; };
@@ -46,7 +80,7 @@ export function accountOf(v) {
 /// Apply one block to the balances. Returns the operation name or null.
 export function applyBlock(block, state) {
     const tx = field(block, 'tx');
-    const btype = text(field(block, 'btype')) || text(field(tx, 'op')) || '';
+    const btype = (text(field(block, 'btype')) || text(field(tx, 'op')) || '').toLowerCase(); // NatLabs ledgers shout: "TRANSFER"
     const amt = num(field(tx, 'amt')) ?? 0n;
     const fee = num(field(tx, 'fee')) ?? num(field(block, 'fee')) ?? 0n;
     const ts = num(field(block, 'ts'));
@@ -81,26 +115,108 @@ export function applyBlock(block, state) {
     }
 }
 
+/// The `get_transactions` family, read as a sequential walk rather than by
+/// range: NatLabs archives ignore the requested length, page their first
+/// bucket by 100 and the rest by 1000, and hold duplicated records with
+/// wrapped index labels. Every record carries its own index, so the walk
+/// advances by what came back and keeps the first record seen per index.
+export async function walkTransactions(txLedger, total, { onProgress, timeoutMs, defaultFee }) {
+    const records = new Map();
+    const indexOf = (t, fallback) => (t.index?.[0] !== undefined ? Number(t.index[0]) : fallback);
+    const put = (i, t) => { if (!records.has(i)) records.set(i, t); };
+    const head = await withTimeout(txLedger.get_transactions({ start: 0n, length: 2000n }), timeoutMs, 'get_transactions');
+    const archives = new Map();
+    let archivedEnd = 0n;
+    for (const at of head.archived_transactions) {
+        const [id, method] = at.callback;
+        archives.set(`${id.toText()}:${method}`, { id, method });
+        if (at.start + at.length > archivedEnd) archivedEnd = at.start + at.length;
+    }
+    for (const { id, method } of archives.values()) {
+        const a = await actor(txArchiveIdl(method), id);
+        let cursor = 0n;
+        for (let guard = 0; guard < 5000; guard++) {
+            const r = await withTimeout(a[method]({ start: cursor, length: 2000n }), timeoutMs, 'archive get_transactions');
+            if (r.transactions.length === 0) break;
+            r.transactions.forEach((t, k) => put(indexOf(t, Number(cursor) + k), t));
+            cursor += BigInt(r.transactions.length);
+            onProgress?.(Math.min(records.size, total), total);
+        }
+    }
+    // The ledger's own, not yet archived, records: ask from the tail of the
+    // log backwards to where the archives end. NatLabs ledgers answer any
+    // intersecting request with their whole buffer, labelled; others page.
+    let cursor = BigInt(Math.max(Number(archivedEnd), total - 2000, 0));
+    const seenArchived = records.size;
+    for (let guard = 0; guard < 5000; guard++) {
+        const r = await withTimeout(txLedger.get_transactions({ start: cursor, length: 2000n }), timeoutMs, 'get_transactions');
+        if (r.transactions.length === 0) break;
+        let maxIdx = Number(cursor) - 1;
+        r.transactions.forEach((t, k) => { const i = indexOf(t, Number(cursor) + k); put(i, t); if (i > maxIdx) maxIdx = i; });
+        onProgress?.(Math.min(records.size, total), total);
+        if (r.transactions.length < 2000) break;
+        cursor = BigInt(maxIdx + 1);
+    }
+    // Paged ledgers may hold more than 2000 local records below the tail.
+    let low = BigInt(Math.max(Number(archivedEnd), 0));
+    const lowest = [...records.keys()].filter((i) => records.size > seenArchived).sort((x, y) => x - y);
+    for (let guard = 0; guard < 5000 && low < BigInt(Math.max(total - 2000, 0)); guard++) {
+        const r = await withTimeout(txLedger.get_transactions({ start: low, length: 2000n }), timeoutMs, 'get_transactions');
+        if (r.transactions.length === 0) break;
+        r.transactions.forEach((t, k) => put(indexOf(t, Number(low) + k), t));
+        low += BigInt(r.transactions.length);
+        onProgress?.(Math.min(records.size, total), total);
+    }
+    void lowest;
+    const indices = [...records.keys()].sort((x, y) => x - y);
+    const missing = indices.length ? indices[indices.length - 1] + 1 - indices.length : total;
+    // A few lost records (the NatLabs archive overwrites some with duplicates)
+    // still leave a usable picture; report them. Many means no picture at all.
+    if (missing > Math.max(100, Math.floor(total / 1000))) throw new Error(`the ledger's history has gaps: ${missing.toLocaleString('en-US')} of ${(indices.length + missing).toLocaleString('en-US')} records could not be read`);
+    return { blocks: indices.map((i) => txToBlock(records.get(i), defaultFee)), gaps: missing };
+}
+
 /// Scan the whole log of `ledgerId` (up to maxBlocks). Reports progress as
 /// (blocksDone, total). Returns { skipped, total, mode } when too large.
 /** @param {string} ledgerId @param {{ maxBlocks?: number, onProgress?: (done: number, total: number) => void, concurrency?: number, timeoutMs?: number }} [options] */
 export async function scanLedger(ledgerId, options = {}) {
-    const { maxBlocks, onProgress, concurrency = 6, timeoutMs = 60000 } = options;
+    const { maxBlocks, onProgress, concurrency = 6, timeoutMs = 60000, defaultFee = 0n } = options;
     const ledger = await actor(legacyIdl, ledgerId);
+    const txLedger = await actor(txIdl, ledgerId);
     let total = null; let mode = 'legacy';
     try {
         const head = await withTimeout(ledger.get_blocks({ start: 0n, length: 0n }), timeoutMs, 'get_blocks');
         total = Number(head.chain_length);
     } catch {
-        mode = 'icrc3';
-        const a = await createIcrc3Actor(Principal.fromText(ledgerId));
-        const head = await withTimeout(a.icrc3_get_blocks([]), timeoutMs, 'icrc3_get_blocks');
-        total = Number(head.log_length);
+        try {
+            mode = 'icrc3';
+            const a = await createIcrc3Actor(Principal.fromText(ledgerId));
+            const head = await withTimeout(a.icrc3_get_blocks([]), timeoutMs, 'icrc3_get_blocks');
+            total = Number(head.log_length);
+        } catch (e3) {
+            mode = 'transactions';
+            let head;
+            try { head = await withTimeout(txLedger.get_transactions({ start: 0n, length: 0n }), timeoutMs, 'get_transactions'); }
+            catch { throw new Error('the ledger exposes none of get_blocks, icrc3_get_blocks or get_transactions, so its history cannot be read'); }
+            // NatLabs ledgers answer log_length with the requested range's
+            // length; their get_total_tx has the real figure.
+            const natlabs = await withTimeout(txLedger.get_total_tx(), timeoutMs, 'get_total_tx').catch(() => null);
+            total = natlabs !== null ? Number(natlabs) : Number(head.log_length);
+        }
     }
     if (maxBlocks !== undefined && total > maxBlocks) return { skipped: true, total, mode };
 
-    const state = { balances: new Map(), owners: new Map(), deficits: new Map(), feeCollector: null, feesBurned: 0n, netSupply: 0n, firstTs: null, lastTs: null, minted: 0n, burned: 0n, fees: 0n, mints: 0, burns: 0, transfers: 0, approves: 0, unknown: 0, mintEvents: [], total, mode };
-    const CHUNK = mode === 'legacy' ? 2000 : 100;
+    const state = { balances: new Map(), owners: new Map(), deficits: new Map(), rawFinal: new Map(), feeCollector: null, feesBurned: 0n, netSupply: 0n, gaps: 0, firstTs: null, lastTs: null, minted: 0n, burned: 0n, fees: 0n, mints: 0, burns: 0, transfers: 0, approves: 0, unknown: 0, mintEvents: [], total, mode };
+    if (mode === 'transactions') {
+        const { blocks, gaps } = await walkTransactions(txLedger, total, { onProgress, timeoutMs, defaultFee });
+        state.total = blocks.length + gaps;
+        state.gaps = gaps;
+        for (const b of blocks) applyBlock(b, state);
+        for (const v of state.balances.values()) state.netSupply += v;
+        finish(state);
+        return state;
+    }
+    const CHUNK = mode === 'icrc3' ? 100 : 2000;
     const chunks = []; for (let s = 0; s < total; s += CHUNK) chunks.push([s, Math.min(CHUNK, total - s)]);
     const results = new Array(chunks.length); // blocks per chunk, in order
     let next = 0; let done = 0;
@@ -127,7 +243,6 @@ export async function scanLedger(ledgerId, options = {}) {
         return out.sort((x, y) => x[0] - y[0]).map((x) => x[1]);
     };
     const fetchIcrc3 = async (start, length) => (await fetchBlocks(Principal.fromText(ledgerId), start, length)).map((b) => b.block);
-
     const worker = async () => {
         while (next < chunks.length) {
             const i = next++;
@@ -149,8 +264,17 @@ export async function scanLedger(ledgerId, options = {}) {
     // What the log accounts for: mints minus burns and burned fees. Any
     // reported supply above this was created outside the log.
     for (const v of state.balances.values()) state.netSupply += v;
-    for (const [k, v] of [...state.balances]) if (v <= 0n) state.balances.delete(k);
+    finish(state);
     return state;
+}
+
+/// Keep the final log-derived balance of every account that went negative
+/// (its genesis balance is its real balance minus this), then drop the
+/// non-positive entries from the holder table.
+function finish(state) {
+    state.rawFinal = new Map();
+    for (const k of state.deficits.keys()) state.rawFinal.set(k, state.balances.get(k) ?? 0n);
+    for (const [k, v] of [...state.balances]) if (v <= 0n) state.balances.delete(k);
 }
 
 /// Aggregate account balances by owner principal, largest first.

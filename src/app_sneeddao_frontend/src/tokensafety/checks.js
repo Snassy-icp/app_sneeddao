@@ -129,8 +129,15 @@ const loaders = {
         return null;
     },
     scan: (ledgerId) => async (ctx) => {
-        try { return await scanLedgerOffThread(ledgerId, { maxBlocks: ctx.config.maxScanBlocks, onProgress: ctx.config.onProgress, timeoutMs: ctx.config.callTimeoutSec * 1000 }); }
-        catch (e) { return { skipped: true, total: null, reason: `the log could not be read (${e?.message || e})` }; }
+        try {
+            const m = await ctx.load('meta', loaders.meta(ledgerId));
+            return await scanLedgerOffThread(ledgerId, { maxBlocks: ctx.config.maxScanBlocks, onProgress: ctx.config.onProgress, timeoutMs: ctx.config.callTimeoutSec * 1000, defaultFee: m.fee });
+        }
+        catch (e) {
+            const msg = String(e?.message || e);
+            const reason = /exposes none of/.test(msg) ? msg : `the log could not be read (${msg.split('\n')[0].slice(0, 160)})`;
+            return { skipped: true, total: null, reason };
+        }
     },
     /// Supply the log does not account for, and the accounts that reveal it:
     /// anyone who spent tokens the log never gave them was seeded at genesis.
@@ -147,7 +154,11 @@ const loaders = {
                 d.actual = await ctx.call(l.icrc1_balance_of({ owner: a.owner, subaccount: a.subaccount ? [a.subaccount] : [] }), `balance of ${d.key}`);
             } catch { d.actual = null; }
         }));
-        return { hidden, share: pct(hidden, m.supply), deficits };
+        // Genesis balance of a revealed account = what it holds now minus what the log gave it (negative).
+        let revealed = 0n;
+        for (const d of deficits) if (d.actual !== null && d.actual !== undefined) { d.genesis = d.actual - (scan.rawFinal?.get(d.key) ?? 0n); if (d.genesis > 0n) revealed += d.genesis; }
+        const unseen = hidden > revealed ? hidden - revealed : 0n;
+        return { hidden, share: pct(hidden, m.supply), revealed, unseen, unseenShare: pct(unseen, m.supply), deficits };
     },
     /// The DAO's name from its governance metadata.
     snsName: (sns) => async (ctx) => {
@@ -180,9 +191,12 @@ const loaders = {
         return Promise.all(mine.map(async (p) => {
             const id = p.canisterId.toText();
             const pool = await actor(poolIdl, id);
-            const meta = await ctx.call(pool.metadata(), `pool ${id} metadata`);
+            const [meta, amounts] = await Promise.all([ctx.call(pool.metadata(), `pool ${id} metadata`), quiet(ctx.call(pool.getTokenAmountState(), `pool ${id} amounts`), null)]);
             if (!('ok' in meta)) return { id, token0: p.token0.address, token1: p.token1.address, fee: Number(p.fee), error: 'metadata failed' };
-            return { id, token0: p.token0.address, token1: p.token1.address, fee: Number(p.fee), tick: Number(meta.ok.tick), sqrtPriceX96: BigInt(meta.ok.sqrtPriceX96), liquidity: BigInt(meta.ok.liquidity) };
+            // The pool's own accounting of what backs its liquidity; its ledger
+            // balances also hold deposits and fees not yet claimed.
+            const inPool = amounts && 'ok' in amounts ? { amount0: BigInt(amounts.ok.token0Amount), amount1: BigInt(amounts.ok.token1Amount) } : null;
+            return { id, token0: p.token0.address, token1: p.token1.address, fee: Number(p.fee), tick: Number(meta.ok.tick), sqrtPriceX96: BigInt(meta.ok.sqrtPriceX96), liquidity: BigInt(meta.ok.liquidity), inPool };
         }));
     },
     balance: (ledgerId, owner) => async (ctx) => {
@@ -363,17 +377,18 @@ export function buildTokenTree(ledgerId, config) {
                 id: 'mint:untracked', name: 'Supply created outside the log', timeoutMs: SCAN_TIMEOUT_MS, run: async (ctx) => {
                     const [m, u] = await Promise.all([meta(ctx), ctx.load('untracked', loaders.untracked(ledgerId))]);
                     if (!u) { const scan = await ctx.load('scan', loaders.scan(ledgerId)); return skip(scan.reason || 'Log not scanned'); }
-                    const known = u.deficits.filter((d) => d.actual !== null && d.actual !== undefined);
-                    const knownSum = known.reduce((a, d) => a + d.actual, 0n);
                     const details = {
-                        reported_supply: fmtUnits(m.supply, m.decimals, 0), supply_per_log: fmtUnits(m.supply - u.hidden, m.decimals, 0), outside_the_log: fmtUnits(u.hidden, m.decimals, 0), share_pct: u.share,
-                        accounts_that_spent_unlogged_tokens: u.deficits.length,
-                        revealed_accounts: u.deficits.slice(0, 15).map((d) => `${d.key}: spent at least ${fmtUnits(d.deficit, m.decimals, 0)} never minted in the log; holds ${d.actual !== null && d.actual !== undefined ? fmtUnits(d.actual, m.decimals, 0) : '?'} today`),
+                        reported_supply: fmtUnits(m.supply, m.decimals, 0), supply_per_log: fmtUnits(m.supply - u.hidden, m.decimals, 0), created_outside_the_log: `${fmtUnits(u.hidden, m.decimals, 0)} (${u.share.toFixed(2)}%)`,
+                        traced_to_accounts_that_moved_it: `${fmtUnits(u.revealed, m.decimals, 0)} across ${u.deficits.length} account(s)`, still_unseen: `${fmtUnits(u.unseen, m.decimals, 0)} (${u.unseenShare.toFixed(2)}%)`,
+                        revealed_accounts: u.deficits.slice(0, 15).map((d) => `${d.key}: started with about ${d.genesis !== undefined ? fmtUnits(d.genesis, m.decimals, 0) : `at least ${fmtUnits(d.deficit, m.decimals, 0)}`} outside the log; holds ${d.actual !== null && d.actual !== undefined ? fmtUnits(d.actual, m.decimals, 0) : '?'} today`),
                         note: 'Ledgers that seed balances from their init arguments (most Motoko ledgers) create supply with no block; the DFINITY ledger suite writes mint blocks instead. Such supply is only revealed when it moves.',
+                        records_lost_in_archive: (await ctx.load('scan', loaders.scan(ledgerId))).gaps || 0,
                     };
                     if (u.hidden * 1000n <= m.supply) return pass('Every token traces back to a mint block', details);
-                    const s = u.share >= c.topHolderFailPct ? 'fail' : 'warn';
-                    return { status: s, summary: `${u.share.toFixed(2)}% of supply was created outside the log at genesis; ${u.deficits.length} account(s) have moved some of it (holding ${fmtUnits(knownSum, m.decimals, 0)} today), the rest sits in accounts the log cannot see`, details };
+                    // What matters is what still cannot be seen: supply seeded at genesis that never moved.
+                    const s = u.unseenShare >= c.topHolderFailPct ? 'fail' : 'warn';
+                    const traced = u.unseen * 1000n <= m.supply ? 'all of it has since been traced to the accounts that moved it' : `${pct(u.revealed, m.supply).toFixed(2)}% has been traced to ${u.deficits.length} account(s) that moved it, ${u.unseenShare.toFixed(2)}% still sits in accounts the log has never seen`;
+                    return { status: s, summary: `${u.share.toFixed(2)}% of supply was created outside the log at genesis (no mint blocks); ${traced}`, details };
                 },
             },
             {
@@ -425,7 +440,7 @@ export function buildTokenTree(ledgerId, config) {
         id: 'distribution', name: 'Distribution',
         children: async (ctx) => {
             const scan = await ctx.load('scan', loaders.scan(ledgerId));
-            if (scan.skipped) return [{ id: 'dist:skipped', name: 'Holders', run: async () => skip(scan.reason ? `Holders unknown: ${scan.reason}` : `Log of ${scan.total.toLocaleString('en-US')} blocks exceeds the scan limit of ${c.maxScanBlocks.toLocaleString('en-US')}; raise it in the thresholds or wait for the scanner canister`) }];
+            if (scan.skipped) return [{ id: 'dist:skipped', name: 'Holders', run: async () => skip(scan.reason ? `Holders unknown: ${scan.reason}` : `Log of ${scan.total.toLocaleString('en-US')} blocks exceeds the scan limit of ${c.maxScanBlocks.toLocaleString('en-US')}; raise the limit in the thresholds (the scan runs in a worker and takes a few minutes per million blocks)`) }];
             const [m, tags, u] = await Promise.all([meta(ctx), tagsOf(ctx), ctx.load('untracked', loaders.untracked(ledgerId))]);
             // Accounts that revealed a genesis balance: use their real balance.
             for (const d of u?.deficits || []) if (d.actual !== null && d.actual !== undefined) { if (d.actual > 0n) scan.balances.set(d.key, d.actual); else scan.balances.delete(d.key); }
@@ -451,10 +466,10 @@ export function buildTokenTree(ledgerId, config) {
                 {
                     id: 'dist:recon', name: 'Holders rebuilt from the log', run: async () => {
                         const over = visible > m.supply ? visible - m.supply : 0n;
-                        const details2 = { ...details, unknown_block_types: scan.unknown };
+                        const details2 = { ...details, unknown_block_types: scan.unknown, records_lost_in_archive: scan.gaps || 0 };
                         if (scan.unknown > 0) return warn(`${scan.unknown} block(s) of unknown type were ignored`, details2);
                         if (over * 1000n > m.supply) return fail(`Rebuilt balances exceed the reported supply by ${pct(over, m.supply).toFixed(2)}%: the log or the ledger is inconsistent`, details2);
-                        const base = `${holders.length.toLocaleString('en-US')} owners across ${scan.balances.size.toLocaleString('en-US')} accounts, ${scan.total.toLocaleString('en-US')} blocks`;
+                        const base = `${holders.length.toLocaleString('en-US')} owners across ${scan.balances.size.toLocaleString('en-US')} accounts, ${scan.total.toLocaleString('en-US')} blocks${scan.gaps ? ` (${scan.gaps} record(s) lost in the ledger's archive)` : ''}`;
                         if (unseen * 1000n > m.supply) return warn(`${base}; ${unseenShare.toFixed(2)}% of supply sits in accounts the log never mentions (seeded at genesis, never moved)`, details2);
                         return pass(`${base}, matches the reported supply`, details2);
                     },
@@ -525,19 +540,25 @@ export function buildTokenTree(ledgerId, config) {
             const valued = await Promise.all(pools.map(async (p) => {
                 if (p.error) return { ...p, tvlUsd: null };
                 const other = p.token0 === ledgerId ? p.token1 : p.token0;
-                const [bal, balOther] = await Promise.all([quiet(ctx.load(`bal:${ledgerId}:${p.id}`, loaders.balance(ledgerId, p.id)), 0n), quiet(ctx.load(`bal:${other}:${p.id}`, loaders.balance(other, p.id)), 0n)]);
+                let [bal, balOther] = await Promise.all([quiet(ctx.load(`bal:${ledgerId}:${p.id}`, loaders.balance(ledgerId, p.id)), 0n), quiet(ctx.load(`bal:${other}:${p.id}`, loaders.balance(other, p.id)), 0n)]);
+                const ledgerBalances = { token: bal, other: balOther };
+                if (p.inPool) { bal = p.token0 === ledgerId ? p.inPool.amount0 : p.inPool.amount1; balOther = p.token0 === ledgerId ? p.inPool.amount1 : p.inPool.amount0; }
                 const raw = (Number(p.sqrtPriceX96) / 2 ** 96) ** 2; // token1 per token0, base units
                 let tokenPriceIcp = null;
                 if (other === IDS.icpLedger) tokenPriceIcp = (p.token0 === ledgerId ? raw : 1 / raw) * 10 ** (m.decimals - 8);
                 const tokenUsd = tokenPriceIcp !== null && icpUsd ? tokenPriceIcp * icpUsd : null;
                 const tvlUsd = tokenUsd !== null ? Number(bal) / 10 ** m.decimals * tokenUsd + (other === IDS.icpLedger ? Number(balOther) / 1e8 * icpUsd : 0) : null;
-                return { ...p, other, balance: bal, balanceOther: balOther, tokenPriceIcp, tokenUsd, tvlUsd };
+                return { ...p, other, balance: bal, balanceOther: balOther, ledgerBalances, tokenPriceIcp, tokenUsd, tvlUsd };
             }));
             const icpPools = valued.filter((p) => p.other === IDS.icpLedger && !p.error);
             const main = (icpPools.length ? icpPools : valued).sort((a, b) => (b.tvlUsd || 0) - (a.tvlUsd || 0))[0];
             const mcap = main.tokenUsd !== null ? Number(m.supply) / 10 ** m.decimals * main.tokenUsd : null;
             const poolLink = `https://app.icpswap.com/liquidity/position?pool=${main.id}`;
-            const details = { pools: valued.map((p) => `${p.id}: ${p.error || `${fmtUnits(p.balance, m.decimals, 0)} ${m.symbol} + ${p.other === IDS.icpLedger ? `${fmtUnits(p.balanceOther, 8)} ICP` : `other token ${p.other}`}${p.tvlUsd !== null ? `, about $${Math.round(p.tvlUsd).toLocaleString('en-US')}` : ''}`}`), token_price_icp: main.tokenPriceIcp, token_price_usd: main.tokenUsd, market_cap_usd: mcap !== null ? Math.round(mcap) : null, icp_usd: icpUsd };
+            const details = {
+                pools: valued.map((p) => `${p.id}: ${p.error || `${fmtUnits(p.balance, m.decimals, 0)} ${m.symbol} + ${p.other === IDS.icpLedger ? `${fmtUnits(p.balanceOther, 8)} ICP` : `other token ${p.other}`}${p.tvlUsd !== null ? `, about $${Math.round(p.tvlUsd).toLocaleString('en-US')}` : ''}${p.inPool ? ` (pool accounting; ledger balances ${fmtUnits(p.ledgerBalances.token, m.decimals, 0)} ${m.symbol} + ${p.other === IDS.icpLedger ? `${fmtUnits(p.ledgerBalances.other, 8)} ICP` : 'other'} include unclaimed deposits and fees)` : ''}`}`),
+                token_price_icp: main.tokenPriceIcp, token_price_usd: main.tokenUsd, market_cap_usd: mcap !== null ? Math.round(mcap) : null,
+                icp_usd: icpUsd, icp_price_source: 'deepest ICPSwap ICP/ckUSDC pool',
+            };
             const leaves = [
                 { id: 'lp:exists', name: 'Pool exists', link: poolLink, run: async () => pass(`${pools.length} pool(s); main pool ${main.id}${main.other === IDS.icpLedger ? ' against ICP' : ''}`, details) },
                 {
@@ -545,7 +566,7 @@ export function buildTokenTree(ledgerId, config) {
                         if (main.tvlUsd === null) return skip(main.other !== IDS.icpLedger ? 'No ICP pool, so no USD valuation' : 'ICP price unavailable (no ICP/ckUSDC pool found)', details);
                         const rel = mcap ? (main.tvlUsd / mcap) * 100 : null;
                         const s = main.tvlUsd < c.minLiquidityUsd ? 'warn' : 'pass';
-                        return { status: s, summary: `About $${Math.round(main.tvlUsd).toLocaleString('en-US')} in the main pool${rel !== null ? `, ${rel.toFixed(1)}% of a $${Math.round(mcap).toLocaleString('en-US')} market cap` : ''}`, details, link: poolLink };
+                        return { status: s, summary: `About $${Math.round(main.tvlUsd).toLocaleString('en-US')} in the main pool (${fmtUnits(main.balanceOther, 8, 0)} ICP + ${fmtUnits(main.balance, m.decimals, 0)} ${m.symbol} at $${icpUsd.toFixed(2)} per ICP)${rel !== null ? `, ${rel.toFixed(1)}% of a $${Math.round(mcap).toLocaleString('en-US')} market cap` : ''}`, details, link: poolLink };
                     },
                 },
                 {
@@ -569,7 +590,7 @@ export function buildTokenTree(ledgerId, config) {
                         if (inMain.length === 0) {
                             const deep = main.tvlUsd !== null && main.tvlUsd >= c.minLiquidityUsd;
                             const why = plocks.length ? `Locked positions exist only in other pools (${plocks.length})` : 'No liquidity position of this token is locked in Sneed Lock';
-                            return (deep ? warn : fail)(`${why}${deep ? '; the pool is deep today but all of it can be withdrawn' : ''}`, details2);
+                            return (deep ? warn : fail)(`${why} (Sneed Lock holds no position in pool ${main.id})${deep ? '; the pool is deep today but all of it can be withdrawn' : ''}`, details2);
                         }
                         const s = share >= c.liquidityLockedGoodPct ? 'pass' : 'warn';
                         return { status: s, summary: `${share.toFixed(1)}% of the main pool's active liquidity is locked in range for at least ${c.minLockDays} days (${active.length} of ${inMain.length} locked positions count)`, details: details2, link: '/sneedlock' };
