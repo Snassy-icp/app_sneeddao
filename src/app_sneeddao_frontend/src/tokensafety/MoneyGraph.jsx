@@ -30,6 +30,7 @@ function MoneyGraph({ source, start, theme }) {
     const [visible, setVisible] = useState(() => new Set());
     const [focus, setFocus] = useState(null);
     const [hover, setHover] = useState(null);
+    const [hoverEdge, setHoverEdge] = useState(null); // { from, to } when the pointer is on an edge
     const [busy, setBusy] = useState(null);
     const [error, setError] = useState(null);
     const [collapseSatellites, setCollapseSatellites] = useState(true);
@@ -158,7 +159,7 @@ function MoneyGraph({ source, start, theme }) {
                 const dx = q.x - p.x; const dy = q.y - p.y; const d = Math.sqrt(dx * dx + dy * dy) || 1; const ux = dx / d; const uy = dy / d;
                 const ex = q.x - ux * (rq + 3); const ey = q.y - uy * (rq + 3);
                 const wgt = 0.6 + 4 * Math.sqrt(Number(e.amount) / Number(maxAmt));
-                const hl = hover && (hover === e.from || hover === e.to);
+                const hl = (hover && (hover === e.from || hover === e.to)) || (hoverEdge && hoverEdge.from === e.from && hoverEdge.to === e.to);
                 ctx.strokeStyle = hl ? '#f8fafc' : 'rgba(148,163,184,0.45)'; ctx.lineWidth = wgt / v.k;
                 ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(ex, ey); ctx.stroke();
                 ctx.fillStyle = hl ? '#f8fafc' : 'rgba(148,163,184,0.8)';
@@ -185,17 +186,34 @@ function MoneyGraph({ source, start, theme }) {
         };
         raf = requestAnimationFrame(step);
         return () => cancelAnimationFrame(raf);
-    }, [visible, source, hover, focus, until, collapseSatellites, label, theme, edgeOk, tick]);
+    }, [visible, source, hover, hoverEdge, focus, until, collapseSatellites, label, theme, edgeOk, tick]);
 
     // ---- interaction ----
     const toWorld = (ev) => { const r = canvasRef.current.getBoundingClientRect(); const v = view.current; return { x: (ev.clientX - r.left - r.width / 2 - v.x) / v.k, y: (ev.clientY - r.top - r.height / 2 - v.y) / v.k }; };
     const hit = (pt) => { let best = null; let bd = 1e9; for (const id of visible) { const p = pos.current.get(id); if (!p) continue; const d = Math.hypot(p.x - pt.x, p.y - pt.y); if (d < 22 / view.current.k && d < bd) { bd = d; best = id; } } return best; };
+    /// The visible edge nearest the point, within a few pixels of its segment.
+    const hitEdge = (pt) => {
+        let best = null; let bd = 8 / view.current.k;
+        const seen = new Set();
+        for (const id of visible) for (const e of edgesOf.current.get(id) || []) {
+            const key = `${e.from}|${e.to}`; if (seen.has(key)) continue; seen.add(key);
+            if (!visible.has(e.from) || !visible.has(e.to)) continue;
+            const p = pos.current.get(e.from); const q = pos.current.get(e.to); if (!p || !q) continue;
+            const dx = q.x - p.x; const dy = q.y - p.y; const len2 = dx * dx + dy * dy || 1;
+            const t = Math.max(0, Math.min(1, ((pt.x - p.x) * dx + (pt.y - p.y) * dy) / len2));
+            const d = Math.hypot(pt.x - (p.x + t * dx), pt.y - (p.y + t * dy));
+            if (d < bd) { bd = d; best = e; }
+        }
+        return best;
+    };
     const onDown = (ev) => { const pt = toWorld(ev); const id = hit(pt); drag.current = id ? { id, moved: false } : { pan: true, x: ev.clientX, y: ev.clientY, vx: view.current.x, vy: view.current.y, moved: false }; if (id) { const p = pos.current.get(id); p.fixed = true; } };
     const onMove = (ev) => {
         const d = drag.current;
         if (d?.id) { const pt = toWorld(ev); const p = pos.current.get(d.id); p.x = pt.x; p.y = pt.y; d.moved = true; alpha.current = Math.max(alpha.current, 0.3); return; }
         if (d?.pan) { view.current.x = d.vx + (ev.clientX - d.x); view.current.y = d.vy + (ev.clientY - d.y); d.moved = true; return; }
-        setHover(hit(toWorld(ev)));
+        const pt = toWorld(ev); const id = hit(pt);
+        setHover(id);
+        setHoverEdge(id ? null : hitEdge(pt));
     };
     const onUp = (ev) => {
         const d = drag.current; drag.current = null;
@@ -242,8 +260,16 @@ function MoneyGraph({ source, start, theme }) {
             {error && <div style={{ padding: '6px 12px', color: '#ef4444', fontSize: '0.8rem' }}>{error}</div>}
             <div style={{ position: 'relative' }}>
                 <canvas ref={canvasRef} style={{ width: '100%', height: 560, display: 'block', cursor: hover ? 'pointer' : 'grab' }}
-                    onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={() => { drag.current = null; setHover(null); }} onWheel={onWheel} onDoubleClick={onDouble} />
+                    onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={() => { drag.current = null; setHover(null); setHoverEdge(null); }} onWheel={onWheel} onDoubleClick={onDouble} />
                 {visible.size === 0 && !busy && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.colors.mutedText, pointerEvents: 'none' }}>Pick a principal to start from.</div>}
+                {!hoverNode && hoverEdge && (
+                    <div className="health-mono" style={{ position: 'absolute', left: 12, top: 12, maxWidth: 420, padding: '8px 10px', borderRadius: 10, background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, fontSize: '0.75rem', pointerEvents: 'none', lineHeight: 1.5 }}>
+                        <div style={{ fontWeight: 700 }}>{label(hoverEdge.from)} → {label(hoverEdge.to)}</div>
+                        <div>{fmt(hoverEdge.amount)} in {hoverEdge.count} transfer{hoverEdge.count === 1 ? '' : 's'}</div>
+                        {hoverEdge.firstTs && <div style={{ color: theme.colors.mutedText }}>{new Date(nsToMs(hoverEdge.firstTs)).toISOString().slice(0, 10)}{hoverEdge.lastTs && nsToMs(hoverEdge.lastTs) !== nsToMs(hoverEdge.firstTs) ? ` to ${new Date(nsToMs(hoverEdge.lastTs)).toISOString().slice(0, 10)}` : ''}</div>}
+                        {(() => { const back = (edgesOf.current.get(hoverEdge.to) || []).find((e) => e.from === hoverEdge.to && e.to === hoverEdge.from); return back ? <div style={{ color: theme.colors.mutedText }}>and {fmt(back.amount)} back in {back.count} transfer{back.count === 1 ? '' : 's'}</div> : null; })()}
+                    </div>
+                )}
                 {hoverNode && (
                     <div className="health-mono" style={{ position: 'absolute', left: 12, top: 12, maxWidth: 420, padding: '8px 10px', borderRadius: 10, background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, fontSize: '0.75rem', pointerEvents: 'none', lineHeight: 1.5 }}>
                         <div style={{ fontWeight: 700 }}>{label(hover)}</div>
