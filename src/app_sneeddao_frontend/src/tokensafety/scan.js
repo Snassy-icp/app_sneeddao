@@ -44,7 +44,7 @@ export function accountOf(v) {
 }
 
 /// Apply one block to the balances. Returns the operation name or null.
-function applyBlock(block, state) {
+export function applyBlock(block, state) {
     const tx = field(block, 'tx');
     const btype = text(field(block, 'btype')) || text(field(tx, 'op')) || '';
     const amt = num(field(tx, 'amt')) ?? 0n;
@@ -53,16 +53,29 @@ function applyBlock(block, state) {
     if (ts !== undefined) { if (state.firstTs === null) state.firstTs = ts; state.lastTs = ts; }
     const from = accountOf(field(tx, 'from'));
     const to = accountOf(field(tx, 'to'));
-    const add = (acct, delta) => { if (!acct) return; state.balances.set(acct.key, (state.balances.get(acct.key) || 0n) + delta); if (!state.owners.has(acct.key)) state.owners.set(acct.key, acct.owner); };
+    const add = (acct, delta) => {
+        if (!acct) return;
+        const next = (state.balances.get(acct.key) || 0n) + delta;
+        state.balances.set(acct.key, next);
+        if (!state.owners.has(acct.key)) state.owners.set(acct.key, acct.owner);
+        // An account that goes below zero moved tokens the log never gave it:
+        // a balance seeded at genesis outside the log. Remember how deep.
+        if (next < 0n && next < (state.deficits.get(acct.key) ?? 0n)) state.deficits.set(acct.key, next);
+    };
+    // The ledger suite may route fees to a collector: the block names it
+    // (`fee_col`) or points at the block that did (`fee_col_block`).
+    const feeCol = accountOf(field(block, 'fee_col'));
+    if (feeCol) state.feeCollector = feeCol;
+    const collect = (f) => { if (f > 0n && (feeCol || field(block, 'fee_col_block') !== undefined) && state.feeCollector) add(state.feeCollector, f); else state.feesBurned += f; };
     switch (btype) {
         case '1xfer': case '2xfer': case 'xfer': case 'transfer':
-            add(from, -(amt + fee)); add(to, amt); state.fees += fee; state.transfers += 1; return 'xfer';
+            add(from, -(amt + fee)); add(to, amt); collect(fee); state.fees += fee; state.transfers += 1; return 'xfer';
         case '1mint': case 'mint':
             add(to, amt); state.minted += amt; state.mints += 1; state.mintEvents.push({ ts, amt, to: to?.key }); return 'mint';
         case '1burn': case 'burn':
             add(from, -amt); state.burned += amt; state.burns += 1; return 'burn';
         case '2approve': case 'approve':
-            add(from, -fee); state.fees += fee; state.approves += 1; return 'approve';
+            add(from, -fee); collect(fee); state.fees += fee; state.approves += 1; return 'approve';
         default:
             state.unknown += 1; return null;
     }
@@ -86,7 +99,7 @@ export async function scanLedger(ledgerId, options = {}) {
     }
     if (maxBlocks !== undefined && total > maxBlocks) return { skipped: true, total, mode };
 
-    const state = { balances: new Map(), owners: new Map(), firstTs: null, lastTs: null, minted: 0n, burned: 0n, fees: 0n, mints: 0, burns: 0, transfers: 0, approves: 0, unknown: 0, mintEvents: [], total, mode };
+    const state = { balances: new Map(), owners: new Map(), deficits: new Map(), feeCollector: null, feesBurned: 0n, netSupply: 0n, firstTs: null, lastTs: null, minted: 0n, burned: 0n, fees: 0n, mints: 0, burns: 0, transfers: 0, approves: 0, unknown: 0, mintEvents: [], total, mode };
     const CHUNK = mode === 'legacy' ? 2000 : 100;
     const chunks = []; for (let s = 0; s < total; s += CHUNK) chunks.push([s, Math.min(CHUNK, total - s)]);
     const results = new Array(chunks.length); // blocks per chunk, in order
@@ -133,6 +146,9 @@ export async function scanLedger(ledgerId, options = {}) {
     await Promise.all(Array.from({ length: Math.min(concurrency, chunks.length) }, worker));
     // apply in log order so first/last timestamps are right
     for (const blocks of results) for (const b of blocks) applyBlock(b, state);
+    // What the log accounts for: mints minus burns and burned fees. Any
+    // reported supply above this was created outside the log.
+    for (const v of state.balances.values()) state.netSupply += v;
     for (const [k, v] of [...state.balances]) if (v <= 0n) state.balances.delete(k);
     return state;
 }
