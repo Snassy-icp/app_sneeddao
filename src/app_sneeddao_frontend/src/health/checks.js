@@ -85,6 +85,15 @@ const pass = (summary, details, link) => ({ status: 'pass', summary, details, li
 const warn = (summary, details, link) => ({ status: 'warn', summary, details, link });
 const fail = (summary, details, link) => ({ status: 'fail', summary, details, link });
 const skip = (summary, details, link) => ({ status: 'skip', summary, details, link });
+/// A registered canister with no code: a dapp that was frozen and deleted, or never installed.
+const IGNORED_SUMMARY = 'No code installed; ignored (deregister it from the SNS to clean up)';
+const DEFAULT_WASM_MEMORY_LIMIT = 3n * 1024n ** 3n; // the IC default when a canister sets none
+/// The hard cap this canister's memory_size runs into first.
+const memoryLimit = (st) => {
+    if (st.memoryAllocation > 0n) return { limit: st.memoryAllocation, kind: 'memory allocation' };
+    if (st.wasmMemoryLimit > 0n) return { limit: st.wasmMemoryLimit, kind: 'Wasm memory limit' };
+    return { limit: DEFAULT_WASM_MEMORY_LIMIT, kind: 'IC default Wasm memory limit' };
+};
 const cyclesStatus = (cycles, orangeT, redT) => (Number(cycles) < redT * T ? 'fail' : Number(cycles) < orangeT * T ? 'warn' : 'pass');
 
 // ---- shared loaders ----
@@ -104,6 +113,8 @@ const loaders = {
                     running: Object.keys(st.status)[0], cycles: st.cycles, memory: st.memory_size, idleBurn: st.idle_cycles_burned_per_day,
                     moduleHash: opt(st.module_hash) ? Array.from(opt(st.module_hash), (b) => b.toString(16).padStart(2, '0')).join('') : null,
                     controllers: st.settings.controllers.map((p) => p.toText()),
+                    memoryAllocation: opt(st.settings.memory_allocation) ?? 0n,
+                    wasmMemoryLimit: opt(st.settings.wasm_memory_limit) ?? 0n,
                 } : null,
             });
         };
@@ -246,6 +257,7 @@ const vectorExtras = {
 
 export function buildTree(config) {
     const c = config;
+    const ignored = (e) => c.ignoreEmptyCanisters && e.status && !e.status.moduleHash;
     const pingLeaf = (id, name, method, idl = pingIdl(method, (I) => I.Reserved), link) => ({
         id: `ping:${id}`, name, link: link || DASHBOARD(id),
         run: async (ctx) => {
@@ -267,6 +279,7 @@ export function buildTree(config) {
                         id: `cycles:${e.id}`, name: nameOf(e.id), link: DASHBOARD(e.id),
                         run: async () => {
                             if (!e.status) return fail('SNS root could not read this canister');
+                            if (ignored(e)) return skip(IGNORED_SUMMARY, { canister: e.id, role: e.role });
                             const s = cyclesStatus(e.status.cycles, c.cyclesOrangeT, c.cyclesRedT);
                             const days = Number(e.status.idleBurn) > 0 ? Math.round(Number(e.status.cycles) / Number(e.status.idleBurn)) : null;
                             return { status: s, summary: `${fmtT(e.status.cycles)}${days !== null ? `, about ${days} days at idle burn` : ''}`, details: { canister: e.id, role: e.role, idle_burn_per_day: e.status.idleBurn.toString() } };
@@ -280,11 +293,27 @@ export function buildTree(config) {
                         run: async () => {
                             if (!e.status) return fail('No status');
                             const details = { canister: e.id, state: e.status.running, controllers: e.status.controllers, memory: fmtBytes(e.status.memory), module_hash: e.status.moduleHash };
+                            if (ignored(e)) return skip(IGNORED_SUMMARY, details);
                             if (e.status.running !== 'running') return fail(`Canister is ${e.status.running}`, details);
                             if (!e.status.moduleHash) return fail('No code installed', details);
                             const others = e.status.controllers.filter((p) => p !== IDS.root);
                             if (e.role !== 'root' && others.length > 0) return warn(`Controllers besides SNS root: ${others.join(', ')}`, details);
                             return pass(`Running, ${fmtBytes(e.status.memory)} memory`, details);
+                        },
+                    })),
+                },
+                {
+                    id: 'memory', name: 'Memory',
+                    children: entries.map((e) => ({
+                        id: `memory:${e.id}`, name: nameOf(e.id), link: DASHBOARD(e.id),
+                        run: async () => {
+                            if (!e.status) return fail('SNS root could not read this canister');
+                            if (ignored(e)) return skip(IGNORED_SUMMARY, { canister: e.id, role: e.role });
+                            const { limit, kind } = memoryLimit(e.status);
+                            const pct = (Number(e.status.memory) / Number(limit)) * 100;
+                            const details = { canister: e.id, role: e.role, memory_size: fmtBytes(e.status.memory), limit: `${fmtBytes(limit)} (${kind})`, note: 'memory_size counts the Wasm heap, stable memory and the module together; the Wasm memory limit applies to the heap alone' };
+                            const s = pct >= c.memoryRedPct ? 'fail' : pct >= c.memoryOrangePct ? 'warn' : 'pass';
+                            return { status: s, summary: `${fmtBytes(e.status.memory)}, ${pct.toFixed(1)}% of ${fmtBytes(limit)}`, details };
                         },
                     })),
                 },

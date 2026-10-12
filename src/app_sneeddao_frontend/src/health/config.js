@@ -5,6 +5,9 @@ export const STORAGE_KEY = 'sneed_health_config_v1';
 export const DEFAULT_CONFIG = {
     cyclesOrangeT: 2,          // warn below this many T cycles
     cyclesRedT: 1,             // fail below this many T cycles
+    ignoreEmptyCanisters: true, // skip registered canisters with no code (frozen and deleted dapps)
+    memoryOrangePct: 60,       // warn when a canister uses this much of its memory limit
+    memoryRedPct: 80,          // fail when a canister uses this much of its memory limit
     archiveCyclesOrangeT: 0.7, // ICRC-3 archives are topped up by their parent; smaller margins
     archiveCyclesRedT: 0.3,
     rllSlackHours: 6,          // the RLL may run this long past its schedule before it counts as late
@@ -21,6 +24,9 @@ export const DEFAULT_CONFIG = {
 export const CONFIG_FIELDS = [
     ['cyclesOrangeT', 'Cycles warning (T)', 'Canisters below this many trillion cycles show orange'],
     ['cyclesRedT', 'Cycles failure (T)', 'Canisters below this many trillion cycles show red'],
+    ['ignoreEmptyCanisters', 'Ignore empty canisters', 'Skip registered canisters that have no code (frozen and deleted dapps) instead of failing them', 'bool'],
+    ['memoryOrangePct', 'Memory warning (%)', 'Warn when a canister uses this much of its memory limit'],
+    ['memoryRedPct', 'Memory failure (%)', 'Fail when a canister uses this much of its memory limit'],
     ['archiveCyclesOrangeT', 'Archive cycles warning (T)', 'ICRC-3 archive canisters, topped up by Sneed Lock'],
     ['archiveCyclesRedT', 'Archive cycles failure (T)', ''],
     ['rllSlackHours', 'RLL slack (hours)', 'How long past its schedule the rewards loop may run before it is late'],
@@ -40,7 +46,10 @@ export function loadConfig() {
         if (!raw) return { ...DEFAULT_CONFIG };
         const parsed = JSON.parse(raw);
         const out = { ...DEFAULT_CONFIG };
-        for (const [k] of CONFIG_FIELDS) if (typeof parsed[k] === 'number' && Number.isFinite(parsed[k])) out[k] = parsed[k];
+        for (const [k, , , type] of CONFIG_FIELDS) {
+            if (type === 'bool') { if (typeof parsed[k] === 'boolean') out[k] = parsed[k]; }
+            else if (typeof parsed[k] === 'number' && Number.isFinite(parsed[k])) out[k] = parsed[k];
+        }
         return out;
     } catch { return { ...DEFAULT_CONFIG }; }
 }

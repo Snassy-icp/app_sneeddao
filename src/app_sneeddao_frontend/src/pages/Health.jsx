@@ -112,10 +112,12 @@ function ConfigPanel({ config, setConfig, theme, onClose }) {
         <div style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 12, padding: '1rem', background: theme.colors.cardBg, marginBottom: '1rem' }}>
             <div style={{ fontWeight: 700, marginBottom: 8, color: theme.colors.primaryText }}>Thresholds</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '10px 18px' }}>
-                {CONFIG_FIELDS.map(([key, label, help]) => (
+                {CONFIG_FIELDS.map(([key, label, help, type]) => (
                     <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.82rem', color: theme.colors.secondaryText }}>
                         <span style={{ color: theme.colors.primaryText, fontWeight: 600 }}>{label}</span>
-                        <input type="number" step="any" value={draft[key]} onChange={(e) => setDraft({ ...draft, [key]: Number(e.target.value) })} style={input} />
+                        {type === 'bool'
+                            ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 32 }}><input type="checkbox" checked={!!draft[key]} onChange={(e) => setDraft({ ...draft, [key]: e.target.checked })} /> {draft[key] ? 'yes' : 'no'}</span>
+                            : <input type="number" step="any" value={draft[key]} onChange={(e) => setDraft({ ...draft, [key]: Number(e.target.value) })} style={input} />}
                         {help && <span style={{ color: theme.colors.mutedText, fontSize: '0.75rem' }}>{help}</span>}
                     </label>
                 ))}
