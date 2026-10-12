@@ -11,7 +11,7 @@ import { idlFactory as exVectorIdl } from 'external/icrc55_exvector/icrc55_exvec
 import { idlFactory as poolIdl } from 'external/icp_swap/icp_swap.did.js';
 import { idlFactory as rllIdl } from 'declarations/rll/rll.did.js';
 import { verifyTip } from '../utils/icrc3/client.js';
-import { actor, withTimeout, ledgerIdl, swapIdl, pingIdl, archiveStatusIdl, sneedLockHealthIdl, stakingBotIdl, icpIndexIdl, accountIdentifierHex, hex, isMissingMethod, IDL, Principal } from './agent.js';
+import { actor, withTimeout, ledgerIdl, swapIdl, pingIdl, archiveStatusIdl, sneedLockHealthIdl, stakingBotIdl, backendTokenListIdl, icpIndexIdl, accountIdentifierHex, hex, isMissingMethod, IDL, Principal } from './agent.js';
 
 // ---- the DAO as the checks know it ----
 
@@ -388,6 +388,25 @@ export function buildTree(config) {
         id: 'services', name: 'Services responding',
         children: [
             { id: 'ping:frontend', name: 'App frontend', link: 'https://app.sneeddao.com', run: async (ctx) => { const t0 = Date.now(); const r = await ctx.call(fetch('/index.html', { cache: 'no-store' }), 'frontend'); return r.ok ? pass(`Served index.html in ${Date.now() - t0} ms`) : fail(`HTTP ${r.status}`); } },
+            {
+                id: 'tokens:refresh', name: 'Token list refreshed daily', link: DASHBOARD(IDS.backend), run: async (ctx) => {
+                    // The backend imports Swaprunner's whitelist and refreshes every token's metadata on a daily timer.
+                    const b = await actor(backendTokenListIdl, IDS.backend);
+                    let st;
+                    try { st = await ctx.call(b.get_token_list_status(), 'token list status'); } catch (e) { if (isMissingMethod(e)) return skip('Backend build without the daily token list job (not upgraded yet)'); throw e; }
+                    const nowNs = BigInt(Date.now()) * 1000000n;
+                    const ageH = (t) => (t > 0n ? Number((nowNs - t) / 3600000000000n) : null);
+                    const importAge = ageH(st.last_import); const doneAge = ageH(st.last_refresh_done);
+                    const details = { tokens: Number(st.tokens), interval_hours: Number(st.interval_seconds) / 3600, timer_scheduled: st.timer_scheduled, refresh_running: st.refresh_running, last_import: st.last_import > 0n ? new Date(Number(st.last_import / 1000000n)).toISOString() : 'never', last_refresh_done: st.last_refresh_done > 0n ? new Date(Number(st.last_refresh_done / 1000000n)).toISOString() : 'never', last_error: st.last_error || null };
+                    if (!st.timer_scheduled) return fail('The daily token list timer is not scheduled', details);
+                    const intervalH = Number(st.interval_seconds) / 3600;
+                    if (importAge === null) return warn(`Timer scheduled, first run pending (${details.tokens} tokens listed)`, details);
+                    if (importAge > 7 * intervalH) return fail(`Last whitelist import ${importAge} h ago`, details);
+                    if (importAge > 2 * intervalH || (doneAge !== null && doneAge > 2 * intervalH)) return warn(`Last whitelist import ${importAge} h ago, last metadata refresh ${doneAge ?? '?'} h ago`, details);
+                    if (st.last_error) return warn(`Last run reported: ${st.last_error}`, details);
+                    return pass(`${details.tokens} tokens; whitelist imported ${importAge} h ago, metadata refreshed ${doneAge ?? '?'} h ago`, details);
+                },
+            },
             pingLeaf(IDS.backend, 'App backend', 'get_admins'),
             pingLeaf(IDS.sneedLock, 'Sneed Lock', 'get_admin_list'),
             pingLeaf(IDS.rll, 'RLL (rewards)', 'get_main_loop_status'),

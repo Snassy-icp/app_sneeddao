@@ -112,6 +112,13 @@ export const accountIdentifierHex = (owner, subaccount) => {
     return hex(new Uint8Array([...bigEndianCrc32(digest), ...digest]));
 };
 
+export const backendTokenListIdl = ({ IDL }) => IDL.Service({
+    get_token_list_status: IDL.Func([], [IDL.Record({
+        tokens: IDL.Nat, interval_seconds: IDL.Nat, timer_scheduled: IDL.Bool, refresh_running: IDL.Bool,
+        last_import: IDL.Int, last_refresh_started: IDL.Int, last_refresh_done: IDL.Int, last_error: IDL.Text,
+    })], ['query']),
+});
+
 export const stakingBotIdl = ({ IDL }) => IDL.Service({
     getVersion: IDL.Func([], [IDL.Reserved], ['query']),
 });

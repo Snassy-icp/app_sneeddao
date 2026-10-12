@@ -828,9 +828,20 @@ export function buildTokenTree(ledgerId, config, header = null) {
                         // move positions. Everything else can be pulled by its owner.
                         if (main.error) return skip('Main pool metadata unavailable');
                         const pool = await actor(poolIdl, main.id);
-                        const page = await ctx2.call(pool.getUserPositionWithTokenAmount(0n, 500n), 'pool positions');
-                        if (!('ok' in page)) return fail('Could not list the pool\'s positions', details);
-                        const all = page.ok.content.map((p) => ({ id: BigInt(p.id), liquidity: BigInt(p.liquidity), tickLower: Number(p.tickLower), tickUpper: Number(p.tickUpper), ...positionAmounts(p.liquidity, Number(p.tickLower), Number(p.tickUpper), main.sqrtPriceX96) }));
+                        // Page through the positions in small steps: on busy pools a large page
+                        // exceeds the canister's instruction limit (seen on BOB with 500).
+                        const raw = []; let total = null; let pagesFailed = 0;
+                        for (let offset = 0, pageSize = 100; offset < (total ?? 1) && raw.length < 2000; ) {
+                            let page = null;
+                            try { page = await ctx2.call(pool.getUserPositionWithTokenAmount(BigInt(offset), BigInt(pageSize)), 'pool positions'); } catch (e) { if (pageSize > 10) { pageSize = Math.floor(pageSize / 4); continue; } pagesFailed += 1; offset += pageSize; continue; }
+                            if (!('ok' in page)) { pagesFailed += 1; break; }
+                            total = Number(page.ok.totalElements);
+                            raw.push(...page.ok.content);
+                            if (page.ok.content.length === 0) break;
+                            offset += page.ok.content.length;
+                        }
+                        if (raw.length === 0) return fail(`Could not list the pool's positions${pagesFailed ? ' (the pool canister ran out of instructions answering)' : ''}`, details);
+                        const all = raw.map((p) => ({ id: BigInt(p.id), liquidity: BigInt(p.liquidity), tickLower: Number(p.tickLower), tickUpper: Number(p.tickUpper), ...positionAmounts(p.liquidity, Number(p.tickLower), Number(p.tickUpper), main.sqrtPriceX96) }));
                         const live = all.filter((p) => p.liquidity > 0n).sort((a, b) => (a.liquidity < b.liquidity ? 1 : -1));
                         const inspect = live.slice(0, 60);
                         const [plocks, snsw, ownersHex] = await Promise.all([
@@ -867,7 +878,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
                         const byCls = {};
                         for (const p of classified) if (p.inRange) byCls[p.cls] = (byCls[p.cls] || 0n) + p.liquidity;
                         const details2 = {
-                            ...details, pool_active_liquidity: main.liquidity.toString(), positions_with_liquidity: live.length, inspected: inspect.length, current_tick: main.tick,
+                            ...details, pool_active_liquidity: main.liquidity.toString(), positions_in_pool: total, positions_listed: raw.length, positions_with_liquidity: live.length, inspected: inspect.length, pages_failed: pagesFailed, current_tick: main.tick,
                             in_range_liquidity_by_control: Object.fromEntries(Object.entries(byCls).map(([k, v]) => [k, main.liquidity > 0n ? `${(Number((v * 10000n) / main.liquidity) / 100).toFixed(1)}%` : '0%'])),
                             positions: classified.map((p) => `#${p.id}: ${p.inRange ? 'in range' : 'OUT of range'} [${p.tickLower}, ${p.tickUpper}], ${main.liquidity > 0n ? (Number((p.liquidity * 10000n) / main.liquidity) / 100).toFixed(1) : '0'}% of active liquidity, held by ${p.who}`),
                             note: 'Burned means no one can ever act as the owner. Immutable means code with no controllers that is known not to move positions. A canister with no controllers but unknown code is not safe: it may expose a method that transfers the position.',

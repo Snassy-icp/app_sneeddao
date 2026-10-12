@@ -98,6 +98,16 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   transient var refresh_all_tokens_to_process : [WhitelistedToken] = [];
   transient var refresh_all_timer_id : ?Timer.TimerId = null;
 
+  // Daily token list maintenance: import the whitelist from Swaprunner, then
+  // refresh every token's metadata. Self-starting on install and after every
+  // upgrade; `get_token_list_status` reports it for the health page.
+  transient let TOKEN_REFRESH_INTERVAL_SECONDS : Nat = 86_400;
+  transient var token_refresh_timer_id : ?Timer.TimerId = null;
+  var token_list_last_import : Int = 0;          // Time.now() of the last successful whitelist import
+  var token_list_last_refresh_started : Int = 0; // ... of the last metadata refresh start
+  var token_list_last_refresh_done : Int = 0;    // ... of the last metadata refresh completion
+  var token_list_last_error : Text = "";
+
   // Ban types
   type BanLogEntry = {
     user: Principal;
@@ -1134,7 +1144,10 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
   public shared ({ caller }) func import_whitelist_from_swaprunner() : async () {
     assert(is_admin(caller));
-    
+    await import_whitelist_from_swaprunner_impl();
+  };
+
+  private func import_whitelist_from_swaprunner_impl() : async () {
     let tokens = await swaprunner.get_all_tokens();
     for ((ledger_id, metadata) in tokens.vals()) {
       switch (metadata.decimals, metadata.fee, metadata.name, metadata.symbol) {
@@ -1152,6 +1165,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
         case _ { /* Skip tokens with missing required metadata */ };
       };
     };
+    token_list_last_import := Time.now();
   };
 
   // Helper function to parse ICRC1 metadata
@@ -1232,7 +1246,10 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   // Start the refresh all tokens worker
   public shared ({ caller }) func start_refresh_all_token_metadata() : async Result.Result<(), Text> {
     assert(is_admin(caller));
-    
+    start_refresh_all_impl<system>();
+  };
+
+  private func start_refresh_all_impl<system>() : Result.Result<(), Text> {
     // Check if already running
     if (refresh_all_is_running) {
       return #err("Refresh is already running");
@@ -1252,11 +1269,67 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     refresh_all_current_token := "";
     refresh_all_errors := Buffer.Buffer<Text>(10);
     refresh_all_tokens_to_process := tokensList;
+    token_list_last_refresh_started := Time.now();
     
     // Schedule the first batch with a 0-second timer
     refresh_all_timer_id := ?Timer.setTimer<system>(#seconds 0, refreshAllWorkerBatch);
     
     #ok(());
+  };
+
+  // ---- daily token list maintenance ----
+
+  private func token_refresh_job() : async () {
+    if (refresh_all_is_running) { return };
+    try {
+      await import_whitelist_from_swaprunner_impl();
+      token_list_last_error := "";
+    } catch (e) {
+      token_list_last_error := "whitelist import: " # Error.message(e);
+    };
+    switch (start_refresh_all_impl<system>()) {
+      case (#ok) {};
+      case (#err(msg)) { token_list_last_error := "metadata refresh: " # msg };
+    };
+  };
+
+  private func ensure_token_refresh_timer<system>() {
+    switch (token_refresh_timer_id) {
+      case (?_) {};
+      case null {
+        token_refresh_timer_id := ?Timer.recurringTimer<system>(#seconds TOKEN_REFRESH_INTERVAL_SECONDS, token_refresh_job);
+      };
+    };
+  };
+
+  public type TokenListStatus = {
+    tokens : Nat;
+    interval_seconds : Nat;
+    timer_scheduled : Bool;
+    refresh_running : Bool;
+    last_import : Int;
+    last_refresh_started : Int;
+    last_refresh_done : Int;
+    last_error : Text;
+  };
+
+  public query func get_token_list_status() : async TokenListStatus {
+    {
+      tokens = whitelisted_tokens.size();
+      interval_seconds = TOKEN_REFRESH_INTERVAL_SECONDS;
+      timer_scheduled = token_refresh_timer_id != null;
+      refresh_running = refresh_all_is_running;
+      last_import = token_list_last_import;
+      last_refresh_started = token_list_last_refresh_started;
+      last_refresh_done = token_list_last_refresh_done;
+      last_error = token_list_last_error;
+    };
+  };
+
+  /// Run the daily job now (admin), without waiting for the timer.
+  public shared ({ caller }) func run_token_list_maintenance_now() : async () {
+    assert(is_admin(caller));
+    await token_refresh_job();
   };
 
   // Stop the refresh all tokens worker
@@ -1334,6 +1407,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
       refresh_all_is_running := false;
       refresh_all_current_token := "Completed";
       refresh_all_timer_id := null;
+      token_list_last_refresh_done := Time.now();
     } else if (refresh_all_is_running) {
       // Schedule next batch
       refresh_all_timer_id := ?Timer.setTimer<system>(#seconds 0, refreshAllWorkerBatch);
@@ -3787,6 +3861,12 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
       };
       stable_jailbreak_payment_logs := [];
       next_jailbreak_payment_log_id := stable_next_jailbreak_payment_log_id;
+
+      // Timers do not survive an upgrade: start the daily token list job again.
+      ensure_token_refresh_timer<system>();
   };
+
+  // On a fresh install, start the daily token list job.
+  ensure_token_refresh_timer<system>();
 
 };
