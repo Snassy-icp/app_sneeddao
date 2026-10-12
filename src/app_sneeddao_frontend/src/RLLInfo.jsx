@@ -810,7 +810,7 @@ const nodes = {
                 inputs: ["LP rewards"],
                 outputs: ["ICP and SNEED rewards to Revenue Collector"],
                 details: "Positions 24, 25 and 26",
-                link: "https://info.icpswap.com/swap-scan/positions?pair=osyzs-xiaaa-aaaag-qc76q-cai"
+                link: "https://app.icpswap.com/info-swap/pool/details/osyzs-xiaaa-aaaag-qc76q-cai"
             },
             {
                 id: "13",
@@ -1218,7 +1218,7 @@ const initialNodes = [
             inputs: ["LP rewards"],
             outputs: ["ICP and SNEED rewards to Revenue Collector"],
             details: "Positions 24, 25 and 26",
-            link: "https://info.icpswap.com/swap-scan/positions?pair=osyzs-xiaaa-aaaag-qc76q-cai"
+            link: "https://app.icpswap.com/info-swap/pool/details/osyzs-xiaaa-aaaag-qc76q-cai"
         },
         position: { x: 300, y: 650 },
         style: nodeStyles.revenue,
@@ -3886,7 +3886,7 @@ function RLLInfo() {
                                                 <div style={{ marginBottom: '15px' }}>
                                                     <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>
                                                         <a 
-                                                            href="https://info.icpswap.com/swap-scan/positions?pair=osyzs-xiaaa-aaaag-qc76q-cai"
+                                                            href="https://app.icpswap.com/info-swap/pool/details/osyzs-xiaaa-aaaag-qc76q-cai"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             style={{ color: theme.colors.accent, textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
@@ -3978,7 +3978,7 @@ function RLLInfo() {
                                                         <div style={{ marginLeft: '15px' }}>
                                                             <div style={{ marginBottom: '8px' }}>
                                                                 <a 
-                                                                    href="https://info.icpswap.com/swap-scan/positions?pair=bdki3-ciaaa-aaaag-qj67a-cai"
+                                                                    href="https://app.icpswap.com/info-swap/pool/details/bdki3-ciaaa-aaaag-qj67a-cai"
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
                                                                     style={{ color: theme.colors.accent, textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
@@ -4134,7 +4134,7 @@ function RLLInfo() {
                                                 <div style={{ marginBottom: '15px' }}>
                                                     <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>
                                                         <a 
-                                                            href="https://info.icpswap.com/swap-scan/positions?pair=osyzs-xiaaa-aaaag-qc76q-cai"
+                                                            href="https://app.icpswap.com/info-swap/pool/details/osyzs-xiaaa-aaaag-qc76q-cai"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             style={{ color: theme.colors.accent, textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
