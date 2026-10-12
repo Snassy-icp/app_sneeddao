@@ -360,8 +360,19 @@ async function snsBehind(ledgerId, ctx) {
     return null;
 }
 
+/// Name, symbol and logo for the page header; null when the ledger does not answer.
+export async function fetchTokenHeader(ledgerId) {
+    try {
+        const l = await actor(tokenIdl, ledgerId);
+        const metadata = await l.icrc1_metadata();
+        const m = Object.fromEntries(metadata.map(([k, v]) => [k, Object.values(v)[0]]));
+        const logo = typeof m['icrc1:logo'] === 'string' ? m['icrc1:logo'] : null;
+        return { name: m['icrc1:name'] || null, symbol: m['icrc1:symbol'] || null, decimals: Number(m['icrc1:decimals'] ?? 8), logo };
+    } catch { return null; }
+}
+
 // ---- the tree ----
-export function buildTokenTree(ledgerId, config) {
+export function buildTokenTree(ledgerId, config, header = null) {
     const c = config;
     const meta = (ctx) => ctx.load('meta', loaders.meta(ledgerId));
     const status = (ctx, id) => ctx.load(`status:${id}`, loaders.status(id));
@@ -914,7 +925,8 @@ export function buildTokenTree(ledgerId, config) {
         },
     };
 
-    return { id: 'token', name: `Token ${ledgerId}`, children: [gates, dao, minting, supply, distribution, locksGroup, liquidity, cycles] };
+    const title = header?.name ? `${header.name}${header.symbol ? ` (${header.symbol})` : ''}, ledger ${ledgerId}` : `Token ${ledgerId}`;
+    return { id: 'token', name: title, children: [gates, dao, minting, supply, distribution, locksGroup, liquidity, cycles] };
 }
 
 /// Headline rating from the tree's statuses: gates cap everything.

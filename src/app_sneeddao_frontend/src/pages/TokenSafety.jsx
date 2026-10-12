@@ -7,7 +7,7 @@ import Header from '../components/Header';
 import TokenSelector from '../components/TokenSelector';
 import { useTheme } from '../contexts/ThemeContext';
 import { FaShieldAlt, FaSearch, FaSpinner, FaRedo, FaCog, FaExclamationTriangle } from 'react-icons/fa';
-import { buildTokenTree, rateTree } from '../tokensafety/checks.js';
+import { buildTokenTree, rateTree, fetchTokenHeader } from '../tokensafety/checks.js';
 import { runTree, statusOf, countLeaves, isListing } from '../health/runner.js';
 import { loadConfig, saveConfig, DEFAULT_CONFIG, CONFIG_FIELDS } from '../tokensafety/config.js';
 import { STATUS, customStyles, Badge, Node, primary } from '../health/TreeView.jsx';
@@ -54,6 +54,7 @@ function TokenSafety() {
     const [onlyProblems, setOnlyProblems] = useState(false);
     const [showConfig, setShowConfig] = useState(false);
     const [error, setError] = useState(null);
+    const [header, setHeader] = useState(null);
     const runId = useRef(0);
 
     const run = useCallback(async (id, cfg) => {
@@ -61,9 +62,13 @@ function TokenSafety() {
         const me = ++runId.current;
         setRunning(true); setStartedAt(Date.now()); setFinishedAt(null); setProgress(null); setError(null);
         setState({ tree: null, results: new Map() });
+        setHeader(null);
         const cfgWithProgress = { ...cfg, onProgress: (done, total) => { if (runId.current === me) setProgress({ done, total }); } };
         try {
-            const final = await runTree(buildTokenTree(id, cfgWithProgress), cfgWithProgress, (u) => { if (runId.current === me) setState(u); });
+            const info = await fetchTokenHeader(id);
+            if (runId.current !== me) return;
+            setHeader(info);
+            const final = await runTree(buildTokenTree(id, cfgWithProgress, info), cfgWithProgress, (u) => { if (runId.current === me) setState(u); });
             if (runId.current === me) setState(final);
         } catch (e) {
             if (runId.current === me) setError(e?.message || String(e));
@@ -129,7 +134,16 @@ function TokenSafety() {
                 {ledgerId && (
                     <>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: '1rem' }}>
+                            {header?.logo ? (
+                                <img src={header.logo} alt="" style={{ width: 52, height: 52, borderRadius: 14, objectFit: 'cover', background: theme.colors.secondaryBg, flexShrink: 0 }} />
+                            ) : (
+                                <div style={{ width: 52, height: 52, borderRadius: 14, background: theme.colors.secondaryBg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.colors.mutedText, fontWeight: 800, flexShrink: 0 }}>{header?.symbol?.slice(0, 3) || '?'}</div>
+                            )}
                             <div style={{ flex: 1, minWidth: 220 }}>
+                                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: theme.colors.primaryText }}>
+                                    {header?.name ? `${header.name}${header.symbol ? ` (${header.symbol})` : ''}` : running ? 'Reading the ledger…' : 'Unknown token'}
+                                    <a href={`https://dashboard.internetcomputer.org/canister/${ledgerId}`} target="_blank" rel="noopener noreferrer" className="health-mono" style={{ marginLeft: 10, fontSize: '0.8rem', color: theme.colors.mutedText, textDecoration: 'none', fontWeight: 400 }}>{ledgerId}</a>
+                                </div>
                                 <div style={{ fontSize: '1.3rem', fontWeight: 800, color: rating?.color || theme.colors.primaryText }}>{rating ? rating.label : 'Preparing…'}</div>
                                 <div style={{ color: theme.colors.secondaryText, fontSize: '0.88rem' }}>{rating?.note}</div>
                                 <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: 4 }}>
