@@ -4,7 +4,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Header from '../components/Header';
-import PrincipalInput from '../components/PrincipalInput';
+import TokenSelector from '../components/TokenSelector';
 import { useTheme } from '../contexts/ThemeContext';
 import { FaShieldAlt, FaSearch, FaSpinner, FaRedo, FaCog, FaExclamationTriangle } from 'react-icons/fa';
 import { buildTokenTree, rateTree } from '../tokensafety/checks.js';
@@ -12,12 +12,6 @@ import { runTree, statusOf, countLeaves, isListing } from '../health/runner.js';
 import { loadConfig, saveConfig, DEFAULT_CONFIG, CONFIG_FIELDS } from '../tokensafety/config.js';
 import { STATUS, customStyles, Badge, Node, primary } from '../health/TreeView.jsx';
 import { parsePrincipal } from '../utils/icrc3/client.js';
-
-const PRESETS = [
-    { id: 'hvgxa-wqaaa-aaaaq-aacia-cai', label: 'SNEED' },
-    { id: 'mxzaz-hqaaa-aaaar-qaada-cai', label: 'ckBTC' },
-    { id: 'ryjl3-tyaaa-aaaaa-aaaba-cai', label: 'ICP' },
-];
 
 function ConfigPanel({ config, setConfig, theme, onClose }) {
     const [draft, setDraft] = useState(config);
@@ -104,7 +98,6 @@ function TokenSafety() {
         setExpanded(ids);
     };
     const btn = (active) => ({ padding: '8px 12px', borderRadius: 8, border: `1px solid ${active ? primary : theme.colors.border}`, background: active ? `${primary}22` : 'transparent', color: theme.colors.primaryText, cursor: 'pointer', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: 6 });
-    const inputStyle = { padding: '10px 12px', borderRadius: 8, border: `1px solid ${theme.colors.border}`, background: theme.colors.primaryBg, color: theme.colors.primaryText, fontSize: '0.95rem', width: '100%', boxSizing: 'border-box' };
 
     return (
         <div className="page-container" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
@@ -126,13 +119,9 @@ function TokenSafety() {
                 <div style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 14, padding: '1rem', background: theme.colors.cardBg, marginBottom: '1rem' }}>
                     <form onSubmit={(e) => { e.preventDefault(); submit(text); }} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                         <div style={{ flex: '1 1 320px', minWidth: 240 }}>
-                            <PrincipalInput value={text} onChange={setText} onSelect={(id) => submit(id)} placeholder="Ledger canister id or token name" defaultTab="all" defaultPrincipalType="canisters" style={{ width: '100%' }} inputStyle={inputStyle} />
+                            <TokenSelector value={text} onChange={(id) => { setText(id); if (id) submit(id); }} placeholder="Pick a token, or enter any ledger canister id" allowCustom />
                         </div>
-                        <select value="" onChange={(e) => { if (e.target.value) submit(e.target.value); }} style={{ ...inputStyle, width: 'auto' }}>
-                            <option value="">Known tokens…</option>
-                            {PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                        </select>
-                        <button type="submit" style={{ ...btn(true), fontWeight: 700 }} disabled={running}>{running ? <FaSpinner className="health-spin" size={12} /> : <FaSearch size={12} />} Rate</button>
+                        <button type="submit" style={{ ...btn(true), fontWeight: 700 }} disabled={running || !text}>{running ? <FaSpinner className="health-spin" size={12} /> : <FaSearch size={12} />} Rate</button>
                     </form>
                     {error && <div style={{ marginTop: 10, color: '#ef4444', fontSize: '0.88rem' }}>{error}</div>}
                 </div>
