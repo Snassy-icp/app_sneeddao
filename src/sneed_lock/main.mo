@@ -831,6 +831,22 @@ shared (deployer) persistent actor class SneedLock() = this {
     let correlation_id = get_next_correlation_id();
     log_info(caller, correlation_id, "Transferring position " # Nat.toText(position_id) # " on swap canister " # debug_show(swap_canister_id) # " to " # debug_show(to));
 
+    // A position under an active lock must stay in this canister until the
+    // lock expires. Without this check the owner could withdraw a "locked"
+    // position at any time with a direct call, which would make the lock
+    // meaningless. Expired locks are archived first so they do not block.
+    clear_expired_position_locks_for_principal(caller, correlation_id);
+    switch (get_position_lock(caller, swap_canister_id, position_id)) {
+      case (?lock) {
+        if (lock.expiry > NowAsNat64()) {
+          let error = #err(#InternalError("Position " # Nat.toText(position_id) # " on swap canister " # debug_show(swap_canister_id) # " is locked until " # Nat64.toText(lock.expiry) # " (ns since epoch) and cannot be withdrawn before the lock expires"));
+          log_error(caller, correlation_id, debug_show(error));
+          return error;
+        };
+      };
+      case null {};
+    };
+
     // Ensure the position is currently controlled by this canister
     if (await verify_position_ownership(this_canister_id(), swap_canister_id, position_id)) {
 
