@@ -657,55 +657,70 @@ export function buildTokenTree(ledgerId, config, header = null) {
         },
     };
 
+    /// Everything the locked-supply rows share, computed once.
+    const lockedSupply = (ctx) => ctx.load('lockedSupply', async () => {
+        const [m, locks, snsRel] = await Promise.all([meta(ctx), ctx.load('locks', loaders.locks(ledgerId)), snsBehind(ledgerId, ctx)]);
+        const now = Date.now();
+        const minSec = c.minLockDays * 86400;
+        const sl = { count: locks.length, total: locks.reduce((a, l) => a + l.amount, 0n), long: locks.filter((l) => l.expiryMs - now >= minSec * 1000).reduce((a, l) => a + l.amount, 0n), weighted: locks.reduce((a, l) => a + Number(l.amount) * Math.min(1, (l.expiryMs - now) / (365 * 86400e3)), 0), locks };
+        let neurons = null;
+        if (snsRel && snsRel.how === 'its own token') {
+            const t = await daoTable(ctx, snsRel.sns);
+            let total = 0n; let long = 0n; let weighted = 0;
+            for (const r of t.rows) { const st = BigInt(Math.round(r.stake)); total += st; if (r.lockSec >= minSec) long += st; weighted += r.stake * Math.min(1, r.lockSec / (365 * 86400)); }
+            neurons = { count: t.rows.length, total, long, weighted, truncated: t.truncated, table: t, dao: await daoLabel(snsRel.sns, ctx) };
+        }
+        return { m, sl, neurons, minSec, now };
+    });
+    const shareRow = (part, m) => `${fmtUnits(part, m.decimals, 0)} (${pct(part, m.supply).toFixed(2)}%)`;
+
     const locksGroup = {
-        id: 'locks', name: 'Locks (Sneed Lock)',
+        id: 'locks', name: 'Locked supply',
         children: [
             {
-                id: 'locks:share', name: 'Supply locked', link: '/sneedlock', timeoutMs: SCAN_TIMEOUT_MS, run: async (ctx) => {
-                    // Sneed Lock locks and SNS neuron stake count alike: both are tokens that cannot move for a known time.
-                    const [m, locks, snsRel] = await Promise.all([meta(ctx), ctx.load('locks', loaders.locks(ledgerId)), snsBehind(ledgerId, ctx)]);
-                    const now = Date.now();
-                    const minSec = c.minLockDays * 86400;
-                    const long = locks.filter((l) => l.expiryMs - now >= minSec * 1000);
-                    const total = locks.reduce((a, l) => a + l.amount, 0n);
-                    const longSum = long.reduce((a, l) => a + l.amount, 0n);
-                    let neuronTotal = 0n; let neuronLong = 0n; let neuronCount = 0; let neuronNote = null;
-                    if (snsRel && snsRel.how === 'its own token') {
-                        const t = await daoTable(ctx, snsRel.sns);
-                        for (const r of t.rows) { const st = BigInt(Math.round(r.stake)); neuronTotal += st; neuronCount += 1; if (r.lockSec >= minSec) neuronLong += st; }
-                        neuronNote = `${neuronCount} SNS neurons${t.truncated ? ' (first pages only)' : ''}`;
-                    }
-                    const weighted = locks.reduce((a, l) => a + Number(l.amount) * Math.min(1, (l.expiryMs - now) / (365 * 86400e3)), 0);
-                    const details = {
-                        sneed_lock: { active_locks: locks.length, locked: fmtUnits(total, m.decimals, 0), locked_at_least_min_days: fmtUnits(longSum, m.decimals, 0), year_weighted: fmtUnits(BigInt(Math.round(weighted)), m.decimals, 0), largest: [...locks].sort((x, y) => (x.amount < y.amount ? 1 : -1)).slice(0, 10).map((l) => `#${l.lockId} ${l.owner}: ${fmtUnits(l.amount, m.decimals, 0)} until ${new Date(l.expiryMs).toISOString().slice(0, 10)}`) },
-                        sns_neurons: neuronNote ? { neurons: neuronNote, staked: fmtUnits(neuronTotal, m.decimals, 0), staked_at_least_min_days: fmtUnits(neuronLong, m.decimals, 0) } : 'not an SNS token',
-                    };
-                    const combinedLong = longSum + neuronLong;
-                    if (locks.length === 0 && neuronTotal === 0n) return warn('Nothing locked in Sneed Lock and no SNS neurons', details);
-                    const share = pct(combinedLong, m.supply);
+                id: 'locks:total', name: 'Locked for at least the minimum time', timeoutMs: SCAN_TIMEOUT_MS, run: async (ctx) => {
+                    const { m, sl, neurons } = await lockedSupply(ctx);
+                    const combined = sl.long + (neurons?.long ?? 0n);
+                    const details = { minimum_days: c.minLockDays, sneed_lock: shareRow(sl.long, m), sns_neurons: neurons ? shareRow(neurons.long, m) : 'not an SNS token', combined: shareRow(combined, m) };
+                    if (sl.count === 0 && !(neurons && neurons.total > 0n)) return warn('Nothing locked in Sneed Lock and no SNS neurons', details);
                     const parts = [];
-                    if (longSum > 0n) parts.push(`${pct(longSum, m.supply).toFixed(2)}% in Sneed Lock`);
-                    if (neuronLong > 0n) parts.push(`${pct(neuronLong, m.supply).toFixed(2)}% staked in SNS neurons`);
-                    return (share >= c.lockedSupplyGoodPct ? pass : warn)(`${share.toFixed(2)}% of supply locked for at least ${c.minLockDays} days (${parts.join(', ')})`, details);
+                    if (sl.long > 0n) parts.push(`${pct(sl.long, m.supply).toFixed(2)}% in Sneed Lock`);
+                    if (neurons && neurons.long > 0n) parts.push(`${pct(neurons.long, m.supply).toFixed(2)}% in SNS neurons`);
+                    const share = pct(combined, m.supply);
+                    return (share >= c.lockedSupplyGoodPct ? pass : warn)(`${share.toFixed(2)}% of supply locked for at least ${c.minLockDays} days${parts.length ? ` (${parts.join(' + ')})` : ''}`, details);
+                },
+            },
+            {
+                id: 'locks:sneedlock', name: 'In Sneed Lock', link: '/sneedlock', run: async (ctx) => {
+                    const { m, sl } = await lockedSupply(ctx);
+                    const details = { active_locks: sl.count, locked: shareRow(sl.total, m), locked_at_least_min_days: shareRow(sl.long, m), year_weighted: fmtUnits(BigInt(Math.round(sl.weighted)), m.decimals, 0), largest: [...sl.locks].sort((x, y) => (x.amount < y.amount ? 1 : -1)).slice(0, 10).map((l) => `#${l.lockId} ${l.owner}: ${fmtUnits(l.amount, m.decimals, 0)} until ${new Date(l.expiryMs).toISOString().slice(0, 10)}`) };
+                    if (sl.count === 0) return skip('Nothing locked in Sneed Lock', details);
+                    return pass(`${pct(sl.total, m.supply).toFixed(2)}% of supply in ${sl.count} lock(s), ${pct(sl.long, m.supply).toFixed(2)}% with at least ${c.minLockDays} days left`, details);
+                },
+            },
+            {
+                id: 'locks:neurons', name: 'In SNS neurons', timeoutMs: SCAN_TIMEOUT_MS, run: async (ctx) => {
+                    const { m, neurons } = await lockedSupply(ctx);
+                    if (!neurons) return skip('Not an SNS token: no neurons hold it');
+                    const details = { dao: neurons.dao, neurons: neurons.count, truncated: neurons.truncated, staked: shareRow(neurons.total, m), staked_at_least_min_days: shareRow(neurons.long, m), year_weighted: fmtUnits(BigInt(Math.round(neurons.weighted)), m.decimals, 0), note: 'A neuron\'s lock is its dissolve delay, or the time left if it is dissolving, extended by vesting.' };
+                    if (neurons.total === 0n) return skip('No stake in neurons', details);
+                    return pass(`${pct(neurons.total, m.supply).toFixed(2)}% of supply staked in ${neurons.count.toLocaleString('en-US')} neurons, ${pct(neurons.long, m.supply).toFixed(2)}% with at least ${c.minLockDays} days of lock`, details);
                 },
             },
             {
                 id: 'locks:cliffs', name: 'Unlock cliffs ahead', timeoutMs: SCAN_TIMEOUT_MS, run: async (ctx) => {
-                    const [m, locks, snsRel] = await Promise.all([meta(ctx), ctx.load('locks', loaders.locks(ledgerId)), snsBehind(ledgerId, ctx)]);
-                    const now = Date.now();
+                    const { m, sl, neurons, now } = await lockedSupply(ctx);
                     const windowSec = c.cliffWindowDays * 86400;
-                    const soon = locks.filter((l) => l.expiryMs - now <= windowSec * 1000);
+                    const soon = sl.locks.filter((l) => l.expiryMs - now <= windowSec * 1000);
                     let sum = soon.reduce((a, l) => a + l.amount, 0n);
                     const details = { window_days: c.cliffWindowDays, sneed_lock_unlocking: soon.map((l) => `#${l.lockId} ${l.owner}: ${fmtUnits(l.amount, m.decimals, 0)} on ${new Date(l.expiryMs).toISOString().slice(0, 10)}`) };
                     let dissolving = 0;
-                    if (snsRel && snsRel.how === 'its own token') {
-                        const t = await daoTable(ctx, snsRel.sns);
-                        // neurons already dissolving (or vesting) that become liquid inside the window
-                        const ds = t.rows.filter((r) => r.lockSec <= windowSec && r.stake > 0 && (r.lockSec > 0 || r.dd === 0));
-                        const dissolvingStake = ds.filter((r) => r.lockSec > 0).reduce((a, r) => a + BigInt(Math.round(r.stake)), 0n);
-                        dissolving = ds.filter((r) => r.lockSec > 0).length;
+                    if (neurons) {
+                        const ds = neurons.table.rows.filter((r) => r.lockSec > 0 && r.lockSec <= windowSec && r.stake > 0);
+                        const dissolvingStake = ds.reduce((a, r) => a + BigInt(Math.round(r.stake)), 0n);
+                        dissolving = ds.length;
                         sum += dissolvingStake;
-                        details.sns_neurons_dissolving_in_window = { neurons: dissolving, stake: fmtUnits(dissolvingStake, m.decimals, 0) };
+                        details.sns_neurons_dissolving_in_window = { neurons: dissolving, stake: shareRow(dissolvingStake, m) };
                     }
                     const share = pct(sum, m.supply);
                     if (soon.length === 0 && dissolving === 0) return pass(`No unlocks in the next ${c.cliffWindowDays} days`, details);
