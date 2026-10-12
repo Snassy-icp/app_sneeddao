@@ -131,7 +131,9 @@ const loaders = {
     scan: (ledgerId) => async (ctx) => {
         try {
             const m = await ctx.load('meta', loaders.meta(ledgerId));
-            return await scanLedgerOffThread(ledgerId, { maxBlocks: ctx.config.maxScanBlocks, onProgress: ctx.config.onProgress, timeoutMs: ctx.config.callTimeoutSec * 1000, defaultFee: m.fee });
+            const result = await scanLedgerOffThread(ledgerId, { maxBlocks: ctx.config.maxScanBlocks, onProgress: ctx.config.onProgress, timeoutMs: ctx.config.callTimeoutSec * 1000, defaultFee: m.fee });
+            ctx.config.onScan?.(result, m);
+            return result;
         }
         catch (e) {
             const msg = String(e?.message || e);
@@ -531,6 +533,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
         const sns = snsw.byLedger.get(ledgerId);
         if (sns) { const dao = await daoLabel(sns, ctx); tags.set(sns.governance, `governance of ${dao} (treasury and neurons)`); tags.set(sns.swap, `swap of ${dao}`); tags.set(sns.root, `root of ${dao}`); }
         for (const p of pools) tags.set(p.id, `ICPSwap pool ${p.token0 === ledgerId ? p.token1 : p.token0}`);
+        c.onTags?.(tags);
         return tags;
     };
 
@@ -587,6 +590,9 @@ export function buildTokenTree(ledgerId, config, header = null) {
                         const sat = satellites.get(funder) || { count: 0, balance: 0n }; sat.count += 1; sat.balance += bal; satellites.set(funder, sat);
                     } else folded.set(owner, (folded.get(owner) || 0n) + bal);
                 }
+                const satelliteOf = new Map();
+                for (const [key] of scan.balances) { const st = stats.get(key); const owner = ownerOf(key); if (tags.has(owner) || !st) continue; const funder = st.firstFrom && st.firstFrom !== 'mint' ? ownerOf(st.firstFrom) : null; if (st.senders.size === 1 && st.outCount === 0 && funder && !tags.has(funder) && funder !== owner) satelliteOf.set(owner, funder); }
+                c.onOrigin?.({ satelliteOf, funders: satellites, genesisOwners });
                 const foldedTop = [...folded.entries()].sort((a, b) => (a[1] < b[1] ? 1 : -1));
                 const fanout = [...satellites.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 10);
                 const odetails = {

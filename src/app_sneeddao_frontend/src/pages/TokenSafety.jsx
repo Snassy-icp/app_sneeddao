@@ -11,6 +11,8 @@ import { buildTokenTree, rateTree, fetchTokenHeader } from '../tokensafety/check
 import { runTree, statusOf, countLeaves, isListing } from '../health/runner.js';
 import { loadConfig, saveConfig, DEFAULT_CONFIG, CONFIG_FIELDS } from '../tokensafety/config.js';
 import { STATUS, customStyles, Badge, Node, primary } from '../health/TreeView.jsx';
+import MoneyGraph from '../tokensafety/MoneyGraph.jsx';
+import { FaProjectDiagram } from 'react-icons/fa';
 import { parsePrincipal } from '../utils/icrc3/client.js';
 
 function ConfigPanel({ config, setConfig, theme, onClose }) {
@@ -55,6 +57,8 @@ function TokenSafety() {
     const [showConfig, setShowConfig] = useState(false);
     const [error, setError] = useState(null);
     const [header, setHeader] = useState(null);
+    const [graphData, setGraphData] = useState(null); // { scan, meta, tags, origin } once the log is scanned
+    const [showGraph, setShowGraph] = useState(false);
     const runId = useRef(0);
 
     const run = useCallback(async (id, cfg) => {
@@ -62,8 +66,15 @@ function TokenSafety() {
         const me = ++runId.current;
         setRunning(true); setStartedAt(Date.now()); setFinishedAt(null); setProgress(null); setError(null);
         setState({ tree: null, results: new Map() });
-        setHeader(null);
-        const cfgWithProgress = { ...cfg, onProgress: (done, total) => { if (runId.current === me) setProgress({ done, total }); } };
+        setHeader(null); setGraphData(null); setShowGraph(false);
+        const collected = {};
+        const cfgWithProgress = {
+            ...cfg,
+            onProgress: (done, total) => { if (runId.current === me) setProgress({ done, total }); },
+            onScan: (scan, meta) => { if (runId.current !== me || scan.skipped) return; collected.scan = scan; collected.meta = meta; setGraphData({ ...collected }); },
+            onTags: (tags) => { if (runId.current !== me) return; collected.tags = tags; if (collected.scan) setGraphData({ ...collected }); },
+            onOrigin: (origin) => { if (runId.current !== me) return; collected.origin = origin; if (collected.scan) setGraphData({ ...collected }); },
+        };
         try {
             const info = await fetchTokenHeader(id);
             if (runId.current !== me) return;
@@ -171,7 +182,14 @@ function TokenSafety() {
                             <button type="button" style={btn(false)} onClick={() => expandAll(true)}>Expand problems</button>
                             <button type="button" style={btn(false)} onClick={() => setExpanded(new Set(['token', 'gates']))}>Collapse</button>
                             <button type="button" style={btn(showConfig)} onClick={() => setShowConfig((v) => !v)}><FaCog size={11} /> Thresholds</button>
+                            {graphData && <button type="button" style={btn(showGraph)} onClick={() => setShowGraph((v) => !v)}><FaProjectDiagram size={11} /> Follow the money</button>}
                         </div>
+
+                        {showGraph && graphData && (
+                            <div style={{ marginBottom: '1rem' }}>
+                                <MoneyGraph scan={graphData.scan} tags={graphData.tags} origin={graphData.origin} token={{ symbol: header?.symbol || graphData.meta?.symbol, decimals: header?.decimals ?? graphData.meta?.decimals ?? 8 }} start={null} theme={theme} />
+                            </div>
+                        )}
 
                         {showConfig && <ConfigPanel config={config} setConfig={setConfig} theme={theme} onClose={() => setShowConfig(false)} />}
 
