@@ -632,6 +632,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         { name: 'Tools', path: '/tools/main' },
         { name: 'Account Tool', path: '/tools/account' },
         { name: 'ICRC-3 Browser', path: '/tools/icrc3' },
+        { name: 'Token Safety', path: '/tools/token_safety' },
     ];
     if (isAuthenticated) {
         toolsSubMenu.push(

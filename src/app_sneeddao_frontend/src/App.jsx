@@ -109,6 +109,7 @@ import SnsJailbreak from './pages/SnsJailbreak';
 import SnsJailbreakList from './pages/SnsJailbreakList';
 import ToolsAccount from './pages/ToolsAccount';
 import ToolsIcrc3 from './pages/ToolsIcrc3';
+import TokenSafety from './pages/TokenSafety';
 
 // Sneedex pages
 import Sneedex from './pages/Sneedex';
@@ -264,6 +265,8 @@ function App() {
                     <Route path="/tools/main" element={<ToolsMain />} />
                     <Route path="/tools/account" element={<ToolsAccount />} />
                     <Route path="/tools/icrc3" element={<ToolsIcrc3 />} />
+                    <Route path="/tools/token_safety" element={<TokenSafety />} />
+                    <Route path="/tools/token_safety/:ledgerId" element={<TokenSafety />} />
                     <Route path="/tools/escrow" element={<ToolsEscrow />} />
                     <Route path="/tools/escrow/swap" element={<EscrowSwap />} />
                     <Route path="/tools/sns_jailbreak" element={<SnsJailbreak />} />

@@ -4,6 +4,7 @@ import { Principal } from '@dfinity/principal';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import Header from '../components/Header';
 import TokenIcon from '../components/TokenIcon';
+import PrincipalInput from '../components/PrincipalInput';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import { getPrincipalProfileUrl } from '../utils/PrincipalUtils';
@@ -608,7 +609,9 @@ function ToolsIcrc3() {
             <main style={styles.container}>
                 <div className="icrc3-fade-in" style={styles.card}>
                     <form onSubmit={(e) => { e.preventDefault(); load(canisterText); }} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                        <input value={canisterText} onChange={(e) => setCanisterText(e.target.value)} placeholder="Canister id, e.g. pqsms-lqaaa-aaaal-ajjza-cai" style={styles.input} spellCheck={false} />
+                        <div style={{ flex: '1 1 320px', minWidth: 240 }}>
+                            <PrincipalInput value={canisterText} onChange={setCanisterText} onSelect={(id) => { setCanisterText(id); load(id); }} placeholder="Canister id or name, e.g. Sneed Lock" defaultTab="all" defaultPrincipalType="canisters" style={{ width: '100%' }} inputStyle={styles.input} />
+                        </div>
                         <select value="" onChange={(e) => { if (e.target.value) { setCanisterText(e.target.value); load(e.target.value); } }} style={styles.select}>
                             <option value="">Known canisters…</option>
                             {PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}

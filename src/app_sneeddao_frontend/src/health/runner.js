@@ -51,7 +51,7 @@ export async function runTree(tree, config, onUpdate, concurrency = 6) {
         const t0 = Date.now();
         let r;
         try {
-            r = await withTimeout(leaf.run(ctx), config.callTimeoutSec * 1000 + 5000, leaf.name);
+            r = await withTimeout(leaf.run(ctx), leaf.timeoutMs ?? config.callTimeoutSec * 1000 + 5000, leaf.name);
             if (!r || !r.status) r = { status: 'fail', summary: 'Check returned nothing' };
         } catch (e) {
             r = { status: 'fail', summary: `Error: ${e?.message || String(e)}` };
