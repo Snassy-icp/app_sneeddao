@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Header from '../components/Header';
@@ -45,6 +45,7 @@ function CopyButton({ text, theme }) {
 
 function ApiDoc() {
     const { slug } = useParams();
+    const { pathname } = useLocation();
     const { theme, isDark } = useTheme();
     const doc = apiDocs.find((d) => d.slug === slug);
     const [markdown, setMarkdown] = useState('');
@@ -79,21 +80,39 @@ function ApiDoc() {
         return items;
     }, [markdown]);
 
+    // A heading by id, or by its unnumbered name ("block-types" finds
+    // "83-block-types") so links from outside survive renumbering.
+    const findHeading = (id) => document.getElementById(id)
+        || document.querySelector(`article h2[id$="-${CSS.escape(id)}"], article h3[id$="-${CSS.escape(id)}"]`);
+
     // Scroll to the hash once the content is in
     useEffect(() => {
         if (!loading && window.location.hash) {
-            const el = document.getElementById(decodeURIComponent(window.location.hash.slice(1)));
+            const el = findHeading(decodeURIComponent(window.location.hash.slice(1)));
             if (el) el.scrollIntoView();
         }
     }, [loading]);
+
+    // index.html has <base href="/">, so a bare "#id" href would navigate to
+    // the home page. In-page links carry the full path and scroll themselves.
+    const hashHref = (id) => `${pathname}#${id}`;
+    const jumpTo = (event, id) => {
+        const el = findHeading(id);
+        if (!el) return; // let the browser handle it
+        event.preventDefault();
+        el.scrollIntoView();
+        window.history.pushState(null, '', hashHref(id));
+    };
+    // keep headings clear of the sticky header when scrolled to
+    const headingScroll = { scrollMarginTop: 80 };
 
     const codeBg = isDark ? 'rgba(0,0,0,0.35)' : 'rgba(0,0,0,0.05)';
     const text = theme.colors.primaryText;
 
     const components = {
-        h1: ({ children }) => <h1 id={slugify(headingText(children))} style={{ fontSize: '2rem', fontWeight: 800, margin: '0 0 1rem 0', letterSpacing: '-0.5px', color: text }}>{children}</h1>,
-        h2: ({ children }) => <h2 id={slugify(headingText(children))} style={{ fontSize: '1.5rem', fontWeight: 700, margin: '2.5rem 0 1rem 0', paddingBottom: '0.4rem', borderBottom: `1px solid ${theme.colors.border}`, color: text }}>{children}</h2>,
-        h3: ({ children }) => <h3 id={slugify(headingText(children))} style={{ fontSize: '1.15rem', fontWeight: 700, margin: '1.75rem 0 0.6rem 0', color: text }}>{children}</h3>,
+        h1: ({ children }) => <h1 id={slugify(headingText(children))} style={{ ...headingScroll, fontSize: '2rem', fontWeight: 800, margin: '0 0 1rem 0', letterSpacing: '-0.5px', color: text }}>{children}</h1>,
+        h2: ({ children }) => <h2 id={slugify(headingText(children))} style={{ ...headingScroll, fontSize: '1.5rem', fontWeight: 700, margin: '2.5rem 0 1rem 0', paddingBottom: '0.4rem', borderBottom: `1px solid ${theme.colors.border}`, color: text }}>{children}</h2>,
+        h3: ({ children }) => <h3 id={slugify(headingText(children))} style={{ ...headingScroll, fontSize: '1.15rem', fontWeight: 700, margin: '1.75rem 0 0.6rem 0', color: text }}>{children}</h3>,
         h4: ({ children }) => <h4 style={{ fontSize: '1rem', fontWeight: 700, margin: '1.25rem 0 0.5rem 0', color: text }}>{children}</h4>,
         p: ({ children }) => <p style={{ lineHeight: 1.7, margin: '0 0 0.9rem 0', color: theme.colors.secondaryText }}>{children}</p>,
         li: ({ children }) => <li style={{ lineHeight: 1.65, marginBottom: '0.3rem', color: theme.colors.secondaryText }}>{children}</li>,
@@ -102,6 +121,10 @@ function ApiDoc() {
             const external = /^https?:\/\//.test(href || '');
             const style = { color: apiPrimary, textDecoration: 'underline', textDecorationColor: `${apiPrimary}60` };
             if (!external && href && href.startsWith('/api/')) return <Link to={href} style={style}>{children}</Link>;
+            if (href && href.startsWith('#')) {
+                const id = decodeURIComponent(href.slice(1));
+                return <a href={hashHref(id)} onClick={(e) => jumpTo(e, id)} style={style}>{children}</a>;
+            }
             return <a href={href} style={style} target={external ? '_blank' : undefined} rel="noopener noreferrer">{children}</a>;
         },
         hr: () => <hr style={{ border: 'none', borderTop: `1px solid ${theme.colors.border}`, margin: '2rem 0' }} />,
@@ -187,7 +210,7 @@ function ApiDoc() {
                                 <FaListUl size={11} /> Contents
                             </div>
                             {toc.map((item) => (
-                                <a key={item.id + item.text} href={`#${item.id}`} style={{
+                                <a key={item.id + item.text} href={hashHref(item.id)} onClick={(e) => jumpTo(e, item.id)} style={{
                                     display: 'block', fontSize: item.level === 2 ? '0.85rem' : '0.8rem', lineHeight: 1.4,
                                     padding: '3px 0', paddingLeft: item.level === 3 ? 14 : 0,
                                     color: item.level === 2 ? text : theme.colors.secondaryText, textDecoration: 'none',
