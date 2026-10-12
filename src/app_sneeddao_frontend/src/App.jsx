@@ -89,6 +89,8 @@ import Topic from './pages/Topic';
 import HelpNeurons from './pages/HelpNeurons';
 import HelpWallet from './pages/HelpWallet';
 import HelpSneedlock from './pages/HelpSneedlock';
+import Api from './pages/Api';
+import ApiDoc from './pages/ApiDoc';
 import HelpIcpNeuronManager from './pages/HelpIcpNeuronManager';
 import HelpSneedex from './pages/HelpSneedex';
 import HelpCanisterManager from './pages/HelpCanisterManager';
@@ -179,6 +181,8 @@ function App() {
                     <Route path="/help/canister-manager" element={<HelpCanisterManager />} /> {/* Backwards compat */}
                     <Route path="/help/sns_jailbreak" element={<HelpSnsJailbreak />} />
                     <Route path="/help/trading_bot" element={<HelpTradingBot />} />
+                    <Route path="/api" element={<Api />} />
+                    <Route path="/api/:slug" element={<ApiDoc />} />
                     <Route path="/rll" element={<RLL />} />
                     <Route path="/rll_info" element={<RLLInfo />} />
                     <Route path="/scan_wallet" element={<ScanWallet />} />

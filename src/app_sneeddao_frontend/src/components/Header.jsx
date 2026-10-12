@@ -220,7 +220,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/sneedapp'].includes(path) || path.startsWith('/sneedapp/')) return 'Sneedapp';
         if (['/tools/main', '/tools/sns_jailbreak', '/tools/sns_jailbreak_list'].includes(path) || path.startsWith('/tools/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
-        if (['/help'].includes(path) || location.pathname.startsWith('/help/')) return 'Help';
+        if (['/help', '/api'].includes(path) || location.pathname.startsWith('/help/') || location.pathname.startsWith('/api/')) return 'Help';
         return 'Sneed Hub';
     });
 
@@ -366,7 +366,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('Sneedapp');
         } else if (['/admin'].includes(path) || path.startsWith('/admin/')) {
             setActiveSection('Admin');
-        } else if (['/help'].includes(path) || path.startsWith('/help/')) {
+        } else if (['/help', '/api'].includes(path) || path.startsWith('/help/') || path.startsWith('/api/')) {
             setActiveSection('Help');
         }
     }, [location.pathname]);
@@ -620,7 +620,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             displayName: 'Help',
             defaultPath: '/help',
             subMenu: [
-                { name: 'Help', path: '/help' }
+                { name: 'Help', path: '/help' },
+                { name: 'API', path: '/api' }
             ]
         }
     };

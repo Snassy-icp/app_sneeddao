@@ -6,20 +6,21 @@
   "scripts": {
     "setup": "npm i && dfx canister create app_sneeddao_backend && dfx generate app_sneeddao_backend && dfx deploy",
     "start": "vite --port 3000",
-    "prebuild": "dfx generate && node scripts/fix-declaration-imports.mjs",
+    "prebuild": "dfx generate && node scripts/fix-declaration-imports.mjs && node scripts/build-api-docs.mjs",
     "build": "tsc && vite build",
     "format": "prettier --write \"src/**/*.{json,js,jsx,ts,tsx,css,scss}\""
   },
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-dnd": "^16.0.1",
-    "react-dnd-html5-backend": "^16.0.1",
     "@dfinity/agent": "^2.0.0",
     "@dfinity/candid": "^2.0.0",
+    "@dfinity/ledger-icrc": "^2.0.0",
     "@dfinity/principal": "^2.0.0",
     "@dfinity/utils": "^2.0.0",
-    "@dfinity/ledger-icrc": "^2.0.0"
+    "react": "^18.2.0",
+    "react-dnd": "^16.0.1",
+    "react-dnd-html5-backend": "^16.0.1",
+    "react-dom": "^18.2.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@types/react": "^18.2.14",

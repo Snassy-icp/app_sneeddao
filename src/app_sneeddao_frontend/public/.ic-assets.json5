@@ -4,6 +4,34 @@
         "ignore": false
     },
     {
+        // Developer material for integrators and agents: the API docs (Markdown,
+        // Candid, JS IDL), the Agent Skills discovery index and skills, and llms.txt.
+        // Served cross-origin so browser-based tools can fetch them, and cached
+        // briefly so a redeploy shows up within minutes.
+        "match": "api-docs/**",
+        "headers": {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+            "Cache-Control": "public, max-age=300"
+        }
+    },
+    {
+        "match": ".well-known/agent-skills/**",
+        "headers": {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+            "Cache-Control": "public, max-age=300"
+        }
+    },
+    {
+        "match": "llms.txt",
+        "headers": {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+            "Cache-Control": "public, max-age=300"
+        }
+    },
+    {
         // version.json changes on each deploy and is polled by the frontend
         // update checker. It must never be cached by boundary nodes or browsers.
         "match": "version.json",
