@@ -57,13 +57,17 @@ module {
   /// `#Ok` carries the archive's block count after the call.
   public type AppendBlocksResult = { #Ok : Nat; #Err : Text };
 
+  /// Public health of an archive (anyone may query it; used by monitoring).
   public type ArchiveStatus = {
     parent : Principal;
     first_index : Nat;
     block_count : Nat;
     max_blocks : Nat;
     cycles : Nat;
-    data_bytes : Nat;
+    data_bytes : Nat; // bytes of block data stored
+    stable_memory_bytes : Nat; // stable memory reserved by the Regions (index + data)
+    heap_bytes : Nat; // live Motoko heap
+    memory_bytes : Nat; // Wasm main memory in use
   };
 
   // -------------------------------------------------------------------------

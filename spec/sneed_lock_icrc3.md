@@ -192,7 +192,7 @@ Archive(init : { first_index : nat; max_blocks : nat })
 
 append_blocks : (record { first_index : nat; blocks : vec blob }) -> (variant { Ok : nat; Err : text });  // parent only
 icrc3_get_blocks : (vec record { start : nat; length : nat }) -> (GetBlocksResult) query;
-archive_status : () -> (record { parent : principal; first_index : nat; block_count : nat; max_blocks : nat; cycles : nat; data_bytes : nat }) query;
+archive_status : () -> (record { parent : principal; first_index : nat; block_count : nat; max_blocks : nat; cycles : nat; data_bytes : nat; stable_memory_bytes : nat; heap_bytes : nat; memory_bytes : nat }) query;  // public health, for monitoring
 deposit_cycles : () -> ();  // accepts attached cycles from anyone
 ```
 

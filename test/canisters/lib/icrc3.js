@@ -107,7 +107,10 @@ export const icrc3Service = (IDL) => ({
 export const archiveIdl = ({ IDL }) => IDL.Service({
   icrc3_get_blocks: IDL.Func([GetBlocksArgs], [GetBlocksResult], ['query']),
   append_blocks: IDL.Func([IDL.Record({ first_index: IDL.Nat, blocks: IDL.Vec(IDL.Vec(IDL.Nat8)) })], [IDL.Variant({ Ok: IDL.Nat, Err: IDL.Text })], []),
-  archive_status: IDL.Func([], [IDL.Record({ parent: IDL.Principal, first_index: IDL.Nat, block_count: IDL.Nat, max_blocks: IDL.Nat, cycles: IDL.Nat, data_bytes: IDL.Nat })], ['query']),
+  archive_status: IDL.Func([], [IDL.Record({
+    parent: IDL.Principal, first_index: IDL.Nat, block_count: IDL.Nat, max_blocks: IDL.Nat, cycles: IDL.Nat, data_bytes: IDL.Nat,
+    stable_memory_bytes: IDL.Nat, heap_bytes: IDL.Nat, memory_bytes: IDL.Nat,
+  })], ['query']),
   deposit_cycles: IDL.Func([], [], []),
 });
 

@@ -15,6 +15,7 @@ import Nat32 "mo:base/Nat32";
 import Nat64 "mo:base/Nat64";
 import Principal "mo:base/Principal";
 import Region "mo:base/Region";
+import Prim "mo:⛔";
 
 import T "Types";
 
@@ -127,6 +128,9 @@ shared ({ caller = installer }) persistent actor class Icrc3Archive(init : T.Arc
       max_blocks;
       cycles = Cycles.balance();
       data_bytes = Nat64.toNat(data_bytes);
+      stable_memory_bytes = Nat64.toNat((Region.size(index_region) + Region.size(data_region)) * PAGE_BYTES);
+      heap_bytes = Prim.rts_heap_size();
+      memory_bytes = Prim.rts_memory_size();
     };
   };
 

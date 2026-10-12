@@ -177,6 +177,10 @@ describe('spilling to archives', () => {
     expect(st.block_count).toBe(3n);
     expect(st.max_blocks).toBe(3n);
     expect(st.data_bytes).toBeGreaterThan(0n);
+    expect(st.stable_memory_bytes).toBeGreaterThanOrEqual(st.data_bytes + 12n * st.block_count); // two Regions, 64 KiB pages
+    expect(st.stable_memory_bytes % 65_536n).toBe(0n);
+    expect(st.heap_bytes).toBeGreaterThan(0n);
+    expect(st.memory_bytes).toBeGreaterThanOrEqual(st.heap_bytes);
     expect(st.cycles).toBeGreaterThan(500_000_000_000n); // 1.5 T grant minus creation fee
     const controllers = (await pic.getControllers(archives[0].canister_id)).map((p) => p.toText()).sort();
     expect(controllers).toEqual([demoId.toText(), EXTRA.toText()].sort());
