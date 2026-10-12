@@ -131,7 +131,7 @@ export default function TokensAdmin() {
     }, [identity]);
     const loadMaintenanceStatus = useCallback(async () => {
         const a = maintenanceActor(); if (!a) return;
-        try { setMaintenance((m) => ({ ...m, status: await a.get_token_list_status(), error: null })); }
+        try { const status = await a.get_token_list_status(); setMaintenance((m) => ({ ...m, status, error: null })); }
         catch (e) { setMaintenance((m) => ({ ...m, status: null, error: /has no query method|method not found/i.test(String(e?.message || e)) ? 'The backend build without the daily job is still deployed.' : String(e?.message || e) })); }
     }, [maintenanceActor]);
     useEffect(() => { loadMaintenanceStatus(); }, [loadMaintenanceStatus]);
