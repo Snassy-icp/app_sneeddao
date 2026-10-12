@@ -1,0 +1,21 @@
+{
+  "name": "sneed-canister-tests",
+  "private": true,
+  "type": "module",
+  "description": "Integration tests for Sneed DAO canisters on PocketIC",
+  "scripts": {
+    "build": "bash ./build.sh",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@dfinity/agent": "^2.4.1",
+    "@dfinity/candid": "^2.4.1",
+    "@dfinity/identity": "^2.4.1",
+    "@dfinity/pic": "^0.25.0",
+    "@dfinity/principal": "^2.4.1",
+    "@dfinity/utils": "^2.10.0",
+    "@icp-sdk/core": "^6.1.0",
+    "vitest": "^3.2.4"
+  }
+}
