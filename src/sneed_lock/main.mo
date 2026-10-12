@@ -24,6 +24,7 @@ import PremiumClient "../PremiumClient";
 import Timer "mo:base/Timer";
 
 import Icrc3Log "../icrc3/Log";
+import Icrc3Sns "../icrc3/SnsRegister";
 import T3 "../icrc3/Types";
 
 // TODO: figure out when new instances of actors are created, whether or not that depends on the client at all, and how this effects the persistent state of the actor.
@@ -1824,6 +1825,21 @@ shared (deployer) persistent actor class SneedLock() = this {
     ];
   };
 
+  // SNS registration of archives (optional: skipped until a hotkeyed neuron is configured)
+  stable var icrc3_sns : Icrc3Sns.State = Icrc3Sns.init();
+  transient let icrc3_sns_rt : Icrc3Sns.Runtime = Icrc3Sns.runtime();
+
+  private func icrc3_sns_env() : Icrc3Sns.Environment {
+    {
+      governance = sneed_governance;
+      name = "Sneed Lock";
+      doc_url = "https://app.sneeddao.com/api/sneed_lock#activity-log-icrc-3";
+      new_correlation_id = get_next_correlation_id;
+      log_info = func(cid : Nat, message : Text) { log_info(this_canister_id(), cid, message) };
+      log_error = func(cid : Nat, message : Text) { log_error(this_canister_id(), cid, message) };
+    };
+  };
+
   private func icrc3_env() : Icrc3Log.Environment {
     {
       self = this_canister_id();
@@ -1896,7 +1912,43 @@ shared (deployer) persistent actor class SneedLock() = this {
   public shared ({ caller }) func admin_icrc3_spill_now() : async { #Ok : Nat; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("Only admins can trigger a spill") };
     if (icrc3_rt.spilling) { return #Err("A spill is already in progress") };
-    #Ok(await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), true));
+    let moved = await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), true);
+    ignore await* Icrc3Sns.registerMissing(icrc3_sns, icrc3_sns_rt, icrc3.archives, icrc3_sns_env());
+    #Ok(moved);
+  };
+
+  // ---- SNS registration of archives ----
+
+  /// Where each archive stands with its RegisterDappCanisters proposal.
+  public query func icrc3_registration_status() : async Icrc3Sns.Status {
+    Icrc3Sns.status(icrc3_sns, icrc3_sns_env());
+  };
+
+  /// The SNS neuron (32-byte id) that has this canister as a hotkey and submits
+  /// the registration proposals; null switches the step off.
+  public shared ({ caller }) func admin_set_icrc3_proposal_neuron(neuron : ?Blob) : async { #Ok; #Err : Text } {
+    if (not isAdmin(caller)) { return #Err("Only admins can set the proposal neuron") };
+    let old = icrc3_sns.neuron;
+    switch (Icrc3Sns.setNeuron(icrc3_sns, neuron)) {
+      case (#Err(e)) { #Err(e) };
+      case (#Ok) {
+        let asValue = func(n : ?Blob) : T3.Value { switch (n) { case (?b) { #Blob(b) }; case null { #Text("none") } } };
+        icrc3_config(caller, get_next_correlation_id(), "icrc3_proposal_neuron", asValue(neuron), ?asValue(old));
+        #Ok;
+      };
+    };
+  };
+
+  /// Submit the pending registration proposals now instead of at the next spill check.
+  public shared ({ caller }) func admin_icrc3_register_archives_now() : async { #Ok : Nat; #Err : Text } {
+    if (not isAdmin(caller)) { return #Err("Only admins can submit registration proposals") };
+    #Ok(await* Icrc3Sns.registerMissing(icrc3_sns, icrc3_sns_rt, icrc3.archives, icrc3_sns_env()));
+  };
+
+  /// Forget an archive's proposal (after a rejection) so a new one is submitted.
+  public shared ({ caller }) func admin_icrc3_reset_archive_registration(canister_id : Principal) : async { #Ok : Bool; #Err : Text } {
+    if (not isAdmin(caller)) { return #Err("Only admins can reset a registration") };
+    #Ok(Icrc3Sns.reset(icrc3_sns, canister_id));
   };
 
   /// Write the log start and import blocks if that has not happened yet.
@@ -1920,6 +1972,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
   private func icrc3_timer_job() : async () {
     ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false);
+    ignore await* Icrc3Sns.registerMissing(icrc3_sns, icrc3_sns_rt, icrc3.archives, icrc3_sns_env());
   };
 
   private func schedule_icrc3_import<system>() {

@@ -493,6 +493,7 @@ This is not a token ledger: there are no balances and no ICRC-1 blocks. Think of
 | `icrc3_supported_block_types()` | query | Every `btype` the log can contain, each linking to [8.3](#83-block-types). |
 | `icrc10_supported_standards()` | query | Lists ICRC-3 and ICRC-10. |
 | `icrc3_log_status()` | query | Log length, number and first index of live blocks, hash of the last block, the archives with their ranges, the spill settings and whether the one-time history import has run. Sneed Lock specific. |
+| `icrc3_registration_status()` | query | Per archive, the id of the SNS proposal that registered it as a DAO canister (Sneed Lock submits one automatically through a hotkeyed neuron), or the failed attempts so far. Sneed Lock specific. |
 
 A `icrc3_get_blocks` response is capped at 1000 blocks or about 1.5 MB, whichever comes first; page with `start`. Block indexes are global and never change: block `n` is the same block whether it is served live or from an archive.
 
@@ -569,7 +570,7 @@ Admin and governance (only admins, governance or controllers can trigger these):
 | `sneedlock_admin_pool_withdraw` | `admin_withdraw_pool_balance_to_user` succeeded. | `cid`, `caller`, `pool`, `ledger`, `amount`, `user`, `accepted` |
 | `sneedlock_config_update` | A setting changed. | `cid`, `caller`, `key`, `value` (Text or Nat), `old_value` when known |
 
-`sneedlock_config_update` keys: `max_lock_length_ns`, `token_lock_fee_icp_e8s`, `position_lock_fee_icp_e8s`, `premium_token_lock_fee_icp_e8s`, `premium_position_lock_fee_icp_e8s`, `icp_fee_recipient`, `sneed_premium_canister_id`, `admin_added`, `admin_removed`, `claim_history_cleared`, `failed_claim_history_cleared`, and the log's own settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
+`sneedlock_config_update` keys: `max_lock_length_ns`, `token_lock_fee_icp_e8s`, `position_lock_fee_icp_e8s`, `premium_token_lock_fee_icp_e8s`, `premium_position_lock_fee_icp_e8s`, `icp_fee_recipient`, `sneed_premium_canister_id`, `admin_added`, `admin_removed`, `claim_history_cleared`, `failed_claim_history_cleared`, `icrc3_proposal_neuron` (the SNS neuron that submits archive registration proposals; value is its 32-byte id as a Blob, or the text `none`), and the log's own settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
 
 ### 8.4 Verifying the log
 

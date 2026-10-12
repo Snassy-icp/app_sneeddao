@@ -11,6 +11,7 @@ Motoko canister in this repository. First used by `sneed_lock`
 | `Hash.mo` | representation-independent hash of a `Value`, IC hash trees + CBOR, LEB128 |
 | `Log.mo` | state, append + certify, live store, read endpoints, settings, spill / archive creation / controllers / cycle top-up |
 | `Archive.mo` | the archive actor class: Region-backed stable storage, parent-only `append_blocks`, `icrc3_get_blocks` |
+| `SnsRegister.mo` | optional: submits a `RegisterDappCanisters` proposal per archive through a hotkeyed SNS neuron, with bounded retries |
 
 Dependencies: `mo:base` and `mo:sha2` (research-ag, pure hashing). Builds with
 moc 0.14.x (classic persistence) and moc 1.x (enhanced orthogonal persistence).
@@ -90,6 +91,27 @@ Optional: a one-time import of pre-existing state as `<prefix>_import_*` blocks,
 guarded by `icrc3.history_imported` (see `icrc3_import_history` in
 `src/sneed_lock/main.mo`).
 
+Optional: automatic SNS registration of archives (`SnsRegister.mo`). Skipped
+silently until a neuron is configured, so it can be wired in from the start:
+
+```motoko
+import Sns "../icrc3/SnsRegister";
+
+stable var icrc3_sns : Sns.State = Sns.init();
+transient let icrc3_sns_rt : Sns.Runtime = Sns.runtime();
+private func icrc3_sns_env() : Sns.Environment {
+  { governance = sns_governance; name = "<Canister name>"; doc_url = "https://app.sneeddao.com/api/<canister>";
+    new_correlation_id = get_next_correlation_id; log_info = ...; log_error = ... };
+};
+// after every spill (timer job and admin_icrc3_spill_now):
+ignore await* Sns.registerMissing(icrc3_sns, icrc3_sns_rt, icrc3.archives, icrc3_sns_env());
+// admin: Sns.setNeuron (log a config-update block), Sns.registerMissing on demand, Sns.reset;
+// query: Sns.status
+```
+
+The neuron must have the canister as a hotkey (`SubmitProposal` permission), the
+minimum dissolve delay to vote and a stake covering the reject cost.
+
 ## Conventions for block catalogues
 
 - `btype` values use a canister prefix (`sneedlock_`, `sneedex_`, …). Letter
@@ -119,7 +141,8 @@ guarded by `icrc3.history_imported` (see `icrc3_import_history` in
   fixed at first install and survives upgrades by any controller. When an archive is created (text log line
   `ICRC-3: created archive …`, also listed by `icrc3_log_status`): add it to the
   ic-unicycle cycle monitoring and register it with the SNS by a
-  `RegisterDappCanisters` proposal. Upgrade an archive by proposal with a wasm
+  `RegisterDappCanisters` proposal (automatic with `SnsRegister.mo` and a hotkeyed
+  neuron; `icrc3_registration_status` shows the proposal ids). Upgrade an archive by proposal with a wasm
   compiled from `Archive.mo` alone (`moc -c $(mops sources) Archive.mo`); the init
   argument is ignored on upgrade. A changed `Archive.mo` in the logging canister
   affects only archives created afterwards.

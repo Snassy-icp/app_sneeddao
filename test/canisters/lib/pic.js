@@ -29,6 +29,7 @@ export const admin = user('admin'); // installer / controller of the canisters u
 export async function createPic() {
   const pic = await PocketIc.create(inject('PIC_URL'), {
     nns: { state: { type: SubnetStateType.New } },
+    sns: { state: { type: SubnetStateType.New } },
     application: [{ state: { type: SubnetStateType.New } }],
   });
   // PocketIC starts in 2021; certificates must be fresh for the agent's checks

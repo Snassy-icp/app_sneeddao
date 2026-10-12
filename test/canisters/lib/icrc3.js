@@ -82,6 +82,11 @@ export const LogStatus = IDL.Record({
   archives: IDL.Vec(ArchiveInfo), settings: Settings, history_imported: IDL.Bool, spilling: IDL.Bool,
 });
 
+export const Registration = IDL.Record({
+  canister_id: IDL.Principal, start: IDL.Nat, proposal_id: IDL.Opt(IDL.Nat64), attempts: IDL.Nat, last_error: IDL.Opt(IDL.Text),
+});
+export const RegistrationStatus = IDL.Record({ governance: IDL.Principal, neuron: IDL.Opt(IDL.Vec(IDL.Nat8)), registrations: IDL.Vec(Registration) });
+
 /// The standard ICRC-3 interface plus the Sneed library's status and admin methods.
 export const icrc3Service = (IDL) => ({
   icrc3_get_blocks: IDL.Func([GetBlocksArgs], [GetBlocksResult], ['query']),
@@ -93,6 +98,10 @@ export const icrc3Service = (IDL) => ({
   admin_set_icrc3_settings: IDL.Func([SettingsUpdate], [IDL.Variant({ Ok: Settings, Err: IDL.Text })], []),
   admin_icrc3_spill_now: IDL.Func([], [IDL.Variant({ Ok: IDL.Nat, Err: IDL.Text })], []),
   admin_icrc3_repair_archive_controllers: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })))], []),
+  icrc3_registration_status: IDL.Func([], [RegistrationStatus], ['query']),
+  admin_set_icrc3_proposal_neuron: IDL.Func([IDL.Opt(IDL.Vec(IDL.Nat8))], [IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })], []),
+  admin_icrc3_register_archives_now: IDL.Func([], [IDL.Variant({ Ok: IDL.Nat, Err: IDL.Text })], []),
+  admin_icrc3_reset_archive_registration: IDL.Func([IDL.Principal], [IDL.Variant({ Ok: IDL.Bool, Err: IDL.Text })], []),
 });
 
 export const archiveIdl = ({ IDL }) => IDL.Service({

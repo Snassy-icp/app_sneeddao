@@ -43,7 +43,17 @@ export const poolIdl = ({ IDL }) => IDL.Service({
   position_liquidity: IDL.Func([IDL.Nat], [IDL.Opt(IDL.Nat)], ['query']),
 });
 
-export const demoInit = [IDL.Record({ extra_controller: IDL.Principal, cycle_reserve: IDL.Nat, timer_seconds: IDL.Nat })];
+export const demoInit = [IDL.Record({ extra_controller: IDL.Principal, cycle_reserve: IDL.Nat, timer_seconds: IDL.Nat, governance: IDL.Principal })];
+
+// mock SNS governance (test/canisters/canisters/MockSnsGovernance.mo)
+export const governanceIdl = ({ IDL }) => IDL.Service({
+  add_hotkey: IDL.Func([IDL.Vec(IDL.Nat8), IDL.Principal], [], []),
+  clear_hotkeys: IDL.Func([], [], []),
+  set_mode: IDL.Func([IDL.Variant({ normal: IDL.Null, unknown_reply: IDL.Null, no_id: IDL.Null, trap: IDL.Null })], [], []),
+  list_proposals: IDL.Func([], [IDL.Vec(IDL.Record({
+    id: IDL.Nat64, proposer: IDL.Principal, neuron: IDL.Vec(IDL.Nat8), title: IDL.Text, url: IDL.Text, summary: IDL.Text, canister_ids: IDL.Vec(IDL.Principal),
+  }))], ['query']),
+});
 export const demoIdl = ({ IDL }) => IDL.Service({
   ...icrc3Service(IDL),
   record: IDL.Func([IDL.Vec(IDL.Tuple(IDL.Text, Value))], [IDL.Nat], []),

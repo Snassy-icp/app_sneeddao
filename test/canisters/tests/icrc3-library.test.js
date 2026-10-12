@@ -4,13 +4,15 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Principal } from '@icp-sdk/core/principal';
 import { createPic, install, actorAs, admin, alice, bob, T, unwrap, errOf } from '../lib/pic.js';
-import { demoIdl, demoInit } from '../lib/idl.js';
+import { demoIdl, demoInit, governanceIdl } from '../lib/idl.js';
 import { archiveIdl, hashValue, field, txField, btype, verifyTip, verifyLog, fetchBlocks, verifyChain } from '../lib/icrc3.js';
 
 const EXTRA = Principal.fromText('fp274-iaaaa-aaaaq-aacha-cai');
 const TIMER_SECONDS = 60;
 
-let pic, rootKey, demoId, demo, demoAlice;
+let pic, rootKey, demoId, demo, demoAlice, govId, gov;
+const NEURON = new Uint8Array(32).fill(7);
+const demoArgs = () => [{ extra_controller: EXTRA, cycle_reserve: 2n * T, timer_seconds: BigInt(TIMER_SECONDS), governance: govId }];
 
 const archiveActor = (id) => actorAs(pic, archiveIdl, id, admin);
 const verify = () => verifyLog(demo, demoId, rootKey, archiveActor);
@@ -22,7 +24,9 @@ const setSettings = (u) => demo.admin_set_icrc3_settings({
 
 beforeAll(async () => {
   ({ pic, rootKey } = await createPic());
-  demoId = await install(pic, { name: 'Icrc3Demo', initTypes: demoInit, initArgs: [{ extra_controller: EXTRA, cycle_reserve: 2n * T, timer_seconds: BigInt(TIMER_SECONDS) }], cycles: 50n * T });
+  govId = await install(pic, { name: 'MockSnsGovernance' });
+  gov = actorAs(pic, governanceIdl, govId, admin);
+  demoId = await install(pic, { name: 'Icrc3Demo', initTypes: demoInit, initArgs: demoArgs(), cycles: 50n * T });
   demo = actorAs(pic, demoIdl, demoId, admin);
   demoAlice = actorAs(pic, demoIdl, demoId, alice);
 });
@@ -292,6 +296,138 @@ describe('timer', () => {
   });
 });
 
+describe('SNS registration of archives', () => {
+  const regStatus = () => demo.icrc3_registration_status();
+  const registerNow = () => demo.admin_icrc3_register_archives_now();
+  const errorLines = async () => (await demo.logs()).filter(([, m]) => m.includes('could not submit the proposal'));
+
+  it('lists every archive and does nothing without a neuron', async () => {
+    const archives = await demo.icrc3_get_archives({ from: [] });
+    expect(archives.length).toBeGreaterThan(1);
+    const s = await regStatus();
+    expect(s.governance.toText()).toBe(govId.toText());
+    expect(s.neuron).toEqual([]);
+    expect(s.registrations.map((r) => r.canister_id.toText())).toEqual(archives.map((a) => a.canister_id.toText()));
+    for (const [i, r] of s.registrations.entries()) {
+      expect(r.start).toBe(archives[i].start);
+      expect(r.proposal_id).toEqual([]);
+      expect(r.attempts).toBe(0n);
+      expect(r.last_error).toEqual([]);
+    }
+    expect(unwrap(await registerNow())).toBe(0n);
+    expect(await gov.list_proposals()).toEqual([]);
+    expect((await demo.logs()).some(([, m]) => /proposal/i.test(m))).toBe(false);
+  });
+
+  it('refuses a neuron id that is not 32 bytes and non-admins', async () => {
+    expect(errOf(await demo.admin_set_icrc3_proposal_neuron([new Uint8Array(8)]))).toMatch(/32-byte/);
+    expect(errOf(await demoAlice.admin_set_icrc3_proposal_neuron([NEURON]))).toMatch(/admin/);
+    expect(errOf(await demoAlice.admin_icrc3_register_archives_now())).toMatch(/admin/);
+    expect(errOf(await demoAlice.admin_icrc3_reset_archive_registration(demoId))).toMatch(/admin/);
+  });
+
+  it('gives up after five failed attempts when the neuron is not hotkeyed', async () => {
+    unwrap(await demo.admin_set_icrc3_proposal_neuron([NEURON]));
+    expect((await regStatus()).neuron).toEqual([NEURON]);
+    const n = (await regStatus()).registrations.length;
+    for (let i = 0; i < 7; i++) expect(unwrap(await registerNow())).toBe(0n);
+    const s = await regStatus();
+    for (const r of s.registrations) {
+      expect(r.proposal_id).toEqual([]);
+      expect(r.attempts).toBe(5n);
+      expect(r.last_error[0]).toMatch(/governance error 3: Caller is not authorized/);
+    }
+    expect(await gov.list_proposals()).toEqual([]);
+    expect((await errorLines()).length).toBe(5 * n);
+    expect((await errorLines()).filter(([, m]) => m.includes('Giving up')).length).toBe(n);
+  });
+
+  it('submits one proposal per archive through a hotkeyed neuron and remembers the ids', async () => {
+    await gov.add_hotkey(NEURON, demoId);
+    unwrap(await demo.admin_set_icrc3_proposal_neuron([NEURON])); // same neuron: resets the attempts
+    const before = await regStatus();
+    expect(before.registrations.every((r) => r.attempts === 0n && r.last_error.length === 0)).toBe(true);
+    const n = before.registrations.length;
+    expect(unwrap(await registerNow())).toBe(BigInt(n));
+    const proposals = await gov.list_proposals();
+    expect(proposals).toHaveLength(n);
+    const s = await regStatus();
+    for (const [i, r] of s.registrations.entries()) {
+      const p = proposals.find((p) => p.canister_ids.length === 1 && p.canister_ids[0].toText() === r.canister_id.toText());
+      expect(p).toBeDefined();
+      expect(r.proposal_id).toEqual([p.id]);
+      expect(r.last_error).toEqual([]);
+      expect(p.proposer.toText()).toBe(demoId.toText());
+      expect(p.neuron).toEqual(NEURON);
+      expect(p.title).toBe(`Register ICRC-3 archive ${r.canister_id.toText()} of Demo`);
+      expect(p.url).toBe('https://example.test/demo');
+      expect(p.summary).toContain(`from index ${r.start}`);
+      expect(p.summary).toContain('cycle monitoring');
+      expect(i === 0 || proposals[i - 1].id < p.id).toBe(true);
+    }
+    expect(unwrap(await registerNow())).toBe(0n); // nothing left to do
+    expect(await gov.list_proposals()).toHaveLength(n);
+    expect((await demo.logs()).filter(([, m]) => m.includes('submitted proposal')).length).toBe(n);
+  });
+
+  it('registers a new archive as part of the spill that created it', async () => {
+    const before = (await gov.list_proposals()).length;
+    unwrap(await setSettings({ max_live_blocks: [1n], archive_max_blocks: [3n] }));
+    await demoAlice.record_many(4n);
+    expect(unwrap(await demo.admin_icrc3_spill_now())).toBeGreaterThan(0n);
+    const archives = await demo.icrc3_get_archives({ from: [] });
+    const s = await regStatus();
+    expect(s.registrations).toHaveLength(archives.length);
+    expect(s.registrations.every((r) => r.proposal_id.length === 1)).toBe(true);
+    expect((await gov.list_proposals()).length).toBeGreaterThan(before);
+    unwrap(await setSettings({ max_live_blocks: [4n] }));
+    await verify();
+  });
+
+  it('reset forgets the proposal so that a new one is submitted', async () => {
+    const [first] = (await regStatus()).registrations;
+    expect(unwrap(await demo.admin_icrc3_reset_archive_registration(alice))).toBe(false);
+    expect(unwrap(await demo.admin_icrc3_reset_archive_registration(first.canister_id))).toBe(true);
+    expect((await regStatus()).registrations[0].proposal_id).toEqual([]);
+    expect(unwrap(await registerNow())).toBe(1n);
+    const again = (await regStatus()).registrations[0];
+    expect(again.proposal_id.length).toBe(1);
+    expect(again.proposal_id[0]).not.toBe(first.proposal_id[0]);
+  });
+
+  it('treats an unknown reply, a missing id and a trap as failed attempts', async () => {
+    const [first] = (await regStatus()).registrations;
+    const expectFailure = async (pattern) => {
+      expect(unwrap(await registerNow())).toBe(0n);
+      const r = (await regStatus()).registrations[0];
+      expect(r.proposal_id).toEqual([]);
+      expect(r.last_error[0]).toMatch(pattern);
+    };
+    unwrap(await demo.admin_icrc3_reset_archive_registration(first.canister_id));
+    await gov.set_mode({ unknown_reply: null });
+    await expectFailure(/unexpected response/);
+    await gov.set_mode({ no_id: null });
+    await expectFailure(/no proposal id/);
+    await gov.set_mode({ trap: null });
+    await expectFailure(/governance is down/);
+    expect((await regStatus()).registrations[0].attempts).toBe(3n);
+    await gov.set_mode({ normal: null });
+    expect(unwrap(await registerNow())).toBe(1n);
+    expect((await regStatus()).registrations[0].last_error).toEqual([]);
+  });
+
+  it('disabling the neuron stops submissions', async () => {
+    const [first] = (await regStatus()).registrations;
+    unwrap(await demo.admin_icrc3_reset_archive_registration(first.canister_id));
+    unwrap(await demo.admin_set_icrc3_proposal_neuron([]));
+    const before = (await gov.list_proposals()).length;
+    expect(unwrap(await registerNow())).toBe(0n);
+    expect((await gov.list_proposals()).length).toBe(before);
+    unwrap(await demo.admin_set_icrc3_proposal_neuron([NEURON]));
+    expect(unwrap(await registerNow())).toBe(1n);
+  });
+});
+
 describe('upgrade', () => {
   it('an archive upgraded by a co-controller keeps its parent, range and blocks, and still takes the parent\'s batches', async () => {
     const { IDL } = await import('@icp-sdk/core/candid');
@@ -326,8 +462,10 @@ describe('upgrade', () => {
   it('keeps the log, archives and settings, re-certifies the tip and restarts the timer', async () => {
     const before = await status();
     const tipBefore = await verifyTip(demo, demoId, rootKey);
-    await pic.upgradeCanister({ sender: admin, canisterId: demoId, wasm: (await import('../lib/pic.js')).wasm('Icrc3Demo'), arg: (await import('@icp-sdk/core/candid')).IDL.encode(demoInit, [{ extra_controller: EXTRA, cycle_reserve: 2n * T, timer_seconds: BigInt(TIMER_SECONDS) }]) });
+    const regBefore = await demo.icrc3_registration_status();
+    await pic.upgradeCanister({ sender: admin, canisterId: demoId, wasm: (await import('../lib/pic.js')).wasm('Icrc3Demo'), arg: (await import('@icp-sdk/core/candid')).IDL.encode(demoInit, demoArgs()) });
     const after = await status();
+    expect(await demo.icrc3_registration_status()).toEqual(regBefore);
     expect(after.log_length).toBe(before.log_length);
     expect(after.live_first_index).toBe(before.live_first_index);
     expect(after.archives).toEqual(before.archives);

@@ -145,8 +145,8 @@ Admin and configuration (only callable by admins, governance or controllers):
 `position_lock_fee_icp_e8s`, `premium_token_lock_fee_icp_e8s`,
 `premium_position_lock_fee_icp_e8s`, `icp_fee_recipient` (Text account),
 `sneed_premium_canister_id`, `admin_added`, `admin_removed`, `claim_history_cleared`
-(value = number of entries), and the ICRC-3 settings below (`icrc3_max_live_blocks`
-and so on).
+(value = number of entries), `icrc3_proposal_neuron` (Blob, or Text `none`), and the
+ICRC-3 settings below (`icrc3_max_live_blocks` and so on).
 
 Housekeeping (`clear_expired_locks`, archiving expired locks) is not logged: expiry is
 implied by the `expiry` field of the create block.
@@ -228,10 +228,36 @@ deposit_cycles : () -> ();  // accepts attached cycles from anyone
   argument. Upgrading `sneed_lock` with a changed `Archive.mo` only affects archives
   created afterwards; existing ones keep their code, and the append protocol is
   designed to stay compatible across versions.
-- Operations on every new archive (the text log line `ICRC-3: created archive …`
-  and `icrc3_log_status` list them): add it to the DAO's ic-unicycle cycle
-  monitoring, and register it with the SNS by a `RegisterDappCanisters` proposal so
-  it appears among the DAO's canisters and can be upgraded by proposal.
+- Registration is automatic when a neuron is configured (next section). Operations
+  on every new archive (the text log line `ICRC-3: created archive …`,
+  `icrc3_log_status` and `icrc3_registration_status` list them): add it to the DAO's
+  ic-unicycle cycle monitoring, and check that its registration proposal was
+  adopted.
+
+### Automatic SNS registration
+
+Library module `src/icrc3/SnsRegister.mo`, state `icrc3_sns` on `sneed_lock`.
+
+- `sneed_lock` submits one `RegisterDappCanisters` proposal per archive through an
+  SNS neuron that lists the `sneed_lock` principal as a hotkey (the `SubmitProposal`
+  permission). Governance requires that neuron to have at least the minimum dissolve
+  delay to vote (30.4 days on Sneed) and a stake covering the reject cost (0.1 SNEED);
+  a few SNEED are plenty. The neuron id (32-byte subaccount) is set with
+  `admin_set_icrc3_proposal_neuron`, which writes a `sneedlock_config_update` block
+  (key `icrc3_proposal_neuron`, value the id as Blob or the text `none`).
+- Without a neuron the step is skipped silently, so the log works unchanged before
+  the neuron exists and if the DAO ever removes it.
+- Submission happens right after the spill that created the archive, and is retried
+  on every later 15-minute check for archives without a proposal: a wrong or
+  under-staked neuron or a governance outage self-heals once fixed. After 5 failed
+  attempts an archive is left alone until the neuron is changed or
+  `admin_icrc3_reset_archive_registration` is called (also the way to resubmit after a
+  rejected proposal). `admin_icrc3_register_archives_now` runs the step on demand.
+- `icrc3_registration_status` (query) shows the governance canister, the neuron and,
+  per archive, the proposal id or the attempts and last error.
+- The governance call uses reduced Candid types (variants with only the tags that are
+  sent; the response command is an option, so unknown tags decode to null). Every
+  failure mode, including a trap in governance, counts as one failed attempt.
 
 ## Spill protocol
 
@@ -331,6 +357,8 @@ hash chain and the archive see identical bytes.
 - `icrc3_log_status` exposes the archive cycle balances so the DAO can watch them.
   Each new archive must also be added to the DAO's ic-unicycle monitoring, which
   is the independent safety net if `sneed_lock` itself runs low and cannot top up.
+  The automatic registration proposal names the archive and repeats this checklist
+  in its summary.
 
 ## Security considerations
 

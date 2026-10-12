@@ -19,7 +19,7 @@ cp .dfx/ic/canisters/sneed_lock/service.did.js "$OUT/sneed_lock.did.js"
 
 MOC="$(dfx +"$DFX_VERSION" cache show)/moc"
 PKGS="$(mops sources)"
-for c in MockLedger MockSwapPool Icrc3Demo; do
+for c in MockLedger MockSwapPool MockSnsGovernance Icrc3Demo; do
   echo "== $c"
   # shellcheck disable=SC2086
   "$MOC" -c $PKGS -o "$OUT/$c.wasm" "$HERE/canisters/$c.mo" 2>&1 | grep -i "error" -A5 || true

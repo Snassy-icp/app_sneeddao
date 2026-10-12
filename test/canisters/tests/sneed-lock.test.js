@@ -8,9 +8,9 @@ import { Principal } from '@icp-sdk/core/principal';
 import { IDL } from '@icp-sdk/core/candid';
 import {
   createPic, install, actorAs, account, principalToSubaccount, paymentSubaccount,
-  admin, alice, bob, carol, ICP_LEDGER_ID, T, unwrap, errOf, wasm,
+  admin, alice, bob, carol, ICP_LEDGER_ID, SNEED_GOVERNANCE, T, unwrap, errOf, wasm,
 } from '../lib/pic.js';
-import { ledgerIdl, ledgerInit, poolIdl, poolInit } from '../lib/idl.js';
+import { ledgerIdl, ledgerInit, poolIdl, poolInit, governanceIdl } from '../lib/idl.js';
 import { archiveIdl, btype, txField, verifyLog, fetchBlocks } from '../lib/icrc3.js';
 import { idlFactory as sneedLockIdl } from '../build/sneed_lock.did.js';
 
@@ -525,7 +525,44 @@ describe('ICRC-3 log of sneed_lock', () => {
     expect(BigInt(blocks.length)).toBe((await lock.icrc3_log_status()).log_length);
   });
 
+  it('registers its archives with the SNS through a hotkeyed neuron, and skips the step without one', async () => {
+    const NEURON = new Uint8Array(32).fill(9);
+    const archives = await lock.icrc3_get_archives({ from: [] });
+    let s = await lock.icrc3_registration_status();
+    expect(s.governance.toText()).toBe(SNEED_GOVERNANCE.toText());
+    expect(s.neuron).toEqual([]);
+    expect(s.registrations.map((r) => r.canister_id.toText())).toEqual(archives.map((a) => a.canister_id.toText()));
+    expect(errOf(await lockAlice.admin_icrc3_register_archives_now())).toMatch(/admins/);
+    expect(errOf(await lockAlice.admin_set_icrc3_proposal_neuron([NEURON]))).toMatch(/admins/);
+    expect(unwrap(await lock.admin_icrc3_register_archives_now())).toBe(0n); // no neuron: skipped
+    // a mock SNS governance at the real Sneed governance id (SNS subnet range)
+    const govId = await install(pic, { name: 'MockSnsGovernance', targetCanisterId: SNEED_GOVERNANCE });
+    const gov = actorAs(pic, governanceIdl, govId, admin);
+    unwrap(await lock.admin_set_icrc3_proposal_neuron([NEURON]));
+    const { blocks } = await verifyLog(lock, lockId, rootKey, archiveActor);
+    const last = blocks[blocks.length - 1];
+    expect(btype(last)).toBe('sneedlock_config_update');
+    expect(JSON.stringify(txField(last, 'key'))).toContain('icrc3_proposal_neuron');
+    expect(unwrap(await lock.admin_icrc3_register_archives_now())).toBe(0n); // neuron not hotkeyed
+    s = await lock.icrc3_registration_status();
+    expect(s.registrations.every((r) => r.attempts === 1n && /not authorized/.test(r.last_error[0]))).toBe(true);
+    await gov.add_hotkey(NEURON, lockId);
+    unwrap(await lock.admin_set_icrc3_proposal_neuron([NEURON]));
+    expect(unwrap(await lock.admin_icrc3_register_archives_now())).toBe(BigInt(archives.length));
+    const proposals = await gov.list_proposals();
+    expect(proposals).toHaveLength(archives.length);
+    for (const p of proposals) {
+      expect(p.proposer.toText()).toBe(lockId.toText());
+      expect(p.title).toMatch(/^Register ICRC-3 archive .* of Sneed Lock$/);
+      expect(p.url).toBe('https://app.sneeddao.com/api/sneed_lock#activity-log-icrc-3');
+    }
+    s = await lock.icrc3_registration_status();
+    expect(s.registrations.map((r) => r.proposal_id[0])).toEqual(proposals.map((p) => p.id));
+    expect(unwrap(await lock.admin_icrc3_register_archives_now())).toBe(0n);
+  });
+
   it('survives an upgrade with locks, archives and certificate intact', async () => {
+    const regBefore = await lock.icrc3_registration_status();
     const before = await lock.icrc3_log_status();
     const activeBefore = await lock.get_active_token_locks();
     await pic.upgradeCanister({ sender: admin, canisterId: lockId, wasm: wasm('sneed_lock'), arg: IDL.encode([], []) });
@@ -534,6 +571,7 @@ describe('ICRC-3 log of sneed_lock', () => {
     expect(after.log_length).toBe(before.log_length);
     expect(after.archives).toEqual(before.archives);
     expect(after.history_imported).toBe(true);
+    expect(await lock.icrc3_registration_status()).toEqual(regBefore);
     expect(await lock.get_active_token_locks()).toEqual(activeBefore);
     expect((await lock.get_expired_position_locks()).map(([, , l]) => l.lock_id)).toEqual([5n]);
     expect(unwrap(await lock.admin_icrc3_import_history())).toBe(0n);
