@@ -20,6 +20,7 @@ import WrapUnwrapModal from './WrapUnwrapModal';
 import LockModal from './LockModal';
 import LockPositionModal from './LockPositionModal';
 import AddSwapCanisterModal from './AddSwapCanisterModal';
+import PositionTransferGuide from './components/PositionTransferGuide';
 import AddLedgerCanisterModal from './AddLedgerCanisterModal';
 import SendLiquidityPositionModal from './SendLiquidityPositionModal';
 import ConfirmationModal from './ConfirmationModal';
@@ -398,6 +399,26 @@ const EmptyPositionCard = ({ position, onRemove, handleRefreshPosition, isRefres
                             />
                             Remove
                         </button>
+                    </div>
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            margin: '10px 12px 12px 12px',
+                            padding: '12px 14px',
+                            background: `${theme.colors.accent}10`,
+                            border: `1px solid ${theme.colors.accent}30`,
+                            borderRadius: '10px',
+                        }}
+                    >
+                        <div style={{ fontWeight: 600, fontSize: '0.9rem', color: theme.colors.primaryText, marginBottom: '6px' }}>
+                            No {position.token0Symbol}/{position.token1Symbol} position in your Sneed wallet yet
+                        </div>
+                        <PositionTransferGuide
+                            token0Symbol={position.token0Symbol}
+                            token1Symbol={position.token1Symbol}
+                            compact
+                            intro="This pool is registered, but the principal you are logged in with here owns no position in it. A position created on ICPSwap belongs to your ICPSwap login; move it over like this:"
+                        />
                     </div>
                 </>
             )}
