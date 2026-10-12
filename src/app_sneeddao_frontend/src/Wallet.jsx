@@ -2453,13 +2453,8 @@ function Wallet() {
                 ]);
                 
                 setNeuronManagerCounts(prev => ({ ...prev, [canisterId]: Number(count) }));
-                
-                // Update version in managers array
-                setNeuronManagers(prev => prev.map(m => 
-                    normalizeId(m.canisterId) === canisterId 
-                        ? { ...m, version } 
-                        : m
-                ));
+                // The version shown comes from the context's manager list, which is
+                // refreshed below via contextRefreshNeuronManagers.
             } catch (err) {
                 console.error(`Error fetching manager data for ${canisterId}:`, err);
             }
@@ -2677,7 +2672,7 @@ function Wallet() {
             
             // Refresh data
             if (contextRefreshNeuronManagers) contextRefreshNeuronManagers();
-            fetchTokens();
+            fetchBalancesAndLocks(Principal.fromText(ICP_LEDGER_CANISTER_ID));
             
         } catch (err) {
             console.error('Cycles top-up error:', err);
@@ -2788,7 +2783,7 @@ function Wallet() {
             
             // Refresh data
             if (contextRefreshTrackedCanisters) contextRefreshTrackedCanisters();
-            fetchTokens();
+            fetchBalancesAndLocks(Principal.fromText(ICP_LEDGER_CANISTER_ID));
             
         } catch (err) {
             console.error('Canister cycles top-up error:', err);
@@ -11162,7 +11157,7 @@ function Wallet() {
                     icpToCyclesRate={icpToCyclesRate}
                     onTopUpComplete={() => {
                         if (contextRefreshNeuronManagers) contextRefreshNeuronManagers();
-                        fetchTokens();
+                        fetchBalancesAndLocks(Principal.fromText(ICP_LEDGER_CANISTER_ID));
                     }}
                 />
             </div>
