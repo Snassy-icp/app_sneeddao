@@ -129,6 +129,7 @@ function LockWizard() {
     const [lockProgress, setLockProgress] = useState([]); // [{ label, state: 'done'|'active'|'pending' }]
     const [lockError, setLockError] = useState('');
     const [lockSuccess, setLockSuccess] = useState(false);
+    const [createdLockId, setCreatedLockId] = useState(null);
     
     // Confirmation modal
     const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -729,9 +730,9 @@ function LockWizard() {
                     const used = plan.fromBackend + ICP_TX_FEE;
                     backendAvailable = backendAvailable > used ? backendAvailable - used : 0n;
                 }
-                await executeTokenLock(backendAvailable, nextPhase);
+                setCreatedLockId(await executeTokenLock(backendAvailable, nextPhase));
             } else {
-                await executePositionLock(nextPhase);
+                setCreatedLockId(await executePositionLock(nextPhase));
             }
             setLockSuccess(true);
         } catch (error) {
@@ -787,6 +788,7 @@ function LockWizard() {
         if (result.Err) {
             throw new Error(result.Err.message || JSON.stringify(result.Err));
         }
+        return result.Ok;
     };
 
     const executePositionLock = async (nextPhase) => {
@@ -829,6 +831,7 @@ function LockWizard() {
             if (lockResult.Err) {
                 throw new Error(lockResult.Err.message || JSON.stringify(lockResult.Err));
             }
+            return lockResult.Ok;
         } else {
             // Position already claimed - just create lock
             const lockResult = await sneedLockActor.create_position_lock(
@@ -843,6 +846,7 @@ function LockWizard() {
             if (lockResult.Err) {
                 throw new Error(lockResult.Err.message || JSON.stringify(lockResult.Err));
             }
+            return lockResult.Ok;
         }
     };
 
@@ -1755,6 +1759,7 @@ function LockWizard() {
                                 setSelectedPosition(null);
                                 setLockAmount('');
                                 setLockSuccess(false);
+                                setCreatedLockId(null);
                             }}
                         >
                             <FaLock size={14} /> Create Another Lock
@@ -1767,9 +1772,11 @@ function LockWizard() {
                                 background: `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`,
                                 boxShadow: `0 4px 16px ${theme.colors.success}40`,
                             }}
-                            onClick={() => navigate(`/sneedlock_info?owner=${identity.getPrincipal().toString()}`)}
+                            onClick={() => navigate(createdLockId !== null && createdLockId !== undefined
+                                ? `/lock/${createdLockId.toString()}`
+                                : `/sneedlock_info?owner=${identity.getPrincipal().toString()}`)}
                         >
-                            <FaShieldAlt size={14} /> View My Locks
+                            <FaShieldAlt size={14} /> {createdLockId !== null && createdLockId !== undefined ? `View Lock #${createdLockId.toString()}` : 'View My Locks'}
                         </button>
                     </div>
                 </div>
