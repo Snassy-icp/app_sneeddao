@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { FaUnlock, FaArrowRight, FaList, FaMagic, FaRocket, FaCheckCircle, FaExchangeAlt, FaBrain, FaCog, FaKey, FaFingerprint } from 'react-icons/fa';
+import { FaUnlock, FaArrowRight, FaList, FaMagic, FaRocket, FaCheckCircle, FaExchangeAlt, FaBrain, FaCog, FaKey, FaFingerprint, FaDatabase, FaShieldAlt, FaSearch, FaEye } from 'react-icons/fa';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -47,6 +47,9 @@ const jailbreakSecondary = '#fb923c';
 // Account tool accent - teal
 const accountPrimary = '#14b8a6';
 const accountSecondary = '#2dd4bf';
+
+// ICRC-3 browser accent - indigo
+const icrc3Primary = '#6366f1';
 
 function ToolsMain() {
     const { theme } = useTheme();
@@ -333,6 +336,57 @@ function ToolsMain() {
                         <Link to="/tools/account" style={styles.primaryButton(accountPrimary)}>
                             Open Account Tool
                             <FaArrowRight size={14} />
+                        </Link>
+                    </div>
+                </div>
+                
+                {/* ICRC-3 Browser Card */}
+                <div className="tools-fade-in-delay" style={styles.toolCard}>
+                    <div style={styles.decorativeGlow(icrc3Primary)} />
+                    
+                    <div style={{ ...styles.toolIcon, background: `linear-gradient(135deg, ${icrc3Primary}25, ${icrc3Primary}10)` }}>
+                        <FaDatabase size={26} style={{ color: icrc3Primary }} />
+                    </div>
+                    
+                    <h2 style={styles.toolTitle}>
+                        ICRC-3 Browser
+                        <span style={styles.badge(icrc3Primary)}>Free</span>
+                    </h2>
+                    
+                    <p style={styles.toolDescription}>
+                        Browse the block log of any canister that implements ICRC-3: token ledgers, Sneed Lock's 
+                        activity log, or anything else. Verify the certified tip and the hash chain, page through 
+                        history, and read blocks in a purpose-built view where we know the block types or in a 
+                        compact or verbose generic view everywhere else.
+                    </p>
+                    
+                    <div style={styles.featureList}>
+                        <div style={styles.feature(icrc3Primary)}>
+                            <FaSearch size={12} />
+                            Any ICRC-3 canister
+                        </div>
+                        <div style={styles.feature(icrc3Primary)}>
+                            <FaShieldAlt size={12} />
+                            Certified tip verification
+                        </div>
+                        <div style={styles.feature(icrc3Primary)}>
+                            <FaEye size={12} />
+                            Specific, compact and verbose views
+                        </div>
+                        <div style={styles.feature(icrc3Primary)}>
+                            <FaList size={12} />
+                            Pagination and archives
+                        </div>
+                    </div>
+                    
+                    <div style={styles.buttonRow}>
+                        <Link to="/tools/icrc3" style={styles.primaryButton(icrc3Primary)}>
+                            Open ICRC-3 Browser
+                            <FaArrowRight size={14} />
+                        </Link>
+                        <Link to="/tools/icrc3?canister=pqsms-lqaaa-aaaal-ajjza-cai" style={styles.secondaryButton}>
+                            <FaDatabase size={14} />
+                            Sneed Lock log
                         </Link>
                     </div>
                 </div>

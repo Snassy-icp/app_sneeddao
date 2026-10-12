@@ -654,6 +654,8 @@ The ranges above assume the whole log fits the response caps; for a long log, pa
 
 ### 8.5 Using the log
 
+- **Browse it:** [app.sneeddao.com/tools/icrc3?canister=pqsms-lqaaa-aaaal-ajjza-cai](https://app.sneeddao.com/tools/icrc3?canister=pqsms-lqaaa-aaaal-ajjza-cai) is a generic ICRC-3 browser with a purpose-built view for these blocks, pagination, tip verification and a raw view. It works for any ICRC-3 canister.
+
 - **History of one lock:** scan the blocks and keep those whose `tx.lock_id` matches (create, extend, transfer, fee claims, liquidity additions, withdrawal). There is no server-side index; the log is small enough to fetch once and index client-side, and new blocks only ever append.
 - **Proof for a token launch:** the create block, the certified tip and the chain between them prove when a lock was made and that it has not been withdrawn (a withdrawal would be a later block).
 - **Monitoring:** poll `icrc3_log_status().log_length` and fetch only the new blocks since the last index you processed.

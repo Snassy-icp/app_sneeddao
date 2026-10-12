@@ -630,6 +630,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const toolsSubMenu = [
         { name: 'Tools', path: '/tools/main' },
         { name: 'Account Tool', path: '/tools/account' },
+        { name: 'ICRC-3 Browser', path: '/tools/icrc3' },
     ];
     if (isAuthenticated) {
         toolsSubMenu.push(
