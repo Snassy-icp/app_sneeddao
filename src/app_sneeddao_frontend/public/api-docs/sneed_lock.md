@@ -398,7 +398,9 @@ See 3.4. Errors (text) include `Caller does not own position ...`, `Position ...
 
 ### 6.8 Logs
 
-`get_info_id_range()`, `get_error_id_range()`, `get_info_entries(start, length)`, `get_error_entries(start, length)` expose the canister's circular logs (`BufferEntry { id; timestamp; caller; correlation_id; content }`). Every update logs under a `correlation_id`; error messages that mention one can be looked up here. These are update calls.
+`get_info_id_range()`, `get_error_id_range()`, `get_info_entries(start, length)`, `get_error_entries(start, length)` expose the canister's circular text logs (`BufferEntry { id; timestamp; caller; correlation_id; content }`). Every update logs under a `correlation_id`; error messages that mention one can be looked up here. These are update calls, the buffers hold the last 10,000 entries each, and they record failures as well as successes.
+
+The structured, permanent and verifiable record of what actually happened is the ICRC-3 activity log in [section 8](#8-activity-log-icrc-3); its blocks carry the same `correlation_id` as `cid`, so the two can be joined.
 
 ### 6.9 Compatibility and retired methods
 
@@ -475,7 +477,193 @@ The full interface, including admin and log types, is in [sneed_lock.did](/api-d
 
 ---
 
-## 8. Integration checklist
+## 8. Activity log (ICRC-3)
+
+Every action that changes state in Sneed Lock is recorded as a block in a hash-chained, certified log, readable through the standard [ICRC-3](https://github.com/dfinity/ICRC-1/tree/main/standards/ICRC-3) interface. Each block carries the hash of the previous block (`phash`), and the canister certifies the index and hash of the latest block with the Internet Computer's certification mechanism. A client can therefore download the whole history and prove it is complete and untampered without trusting Sneed DAO, this app, or the node that answered. Old blocks move to archive canisters that the lock canister creates and controls; the chain of archives grows on its own when one fills up.
+
+This is not a token ledger: there are no balances and no ICRC-1 blocks. Think of it as the canister's audit trail. The design, including storage and the archive protocol, is in [spec/sneed_lock_icrc3.md](https://github.com/Snassy-icp/app_sneeddao/blob/main/spec/sneed_lock_icrc3.md); the implementation is [Icrc3Log.mo](https://github.com/Snassy-icp/app_sneeddao/blob/main/src/sneed_lock/Icrc3Log.mo), [Icrc3Hash.mo](https://github.com/Snassy-icp/app_sneeddao/blob/main/src/sneed_lock/Icrc3Hash.mo) and [Icrc3Archive.mo](https://github.com/Snassy-icp/app_sneeddao/blob/main/src/sneed_lock/Icrc3Archive.mo), with no third-party ledger library involved.
+
+### 8.1 Endpoints
+
+| Method | Type | Returns |
+|---|---|---|
+| `icrc3_get_blocks(vec record { start : nat; length : nat })` | query | `{ log_length; blocks : vec { id; block }; archived_blocks : vec { args; callback } }`. Blocks still held by the lock canister come back directly. For ranges that live in an archive, call `callback` (that archive's own `icrc3_get_blocks`) with `args`. |
+| `icrc3_get_archives(record { from : opt principal })` | query | Every archive canister with the first and last block index it holds, in index order. With `from`, only the archives after that one. |
+| `icrc3_get_tip_certificate()` | query | `opt { certificate : blob; hash_tree : blob }`: the IC certificate over the canister's certified data, and the CBOR-encoded hash tree with the two leaves `last_block_index` (unsigned LEB128) and `last_block_hash`. Null until the first block exists. |
+| `icrc3_supported_block_types()` | query | Every `btype` the log can contain, each linking to [8.3](#83-block-types). |
+| `icrc10_supported_standards()` | query | Lists ICRC-3 and ICRC-10. |
+| `icrc3_log_status()` | query | Log length, number and first index of live blocks, hash of the last block, the archives with their ranges, the spill settings and whether the one-time history import has run. Sneed Lock specific. |
+
+A `icrc3_get_blocks` response is capped at 1000 blocks or about 1.5 MB, whichever comes first; page with `start`. Block indexes are global and never change: block `n` is the same block whether it is served live or from an archive.
+
+### 8.2 Block format
+
+A block is an ICRC-3 `Value` of variant `Map` with these fields:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `btype` | Text | The block type, see [8.3](#83-block-types). |
+| `ts` | Nat | When the block was appended, nanoseconds since epoch. |
+| `phash` | Blob | SHA-256 hash of the previous block. Absent on block 0 only. |
+| `tx` | Map | The action's data; fields depend on `btype`. |
+
+Conventions inside `tx`:
+
+- Principals (owners, ledgers, pools) are `Blob` values holding the raw principal bytes, as ICRC-3 represents account owners. Decode with `Principal.fromUint8Array`.
+- ICRC-1 accounts are `Array [Blob owner, Blob subaccount]`, with the subaccount element omitted for the default subaccount.
+- Amounts, ids, expiries and timestamps are `Nat` (base units; nanoseconds since epoch). Nothing is decimal-scaled.
+- `cid` is the correlation id of the call that produced the block, the same number the text logs use.
+- `caller` is the principal that made the call. For user actions it equals the owner; for admin actions it is the admin or governance principal.
+- Optional fields are omitted when absent, never encoded as empty values.
+
+The hash of a block is the ICRC-3 representation-independent hash: `Nat` hashed as its unsigned LEB128 bytes, `Int` as signed LEB128, `Text` as UTF-8, `Blob` as is, `Array` as the concatenation of its elements' hashes, `Map` as the concatenation of the bytewise-sorted `hash(key) ‖ hash(value)` pairs, every step wrapped in SHA-256. It is the same construction as IC request ids. A JavaScript implementation is in [8.4](#84-verifying-the-log).
+
+### 8.3 Block types
+
+All types carry the `sneedlock_` prefix. ICRC numbers are reserved for ICRC standards, so a letter prefix cannot collide with any of them. Housekeeping (archiving expired locks) is not logged: expiry follows from the `expiry` field of the create block.
+
+Lifecycle of the log itself:
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `sneedlock_log_start` | First block ever, written by the one-time history import. | `canister`, `current_lock_id`, `active_token_locks`, `active_position_locks`, `archived_token_locks`, `archived_position_locks`, `total_token_lock_fees_e8s`, `total_position_lock_fees_e8s` |
+| `sneedlock_import_token_lock` | One per token lock that existed when the log started. | `owner`, `ledger`, `lock_id`, `amount`, `expiry`, `status` (`active` or `expired`) |
+| `sneedlock_import_position_lock` | One per position lock that existed when the log started. | `owner`, `pool`, `position_id`, `lock_id`, `expiry`, `token0`, `token1`, `dex`, `status` |
+| `sneedlock_import_position_claim` | One per claimed position without a lock when the log started. | `owner`, `pool`, `position_id` |
+
+Import blocks describe state, not observed actions: they have no `cid` or `caller`, and the original creation times of those locks are not known to the log.
+
+Token locks:
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `sneedlock_token_lock_create` | `create_lock` succeeded. | `cid`, `caller`, `owner`, `ledger`, `lock_id`, `amount`, `expiry` |
+| `sneedlock_token_lock_transfer` | `transfer_token_lock_ownership` moved the lock and its tokens. | `cid`, `caller`, `from`, `to`, `ledger`, `lock_id`, `amount`, `expiry`, `ledger_tx` (ledger block index), `outcome` = `ok`. When the ledger call threw with an ambiguous code the block has `outcome` = `uncertain` and no `ledger_tx`: the lock is then held for both parties until reconciled. |
+| `sneedlock_token_withdraw` | `transfer_tokens` moved tokens out of the caller's Sneed wallet. | `cid`, `caller`, `ledger`, `amount`, `to` (account), `ledger_tx` |
+
+Positions:
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `sneedlock_position_claim` | `claim_position` verified ownership on ICPSwap and mapped the position to the caller. | `cid`, `caller`, `owner`, `pool`, `position_id` |
+| `sneedlock_position_lock_create` | `create_position_lock` succeeded. | `cid`, `caller`, `owner`, `pool`, `position_id`, `lock_id`, `expiry`, `token0`, `token1`, `dex` |
+| `sneedlock_position_lock_extend` | `update_position_lock` moved the expiry later. | `cid`, `caller`, `owner`, `pool`, `position_id`, `lock_id`, `old_expiry`, `expiry` |
+| `sneedlock_position_transfer` | `transfer_position_ownership` succeeded (liquid locking). | `cid`, `caller`, `from`, `to`, `pool`, `position_id`; plus `lock_id` and `expiry` when a lock moved with the position |
+| `sneedlock_position_withdraw` | `transfer_position` moved the position out to ICPSwap. | `cid`, `caller`, `owner`, `to`, `pool`, `position_id` |
+| `sneedlock_fees_claim` | `claim_position_fees` (or `request_claim_and_withdraw`) succeeded. | `cid`, `caller`, `owner`, `pool`, `position_id`, `token0`, `token1`, `amount0`, `amount1` (gross claimed), `delivered0`, `delivered1` (net of the ledger fee, what the pool delivers), `request_id` |
+| `sneedlock_liquidity_add` | `add_liquidity_to_locked_position` returned `Ok`. | `cid`, `caller`, `owner`, `pool`, `position_id`, `token0`, `token1`, `amount0`, `amount1` (requested), `credited0`, `credited1`, `used0`, `used1`, `returned0`, `returned1`; `increase_error` (Text) when the pool refused and everything was returned |
+
+Fees:
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `sneedlock_fee_pay` | The ICP lock fee was transferred out of the payer's payment subaccount. | `cid`, `caller`, `payer`, `lock_type` (`token` or `position`), `fee_e8s` (fee charged), `amount_e8s` (amount transferred: the fee minus the ICP ledger fee), `to` (account), `icp_tx` (ICP ledger block index) |
+
+Admin and governance (only admins, governance or controllers can trigger these):
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `sneedlock_admin_token_return` | `admin_return_token` or `admin_return_token_from_failed_request` succeeded. | `cid`, `caller`, `ledger`, `from` (account), `to` (account), `amount`, `ledger_tx` |
+| `sneedlock_admin_token_rescue` | `admin_rescue_stuck_tokens` succeeded. | `cid`, `caller`, `ledger`, `to` (account), `amount`, `ledger_tx` |
+| `sneedlock_admin_pool_deposit` | `admin_pool_deposit` succeeded. | `cid`, `caller`, `pool`, `ledger`, `amount`, `credited` |
+| `sneedlock_admin_pool_withdraw` | `admin_withdraw_pool_balance_to_user` succeeded. | `cid`, `caller`, `pool`, `ledger`, `amount`, `user`, `accepted` |
+| `sneedlock_config_update` | A setting changed. | `cid`, `caller`, `key`, `value` (Text or Nat), `old_value` when known |
+
+`sneedlock_config_update` keys: `max_lock_length_ns`, `token_lock_fee_icp_e8s`, `position_lock_fee_icp_e8s`, `premium_token_lock_fee_icp_e8s`, `premium_position_lock_fee_icp_e8s`, `icp_fee_recipient`, `sneed_premium_canister_id`, `admin_added`, `admin_removed`, `claim_history_cleared`, `failed_claim_history_cleared`, and the log's own settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
+
+### 8.4 Verifying the log
+
+1. Call `icrc3_get_tip_certificate`. Verify `certificate` against the IC root key for the lock canister (agent libraries do this: `Certificate.create` in `@dfinity/agent`). Look up `/canister/<canister_id>/certified_data` in it and check that it equals the root hash of `hash_tree`. Read `last_block_index` and `last_block_hash` from the tree.
+2. Download blocks `0 … last_block_index` with `icrc3_get_blocks`, following `archived_blocks` callbacks for the archived ranges.
+3. Recompute every block's hash. Block `i + 1` must carry `phash` equal to the hash of block `i`, and the hash of the last block must equal `last_block_hash`. Every `btype` must be one of `icrc3_supported_block_types`.
+
+Everything a verifier needs is in the responses; no Sneed DAO service is involved. The following script does all three steps with its own hash implementation (Node.js, `@dfinity/agent` 2.x):
+
+```js
+import { createHash } from 'node:crypto';
+import { HttpAgent, Actor, Certificate, Cbor, reconstruct, lookup_path, lookupResultToBuffer } from '@dfinity/agent';
+import { IDL } from '@dfinity/candid';
+import { Principal } from '@dfinity/principal';
+
+const SNEED_LOCK = Principal.fromText('pqsms-lqaaa-aaaal-ajjza-cai');
+const Value = IDL.Rec();
+Value.fill(IDL.Variant({ Blob: IDL.Vec(IDL.Nat8), Text: IDL.Text, Nat: IDL.Nat, Int: IDL.Int, Array: IDL.Vec(Value), Map: IDL.Vec(IDL.Tuple(IDL.Text, Value)) }));
+const GetBlocksArgs = IDL.Vec(IDL.Record({ start: IDL.Nat, length: IDL.Nat }));
+const GetBlocksResult = IDL.Rec();
+GetBlocksResult.fill(IDL.Record({
+  log_length: IDL.Nat,
+  blocks: IDL.Vec(IDL.Record({ id: IDL.Nat, block: Value })),
+  archived_blocks: IDL.Vec(IDL.Record({ args: GetBlocksArgs, callback: IDL.Func([GetBlocksArgs], [GetBlocksResult], ['query']) })),
+}));
+const idl = ({ IDL }) => IDL.Service({
+  icrc3_get_blocks: IDL.Func([GetBlocksArgs], [GetBlocksResult], ['query']),
+  icrc3_get_tip_certificate: IDL.Func([], [IDL.Opt(IDL.Record({ certificate: IDL.Vec(IDL.Nat8), hash_tree: IDL.Vec(IDL.Nat8) }))], ['query']),
+});
+
+// ICRC-3 representation-independent hash
+const sha256 = (b) => createHash('sha256').update(b).digest();
+const leb128 = (n) => { n = BigInt(n); const out = []; do { let byte = Number(n & 0x7fn); n >>= 7n; if (n !== 0n) byte |= 0x80; out.push(byte); } while (n !== 0n); return Buffer.from(out); };
+const sleb128 = (n) => { n = BigInt(n); const out = []; for (;;) { let byte = Number(n & 0x7fn); n >>= 7n; const sign = (byte & 0x40) !== 0; if ((n === 0n && !sign) || (n === -1n && sign)) { out.push(byte); return Buffer.from(out); } out.push(byte | 0x80); } };
+function hashValue(v) {
+  if ('Blob' in v) return sha256(Buffer.from(v.Blob));
+  if ('Text' in v) return sha256(Buffer.from(v.Text, 'utf8'));
+  if ('Nat' in v) return sha256(leb128(v.Nat));
+  if ('Int' in v) return sha256(sleb128(v.Int));
+  if ('Array' in v) return sha256(Buffer.concat(v.Array.map(hashValue)));
+  const pairs = v.Map.map(([k, val]) => Buffer.concat([sha256(Buffer.from(k, 'utf8')), hashValue(val)]));
+  pairs.sort(Buffer.compare);
+  return sha256(Buffer.concat(pairs));
+}
+const field = (map, key) => map.Map.find(([k]) => k === key)?.[1];
+
+const agent = await HttpAgent.create({ host: 'https://icp-api.io' });
+const lock = Actor.createActor(idl, { agent, canisterId: SNEED_LOCK });
+
+// 1. certified tip
+const [tip] = await lock.icrc3_get_tip_certificate();
+const cert = await Certificate.create({ certificate: new Uint8Array(tip.certificate).buffer, rootKey: agent.rootKey, canisterId: SNEED_LOCK });
+const certified = Buffer.from(lookupResultToBuffer(cert.lookup(['canister', SNEED_LOCK.toUint8Array(), 'certified_data'])));
+const tree = Cbor.decode(new Uint8Array(tip.hash_tree));
+if (!certified.equals(Buffer.from(await reconstruct(tree)))) throw new Error('hash_tree does not match the certificate');
+let lastIndex = 0n, shift = 0n;
+for (const b of Buffer.from(lookupResultToBuffer(lookup_path(['last_block_index'], tree)))) { lastIndex |= BigInt(b & 0x7f) << shift; shift += 7n; }
+const lastHash = Buffer.from(lookupResultToBuffer(lookup_path(['last_block_hash'], tree)));
+
+// 2. all blocks, live and archived
+const blocks = new Map();
+const res = await lock.icrc3_get_blocks([{ start: 0n, length: lastIndex + 1n }]);
+for (const b of res.blocks) blocks.set(b.id, b.block);
+for (const { args, callback: [archiveId, method] } of res.archived_blocks) {
+  const archive = Actor.createActor(({ IDL }) => IDL.Service({ [method]: IDL.Func([GetBlocksArgs], [GetBlocksResult], ['query']) }), { agent, canisterId: archiveId });
+  for (const b of (await archive[method](args)).blocks) blocks.set(b.id, b.block);
+}
+
+// 3. the chain
+let prev = null;
+for (let i = 0n; i <= lastIndex; i++) {
+  const block = blocks.get(i);
+  const phash = field(block, 'phash');
+  if (i > 0n && !Buffer.from(phash.Blob).equals(prev)) throw new Error(`chain broken at block ${i}`);
+  prev = hashValue(block);
+}
+if (!prev.equals(lastHash)) throw new Error('last block does not match the certified hash');
+console.log(`verified ${lastIndex + 1n} blocks`);
+```
+
+The ranges above assume the whole log fits the response caps; for a long log, page `icrc3_get_blocks` in windows of 1000.
+
+### 8.5 Using the log
+
+- **History of one lock:** scan the blocks and keep those whose `tx.lock_id` matches (create, extend, transfer, fee claims, liquidity additions, withdrawal). There is no server-side index; the log is small enough to fetch once and index client-side, and new blocks only ever append.
+- **Proof for a token launch:** the create block, the certified tip and the chain between them prove when a lock was made and that it has not been withdrawn (a withdrawal would be a later block).
+- **Monitoring:** poll `icrc3_log_status().log_length` and fetch only the new blocks since the last index you processed.
+- **Joining with the text logs:** every action block's `tx.cid` is the `correlation_id` of the text log entries of the same call.
+
+The log starts with this release; nothing before it is reconstructed except the import blocks that snapshot every lock that existed at that moment.
+
+---
+
+## 9. Integration checklist
 
 - [ ] Use the **staging** canister `25fsc-7yaaa-aaaal-qjt5q-cai` first. It runs the same code with its own state; the ICPSwap pools and ledgers are the real mainnet ones.
 - [ ] Derive the Sneed wallet account with `principalToSubAccount`; fetch the payment subaccount from the canister.
@@ -485,5 +673,6 @@ The full interface, including admin and log types, is in [sneed_lock.did](/api-d
 - [ ] Treat `Busy:` and `error_code = 2` as retry-after-a-moment, not as failures.
 - [ ] Read lock state with `get_active_*` or `get_claimed_positions_for_principal`; never cache "locked" across the expiry.
 - [ ] Link users to `https://app.sneeddao.com/lock/<lock_id>` for a public view of any lock, and to `https://app.sneeddao.com/sneedlock_info` for the overview.
+- [ ] For audits or proofs, read the ICRC-3 activity log (section 8) and verify it from the certified tip rather than trusting any single response.
 
 Questions, bugs, or an integration you would like listed here: open an issue on [GitHub](https://github.com/Snassy-icp/app_sneeddao/issues) or find Sneed DAO on [OpenChat](https://oc.app).

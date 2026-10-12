@@ -28,6 +28,7 @@ Canisters: production `pqsms-lqaaa-aaaal-ajjza-cai`, staging `25fsc-7yaaa-aaaal-
 7. **Lock fee in ICP** may apply to `create_lock` and `create_position_lock`. Ask `getEffectiveLockFee(P, isPositionLock)`; deposit `fee_e8s − getPaymentBalance(P)` into the payment subaccount before locking. Exactly `fee_e8s` leaves the subaccount; surplus stays for next time.
 8. **`Busy:` errors and `GenericError{error_code = 2}` mean retry in a few seconds**, not failure. Per-caller mutex on token operations, per-pool mutex on fee claims and add-liquidity.
 9. **`dex` is always `1`** (ICPSwap). `token0`/`token1` passed to `create_position_lock` must be the pool's `metadata().token0.address` / `token1.address` in pool order; the canister stores them unverified and uses them for fee claims and add-liquidity.
+10. **Every state change is logged as an ICRC-3 block** (`btype` prefixed `sneedlock_`, hash-chained via `phash`, tip certified). Read with `icrc3_get_blocks` / `icrc3_get_archives`, verify from `icrc3_get_tip_certificate`. Block catalogue and a verifier script: https://app.sneeddao.com/api-docs/sneed_lock.md section 8.
 
 ## Procedures
 
@@ -66,6 +67,11 @@ Tokens: `transfer_tokens(to, toSubaccountOpt, ledger, amount)` from the Sneed wa
 
 ### Housekeeping
 `has_expired_locks()` / `clear_expired_locks()`, `has_expired_position_locks()` / `clear_expired_position_locks()` archive the caller's expired locks. Most updates do this implicitly.
+
+### Audit the history (ICRC-3 activity log)
+- `icrc3_log_status()` → `log_length`, archives, settings. `icrc3_get_blocks([{start; length}])` → live blocks plus `archived_blocks` callbacks to call on the archive canisters for older ranges (max 1000 blocks per response). `icrc3_get_archives({from = null})` lists archives.
+- Block = `Map { btype; ts; phash; tx }`; principals are `Blob`, accounts `Array [owner, subaccount?]`, numbers `Nat`. `tx.cid` joins with the text logs. One lock's history = blocks whose `tx.lock_id` matches.
+- To prove a lock: verify `icrc3_get_tip_certificate` (IC certificate + hash tree with `last_block_index`, `last_block_hash`), then walk `phash` from the tip; the create block proves when it was locked, the absence of a later `sneedlock_position_withdraw` / withdrawal block proves it is still held.
 
 ## Minimal JavaScript setup
 
