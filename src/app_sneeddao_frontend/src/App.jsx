@@ -32,6 +32,7 @@ import CacheRefreshDialog from './components/CacheRefreshDialog';
 // Import new pages
 import Dao from './pages/Dao';
 import DaoInfo from './pages/DaoInfo';
+import Health from './pages/Health';
 import Me from './pages/Me';
 import MeInfo from './pages/MeInfo';
 import Names from './pages/Names';
@@ -198,6 +199,7 @@ function App() {
                     {/* New routes */}
                     <Route path="/dao" element={<Dao />} />
                     <Route path="/dao_info" element={<DaoInfo />} />
+                    <Route path="/health" element={<Health />} />
                     <Route path="/me" element={<Me />} />
                     <Route path="/names" element={<Names />} />
                     <Route path="/me_info" element={<MeInfo />} />
