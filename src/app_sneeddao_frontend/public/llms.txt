@@ -1,0 +1,23 @@
+# Sneed DAO app
+
+> Sneed DAO builds open, permissionless tools on the Internet Computer: Sneed Lock (time-locking of ICRC-1 tokens and ICPSwap liquidity positions), a wallet, liquid staking helpers and more. This file lists the machine-readable documentation for integrators and agents.
+
+## Canister API documentation
+
+- [Sneed Lock canister API](https://app.sneeddao.com/api-docs/sneed_lock.md): full reference for pqsms-lqaaa-aaaal-ajjza-cai, with flows, every method, error strings, types and JavaScript examples
+- [Sneed Lock Candid interface](https://app.sneeddao.com/api-docs/sneed_lock.did)
+- [Sneed Lock JavaScript IDL factory](https://app.sneeddao.com/api-docs/sneed_lock.did.js)
+
+## Agent skills
+
+- [Agent skills index](https://app.sneeddao.com/.well-known/agent-skills/index.json): discovery index (schema 0.2.0)
+- [sneed-lock skill](https://app.sneeddao.com/.well-known/agent-skills/sneed-lock/SKILL.md): compact, task-oriented guide to integrating Sneed Lock
+
+## Source code
+
+- [app_sneeddao on GitHub](https://github.com/Snassy-icp/app_sneeddao): canisters (Motoko) and the reference frontend (React)
+
+## Optional
+
+- [Human-readable API pages](https://app.sneeddao.com/api)
+- [Help pages](https://app.sneeddao.com/help)
