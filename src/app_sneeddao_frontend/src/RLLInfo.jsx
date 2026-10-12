@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import PrincipalBox from './PrincipalBox';
@@ -682,7 +682,20 @@ const TooltipOverlay = ({ tooltip, theme }) => {
     );
 };
 
-// Node definitions with their metadata
+// Duration text usable before the component's helpers are defined
+const formatDurationStatic = (seconds) => {
+    if (!seconds) return '0 seconds';
+    const years = Math.floor(seconds / (365 * 24 * 60 * 60));
+    const months = Math.floor((seconds % (365 * 24 * 60 * 60)) / (30 * 24 * 60 * 60));
+    const days = Math.floor((seconds % (30 * 24 * 60 * 60)) / (24 * 60 * 60));
+    const parts = [];
+    if (years > 0) parts.push(`${years} year${years > 1 ? 's' : ''}`);
+    if (months > 0) parts.push(`${months} month${months > 1 ? 's' : ''}`);
+    if (days > 0) parts.push(`${days} day${days > 1 ? 's' : ''}`);
+    return parts.join(', ') || '< 1 day';
+};
+
+// Node definitions with their metadata (static text; the live vector data overrides splits and destinations)
 const nodes = {
     infrastructure: {
         title: "Core Infrastructure",
@@ -1577,6 +1590,80 @@ function RLLInfo() {
     const [stakingStats, setStakingStats] = useState(null);
     const [isLoadingStakingStats, setIsLoadingStakingStats] = useState(true);
     const [totalSupply, setTotalSupply] = useState(null);
+
+    // ---- live diagram: splitter ratios and destinations come from the vectors, not from the text above ----
+    const NODE_LABELS = { '2': 'ICP Neuron Vector', '4': 'SNEED Buyback Vector', '6': 'Sneed DAO Treasury', '7': 'Sneed DeFi Canister', '8': 'SNEED Burn Address', '9': 'RLL Distribution' };
+    const TREASURY_SUB = '8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de';
+    const liveSplits = useMemo(() => {
+        const toHex = (a) => Array.from(a, (b) => b.toString(16).padStart(2, '0')).join('');
+        const vectorNodeId = (hex) => (hex.length === 64 && hex.startsWith('01') ? parseInt(hex.slice(10, 12), 16) : null);
+        const targetFor = (owner, sub, ledger) => {
+            if (owner === '6jvpj-sqaaa-aaaaj-azwnq-cai' && vectorNodeId(sub) === 1) return '2';
+            if (owner === 'togwv-zqaaa-aaaal-qr7aa-cai') return '4';
+            if (owner === 'fi3zi-fyaaa-aaaaq-aachq-cai') return sub === TREASURY_SUB || ledger === 'ryjl3-tyaaa-aaaaa-aaaba-cai' ? '6' : '8';
+            if (owner === 'lvc4n-7aaaa-aaaam-adm6a-cai') return '9';
+            if (owner === 'ok64y-uiaaa-aaaag-qdcbq-cai') return '7';
+            return null;
+        };
+        const out = {};
+        for (const [vectorName, nodeId] of [['ICP Splitter Vector', '3'], ['SNEED Splitter Vector', '5']]) {
+            const info = vectorInfo[vectorName]?.[0]?.[0];
+            if (!info) continue;
+            const shares = info.custom?.[0]?.devefi_split?.variables?.split || [];
+            const dests = (info.destinations || []).map((d, i) => {
+                const acc = d.endpoint?.ic?.account?.[0];
+                const owner = acc?.owner?.toText?.() || '';
+                const sub = acc?.subaccount?.[0] ? toHex(acc.subaccount[0]) : '';
+                const ledger = d.endpoint?.ic?.ledger?.toText?.() || '';
+                const pct = Number(shares[i] ?? parseFloat(d.name) ?? 0);
+                return { owner, sub, ledger, pct, target: targetFor(owner, sub, ledger) };
+            }).filter((d) => d.pct > 0);
+            if (dests.length) out[nodeId] = { token: nodeId === '3' ? 'ICP' : 'SNEED', dests };
+        }
+        return out;
+    }, [vectorInfo]);
+
+    const liveEdges = useMemo(() => {
+        const splitterIds = Object.keys(liveSplits);
+        const kept = initialEdges.filter((e) => !splitterIds.includes(e.source));
+        const added = [];
+        for (const [src, { token, dests }] of Object.entries(liveSplits)) {
+            dests.forEach((d, i) => {
+                if (!d.target) return;
+                added.push({
+                    id: `live-${src}-${i}`, source: src, target: d.target, label: `${d.pct}%`, type: 'smoothstep',
+                    style: token === 'ICP' ? edgeStyles.icp : edgeStyles.sneed, markerEnd: { type: MarkerType.ArrowClosed },
+                    data: { description: `${d.pct}% ${token} to ${NODE_LABELS[d.target] || d.owner} (read from the vector)`, token, percentage: `${d.pct}%` },
+                });
+            });
+        }
+        return [...kept, ...added];
+    }, [liveSplits]);
+
+    const liveText = useMemo(() => {
+        // outputs per splitter and inputs per destination, as the vectors say today
+        const outputs = {}; const inputs = {};
+        for (const [src, { token, dests }] of Object.entries(liveSplits)) {
+            outputs[src] = dests.map((d) => `${d.pct}% ${token} to ${d.target ? NODE_LABELS[d.target] : d.owner}`);
+            for (const d of dests) if (d.target) (inputs[d.target] = inputs[d.target] || []).push(`${token} from ${src === '3' ? 'ICP Splitter' : 'SNEED Splitter'} (${d.pct}%)`);
+        }
+        return { outputs, inputs };
+    }, [liveSplits]);
+
+    const neuronDescription = neuronBalance
+        ? `Long-term ICP staking neuron, dissolve delay ${formatDurationStatic(Number(neuronBalance.dissolve_delay_seconds))}${neuronBalance.state === 1 ? ' (not dissolving)' : ' (dissolving)'}`
+        : null;
+
+    const patchItem = (item) => {
+        const id = String(item.id);
+        const out = { ...item };
+        if (liveText.outputs[id]) out.outputs = liveText.outputs[id];
+        if (liveText.inputs[id]) out.inputs = [...liveText.inputs[id], ...(item.inputs || []).filter((x) => !/Splitter/.test(x))];
+        if (id === '1' && neuronDescription) out.description = neuronDescription;
+        return out;
+    };
+    const liveNodes = useMemo(() => initialNodes.map((n) => ({ ...n, data: patchItem({ ...n.data, id: n.id }) })), [liveText, neuronDescription]); // eslint-disable-line react-hooks/exhaustive-deps
+    const liveSections = useMemo(() => Object.fromEntries(Object.entries(nodes).map(([k, section]) => [k, { ...section, items: section.items.map(patchItem) }])), [liveText, neuronDescription]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Fetch prices for all known tokens
     useEffect(() => {
@@ -4543,8 +4630,8 @@ function RLLInfo() {
                             overflow: 'hidden'
                         }}>
                             <ReactFlow
-                                nodes={initialNodes}
-                                edges={initialEdges}
+                                nodes={liveNodes}
+                                edges={liveEdges}
                                 fitView
                                 defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
                                 onNodeMouseEnter={handleNodeMouseEnter}
@@ -4557,7 +4644,7 @@ function RLLInfo() {
                             >
                                 <Background color={theme.colors.border} gap={16} />
                                 <Controls />
-                                <TokenAnimationManager edges={initialEdges} nodes={initialNodes} />
+                                <TokenAnimationManager edges={liveEdges} nodes={liveNodes} />
                                 <TooltipOverlay tooltip={tooltip} theme={theme} />
                             </ReactFlow>
                         </div>
@@ -4590,7 +4677,7 @@ function RLLInfo() {
                                 </h2>
                             </div>
                         </div>
-                        {Object.entries(nodes).map(([key, section]) => (
+                        {Object.entries(liveSections).map(([key, section]) => (
                             <div key={key}>
                                 <div 
                                     style={styles.expandableHeader}
@@ -4730,12 +4817,12 @@ function RLLInfo() {
                                                 {expandedItems[item.id] && (
                                                     <div style={styles.itemContent}>
                                                         <p>Token: {item.token}</p>
-                                                        <p>From: {nodes.infrastructure.items.concat(
-                                                            nodes.tokenManagement.items,
+                                                        <p>From: {liveSections.infrastructure.items.concat(
+                                                            liveSections.tokenManagement.items,
                                                             nodes.revenue.items
                                                         ).find(n => n.id === item.source)?.title}</p>
-                                                        <p>To: {nodes.infrastructure.items.concat(
-                                                            nodes.tokenManagement.items,
+                                                        <p>To: {liveSections.infrastructure.items.concat(
+                                                            liveSections.tokenManagement.items,
                                                             nodes.revenue.items
                                                         ).find(n => n.id === item.target)?.title}</p>
                                                         <p>Percentage: {item.percentage}</p>
