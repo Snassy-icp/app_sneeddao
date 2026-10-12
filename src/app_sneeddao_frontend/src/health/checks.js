@@ -390,7 +390,7 @@ export function buildTree(config) {
             { id: 'ping:frontend', name: 'App frontend', link: 'https://app.sneeddao.com', run: async (ctx) => { const t0 = Date.now(); const r = await ctx.call(fetch('/index.html', { cache: 'no-store' }), 'frontend'); return r.ok ? pass(`Served index.html in ${Date.now() - t0} ms`) : fail(`HTTP ${r.status}`); } },
             {
                 id: 'tokens:refresh', name: 'Token list refreshed daily', link: DASHBOARD(IDS.backend), run: async (ctx) => {
-                    // The backend imports Swaprunner's whitelist and refreshes every token's metadata on a daily timer.
+                    // The backend imports ICPSwap's trusted token list and refreshes every token's metadata on a daily timer.
                     const b = await actor(backendTokenListIdl, IDS.backend);
                     let st;
                     try { st = await ctx.call(b.get_token_list_status(), 'token list status'); } catch (e) { if (isMissingMethod(e)) return skip('Backend build without the daily token list job (not upgraded yet)'); throw e; }
@@ -416,7 +416,6 @@ export function buildTree(config) {
             pingLeaf(IDS.sneedex, 'Sneedex', 'getConfig'),
             pingLeaf(IDS.sneedapp, 'Sneedapp (bot factory)', 'getCurrentVersion'),
             pingLeaf(IDS.sgldt, 'sGLDT', 'get_fee_collector'),
-            pingLeaf(IDS.swaprunner, 'Swaprunner', 'getUserProfileCount'),
             pingLeaf(IDS.stakingBot, 'ICP staking bot', 'getVersion', stakingBotIdl),
             pingLeaf(IDS.neuronManager, 'ICP neuron manager', 'getVersion', stakingBotIdl),
             pingLeaf(IDS.ledger, 'SNEED ledger', 'icrc1_total_supply', ledgerIdl),

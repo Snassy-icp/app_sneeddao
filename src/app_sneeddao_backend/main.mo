@@ -23,7 +23,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
       Principal.fromActor(this);
   };
   
-  transient let SWAPRUNNER_CANISTER_ID : Text = "tt72q-zqaaa-aaaaj-az4va-cai";
+  // ICPSwap's trusted token list: the source of the whitelist (Swaprunner, which
+  // used to sit in between, is being retired).
+  transient let ICPSWAP_TOKEN_LIST_CANISTER_ID : Text = "k37c6-riaaa-aaaag-qcyza-cai";
   transient let ICP_LEDGER_CANISTER_ID : Text = "ryjl3-tyaaa-aaaaa-aaaba-cai";
   transient let ICP_LEDGER_FEE : Nat = 10_000; // 0.0001 ICP
 
@@ -98,7 +100,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   transient var refresh_all_tokens_to_process : [WhitelistedToken] = [];
   transient var refresh_all_timer_id : ?Timer.TimerId = null;
 
-  // Daily token list maintenance: import the whitelist from Swaprunner, then
+  // Daily token list maintenance: import ICPSwap's trusted token list, then
   // refresh every token's metadata. Self-starting on install and after every
   // upgrade; `get_token_list_status` reports it for the health page.
   transient let TOKEN_REFRESH_INTERVAL_SECONDS : Nat = 86_400;
@@ -369,9 +371,16 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   private transient let principal_wallet_layouts: T.PrincipalWalletLayoutMap = HashMap.HashMap<Principal, WalletLayout>(100, Principal.equal, Principal.hash);
 
   // SwapRunner actor
-  transient let swaprunner = actor(SWAPRUNNER_CANISTER_ID) : actor {
-    get_whitelisted_tokens : shared query () -> async [(Principal, SwapRunnerTokenMetadata)];
-    get_all_tokens : shared query () -> async [(Principal, SwapRunnerTokenMetadata)];
+  // Only the fields we use: Candid lets a record with more fields decode into this.
+  type IcpSwapListToken = { canisterId : Text; decimals : Nat; fee : Nat; name : Text; symbol : Text; standard : Text };
+  transient let icpswap_token_list = actor(ICPSWAP_TOKEN_LIST_CANISTER_ID) : actor {
+    getList : shared query () -> async { #ok : [IcpSwapListToken]; #err : Text };
+  };
+  /// A canister id in text form, or null if it does not look like one (no trap).
+  func principal_from_canister_text(t : Text) : ?Principal {
+    if (t.size() != 27) { return null };
+    for (c in t.chars()) { if (not (c == '-' or (c >= 'a' and c <= 'z') or (c >= '2' and c <= '7'))) { return null } };
+    ?Principal.fromText(t);
   };
 
   // Admin management functions
@@ -1142,27 +1151,40 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     principal_wallet_layouts.put(caller, layout);
   };
 
-  public shared ({ caller }) func import_whitelist_from_swaprunner() : async () {
+  /// Import ICPSwap's trusted token list into the whitelist (admin). Existing
+  /// entries are updated, tokens added by hand are kept.
+  public shared ({ caller }) func import_whitelist_from_icpswap() : async () {
     assert(is_admin(caller));
-    await import_whitelist_from_swaprunner_impl();
+    await import_whitelist_from_icpswap_impl();
   };
 
-  private func import_whitelist_from_swaprunner_impl() : async () {
-    let tokens = await swaprunner.get_all_tokens();
-    for ((ledger_id, metadata) in tokens.vals()) {
-      switch (metadata.decimals, metadata.fee, metadata.name, metadata.symbol) {
-        case (?decimals, ?fee, ?name, ?symbol) {
-          let token : WhitelistedToken = {
-            ledger_id = ledger_id;
-            decimals = decimals;
-            fee = fee;
-            name = name;
-            symbol = symbol;
-            standard = metadata.standard;
+  /// Kept for callers of the old name; Swaprunner is no longer involved.
+  public shared ({ caller }) func import_whitelist_from_swaprunner() : async () {
+    assert(is_admin(caller));
+    await import_whitelist_from_icpswap_impl();
+  };
+
+  private func import_whitelist_from_icpswap_impl() : async () {
+    let tokens = switch (await icpswap_token_list.getList()) {
+      case (#ok(list)) { list };
+      case (#err(e)) { throw Error.reject("ICPSwap token list: " # e) };
+    };
+    for (t in tokens.vals()) {
+      switch (principal_from_canister_text(t.canisterId)) {
+        case (?ledger_id) {
+          if (t.decimals < 256) {
+            let token : WhitelistedToken = {
+              ledger_id = ledger_id;
+              decimals = Nat8.fromNat(t.decimals);
+              fee = t.fee;
+              name = t.name;
+              symbol = t.symbol;
+              standard = t.standard;
+            };
+            whitelisted_tokens.put(ledger_id, token);
           };
-          whitelisted_tokens.put(ledger_id, token);
         };
-        case _ { /* Skip tokens with missing required metadata */ };
+        case null {};
       };
     };
     token_list_last_import := Time.now();
@@ -1282,7 +1304,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   private func token_refresh_job() : async () {
     if (refresh_all_is_running) { return };
     try {
-      await import_whitelist_from_swaprunner_impl();
+      await import_whitelist_from_icpswap_impl();
       token_list_last_error := "";
     } catch (e) {
       token_list_last_error := "whitelist import: " # Error.message(e);

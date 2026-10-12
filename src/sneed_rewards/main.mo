@@ -33,7 +33,8 @@ shared (deployer) persistent actor class SneedRLL() = this {
   // The Sneed SNS governance canister principal
   transient let sneed_governance_canister_id = Principal.fromText("fi3zi-fyaaa-aaaaq-aachq-cai");
 
-  transient let SWAPRUNNER_CANISTER_ID : Text = "tt72q-zqaaa-aaaaj-az4va-cai";
+  // ICPSwap's trusted token list: the source of the whitelist (Swaprunner is being retired).
+  transient let ICPSWAP_TOKEN_LIST_CANISTER_ID : Text = "k37c6-riaaa-aaaag-qcyza-cai";
 
 
   // Admin principals
@@ -148,8 +149,14 @@ shared (deployer) persistent actor class SneedRLL() = this {
   };  
 
   // SwapRunner actor
-  transient let swaprunner = actor(SWAPRUNNER_CANISTER_ID) : actor {
-    get_all_tokens : shared query () -> async [(Principal, T.SwapRunnerTokenMetadata)];
+  type IcpSwapListToken = { canisterId : Text; decimals : Nat; fee : Nat; name : Text; symbol : Text; standard : Text };
+  transient let icpswap_token_list = actor(ICPSWAP_TOKEN_LIST_CANISTER_ID) : actor {
+    getList : shared query () -> async { #ok : [IcpSwapListToken]; #err : Text };
+  };
+  func principal_from_canister_text(t : Text) : ?Principal {
+    if (t.size() != 27) { return null };
+    for (c in t.chars()) { if (not (c == '-' or (c >= 'a' and c <= 'z') or (c >= '2' and c <= '7'))) { return null } };
+    ?Principal.fromText(t);
   };  
 
   transient let MAX_TICKS : Nat = 250; // maximum number of ticks for a longrunning function
@@ -2370,6 +2377,12 @@ shared (deployer) persistent actor class SneedRLL() = this {
 
 
 
+  /// Import ICPSwap's trusted token list (admin). The old name below is kept for callers.
+  public shared ({ caller }) func import_whitelisted_tokens_from_icpswap() : async () {
+    assert(is_admin(caller));
+    await import_whitelisted_tokens_from_swaprunner_impl();
+  };
+
   public shared ({ caller }) func import_whitelisted_tokens_from_swaprunner() : async () {    
     assert(is_admin(caller));
 
@@ -2384,33 +2397,34 @@ shared (deployer) persistent actor class SneedRLL() = this {
     
     try { 
 
-      let tokens = await swaprunner.get_all_tokens();
+      let tokens = switch (await icpswap_token_list.getList()) {
+        case (#ok(list)) { list };
+        case (#err(e)) { throw Error.reject("ICPSwap token list: " # e) };
+      };
 
-      for ((ledger_id, metadata) in tokens.vals()) {
+      for (t in tokens.vals()) {
         if (not import_whitelisted_running) {
           return;
         };
-        
-        switch (metadata.decimals, metadata.fee, metadata.name, metadata.symbol) {
-          case (?decimals, ?fee, ?name, ?symbol) {
+        switch (principal_from_canister_text(t.canisterId)) {
+          case (?ledger_id) {
             switch (whitelisted_tokens.get(ledger_id)) {
-              case (?_token) { /* o nothing */ };
+              case (?_token) { /* already known */ };
               case (null) {
-                // only add tokens with a standard starting with icrc1
-                if (metadata.standard.chars().next() == ?'I' or metadata.standard.chars().next() == ?'i') {
+                // only ICRC tokens (standard starting with "I"), with decimals that fit
+                if ((t.standard.chars().next() == ?'I' or t.standard.chars().next() == ?'i') and t.decimals < 256) {
                   cntImportedWhitelist += 1;
-
                   whitelisted_tokens.put(ledger_id, {
-                    name = name;
-                    symbol = symbol;  
-                    fee = fee;
-                    decimals = decimals;
+                    name = t.name;
+                    symbol = t.symbol;
+                    fee = t.fee;
+                    decimals = Nat8.fromNat(t.decimals);
                   });
                 };
               };
             };
           };
-          case _ { /* Skip tokens with missing required metadata */ };
+          case null {};
         };
       };
 
