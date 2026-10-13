@@ -218,7 +218,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock', '/lock_wizard'].includes(path) || path.startsWith('/lock/')) return 'Sneed Lock';
         if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my', '/swap'].includes(path) || path.startsWith('/sneedex_offer/')) return 'Sneedex';
         if (['/sneedapp'].includes(path) || path.startsWith('/sneedapp/')) return 'Sneedapp';
-        if (['/tools/main', '/tools/sns_jailbreak', '/tools/sns_jailbreak_list'].includes(path) || path.startsWith('/tools/')) return 'Tools';
+        if (['/tools/main', '/tools/sns_jailbreak', '/tools/sns_jailbreak_list', '/studio'].includes(path) || path.startsWith('/tools/') || path.startsWith('/studio/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
         if (['/help', '/api'].includes(path) || location.pathname.startsWith('/help/') || location.pathname.startsWith('/api/')) return 'Help';
         return 'Sneed Hub';
@@ -376,7 +376,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         const path = location.pathname;
         
         // Re-check Tools section when authentication changes
-        if (isAuthenticated && path.startsWith('/tools/')) {
+        if (isAuthenticated && (path.startsWith('/tools/') || path.startsWith('/studio'))) {
             setActiveSection('Tools');
             return;
         }
@@ -632,9 +632,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         { name: 'Tools', path: '/tools/main' },
         { name: 'Account Tool', path: '/tools/account' },
         { name: 'ICRC-3 Browser', path: '/tools/icrc3' },
-        { name: 'Token Safety', path: '/tools/token_safety' },
+        { name: 'Token Studio', path: '/studio' },
         { name: 'Follow the Money', path: '/tools/money' },
-        { name: 'Sneed Pad', path: '/tools/pad' },
     ];
     if (isAuthenticated) {
         toolsSubMenu.push(

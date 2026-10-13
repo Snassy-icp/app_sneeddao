@@ -1,20 +1,19 @@
-// /tools/token_safety: rates any ICRC ledger from public, verifiable data.
-// Gates first (controllers, code), then minting, distribution, locks,
-// liquidity and cycles, as a tree of checks like /health.
+// The studio's Check panel: rates any ICRC ledger from public, verifiable
+// data. Gates first (controllers, code), then minting, distribution, locks,
+// liquidity and cycles, as a tree of checks like /health, with a fix button
+// on every line the studio has an answer for. The old /tools/token_safety
+// route redirects into the studio.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import Header from '../components/Header';
-import TokenSelector from '../components/TokenSelector';
+import { Navigate, useParams } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaShieldAlt, FaSearch, FaSpinner, FaRedo, FaCog, FaExclamationTriangle } from 'react-icons/fa';
+import { FaSpinner, FaRedo, FaCog, FaExclamationTriangle, FaProjectDiagram } from 'react-icons/fa';
 import { buildTokenTree, rateTree, fetchTokenHeader } from '../tokensafety/checks.js';
 import { runTree, statusOf, countLeaves, isListing } from '../health/runner.js';
 import { loadConfig, saveConfig, DEFAULT_CONFIG, CONFIG_FIELDS } from '../tokensafety/config.js';
-import { STATUS, customStyles, Badge, Node, primary } from '../health/TreeView.jsx';
+import { STATUS, Badge, Node, primary } from '../health/TreeView.jsx';
 import MoneyGraph from '../tokensafety/MoneyGraph.jsx';
 import { scanSource } from '../tokensafety/sources.js';
-import { FaProjectDiagram } from 'react-icons/fa';
-import { parsePrincipal } from '../utils/icrc3/client.js';
+import { fixFor } from '../tokensafety/fixes.js';
 
 function ConfigPanel({ config, setConfig, theme, onClose }) {
     const [draft, setDraft] = useState(config);
@@ -41,13 +40,10 @@ function ConfigPanel({ config, setConfig, theme, onClose }) {
     );
 }
 
-function TokenSafety() {
+/// Rates `ledgerId`; `onHeader` and `onRating` let the studio show the token and its grade in its own header.
+export function CheckPanel({ ledgerId, onHeader, onRating }) {
     const { theme } = useTheme();
-    const navigate = useNavigate();
-    const { ledgerId: routeLedger } = useParams();
     const [config, setConfig] = useState(loadConfig);
-    const [text, setText] = useState(routeLedger || '');
-    const [ledgerId, setLedgerId] = useState(routeLedger && parsePrincipal(routeLedger) ? routeLedger : null);
     const [state, setState] = useState({ tree: null, results: new Map() });
     const [running, setRunning] = useState(false);
     const [startedAt, setStartedAt] = useState(null);
@@ -89,24 +85,19 @@ function TokenSafety() {
         }
     }, []);
 
-    useEffect(() => { if (routeLedger && parsePrincipal(routeLedger)) { setLedgerId(routeLedger); setText(routeLedger); } }, [routeLedger]);
     useEffect(() => { if (ledgerId) run(ledgerId, config); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [ledgerId, config]);
-
-    const submit = (value) => {
-        const p = parsePrincipal(value || '');
-        if (!p) { setError('That is not a principal'); return; }
-        const id = p.toText();
-        setText(id);
-        if (id === ledgerId) run(id, config); else navigate(`/tools/token_safety/${id}`);
-    };
 
     const graphSource = useMemo(() => (graphData ? scanSource(graphData.scan, graphData.tags, graphData.origin, { symbol: header?.symbol || graphData.meta?.symbol, decimals: header?.decimals ?? graphData.meta?.decimals ?? 8 }) : null), [graphData, header]);
     const toggle = useCallback((id) => setExpanded((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; }), []);
+    const fixes = useCallback((leafId) => fixFor(leafId, ledgerId), [ledgerId]);
     const counts = state.tree ? countLeaves(state.tree, state.results) : null;
     const total = counts ? Object.values(counts).reduce((a, b) => a + b, 0) : 0;
     const done = counts ? total - counts.pending - counts.running : 0;
     const rating = state.tree ? rateTree(state.tree, (n) => statusOf(n, state.results)) : null;
     const overall = state.tree ? statusOf(state.tree, state.results) : 'pending';
+
+    useEffect(() => { onHeader?.(header); }, [header, onHeader]);
+    useEffect(() => { onRating?.(rating, running); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [rating?.label, rating?.color, running]);
 
     const expandAll = (problemsOnly) => {
         if (!state.tree) return;
@@ -117,100 +108,70 @@ function TokenSafety() {
     };
     const btn = (active) => ({ padding: '8px 12px', borderRadius: 8, border: `1px solid ${active ? primary : theme.colors.border}`, background: active ? `${primary}22` : 'transparent', color: theme.colors.primaryText, cursor: 'pointer', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: 6 });
 
+    if (!ledgerId) return null;
     return (
-        <div className="page-container" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
-            <style>{customStyles}</style>
-            <Header />
-            <main style={{ maxWidth: 1100, margin: '0 auto', padding: '1.25rem 16px 3rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: '1rem' }}>
-                    <div style={{ width: 52, height: 52, borderRadius: 14, background: `${(rating?.color || primary)}22`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <FaShieldAlt size={26} color={rating?.color || primary} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 220 }}>
-                        <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: theme.colors.primaryText }}>Token Safety</h1>
-                        <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
-                            How hard is a token to rug? Who controls the ledger, which code it runs, who can mint, who holds it, what is locked, and how deep the liquidity is. Everything here is read from the chain, nothing is self-reported.
-                        </div>
+        <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: '1rem' }}>
+                <div style={{ flex: 1, minWidth: 220 }}>
+                    <div style={{ fontSize: '1.3rem', fontWeight: 800, color: rating?.color || theme.colors.primaryText }}>{rating ? rating.label : running ? 'Preparing…' : ''}</div>
+                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.88rem' }}>{rating?.note}</div>
+                    <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: 4 }}>
+                        {running ? (total === 0 ? 'Listing checks…' : `Running ${done} of ${total} checks${state.tree && isListing(state.tree) ? ', listing more' : ''}…`) : finishedAt ? `${total} checks, finished ${new Date(finishedAt).toLocaleTimeString()} in ${((finishedAt - startedAt) / 1000).toFixed(1)} s` : ''}
+                        {running && progress && progress.total > 0 && <span> Scanning the block log: {progress.done.toLocaleString('en-US')} of {progress.total.toLocaleString('en-US')} blocks.</span>}
                     </div>
                 </div>
+                <Badge status={overall} theme={theme}>{(STATUS[overall] || STATUS.pending).label}</Badge>
+            </div>
 
-                <div style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 14, padding: '1rem', background: theme.colors.cardBg, marginBottom: '1rem' }}>
-                    <form onSubmit={(e) => { e.preventDefault(); submit(text); }} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                        <div style={{ flex: '1 1 320px', minWidth: 240 }}>
-                            <TokenSelector value={text} onChange={(id) => { setText(id); if (id) submit(id); }} placeholder="Pick a token, or enter any ledger canister id" allowCustom />
-                        </div>
-                        <button type="submit" style={{ ...btn(true), fontWeight: 700 }} disabled={running || !text}>{running ? <FaSpinner className="health-spin" size={12} /> : <FaSearch size={12} />} Rate</button>
-                    </form>
-                    {error && <div style={{ marginTop: 10, color: '#ef4444', fontSize: '0.88rem' }}>{error}</div>}
+            {error && <div style={{ marginBottom: 10, color: '#ef4444', fontSize: '0.88rem' }}>{error}</div>}
+
+            {counts && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: '1rem' }}>
+                    <Badge status="pass" theme={theme}>{counts.pass} passed</Badge>
+                    <Badge status="warn" theme={theme}>{counts.warn} warnings</Badge>
+                    <Badge status="fail" theme={theme}>{counts.fail} failed</Badge>
+                    {counts.skip > 0 && <Badge status="skip" theme={theme}>{counts.skip} skipped</Badge>}
+                    {(counts.running + counts.pending) > 0 && <Badge status="running" theme={theme}>{counts.running + counts.pending} pending</Badge>}
                 </div>
+            )}
 
-                {ledgerId && (
-                    <>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: '1rem' }}>
-                            {header?.logo ? (
-                                <img src={header.logo} alt="" style={{ width: 52, height: 52, borderRadius: 14, objectFit: 'cover', background: theme.colors.secondaryBg, flexShrink: 0 }} />
-                            ) : (
-                                <div style={{ width: 52, height: 52, borderRadius: 14, background: theme.colors.secondaryBg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.colors.mutedText, fontWeight: 800, flexShrink: 0 }}>{header?.symbol?.slice(0, 3) || '?'}</div>
-                            )}
-                            <div style={{ flex: 1, minWidth: 220 }}>
-                                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: theme.colors.primaryText }}>
-                                    {header?.name ? `${header.name}${header.symbol ? ` (${header.symbol})` : ''}` : running ? 'Reading the ledger…' : 'Unknown token'}
-                                    <a href={`https://dashboard.internetcomputer.org/canister/${ledgerId}`} target="_blank" rel="noopener noreferrer" className="health-mono" style={{ marginLeft: 10, fontSize: '0.8rem', color: theme.colors.mutedText, textDecoration: 'none', fontWeight: 400 }}>{ledgerId}</a>
-                                </div>
-                                <div style={{ fontSize: '1.3rem', fontWeight: 800, color: rating?.color || theme.colors.primaryText }}>{rating ? rating.label : 'Preparing…'}</div>
-                                <div style={{ color: theme.colors.secondaryText, fontSize: '0.88rem' }}>{rating?.note}</div>
-                                <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: 4 }}>
-                                    {running ? (total === 0 ? 'Listing checks…' : `Running ${done} of ${total} checks${state.tree && isListing(state.tree) ? ', listing more' : ''}…`) : finishedAt ? `${total} checks, finished ${new Date(finishedAt).toLocaleTimeString()} in ${((finishedAt - startedAt) / 1000).toFixed(1)} s` : ''}
-                                    {running && progress && progress.total > 0 && <span> Scanning the block log: {progress.done.toLocaleString('en-US')} of {progress.total.toLocaleString('en-US')} blocks.</span>}
-                                </div>
-                            </div>
-                            <Badge status={overall} theme={theme}>{(STATUS[overall] || STATUS.pending).label}</Badge>
-                        </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: '1rem' }}>
+                <button type="button" style={btn(false)} onClick={() => run(ledgerId, config)} disabled={running}><FaRedo size={11} className={running ? 'health-spin' : undefined} /> Run again</button>
+                <button type="button" style={btn(onlyProblems)} onClick={() => setOnlyProblems((v) => !v)}><FaExclamationTriangle size={11} /> Problems only</button>
+                <button type="button" style={btn(false)} onClick={() => expandAll(false)}>Expand all</button>
+                <button type="button" style={btn(false)} onClick={() => expandAll(true)}>Expand problems</button>
+                <button type="button" style={btn(false)} onClick={() => setExpanded(new Set(['token', 'gates']))}>Collapse</button>
+                <button type="button" style={btn(showConfig)} onClick={() => setShowConfig((v) => !v)}><FaCog size={11} /> Thresholds</button>
+                {graphData && <button type="button" style={btn(showGraph)} onClick={() => setShowGraph((v) => !v)}><FaProjectDiagram size={11} /> Follow the money</button>}
+            </div>
 
-                        {counts && (
-                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: '1rem' }}>
-                                <Badge status="pass" theme={theme}>{counts.pass} passed</Badge>
-                                <Badge status="warn" theme={theme}>{counts.warn} warnings</Badge>
-                                <Badge status="fail" theme={theme}>{counts.fail} failed</Badge>
-                                {counts.skip > 0 && <Badge status="skip" theme={theme}>{counts.skip} skipped</Badge>}
-                                {(counts.running + counts.pending) > 0 && <Badge status="running" theme={theme}>{counts.running + counts.pending} pending</Badge>}
-                            </div>
-                        )}
+            {showGraph && graphData && (
+                <div style={{ marginBottom: '1rem' }}>
+                    <MoneyGraph source={graphSource} start={null} theme={theme} />
+                </div>
+            )}
 
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: '1rem' }}>
-                            <button type="button" style={btn(false)} onClick={() => run(ledgerId, config)} disabled={running}><FaRedo size={11} className={running ? 'health-spin' : undefined} /> Run again</button>
-                            <button type="button" style={btn(onlyProblems)} onClick={() => setOnlyProblems((v) => !v)}><FaExclamationTriangle size={11} /> Problems only</button>
-                            <button type="button" style={btn(false)} onClick={() => expandAll(false)}>Expand all</button>
-                            <button type="button" style={btn(false)} onClick={() => expandAll(true)}>Expand problems</button>
-                            <button type="button" style={btn(false)} onClick={() => setExpanded(new Set(['token', 'gates']))}>Collapse</button>
-                            <button type="button" style={btn(showConfig)} onClick={() => setShowConfig((v) => !v)}><FaCog size={11} /> Thresholds</button>
-                            {graphData && <button type="button" style={btn(showGraph)} onClick={() => setShowGraph((v) => !v)}><FaProjectDiagram size={11} /> Follow the money</button>}
-                        </div>
+            {showConfig && <ConfigPanel config={config} setConfig={setConfig} theme={theme} onClose={() => setShowConfig(false)} />}
 
-                        {showGraph && graphData && (
-                            <div style={{ marginBottom: '1rem' }}>
-                                <MoneyGraph source={graphSource} start={null} theme={theme} />
-                            </div>
-                        )}
-
-                        {showConfig && <ConfigPanel config={config} setConfig={setConfig} theme={theme} onClose={() => setShowConfig(false)} />}
-
-                        <div style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 14, overflow: 'hidden', background: theme.colors.cardBg }}>
-                            {state.tree ? (
-                                <Node node={state.tree} results={state.results} depth={0} theme={theme} expanded={expanded} toggle={toggle} onlyProblems={onlyProblems} />
-                            ) : (
-                                <div style={{ padding: '2rem', textAlign: 'center', color: theme.colors.mutedText }}><FaSpinner className="health-spin" /> Preparing checks…</div>
-                            )}
-                        </div>
-                    </>
+            <div style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 14, overflow: 'hidden', background: theme.colors.cardBg }}>
+                {state.tree ? (
+                    <Node node={state.tree} results={state.results} depth={0} theme={theme} expanded={expanded} toggle={toggle} onlyProblems={onlyProblems} fixFor={fixes} />
+                ) : (
+                    <div style={{ padding: '2rem', textAlign: 'center', color: theme.colors.mutedText }}><FaSpinner className="health-spin" /> Preparing checks…</div>
                 )}
+            </div>
 
-                <div style={{ color: theme.colors.mutedText, fontSize: '0.78rem', marginTop: 12, lineHeight: 1.6 }}>
-                    The two gates come first: controllers and module hashes are read through the IC's public state, and hashes are compared with every ledger-suite version the NNS has approved. When a gate fails, nothing the ledger reports can be trusted, so the rating is "Unverifiable" whatever the other checks say. Holders are rebuilt from the ledger's own block log in your browser. Locks and locked liquidity come from Sneed Lock, pools from ICPSwap, and cycles from the blackhole canister or the SNS root where they are observable.
-                </div>
-            </main>
-        </div>
+            <div style={{ color: theme.colors.mutedText, fontSize: '0.78rem', marginTop: 12, lineHeight: 1.6 }}>
+                The two gates come first: controllers and module hashes are read through the IC's public state, and hashes are compared with every ledger-suite version the NNS has approved. When a gate fails, nothing the ledger reports can be trusted, so the rating is "Unverifiable" whatever the other checks say. Holders are rebuilt from the ledger's own block log in your browser. Locks and locked liquidity come from Sneed Lock, pools from ICPSwap, and cycles from the blackhole canister or the SNS root where they are observable. A button on a line opens the studio action that answers it.
+            </div>
+        </>
     );
+}
+
+/// The old address: /tools/token_safety[/:ledgerId] now lives in the studio.
+function TokenSafety() {
+    const { ledgerId } = useParams();
+    return <Navigate to={ledgerId ? `/studio/${ledgerId}` : '/studio'} replace />;
 }
 
 export default TokenSafety;

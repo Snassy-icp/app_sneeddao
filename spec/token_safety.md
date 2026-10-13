@@ -207,7 +207,18 @@ standard creation fee and a Sneed Premium member fee (membership checked
 through the shared PremiumClient against the premium canister), both set by
 `admin_set_config` (governance, controllers or listed admins).
 PocketIC tests in test/canisters/tests/sneed-pad.test.js use the real
-ledger-suite wasms. The wizard is `/tools/pad`. The pad is not deployed yet.
+ledger-suite wasms. The pad is deployed on staging (symdn-ciaaa-aaaal-qxobq-cai).
+
+**Token Studio (2026-10-13):** the front end for all of this is one page,
+`/studio`, with three tabs. Check is the rating (was /tools/token_safety),
+with a fix button on every failing or weak line (src/tokensafety/fixes.js maps
+leaf ids to actions). Harden lists what the owner of an existing token can do,
+section by section: lock supply and LP positions in Sneed Lock (the lock
+wizard takes `?type=token|position&token=<ledger>`), hand control to the
+blackhole or an SNS (commands today; filed from the studio with the user's
+own hotkeyed neuron next), add an index (pad stage, next), minting (cannot
+change after install), cycles (guardian, planned). Launch is the pad (was
+/tools/pad). The old routes redirect.
 Planned next: adopt existing ledgers, lock and liquidity stages, plan-then-pay
 across stages (one approval, staged execution), index canisters for existing
 ICRC-3 ledgers.

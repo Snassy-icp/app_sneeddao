@@ -1,16 +1,15 @@
-// /tools/pad: launch a token. Configure the ledger, see the full price, then
+// The studio's Launch panel: configure a ledger, see the full price, then
 // approve once and the pad mints it (stages 1 and 2 of spec/token_safety.md).
+// The old /tools/pad route redirects into the studio.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
-import Header from '../components/Header';
 import PrincipalInput from '../components/PrincipalInput';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { padIdl, PAD_CANISTER_ID } from '../tokensafety/padIdl.js';
-import { customStyles } from '../health/TreeView.jsx';
 import { FaRocket, FaSpinner, FaPlus, FaTrash, FaShieldAlt, FaExternalLinkAlt } from 'react-icons/fa';
 
 const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
@@ -25,7 +24,8 @@ const parseUnits = (text, decimals) => {
 };
 const parsePrincipal = (t) => { try { return Principal.fromText(String(t).trim()); } catch { return null; } };
 
-function SneedPad() {
+/// `onLaunched(launch)` lets the studio switch to the new token's report.
+export function LaunchPanel({ onLaunched }) {
     const { theme } = useTheme();
     const { identity, isAuthenticated } = useAuth();
     const me = identity?.getPrincipal?.().toText?.() || null;
@@ -109,6 +109,7 @@ function SneedPad() {
             if ('Err' in r) throw new Error(r.Err);
             setResult(r.Ok);
             setQuote(null);
+            onLaunched?.(r.Ok);
         } catch (e) { setError(e?.message || String(e)); }
         finally { setLaunching(null); }
     };
@@ -131,17 +132,8 @@ function SneedPad() {
     );
 
     return (
-        <div className="page-container" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
-            <style>{customStyles}</style>
-            <Header />
-            <main style={{ maxWidth: 980, margin: '0 auto', padding: '1.25rem 16px 3rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: '1rem' }}>
-                    <div style={{ width: 52, height: 52, borderRadius: 14, background: '#10b98122', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FaRocket size={24} color="#10b981" /></div>
-                    <div style={{ flex: 1, minWidth: 220 }}>
-                        <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: theme.colors.primaryText }}>Sneed Pad</h1>
-                        <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Launch a token on the same ledger code every SNS runs, with the safe choices made easy. Configure it, see the full price, approve once, and it is minted. The <Link to="/tools/token_safety" style={{ color: '#10b981' }}>token safety page</Link> rates it the moment it exists.</div>
-                    </div>
-                </div>
+        <>
+                <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '1rem' }}>Launch a token on the same ledger code every SNS runs, with the safe choices made easy. Configure it, see the full price, approve once, and it is minted. The studio rates it the moment it exists.</div>
 
                 {!PAD_CANISTER_ID && <div style={{ ...card, color: '#f59e0b' }}>The launchpad canister is not deployed in this build yet.</div>}
                 {PAD_CANISTER_ID && (
@@ -232,7 +224,7 @@ function SneedPad() {
                             <div><b>{result.config.name} ({result.config.symbol})</b> is live. Ledger <span className="health-mono">{result.ledger[0]?.toText()}</span>{result.index.length ? <>, index <span className="health-mono">{result.index[0].toText()}</span></> : null}.</div>
                             <div>Controlled by {result.controllers.map((p) => p.toText()).join(', ')}{result.registration_proposal.length ? `, registration proposal ${result.registration_proposal[0]} submitted to Sneed DAO` : ''}.</div>
                             <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap' }}>
-                                <Link to={`/tools/token_safety/${result.ledger[0]?.toText()}`} style={{ color: '#10b981', display: 'inline-flex', gap: 6, alignItems: 'center' }}><FaShieldAlt size={12} /> Rate it on the token safety page</Link>
+                                <Link to={`/studio/${result.ledger[0]?.toText()}`} style={{ color: '#10b981', display: 'inline-flex', gap: 6, alignItems: 'center' }}><FaShieldAlt size={12} /> Check it</Link>
                                 <a href={`https://dashboard.internetcomputer.org/canister/${result.ledger[0]?.toText()}`} target="_blank" rel="noopener noreferrer" style={{ color: '#10b981', display: 'inline-flex', gap: 6, alignItems: 'center' }}>Dashboard <FaExternalLinkAlt size={10} /></a>
                             </div>
                         </div>
@@ -247,18 +239,20 @@ function SneedPad() {
                                 <span style={{ fontWeight: 700 }}>{l.config.name} ({l.config.symbol})</span>
                                 <span className="health-mono" style={{ color: theme.colors.mutedText }}>{l.ledger[0]?.toText() || 'no ledger'}</span>
                                 <span style={{ color: 'failed' in l.status ? '#ef4444' : theme.colors.mutedText }}>{'failed' in l.status ? `failed: ${l.status.failed}` : new Date(Number(l.created_at / 1000000n)).toLocaleString()}</span>
-                                {l.ledger.length > 0 && <Link to={`/tools/token_safety/${l.ledger[0].toText()}`} style={{ color: '#10b981' }}>safety</Link>}
+                                {l.ledger.length > 0 && <Link to={`/studio/${l.ledger[0].toText()}`} style={{ color: '#10b981' }}>check</Link>}
                             </div>
                         ))}
                     </div>
                 )}
 
                 <div style={{ color: theme.colors.mutedText, fontSize: '0.78rem', lineHeight: 1.6 }}>
-                    The ledger code is the DFINITY ICRC ledger suite, fetched by the pad from the NNS's SNS wasm canister under a hash Sneed DAO approved. The creator pays for the cycles of the new canisters; the launch fee goes to the DAO's reward loop. Locking allocations and liquidity through Sneed Lock, and handing control over later, are the next stages and work for existing tokens too.
+                    The ledger code is the DFINITY ICRC ledger suite, fetched by the pad from the NNS's SNS wasm canister: the latest version the NNS approved, unless Sneed DAO pinned one. The creator pays for the cycles of the new canisters; the launch fee goes to the DAO's reward loop. Locking allocations and liquidity through Sneed Lock, and handing control over later, are on the Harden tab and work for existing tokens too.
                 </div>
-            </main>
-        </div>
+        </>
     );
 }
+
+/// The old address: /tools/pad now lives in the studio.
+function SneedPad() { return <Navigate to="/studio/launch" replace />; }
 
 export default SneedPad;

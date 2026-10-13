@@ -105,6 +105,7 @@ import IcpNeuronManager from './pages/IcpNeuronManager';
 import IcpProposals from './pages/IcpProposals';
 import IcpProposal from './pages/IcpProposal';
 import LockWizard from './pages/LockWizard';
+import TokenStudio from './pages/TokenStudio';
 import SnsJailbreak from './pages/SnsJailbreak';
 import SnsJailbreakList from './pages/SnsJailbreakList';
 import ToolsAccount from './pages/ToolsAccount';
@@ -267,6 +268,9 @@ function App() {
                     <Route path="/tools/main" element={<ToolsMain />} />
                     <Route path="/tools/account" element={<ToolsAccount />} />
                     <Route path="/tools/icrc3" element={<ToolsIcrc3 />} />
+                    <Route path="/studio" element={<TokenStudio />} />
+                    <Route path="/studio/:ledgerId" element={<TokenStudio />} />
+                    <Route path="/studio/:ledgerId/:tab" element={<TokenStudio />} />
                     <Route path="/tools/token_safety" element={<TokenSafety />} />
                     <Route path="/tools/token_safety/:ledgerId" element={<TokenSafety />} />
                     <Route path="/tools/money" element={<FollowMoney />} />

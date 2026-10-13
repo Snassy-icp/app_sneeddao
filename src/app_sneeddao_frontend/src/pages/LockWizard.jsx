@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { FaCoins, FaWater, FaArrowRight, FaArrowLeft, FaLock, FaCheck, FaSpinner, FaCrown, FaShieldAlt, FaSync, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
@@ -110,6 +110,19 @@ function LockWizard() {
     const registeredSwapsRef = useRef(new Set());
     const summedLocksRef = useRef({});
     const tokenCheckRequestRef = useRef(0);
+
+    // Arriving from the Token Studio: /lock_wizard?type=token|position&token=<ledger>
+    // picks the lock type and, for a token lock, the token, once logged in.
+    const location = useLocation();
+    const preselectRef = useRef({ typeDone: false, tokenDone: false });
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const type = params.get('type'); const token = params.get('token');
+        if (type !== 'token' && type !== 'position') return;
+        if (!preselectRef.current.typeDone) { preselectRef.current.typeDone = true; setLockType(type); setCurrentStep(2); }
+        if (type === 'token' && token && isAuthenticated && identity && !preselectRef.current.tokenDone) { preselectRef.current.tokenDone = true; handleTokenChosen(token); }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [location.search, isAuthenticated, identity]);
     const poolCheckRequestRef = useRef(0);
     
     // Lock fee state (shown and paid in step 3, together with the lock)

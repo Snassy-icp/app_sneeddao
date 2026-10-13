@@ -53,7 +53,13 @@ export function ExternalOrInternal({ href, theme }) {
     return <a href={href} target="_blank" rel="noopener noreferrer" style={style} onClick={(e) => e.stopPropagation()}>open <FaExternalLinkAlt size={9} /></a>;
 }
 
-export function Node({ node, results, depth, theme, expanded, toggle, onlyProblems }) {
+export function FixLink({ fix, theme }) {
+    if (!fix) return null;
+    const style = { color: primary, fontSize: '0.75rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none', whiteSpace: 'nowrap', padding: '2px 8px', borderRadius: 999, border: `1px solid ${primary}66`, background: `${primary}14` };
+    return <Link to={fix.href} style={style} onClick={(e) => e.stopPropagation()}>{fix.label}</Link>;
+}
+
+export function Node({ node, results, depth, theme, expanded, toggle, onlyProblems, fixFor }) {
     const status = statusOf(node, results);
     const isGroup = !!node.children;
     const open = expanded.has(node.id);
@@ -82,13 +88,14 @@ export function Node({ node, results, depth, theme, expanded, toggle, onlyProble
                 ) : (
                     <span className="health-summary-cell" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, color: theme.colors.secondaryText, fontSize: '0.82rem', textAlign: 'right', minWidth: 0 }}>
                         <span style={{ wordBreak: 'break-word' }}>{result?.summary || ''}</span>
+                        {fixFor && ['fail', 'warn'].includes(status) && <FixLink fix={fixFor(node.id)} theme={theme} />}
                         {result?.ms !== undefined && <span style={{ color: theme.colors.mutedText, fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{result.ms} ms</span>}
                         <ExternalOrInternal href={result?.link || node.link} theme={theme} />
                     </span>
                 )}
             </div>
             {open && isGroup && node.children.map((ch) => (
-                <Node key={ch.id} node={ch} results={results} depth={depth + 1} theme={theme} expanded={expanded} toggle={toggle} onlyProblems={onlyProblems} />
+                <Node key={ch.id} node={ch} results={results} depth={depth + 1} theme={theme} expanded={expanded} toggle={toggle} onlyProblems={onlyProblems} fixFor={fixFor} />
             ))}
             {open && !isGroup && result?.details && (
                 <div className="health-details" style={{ padding: '8px 14px 10px', paddingLeft: 40 + depth * 18, background: theme.colors.secondaryBg, color: theme.colors.secondaryText, borderBottom: `1px solid ${theme.colors.border}` }}>
