@@ -9,6 +9,7 @@ import { decodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { sha256 } from '@noble/hashes/sha256';
 import { idlFactory as snswIdl } from 'declarations/nns_snsw/nns_snsw.did.js';
 import { idlFactory as rootIdl } from 'external/sns_root/sns_root.did.js';
+import { getPrincipalProfileUrl } from '../utils/PrincipalUtils';
 import { idlFactory as factoryIdl } from 'external/icp_swap_factory/icp_swap_factory.did.js';
 import { idlFactory as poolIdl } from 'external/icp_swap/icp_swap.did.js';
 import { idlFactory as sneedLockIdl } from 'declarations/sneed_lock/sneed_lock.did.js';
@@ -33,6 +34,22 @@ export const NNS_SYSTEM = { 'r7inp-6aaaa-aaaaa-aaabq-cai': 'NNS root', 'rno2w-sq
 /// The blackhole canisters: immutable controllers that expose canister_status.
 export const BLACKHOLES = { 'e3mmv-5qaaa-aaaah-aadma-cai': 'blackhole v0', '5vdms-kaaaa-aaaap-aa3uq-cai': 'blackhole v2' };
 export const DASHBOARD = (id) => `https://dashboard.internetcomputer.org/canister/${id}`;
+// Hub pages: every "open" link lands on the most specific page the hub has for the thing.
+const HUB = {
+    canister: (id) => `/canister?id=${id}`,
+    principal: (id, sns) => getPrincipalProfileUrl(id, sns ? { sns } : {}),
+    ledgerLog: (ledger) => `/tools/icrc3?canister=${ledger}`,
+    transactions: (ledger) => `/transactions?ledger=${ledger}`,
+    transaction: (ledger, index) => `/transaction?id=${index}&ledger=${ledger}`,
+    money: (ledger, start) => `/tools/money?ledger=${ledger}${start ? `&start=${start}` : ''}`,
+    tokenLocks: (ledger) => `/tokenlocksoverview?ledger=${ledger}`,
+    locks: (ledger, ids) => (ids?.length ? `/tokenlock?ledger=${ledger}&locks=${ids.join(',')}` : `/tokenlocksoverview?ledger=${ledger}`),
+    positionLocks: (pool, ids) => `/positionlock?swap=${pool}&positions=${ids.join(',')}`,
+    sns: (root) => `/sns?sns=${root}`,
+    neurons: (root) => `/neurons?sns=${root}`,
+    neuron: (root, id) => `/neuron?neuronid=${id}&sns=${root}`,
+    proposals: (root) => `/proposals?sns=${root}`,
+};
 const T = 1e12;
 const SCAN_TIMEOUT_MS = 20 * 60 * 1000; // leaves that wait for the block scan
 
@@ -394,7 +411,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
             const st = await status(ctx, cid);
             const cls = await classifyControllers(st.controllers, ctx);
             const details = { canister: cid, controllers: st.controllers, module_hash: st.moduleHash };
-            return { status: cls.grade, summary: cls.label, details, link: DASHBOARD(cid) };
+            return { status: cls.grade, summary: cls.label, details, link: HUB.canister(cid) };
         },
     });
     const codeLeaf = (kind, name, idOf) => ({
@@ -404,7 +421,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
             const [st, snsw] = await Promise.all([status(ctx, cid), ctx.load('snsw', loaders.snsw)]);
             const cls = await classifyControllers(st.controllers, ctx);
             const h = classifyHash(st.moduleHash, kind, snsw, cls.kind);
-            return { status: h.grade, summary: h.label, details: { canister: cid, module_hash: st.moduleHash }, link: DASHBOARD(cid) };
+            return { status: h.grade, summary: h.label, details: { canister: cid, module_hash: st.moduleHash }, link: HUB.canister(cid) };
         },
     });
 
@@ -431,7 +448,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
                         ...archives.map((a) => codeLeaf('archive', `Archive ${a.id} wasm`, async () => a.id)),
                         codeLeaf('index', 'Index wasm', async (ctx2) => (await ctx2.load('index', loaders.index(ledgerId)))?.id),
                         {
-                            id: 'code:standards', name: 'Standards announced', run: async (ctx2) => {
+                            id: 'code:standards', name: 'Standards announced', link: HUB.ledgerLog(ledgerId), run: async (ctx2) => {
                                 const m = await meta(ctx2);
                                 const has = (s) => m.standards.includes(s);
                                 const details = { standards: m.standards };
@@ -441,7 +458,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
                             },
                         },
                         {
-                            id: 'code:tip', name: 'Block log certified', run: async (ctx2) => {
+                            id: 'code:tip', name: 'Block log certified', link: HUB.ledgerLog(ledgerId), run: async (ctx2) => {
                                 const m = await meta(ctx2);
                                 if (!m.standards.includes('ICRC-3')) return skip('No ICRC-3');
                                 const tip = await ctx2.call(verifyTip(Principal.fromText(ledgerId)), 'tip certificate');
@@ -463,26 +480,26 @@ export function buildTokenTree(ledgerId, config, header = null) {
                     if (!m.minting) return pass('No minting account: nothing can mint');
                     const owner = m.minting.owner.toText();
                     const details = { minting_account: owner, subaccount: opt(m.minting.subaccount) ? 'set' : 'default' };
-                    if (owner === ledgerId) return pass('The ledger itself: no one can transact as it', details);
+                    if (owner === ledgerId) return pass('The ledger itself: no one can transact as it', details, HUB.canister(ledgerId));
                     if (owner === '2vxsx-fae') return pass('The anonymous principal: cannot hold or move tokens', details);
-                    if (NNS_SYSTEM[owner]) return pass(`The ${NNS_SYSTEM[owner]}: an NNS system canister that never transfers tokens`, details);
-                    if (BLACKHOLES[owner]) return pass(`The ${BLACKHOLES[owner]} canister: it never transfers tokens`, details);
-                    if (owner.length !== 27) return fail('A user principal: its holder can mint without limit', details);
+                    if (NNS_SYSTEM[owner]) return pass(`The ${NNS_SYSTEM[owner]}: an NNS system canister that never transfers tokens`, details, HUB.canister(owner));
+                    if (BLACKHOLES[owner]) return pass(`The ${BLACKHOLES[owner]} canister: it never transfers tokens`, details, HUB.canister(owner));
+                    if (owner.length !== 27) return fail('A user principal: its holder can mint without limit', details, HUB.principal(owner));
                     const snsw = await ctx.load('snsw', loaders.snsw);
                     const sns = snsw.snses.find((s) => s.governance === owner);
-                    if (sns) return pass(`The SNS governance of ${await daoLabel(sns, ctx)}: minting takes a proposal`, details);
+                    if (sns) return pass(`The SNS governance of ${await daoLabel(sns, ctx)}: minting takes a proposal`, details, HUB.sns(sns.root));
                     const st = await quiet(status(ctx, owner), null);
                     if (st) {
                         details.minting_canister_controllers = st.controllers;
                         const cls = await classifyControllers(st.controllers, ctx);
-                        if (cls.grade === 'pass') return pass(`A canister ${cls.label.toLowerCase()}`, details);
-                        return warn(`A canister whose controllers can change it: ${cls.label}`, details);
+                        if (cls.grade === 'pass') return pass(`A canister ${cls.label.toLowerCase()}`, details, HUB.canister(owner));
+                        return warn(`A canister whose controllers can change it: ${cls.label}`, details, HUB.canister(owner));
                     }
-                    return warn('A canister we could not inspect', details);
+                    return warn('A canister we could not inspect', details, HUB.canister(owner));
                 },
             },
             {
-                id: 'mint:untracked', name: 'Supply created outside the log', timeoutMs: SCAN_TIMEOUT_MS, run: async (ctx) => {
+                id: 'mint:untracked', name: 'Supply created outside the log', timeoutMs: SCAN_TIMEOUT_MS, link: HUB.money(ledgerId), run: async (ctx) => {
                     const [m, u] = await Promise.all([meta(ctx), ctx.load('untracked', loaders.untracked(ledgerId))]);
                     if (!u) { const scan = await ctx.load('scan', loaders.scan(ledgerId)); return skip(scan.reason || 'Log not scanned'); }
                     const details = {
@@ -500,7 +517,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
                 },
             },
             {
-                id: 'mint:history', name: 'Mints after genesis', timeoutMs: SCAN_TIMEOUT_MS, run: async (ctx) => {
+                id: 'mint:history', name: 'Mints after genesis', timeoutMs: SCAN_TIMEOUT_MS, link: HUB.transactions(ledgerId), run: async (ctx) => {
                     const [m, scan] = await Promise.all([meta(ctx), ctx.load('scan', loaders.scan(ledgerId))]);
                     if (scan.skipped) return skip(scan.reason || `Log of ${scan.total.toLocaleString('en-US')} blocks not scanned (limit ${c.maxScanBlocks.toLocaleString('en-US')})`);
                     const first = scan.firstTs ? nsToMs(scan.firstTs) : null;
@@ -518,9 +535,9 @@ export function buildTokenTree(ledgerId, config, header = null) {
     const supply = {
         id: 'supply', name: 'Supply and metadata',
         children: [
-            { id: 'supply:info', name: 'Token', run: async (ctx) => { const m = await meta(ctx); return pass(`${m.name} (${m.symbol}), ${m.decimals} decimals, fee ${fmtUnits(m.fee, m.decimals, 8)}, supply ${fmtUnits(m.supply, m.decimals, 0)}`, { metadata: m.metadata }); } },
+            { id: 'supply:info', name: 'Token', link: HUB.transactions(ledgerId), run: async (ctx) => { const m = await meta(ctx); return pass(`${m.name} (${m.symbol}), ${m.decimals} decimals, fee ${fmtUnits(m.fee, m.decimals, 8)}, supply ${fmtUnits(m.supply, m.decimals, 0)}`, { metadata: m.metadata }); } },
             {
-                id: 'supply:age', name: 'Age', timeoutMs: SCAN_TIMEOUT_MS, run: async (ctx) => {
+                id: 'supply:age', name: 'Age', timeoutMs: SCAN_TIMEOUT_MS, link: HUB.transaction(ledgerId, 0), run: async (ctx) => {
                     const scan = await ctx.load('scan', loaders.scan(ledgerId));
                     if (scan.skipped) return skip('Log not scanned');
                     if (!scan.firstTs) return skip('No timestamps in the log');
@@ -549,7 +566,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
         id: 'distribution', name: 'Distribution',
         children: async (ctx) => {
             const scan = await ctx.load('scan', loaders.scan(ledgerId));
-            if (scan.skipped) return [{ id: 'dist:skipped', name: 'Holders', run: async () => skip(scan.reason ? `Holders unknown: ${scan.reason}` : `Log of ${scan.total.toLocaleString('en-US')} blocks exceeds the scan limit of ${c.maxScanBlocks.toLocaleString('en-US')}; raise the limit in the thresholds (the scan runs in a worker and takes a few minutes per million blocks)`) }];
+            if (scan.skipped) return [{ id: 'dist:skipped', name: 'Holders', link: HUB.ledgerLog(ledgerId), run: async () => skip(scan.reason ? `Holders unknown: ${scan.reason}` : `Log of ${scan.total.toLocaleString('en-US')} blocks exceeds the scan limit of ${c.maxScanBlocks.toLocaleString('en-US')}; raise the limit in the thresholds (the scan runs in a worker and takes a few minutes per million blocks)`) }];
             const [m, tags, u] = await Promise.all([meta(ctx), tagsOf(ctx), ctx.load('untracked', loaders.untracked(ledgerId))]);
             // Accounts that revealed a genesis balance: use their real balance.
             for (const d of u?.deficits || []) if (d.actual !== null && d.actual !== undefined) { if (d.actual > 0n) scan.balances.set(d.key, d.actual); else scan.balances.delete(d.key); }
@@ -624,7 +641,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
                 const rawTop1 = free.length ? pct(free[0].balance, m.supply) : 0;
                 return [
                     {
-                        id: 'dist:folded', name: 'Largest holder after folding satellites', run: async () => {
+                        id: 'dist:folded', name: 'Largest holder after folding satellites', link: HUB.money(ledgerId, foldedTop[0]?.[0]), run: async () => {
                             const worst = Math.max(top1Folded, unseenShare);
                             const sgrade = worst >= c.topHolderFailPct ? 'fail' : worst >= c.topHolderWarnPct ? 'warn' : 'pass';
                             const grew = top1Folded - rawTop1;
@@ -636,11 +653,11 @@ export function buildTokenTree(ledgerId, config, header = null) {
                             if (sprayers.length === 0) return pass('No wallet has sent to other wallets', odetails);
                             const [top, n] = sprayers[0];
                             const sgrade = n >= c.fanoutWarnWallets ? 'warn' : 'pass';
-                            return { status: sgrade, summary: `${top} sent to ${n} other wallets (${fmtUnits(sprayAmount.get(top), m.decimals, 0)} ${m.symbol} in total)${n >= c.fanoutWarnWallets ? '; manual airdrops look like this, so do split-up stashes' : ''}`, details: odetails, link: `/principal/${top}` };
+                            return { status: sgrade, summary: `${top} sent to ${n} other wallets (${fmtUnits(sprayAmount.get(top), m.decimals, 0)} ${m.symbol} in total)${n >= c.fanoutWarnWallets ? '; manual airdrops look like this, so do split-up stashes' : ''}`, details: odetails, link: HUB.money(ledgerId, top) };
                         },
                     },
                     {
-                        id: 'dist:origin', name: 'Where balances came from', run: async () => {
+                        id: 'dist:origin', name: 'Where balances came from', link: HUB.money(ledgerId), run: async () => {
                             const dormantShare = pct(dormantOneSource, m.supply);
                             const sgrade = dormantShare >= c.dormantWarnPct ? 'warn' : 'pass';
                             return { status: sgrade, summary: `${pct(bought, m.supply).toFixed(1)}% bought from a pool, ${pct(mintedDirect, m.supply).toFixed(1)}% minted directly, ${pct(fromGenesis, m.supply).toFixed(1)}% from genesis accounts, ${pct(fromOthers, m.supply).toFixed(1)}% from other holders; ${dormantShare.toFixed(1)}% sits in single-source accounts that never moved`, details: odetails };
@@ -650,7 +667,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
             };
             return [
                 {
-                    id: 'dist:recon', name: 'Holders rebuilt from the log', run: async () => {
+                    id: 'dist:recon', name: 'Holders rebuilt from the log', link: HUB.ledgerLog(ledgerId), run: async () => {
                         const over = visible > m.supply ? visible - m.supply : 0n;
                         const details2 = { ...details, unknown_block_types: scan.unknown, records_lost_in_archive: scan.gaps || 0 };
                         if (scan.unknown > 0) return warn(`${scan.unknown} block(s) of unknown type were ignored`, details2);
@@ -668,11 +685,11 @@ export function buildTokenTree(ledgerId, config, header = null) {
                         const worst = Math.max(share, unseenShare);
                         const s = worst >= c.topHolderFailPct ? 'fail' : worst >= c.topHolderWarnPct ? 'warn' : 'pass';
                         const unseenNote = unseen * 1000n > m.supply ? `; ${unseenShare.toFixed(2)}% more is in accounts the log cannot see` : '';
-                        return { status: s, summary: `${share.toFixed(2)}% of supply held by ${free[0].owner}${lockedByOwner.has(free[0].owner) ? ' (has locked tokens too)' : ''}${unseenNote}`, details, link: `/principal/${free[0].owner}` };
+                        return { status: s, summary: `${share.toFixed(2)}% of supply held by ${free[0].owner}${lockedByOwner.has(free[0].owner) ? ' (has locked tokens too)' : ''}${unseenNote}`, details, link: HUB.principal(free[0].owner) };
                     },
                 },
                 {
-                    id: 'dist:top10', name: 'Ten largest holders', run: async () => {
+                    id: 'dist:top10', name: 'Ten largest holders', link: HUB.money(ledgerId), run: async () => {
                         const share = pct(sumTop(10), m.supply);
                         const worst = Math.max(share, unseenShare);
                         const s = worst >= c.top10FailPct ? 'fail' : worst >= c.top10WarnPct ? 'warn' : 'pass';
@@ -680,7 +697,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
                         return { status: s, summary: `${share.toFixed(2)}% of supply (pools, locks and treasuries excluded: ${pct(taggedSum, m.supply).toFixed(2)}%)${unseenNote}`, details };
                     },
                 },
-                { id: 'dist:count', name: 'Number of holders', run: async () => (free.length < c.minHolders ? warn : pass)(`${free.length.toLocaleString('en-US')} owners with a balance`, details) },
+                { id: 'dist:count', name: 'Number of holders', link: HUB.money(ledgerId), run: async () => (free.length < c.minHolders ? warn : pass)(`${free.length.toLocaleString('en-US')} owners with a balance`, details) },
                 ...originLeaves(),
             ];
         },
@@ -697,7 +714,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
             const t = await daoTable(ctx, snsRel.sns);
             let total = 0n; let long = 0n; let weighted = 0;
             for (const r of t.rows) { const st = BigInt(Math.round(r.stake)); total += st; if (r.lockSec >= minSec) long += st; weighted += r.stake * Math.min(1, r.lockSec / (365 * 86400)); }
-            neurons = { count: t.rows.length, total, long, weighted, truncated: t.truncated, table: t, dao: await daoLabel(snsRel.sns, ctx) };
+            neurons = { count: t.rows.length, total, long, weighted, truncated: t.truncated, table: t, dao: await daoLabel(snsRel.sns, ctx), root: snsRel.sns.root };
         }
         // The SNS treasury: DAO-controlled, but one proposal away from circulation.
         let treasury = null;
@@ -707,7 +724,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
                 quiet(ctx.load(`bal:${ledgerId}:${g}`, loaders.balance(ledgerId, g)), null),
                 quiet(ctx.load(`bal:${ledgerId}:${g}:treasury`, loaders.balance(ledgerId, g, snsTreasurySubaccount(g))), null),
             ]);
-            if (main !== null || derived !== null) treasury = { amount: (main ?? 0n) + (derived ?? 0n), main: main ?? 0n, derived: derived ?? 0n, dao: await daoLabel(snsRel.sns, ctx), governance: g };
+            if (main !== null || derived !== null) treasury = { amount: (main ?? 0n) + (derived ?? 0n), main: main ?? 0n, derived: derived ?? 0n, dao: await daoLabel(snsRel.sns, ctx), governance: g, root: snsRel.sns.root };
         }
         return { m, sl, neurons, treasury, minSec, now };
     });
@@ -717,7 +734,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
         id: 'locks', name: 'Locked supply',
         children: [
             {
-                id: 'locks:total', name: 'Locked for at least the minimum time', timeoutMs: SCAN_TIMEOUT_MS, run: async (ctx) => {
+                id: 'locks:total', name: 'Locked for at least the minimum time', timeoutMs: SCAN_TIMEOUT_MS, link: HUB.tokenLocks(ledgerId), run: async (ctx) => {
                     const { m, sl, neurons, treasury } = await lockedSupply(ctx);
                     const combined = sl.long + (neurons?.long ?? 0n);
                     const details = { minimum_days: c.minLockDays, sneed_lock: shareRow(sl.long, m), sns_neurons: neurons ? shareRow(neurons.long, m) : 'not an SNS token', combined: shareRow(combined, m), dao_treasury_not_counted: treasury ? shareRow(treasury.amount, m) : 'no SNS behind this token' };
@@ -731,7 +748,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
                 },
             },
             {
-                id: 'locks:sneedlock', name: 'In Sneed Lock', link: '/sneedlock', run: async (ctx) => {
+                id: 'locks:sneedlock', name: 'In Sneed Lock', link: HUB.tokenLocks(ledgerId), run: async (ctx) => {
                     const { m, sl } = await lockedSupply(ctx);
                     const details = { active_locks: sl.count, locked: shareRow(sl.total, m), locked_at_least_min_days: shareRow(sl.long, m), year_weighted: fmtUnits(BigInt(Math.round(sl.weighted)), m.decimals, 0), largest: [...sl.locks].sort((x, y) => (x.amount < y.amount ? 1 : -1)).slice(0, 10).map((l) => `#${l.lockId} ${l.owner}: ${fmtUnits(l.amount, m.decimals, 0)} until ${new Date(l.expiryMs).toISOString().slice(0, 10)}`) };
                     if (sl.count === 0) return skip('Nothing locked in Sneed Lock', details);
@@ -742,9 +759,10 @@ export function buildTokenTree(ledgerId, config, header = null) {
                 id: 'locks:neurons', name: 'In SNS neurons', timeoutMs: SCAN_TIMEOUT_MS, run: async (ctx) => {
                     const { m, neurons } = await lockedSupply(ctx);
                     if (!neurons) return skip('Not an SNS token: no neurons hold it');
+                    const nlink = HUB.neurons(neurons.root);
                     const details = { dao: neurons.dao, neurons: neurons.count, truncated: neurons.truncated, staked: shareRow(neurons.total, m), staked_at_least_min_days: shareRow(neurons.long, m), year_weighted: fmtUnits(BigInt(Math.round(neurons.weighted)), m.decimals, 0), note: 'A neuron\'s lock is its dissolve delay, or the time left if it is dissolving, extended by vesting.' };
-                    if (neurons.total === 0n) return skip('No stake in neurons', details);
-                    return pass(`${pct(neurons.total, m.supply).toFixed(2)}% of supply staked in ${neurons.count.toLocaleString('en-US')} neurons, ${pct(neurons.long, m.supply).toFixed(2)}% with at least ${c.minLockDays} days of lock`, details);
+                    if (neurons.total === 0n) return skip('No stake in neurons', details, nlink);
+                    return pass(`${pct(neurons.total, m.supply).toFixed(2)}% of supply staked in ${neurons.count.toLocaleString('en-US')} neurons, ${pct(neurons.long, m.supply).toFixed(2)}% with at least ${c.minLockDays} days of lock`, details, nlink);
                 },
             },
             {
@@ -752,8 +770,9 @@ export function buildTokenTree(ledgerId, config, header = null) {
                     const { m, treasury } = await lockedSupply(ctx);
                     if (!treasury) return skip('No SNS stands behind this token');
                     const details = { dao: treasury.dao, governance: treasury.governance, in_default_account: shareRow(treasury.main, m), in_treasury_subaccount: shareRow(treasury.derived, m), balance: shareRow(treasury.amount, m), note: 'DAO-controlled, so safer than a private wallet, but a single adopted proposal can move it into circulation within days. It is not counted as locked.' };
-                    if (treasury.amount === 0n) return skip(`The treasury of ${treasury.dao} holds none of this token`, details);
-                    return pass(`${pct(treasury.amount, m.supply).toFixed(2)}% of supply held by the treasury of ${treasury.dao}: DAO-controlled, releasable by proposal`, details);
+                    const tlink = HUB.principal(treasury.governance, treasury.root);
+                    if (treasury.amount === 0n) return skip(`The treasury of ${treasury.dao} holds none of this token`, details, tlink);
+                    return pass(`${pct(treasury.amount, m.supply).toFixed(2)}% of supply held by the treasury of ${treasury.dao}: DAO-controlled, releasable by proposal`, details, tlink);
                 },
             },
             {
@@ -772,8 +791,9 @@ export function buildTokenTree(ledgerId, config, header = null) {
                         details.sns_neurons_dissolving_in_window = { neurons: dissolving, stake: shareRow(dissolvingStake, m) };
                     }
                     const share = pct(sum, m.supply);
-                    if (soon.length === 0 && dissolving === 0) return pass(`No unlocks in the next ${c.cliffWindowDays} days`, details);
-                    return (share >= c.cliffWarnPct ? warn : pass)(`${share.toFixed(2)}% of supply unlocks within ${c.cliffWindowDays} days (${soon.length} lock(s)${dissolving ? `, ${dissolving} dissolving neuron(s)` : ''})`, details);
+                    const clink = HUB.locks(ledgerId, soon.map((l) => l.lockId));
+                    if (soon.length === 0 && dissolving === 0) return pass(`No unlocks in the next ${c.cliffWindowDays} days`, details, clink);
+                    return (share >= c.cliffWarnPct ? warn : pass)(`${share.toFixed(2)}% of supply unlocks within ${c.cliffWindowDays} days (${soon.length} lock(s)${dissolving ? `, ${dissolving} dissolving neuron(s)` : ''})`, details, clink);
                 },
             },
         ],
@@ -783,7 +803,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
         id: 'liquidity', name: 'Liquidity (ICPSwap)',
         children: async (ctx) => {
             const [m, pools, icpUsd] = await Promise.all([meta(ctx), ctx.load('pools', loaders.pools(ledgerId)), ctx.load('icpUsd', loaders.icpUsd)]);
-            if (pools.length === 0) return [{ id: 'lp:none', name: 'Pool exists', run: async () => fail('No ICPSwap pool trades this token') }];
+            if (pools.length === 0) return [{ id: 'lp:none', name: 'Pool exists', link: 'https://app.icpswap.com/liquidity', run: async () => fail('No ICPSwap pool trades this token') }];
             // value each pool by its ledger balances; price from the ICP pool
             const valued = await Promise.all(pools.map(async (p) => {
                 if (p.error) return { ...p, tvlUsd: null };
@@ -821,7 +841,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
                     },
                 },
                 {
-                    id: 'lp:control', name: 'Liquidity under safe control', link: '/sneedlock', run: async (ctx2) => {
+                    id: 'lp:control', name: 'Liquidity under safe control', link: poolLink, run: async (ctx2) => {
                         // Every position in the main pool is classified by who can withdraw it:
                         // Sneed Lock with time left, a DAO (SNS governance/root or a canister only
                         // an SNS root controls), nobody (burned), or immutable code known not to
@@ -887,7 +907,8 @@ export function buildTokenTree(ledgerId, config, header = null) {
                         if (activeL === 0n) return warn('No position is in range at the current price', details2);
                         const s = share >= c.liquidityLockedGoodPct ? 'pass' : safeL > 0n ? 'warn' : (main.tvlUsd !== null && main.tvlUsd >= c.minLiquidityUsd ? 'warn' : 'fail');
                         const parts = Object.entries(byCls).filter(([k]) => safeCls.has(k)).map(([k, v]) => `${(Number((v * 10000n) / (main.liquidity || 1n)) / 100).toFixed(1)}% ${k === 'sneedlock' ? 'in Sneed Lock' : k === 'dao' ? 'DAO-owned' : k}`);
-                        return { status: s, summary: `${share.toFixed(1)}% of the main pool's active liquidity cannot be pulled by a private owner${parts.length ? ` (${parts.join(', ')})` : ''}; ${(100 - share).toFixed(1)}% can be withdrawn`, details: details2, link: '/sneedlock' };
+                        const lockedIds = plocks.filter((l) => l.pool === main.id && classified.some((p) => p.id === l.positionId)).map((l) => l.positionId.toString());
+                        return { link: lockedIds.length ? HUB.positionLocks(main.id, lockedIds) : poolLink, status: s, summary: `${share.toFixed(1)}% of the main pool's active liquidity cannot be pulled by a private owner${parts.length ? ` (${parts.join(', ')})` : ''}; ${(100 - share).toFixed(1)}% can be withdrawn`, details: details2, link: '/sneedlock' };
                     },
                 },
             ];
@@ -901,7 +922,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
             const [archives, index] = await Promise.all([ctx.load('archives', loaders.archives(ledgerId)), ctx.load('index', loaders.index(ledgerId))]);
             const targets = [{ id: ledgerId, name: 'Ledger' }, ...archives.map((a) => ({ id: a.id, name: `Archive ${a.id}` })), ...(index ? [{ id: index.id, name: 'Index' }] : [])];
             return targets.map((t) => ({
-                id: `cyc:${t.id}`, name: t.name, link: DASHBOARD(t.id), run: async (ctx2) => {
+                id: `cyc:${t.id}`, name: t.name, link: HUB.canister(t.id), run: async (ctx2) => {
                     const st = await status(ctx2, t.id);
                     const cls = await classifyControllers(st.controllers, ctx2);
                     let s = null; let via = null;
@@ -916,7 +937,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
                     if (!s) return skip(`Not observable: ${cls.kind === 'nns' ? 'NNS-controlled' : cls.kind === 'none' ? 'no controller to ask' : 'controllers do not publish status'}. A blackhole or DAO controller would make it visible`, { controllers: st.controllers });
                     const details = { via, cycles: s.cycles.toString(), memory: fmtBytes(s.memory), state: s.running };
                     const grade = Number(s.cycles) < c.cyclesRedT * T ? 'fail' : Number(s.cycles) < c.cyclesOrangeT * T ? 'warn' : s.running !== 'running' ? 'fail' : 'pass';
-                    return { status: grade, summary: `${fmtT(s.cycles)}, ${fmtBytes(s.memory)}, ${s.running} (via ${via})`, details, link: DASHBOARD(t.id) };
+                    return { status: grade, summary: `${fmtT(s.cycles)}, ${fmtBytes(s.memory)}, ${s.running} (via ${via})`, details, link: HUB.canister(t.id) };
                 },
             }));
         },
@@ -928,7 +949,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
             const rel = await snsBehind(ledgerId, ctx);
             if (!rel) return [{ id: 'dao:none', name: 'SNS governance', run: async () => skip('No SNS stands behind this ledger (not an SNS token, and no SNS root controls it)') }];
             const label = await daoLabel(rel.sns, ctx);
-            const link = `https://dashboard.internetcomputer.org/sns/${rel.sns.root}`;
+            const link = HUB.sns(rel.sns.root);
             const T = (ctx2) => daoTable(ctx2, rel.sns);
             const sharePct = (v, t) => (t > 0 ? (v / t) * 100 : 0);
             const vpText = (v) => (v / 1e8).toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -951,7 +972,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
                         const ten = sharePct(t.principals.slice(0, 10).reduce((a, [, x]) => a + x, 0), t.totalVp);
                         const details = { dao: label, largest: t.principals.slice(0, 10).map(([pp, vv]) => `${pp}: ${sharePct(vv, t.totalVp).toFixed(2)}% (${vpText(vv)})`), ten_largest_pct: ten.toFixed(2) };
                         const sgrade = share >= c.daoTopFailPct ? 'fail' : share >= c.daoTopWarnPct ? 'warn' : 'pass';
-                        return { status: sgrade, summary: `${share.toFixed(2)}% of voting power controlled by ${p}${share >= 50 ? ': it can pass any proposal alone' : ''}; ten largest ${ten.toFixed(2)}%`, details, link };
+                        return { status: sgrade, summary: `${share.toFixed(2)}% of voting power controlled by ${p}${share >= 50 ? ': it can pass any proposal alone' : ''}; ten largest ${ten.toFixed(2)}%`, details, link: HUB.principal(p, rel.sns.root) };
                     },
                 },
                 {
@@ -962,11 +983,11 @@ export function buildTokenTree(ledgerId, config, header = null) {
                         const share = top ? sharePct(top.vp, t.totalVp) : 0;
                         const details = { dao: label, note: 'A neuron\'s own voting power plus every neuron that follows it on the catch-all topic (one level).', most_influential: t.topInfluence.map((x) => `neuron ${x.id.slice(0, 12)}… (${x.principal || 'unknown principal'}): ${sharePct(x.vp, t.totalVp).toFixed(2)}%`) };
                         const sgrade = share >= c.daoInfluenceFailPct ? 'fail' : share >= c.daoTopWarnPct ? 'warn' : 'pass';
-                        return { status: sgrade, summary: top ? `${share.toFixed(2)}% of voting power follows or is neuron ${top.id.slice(0, 12)}… (${top.principal || 'unknown principal'})` : 'No following', details, link };
+                        return { status: sgrade, summary: top ? `${share.toFixed(2)}% of voting power follows or is neuron ${top.id.slice(0, 12)}… (${top.principal || 'unknown principal'})` : 'No following', details, link: top ? HUB.neuron(rel.sns.root, top.id) : link };
                     },
                 },
                 {
-                    id: 'dao:votable', name: 'Stake that can vote', link, run: async (ctx2) => {
+                    id: 'dao:votable', name: 'Stake that can vote', link: HUB.neurons(rel.sns.root), run: async (ctx2) => {
                         const t = await T(ctx2);
                         const votable = t.rows.filter((r) => r.votable).reduce((a, r) => a + r.stake, 0);
                         const share = sharePct(votable, t.totalStake);
@@ -974,7 +995,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
                     },
                 },
                 {
-                    id: 'dao:genesis', name: 'Genesis (developer) neurons', link, run: async (ctx2) => {
+                    id: 'dao:genesis', name: 'Genesis (developer) neurons', link: HUB.neurons(rel.sns.root), run: async (ctx2) => {
                         const t = await T(ctx2);
                         const g = t.genesis;
                         const gStake = g.reduce((a, r) => a + r.stake, 0);
@@ -986,7 +1007,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
                     },
                 },
                 {
-                    id: 'dao:participation', name: 'Participation in recent proposals', link, run: async (ctx2) => {
+                    id: 'dao:participation', name: 'Participation in recent proposals', link: HUB.proposals(rel.sns.root), run: async (ctx2) => {
                         const [t, props] = await Promise.all([T(ctx2), ctx2.load(`proposals:${rel.sns.root}`, loaders.proposals(rel.sns))]);
                         if (props.length === 0) return warn('No proposals yet', { dao: label });
                         const rates = props.map((pr) => { const tally = opt(pr.latest_tally); if (!tally || Number(tally.total) === 0) return null; return (Number(tally.yes) + Number(tally.no)) / Number(tally.total) * 100; }).filter((x) => x !== null);
