@@ -113,7 +113,7 @@ function Position() {
     const [custody, setCustody] = useState(null); // ClaimedPosition when Sneed Lock holds this position for me
     const [arrival, setArrival] = useState({ status: 'idle', checks: 0, arrived: [] }); // foreign position: watch for it to become mine
     const arrivalRef = useRef(null);
-    const [create, setCreate] = useState({ t0: '', t1: '', price: '', info: null, checking: false, exists: null, passcodePrice: null });
+    const [create, setCreate] = useState({ t0: '', t1: '', price: '', info: null, checking: false, exists: null, passcodePrice: null, suggestion: null, suggesting: false });
     const runLock = useRef(false);
 
     const say = (m) => setLog((l) => [...l, `${new Date().toLocaleTimeString()} ${m}`]);
@@ -378,7 +378,26 @@ function Position() {
             const factory = createFactoryActor(icpSwapFactoryCanisterId, { agentOptions: { host: HOST } });
             const existing = await factory.getPool({ token0, token1, fee: POOL_FEE });
             setCreate((c) => ({ ...c, checking: false, info: { token0, token1, i0, i1 }, exists: 'ok' in existing ? existing.ok.canisterId.toText() : null, passcodePrice: pm ? BigInt(pm.passcodePrice) : null }));
+            if (!('ok' in existing)) suggestPrice({ token0, token1, i0, i1 }, true);
         } catch (e) { setCreate((c) => ({ ...c, checking: false })); setError(`could not check the pair: ${e?.message || e}`); }
+    };
+    /// A starting price from pools that already exist: each token's price in USD through
+    /// whatever route the price service finds, then the ratio. Fills the field when it was empty.
+    const suggestPrice = async (info, fillIfEmpty) => {
+        const { token0, token1, i0, i1 } = info || create.info || {};
+        if (!token0) return;
+        setCreate((c) => ({ ...c, suggesting: true, suggestion: null }));
+        try {
+            const [u0, u1] = await Promise.all([get_token_conversion_rate(token0.address, i0.decimals).catch(() => null), get_token_conversion_rate(token1.address, i1.decimals).catch(() => null)]);
+            if (!(u0 > 0) || !(u1 > 0)) {
+                const missing = [!(u0 > 0) ? i0.symbol : null, !(u1 > 0) ? i1.symbol : null].filter(Boolean).join(' and ');
+                setCreate((c) => ({ ...c, suggesting: false, suggestion: { price: null, note: `no existing pool gives a price for ${missing}; set the starting price yourself` } }));
+                return;
+            }
+            const price = u0 / u1; // token1 per token0
+            const text = price >= 1000 ? price.toFixed(2) : price.toPrecision(6).replace(/\.?0+$/, '');
+            setCreate((c) => ({ ...c, suggesting: false, suggestion: { price: text, note: `${i0.symbol} ≈ ${formatValue(u0)} and ${i1.symbol} ≈ ${formatValue(u1)} on existing pools, so ${text} ${i1.symbol} per ${i0.symbol}` }, price: fillIfEmpty && !c.price ? text : c.price }));
+        } catch (e) { setCreate((c) => ({ ...c, suggesting: false, suggestion: { price: null, note: `could not look up prices: ${e?.message || e}` } })); }
     };
     const doCreatePool = () => run('Create pool', async () => {
         const { token0, token1, i0, i1 } = create.info || {};
@@ -482,8 +501,14 @@ function Position() {
                             {create.info && !create.exists && (
                                 <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
                                     <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>ICPSwap orders the pair as <b>{create.info.i0.symbol}</b> / <b>{create.info.i1.symbol}</b> ({create.info.token0.standard}, {create.info.token1.standard}). Passcode price: {create.passcodePrice !== null ? `${fmtUnits(create.passcodePrice, 8)} ICP` : 'unknown'} plus ledger fees.</div>
-                                    <label style={label}>Starting price: {create.info.i1.symbol} per one {create.info.i0.symbol}<input style={input} value={create.price} onChange={(e) => setCreate((c) => ({ ...c, price: e.target.value }))} placeholder="e.g. 0.5" /></label>
-                                    <div style={{ fontSize: '0.78rem', color: theme.colors.mutedText }}>The first position sets the real price; this only places the pool's starting tick. Get it close to what you intend, or your first position will be one-sided.</div>
+                                    <label style={label}>Starting price: {create.info.i1.symbol} per one {create.info.i0.symbol}
+                                        <div style={{ display: 'flex', gap: 8 }}>
+                                            <input style={input} value={create.price} onChange={(e) => setCreate((c) => ({ ...c, price: e.target.value }))} placeholder="e.g. 0.5" />
+                                            <button type="button" style={btn(false, create.suggesting)} disabled={create.suggesting} onClick={() => suggestPrice(null, false).then(() => setCreate((c) => (c.suggestion?.price ? { ...c, price: c.suggestion.price } : c)))}>{create.suggesting ? <FaSpinner className="health-spin" /> : null} Suggest</button>
+                                        </div>
+                                    </label>
+                                    {create.suggestion && <div style={{ fontSize: '0.8rem', color: create.suggestion.price ? '#22c55e' : '#f59e0b' }}>{create.suggestion.note}</div>}
+                                    <div style={{ fontSize: '0.78rem', color: theme.colors.mutedText }}>The first position sets the real price; this only places the pool's starting tick. A suggestion comes from the tokens' prices on pools that already exist (through whatever route the price service finds); check it against where you intend to trade, or your first position will be one-sided.</div>
                                     <div><button type="button" style={btn(true, !!busy || !isAuthenticated || !create.price)} disabled={!!busy || !isAuthenticated || !create.price} onClick={doCreatePool}>{busy === 'Create pool' ? <FaSpinner className="health-spin" /> : <FaPlus size={12} />} Buy the passcode and create the pool</button></div>
                                 </div>
                             )}
