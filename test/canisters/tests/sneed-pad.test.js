@@ -214,29 +214,38 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
     expect(Number(st.num_blocks_synced)).toBeGreaterThanOrEqual(2);
   }, 180_000);
 
-  it('hands a token to Sneed DAO and registers it through the hotkeyed neuron', async () => {
-    await gov.add_hotkey(NEURON, padId);
-    unwrap(await pad.admin_set_registration_neuron([NEURON]));
+  it('hands a token to Sneed DAO: root becomes the controller, the creator files the proposal, the pad files nothing', async () => {
     const q = unwrap(await padAlice.get_quote(config({ control: { sneed_dao: null }, minting: { sneed_dao: null }, symbol: 'DAO' })));
-    const icpAlice = actorAs(pic, ledgerIdl, icpId, alice);
-    unwrap(await icpAlice.icrc2_approve({ from_subaccount: [], spender: account(padId), amount: q.total_e8s + ICP_FEE, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] }));
     expect(q.control_fee_e8s).toBe(100_000_000n);
     expect(q.total_e8s).toBe(500_000_000n + 100_000_000n + 90_000_000n + 3n * ICP_FEE);
+    const icpAlice = actorAs(pic, ledgerIdl, icpId, alice);
+    unwrap(await icpAlice.icrc2_approve({ from_subaccount: [], spender: account(padId), amount: q.total_e8s + ICP_FEE, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] }));
     const feeBefore = await icp.icrc1_balance_of(account(bob));
     const launch = unwrap(await padAlice.create_token(config({ control: { sneed_dao: null }, minting: { sneed_dao: null }, symbol: 'DAO' })));
     expect(launch.controllers.map((p) => p.toText())).toEqual([SNEED_SNS_ROOT.toText()]);
+    expect(launch.registration_proposal.length).toBe(0);
     expect((await icp.icrc1_balance_of(account(bob))) - feeBefore).toBe(600_000_000n - ICP_FEE); // launch fee plus handover fee, one transfer
-    expect(launch.registration_proposal.length).toBe(1);
     const l = actorAs(pic, mintedLedgerIdl, launch.ledger[0], alice);
     expect((await l.icrc1_minting_account())[0].owner.toText()).toBe(govId.toText());
     const proposals = await gov.list_proposals();
-    const mine = proposals.find((p) => p.canister_ids.some((c) => c.toText() === launch.ledger[0].toText()));
-    expect(mine).toBeTruthy();
-    expect(mine.title).toMatch(/Register the ledger of Test Token \(DAO\) launched on Sneed Pad/);
-    expect(mine.proposer.toText()).toBe(padId.toText());
-    const reg = await pad.get_ledger_registration_status();
-    expect(reg.registrations.find((r) => r.canister_id.toText() === launch.ledger[0].toText()).proposal_id.length).toBe(1);
+    expect(proposals.some((p) => p.canister_ids.some((c) => c.toText() === launch.ledger[0].toText()))).toBe(false);
   }, 120_000);
+
+  it('hands a token to any deployed SNS, and keeps extra controllers next to the creator', async () => {
+    unwrap(await padAlice.get_quote(config({ control: { sns: carol } }))); // quotes do not ask the NNS
+    const icpAlice = actorAs(pic, ledgerIdl, icpId, alice);
+    await icp.mint(account(alice), 50n * 100_000_000n);
+    unwrap(await icpAlice.icrc2_approve({ from_subaccount: [], spender: account(padId), amount: 20n * 100_000_000n, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] }));
+    expect(errOf(await padAlice.create_token(config({ control: { sns: carol }, symbol: 'NOPE' })))).toMatch(/not the root canister of a deployed SNS/);
+    await snsWasm.set_deployed([carol]);
+    const q = unwrap(await padAlice.get_quote(config({ control: { sns: carol } })));
+    expect(q.control_fee_e8s).toBe(0n); // only Sneed DAO charges a handover fee
+    const handed = unwrap(await padAlice.create_token(config({ control: { sns: carol }, symbol: 'OTH' })));
+    expect(handed.controllers.map((p) => p.toText())).toEqual([carol.toText()]);
+    const kept = unwrap(await padAlice.create_token(config({ control: { keep_with: [bob, alice] }, symbol: 'MULTI' })));
+    expect(kept.controllers.map((p) => p.toText())).toEqual([alice.toText(), bob.toText()]);
+    expect(errOf(await padAlice.get_quote(config({ control: { keep_with: Array(11).fill(bob) } })))).toMatch(/at most 10/);
+  }, 180_000);
 
   it('still launches when the CMC refuses the top-up, and says so in its log', async () => {
     await cmc.set_mode({ refund: null });

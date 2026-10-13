@@ -43,7 +43,10 @@ module {
   /// ledger itself, a principal that never transfers, so the supply is fixed.
   public type MintingPolicy = { #nobody; #sneed_dao; #principal : Principal };
   /// Who controls the ledger (and its archives and index) after launch.
-  public type ControlChoice = { #keep; #blackhole; #sneed_dao };
+  /// `#keep_with` keeps the creator and adds more controllers; `#sns` hands the
+  /// canisters to that SNS's root (the creator files the registration
+  /// proposal with their own neuron; the pad files nothing).
+  public type ControlChoice = { #keep; #keep_with : [Principal]; #blackhole; #sneed_dao; #sns : Principal };
   public type TokenConfig = {
     name : Text;
     symbol : Text;
@@ -154,6 +157,7 @@ module {
     get_wasm : shared query ({ hash : Blob }) -> async { wasm : ?{ wasm : Blob; canister_type : Int32; proposal_id : ?Nat64 } };
     /// The latest NNS-approved SNS version as (canister type, hex hash) pairs: "Ledger", "Index", ...
     get_latest_sns_version_pretty : shared query (Null) -> async [(Text, Text)];
+    list_deployed_snses : shared query ({}) -> async { instances : [{ root_canister_id : ?Principal }] };
   };
   public type CanisterSettings = {
     controllers : ?[Principal];

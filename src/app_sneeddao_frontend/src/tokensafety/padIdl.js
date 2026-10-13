@@ -4,7 +4,7 @@ import { IDL } from '@dfinity/candid';
 
 const Account = IDL.Record({ owner: IDL.Principal, subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)) });
 const MintingPolicy = IDL.Variant({ nobody: IDL.Null, sneed_dao: IDL.Null, principal: IDL.Principal });
-const ControlChoice = IDL.Variant({ keep: IDL.Null, blackhole: IDL.Null, sneed_dao: IDL.Null });
+const ControlChoice = IDL.Variant({ keep: IDL.Null, keep_with: IDL.Vec(IDL.Principal), blackhole: IDL.Null, sneed_dao: IDL.Null, sns: IDL.Principal });
 export const TokenConfig = IDL.Record({
     name: IDL.Text, symbol: IDL.Text, decimals: IDL.Nat8, transfer_fee: IDL.Nat, logo: IDL.Opt(IDL.Text),
     allocations: IDL.Vec(IDL.Record({ account: Account, amount: IDL.Nat })),

@@ -74,6 +74,7 @@ export const cmcIdl = ({ IDL }) => IDL.Service({
 export const snsWasmIdl = ({ IDL }) => IDL.Service({
   set_wasm: IDL.Func([IDL.Vec(IDL.Nat8), IDL.Vec(IDL.Nat8)], [], []),
   set_latest: IDL.Func([IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text))], [], []),
+  set_deployed: IDL.Func([IDL.Vec(IDL.Principal)], [], []),
 });
 export const sneedAppIdl = ({ IDL }) => IDL.Service({
   set_authorized: IDL.Func([IDL.Vec(IDL.Principal)], [], []),
@@ -83,7 +84,7 @@ export const premiumIdl = ({ IDL }) => IDL.Service({
   set_member: IDL.Func([IDL.Principal, IDL.Int], [], []),
 });
 const MintingPolicy = IDL.Variant({ nobody: IDL.Null, sneed_dao: IDL.Null, principal: IDL.Principal });
-const ControlChoice = IDL.Variant({ keep: IDL.Null, blackhole: IDL.Null, sneed_dao: IDL.Null });
+const ControlChoice = IDL.Variant({ keep: IDL.Null, keep_with: IDL.Vec(IDL.Principal), blackhole: IDL.Null, sneed_dao: IDL.Null, sns: IDL.Principal });
 export const TokenConfig = IDL.Record({
   name: IDL.Text, symbol: IDL.Text, decimals: IDL.Nat8, transfer_fee: IDL.Nat, logo: IDL.Opt(IDL.Text),
   allocations: IDL.Vec(IDL.Record({ account: Account, amount: IDL.Nat })),

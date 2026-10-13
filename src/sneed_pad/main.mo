@@ -211,7 +211,24 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     if (total == 0) { return ?"at least one allocation is needed: a token with no supply cannot be traded" };
     if (c.allocations.size() > 1000) { return ?"at most 1000 allocations at launch; more can be distributed afterwards" };
     switch (c.minting) { case (#principal(p)) { if (Principal.isAnonymous(p)) { return ?"the anonymous principal cannot be the minting account; choose #nobody for a fixed supply" } }; case _ {} };
+    switch (c.control) {
+      case (#keep_with(ps)) {
+        if (ps.size() > 10) { return ?"at most 10 extra controllers" };
+        for (p in ps.vals()) { if (Principal.isAnonymous(p)) { return ?"the anonymous principal cannot be a controller" } };
+      };
+      case (#sns(root)) { if (Principal.isAnonymous(root)) { return ?"an SNS root canister is needed" } };
+      case _ {};
+    };
     null;
+  };
+  /// The SNS root a creator hands control to must be one the NNS deployed.
+  private func isDeployedSnsRoot(root : Principal) : async* Bool {
+    if (root == sneed_root) { return true };
+    let r = try { await sns_wasm().list_deployed_snses({}) } catch (_) { return false };
+    Array.find<{ root_canister_id : ?Principal }>(r.instances, func(i) { i.root_canister_id == ?root }) != null;
+  };
+  private func handoverFee(control : T.ControlChoice) : Nat {
+    switch (control) { case (#sneed_dao) { sneed_dao_control_fee_e8s }; case (#sns(root)) { if (root == sneed_root) { sneed_dao_control_fee_e8s } else { 0 } }; case _ { 0 } };
   };
 
   // ---- quotes ----
@@ -226,7 +243,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     let forCycles = icpForCycles(ledger_cycles + idx, rate);
     let fees = ICP_FEE * 3; // pull, CMC transfer, fee transfer
     let fee = if (premium) { premium_creation_fee_e8s } else { creation_fee_e8s };
-    let controlFee = switch (c.control) { case (#sneed_dao) { sneed_dao_control_fee_e8s }; case _ { 0 } };
+    let controlFee = handoverFee(c.control);
     {
       creation_fee_e8s = fee; control_fee_e8s = controlFee; ledger_cycles = ledger_cycles; index_cycles = idx;
       icp_for_cycles_e8s = forCycles; ledger_fees_e8s = fees; total_e8s = fee + controlFee + forCycles + fees;
@@ -260,6 +277,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     switch (validate(c)) { case (?e) { return #Err(e) }; case null {} };
     let wasm = switch (ledger_wasm) { case (?w) { w }; case null { return #Err("no ledger wasm is loaded yet (the pad fetches the NNS's latest ledger version once a day); try again later or call refresh_wasms") } };
     let idxWasm = if (c.with_index) { switch (index_wasm) { case (?w) { ?w }; case null { return #Err("no index wasm is loaded yet; launch without an index or try again later") } } } else { null };
+    switch (c.control) { case (#sns(root)) { if (not (await* isDeployedSnsRoot(root))) { return #Err("that is not the root canister of a deployed SNS") } }; case _ {} };
     let cid = newCid();
     let premium = await* isPremium(caller);
     let rate = try { (await cmc().get_icp_xdr_conversion_rate()).data.xdr_permyriad_per_icp } catch (e) { return #Err("could not read the ICP/XDR rate: " # Error.message(e)) };
@@ -320,7 +338,13 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
 
     // 4. the ledger
     let self = Principal.fromActor(this);
-    let finalControllers : [Principal] = switch (c.control) { case (#keep) { [caller] }; case (#blackhole) { [blackhole] }; case (#sneed_dao) { [sneed_root] } };
+    let finalControllers : [Principal] = switch (c.control) {
+      case (#keep) { [caller] };
+      case (#keep_with(ps)) { Array.append([caller], Array.filter<Principal>(ps, func(p) { p != caller })) };
+      case (#blackhole) { [blackhole] };
+      case (#sneed_dao) { [sneed_root] };
+      case (#sns(root)) { [root] };
+    };
     let archiveController : Principal = finalControllers[0];
     let ledgerId = try {
       (await (with cycles = quote.ledger_cycles) ic.create_canister({ settings = ?{ controllers = ?[self]; compute_allocation = null; memory_allocation = null; freezing_threshold = null }; sender_canister_version = null })).canister_id;
@@ -395,16 +419,8 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
       case null {};
     };
     icrc3_add("sneedpad_control_set", [("cid", #Nat(cid)), ("launch", #Nat(launch.id)), ("ledger", Icrc3Log.principal(ledgerId)), ("control", #Text(debug_show(c.control))), ("controllers", #Array(Array.map<Principal, T3.Value>(finalControllers, Icrc3Log.principal)))]);
-    // Sneed DAO: register the canisters through the hotkeyed neuron (best effort, retried by the timer)
-    switch (c.control) {
-      case (#sneed_dao) {
-        let targets : [T3.ArchiveInfo] = Array.map<Principal, T3.ArchiveInfo>(Array.append<Principal>([ledgerId], switch (launch.index) { case (?i) { [i] }; case null { [] } }), func(p) { { canister_id = p; start = 0; length = 0; max_blocks = 0 } });
-        ignore await* Icrc3Sns.registerMissing(ledger_registrations, ledger_registrations_rt, targets, ledger_registration_env());
-        let reg = Array.find<Icrc3Sns.Registration>(ledger_registrations.registrations, func(r) { r.canister_id == ledgerId });
-        launch := { launch with registration_proposal = switch (reg) { case (?r) { r.proposal_id }; case null { null } } };
-      };
-      case _ {};
-    };
+    // Handing over to an SNS: the creator files the RegisterDappCanisters proposal with their own
+    // neuron from the studio; the pad holds no neuron of any DAO for that.
     putLaunch(launch);
     logText(cid, "info", "launch " # Nat.toText(launch.id) # " done: ledger " # Principal.toText(ledgerId));
     #Ok(launch);

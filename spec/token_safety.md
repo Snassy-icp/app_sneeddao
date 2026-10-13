@@ -220,6 +220,17 @@ own hotkeyed neuron next), add an index (pad stage, next), minting (cannot
 change after install), cycles (ic-unicycle integration, see below). Launch is the pad (was
 /tools/pad). The old routes redirect.
 
+**Control choices (2026-10-13):** `#keep` (creator), `#keep_with [principals]`
+(creator plus up to ten more; adding an SNS root here lets that DAO register the
+canisters later), `#blackhole`, `#sneed_dao` and `#sns root` (any NNS-deployed SNS,
+checked against SNS-W). For the two DAO options the SNS root becomes the only
+controller and the *creator* files RegisterDappCanisters with their own neuron from
+the wizard, which refuses to launch when the creator holds no neuron with the
+SubmitProposal permission in that DAO (it offers "keep control and add the root"
+instead). The pad holds no DAO neuron and files nothing; only the Sneed handover
+carries the handover fee. The wizard warns before launching without a logo, and
+registers the ledger in the creator's wallet and SneedApp entries.
+
 **Cycles (2026-10-13):** no new guardian canister for cycles. Sneed DAO already
 runs ic-unicycle, a member-built monitor that watches cycles, tops canisters up and
 can file treasury proposals for SNS-controlled canisters; the studio integrates with
