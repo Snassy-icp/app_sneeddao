@@ -630,10 +630,10 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     // Tools section - Account Tool is available to everyone, other tools require auth
     const toolsSubMenu = [
         { name: 'Tools', path: '/tools/main' },
-        { name: 'Account Tool', path: '/tools/account' },
-        { name: 'ICRC-3 Browser', path: '/tools/icrc3' },
         { name: 'Token Studio', path: '/studio' },
         { name: 'Follow the Money', path: '/tools/money' },
+        { name: 'ICRC-3 Browser', path: '/tools/icrc3' },
+        { name: 'Account Tool', path: '/tools/account' },
     ];
     if (isAuthenticated) {
         toolsSubMenu.push(

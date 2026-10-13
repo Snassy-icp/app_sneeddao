@@ -40,28 +40,40 @@ function ConfigPanel({ config, setConfig, theme, onClose }) {
     );
 }
 
+// Finished reports survive navigating away and back (the scan of a big log
+// takes a while): one entry per ledger and threshold set, for this tab's life.
+const REPORT_CACHE_MAX_AGE_MS = 30 * 60 * 1000;
+const reportCache = new Map(); // key -> { state, header, graphData, startedAt, finishedAt, expanded }
+const cacheKey = (ledgerId, cfg) => `${ledgerId}|${JSON.stringify(Object.fromEntries(Object.entries(cfg).filter(([, v]) => typeof v !== 'function')))}`;
+
 /// Rates `ledgerId`; `onHeader` and `onRating` let the studio show the token and its grade in its own header.
 export function CheckPanel({ ledgerId, onHeader, onRating }) {
     const { theme } = useTheme();
     const [config, setConfig] = useState(loadConfig);
-    const [state, setState] = useState({ tree: null, results: new Map() });
+    const cached = ledgerId ? reportCache.get(cacheKey(ledgerId, config)) : null;
+    const fresh = cached && Date.now() - cached.finishedAt < REPORT_CACHE_MAX_AGE_MS ? cached : null;
+    const [state, setState] = useState(fresh ? fresh.state : { tree: null, results: new Map() });
     const [running, setRunning] = useState(false);
-    const [startedAt, setStartedAt] = useState(null);
-    const [finishedAt, setFinishedAt] = useState(null);
+    const [startedAt, setStartedAt] = useState(fresh ? fresh.startedAt : null);
+    const [finishedAt, setFinishedAt] = useState(fresh ? fresh.finishedAt : null);
     const [progress, setProgress] = useState(null);
-    const [expanded, setExpanded] = useState(() => new Set(['token', 'gates']));
+    const [expanded, setExpanded] = useState(() => (fresh ? fresh.expanded : new Set(['token', 'gates'])));
     const [onlyProblems, setOnlyProblems] = useState(false);
     const [showConfig, setShowConfig] = useState(false);
     const [error, setError] = useState(null);
-    const [header, setHeader] = useState(null);
-    const [graphData, setGraphData] = useState(null); // { scan, meta, tags, origin } once the log is scanned
+    const [header, setHeader] = useState(fresh ? fresh.header : null);
+    const [graphData, setGraphData] = useState(fresh ? fresh.graphData : null); // { scan, meta, tags, origin } once the log is scanned
     const [showGraph, setShowGraph] = useState(false);
+    const [fromCache, setFromCache] = useState(!!fresh);
     const runId = useRef(0);
+    const expandedRef = useRef(expanded); expandedRef.current = expanded;
 
     const run = useCallback(async (id, cfg) => {
         if (!id) return;
         const me = ++runId.current;
-        setRunning(true); setStartedAt(Date.now()); setFinishedAt(null); setProgress(null); setError(null);
+        setFromCache(false);
+        const started = Date.now();
+        setRunning(true); setStartedAt(started); setFinishedAt(null); setProgress(null); setError(null);
         setState({ tree: null, results: new Map() });
         setHeader(null); setGraphData(null); setShowGraph(false);
         const collected = {};
@@ -77,7 +89,10 @@ export function CheckPanel({ ledgerId, onHeader, onRating }) {
             if (runId.current !== me) return;
             setHeader(info);
             const final = await runTree(buildTokenTree(id, cfgWithProgress, info), cfgWithProgress, (u) => { if (runId.current === me) setState(u); });
-            if (runId.current === me) setState(final);
+            if (runId.current === me) {
+                setState(final);
+                reportCache.set(cacheKey(id, cfg), { state: final, header: info, graphData: collected.scan ? { ...collected } : null, startedAt: started, finishedAt: Date.now(), expanded: expandedRef.current });
+            }
         } catch (e) {
             if (runId.current === me) setError(e?.message || String(e));
         } finally {
@@ -85,7 +100,18 @@ export function CheckPanel({ ledgerId, onHeader, onRating }) {
         }
     }, []);
 
-    useEffect(() => { if (ledgerId) run(ledgerId, config); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [ledgerId, config]);
+    useEffect(() => {
+        if (!ledgerId) return;
+        const c = reportCache.get(cacheKey(ledgerId, config));
+        if (c && Date.now() - c.finishedAt < REPORT_CACHE_MAX_AGE_MS) {
+            setState(c.state); setHeader(c.header); setGraphData(c.graphData); setStartedAt(c.startedAt); setFinishedAt(c.finishedAt); setFromCache(true); setRunning(false); setError(null);
+            return;
+        }
+        run(ledgerId, config);
+        /* eslint-disable-next-line react-hooks/exhaustive-deps */
+    }, [ledgerId, config]);
+    // keep the cached entry's expansion in step with the user's
+    useEffect(() => { if (!ledgerId) return; const c = reportCache.get(cacheKey(ledgerId, config)); if (c) c.expanded = expanded; }, [expanded, ledgerId, config]);
 
     const graphSource = useMemo(() => (graphData ? scanSource(graphData.scan, graphData.tags, graphData.origin, { symbol: header?.symbol || graphData.meta?.symbol, decimals: header?.decimals ?? graphData.meta?.decimals ?? 8 }) : null), [graphData, header]);
     const toggle = useCallback((id) => setExpanded((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; }), []);
@@ -116,7 +142,7 @@ export function CheckPanel({ ledgerId, onHeader, onRating }) {
                     <div style={{ fontSize: '1.3rem', fontWeight: 800, color: rating?.color || theme.colors.primaryText }}>{rating ? rating.label : running ? 'Preparing…' : ''}</div>
                     <div style={{ color: theme.colors.secondaryText, fontSize: '0.88rem' }}>{rating?.note}</div>
                     <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: 4 }}>
-                        {running ? (total === 0 ? 'Listing checks…' : `Running ${done} of ${total} checks${state.tree && isListing(state.tree) ? ', listing more' : ''}…`) : finishedAt ? `${total} checks, finished ${new Date(finishedAt).toLocaleTimeString()} in ${((finishedAt - startedAt) / 1000).toFixed(1)} s` : ''}
+                        {running ? (total === 0 ? 'Listing checks…' : `Running ${done} of ${total} checks${state.tree && isListing(state.tree) ? ', listing more' : ''}…`) : finishedAt ? `${total} checks, finished ${new Date(finishedAt).toLocaleTimeString()} in ${((finishedAt - startedAt) / 1000).toFixed(1)} s${fromCache ? ' (kept from your last visit; run again for fresh data)' : ''}` : ''}
                         {running && progress && progress.total > 0 && <span> Scanning the block log: {progress.done.toLocaleString('en-US')} of {progress.total.toLocaleString('en-US')} blocks.</span>}
                     </div>
                 </div>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { FaUnlock, FaArrowRight, FaList, FaMagic, FaRocket, FaCheckCircle, FaExchangeAlt, FaBrain, FaCog, FaKey, FaFingerprint, FaDatabase, FaShieldAlt, FaSearch, FaEye } from 'react-icons/fa';
+import { FaUnlock, FaArrowRight, FaList, FaMagic, FaRocket, FaCheckCircle, FaExchangeAlt, FaBrain, FaCog, FaKey, FaFingerprint, FaDatabase, FaShieldAlt, FaSearch, FaEye, FaFlask, FaWrench, FaProjectDiagram, FaLock } from 'react-icons/fa';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -50,6 +50,8 @@ const accountSecondary = '#2dd4bf';
 
 // ICRC-3 browser accent - indigo
 const icrc3Primary = '#6366f1';
+const studioPrimary = '#10b981';
+const moneyPrimary = '#eab308';
 
 function ToolsMain() {
     const { theme } = useTheme();
@@ -244,6 +246,96 @@ function ToolsMain() {
             </div>
             
             <main style={styles.container}>
+                {/* Token Studio Card */}
+                <div className="tools-fade-in-delay" style={styles.toolCard}>
+                    <div style={styles.decorativeGlow(studioPrimary)} />
+                    <div style={{ ...styles.toolIcon, background: `linear-gradient(135deg, ${studioPrimary}25, ${studioPrimary}10)` }}>
+                        <FaFlask size={26} style={{ color: studioPrimary }} />
+                    </div>
+                    <h2 style={styles.toolTitle}>
+                        Token Studio
+                        <span style={styles.badge(studioPrimary)}>Free</span>
+                    </h2>
+                    <p style={styles.toolDescription}>
+                        Check any token against what the chain says about it: who controls the ledger, which code it runs,
+                        who can mint, who holds it, what is locked, how deep the liquidity is. Harden what the report flags,
+                        or launch a new token on the same ledger code every SNS runs. Nothing here is self-reported.
+                    </p>
+                    <div style={styles.featureList}>
+                        <div style={styles.feature(studioPrimary)}>
+                            <FaShieldAlt size={12} />
+                            Safety rating from public data
+                        </div>
+                        <div style={styles.feature(studioPrimary)}>
+                            <FaWrench size={12} />
+                            A fix for every weak line
+                        </div>
+                        <div style={styles.feature(studioPrimary)}>
+                            <FaLock size={12} />
+                            Lock supply and liquidity
+                        </div>
+                        <div style={styles.feature(studioPrimary)}>
+                            <FaRocket size={12} />
+                            Launch on NNS-approved code
+                        </div>
+                    </div>
+                    <div style={styles.buttonRow}>
+                        <Link to="/studio" style={styles.primaryButton(studioPrimary)}>
+                            Open Token Studio
+                            <FaArrowRight size={14} />
+                        </Link>
+                        <Link to="/studio/launch" style={styles.secondaryButton}>
+                            <FaRocket size={14} />
+                            Launch a token
+                        </Link>
+                    </div>
+                </div>
+
+                {/* Follow the Money Card */}
+                <div className="tools-fade-in-delay" style={styles.toolCard}>
+                    <div style={styles.decorativeGlow(moneyPrimary)} />
+                    <div style={{ ...styles.toolIcon, background: `linear-gradient(135deg, ${moneyPrimary}25, ${moneyPrimary}10)` }}>
+                        <FaProjectDiagram size={26} style={{ color: moneyPrimary }} />
+                    </div>
+                    <h2 style={styles.toolTitle}>
+                        Follow the Money
+                        <span style={styles.badge(moneyPrimary)}>Free</span>
+                    </h2>
+                    <p style={styles.toolDescription}>
+                        An explorable graph of who sent what to whom on any ledger, built from the index canister. Start
+                        from an account, expand its neighbours, fold satellite wallets into their funder, and read every
+                        edge with Sneed names where we know them.
+                    </p>
+                    <div style={styles.featureList}>
+                        <div style={styles.feature(moneyPrimary)}>
+                            <FaSearch size={12} />
+                            Start from any account
+                        </div>
+                        <div style={styles.feature(moneyPrimary)}>
+                            <FaEye size={12} />
+                            Hover any edge for the transfers
+                        </div>
+                        <div style={styles.feature(moneyPrimary)}>
+                            <FaBrain size={12} />
+                            Satellites and fan-out folded
+                        </div>
+                        <div style={styles.feature(moneyPrimary)}>
+                            <FaDatabase size={12} />
+                            Any ledger with an index
+                        </div>
+                    </div>
+                    <div style={styles.buttonRow}>
+                        <Link to="/tools/money" style={styles.primaryButton(moneyPrimary)}>
+                            Open the graph
+                            <FaArrowRight size={14} />
+                        </Link>
+                        <Link to="/tools/money?ledger=hvgxa-wqaaa-aaaaq-aacia-cai" style={styles.secondaryButton}>
+                            <FaProjectDiagram size={14} />
+                            SNEED
+                        </Link>
+                    </div>
+                </div>
+
                 {/* SNS Jailbreak Tool Card */}
                 <div className="tools-fade-in-delay" style={styles.toolCard}>
                     <div style={styles.decorativeGlow(jailbreakPrimary)} />
