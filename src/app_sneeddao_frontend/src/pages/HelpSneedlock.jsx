@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Header from '../components/Header';
+import { TransferVideo } from '../components/PositionTransferGuide';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { 
     FaLock, FaArrowLeft, FaMagic, FaCoins, FaWater, FaUnlock, 
@@ -436,6 +437,7 @@ function HelpSneedlock() {
                             <FaWater size={20} color="#14b8a6" />
                         </div>
                         <h2 style={styles.subheading}>How to Lock Liquidity Positions</h2>
+                        <TransferVideo />
                     </div>
                     
                     <ol style={styles.stepList}>

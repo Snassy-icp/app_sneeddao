@@ -105,6 +105,9 @@ function LockWizard() {
     const [poolCheckLoading, setPoolCheckLoading] = useState(false);
     const [poolCheckError, setPoolCheckError] = useState('');
     const [showTransferHelp, setShowTransferHelp] = useState(false);
+    // The arrival watch: after a transfer on ICPSwap, poll the pool until a new position shows up.
+    const [arrival, setArrival] = useState({ status: 'idle', checks: 0, arrived: [] });
+    const arrivalRef = useRef({ timer: null, baseline: null, poolId: null });
     const [pickerResetKey, setPickerResetKey] = useState(0);
     const registeredLedgersRef = useRef(new Set());
     const registeredSwapsRef = useRef(new Set());
@@ -550,7 +553,60 @@ function LockWizard() {
         }
     };
 
+    /// Re-read the user's positions in the selected pool without clearing the selection.
+    const refreshPoolPositions = async (poolId, pool) => {
+        const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+        const claimedPositions = await sneedLockActor.get_claimed_positions_for_principal(identity.getPrincipal());
+        const claimedForSwap = groupClaimedBySwap(claimedPositions)[poolId] || [];
+        const positions = await loadPoolPositions(poolId, pool, claimedForSwap);
+        setPoolPositions(positions);
+        setWalletPairs(prev => {
+            const entry = { poolId, pool, positions };
+            const idx = prev.findIndex(p => p.poolId === poolId);
+            if (idx >= 0) return prev.map((p, i) => i === idx ? entry : p);
+            return [...prev, entry];
+        });
+        return positions;
+    };
+    const stopArrivalWatch = (status = 'idle') => {
+        if (arrivalRef.current.timer) clearInterval(arrivalRef.current.timer);
+        arrivalRef.current = { timer: null, baseline: null, poolId: null };
+        setArrival(a => ({ ...a, status }));
+    };
+    const startArrivalWatch = () => {
+        if (!selectedPoolId || !selectedPool || !identity) return;
+        stopArrivalWatch();
+        const baseline = new Set((poolPositions || []).map(p => p.id.toString()));
+        const poolId = selectedPoolId; const pool = selectedPool;
+        const startedAt = Date.now();
+        arrivalRef.current = { timer: null, baseline, poolId };
+        setArrival({ status: 'watching', checks: 0, arrived: [] });
+        const tick = async () => {
+            if (arrivalRef.current.poolId !== poolId) return;
+            try {
+                const positions = await refreshPoolPositions(poolId, pool);
+                if (arrivalRef.current.poolId !== poolId) return;
+                const fresh = positions.filter(p => !baseline.has(p.id.toString()));
+                if (fresh.length > 0) {
+                    if (fresh.length === 1) setSelectedPosition(fresh[0]);
+                    clearInterval(arrivalRef.current.timer);
+                    arrivalRef.current = { timer: null, baseline: null, poolId: null };
+                    setArrival({ status: 'arrived', checks: 0, arrived: fresh.map(p => p.id.toString()) });
+                    return;
+                }
+                setArrival(a => ({ ...a, checks: a.checks + 1 }));
+            } catch (e) {
+                console.warn('Arrival check failed, trying again', e);
+            }
+            if (Date.now() - startedAt > 10 * 60 * 1000) stopArrivalWatch('timeout');
+        };
+        arrivalRef.current.timer = setInterval(tick, 15000);
+        tick();
+    };
+    useEffect(() => () => { if (arrivalRef.current.timer) clearInterval(arrivalRef.current.timer); }, []);
+
     const clearPoolSelection = () => {
+        stopArrivalWatch();
         setSelectedPoolId('');
         setSelectedPool(null);
         setPoolPositions(null);
@@ -560,6 +616,7 @@ function LockWizard() {
     };
 
     const handlePoolChosen = async (poolId, pool) => {
+        stopArrivalWatch();
         const requestId = ++poolCheckRequestRef.current;
         setSelectedPoolId(poolId);
         setSelectedPool(pool);
@@ -1480,7 +1537,8 @@ function LockWizard() {
 
     const renderTransferSteps = (pool, compact) => (
         <div style={{ marginTop: compact ? '8px' : '10px' }}>
-            <PositionTransferGuide token0Symbol={pool.token0.symbol} token1Symbol={pool.token1.symbol} compact={compact} accentColor={lockPrimary} intro="" />
+            <PositionTransferGuide token0Symbol={pool.token0.symbol} token1Symbol={pool.token1.symbol} compact={compact} accentColor={lockPrimary} intro=""
+                watch={arrival} onWatch={startArrivalWatch} onStopWatch={() => stopArrivalWatch('idle')} />
         </div>
     );
 

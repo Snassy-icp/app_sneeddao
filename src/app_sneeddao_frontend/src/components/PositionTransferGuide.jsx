@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FaCopy, FaCheck, FaExternalLinkAlt } from 'react-icons/fa';
+import { FaCopy, FaCheck, FaExternalLinkAlt, FaSpinner, FaEye } from 'react-icons/fa';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 
@@ -13,7 +13,60 @@ import { useAuth } from '../AuthContext';
  * - compact: smaller spacing, for use inside cards and expanders
  * - accentColor: link / button colour (defaults to the theme accent)
  * - intro: optional text shown above the steps (defaults to a short explanation)
+ * - videoUrl: a recording of the steps (defaults to TRANSFER_VIDEO_URL; nothing is shown while unset)
+ * - watch / onWatch: the arrival watch (see TransferArrivalWatch); the wizard polls ICPSwap and
+ *   reports here when the transferred position shows up in the Sneed wallet
  */
+
+/// A short recording of the ICPSwap "Transfer position" steps. Set it once the
+/// recording exists: a direct .mp4/.webm URL, or a YouTube embed URL
+/// (https://www.youtube.com/embed/<id>). Until then no player is rendered.
+export const TRANSFER_VIDEO_URL = null;
+
+export function TransferVideo({ url = TRANSFER_VIDEO_URL, compact = false }) {
+    const { theme } = useTheme();
+    if (!url) return null;
+    const box = { marginTop: compact ? 8 : 12, borderRadius: 10, overflow: 'hidden', border: `1px solid ${theme.colors.border}`, background: '#000', maxWidth: 640 };
+    if (/youtube\.com\/embed\/|youtu\.be\//.test(url)) {
+        return <div style={{ ...box, aspectRatio: '16 / 9' }}><iframe src={url} title="Moving an ICPSwap position to your Sneed wallet" style={{ width: '100%', height: '100%', border: 0 }} allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture" allowFullScreen /></div>;
+    }
+    return <div style={box}><video src={url} controls playsInline preload="metadata" style={{ width: '100%', display: 'block' }} /></div>;
+}
+
+/// The final check: once the user transferred on ICPSwap, the wizard keeps
+/// asking the pool until the position is in the Sneed wallet. `watch` is
+/// { status: 'idle' | 'watching' | 'arrived' | 'timeout', checks, arrived: [ids] }.
+export function TransferArrivalWatch({ watch, onWatch, onStop, accentColor, compact = false }) {
+    const { theme } = useTheme();
+    const accent = accentColor || theme.colors.accent;
+    if (!onWatch) return null;
+    const btn = { display: 'inline-flex', alignItems: 'center', gap: 6, background: accent, color: '#fff', border: 'none', borderRadius: 8, padding: compact ? '6px 10px' : '8px 12px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 };
+    const status = watch?.status || 'idle';
+    return (
+        <div style={{ marginTop: compact ? 8 : 12, fontSize: compact ? '0.82rem' : '0.88rem', color: theme.colors.secondaryText }}>
+            {status === 'idle' && <button type="button" style={btn} onClick={(e) => { e.stopPropagation(); onWatch(); }}><FaEye size={12} /> Watch for it to arrive here</button>}
+            {status === 'watching' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <FaSpinner className="health-spin" style={{ color: accent }} />
+                    <span>Checking the pool every 15 seconds for a new position in your Sneed wallet{watch.checks ? ` (${watch.checks} check${watch.checks === 1 ? '' : 's'}, nothing new yet)` : '…'}</span>
+                    {onStop && <button type="button" onClick={(e) => { e.stopPropagation(); onStop(); }} style={{ ...btn, background: 'transparent', color: theme.colors.mutedText, border: `1px solid ${theme.colors.border}` }}>Stop</button>}
+                </div>
+            )}
+            {status === 'arrived' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: theme.colors.success || '#22c55e', fontWeight: 600 }}>
+                    <FaCheck /> Position{watch.arrived.length === 1 ? '' : 's'} #{watch.arrived.join(', #')} arrived in your Sneed wallet{watch.arrived.length === 1 ? ' and is selected above' : ''}.
+                </div>
+            )}
+            {status === 'timeout' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span>Nothing new arrived in ten minutes. ICPSwap transfers land within seconds, so check the recipient principal on ICPSwap.</span>
+                    <button type="button" style={btn} onClick={(e) => { e.stopPropagation(); onWatch(); }}><FaEye size={12} /> Watch again</button>
+                </div>
+            )}
+            <style>{'@keyframes health-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .health-spin { animation: health-spin 1s linear infinite; }'}</style>
+        </div>
+    );
+}
 export function WalletPrincipalBox({ compact = false, accentColor }) {
     const { theme } = useTheme();
     const { identity } = useAuth();
@@ -61,7 +114,7 @@ export function WalletPrincipalBox({ compact = false, accentColor }) {
     );
 }
 
-function PositionTransferGuide({ token0Symbol, token1Symbol, compact = false, accentColor, intro }) {
+function PositionTransferGuide({ token0Symbol, token1Symbol, compact = false, accentColor, intro, videoUrl = TRANSFER_VIDEO_URL, watch, onWatch, onStopWatch }) {
     const { theme } = useTheme();
     const accent = accentColor || theme.colors.accent;
     const pair = token0Symbol && token1Symbol ? `${token0Symbol}/${token1Symbol}` : 'liquidity';
@@ -87,8 +140,10 @@ function PositionTransferGuide({ token0Symbol, token1Symbol, compact = false, ac
                     <div style={{ marginBottom: '6px' }}>Paste your Sneed wallet principal as the recipient:</div>
                     <WalletPrincipalBox compact={compact} accentColor={accent} />
                 </li>
-                <li>Confirm on ICPSwap, then refresh here. The position stays yours.</li>
+                <li>Confirm on ICPSwap{onWatch ? ', then let this page watch for it' : ', then refresh here'}. The position stays yours.</li>
             </ol>
+            <TransferArrivalWatch watch={watch} onWatch={onWatch} onStop={onStopWatch} accentColor={accent} compact={compact} />
+            <TransferVideo url={videoUrl} compact={compact} />
         </div>
     );
 }
