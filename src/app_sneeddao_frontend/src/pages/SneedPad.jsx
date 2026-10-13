@@ -144,11 +144,14 @@ function SneedPad() {
                 </div>
 
                 {!PAD_CANISTER_ID && <div style={{ ...card, color: '#f59e0b' }}>The launchpad canister is not deployed in this build yet.</div>}
-                {padConfig && (
-                    <div style={{ ...card, display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: '0.82rem', color: theme.colors.secondaryText }}>
-                        <span>Fee {fmtIcp(padConfig.creation_fee_e8s)}{padConfig.premium_creation_fee_e8s !== padConfig.creation_fee_e8s ? ` (${fmtIcp(padConfig.premium_creation_fee_e8s)} for Sneed Premium members)` : ''}</span><span>Ledger starts with {fmtT(padConfig.ledger_cycles)} cycles</span><span>Index {fmtT(padConfig.index_cycles)} cycles</span>
+                {PAD_CANISTER_ID && (
+                    <div style={{ ...card, display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: '0.82rem', color: theme.colors.secondaryText, minHeight: 20 }}>
+                        {!padConfig && <span>Loading the launchpad's current fees and settings…</span>}
+                        {padConfig && <>
+                        <span>Fee {fmtIcp(padConfig.creation_fee_e8s)}{padConfig.premium_creation_fee_e8s !== padConfig.creation_fee_e8s ? ` (${fmtIcp(padConfig.premium_creation_fee_e8s)} for Sneed Premium members)` : ''}</span><span>Handing control to Sneed DAO {fmtIcp(padConfig.sneed_dao_control_fee_e8s)} more</span><span>Ledger starts with {fmtT(padConfig.ledger_cycles)} cycles</span><span>Index {fmtT(padConfig.index_cycles)} cycles</span>
                         <span title={padConfig.wasm_last_error[0] || ''}>Ledger code {padConfig.ledger_wasm_bytes > 0n ? (padConfig.follow_nns ? 'the latest NNS-approved version, checked daily' : 'NNS-approved, pinned by the DAO') : 'not loaded yet (fetched from the NNS automatically)'}{padConfig.wasm_last_error[0] ? ', last check failed' : ''}</span>
                         {padConfig.paused && <span style={{ color: '#ef4444' }}>paused</span>}
+                        </>}
                     </div>
                 )}
 
@@ -193,7 +196,7 @@ function SneedPad() {
                             <div style={{ display: 'grid', gap: 6 }}>
                                 {radio('control', 'keep', 'Me', 'you can upgrade it; rates low on the safety page until you hand it over')}
                                 {radio('control', 'blackhole', 'The blackhole', 'nobody can ever change it, and its cycles stay observable')}
-                                {radio('control', 'sneed_dao', 'Sneed DAO', 'the DAO upgrades it by proposal, only to vetted code; registration is proposed automatically')}
+                                {radio('control', 'sneed_dao', 'Sneed DAO', `the DAO upgrades it by proposal, only to vetted code, and keeps it running; registration is proposed automatically${padConfig ? `; ${fmtIcp(padConfig.sneed_dao_control_fee_e8s)} handover fee` : ''}`)}
                             </div>
                         </div>
                         <div>
@@ -212,6 +215,7 @@ function SneedPad() {
                         {quote && (
                             <table style={{ fontSize: '0.85rem', color: theme.colors.secondaryText, borderCollapse: 'collapse' }}><tbody>
                                 <tr><td style={{ paddingRight: 14 }}>Launch fee{quote.premium ? ', Sneed Premium member rate' : ''} (to the DAO's reward loop)</td><td>{fmtIcp(quote.creation_fee_e8s)}</td></tr>
+                                {quote.control_fee_e8s > 0n && <tr><td style={{ paddingRight: 14 }}>Handover fee (Sneed DAO takes over the canisters)</td><td>{fmtIcp(quote.control_fee_e8s)}</td></tr>}
                                 <tr><td style={{ paddingRight: 14 }}>Cycles for the ledger{quote.index_cycles > 0n ? ' and index' : ''} ({fmtT(quote.ledger_cycles + quote.index_cycles)})</td><td>{fmtIcp(quote.icp_for_cycles_e8s)}</td></tr>
                                 <tr><td style={{ paddingRight: 14 }}>Ledger fees</td><td>{fmtIcp(quote.ledger_fees_e8s)}</td></tr>
                                 <tr style={{ color: theme.colors.primaryText, fontWeight: 700 }}><td style={{ paddingRight: 14 }}>Total (plus one approval fee)</td><td>{fmtIcp(quote.total_e8s)}</td></tr>

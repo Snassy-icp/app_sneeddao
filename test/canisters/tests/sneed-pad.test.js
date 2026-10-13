@@ -53,9 +53,9 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
     ledgerHash = sha256(ledgerBytes); indexHash = sha256(indexBytes);
     await snsWasm.set_wasm(ledgerHash, Uint8Array.from(ledgerBytes));
     await snsWasm.set_wasm(indexHash, Uint8Array.from(indexBytes));
-    await snsWasm.set_latest([['Root', '00'], ['Ledger', hex(ledgerHash)], ['Index', hex(indexHash)]]);
+    await snsWasm.set_latest([['Root', '00'], ['Ledger', hex(ledgerHash)], ['Ledger Index', hex(indexHash)]]);
     unwrap(await pad.admin_set_canisters({ icp_ledger: [icpId], cmc: [cmcId], sns_wasm: [snsWasmId], governance: [govId], root: [SNEED_SNS_ROOT], blackhole: [carol], sneed_premium: [[premiumId]] }));
-    unwrap(await pad.admin_set_config({ creation_fee_e8s: [500_000_000n], premium_creation_fee_e8s: [250_000_000n], ledger_cycles: [3n * T], index_cycles: [2n * T], fee_destination: [account(bob)], cycle_reserve: [2n * T], paused: [], follow_nns: [] }));
+    unwrap(await pad.admin_set_config({ creation_fee_e8s: [500_000_000n], premium_creation_fee_e8s: [250_000_000n], sneed_dao_control_fee_e8s: [100_000_000n], ledger_cycles: [3n * T], index_cycles: [2n * T], fee_destination: [account(bob)], cycle_reserve: [2n * T], paused: [], follow_nns: [] }));
     await icp.mint(account(alice), 100n * 100_000_000n);
   }, 120_000);
   afterAll(async () => { await pic?.tearDown(); });
@@ -80,13 +80,13 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
   it('keeps the working version until a newer one is fetched and verified', async () => {
     const bogus = Uint8Array.from({ length: 32 }, () => 7);
     await snsWasm.set_wasm(bogus, Uint8Array.from([0, 97, 115, 109]));
-    await snsWasm.set_latest([['Ledger', hex(ledgerHash)], ['Index', hex(bogus)]]);
+    await snsWasm.set_latest([['Ledger', hex(ledgerHash)], ['Ledger Index', hex(bogus)]]);
     expect(errOf(await pad.refresh_wasms())).toMatch(/hash/);
     let cfg = await pad.get_config();
     expect(Array.from(cfg.index_wasm_hash[0])).toEqual(Array.from(indexHash)); // untouched
     expect(cfg.wasm_last_error[0]).toMatch(/hash/);
     // a version the NNS serves properly is adopted by the daily timer
-    await snsWasm.set_latest([['Ledger', hex(ledgerHash)], ['Index', hex(ledgerHash)]]); // "new index" = the ledger bytes, which the mock serves
+    await snsWasm.set_latest([['Ledger', hex(ledgerHash)], ['Ledger Index', hex(ledgerHash)]]); // "new index" = the ledger bytes, which the mock serves
     await pic.advanceTime(86_400 * 1000 + 1000); await pic.tick(10);
     cfg = await pad.get_config();
     expect(Array.from(cfg.index_wasm_hash[0])).toEqual(Array.from(ledgerHash));
@@ -94,7 +94,7 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
     const log = await pad.get_text_log(5n);
     expect(log.some((l) => /wasms refreshed/.test(l))).toBe(true);
     // back to the real index for the launches below
-    await snsWasm.set_latest([['Ledger', hex(ledgerHash)], ['Index', hex(indexHash)]]);
+    await snsWasm.set_latest([['Ledger', hex(ledgerHash)], ['Ledger Index', hex(indexHash)]]);
     unwrap(await pad.refresh_wasms());
   });
 
@@ -107,7 +107,7 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
     unwrap(await pad.admin_fetch_wasms());
     cfg = await pad.get_config();
     expect(Number(cfg.ledger_wasm_bytes)).toBeGreaterThan(100_000);
-    unwrap(await pad.admin_set_config({ creation_fee_e8s: [], premium_creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [], follow_nns: [true] }));
+    unwrap(await pad.admin_set_config({ creation_fee_e8s: [], premium_creation_fee_e8s: [], sneed_dao_control_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [], follow_nns: [true] }));
     expect((await pad.get_config()).follow_nns).toBe(true);
   });
 
@@ -124,6 +124,7 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
     const qi = unwrap(await padAlice.get_quote(config({ with_index: true })));
     expect(qi.icp_for_cycles_e8s).toBe(150_000_000n);
     expect(q.premium).toBe(false);
+    expect(q.control_fee_e8s).toBe(0n);
   });
 
   it('charges Sneed Premium members the member rate, until the membership runs out', async () => {
@@ -214,8 +215,12 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
     const q = unwrap(await padAlice.get_quote(config({ control: { sneed_dao: null }, minting: { sneed_dao: null }, symbol: 'DAO' })));
     const icpAlice = actorAs(pic, ledgerIdl, icpId, alice);
     unwrap(await icpAlice.icrc2_approve({ from_subaccount: [], spender: account(padId), amount: q.total_e8s + ICP_FEE, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] }));
+    expect(q.control_fee_e8s).toBe(100_000_000n);
+    expect(q.total_e8s).toBe(500_000_000n + 100_000_000n + 90_000_000n + 3n * ICP_FEE);
+    const feeBefore = await icp.icrc1_balance_of(account(bob));
     const launch = unwrap(await padAlice.create_token(config({ control: { sneed_dao: null }, minting: { sneed_dao: null }, symbol: 'DAO' })));
     expect(launch.controllers.map((p) => p.toText())).toEqual([SNEED_SNS_ROOT.toText()]);
+    expect((await icp.icrc1_balance_of(account(bob))) - feeBefore).toBe(600_000_000n - ICP_FEE); // launch fee plus handover fee, one transfer
     expect(launch.registration_proposal.length).toBe(1);
     const l = actorAs(pic, mintedLedgerIdl, launch.ledger[0], alice);
     expect((await l.icrc1_minting_account())[0].owner.toText()).toBe(govId.toText());
@@ -242,10 +247,10 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
   }, 120_000);
 
   it('refuses while paused and for anonymous callers', async () => {
-    unwrap(await pad.admin_set_config({ creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [true], premium_creation_fee_e8s: [], follow_nns: [] }));
+    unwrap(await pad.admin_set_config({ creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [true], premium_creation_fee_e8s: [], sneed_dao_control_fee_e8s: [], follow_nns: [] }));
     expect(errOf(await padAlice.create_token(config()))).toMatch(/paused/);
-    unwrap(await pad.admin_set_config({ creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [false], premium_creation_fee_e8s: [], follow_nns: [] }));
-    expect(errOf(await padBob.admin_set_config({ creation_fee_e8s: [1n], premium_creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [], follow_nns: [] }))).toMatch(/admin only/);
+    unwrap(await pad.admin_set_config({ creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [false], premium_creation_fee_e8s: [], sneed_dao_control_fee_e8s: [], follow_nns: [] }));
+    expect(errOf(await padBob.admin_set_config({ creation_fee_e8s: [1n], premium_creation_fee_e8s: [], sneed_dao_control_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [], follow_nns: [] }))).toMatch(/admin only/);
   });
 
   it('keeps every launch across an upgrade', async () => {

@@ -60,6 +60,7 @@ module {
   // ---- quotes, launches, configuration ----
   public type Quote = {
     creation_fee_e8s : Nat; // the pad's fee, forwarded to the fee destination
+    control_fee_e8s : Nat;  // the handover fee when control goes to Sneed DAO (0 otherwise), same destination
     ledger_cycles : Nat;    // cycles the new ledger starts with
     index_cycles : Nat;     // cycles the new index starts with (0 without index)
     icp_for_cycles_e8s : Nat; // ICP converted to cycles through the CMC for the above
@@ -92,6 +93,7 @@ module {
     index_wasm_bytes : Nat;
     creation_fee_e8s : Nat;
     premium_creation_fee_e8s : Nat; // for Sneed Premium members
+    sneed_dao_control_fee_e8s : Nat; // added when control is handed to Sneed DAO
     sneed_premium : ?Principal;     // the membership canister asked (none: everybody pays the standard fee)
     ledger_cycles : Nat;
     index_cycles : Nat;
@@ -106,6 +108,7 @@ module {
   public type ConfigUpdate = {
     creation_fee_e8s : ?Nat;
     premium_creation_fee_e8s : ?Nat;
+    sneed_dao_control_fee_e8s : ?Nat;
     ledger_cycles : ?Nat;
     index_cycles : ?Nat;
     fee_destination : ?Account;

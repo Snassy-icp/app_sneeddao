@@ -7,25 +7,20 @@
     "ic": "pxtkg-giaaa-aaaal-ajjzq-cai",
     "staging": "2icdp-6qaaa-aaaal-qjt6a-cai"
   },
+  "rll": {
+    "ic": "lvc4n-7aaaa-aaaam-adm6a-cai",
+    "staging": "twapx-riaaa-aaaak-qlojq-cai"
+  },
   "sneed_icp_staking_bot": {
     "ic": "utrgg-zqaaa-aaaad-aduma-cai",
     "staging": "utrgg-zqaaa-aaaad-aduma-cai"
-  },
-  "sneed_trading_bot": {
-    "ic": "pojsz-fqaaa-aaaad-adoga-cai",
-    "staging": "pojsz-fqaaa-aaaad-adoga-cai"
-  },
-  "sneedapp": {
-    "ic": "sfamc-kyaaa-aaaau-adnpq-cai",
-    "staging": "34e6r-ayaaa-aaaad-adkoa-cai"
   },
   "sneed_lock": {
     "ic": "pqsms-lqaaa-aaaal-ajjza-cai",
     "staging": "25fsc-7yaaa-aaaal-qjt5q-cai"
   },
-  "rll": {
-    "ic": "lvc4n-7aaaa-aaaam-adm6a-cai",
-    "staging": "twapx-riaaa-aaaak-qlojq-cai"
+  "sneed_pad": {
+    "staging": "symdn-ciaaa-aaaal-qxobq-cai"
   },
   "sneed_premium": {
     "ic": "7gump-4aaaa-aaaal-qtyka-cai",
@@ -38,6 +33,14 @@
   "sneed_sns_forum": {
     "ic": "mcigm-4aaaa-aaaad-qhlkq-cai",
     "staging": "nrtf2-wiaaa-aaaad-aankq-cai"
+  },
+  "sneed_trading_bot": {
+    "ic": "pojsz-fqaaa-aaaad-adoga-cai",
+    "staging": "pojsz-fqaaa-aaaad-adoga-cai"
+  },
+  "sneedapp": {
+    "ic": "sfamc-kyaaa-aaaau-adnpq-cai",
+    "staging": "34e6r-ayaaa-aaaad-adkoa-cai"
   },
   "sneedex": {
     "ic": "7bvk3-ryaaa-aaaal-qtykq-cai",

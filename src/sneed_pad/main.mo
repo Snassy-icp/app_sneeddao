@@ -76,6 +76,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   stable var index_wasm : ?Blob = null;
   stable var creation_fee_e8s : Nat = 500_000_000; // 5 ICP
   stable var premium_creation_fee_e8s : Nat = 250_000_000; // 2.5 ICP for Sneed Premium members
+  stable var sneed_dao_control_fee_e8s : Nat = 500_000_000; // 5 ICP more when control goes to Sneed DAO, which then keeps the canisters running
   // The wasm hashes follow the NNS: once a day the pad asks the SNS wasm
   // canister for the latest SNS version and takes its ledger and index
   // hashes, so nobody has to run anything. The DAO can pin hashes instead.
@@ -218,9 +219,10 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     let forCycles = icpForCycles(ledger_cycles + idx, rate);
     let fees = ICP_FEE * 3; // pull, CMC transfer, fee transfer
     let fee = if (premium) { premium_creation_fee_e8s } else { creation_fee_e8s };
+    let controlFee = switch (c.control) { case (#sneed_dao) { sneed_dao_control_fee_e8s }; case _ { 0 } };
     {
-      creation_fee_e8s = fee; ledger_cycles = ledger_cycles; index_cycles = idx;
-      icp_for_cycles_e8s = forCycles; ledger_fees_e8s = fees; total_e8s = fee + forCycles + fees;
+      creation_fee_e8s = fee; control_fee_e8s = controlFee; ledger_cycles = ledger_cycles; index_cycles = idx;
+      icp_for_cycles_e8s = forCycles; ledger_fees_e8s = fees; total_e8s = fee + controlFee + forCycles + fees;
       xdr_permyriad_per_icp = rate; premium;
     };
   };
@@ -297,10 +299,11 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
       } catch (e) { logText(cid, "error", "launch " # Nat.toText(launch.id) # ": CMC step failed: " # Error.message(e)) };
     };
 
-    // 3. the fee
-    if (quote.creation_fee_e8s > ICP_FEE) {
+    // 3. the fees (launch fee, and the handover fee when control goes to Sneed DAO)
+    let feeTotal = quote.creation_fee_e8s + quote.control_fee_e8s;
+    if (feeTotal > ICP_FEE) {
       try {
-        switch (await icp_ledger().icrc1_transfer({ from_subaccount = null; to = fee_destination; amount = quote.creation_fee_e8s - ICP_FEE; fee = ?ICP_FEE; memo = null; created_at_time = null })) {
+        switch (await icp_ledger().icrc1_transfer({ from_subaccount = null; to = fee_destination; amount = feeTotal - ICP_FEE; fee = ?ICP_FEE; memo = null; created_at_time = null })) {
           case (#Ok(_)) { launch := step(launch, "fee") };
           case (#Err(e)) { logText(cid, "error", "launch " # Nat.toText(launch.id) # ": fee transfer failed: " # debug_show(e)) };
         };
@@ -408,7 +411,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
       ledger_wasm_hash; index_wasm_hash;
       ledger_wasm_bytes = switch (ledger_wasm) { case (?w) { w.size() }; case null { 0 } };
       index_wasm_bytes = switch (index_wasm) { case (?w) { w.size() }; case null { 0 } };
-      creation_fee_e8s; premium_creation_fee_e8s; sneed_premium = sneed_premium_id; ledger_cycles; index_cycles; fee_destination; cycle_reserve; paused;
+      creation_fee_e8s; premium_creation_fee_e8s; sneed_dao_control_fee_e8s; sneed_premium = sneed_premium_id; ledger_cycles; index_cycles; fee_destination; cycle_reserve; paused;
       follow_nns; wasm_last_check; wasm_last_refresh; wasm_last_error;
     };
   };
@@ -463,7 +466,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
       let latest = try { await sns_wasm().get_latest_sns_version_pretty(null) } catch (e) { return #Err("SNS wasm canister: " # Error.message(e)) };
       for ((kind, h) in latest.vals()) {
         if (kind == "Ledger") { switch (hexDecode(h)) { case (?b) { if (b.size() == 32) { wantLedger := ?b } }; case null {} } };
-        if (kind == "Index") { switch (hexDecode(h)) { case (?b) { if (b.size() == 32) { wantIndex := ?b } }; case null {} } };
+        if (kind == "Ledger Index" or kind == "Index") { switch (hexDecode(h)) { case (?b) { if (b.size() == 32) { wantIndex := ?b } }; case null {} } };
       };
       if (wantLedger == null) { return #Err("the SNS wasm canister's latest version has no ledger hash") };
     };
@@ -537,6 +540,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     let note = func(key : Text, old : Text, new_ : Text) { icrc3_add("sneedpad_config_update", [("cid", #Nat(cid)), ("caller", Icrc3Log.principal(caller)), ("key", #Text(key)), ("old_value", #Text(old)), ("value", #Text(new_))]) };
     switch (u.creation_fee_e8s) { case (?v) { note("creation_fee_e8s", Nat.toText(creation_fee_e8s), Nat.toText(v)); creation_fee_e8s := v }; case null {} };
     switch (u.premium_creation_fee_e8s) { case (?v) { note("premium_creation_fee_e8s", Nat.toText(premium_creation_fee_e8s), Nat.toText(v)); premium_creation_fee_e8s := v }; case null {} };
+    switch (u.sneed_dao_control_fee_e8s) { case (?v) { note("sneed_dao_control_fee_e8s", Nat.toText(sneed_dao_control_fee_e8s), Nat.toText(v)); sneed_dao_control_fee_e8s := v }; case null {} };
     switch (u.follow_nns) { case (?v) { note("follow_nns", debug_show(follow_nns), debug_show(v)); follow_nns := v }; case null {} };
     switch (u.ledger_cycles) { case (?v) { note("ledger_cycles", Nat.toText(ledger_cycles), Nat.toText(v)); ledger_cycles := v }; case null {} };
     switch (u.index_cycles) { case (?v) { note("index_cycles", Nat.toText(index_cycles), Nat.toText(v)); index_cycles := v }; case null {} };
