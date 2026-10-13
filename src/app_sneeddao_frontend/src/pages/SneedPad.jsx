@@ -8,6 +8,7 @@ import { Principal } from '@dfinity/principal';
 import PrincipalInput from '../components/PrincipalInput';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useNaming } from '../NamingContext';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createSneedAppActor, canisterId as sneedAppCanisterId } from 'declarations/sneedapp';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
@@ -37,6 +38,7 @@ const parsePrincipal = (t) => { try { return Principal.fromText(String(t).trim()
 export function LaunchPanel({ onLaunched }) {
     const { theme } = useTheme();
     const { identity, isAuthenticated } = useAuth();
+    const { fetchAllNames } = useNaming();
     const me = identity?.getPrincipal?.().toText?.() || null;
     const [form, setForm] = useState({ name: '', symbol: '', decimals: 8, fee: '0.0001', logo: null, minting: 'nobody', mintingPrincipal: '', control: 'keep', extraControllers: [], snsRoot: '', withIndex: true, feeCollector: '', allocations: [{ owner: '', amount: '' }] });
     const [dao, setDao] = useState({ root: null, governance: null, neurons: null, error: null }); // the DAO a handover goes to, and my proposal-capable neurons in it
@@ -211,6 +213,7 @@ export function LaunchPanel({ onLaunched }) {
             } catch (e) { errors.push(`${kind} name for ${id.toText()}: ${e?.message || e}`); }
         }
         setNames((n) => ({ ...n, busy: '', done: [...n.done, ...done], errors: [...n.errors, ...errors] }));
+        if (done.length) fetchAllNames?.(true); // so the wallet and every principal display pick the names up now
     };
     const iControl = form.control === 'keep';
 

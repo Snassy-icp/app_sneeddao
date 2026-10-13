@@ -916,6 +916,42 @@ function Wallet() {
     const [neuronManagerCounts, setNeuronManagerCounts] = useState({}); // canisterId -> neuron count
     const [neuronManagerCycles, setNeuronManagerCycles] = useState({}); // canisterId -> cycles
     const [neuronManagerMemory, setNeuronManagerMemory] = useState({}); // canisterId -> memory bytes
+    // Token ledgers and indexes (pad launches): the token behind the canister, read from the ledger itself
+    const [tokenCanisterInfo, setTokenCanisterInfo] = useState({}); // canisterId -> { kind, ledgerId, name, symbol, decimals, fee, logo, supply, minting, archives }
+    useEffect(() => {
+        const wanted = (contextNeuronManagers || []).filter(m => (m.resolvedAppId === 'icrc-ledger' || m.resolvedAppId === 'icrc-index'));
+        const missing = wanted.filter(m => !tokenCanisterInfo[normalizeId(m.canisterId)]);
+        if (missing.length === 0) return;
+        let live = true;
+        (async () => {
+            const indexIdl = ({ IDL }) => IDL.Service({ ledger_id: IDL.Func([], [IDL.Principal], ['query']) });
+            const agent = new HttpAgent({ host: 'https://icp-api.io' });
+            const results = {};
+            await Promise.allSettled(missing.map(async (m) => {
+                const cid = normalizeId(m.canisterId);
+                const kind = m.resolvedAppId === 'icrc-index' ? 'index' : 'ledger';
+                try {
+                    let ledgerId = cid;
+                    if (kind === 'index') ledgerId = (await Actor.createActor(indexIdl, { agent, canisterId: cid }).ledger_id()).toText();
+                    const ledger = createLedgerActor(ledgerId, { agentOptions: { host: 'https://icp-api.io' } });
+                    const [metadata, supply, minting, archives] = await Promise.all([
+                        ledger.icrc1_metadata(), ledger.icrc1_total_supply().catch(() => null), ledger.icrc1_minting_account().catch(() => []), ledger.archives().catch(() => []),
+                    ]);
+                    const md = {}; for (const [k, v] of metadata) md[k] = Object.values(v)[0];
+                    results[cid] = {
+                        kind, ledgerId,
+                        name: md['icrc1:name'] ?? null, symbol: md['icrc1:symbol'] ?? null, decimals: md['icrc1:decimals'] !== undefined ? Number(md['icrc1:decimals']) : 8,
+                        fee: md['icrc1:fee'] !== undefined ? BigInt(md['icrc1:fee']) : null, logo: typeof md['icrc1:logo'] === 'string' && md['icrc1:logo'].startsWith('data:') ? md['icrc1:logo'] : null,
+                        supply, minting: minting[0]?.owner?.toText?.() || null,
+                        archives: archives.map(a => ({ id: a.canister_id.toText(), start: a.block_range_start, end: a.block_range_end })),
+                    };
+                } catch (e) { results[cid] = { kind, ledgerId: null, error: e?.message || String(e) }; }
+            }));
+            if (live) setTokenCanisterInfo(prev => ({ ...prev, ...results }));
+        })();
+        return () => { live = false; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [contextNeuronManagers]);
     const [neuronManagerIsController, setNeuronManagerIsController] = useState({}); // canisterId -> boolean
     const [neuronManagerModuleHash, setNeuronManagerModuleHash] = useState({}); // canisterId -> moduleHash string
     // latestOfficialVersion now comes from WalletContext (contextLatestOfficialVersion)
@@ -7231,7 +7267,8 @@ function Wallet() {
                                     const isStakingBot = appId === 'sneed-icp-staking-bot' || appId === 'icp-staking-bot';
                                     const isTradingBot = appId === 'sneed-trading-bot';
                                     const appInfo = contextAppInfoMap?.[appId];
-                                    const appLabel = appInfo?.name || (isStakingBot ? 'ICP Staking Bot' : isTradingBot ? 'Sneed Trading Bot' : (appId || 'Unknown'));
+                                    const tokenInfo = tokenCanisterInfo[canisterId];
+                                    const appLabel = tokenInfo?.symbol ? `${tokenInfo.symbol} ${tokenInfo.kind}` : (appInfo?.name || (isStakingBot ? 'ICP Staking Bot' : isTradingBot ? 'Sneed Trading Bot' : (appId || 'Unknown')));
                                     const appLatestVersion = appId ? contextLatestVersionByApp?.[appId] : null;
                                     const isAppVersionOutdated = appLatestVersion && (appLatestVersion.wasmSource === 'snsw'
                                         ? (!!neuronManagerModuleHash[canisterId] && neuronManagerModuleHash[canisterId].toLowerCase() !== appLatestVersion.wasmHash)
@@ -7279,6 +7316,8 @@ function Wallet() {
                                                         ? <BotIcon type="staking" size={36} color={isValidManager === false ? '#ef4444' : theme.colors.mutedText} />
                                                         : isTradingBot
                                                         ? <BotIcon type="trading" size={36} color={isValidManager === false ? '#ef4444' : '#10b981'} />
+                                                        : tokenInfo?.logo
+                                                        ? <img src={tokenInfo.logo} alt={tokenInfo.symbol || ''} style={{ width: 40, height: 40, borderRadius: 10, objectFit: 'cover' }} />
                                                         : <FaBox size={36} style={{ color: isValidManager === false ? '#ef4444' : theme.colors.accent }} />
                                                     }
                                                     {neuronManagerIsController[canisterId] && (
@@ -7702,6 +7741,31 @@ function Wallet() {
                                                         </div>
                                                     </div>
                                                     
+                                                    {/* Token behind a ledger or index card */}
+                                                    {tokenInfo && (
+                                                        <div style={{ padding: '12px 16px', backgroundColor: theme.colors.tertiaryBg || 'rgba(0,0,0,0.05)', borderRadius: '8px', marginBottom: '12px', fontSize: '12px', color: theme.colors.secondaryText, lineHeight: 1.7 }}>
+                                                            <div style={{ color: theme.colors.mutedText, fontSize: '11px', textTransform: 'uppercase', marginBottom: '4px' }}>Token</div>
+                                                            {tokenInfo.error ? (
+                                                                <div style={{ color: '#f59e0b' }}>Could not read the ledger: {tokenInfo.error}</div>
+                                                            ) : (
+                                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '2px 16px' }}>
+                                                                    <div><span style={{ color: theme.colors.mutedText }}>Name</span> {tokenInfo.name || '?'} ({tokenInfo.symbol || '?'})</div>
+                                                                    <div><span style={{ color: theme.colors.mutedText }}>Decimals</span> {tokenInfo.decimals}</div>
+                                                                    <div><span style={{ color: theme.colors.mutedText }}>Transfer fee</span> {tokenInfo.fee !== null ? (Number(tokenInfo.fee) / 10 ** tokenInfo.decimals).toLocaleString('en-US', { maximumFractionDigits: tokenInfo.decimals }) : '?'} {tokenInfo.symbol}</div>
+                                                                    <div><span style={{ color: theme.colors.mutedText }}>Supply</span> {tokenInfo.supply !== null ? (Number(tokenInfo.supply) / 10 ** tokenInfo.decimals).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '?'} {tokenInfo.symbol}</div>
+                                                                    <div style={{ gridColumn: '1 / -1' }}><span style={{ color: theme.colors.mutedText }}>Minting account</span> {tokenInfo.minting ? <PrincipalDisplay principal={tokenInfo.minting} displayInfo={getPrincipalDisplayInfoFromContext(tokenInfo.minting, principalNames, principalNicknames)} showCopyButton={false} isAuthenticated={isAuthenticated} /> : 'none'}</div>
+                                                                    {tokenInfo.kind === 'index' && <div style={{ gridColumn: '1 / -1' }}><span style={{ color: theme.colors.mutedText }}>Ledger</span> <Link to={`/studio/${tokenInfo.ledgerId}`} style={{ color: theme.colors.accent, fontFamily: 'monospace' }}>{tokenInfo.ledgerId}</Link></div>}
+                                                                    {tokenInfo.kind === 'ledger' && <div style={{ gridColumn: '1 / -1' }}><span style={{ color: theme.colors.mutedText }}>Archives</span> {tokenInfo.archives.length === 0 ? 'none yet (the ledger spawns one once the log is large enough)' : tokenInfo.archives.map(a => <span key={a.id} style={{ marginRight: 10 }}><Link to={`/canister?id=${a.id}`} style={{ color: theme.colors.accent, fontFamily: 'monospace' }}>{a.id}</Link> blocks {String(a.start)}–{String(a.end)}</span>)}</div>}
+                                                                    <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 4 }}>
+                                                                        <Link to={`/studio/${tokenInfo.ledgerId}`} style={{ color: theme.colors.accent }}>Safety report</Link>
+                                                                        <Link to={`/transactions?ledger=${tokenInfo.ledgerId}`} style={{ color: theme.colors.accent }}>Transactions</Link>
+                                                                        <Link to={`/tools/icrc3?canister=${tokenInfo.ledgerId}`} style={{ color: theme.colors.accent }}>Block log</Link>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+
                                                     {/* Neurons List (staking bots only) */}
                                                     {isStakingBot && neuronsData?.loading ? (
                                                         <div style={{ 

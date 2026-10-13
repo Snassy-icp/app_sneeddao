@@ -159,8 +159,8 @@ export function useCollectiblesNotifications() {
                                     const usdValue = conversionRate ? Number(amount) / Number(10n ** BigInt(decimals)) * conversionRate : 0;
                                     
                                     // Skip if amount is less than transaction fee (can't collect)
-                                    if (amount < fee) {
-                                        console.log(`Skipping ${symbol} reward: amount ${amount} < fee ${fee}`);
+                                    if (amount <= fee) {
+                                        console.log(`Skipping ${symbol} reward: amount ${amount} <= fee ${fee}`);
                                         continue;
                                     }
                                     

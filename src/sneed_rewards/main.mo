@@ -1090,6 +1090,16 @@ shared (deployer) persistent actor class SneedRLL() = this {
 
     let amount = if (total_balance >= fee) { total_balance - fee } else { 0 };
 
+    // Nothing to claim (balance under the fee): hand the balances back and say so, without
+    // writing a pending/failed pair into the claim log. This is the normal state of a hotkey
+    // that has nothing accrued, not a failure.
+    if (total_balance <= fee) {
+        for((owner, balance) in owner_balances.vals()) {
+            ignore increase_balance(owner, icrc1_ledger_canister_id, balance);
+        };
+        return #Err(#InsufficientFunds { balance = total_balance});
+    };
+
     // Identifiers stamped onto the transfer so an ambiguous (thrown) outcome can be
     // reconciled later: the memo is a unique per-claim match key for the ledger's
     // get_transactions, and created_at_time is a deterministic time anchor. We do NOT
@@ -1100,16 +1110,6 @@ shared (deployer) persistent actor class SneedRLL() = this {
     // Log that we're about to attempt the transfer
     log_claim(seq, hotkey, icrc1_ledger_canister_id, amount, fee, #Pending, null, null);
 
-
-    if (total_balance <= fee) {
-        // Log failed claim due to insufficient funds
-        log_claim(seq, hotkey, icrc1_ledger_canister_id, total_balance, fee, #Failed, ?("Insufficient funds. Total balance: " # debug_show(total_balance) # " is smaller than Fee: " # debug_show(fee)), null);
-        
-        for((owner, balance) in owner_balances.vals()) {
-            ignore increase_balance(owner, icrc1_ledger_canister_id, balance);
-        };      
-        return #Err(#InsufficientFunds { balance = total_balance});
-    };
 
     try {
         let transfer_args : T.TransferArgs = {
