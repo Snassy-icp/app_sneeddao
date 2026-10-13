@@ -7233,7 +7233,9 @@ function Wallet() {
                                     const appInfo = contextAppInfoMap?.[appId];
                                     const appLabel = appInfo?.name || (isStakingBot ? 'ICP Staking Bot' : isTradingBot ? 'Sneed Trading Bot' : (appId || 'Unknown'));
                                     const appLatestVersion = appId ? contextLatestVersionByApp?.[appId] : null;
-                                    const isAppVersionOutdated = appLatestVersion && manager.version && compareVersions(manager.version, appLatestVersion) < 0;
+                                    const isAppVersionOutdated = appLatestVersion && (appLatestVersion.wasmSource === 'snsw'
+                                        ? (!!neuronManagerModuleHash[canisterId] && neuronManagerModuleHash[canisterId].toLowerCase() !== appLatestVersion.wasmHash)
+                                        : (manager.version && compareVersions(manager.version, appLatestVersion) < 0));
                                     const neuronCount = neuronManagerCounts[canisterId];
                                     const isExpanded = expandedManagerCards[canisterId];
                                     const neuronsData = managerNeurons[canisterId];
@@ -8618,7 +8620,9 @@ function Wallet() {
                                     
                                     if (detectedManager && detectedManager.isValid) {
                                         const managerVersion = detectedManager.version;
-                                        const isAppVersionOutdated = appLatestVersion && managerVersion && compareVersions(managerVersion, appLatestVersion) < 0;
+                                        const isAppVersionOutdated = appLatestVersion && (appLatestVersion.wasmSource === 'snsw'
+                                            ? (!!neuronManagerModuleHash[canisterId] && neuronManagerModuleHash[canisterId].toLowerCase() !== appLatestVersion.wasmHash)
+                                            : (managerVersion && compareVersions(managerVersion, appLatestVersion) < 0));
                                         const managerNeuronCount = detectedManager.neuronCount || 0;
                                         const managerCycles = detectedManager.cycles;
                                         const managerIsController = detectedManager.isController;

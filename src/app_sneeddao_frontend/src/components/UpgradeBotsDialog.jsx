@@ -8,6 +8,7 @@ import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { useWalletOptional } from '../contexts/WalletContext';
+import { fetchLedgerSuiteWasm } from '../utils/ledgerSuite';
 
 // Management canister IDL with install_code
 const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
@@ -34,6 +35,12 @@ const managementCanisterIdlFactory = ({ IDL }) => {
 function versionStr(v) {
     if (!v) return '?';
     return `${Number(v.major)}.${Number(v.minor)}.${Number(v.patch)}`;
+}
+/// What to call a version: numbers for bots, the NNS hash for ledger-suite code.
+function versionLabel(v, moduleHash) {
+    if (v?.wasmSource === 'snsw') return `${v.label || 'NNS'} ${String(v.wasmHash).slice(0, 10)}…`;
+    if (!v && moduleHash) return `code ${String(moduleHash).slice(0, 10)}…`;
+    return `v${versionStr(v)}`;
 }
 
 /**
@@ -166,11 +173,17 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                         return id === canisterId;
                     });
                     const targetVer = manager ? getTargetVersion(manager) : latestVersion;
+                    const fromNns = targetVer?.wasmSource === 'snsw';
                     const rawUrl = targetVer?.wasmUrl;
-                    const wasmUrl = Array.isArray(rawUrl) ? (rawUrl[0] || '') : (rawUrl || '');
+                    const wasmUrl = fromNns ? `snsw:${targetVer.wasmHash}` : (Array.isArray(rawUrl) ? (rawUrl[0] || '') : (rawUrl || ''));
                     if (!wasmUrl) throw new Error('No WASM URL available for this app version');
 
                     let wasm = wasmByUrl[wasmUrl];
+                    if (!wasm && fromNns) {
+                        // the NNS is the source: bytes from the SNS wasm canister, refused unless the hash matches
+                        wasm = await fetchLedgerSuiteWasm(targetVer.wasmHash);
+                        wasmByUrl[wasmUrl] = wasm;
+                    }
                     if (!wasm) {
                         const response = await fetch(wasmUrl);
                         if (!response.ok) throw new Error(`Failed to fetch WASM: ${response.status}`);
@@ -440,7 +453,7 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                                                     color: '#f59e0b',
                                                     fontWeight: '500',
                                                 }}>
-                                                    v{versionStr(manager.version)}
+                                                    {manager.version ? `v${versionStr(manager.version)}` : versionLabel(null, manager.moduleHash)}
                                                 </span>
                                                 <span style={{ fontSize: '10px', color: theme.colors.mutedText }}>→</span>
                                                 <span style={{
@@ -448,7 +461,7 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                                                     color: '#22c55e',
                                                     fontWeight: '500',
                                                 }}>
-                                                    v{versionStr(getTargetVersion(manager))}
+                                                    {versionLabel(getTargetVersion(manager))}
                                                 </span>
                                                 {manager.hasKnownHash === false && (
                                                     <span style={{

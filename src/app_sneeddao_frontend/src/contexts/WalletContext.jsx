@@ -24,6 +24,7 @@ import { createActor as createTradingBotActor } from 'external/sneed_trading_bot
 import { getNeuronManagerSettings, getCanisterManagerSettings } from '../utils/NeuronManagerSettings';
 import { getCachedRewards, setCachedRewards } from '../hooks/useRewardsCache';
 import priceService from '../services/PriceService';
+import { fetchLedgerSuiteVersions, ledgerSuiteVersion, TOKEN_APP_IDS } from '../utils/ledgerSuite';
 
 const WalletContext = createContext(null);
 
@@ -2324,6 +2325,17 @@ export const WalletProvider = ({ children }) => {
         return compareVersions(version, latestOfficialVersion) < 0;
     }, [latestOfficialVersion, compareVersions]);
 
+    // Ledger-suite canisters (pad launches) follow the NNS, not SneedApp's version list:
+    // the latest SNS version's ledger and index hashes, and every approved one.
+    const [ledgerSuite, setLedgerSuite] = useState(null);
+    const hasTokenApps = neuronManagers.some(m => TOKEN_APP_IDS[m.resolvedAppId || '']);
+    useEffect(() => {
+        if (!hasTokenApps || ledgerSuite) return;
+        let live = true;
+        fetchLedgerSuiteVersions().then(v => { if (live) setLedgerSuite(v); }).catch(e => console.warn('[WalletContext] ledger suite versions unavailable', e));
+        return () => { live = false; };
+    }, [hasTokenApps, ledgerSuite]);
+
     // Check if a module hash matches any known app version WASM (all apps)
     const isKnownWasmHash = useCallback((moduleHash) => {
         if (!moduleHash) return null;
@@ -2331,12 +2343,15 @@ export const WalletProvider = ({ children }) => {
         // Check comprehensive map first (all app versions from sneedapp)
         const entry = allKnownWasmHashes[hashLower];
         if (entry) return entry.version;
+        // NNS-approved ledger-suite code counts as known
+        if (ledgerSuite?.known?.ledger?.has(hashLower)) return ledgerSuiteVersion('icrc-ledger', ledgerSuite);
+        if (ledgerSuite?.known?.index?.has(hashLower)) return ledgerSuiteVersion('icrc-index', ledgerSuite);
         // Fallback to legacy officialVersions
         if (officialVersions.length > 0) {
             return officialVersions.find(v => v.wasmHash?.toLowerCase() === hashLower) || null;
         }
         return null;
-    }, [allKnownWasmHashes, officialVersions]);
+    }, [allKnownWasmHashes, officialVersions, ledgerSuite]);
 
     // Backwards-compatible alias
     const isKnownNeuronManagerHash = isKnownWasmHash;
@@ -2396,8 +2411,12 @@ export const WalletProvider = ({ children }) => {
                 map[appId] = version;
             }
         }
+        for (const appId of Object.keys(TOKEN_APP_IDS)) {
+            const v = ledgerSuiteVersion(appId, ledgerSuite);
+            if (v) map[appId] = v;
+        }
         return map;
-    }, [allKnownWasmHashes, compareVersions]);
+    }, [allKnownWasmHashes, compareVersions, ledgerSuite]);
 
     // Computed: list of outdated managers (only ones we are controller of)
     // Only compares a canister against the latest version of its OWN app (WASM-resolved)
@@ -2405,22 +2424,29 @@ export const WalletProvider = ({ children }) => {
         if (neuronManagers.length === 0) return [];
         return neuronManagers
             .filter(m => {
-                if (!m.version) return false;
                 const resolvedApp = m.resolvedAppId || '';
                 if (!resolvedApp) return false;
                 const latest = latestVersionByApp[resolvedApp];
                 if (!latest) return false;
-                if (compareVersions(m.version, latest) >= 0) return false;
                 const cid = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
+                if (latest.wasmSource === 'snsw') {
+                    // ledger-suite canisters: behind when the running hash is not the NNS's latest
+                    const h = neuronManagerModuleHash[cid];
+                    if (!h || h.toLowerCase() === latest.wasmHash) return false;
+                } else {
+                    if (!m.version) return false;
+                    if (compareVersions(m.version, latest) >= 0) return false;
+                }
                 return neuronManagerIsController[cid] === true;
             })
             .map(m => {
                 const cid = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
                 const moduleHash = neuronManagerModuleHash[cid];
-                const knownVersion = moduleHash ? isKnownNeuronManagerHash(moduleHash) : null;
+                const latest = latestVersionByApp[m.resolvedAppId || ''];
+                const knownVersion = moduleHash ? (latest?.wasmSource === 'snsw' ? (ledgerSuite?.known?.[latest.kind]?.has(moduleHash.toLowerCase()) || null) : isKnownNeuronManagerHash(moduleHash)) : null;
                 return { ...m, hasKnownHash: !!knownVersion, moduleHash: moduleHash || null };
             });
-    }, [neuronManagers, latestVersionByApp, compareVersions, neuronManagerIsController, neuronManagerModuleHash, isKnownNeuronManagerHash]);
+    }, [neuronManagers, latestVersionByApp, compareVersions, neuronManagerIsController, neuronManagerModuleHash, isKnownNeuronManagerHash, ledgerSuite]);
 
     // Computed: list of canisters (managers + tracked + app manager) that are below their critical cycle level
     // Includes canisters we're not controller of, since topping up cycles is permissionless (CMC notify_top_up)
