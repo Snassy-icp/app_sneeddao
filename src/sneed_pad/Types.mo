@@ -66,6 +66,7 @@ module {
     ledger_fees_e8s : Nat;  // ICP ledger fees the pad pays on the way
     total_e8s : Nat;        // what the creator approves and pays
     xdr_permyriad_per_icp : Nat64; // CMC rate used
+    premium : Bool;         // the creation fee is the Sneed Premium member rate
   };
   public type LaunchStatus = { #created; #failed : Text };
   public type Launch = {
@@ -90,19 +91,27 @@ module {
     ledger_wasm_bytes : Nat; // 0 until fetched
     index_wasm_bytes : Nat;
     creation_fee_e8s : Nat;
+    premium_creation_fee_e8s : Nat; // for Sneed Premium members
+    sneed_premium : ?Principal;     // the membership canister asked (none: everybody pays the standard fee)
     ledger_cycles : Nat;
     index_cycles : Nat;
     fee_destination : Account;
     cycle_reserve : Nat;
     paused : Bool;
+    follow_nns : Bool;        // the wasm hashes track the NNS's latest SNS version (daily); false when the DAO pinned them
+    wasm_last_check : Int;    // when the NNS was last asked (ns, 0 never)
+    wasm_last_refresh : Int;  // when the hashes last changed (ns)
+    wasm_last_error : ?Text;
   };
   public type ConfigUpdate = {
     creation_fee_e8s : ?Nat;
+    premium_creation_fee_e8s : ?Nat;
     ledger_cycles : ?Nat;
     index_cycles : ?Nat;
     fee_destination : ?Account;
     cycle_reserve : ?Nat;
     paused : ?Bool;
+    follow_nns : ?Bool;
   };
 
   // ---- other canisters ----
@@ -135,6 +144,8 @@ module {
   };
   public type SnsWasmCanister = actor {
     get_wasm : shared query ({ hash : Blob }) -> async { wasm : ?{ wasm : Blob; canister_type : Int32; proposal_id : ?Nat64 } };
+    /// The latest NNS-approved SNS version as (canister type, hex hash) pairs: "Ledger", "Index", ...
+    get_latest_sns_version_pretty : shared query (Null) -> async [(Text, Text)];
   };
   public type CanisterSettings = {
     controllers : ?[Principal];

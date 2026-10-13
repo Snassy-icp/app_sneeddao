@@ -194,9 +194,18 @@ with patchability.
 
 `src/sneed_pad` implements stages 1 and 2: `get_quote`, `create_token` (one
 ICRC-2 pull of the quoted total; cycles through the CMC with the pad fronting
-them; ledger and optional index installed from SNS-W wasms under DAO-set
-hashes; control kept, blackholed, or handed to Sneed DAO with an automatic
-registration proposal), launch records, an ICRC-3 log, admin configuration.
+them; ledger and optional index installed from SNS-W wasms; control kept,
+blackholed, or handed to Sneed DAO with an automatic registration proposal),
+launch records, an ICRC-3 log, DAO/admin configuration. The wasm hashes need
+nobody: a daily timer (and a first run one second after install) asks SNS-W
+for the latest NNS-approved SNS version and adopts its ledger and index
+hashes, fetching and sha256-verifying the bytes before swapping, so a bad
+fetch never takes a working version away. Anyone may call `refresh_wasms`
+(ten-minute gap for non-admins); the DAO can pin hashes instead
+(`admin_set_wasm_hashes` turns `follow_nns` off). Fees are dual: the
+standard creation fee and a Sneed Premium member fee (membership checked
+through the shared PremiumClient against the premium canister), both set by
+`admin_set_config` (governance, controllers or listed admins).
 PocketIC tests in test/canisters/tests/sneed-pad.test.js use the real
 ledger-suite wasms. The wizard is `/tools/pad`. The pad is not deployed yet.
 Planned next: adopt existing ledgers, lock and liquidity stages, plan-then-pay

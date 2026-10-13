@@ -10,7 +10,7 @@ import { Principal } from '@icp-sdk/core/principal';
 import {
   createPic, install, actorAs, account, admin, alice, bob, carol, ICP_LEDGER_ID, SNEED_GOVERNANCE, SNEED_SNS_ROOT, T, unwrap, errOf, BUILD,
 } from '../lib/pic.js';
-import { ledgerIdl, ledgerInit, cmcIdl, snsWasmIdl, padIdl, mintedLedgerIdl, mintedIndexIdl, governanceIdl } from '../lib/idl.js';
+import { ledgerIdl, ledgerInit, cmcIdl, snsWasmIdl, premiumIdl, padIdl, mintedLedgerIdl, mintedIndexIdl, governanceIdl } from '../lib/idl.js';
 import { fetchBlocks, btype, txField, archiveIdl } from '../lib/icrc3.js';
 
 const ICP_FEE = 10_000n;
@@ -19,8 +19,9 @@ const indexGz = resolve(BUILD, 'index.wasm.gz');
 const haveWasms = existsSync(ledgerGz) && existsSync(indexGz);
 const sha256 = (bytes) => Uint8Array.from(createHash('sha256').update(bytes).digest());
 
-let pic, icpId, cmcId, snsWasmId, govId, padId;
-let icp, cmc, snsWasm, gov, pad, padAlice, padBob;
+let pic, icpId, cmcId, snsWasmId, govId, premiumId, padId;
+let icp, cmc, snsWasm, gov, premium, pad, padAlice, padBob;
+const hex = (b) => Buffer.from(b).toString('hex');
 let ledgerHash, indexHash;
 const NEURON = Uint8Array.from({ length: 32 }, (_, i) => i + 1);
 
@@ -38,11 +39,13 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
     cmcId = await install(pic, { name: 'MockCmc' });
     snsWasmId = await install(pic, { name: 'MockSnsWasm' });
     govId = await install(pic, { name: 'MockSnsGovernance', targetCanisterId: SNEED_GOVERNANCE });
+    premiumId = await install(pic, { name: 'MockPremium' });
     padId = await install(pic, { name: 'sneed_pad', cycles: 200n * T });
     icp = actorAs(pic, ledgerIdl, icpId, admin);
     cmc = actorAs(pic, cmcIdl, cmcId, admin);
     snsWasm = actorAs(pic, snsWasmIdl, snsWasmId, admin);
     gov = actorAs(pic, governanceIdl, govId, admin);
+    premium = actorAs(pic, premiumIdl, premiumId, admin);
     pad = actorAs(pic, padIdl, padId, admin);
     padAlice = actorAs(pic, padIdl, padId, alice);
     padBob = actorAs(pic, padIdl, padId, bob);
@@ -50,30 +53,62 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
     ledgerHash = sha256(ledgerBytes); indexHash = sha256(indexBytes);
     await snsWasm.set_wasm(ledgerHash, Uint8Array.from(ledgerBytes));
     await snsWasm.set_wasm(indexHash, Uint8Array.from(indexBytes));
-    unwrap(await pad.admin_set_canisters({ icp_ledger: [icpId], cmc: [cmcId], sns_wasm: [snsWasmId], governance: [govId], root: [SNEED_SNS_ROOT], blackhole: [carol] }));
-    unwrap(await pad.admin_set_config({ creation_fee_e8s: [500_000_000n], ledger_cycles: [3n * T], index_cycles: [2n * T], fee_destination: [account(bob)], cycle_reserve: [2n * T], paused: [] }));
+    await snsWasm.set_latest([['Root', '00'], ['Ledger', hex(ledgerHash)], ['Index', hex(indexHash)]]);
+    unwrap(await pad.admin_set_canisters({ icp_ledger: [icpId], cmc: [cmcId], sns_wasm: [snsWasmId], governance: [govId], root: [SNEED_SNS_ROOT], blackhole: [carol], sneed_premium: [[premiumId]] }));
+    unwrap(await pad.admin_set_config({ creation_fee_e8s: [500_000_000n], premium_creation_fee_e8s: [250_000_000n], ledger_cycles: [3n * T], index_cycles: [2n * T], fee_destination: [account(bob)], cycle_reserve: [2n * T], paused: [], follow_nns: [] }));
     await icp.mint(account(alice), 100n * 100_000_000n);
   }, 120_000);
   afterAll(async () => { await pic?.tearDown(); });
 
-  it('needs the DAO-approved wasms before it can launch anything', async () => {
+  it('takes the ledger suite from the latest NNS version on its own, nobody has to set anything', async () => {
+    // the install-time timer already tried (before the mocks were wired, so it failed and said so)
     expect(errOf(await padAlice.create_token(config()))).toMatch(/no ledger wasm/);
-    expect(errOf(await pad.admin_set_wasm_hashes([new Uint8Array(5)], []))).toMatch(/32 bytes/);
-    unwrap(await pad.admin_set_wasm_hashes([ledgerHash], [indexHash]));
-    const fetched = unwrap(await pad.admin_fetch_wasms());
+    const fetched = unwrap(await padAlice.refresh_wasms()); // anyone may ask
+    expect(fetched.changed).toBe(true);
     expect(Number(fetched.ledger_bytes)).toBeGreaterThan(100_000);
     expect(Number(fetched.index_bytes)).toBeGreaterThan(100_000);
     const cfg = await pad.get_config();
+    expect(cfg.follow_nns).toBe(true);
     expect(Array.from(cfg.ledger_wasm_hash[0])).toEqual(Array.from(ledgerHash));
+    expect(Array.from(cfg.index_wasm_hash[0])).toEqual(Array.from(indexHash));
+    expect(cfg.wasm_last_error).toEqual([]);
+    expect(cfg.wasm_last_refresh > 0n).toBe(true);
+    expect(errOf(await padAlice.refresh_wasms())).toMatch(/recently/); // rate limited for non-admins
+    expect(unwrap(await pad.refresh_wasms()).changed).toBe(false); // admins may; nothing new
   });
 
-  it('refuses wasm bytes whose hash does not match', async () => {
+  it('keeps the working version until a newer one is fetched and verified', async () => {
     const bogus = Uint8Array.from({ length: 32 }, () => 7);
     await snsWasm.set_wasm(bogus, Uint8Array.from([0, 97, 115, 109]));
-    unwrap(await pad.admin_set_wasm_hashes([], [bogus]));
-    expect(errOf(await pad.admin_fetch_wasms())).toMatch(/hash/);
-    unwrap(await pad.admin_set_wasm_hashes([], [indexHash]));
+    await snsWasm.set_latest([['Ledger', hex(ledgerHash)], ['Index', hex(bogus)]]);
+    expect(errOf(await pad.refresh_wasms())).toMatch(/hash/);
+    let cfg = await pad.get_config();
+    expect(Array.from(cfg.index_wasm_hash[0])).toEqual(Array.from(indexHash)); // untouched
+    expect(cfg.wasm_last_error[0]).toMatch(/hash/);
+    // a version the NNS serves properly is adopted by the daily timer
+    await snsWasm.set_latest([['Ledger', hex(ledgerHash)], ['Index', hex(ledgerHash)]]); // "new index" = the ledger bytes, which the mock serves
+    await pic.advanceTime(86_400 * 1000 + 1000); await pic.tick(10);
+    cfg = await pad.get_config();
+    expect(Array.from(cfg.index_wasm_hash[0])).toEqual(Array.from(ledgerHash));
+    expect(cfg.wasm_last_error).toEqual([]);
+    const log = await pad.get_text_log(5n);
+    expect(log.some((l) => /wasms refreshed/.test(l))).toBe(true);
+    // back to the real index for the launches below
+    await snsWasm.set_latest([['Ledger', hex(ledgerHash)], ['Index', hex(indexHash)]]);
+    unwrap(await pad.refresh_wasms());
+  });
+
+  it('lets the DAO pin hashes instead of following the NNS', async () => {
+    expect(errOf(await pad.admin_set_wasm_hashes([new Uint8Array(5)], []))).toMatch(/32 bytes/);
+    expect(errOf(await padAlice.admin_set_wasm_hashes([ledgerHash], []))).toMatch(/admin/);
+    unwrap(await pad.admin_set_wasm_hashes([ledgerHash], [indexHash]));
+    let cfg = await pad.get_config();
+    expect(cfg.follow_nns).toBe(false);
     unwrap(await pad.admin_fetch_wasms());
+    cfg = await pad.get_config();
+    expect(Number(cfg.ledger_wasm_bytes)).toBeGreaterThan(100_000);
+    unwrap(await pad.admin_set_config({ creation_fee_e8s: [], premium_creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [], follow_nns: [true] }));
+    expect((await pad.get_config()).follow_nns).toBe(true);
   });
 
   it('validates the configuration and quotes the price', async () => {
@@ -88,6 +123,20 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
     expect(q.total_e8s).toBe(500_000_000n + 90_000_000n + 3n * ICP_FEE);
     const qi = unwrap(await padAlice.get_quote(config({ with_index: true })));
     expect(qi.icp_for_cycles_e8s).toBe(150_000_000n);
+    expect(q.premium).toBe(false);
+  });
+
+  it('charges Sneed Premium members the member rate, until the membership runs out', async () => {
+    const now = BigInt(Math.round(await pic.getTime())) * 1_000_000n;
+    await premium.set_member(bob, now + 3_600n * 1_000_000_000n);
+    const q = unwrap(await padBob.get_quote(config()));
+    expect(q.premium).toBe(true);
+    expect(q.creation_fee_e8s).toBe(250_000_000n);
+    expect(q.total_e8s).toBe(250_000_000n + 90_000_000n + 3n * ICP_FEE);
+    await pic.advanceTime(2 * 3_600 * 1000); await pic.tick(2);
+    const later = unwrap(await padBob.get_quote(config()));
+    expect(later.premium).toBe(false);
+    expect(later.creation_fee_e8s).toBe(500_000_000n);
   });
 
   it('does nothing without an ICRC-2 allowance', async () => {
@@ -193,10 +242,10 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
   }, 120_000);
 
   it('refuses while paused and for anonymous callers', async () => {
-    unwrap(await pad.admin_set_config({ creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [true] }));
+    unwrap(await pad.admin_set_config({ creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [true], premium_creation_fee_e8s: [], follow_nns: [] }));
     expect(errOf(await padAlice.create_token(config()))).toMatch(/paused/);
-    unwrap(await pad.admin_set_config({ creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [false] }));
-    expect(errOf(await padBob.admin_set_config({ creation_fee_e8s: [1n], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [] }))).toMatch(/admin only/);
+    unwrap(await pad.admin_set_config({ creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [false], premium_creation_fee_e8s: [], follow_nns: [] }));
+    expect(errOf(await padBob.admin_set_config({ creation_fee_e8s: [1n], premium_creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [], follow_nns: [] }))).toMatch(/admin only/);
   });
 
   it('keeps every launch across an upgrade', async () => {

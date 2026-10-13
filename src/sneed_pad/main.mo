@@ -19,11 +19,15 @@ import Int "mo:base/Int";
 import Iter "mo:base/Iter";
 import Nat "mo:base/Nat";
 import Nat8 "mo:base/Nat8";
+import Nat32 "mo:base/Nat32";
 import Nat64 "mo:base/Nat64";
 import Principal "mo:base/Principal";
 import Text "mo:base/Text";
 import Time "mo:base/Time";
+import Timer "mo:base/Timer";
+import Char "mo:base/Char";
 import Sha256 "mo:sha2/Sha256";
+import PremiumClient "../PremiumClient";
 
 import T "Types";
 import Icrc3Log "../icrc3/Log";
@@ -37,6 +41,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   transient let SNS_WASM_ID = "qaa6y-5yaaa-aaaaa-aaafa-cai";
   transient let BLACKHOLE_ID = "e3mmv-5qaaa-aaaah-aadma-cai"; // ninegua's blackhole: immutable, exposes canister_status
   transient let SNEED_GOVERNANCE_ID = "fi3zi-fyaaa-aaaaq-aachq-cai";
+  transient let SNEED_PREMIUM_ID = "7gump-4aaaa-aaaal-qtyka-cai";
   transient let SNEED_ROOT_ID = "fp274-iaaaa-aaaaq-aacha-cai";
   transient let RLL_ID = "lvc4n-7aaaa-aaaam-adm6a-cai";
   transient let ICP_FEE : Nat = 10_000;
@@ -50,6 +55,8 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   stable var sneed_governance : Principal = Principal.fromText(SNEED_GOVERNANCE_ID);
   stable var sneed_root : Principal = Principal.fromText(SNEED_ROOT_ID);
   stable var blackhole : Principal = Principal.fromText(BLACKHOLE_ID);
+  stable var sneed_premium_id : ?Principal = ?Principal.fromText(SNEED_PREMIUM_ID);
+  stable var premium_cache = PremiumClient.emptyCache();
 
   transient let ic : T.Management = actor ("aaaaa-aa");
   private func icp_ledger() : T.IcpLedger { actor (Principal.toText(icp_ledger_id)) };
@@ -68,6 +75,18 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   stable var ledger_wasm : ?Blob = null; // fetched from the SNS wasm canister, verified against the hash
   stable var index_wasm : ?Blob = null;
   stable var creation_fee_e8s : Nat = 500_000_000; // 5 ICP
+  stable var premium_creation_fee_e8s : Nat = 250_000_000; // 2.5 ICP for Sneed Premium members
+  // The wasm hashes follow the NNS: once a day the pad asks the SNS wasm
+  // canister for the latest SNS version and takes its ledger and index
+  // hashes, so nobody has to run anything. The DAO can pin hashes instead.
+  stable var follow_nns : Bool = true;
+  stable var wasm_last_check : Int = 0;
+  stable var wasm_last_refresh : Int = 0;
+  stable var wasm_last_error : ?Text = null;
+  transient var wasm_refresh_running : Bool = false;
+  transient var wasm_timer_started : Bool = false;
+  transient let WASM_CHECK_INTERVAL_SECONDS : Nat = 86_400;
+  transient let WASM_CHECK_MIN_GAP_NS : Int = 10 * 60 * 1_000_000_000; // anyone may ask for a check, this often
   stable var ledger_cycles : Nat = 3 * T_CYCLES;
   stable var index_cycles : Nat = 2 * T_CYCLES;
   stable var fee_destination : T.Account = { owner = Principal.fromText(RLL_ID); subaccount = null };
@@ -194,21 +213,31 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     if (cyclesPerIcp == 0) { return 0 };
     (cycles * 100_000_000 * 105) / (cyclesPerIcp * 100);
   };
-  private func makeQuote(c : T.TokenConfig, rate : Nat64) : T.Quote {
+  private func makeQuote(c : T.TokenConfig, rate : Nat64, premium : Bool) : T.Quote {
     let idx = if (c.with_index) { index_cycles } else { 0 };
     let forCycles = icpForCycles(ledger_cycles + idx, rate);
     let fees = ICP_FEE * 3; // pull, CMC transfer, fee transfer
+    let fee = if (premium) { premium_creation_fee_e8s } else { creation_fee_e8s };
     {
-      creation_fee_e8s = creation_fee_e8s; ledger_cycles = ledger_cycles; index_cycles = idx;
-      icp_for_cycles_e8s = forCycles; ledger_fees_e8s = fees; total_e8s = creation_fee_e8s + forCycles + fees;
-      xdr_permyriad_per_icp = rate;
+      creation_fee_e8s = fee; ledger_cycles = ledger_cycles; index_cycles = idx;
+      icp_for_cycles_e8s = forCycles; ledger_fees_e8s = fees; total_e8s = fee + forCycles + fees;
+      xdr_permyriad_per_icp = rate; premium;
     };
   };
-  /// What a launch with this configuration costs today (an update call: it asks the CMC for the rate).
-  public shared func get_quote(c : T.TokenConfig) : async { #Ok : T.Quote; #Err : Text } {
+  /// Sneed Premium membership (cached by the shared client); never blocks a launch when the membership canister is unreachable.
+  private func isPremium(p : Principal) : async* Bool {
+    if (Principal.isAnonymous(p)) { return false };
+    switch (sneed_premium_id) {
+      case (?id) { try { await* PremiumClient.isPremium(premium_cache, id, p) } catch (_) { false } };
+      case null { false };
+    };
+  };
+  /// What a launch with this configuration costs the caller today (an update call: it asks the CMC for the rate and Sneed Premium for the membership).
+  public shared ({ caller }) func get_quote(c : T.TokenConfig) : async { #Ok : T.Quote; #Err : Text } {
     switch (validate(c)) { case (?e) { return #Err(e) }; case null {} };
+    let premium = await* isPremium(caller);
     let rate = try { (await cmc().get_icp_xdr_conversion_rate()).data.xdr_permyriad_per_icp } catch (e) { return #Err("could not read the ICP/XDR rate: " # Error.message(e)) };
-    #Ok(makeQuote(c, rate));
+    #Ok(makeQuote(c, rate, premium));
   };
 
   // ---- the launch ----
@@ -220,11 +249,12 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     if (paused) { return #Err("the launchpad is paused") };
     if (Principal.isAnonymous(caller)) { return #Err("log in first") };
     switch (validate(c)) { case (?e) { return #Err(e) }; case null {} };
-    let wasm = switch (ledger_wasm) { case (?w) { w }; case null { return #Err("no ledger wasm is loaded; the DAO has to set one") } };
-    let idxWasm = if (c.with_index) { switch (index_wasm) { case (?w) { ?w }; case null { return #Err("no index wasm is loaded; launch without an index or ask the DAO to set one") } } } else { null };
+    let wasm = switch (ledger_wasm) { case (?w) { w }; case null { return #Err("no ledger wasm is loaded yet (the pad fetches the NNS's latest ledger version once a day); try again later or call refresh_wasms") } };
+    let idxWasm = if (c.with_index) { switch (index_wasm) { case (?w) { ?w }; case null { return #Err("no index wasm is loaded yet; launch without an index or try again later") } } } else { null };
     let cid = newCid();
+    let premium = await* isPremium(caller);
     let rate = try { (await cmc().get_icp_xdr_conversion_rate()).data.xdr_permyriad_per_icp } catch (e) { return #Err("could not read the ICP/XDR rate: " # Error.message(e)) };
-    let quote = makeQuote(c, rate);
+    let quote = makeQuote(c, rate, premium);
     let needCycles = cycle_reserve + quote.ledger_cycles + quote.index_cycles;
     // The creator pays for the cycles, but the CMC credit arrives after the
     // canisters would be created; the pad fronts them from its own balance.
@@ -378,7 +408,8 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
       ledger_wasm_hash; index_wasm_hash;
       ledger_wasm_bytes = switch (ledger_wasm) { case (?w) { w.size() }; case null { 0 } };
       index_wasm_bytes = switch (index_wasm) { case (?w) { w.size() }; case null { 0 } };
-      creation_fee_e8s; ledger_cycles; index_cycles; fee_destination; cycle_reserve; paused;
+      creation_fee_e8s; premium_creation_fee_e8s; sneed_premium = sneed_premium_id; ledger_cycles; index_cycles; fee_destination; cycle_reserve; paused;
+      follow_nns; wasm_last_check; wasm_last_refresh; wasm_last_error;
     };
   };
   public query func get_cycle_balance() : async Nat { Cycles.balance() };
@@ -386,28 +417,22 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   public query func get_admins() : async [Principal] { admins };
   public query func get_ledger_registration_status() : async Icrc3Sns.Status { Icrc3Sns.status(ledger_registrations, ledger_registration_env()) };
 
-  // ---- admin: wasms (the DAO decides which hashes; the bytes come from the NNS) ----
-  public shared ({ caller }) func admin_set_wasm_hashes(ledger : ?Blob, index : ?Blob) : async { #Ok; #Err : Text } {
-    if (not isAdmin(caller)) { return #Err("admin only") };
-    switch (ledger) { case (?h) { if (h.size() != 32) { return #Err("a wasm hash is 32 bytes") } }; case null {} };
-    switch (index) { case (?h) { if (h.size() != 32) { return #Err("a wasm hash is 32 bytes") } }; case null {} };
-    let cid = newCid();
-    if (ledger != null and ledger != ledger_wasm_hash) { ledger_wasm_hash := ledger; ledger_wasm := null; icrc3_add("sneedpad_wasm_set", [("cid", #Nat(cid)), ("caller", Icrc3Log.principal(caller)), ("kind", #Text("ledger")), ("hash", switch (ledger) { case (?h) { #Blob(h) }; case null { #Text("") } })]) };
-    if (index != null and index != index_wasm_hash) { index_wasm_hash := index; index_wasm := null; icrc3_add("sneedpad_wasm_set", [("cid", #Nat(cid)), ("caller", Icrc3Log.principal(caller)), ("kind", #Text("index")), ("hash", switch (index) { case (?h) { #Blob(h) }; case null { #Text("") } })]) };
-    #Ok;
+  // ---- wasms: follow the NNS, or hashes the DAO pinned; the bytes always come from the NNS ----
+  private func hexDecode(t : Text) : ?Blob {
+    let chars = Text.toArray(t);
+    if (chars.size() % 2 != 0) { return null };
+    let out = Buffer.Buffer<Nat8>(chars.size() / 2);
+    var i = 0;
+    while (i < chars.size()) {
+      let hi = hexVal(chars[i]); let lo = hexVal(chars[i + 1]);
+      switch (hi, lo) { case (?h, ?l) { out.add(Nat8.fromNat(h * 16 + l)) }; case _ { return null } };
+      i += 2;
+    };
+    ?Blob.fromArray(Buffer.toArray(out));
   };
-  /// Fetch the wasm bytes for the configured hashes from the SNS wasm canister and verify them.
-  public shared ({ caller }) func admin_fetch_wasms() : async { #Ok : { ledger_bytes : Nat; index_bytes : Nat }; #Err : Text } {
-    if (not isAdmin(caller)) { return #Err("admin only") };
-    switch (ledger_wasm_hash) {
-      case (?h) { if (ledger_wasm == null) { switch (await* fetchWasm(h)) { case (#Ok(w)) { ledger_wasm := ?w }; case (#Err(e)) { return #Err("ledger: " # e) } } } };
-      case null {};
-    };
-    switch (index_wasm_hash) {
-      case (?h) { if (index_wasm == null) { switch (await* fetchWasm(h)) { case (#Ok(w)) { index_wasm := ?w }; case (#Err(e)) { return #Err("index: " # e) } } } };
-      case null {};
-    };
-    #Ok({ ledger_bytes = switch (ledger_wasm) { case (?w) { w.size() }; case null { 0 } }; index_bytes = switch (index_wasm) { case (?w) { w.size() }; case null { 0 } } });
+  private func hexVal(c : Char) : ?Nat {
+    let n = Nat32.toNat(Char.toNat32(c));
+    if (n >= 48 and n <= 57) { ?(n - 48) } else if (n >= 97 and n <= 102) { ?(n - 87) } else if (n >= 65 and n <= 70) { ?(n - 55) } else { null };
   };
   private func fetchWasm(hash : Blob) : async* { #Ok : Blob; #Err : Text } {
     let r = try { await sns_wasm().get_wasm({ hash = hash }) } catch (e) { return #Err("SNS wasm canister: " # Error.message(e)) };
@@ -419,6 +444,91 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
       case null { #Err("the SNS wasm canister has no wasm with hash " # hex(hash)) };
     };
   };
+  /// Ask the NNS for its latest SNS version and adopt its ledger and index
+  /// hashes (when following), then fetch whatever bytes are missing. A new
+  /// version replaces the old one only after its bytes arrived and verified,
+  /// so the pad never goes from "can launch" to "cannot".
+  private func refreshWasmsImpl(by : Principal) : async* { #Ok : { ledger_bytes : Nat; index_bytes : Nat; changed : Bool }; #Err : Text } {
+    if (wasm_refresh_running) { return #Err("a refresh is already running") };
+    wasm_refresh_running := true;
+    wasm_last_check := Time.now();
+    let r = await* refreshWasmsInner(by);
+    wasm_refresh_running := false;
+    switch (r) { case (#Err(e)) { wasm_last_error := ?e; logText(newCid(), "error", "wasm refresh: " # e) }; case (#Ok(_)) { wasm_last_error := null } };
+    r;
+  };
+  private func refreshWasmsInner(by : Principal) : async* { #Ok : { ledger_bytes : Nat; index_bytes : Nat; changed : Bool }; #Err : Text } {
+    var wantLedger = ledger_wasm_hash; var wantIndex = index_wasm_hash;
+    if (follow_nns) {
+      let latest = try { await sns_wasm().get_latest_sns_version_pretty(null) } catch (e) { return #Err("SNS wasm canister: " # Error.message(e)) };
+      for ((kind, h) in latest.vals()) {
+        if (kind == "Ledger") { switch (hexDecode(h)) { case (?b) { if (b.size() == 32) { wantLedger := ?b } }; case null {} } };
+        if (kind == "Index") { switch (hexDecode(h)) { case (?b) { if (b.size() == 32) { wantIndex := ?b } }; case null {} } };
+      };
+      if (wantLedger == null) { return #Err("the SNS wasm canister's latest version has no ledger hash") };
+    };
+    var changed = false;
+    switch (wantLedger) {
+      case (?h) {
+        if (?h != ledger_wasm_hash or ledger_wasm == null) {
+          switch (await* fetchWasm(h)) {
+            case (#Ok(w)) {
+              if (?h != ledger_wasm_hash) { icrc3_add("sneedpad_wasm_set", [("cid", #Nat(newCid())), ("caller", Icrc3Log.principal(by)), ("kind", #Text("ledger")), ("hash", #Blob(h)), ("source", #Text(if (follow_nns) { "nns" } else { "pinned" }))]) };
+              ledger_wasm_hash := ?h; ledger_wasm := ?w; changed := true;
+            };
+            case (#Err(e)) { return #Err("ledger: " # e) };
+          };
+        };
+      };
+      case null {};
+    };
+    switch (wantIndex) {
+      case (?h) {
+        if (?h != index_wasm_hash or index_wasm == null) {
+          switch (await* fetchWasm(h)) {
+            case (#Ok(w)) {
+              if (?h != index_wasm_hash) { icrc3_add("sneedpad_wasm_set", [("cid", #Nat(newCid())), ("caller", Icrc3Log.principal(by)), ("kind", #Text("index")), ("hash", #Blob(h)), ("source", #Text(if (follow_nns) { "nns" } else { "pinned" }))]) };
+              index_wasm_hash := ?h; index_wasm := ?w; changed := true;
+            };
+            case (#Err(e)) { return #Err("index: " # e) };
+          };
+        };
+      };
+      case null {};
+    };
+    if (changed) { wasm_last_refresh := Time.now(); logText(newCid(), "info", "wasms refreshed: ledger " # (switch (ledger_wasm_hash) { case (?h) { hex(h) }; case null { "-" } }) # ", index " # (switch (index_wasm_hash) { case (?h) { hex(h) }; case null { "-" } })) };
+    #Ok({ ledger_bytes = switch (ledger_wasm) { case (?w) { w.size() }; case null { 0 } }; index_bytes = switch (index_wasm) { case (?w) { w.size() }; case null { 0 } }; changed });
+  };
+  /// Check the NNS for a newer ledger suite now (anyone, at most every ten
+  /// minutes; the daily timer does the same on its own).
+  public shared ({ caller }) func refresh_wasms() : async { #Ok : { ledger_bytes : Nat; index_bytes : Nat; changed : Bool }; #Err : Text } {
+    if (not isAdmin(caller) and Time.now() - wasm_last_check < WASM_CHECK_MIN_GAP_NS) { return #Err("checked recently; try again in a few minutes") };
+    await* refreshWasmsImpl(caller);
+  };
+  private func wasm_timer_job() : async () { ignore await* refreshWasmsImpl(Principal.fromActor(this)) };
+  private func ensure_wasm_timer<system>() {
+    if (wasm_timer_started) { return };
+    wasm_timer_started := true;
+    ignore Timer.recurringTimer<system>(#seconds WASM_CHECK_INTERVAL_SECONDS, wasm_timer_job);
+    // first fetch right away when nothing is loaded (fresh install, or the hashes were set before the bytes came)
+    if (ledger_wasm == null) { ignore Timer.setTimer<system>(#seconds 1, wasm_timer_job) };
+  };
+  /// Pin the hashes (DAO): the pad stops following the NNS until `follow_nns` is set again.
+  public shared ({ caller }) func admin_set_wasm_hashes(ledger : ?Blob, index : ?Blob) : async { #Ok; #Err : Text } {
+    if (not isAdmin(caller)) { return #Err("admin only") };
+    switch (ledger) { case (?h) { if (h.size() != 32) { return #Err("a wasm hash is 32 bytes") } }; case null {} };
+    switch (index) { case (?h) { if (h.size() != 32) { return #Err("a wasm hash is 32 bytes") } }; case null {} };
+    if (follow_nns) { icrc3_add("sneedpad_config_update", [("cid", #Nat(newCid())), ("caller", Icrc3Log.principal(caller)), ("key", #Text("follow_nns")), ("old_value", #Text("true")), ("value", #Text("false"))]); follow_nns := false };
+    let cid = newCid();
+    if (ledger != null and ledger != ledger_wasm_hash) { ledger_wasm_hash := ledger; ledger_wasm := null; icrc3_add("sneedpad_wasm_set", [("cid", #Nat(cid)), ("caller", Icrc3Log.principal(caller)), ("kind", #Text("ledger")), ("hash", switch (ledger) { case (?h) { #Blob(h) }; case null { #Text("") } }), ("source", #Text("pinned"))]) };
+    if (index != null and index != index_wasm_hash) { index_wasm_hash := index; index_wasm := null; icrc3_add("sneedpad_wasm_set", [("cid", #Nat(cid)), ("caller", Icrc3Log.principal(caller)), ("kind", #Text("index")), ("hash", switch (index) { case (?h) { #Blob(h) }; case null { #Text("") } }), ("source", #Text("pinned"))]) };
+    #Ok;
+  };
+  /// Fetch the bytes for pinned hashes (admin; `refresh_wasms` does the same for everyone).
+  public shared ({ caller }) func admin_fetch_wasms() : async { #Ok : { ledger_bytes : Nat; index_bytes : Nat }; #Err : Text } {
+    if (not isAdmin(caller)) { return #Err("admin only") };
+    switch (await* refreshWasmsImpl(caller)) { case (#Ok(r)) { #Ok({ ledger_bytes = r.ledger_bytes; index_bytes = r.index_bytes }) }; case (#Err(e)) { #Err(e) } };
+  };
 
   // ---- admin: configuration ----
   public shared ({ caller }) func admin_set_config(u : T.ConfigUpdate) : async { #Ok : T.Config; #Err : Text } {
@@ -426,6 +536,8 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     let cid = newCid();
     let note = func(key : Text, old : Text, new_ : Text) { icrc3_add("sneedpad_config_update", [("cid", #Nat(cid)), ("caller", Icrc3Log.principal(caller)), ("key", #Text(key)), ("old_value", #Text(old)), ("value", #Text(new_))]) };
     switch (u.creation_fee_e8s) { case (?v) { note("creation_fee_e8s", Nat.toText(creation_fee_e8s), Nat.toText(v)); creation_fee_e8s := v }; case null {} };
+    switch (u.premium_creation_fee_e8s) { case (?v) { note("premium_creation_fee_e8s", Nat.toText(premium_creation_fee_e8s), Nat.toText(v)); premium_creation_fee_e8s := v }; case null {} };
+    switch (u.follow_nns) { case (?v) { note("follow_nns", debug_show(follow_nns), debug_show(v)); follow_nns := v }; case null {} };
     switch (u.ledger_cycles) { case (?v) { note("ledger_cycles", Nat.toText(ledger_cycles), Nat.toText(v)); ledger_cycles := v }; case null {} };
     switch (u.index_cycles) { case (?v) { note("index_cycles", Nat.toText(index_cycles), Nat.toText(v)); index_cycles := v }; case null {} };
     switch (u.fee_destination) { case (?v) { note("fee_destination", Principal.toText(fee_destination.owner), Principal.toText(v.owner)); fee_destination := v }; case null {} };
@@ -436,8 +548,9 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   public shared ({ caller }) func admin_add_admin(p : Principal) : async { #Ok; #Err : Text } { if (not isAdmin(caller)) { return #Err("admin only") }; if (Array.find<Principal>(admins, func(a) { a == p }) == null) { admins := Array.append(admins, [p]) }; #Ok };
   public shared ({ caller }) func admin_remove_admin(p : Principal) : async { #Ok; #Err : Text } { if (not isAdmin(caller)) { return #Err("admin only") }; admins := Array.filter<Principal>(admins, func(a) { a != p }); #Ok };
   /// Test deployments: point at mock canisters.
-  public shared ({ caller }) func admin_set_canisters(u : { icp_ledger : ?Principal; cmc : ?Principal; sns_wasm : ?Principal; governance : ?Principal; root : ?Principal; blackhole : ?Principal }) : async { #Ok; #Err : Text } {
+  public shared ({ caller }) func admin_set_canisters(u : { icp_ledger : ?Principal; cmc : ?Principal; sns_wasm : ?Principal; governance : ?Principal; root : ?Principal; blackhole : ?Principal; sneed_premium : ??Principal }) : async { #Ok; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("admin only") };
+    switch (u.sneed_premium) { case (?p) { sneed_premium_id := p; premium_cache := PremiumClient.emptyCache() }; case null {} };
     switch (u.icp_ledger) { case (?p) { icp_ledger_id := p }; case null {} };
     switch (u.cmc) { case (?p) { cmc_id := p }; case null {} };
     switch (u.sns_wasm) { case (?p) { sns_wasm_id := p }; case null {} };
@@ -469,6 +582,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   public query func icrc3_log_status() : async T3.LogStatus { Icrc3Log.status(icrc3, icrc3_rt) };
   public query func icrc3_registration_status() : async Icrc3Sns.Status { Icrc3Sns.status(icrc3_sns, icrc3_sns_env()) };
 
-  system func postupgrade() { ensure_icrc3_timer<system>() };
+  system func postupgrade() { ensure_icrc3_timer<system>(); ensure_wasm_timer<system>() };
   ensure_icrc3_timer<system>();
+  ensure_wasm_timer<system>();
 };

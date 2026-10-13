@@ -73,6 +73,10 @@ export const cmcIdl = ({ IDL }) => IDL.Service({
 });
 export const snsWasmIdl = ({ IDL }) => IDL.Service({
   set_wasm: IDL.Func([IDL.Vec(IDL.Nat8), IDL.Vec(IDL.Nat8)], [], []),
+  set_latest: IDL.Func([IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text))], [], []),
+});
+export const premiumIdl = ({ IDL }) => IDL.Service({
+  set_member: IDL.Func([IDL.Principal, IDL.Int], [], []),
 });
 const MintingPolicy = IDL.Variant({ nobody: IDL.Null, sneed_dao: IDL.Null, principal: IDL.Principal });
 const ControlChoice = IDL.Variant({ keep: IDL.Null, blackhole: IDL.Null, sneed_dao: IDL.Null });
@@ -81,7 +85,7 @@ export const TokenConfig = IDL.Record({
   allocations: IDL.Vec(IDL.Record({ account: Account, amount: IDL.Nat })),
   minting: MintingPolicy, fee_collector: IDL.Opt(Account), control: ControlChoice, with_index: IDL.Bool,
 });
-const Quote = IDL.Record({ creation_fee_e8s: IDL.Nat, ledger_cycles: IDL.Nat, index_cycles: IDL.Nat, icp_for_cycles_e8s: IDL.Nat, ledger_fees_e8s: IDL.Nat, total_e8s: IDL.Nat, xdr_permyriad_per_icp: IDL.Nat64 });
+const Quote = IDL.Record({ creation_fee_e8s: IDL.Nat, ledger_cycles: IDL.Nat, index_cycles: IDL.Nat, icp_for_cycles_e8s: IDL.Nat, ledger_fees_e8s: IDL.Nat, total_e8s: IDL.Nat, xdr_permyriad_per_icp: IDL.Nat64, premium: IDL.Bool });
 const Launch = IDL.Record({
   id: IDL.Nat, creator: IDL.Principal, created_at: IDL.Int, config: TokenConfig, quote: Quote, paid_e8s: IDL.Nat,
   ledger: IDL.Opt(IDL.Principal), index: IDL.Opt(IDL.Principal), ledger_wasm_hash: IDL.Opt(IDL.Vec(IDL.Nat8)), index_wasm_hash: IDL.Opt(IDL.Vec(IDL.Nat8)),
@@ -89,7 +93,8 @@ const Launch = IDL.Record({
 });
 const PadConfig = IDL.Record({
   ledger_wasm_hash: IDL.Opt(IDL.Vec(IDL.Nat8)), index_wasm_hash: IDL.Opt(IDL.Vec(IDL.Nat8)), ledger_wasm_bytes: IDL.Nat, index_wasm_bytes: IDL.Nat,
-  creation_fee_e8s: IDL.Nat, ledger_cycles: IDL.Nat, index_cycles: IDL.Nat, fee_destination: Account, cycle_reserve: IDL.Nat, paused: IDL.Bool,
+  creation_fee_e8s: IDL.Nat, premium_creation_fee_e8s: IDL.Nat, sneed_premium: IDL.Opt(IDL.Principal), ledger_cycles: IDL.Nat, index_cycles: IDL.Nat, fee_destination: Account, cycle_reserve: IDL.Nat, paused: IDL.Bool,
+  follow_nns: IDL.Bool, wasm_last_check: IDL.Int, wasm_last_refresh: IDL.Int, wasm_last_error: IDL.Opt(IDL.Text),
 });
 const Registration = IDL.Record({ canister_id: IDL.Principal, start: IDL.Nat, proposal_id: IDL.Opt(IDL.Nat64), attempts: IDL.Nat, last_error: IDL.Opt(IDL.Text) });
 const RegistrationStatus = IDL.Record({ governance: IDL.Principal, neuron: IDL.Opt(IDL.Vec(IDL.Nat8)), registrations: IDL.Vec(Registration) });
@@ -107,8 +112,9 @@ export const padIdl = ({ IDL }) => IDL.Service({
   get_ledger_registration_status: IDL.Func([], [RegistrationStatus], ['query']),
   admin_set_wasm_hashes: IDL.Func([IDL.Opt(IDL.Vec(IDL.Nat8)), IDL.Opt(IDL.Vec(IDL.Nat8))], [IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })], []),
   admin_fetch_wasms: IDL.Func([], [IDL.Variant({ Ok: IDL.Record({ ledger_bytes: IDL.Nat, index_bytes: IDL.Nat }), Err: IDL.Text })], []),
-  admin_set_config: IDL.Func([IDL.Record({ creation_fee_e8s: IDL.Opt(IDL.Nat), ledger_cycles: IDL.Opt(IDL.Nat), index_cycles: IDL.Opt(IDL.Nat), fee_destination: IDL.Opt(Account), cycle_reserve: IDL.Opt(IDL.Nat), paused: IDL.Opt(IDL.Bool) })], [IDL.Variant({ Ok: PadConfig, Err: IDL.Text })], []),
-  admin_set_canisters: IDL.Func([IDL.Record({ icp_ledger: IDL.Opt(IDL.Principal), cmc: IDL.Opt(IDL.Principal), sns_wasm: IDL.Opt(IDL.Principal), governance: IDL.Opt(IDL.Principal), root: IDL.Opt(IDL.Principal), blackhole: IDL.Opt(IDL.Principal) })], [IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })], []),
+  refresh_wasms: IDL.Func([], [IDL.Variant({ Ok: IDL.Record({ ledger_bytes: IDL.Nat, index_bytes: IDL.Nat, changed: IDL.Bool }), Err: IDL.Text })], []),
+  admin_set_config: IDL.Func([IDL.Record({ creation_fee_e8s: IDL.Opt(IDL.Nat), premium_creation_fee_e8s: IDL.Opt(IDL.Nat), ledger_cycles: IDL.Opt(IDL.Nat), index_cycles: IDL.Opt(IDL.Nat), fee_destination: IDL.Opt(Account), cycle_reserve: IDL.Opt(IDL.Nat), paused: IDL.Opt(IDL.Bool), follow_nns: IDL.Opt(IDL.Bool) })], [IDL.Variant({ Ok: PadConfig, Err: IDL.Text })], []),
+  admin_set_canisters: IDL.Func([IDL.Record({ icp_ledger: IDL.Opt(IDL.Principal), cmc: IDL.Opt(IDL.Principal), sns_wasm: IDL.Opt(IDL.Principal), governance: IDL.Opt(IDL.Principal), root: IDL.Opt(IDL.Principal), blackhole: IDL.Opt(IDL.Principal), sneed_premium: IDL.Opt(IDL.Opt(IDL.Principal)) })], [IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })], []),
   admin_set_registration_neuron: IDL.Func([IDL.Opt(IDL.Vec(IDL.Nat8))], [IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })], []),
   admin_withdraw_icp: IDL.Func([Account, IDL.Nat], [IDL.Variant({ Ok: IDL.Nat, Err: IDL.Text })], []),
 });
