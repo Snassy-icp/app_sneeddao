@@ -133,6 +133,7 @@ import SneedAppDetail from './pages/SneedAppDetail';
 import SneedAppMint from './pages/SneedAppMint';
 import SneedAppPublisher from './pages/SneedAppPublisher';
 import SneedAppAdmin from './pages/admin/SneedAppAdmin';
+import SneedPadAdmin from './pages/admin/SneedPadAdmin';
 
 // Bot pages
 import TradingBot from './pages/TradingBot';
@@ -299,6 +300,7 @@ function App() {
                     <Route path="/admin/sneedlock" element={<SneedLockAdmin />} />
                     <Route path="/admin/neuron-manager-factory" element={<IcpNeuronManagerFactoryAdmin />} />
                     <Route path="/admin/sneedapp" element={<SneedAppAdmin />} />
+                    <Route path="/admin/pad" element={<SneedPadAdmin />} />
                     <Route path="/admin/sneedex" element={<SneedexAdmin />} />
                     <Route path="/admin/premium" element={<SneedPremiumAdmin />} />
                     <Route path="/admin/canisters" element={<CanisterGroupsAdmin />} />
