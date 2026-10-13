@@ -9,7 +9,9 @@ import Header from '../components/Header';
 import SwapPoolPicker, { describeSwapPool } from '../components/SwapPoolPicker';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useDenomination } from '../contexts/DenominationContext';
 import { useWalletOptional } from '../contexts/WalletContext';
+import { get_token_conversion_rate } from '../utils/TokenUtils';
 import { customStyles } from '../health/TreeView.jsx';
 import { FaWater, FaSpinner, FaPlus, FaLock, FaSync } from 'react-icons/fa';
 
@@ -26,8 +28,11 @@ function Positions() {
     const navigate = useNavigate();
     const [params] = useSearchParams();
     const { identity, isAuthenticated } = useAuth();
+    const { formatValue } = useDenomination();
     const wallet = useWalletOptional();
-    const me = identity?.getPrincipal?.() || null;
+    const meText = identity?.getPrincipal?.().toText?.() || null;
+    const me = useMemo(() => (meText ? Principal.fromText(meText) : null), [meText]);
+    const [usd, setUsd] = useState(null); // { p0, p1 } USD per whole token
     const poolId = params.get('swap') || '';
     const [tab, setTab] = useState(poolId ? 'pool' : (isAuthenticated ? 'mine' : 'pool'));
     const [pool, setPool] = useState(null);
@@ -49,6 +54,7 @@ function Positions() {
             const [p, m] = await Promise.all([describeSwapPool(poolId), a.metadata()]);
             if (!('ok' in m)) throw new Error(Object.keys(m.err)[0]);
             setPool(p); setMeta({ tick: Number(m.ok.tick), sqrtP: Number(m.ok.sqrtPriceX96) / 2 ** 96 });
+            Promise.all([get_token_conversion_rate(p.token0.ledgerId, p.token0.decimals).catch(() => null), get_token_conversion_rate(p.token1.ledgerId, p.token1.decimals).catch(() => null)]).then(([p0, p1]) => setUsd({ p0: p0 || null, p1: p1 || null }));
             if (me) { const ids = await a.getUserPositionIdsByPrincipal(me).catch(() => ({ ok: [] })); setMine(new Set(('ok' in ids ? ids.ok : []).map((x) => x.toString()))); }
             const out = [];
             let offset = 0; let pageSize = 100; let totalN = null;
@@ -64,13 +70,28 @@ function Positions() {
             }
         } catch (e) { setError(e?.message || String(e)); }
         finally { setLoading(false); }
-    }, [poolId, me]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [poolId, meText]);
     useEffect(() => { load(); }, [load]);
 
+    const valueOf = (a0, a1) => (pool && usd && (usd.p0 || usd.p1)) ? (a0 / 10 ** pool.token0.decimals * (usd.p0 || 0) + a1 / 10 ** pool.token1.decimals * (usd.p1 || 0)) : null;
     const sorted = useMemo(() => {
         const list = onlyActive ? rows.filter((r) => r.liquidity > 0n) : rows;
         return [...list].sort((a, b) => (mine.has(a.id.toString()) === mine.has(b.id.toString()) ? (a.liquidity < b.liquidity ? 1 : -1) : mine.has(a.id.toString()) ? -1 : 1));
     }, [rows, mine, onlyActive]);
+    const totals = useMemo(() => {
+        if (!meta) return null;
+        let a0 = 0, a1 = 0, f0 = 0, f1 = 0, mine0 = 0, mine1 = 0, inRange = 0, active = 0;
+        for (const r of rows) {
+            if (r.liquidity === 0n) continue;
+            active += 1;
+            const [x0, x1] = amountsFor(Number(r.liquidity), r.tickLower, r.tickUpper, meta.sqrtP);
+            a0 += x0; a1 += x1; f0 += Number(r.owed0); f1 += Number(r.owed1);
+            if (meta.tick >= r.tickLower && meta.tick < r.tickUpper) inRange += 1;
+            if (mine.has(r.id.toString())) { mine0 += x0; mine1 += x1; }
+        }
+        return { a0, a1, f0, f1, mine0, mine1, inRange, active };
+    }, [rows, meta, mine]);
 
     const card = { border: `1px solid ${theme.colors.border}`, borderRadius: 14, padding: '1rem 1.1rem', background: theme.colors.cardBg, marginBottom: '1rem' };
     const tabStyle = (active) => ({ padding: '8px 14px', borderRadius: 10, border: `1px solid ${active ? primary : theme.colors.border}`, background: active ? `${primary}22` : 'transparent', color: theme.colors.primaryText, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none' });
@@ -117,6 +138,7 @@ function Positions() {
                                         <div key={String(p.positionId)} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', fontSize: '0.85rem', color: theme.colors.secondaryText, padding: '4px 0 4px 28px' }}>
                                             <Link to={`/position?swap=${lp.swapCanisterId}&id=${p.positionId}`} style={{ color: primary, fontWeight: 700 }}>#{String(p.positionId)}</Link>
                                             <span>{fmtUnits(a0, lp.token0Decimals)} {lp.token0Symbol} + {fmtUnits(a1, lp.token1Decimals)} {lp.token1Symbol}</span>
+                                            {(lp.token0_conversion_rate || lp.token1_conversion_rate) ? <span style={{ color: theme.colors.primaryText, fontWeight: 700 }}>{formatValue(Number(a0) / 10 ** lp.token0Decimals * (lp.token0_conversion_rate || 0) + Number(a1) / 10 ** lp.token1Decimals * (lp.token1_conversion_rate || 0))}</span> : null}
                                             {inRange !== null && pill(inRange, inRange ? 'in range' : 'out of range')}
                                             {p.lockInfo && <span style={{ color: theme.colors.mutedText }}><FaLock size={10} /> locked</span>}
                                             {!p.frontendOwnership && !p.lockInfo && <span style={{ color: theme.colors.mutedText }}>held by Sneed Lock</span>}
@@ -143,9 +165,17 @@ function Positions() {
                                     </span>
                                 </div>
                                 {error && <div style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: 8 }}>{error}</div>}
+                                {totals && pool && (
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10, marginBottom: 12, fontSize: '0.85rem', color: theme.colors.secondaryText }}>
+                                        <div><div style={{ color: theme.colors.mutedText, fontSize: '0.72rem', textTransform: 'uppercase' }}>In positions</div>{fmtUnits(totals.a0, pool.token0.decimals)} {pool.token0.symbol}<br />{fmtUnits(totals.a1, pool.token1.decimals)} {pool.token1.symbol}{valueOf(totals.a0, totals.a1) !== null && <div style={{ color: theme.colors.primaryText, fontWeight: 700 }}>{formatValue(valueOf(totals.a0, totals.a1))}</div>}</div>
+                                        <div><div style={{ color: theme.colors.mutedText, fontSize: '0.72rem', textTransform: 'uppercase' }}>Uncollected fees</div>{fmtUnits(totals.f0, pool.token0.decimals)} {pool.token0.symbol}<br />{fmtUnits(totals.f1, pool.token1.decimals)} {pool.token1.symbol}{valueOf(totals.f0, totals.f1) !== null && <div style={{ color: theme.colors.primaryText, fontWeight: 700 }}>{formatValue(valueOf(totals.f0, totals.f1))}</div>}</div>
+                                        <div><div style={{ color: theme.colors.mutedText, fontSize: '0.72rem', textTransform: 'uppercase' }}>Positions</div>{totals.active} with liquidity, {totals.inRange} in range</div>
+                                        {mine.size > 0 && <div><div style={{ color: theme.colors.mutedText, fontSize: '0.72rem', textTransform: 'uppercase' }}>Yours</div>{fmtUnits(totals.mine0, pool.token0.decimals)} {pool.token0.symbol} + {fmtUnits(totals.mine1, pool.token1.decimals)} {pool.token1.symbol}{valueOf(totals.mine0, totals.mine1) !== null && <div style={{ color: theme.colors.primaryText, fontWeight: 700 }}>{formatValue(valueOf(totals.mine0, totals.mine1))}</div>}</div>}
+                                    </div>
+                                )}
                                 <div style={{ overflowX: 'auto' }}>
                                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                        <thead><tr><th style={th}>Position</th><th style={th}>Range ({pool?.token1.symbol} per {pool?.token0.symbol})</th><th style={th}>Holds</th><th style={th}>Uncollected fees</th><th style={th}>Status</th></tr></thead>
+                                        <thead><tr><th style={th}>Position</th><th style={th}>Range ({pool?.token1.symbol} per {pool?.token0.symbol})</th><th style={th}>Holds</th><th style={th}>Value</th><th style={th}>Uncollected fees</th><th style={th}>Status</th></tr></thead>
                                         <tbody>
                                             {sorted.map((r) => {
                                                 const inRange = meta ? (meta.tick >= r.tickLower && meta.tick < r.tickUpper) : null;
@@ -156,7 +186,8 @@ function Positions() {
                                                         <td style={td}><Link to={`/position?swap=${poolId}&id=${r.id}`} style={{ color: primary, fontWeight: 700 }}>#{r.id.toString()}</Link>{isMine && <span style={{ marginLeft: 6, fontSize: '0.72rem', color: primary, fontWeight: 700 }}>yours</span>}</td>
                                                         <td style={td}>{pool ? `${fmtPrice(tickToHuman(r.tickLower, pool.token0.decimals, pool.token1.decimals))} – ${fmtPrice(tickToHuman(r.tickUpper, pool.token0.decimals, pool.token1.decimals))}` : `${r.tickLower} – ${r.tickUpper}`}</td>
                                                         <td style={td}>{pool ? `${fmtUnits(a0, pool.token0.decimals)} ${pool.token0.symbol} + ${fmtUnits(a1, pool.token1.decimals)} ${pool.token1.symbol}` : r.liquidity.toString()}</td>
-                                                        <td style={td}>{pool ? `${fmtUnits(r.owed0, pool.token0.decimals)} + ${fmtUnits(r.owed1, pool.token1.decimals)}` : ''}</td>
+                                                        <td style={td}>{valueOf(a0, a1) !== null ? formatValue(valueOf(a0, a1)) : ''}</td>
+                                                        <td style={td}>{pool ? `${fmtUnits(r.owed0, pool.token0.decimals)} + ${fmtUnits(r.owed1, pool.token1.decimals)}${valueOf(Number(r.owed0), Number(r.owed1)) ? ` (${formatValue(valueOf(Number(r.owed0), Number(r.owed1)))})` : ''}` : ''}</td>
                                                         <td style={td}>{r.liquidity === 0n ? <span style={{ color: theme.colors.mutedText }}>empty</span> : inRange !== null ? pill(inRange, inRange ? 'in range' : 'out of range') : ''}</td>
                                                     </tr>
                                                 );

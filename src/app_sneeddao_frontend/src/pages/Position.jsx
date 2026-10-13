@@ -23,6 +23,9 @@ import PrincipalInput from '../components/PrincipalInput';
 import SwapPoolPicker, { describeSwapPool } from '../components/SwapPoolPicker';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useDenomination } from '../contexts/DenominationContext';
+import { useWalletOptional } from '../contexts/WalletContext';
+import { get_token_conversion_rate } from '../utils/TokenUtils';
 import { getTokenInfo, checkAllowance, approve, transfer } from '../services/dex/tokenStandard';
 import { lockFromLocks } from '../utils/PositionUtils';
 import { customStyles } from '../health/TreeView.jsx';
@@ -79,7 +82,10 @@ function Position() {
     const navigate = useNavigate();
     const [params] = useSearchParams();
     const { identity, isAuthenticated } = useAuth();
-    const me = identity?.getPrincipal?.() || null;
+    const { formatValue } = useDenomination();
+    const walletCtx = useWalletOptional();
+    const meText = identity?.getPrincipal?.().toText?.() || null;
+    const me = useMemo(() => (meText ? Principal.fromText(meText) : null), [meText]);
     const poolId = params.get('swap') || '';
     const positionParam = params.get('id') || params.get('position');
     const positionId = positionParam && /^\d+$/.test(positionParam) ? BigInt(positionParam) : null;
@@ -92,6 +98,7 @@ function Position() {
     const [lock, setLock] = useState(null);
     const [unused, setUnused] = useState(null);    // { balance0, balance1 }
     const [wallet, setWallet] = useState(null);    // { b0, b1 } my ledger balances
+    const [usd, setUsd] = useState(null);          // { p0, p1 } USD per whole token, for the chosen denomination
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [tab, setTab] = useState('add');
@@ -124,6 +131,7 @@ function Position() {
             const m = await a.metadata();
             if (!('ok' in m)) throw new Error(errText(m.err));
             setMeta({ sqrtPriceX96: BigInt(m.ok.sqrtPriceX96), tick: Number(m.ok.tick), liquidity: BigInt(m.ok.liquidity), fee: Number(m.ok.fee) });
+            Promise.all([get_token_conversion_rate(p.token0.ledgerId, p.token0.decimals).catch(() => null), get_token_conversion_rate(p.token1.ledgerId, p.token1.decimals).catch(() => null)]).then(([p0, p1]) => setUsd({ p0: p0 || null, p1: p1 || null }));
             if (agent) {
                 const [i0, i1] = await Promise.all([getTokenInfo(p.token0.ledgerId, agent).catch(() => null), getTokenInfo(p.token1.ledgerId, agent).catch(() => null)]);
                 setStandards({ [p.token0.ledgerId]: i0?.supportedStandards?.includes('icrc2') ? 'icrc2' : 'icrc1', [p.token1.ledgerId]: i1?.supportedStandards?.includes('icrc2') ? 'icrc2' : 'icrc1' });
@@ -136,6 +144,10 @@ function Position() {
                 if (me) {
                     const mine = await a.getUserPositionIdsByPrincipal(me);
                     if ('ok' in mine && mine.ok.some((id) => BigInt(id) === positionId)) who = 'me';
+                    // the wallet already resolved ownership for its own pools; trust it when the pool query disagrees
+                    const lp = (walletCtx?.liquidityPositions || []).find((x) => (typeof x.swapCanisterId === 'string' ? x.swapCanisterId : x.swapCanisterId?.toText?.()) === poolId);
+                    const inWallet = lp?.positions?.find((x) => BigInt(x.positionId) === positionId);
+                    if (who !== 'me' && inWallet?.frontendOwnership) who = 'me';
                 }
                 let held = null;
                 if (who !== 'me') {
@@ -165,7 +177,8 @@ function Position() {
             }
         } catch (e) { setError(e?.message || String(e)); }
         finally { setLoading(false); }
-    }, [poolId, positionId, me, agent, poolActor]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [poolId, positionId, meText, agent, poolActor]);
     useEffect(() => { load(); }, [load]);
     useEffect(() => { setTab(positionId === null ? 'new' : 'add'); setDone(null); setLog([]); }, [positionId, poolId]);
 
@@ -506,8 +519,8 @@ function Position() {
                                 {position && posAmounts && (
                                     <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, fontSize: '0.88rem', color: theme.colors.secondaryText }}>
                                         <div><div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', textTransform: 'uppercase' }}>Range</div>{fmtPrice(tickToHuman(position.tickLower))} to {fmtPrice(tickToHuman(position.tickUpper))} {sym1} per {sym0}<div style={{ color: posAmounts.inRange ? '#22c55e' : '#f59e0b', fontWeight: 700 }}>{posAmounts.inRange ? 'in range, earning fees' : 'out of range, earning nothing'}</div></div>
-                                        <div><div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', textTransform: 'uppercase' }}>Holds</div>{fmtUnits(posAmounts.amount0, d0)} {sym0}<br />{fmtUnits(posAmounts.amount1, d1)} {sym1}</div>
-                                        <div><div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', textTransform: 'uppercase' }}>Uncollected fees</div>{fmtUnits(position.tokensOwed0, d0)} {sym0}<br />{fmtUnits(position.tokensOwed1, d1)} {sym1}</div>
+                                        <div><div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', textTransform: 'uppercase' }}>Holds</div>{fmtUnits(posAmounts.amount0, d0)} {sym0}<br />{fmtUnits(posAmounts.amount1, d1)} {sym1}{usd && (usd.p0 || usd.p1) && <div style={{ color: theme.colors.primaryText, fontWeight: 700 }}>{formatValue(posAmounts.amount0 / 10 ** d0 * (usd.p0 || 0) + posAmounts.amount1 / 10 ** d1 * (usd.p1 || 0))}</div>}</div>
+                                        <div><div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', textTransform: 'uppercase' }}>Uncollected fees</div>{fmtUnits(position.tokensOwed0, d0)} {sym0}<br />{fmtUnits(position.tokensOwed1, d1)} {sym1}{usd && (usd.p0 || usd.p1) && <div style={{ color: theme.colors.primaryText, fontWeight: 700 }}>{formatValue(Number(position.tokensOwed0) / 10 ** d0 * (usd.p0 || 0) + Number(position.tokensOwed1) / 10 ** d1 * (usd.p1 || 0))}</div>}</div>
                                         <div><div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', textTransform: 'uppercase' }}>Owner</div>{owner === 'me' ? 'you (Sneed wallet)' : owner === 'sneedlock' ? <span><FaLock size={11} /> locked in Sneed Lock{lock?.expiry ? `, until ${new Date(Number(BigInt(lock.expiry) / 1000000n)).toLocaleDateString()}` : ''}</span> : owner === 'other' ? 'someone else' : '…'}<br /><span style={{ color: theme.colors.mutedText }}>liquidity {position.liquidity.toString()}</span></div>
                                     </div>
                                 )}

@@ -88,6 +88,7 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
     
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
     const [activeTab, setActiveTab] = useState(defaultLocksExpanded ? 'locks' : 'balance'); // 'balance', 'locks', 'info'
+    const swapId = typeof position.swapCanisterId === 'string' ? position.swapCanisterId : (position.swapCanisterId?.toText?.() || String(position.swapCanisterId || ''));
     // In range: the pool's current tick sits inside the position's tick range (null when unknown)
     const inRange = (Number.isFinite(position.currentTick) && Number.isFinite(positionDetails.tickLower) && Number.isFinite(positionDetails.tickUpper))
         ? (position.currentTick >= positionDetails.tickLower && position.currentTick < positionDetails.tickUpper)
@@ -252,7 +253,7 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                             )}
                             {!hideButtons && (
                                 <Link
-                                    to={`/position?swap=${position.swapCanisterId}&id=${positionDetails.positionId}`}
+                                    to={`/position?swap=${swapId}&id=${positionDetails.positionId}`}
                                     onClick={(e) => e.stopPropagation()}
                                     style={{ padding: '4px', display: 'flex', alignItems: 'center', color: theme.colors.mutedText, transition: 'color 0.2s ease' }}
                                     onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.accent}
@@ -406,7 +407,7 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                                 ICPSwap
                             </a>
                             <Link
-                                to={`/position?swap=${position.swapCanisterId}&id=${positionDetails.positionId}`}
+                                to={`/position?swap=${swapId}&id=${positionDetails.positionId}`}
                                 style={{ background: 'transparent', color: theme.colors.accent, border: `1px solid ${theme.colors.accent}`, borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '6px', textDecoration: 'none' }}
                                 title={isLockedPosition(positionDetails) && !positionDetails.frontendOwnership ? 'Position page (locked: read-only)' : 'Add, remove, collect, move the range, transfer'}
                             >
