@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Principal } from '@dfinity/principal';
 import { useTheme } from './contexts/ThemeContext';
 import { fetchCollectionInfo } from './utils/NftUtils';
+import PrincipalInput from './components/PrincipalInput';
 import './AddNftCollectionModal.css';
 
 const AddNftCollectionModal = ({ isOpen, onClose, onAdd, agent }) => {
@@ -141,29 +142,13 @@ const AddNftCollectionModal = ({ isOpen, onClose, onAdd, agent }) => {
                         }}>
                             Canister ID
                         </label>
-                        <input
-                            type="text"
+                        <PrincipalInput
                             value={canisterId}
-                            onChange={(e) => setCanisterId(e.target.value)}
-                            placeholder="xxxxx-xxxxx-xxxxx-xxxxx-xxx"
-                            disabled={isLoading}
-                            style={{
-                                width: '100%',
-                                padding: '12px',
-                                borderRadius: '8px',
-                                border: `1px solid ${isValidCanister || !canisterId ? theme.colors.border : theme.colors.error}`,
-                                background: theme.colors.secondaryBg,
-                                color: theme.colors.primaryText,
-                                fontSize: '14px',
-                                fontFamily: 'monospace',
-                                outline: 'none',
-                                transition: 'border-color 0.2s ease'
-                            }}
-                            onKeyPress={(e) => {
-                                if (e.key === 'Enter' && isValidCanister && !collectionInfo) {
-                                    handlePreview();
-                                }
-                            }}
+                            onChange={(v) => setCanisterId(v)}
+                            placeholder="Collection canister id or name"
+                            defaultTab="all"
+                            style={{ width: '100%' }}
+                            inputStyle={{ width: '100%', padding: '12px', borderRadius: '8px', border: `1px solid ${isValidCanister || !canisterId ? theme.colors.border : theme.colors.error}`, background: theme.colors.secondaryBg, color: theme.colors.primaryText, fontSize: '14px', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }}
                         />
                     </div>
                     

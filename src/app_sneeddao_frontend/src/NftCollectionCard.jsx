@@ -1,11 +1,25 @@
 import React, { useState } from 'react';
+import PrincipalInput from './components/PrincipalInput';
 import { useTheme } from './contexts/ThemeContext';
 import NftCard from './NftCard';
 import './NftCollectionCard.css';
 
-const NftCollectionCard = ({ collection, onSendNft, onRemove, onRefresh, isRefreshing }) => {
+const NftCollectionCard = ({ collection, onSendNft, onRemove, onRefresh, isRefreshing, isAdmin = false, onMint, myPrincipal }) => {
     const { theme } = useTheme();
     const [isExpanded, setIsExpanded] = useState(true);
+    const [showMint, setShowMint] = useState(false);
+    const [mint, setMint] = useState({ to: myPrincipal || '', name: '', description: '', image: '', attributes: [], busy: false, error: '', done: '' });
+    const onImageFile = (file) => {
+        if (!file) return;
+        if (file.size > 300_000) { setMint((m) => ({ ...m, error: 'image files up to 300 kB (it is stored in the canister); larger art belongs at a URL' })); return; }
+        const r = new FileReader(); r.onload = () => setMint((m) => ({ ...m, image: String(r.result), error: '' })); r.readAsDataURL(file);
+    };
+    const doMint = async () => {
+        setMint((m) => ({ ...m, busy: true, error: '', done: '' }));
+        try { const id = await onMint(collection, mint.to, { name: mint.name, description: mint.description, image: mint.image, attributes: mint.attributes }); setMint((m) => ({ ...m, busy: false, done: `Minted #${id}`, name: '', description: '', image: '', attributes: [] })); }
+        catch (e) { setMint((m) => ({ ...m, busy: false, error: e?.message || String(e) })); }
+    };
+    const inputStyle = { width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${theme.colors.border}`, background: theme.colors.secondaryBg, color: theme.colors.primaryText, fontSize: '0.88rem', boxSizing: 'border-box' };
     
     const handleHeaderClick = () => {
         setIsExpanded(!isExpanded);
@@ -248,6 +262,36 @@ const NftCollectionCard = ({ collection, onSendNft, onRemove, onRefresh, isRefre
                         </div>
                     )}
                     
+                    {isAdmin && onMint && (
+                        <div style={{ marginBottom: 16, padding: 12, borderRadius: 10, border: `1px solid ${theme.colors.accent}55`, background: `${theme.colors.accent}0c` }}>
+                            <button type="button" onClick={() => setShowMint((v) => !v)} style={{ background: 'none', border: 'none', color: theme.colors.accent, cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem', padding: 0 }}>{showMint ? '▼' : '▶'} Mint (you are an admin of this collection)</button>
+                            {showMint && (
+                                <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+                                    <div style={{ fontSize: '0.8rem', color: theme.colors.secondaryText }}>Recipient</div>
+                                    <PrincipalInput value={mint.to} onChange={(v) => setMint((m) => ({ ...m, to: v }))} placeholder="Principal or name" defaultTab="all" style={{ width: '100%' }} inputStyle={inputStyle} />
+                                    <input style={inputStyle} value={mint.name} onChange={(e) => setMint((m) => ({ ...m, name: e.target.value }))} placeholder="Name" />
+                                    <input style={inputStyle} value={mint.description} onChange={(e) => setMint((m) => ({ ...m, description: e.target.value }))} placeholder="Description" />
+                                    <input style={inputStyle} value={mint.image.startsWith('data:') ? '(file chosen)' : mint.image} onChange={(e) => setMint((m) => ({ ...m, image: e.target.value }))} placeholder="Image URL (https, ipfs, or a data URL)" />
+                                    <label style={{ fontSize: '0.8rem', color: theme.colors.secondaryText }}>or an image file (up to 300 kB, stored in the canister) <input type="file" accept="image/*" onChange={(e) => onImageFile(e.target.files?.[0])} /></label>
+                                    <div style={{ fontSize: '0.8rem', color: theme.colors.secondaryText }}>Attributes</div>
+                                    {mint.attributes.map((a, i) => (
+                                        <div key={i} style={{ display: 'flex', gap: 6 }}>
+                                            <input style={inputStyle} value={a.trait_type} onChange={(e) => setMint((m) => ({ ...m, attributes: m.attributes.map((x, j) => (j === i ? { ...x, trait_type: e.target.value } : x)) }))} placeholder="Trait" />
+                                            <input style={inputStyle} value={a.value} onChange={(e) => setMint((m) => ({ ...m, attributes: m.attributes.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)) }))} placeholder="Value" />
+                                            <button type="button" onClick={() => setMint((m) => ({ ...m, attributes: m.attributes.filter((_, j) => j !== i) }))} style={{ border: `1px solid ${theme.colors.border}`, background: 'transparent', color: theme.colors.mutedText, borderRadius: 8, cursor: 'pointer' }}>×</button>
+                                        </div>
+                                    ))}
+                                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                        <button type="button" onClick={() => setMint((m) => ({ ...m, attributes: [...m.attributes, { trait_type: '', value: '' }] }))} style={{ border: `1px solid ${theme.colors.border}`, background: 'transparent', color: theme.colors.primaryText, borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: '0.82rem' }}>+ attribute</button>
+                                        <button type="button" disabled={mint.busy || !mint.to} onClick={doMint} style={{ border: 'none', background: theme.colors.accent, color: theme.colors.primaryBg, borderRadius: 8, padding: '6px 14px', cursor: mint.busy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.85rem', opacity: mint.busy ? 0.6 : 1 }}>{mint.busy ? 'Minting…' : 'Mint'}</button>
+                                        {mint.done && <span style={{ color: '#22c55e', fontSize: '0.85rem', alignSelf: 'center' }}>{mint.done}</span>}
+                                        {mint.error && <span style={{ color: '#ef4444', fontSize: '0.85rem', alignSelf: 'center' }}>{mint.error}</span>}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* NFT Grid */}
                     {collection.nfts.length > 0 ? (
                         <div className="nft-grid" style={{
@@ -272,7 +316,7 @@ const NftCollectionCard = ({ collection, onSendNft, onRemove, onRefresh, isRefre
                             color: theme.colors.mutedText
                         }}>
                             <div style={{ fontSize: '48px', marginBottom: '16px' }}>📭</div>
-                            <div style={{ fontSize: '1rem' }}>No NFTs in this collection</div>
+                            <div style={{ fontSize: '1rem' }}>You own none of the {collection.totalSupply?.toString?.() || ''} tokens in this collection</div>
                         </div>
                     )}
                 </div>

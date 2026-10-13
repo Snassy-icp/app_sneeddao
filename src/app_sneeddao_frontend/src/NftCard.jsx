@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTheme } from './contexts/ThemeContext';
-import { getNftImage, getNftName, getNftDescription, formatNftMetadata } from './utils/NftUtils';
+import { getNftImage, getNftName, getNftDescription, formatNftMetadata, getNftAttributes, getNftLinks } from './utils/NftUtils';
 import './NftCard.css';
 
 const NftCard = ({ nft, collectionName, collectionSymbol, onSend }) => {
@@ -8,10 +8,12 @@ const NftCard = ({ nft, collectionName, collectionSymbol, onSend }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [imageError, setImageError] = useState(false);
     
-    const imageUrl = getNftImage(nft.metadata);
-    const nftName = getNftName(nft.metadata, nft.tokenId);
-    const description = getNftDescription(nft.metadata);
+    const imageUrl = getNftImage(nft.metadata, nft);
+    const nftName = getNftName(nft.metadata, nft.tokenId, nft);
+    const description = getNftDescription(nft.metadata, nft);
     const formattedMetadata = formatNftMetadata(nft.metadata);
+    const attributes = getNftAttributes(nft);
+    const links = getNftLinks(nft);
     
     const handleHeaderClick = () => {
         setIsExpanded(!isExpanded);
@@ -87,12 +89,9 @@ const NftCard = ({ nft, collectionName, collectionSymbol, onSend }) => {
                         }}
                     />
                 ) : (
-                    <div style={{
-                        fontSize: '48px',
-                        color: theme.colors.mutedText,
-                        textAlign: 'center'
-                    }}>
+                    <div style={{ fontSize: '48px', color: theme.colors.mutedText, textAlign: 'center' }} title={imageUrl ? `The browser could not load ${imageUrl}` : 'No image in the metadata'}>
                         🖼️
+                        {imageUrl && <div style={{ fontSize: '11px', marginTop: 4 }}>{imageError ? 'image did not load' : 'no image'}</div>}
                     </div>
                 )}
                 
@@ -203,6 +202,23 @@ const NftCard = ({ nft, collectionName, collectionSymbol, onSend }) => {
                             </button>
                         </div>
                         
+                        {/* Attributes (ICRC-97 or inline) */}
+                        {attributes.length > 0 && (
+                            <div style={{ marginTop: '12px' }}>
+                                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: theme.colors.mutedText, marginBottom: 6 }}>Attributes</div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                    {attributes.map((a, i) => <span key={i} style={{ fontSize: '0.78rem', padding: '3px 8px', borderRadius: 8, background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText }}><span style={{ color: theme.colors.mutedText }}>{a.trait_type}:</span> {a.value}</span>)}
+                                </div>
+                            </div>
+                        )}
+                        {/* Links in the metadata (the picture, documents), openable even when the browser will not render them here */}
+                        {links.length > 0 && (
+                            <div style={{ marginTop: '12px' }}>
+                                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: theme.colors.mutedText, marginBottom: 6 }}>Links</div>
+                                {links.map((l, i) => <div key={i} style={{ fontSize: '0.78rem', wordBreak: 'break-all' }}><span style={{ color: theme.colors.mutedText }}>{l.key}:</span> <a href={l.url} target="_blank" rel="noopener noreferrer" style={{ color: theme.colors.accent }} onClick={(e) => e.stopPropagation()}>{l.url}</a></div>)}
+                            </div>
+                        )}
+                        {nft.icrc97?.error && <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#f59e0b' }}>ICRC-97 document at {nft.icrc97.url} could not be read: {nft.icrc97.error}</div>}
                         {/* Metadata */}
                         {formattedMetadata.length > 0 && (
                             <div style={{

@@ -6,7 +6,7 @@ import Header from '../components/Header';
 import NftCollectionCard from '../NftCollectionCard';
 import SendNftModal from '../SendNftModal';
 import AddNftCollectionModal from '../AddNftCollectionModal';
-import { loadNftCollection, transferNft } from '../utils/NftUtils';
+import { loadNftCollection, transferNft, fetchCollectionAdmins, mintNft } from '../utils/NftUtils';
 import { app_sneeddao_backend } from 'declarations/app_sneeddao_backend';
 import './Nft.css';
 
@@ -92,9 +92,9 @@ const Nft = () => {
                 
                 const successfulCollections = loadedCollections
                     .filter(result => result.status === 'fulfilled')
-                    .map(result => result.value)
-                    .filter(collection => collection.nfts.length > 0); // Only show collections with NFTs
-                
+                    .map(result => result.value); // every saved collection, owned tokens or not (an admin may own none yet)
+                const me = identity.getPrincipal().toText();
+                await Promise.all(successfulCollections.map(async (c) => { c.isAdmin = (await fetchCollectionAdmins(c.canisterId, agent)).includes(me); }));
                 setCollections(successfulCollections);
                 
                 // Log any failures
@@ -135,7 +135,7 @@ const Nft = () => {
             
             setCollections(prev => 
                 prev.map(c => 
-                    c.canisterId === collection.canisterId ? refreshedCollection : c
+                    c.canisterId === collection.canisterId ? { ...refreshedCollection, isAdmin: c.isAdmin } : c
                 )
             );
         } catch (err) {
@@ -156,23 +156,13 @@ const Nft = () => {
         setSavedCollectionIds(updatedIds);
         localStorage.setItem('nft_collections', JSON.stringify(updatedIds));
         
-        // Load the collection
-        if (identity && agent) {
-            try {
-                const account = {
-                    owner: identity.getPrincipal(),
-                    subaccount: []
-                };
-                
-                const loadedCollection = await loadNftCollection(canisterId, account, identity, agent);
-                
-                if (loadedCollection.nfts.length > 0) {
-                    setCollections(prev => [...prev, loadedCollection]);
-                }
-            } catch (err) {
-                console.error('Error loading new collection:', err);
-            }
-        }
+        // The saved-ids effect reloads the list; appending here as well showed the collection twice.
+    };
+
+    const handleMint = async (collection, to, fields) => {
+        const id = await mintNft(collection.canisterId, to, fields, agent);
+        await handleRefreshCollection(collection);
+        return id;
     };
     
     const handleRemoveCollection = (collection) => {
@@ -386,6 +376,9 @@ const Nft = () => {
                                 onRemove={handleRemoveCollection}
                                 onRefresh={handleRefreshCollection}
                                 isRefreshing={refreshingCollections.has(collection.canisterId)}
+                                isAdmin={!!collection.isAdmin}
+                                onMint={handleMint}
+                                myPrincipal={identity?.getPrincipal?.().toText?.() || ''}
                             />
                         ))}
                     </div>

@@ -1,11 +1,78 @@
 import { createActor as createIcrc7Actor } from '../../../external/icrc7_ledger';
 import { Principal } from '@dfinity/principal';
+import { Actor } from '@dfinity/agent';
+
+// The demo collection's (and the coming launchpad's) minting interface: not part of ICRC-7.
+const adminIdl = ({ IDL }) => {
+    const Value = IDL.Rec();
+    Value.fill(IDL.Variant({ Blob: IDL.Vec(IDL.Nat8), Text: IDL.Text, Nat: IDL.Nat, Int: IDL.Int, Array: IDL.Vec(Value), Map: IDL.Vec(IDL.Tuple(IDL.Text, Value)) }));
+    const Account = IDL.Record({ owner: IDL.Principal, subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)) });
+    return IDL.Service({
+        get_admins: IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
+        mint: IDL.Func([Account, IDL.Vec(IDL.Tuple(IDL.Text, Value))], [IDL.Variant({ Ok: IDL.Nat, Err: IDL.Text })], []),
+    });
+};
+/// Admins of a collection that exposes get_admins (our demo); [] for every other implementation.
+export async function fetchCollectionAdmins(canisterId, agent) {
+    try { return (await Actor.createActor(adminIdl, { agent, canisterId }).get_admins()).map((p) => p.toText()); } catch { return []; }
+}
+/// Mint on a collection with our demo's interface. `fields`: { name, description, image, attributes: [{ trait_type, value }] }.
+export async function mintNft(canisterId, toPrincipalText, fields, agent) {
+    const md = [];
+    if (fields.name) md.push(['name', { Text: fields.name }]);
+    if (fields.description) md.push(['description', { Text: fields.description }]);
+    if (fields.image) md.push(['image', { Text: fields.image }]);
+    if (fields.attributes?.length) md.push(['attributes', { Array: fields.attributes.filter((a) => a.trait_type).map((a) => ({ Map: [['trait_type', { Text: a.trait_type }], ['value', { Text: String(a.value ?? '') }]] })) }]);
+    const r = await Actor.createActor(adminIdl, { agent, canisterId }).mint({ owner: Principal.fromText(toPrincipalText), subaccount: [] }, md);
+    if ('Err' in r) throw new Error(r.Err);
+    return r.Ok;
+}
+
+/// ICRC-97: a token may point at a JSON document (or carry it inline) with name,
+/// description, image and attributes. Returns the parsed object or null.
+export async function fetchIcrc97(metadata) {
+    if (!metadata) return null;
+    const entry = metadata.find(([k]) => String(k).toLowerCase() === 'icrc97:metadata');
+    if (!entry) return null;
+    const v = entry[1];
+    const toPlain = (val) => {
+        if (val.Text !== undefined) return val.Text; if (val.Nat !== undefined) return val.Nat.toString(); if (val.Int !== undefined) return val.Int.toString();
+        if (val.Array !== undefined) return val.Array.map(toPlain); if (val.Map !== undefined) return Object.fromEntries(val.Map.map(([k, x]) => [k, toPlain(x)])); return null;
+    };
+    if (v.Map !== undefined) return toPlain(v);
+    if (v.Text !== undefined) {
+        const url = v.Text.replace(/^ipfs:\/\//, 'https://ipfs.io/ipfs/');
+        try { const r = await fetch(url); if (!r.ok) return { url, error: `HTTP ${r.status}` }; const j = await r.json(); return { url, ...j }; } catch (e) { return { url, error: e?.message || String(e) }; }
+    }
+    return null;
+}
+/// Attributes as [{ trait_type, value }], from ICRC-97 JSON or an inline `attributes` entry.
+export function getNftAttributes(nft) {
+    const out = [];
+    const push = (a) => { if (a && typeof a === 'object') { const t = a.trait_type ?? a.name ?? a.key; if (t !== undefined) out.push({ trait_type: String(t), value: a.value !== undefined ? String(a.value) : '' }); } };
+    if (Array.isArray(nft?.icrc97?.attributes)) nft.icrc97.attributes.forEach(push);
+    const inline = (nft?.metadata || []).find(([k]) => String(k).toLowerCase() === 'attributes');
+    if (inline && inline[1].Array !== undefined) {
+        for (const v of inline[1].Array) if (v.Map !== undefined) push(Object.fromEntries(v.Map.map(([k, x]) => [k, x.Text ?? (x.Nat !== undefined ? x.Nat.toString() : x.Int !== undefined ? x.Int.toString() : '')])));
+    }
+    if (inline && inline[1].Map !== undefined) for (const [k, x] of inline[1].Map) out.push({ trait_type: k, value: x.Text ?? (x.Nat !== undefined ? x.Nat.toString() : x.Int !== undefined ? x.Int.toString() : '') });
+    return out;
+}
+/// Every URL-looking string in the metadata, so a picture the browser will not show can still be opened.
+export function getNftLinks(nft) {
+    const links = [];
+    const walk = (entries, prefix) => { for (const [k, v] of entries) { const key = prefix ? `${prefix}.${k}` : k; if (v.Text !== undefined && /^(https?:|ipfs:)/i.test(v.Text)) links.push({ key, url: v.Text.replace(/^ipfs:\/\//, 'https://ipfs.io/ipfs/') }); if (v.Map !== undefined) walk(v.Map, key); if (v.Array !== undefined) v.Array.forEach((x, i) => { if (x.Map !== undefined) walk(x.Map, `${key}[${i}]`); if (x.Text !== undefined && /^(https?:|ipfs:)/i.test(x.Text)) links.push({ key: `${key}[${i}]`, url: x.Text }); }); } };
+    walk(nft?.metadata || [], '');
+    if (nft?.icrc97?.image && /^(https?:|ipfs:|data:)/i.test(nft.icrc97.image)) links.push({ key: 'icrc97 image', url: nft.icrc97.image });
+    return links;
+}
 
 /**
  * Extract image URL from NFT metadata
  * Supports various metadata formats and standards
  */
-export function getNftImage(metadata) {
+export function getNftImage(metadata, nft) {
+    if (nft?.icrc97?.image && /^(https?:|ipfs:|data:)/i.test(nft.icrc97.image)) return String(nft.icrc97.image).replace(/^ipfs:\/\//, 'https://ipfs.io/ipfs/');
     if (!metadata || metadata.length === 0) return null;
     // Collections disagree on where the picture lives: a top-level image/url key, an
     // ICRC-97 metadata map with assets, or a blob. Walk the whole value tree, keys first.
@@ -32,7 +99,8 @@ export function getNftImage(metadata) {
 /**
  * Extract NFT name from metadata
  */
-export function getNftName(metadata, tokenId) {
+export function getNftName(metadata, tokenId, nft) {
+    if (nft?.icrc97?.name) return String(nft.icrc97.name);
     if (!metadata || metadata.length === 0) return `NFT #${tokenId}`;
     
     const nameKeys = ['name', 'icrc7:name', 'title', 'icrc7:title'];
@@ -52,7 +120,8 @@ export function getNftName(metadata, tokenId) {
 /**
  * Extract description from metadata
  */
-export function getNftDescription(metadata) {
+export function getNftDescription(metadata, nft) {
+    if (nft?.icrc97?.description) return String(nft.icrc97.description);
     if (!metadata || metadata.length === 0) return null;
     
     const descKeys = ['description', 'icrc7:description', 'desc'];
@@ -140,13 +209,14 @@ export async function loadNftCollection(canisterId, account, identity, agent) {
             allMetadata.push(...metadataBatch);
         }
         
-        // Combine token data
+        // Combine token data, then enrich from ICRC-97 documents where the token points at one
         const nfts = tokenIds.map((tokenId, index) => ({
             tokenId,
             metadata: allMetadata[index] && allMetadata[index].length > 0 ? allMetadata[index][0] : [],
             collectionName: name,
             collectionSymbol: symbol
         }));
+        await Promise.allSettled(nfts.map(async (n) => { const j = await fetchIcrc97(n.metadata); if (j) n.icrc97 = j; }));
         
         return {
             canisterId,
