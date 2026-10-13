@@ -514,7 +514,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     wasm_timer_started := true;
     ignore Timer.recurringTimer<system>(#seconds WASM_CHECK_INTERVAL_SECONDS, wasm_timer_job);
     // first fetch right away when nothing is loaded (fresh install, or the hashes were set before the bytes came)
-    if (ledger_wasm == null) { ignore Timer.setTimer<system>(#seconds 1, wasm_timer_job) };
+    if (ledger_wasm == null or index_wasm == null) { ignore Timer.setTimer<system>(#seconds 1, wasm_timer_job) };
   };
   /// Pin the hashes (DAO): the pad stops following the NNS until `follow_nns` is set again.
   public shared ({ caller }) func admin_set_wasm_hashes(ledger : ?Blob, index : ?Blob) : async { #Ok; #Err : Text } {
