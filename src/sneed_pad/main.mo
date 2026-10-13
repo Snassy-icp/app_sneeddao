@@ -50,6 +50,9 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   transient let ICP_FEE : Nat = 10_000;
   transient let TOP_UP_MEMO : Blob = "\50\55\50\54"; // "TPUP" little-endian, what the CMC expects
   transient let T_CYCLES : Nat = 1_000_000_000_000;
+  // Creating a canister costs 0.5 T on a 13-node subnet and installing the ledger about 0.35 T more,
+  // so a new canister needs at least this much to come up at all.
+  transient let MIN_CANISTER_CYCLES : Nat = T_CYCLES;
 
   // Test deployments may point at mock canisters.
   stable var icp_ledger_id : Principal = Principal.fromText(ICP_LEDGER_ID);
@@ -119,7 +122,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   transient let icrc3_rt : Icrc3Log.Runtime = Icrc3Log.runtime();
   transient let icrc3_catalogue : Icrc3Log.Config = {
     block_types_url = "https://app.sneeddao.com/api/sneed_pad#block-types";
-    block_types = ["sneedpad_token_create", "sneedpad_index_create", "sneedpad_control_set", "sneedpad_launch_failed", "sneedpad_config_update", "sneedpad_wasm_set"];
+    block_types = ["sneedpad_token_create", "sneedpad_index_create", "sneedpad_control_set", "sneedpad_launch_failed", "sneedpad_config_update", "sneedpad_wasm_set", "sneedpad_rescue"];
   };
   private func icrc3_env() : Icrc3Log.Environment {
     {
@@ -560,8 +563,8 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     switch (u.premium_creation_fee_e8s) { case (?v) { note("premium_creation_fee_e8s", Nat.toText(premium_creation_fee_e8s), Nat.toText(v)); premium_creation_fee_e8s := v }; case null {} };
     switch (u.sneed_dao_control_fee_e8s) { case (?v) { note("sneed_dao_control_fee_e8s", Nat.toText(sneed_dao_control_fee_e8s), Nat.toText(v)); sneed_dao_control_fee_e8s := v }; case null {} };
     switch (u.follow_nns) { case (?v) { note("follow_nns", debug_show(follow_nns), debug_show(v)); follow_nns := v }; case null {} };
-    switch (u.ledger_cycles) { case (?v) { note("ledger_cycles", Nat.toText(ledger_cycles), Nat.toText(v)); ledger_cycles := v }; case null {} };
-    switch (u.index_cycles) { case (?v) { note("index_cycles", Nat.toText(index_cycles), Nat.toText(v)); index_cycles := v }; case null {} };
+    switch (u.ledger_cycles) { case (?v) { if (v < MIN_CANISTER_CYCLES) { return #Err("ledger_cycles: a new canister needs at least 1 T cycles (0.5 T creation fee on a 13-node subnet, about 0.35 T to install the ledger)") }; note("ledger_cycles", Nat.toText(ledger_cycles), Nat.toText(v)); ledger_cycles := v }; case null {} };
+    switch (u.index_cycles) { case (?v) { if (v < MIN_CANISTER_CYCLES) { return #Err("index_cycles: a new canister needs at least 1 T cycles (0.5 T creation fee on a 13-node subnet, about 0.35 T to install the index)") }; note("index_cycles", Nat.toText(index_cycles), Nat.toText(v)); index_cycles := v }; case null {} };
     switch (u.fee_destination) { case (?v) { note("fee_destination", Principal.toText(fee_destination.owner), Principal.toText(v.owner)); fee_destination := v }; case null {} };
     switch (u.cycle_reserve) { case (?v) { note("cycle_reserve", Nat.toText(cycle_reserve), Nat.toText(v)); cycle_reserve := v }; case null {} };
     switch (u.paused) { case (?v) { note("paused", debug_show(paused), debug_show(v)); paused := v }; case null {} };
@@ -586,6 +589,19 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     if (not isAdmin(caller)) { return #Err("admin only") };
     switch (Icrc3Sns.setNeuron(icrc3_sns, neuron)) { case (#Err(e)) { return #Err(e) }; case (#Ok) {} };
     Icrc3Sns.setNeuron(ledger_registrations, neuron);
+  };
+  /// Hand a canister the pad still controls (left behind by a failed launch) to someone who can
+  /// finish or reuse it (admin). The pad only ever controls canisters it created.
+  public shared ({ caller }) func admin_set_canister_controllers(canister_id : Principal, controllers : [Principal]) : async { #Ok; #Err : Text } {
+    if (not isAdmin(caller)) { return #Err("admin only") };
+    if (controllers.size() == 0) { return #Err("give at least one controller") };
+    let cid = newCid();
+    try {
+      await ic.update_settings({ canister_id; settings = { controllers = ?controllers; compute_allocation = null; memory_allocation = null; freezing_threshold = null }; sender_canister_version = null });
+    } catch (e) { return #Err("update_settings failed (is the pad a controller of " # Principal.toText(canister_id) # "?): " # Error.message(e)) };
+    icrc3_add("sneedpad_rescue", [("cid", #Nat(cid)), ("caller", Icrc3Log.principal(caller)), ("canister", Icrc3Log.principal(canister_id)), ("controllers", #Array(Array.map<Principal, T3.Value>(controllers, Icrc3Log.principal)))]);
+    logText(cid, "info", "rescue: controllers of " # Principal.toText(canister_id) # " set by " # Principal.toText(caller));
+    #Ok;
   };
   /// Return ICP that a failed step left in this canister (admin): the operator decides where.
   public shared ({ caller }) func admin_withdraw_icp(to : T.Account, amount : Nat) : async { #Ok : Nat; #Err : Text } {

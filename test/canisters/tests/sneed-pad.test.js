@@ -255,6 +255,9 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
     unwrap(await pad.admin_set_config({ creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [true], premium_creation_fee_e8s: [], sneed_dao_control_fee_e8s: [], follow_nns: [] }));
     expect(errOf(await padAlice.create_token(config()))).toMatch(/paused/);
     unwrap(await pad.admin_set_config({ creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [false], premium_creation_fee_e8s: [], sneed_dao_control_fee_e8s: [], follow_nns: [] }));
+    expect(errOf(await pad.admin_set_config({ creation_fee_e8s: [], premium_creation_fee_e8s: [], sneed_dao_control_fee_e8s: [], ledger_cycles: [800_000_000_000n], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [], follow_nns: [] }))).toMatch(/at least 1 T/);
+    expect(errOf(await padBob.admin_set_canister_controllers(padId, [bob]))).toMatch(/admin/);
+    expect(errOf(await pad.admin_set_canister_controllers(icpId, [bob]))).toMatch(/update_settings failed/); // not the pad's canister
     expect(errOf(await padBob.admin_set_config({ creation_fee_e8s: [1n], premium_creation_fee_e8s: [], sneed_dao_control_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [], follow_nns: [] }))).toMatch(/admin only/);
   });
 

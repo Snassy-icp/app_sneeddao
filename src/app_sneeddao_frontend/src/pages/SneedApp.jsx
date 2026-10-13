@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { HttpAgent } from '@dfinity/agent';
+import { Actor, HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import Header from '../components/Header';
@@ -10,6 +10,10 @@ import { getCanisterInfo } from '../utils/BackendUtils';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { FaRocket, FaCubes, FaExternalLinkAlt, FaStore, FaSpinner, FaChevronDown, FaChevronUp, FaPlus, FaEye, FaCog, FaTag, FaCheckCircle, FaBrain, FaChartLine, FaBox, FaRobot } from 'react-icons/fa';
 import BotIcon from '../components/BotIcon';
+import { padIdl, PAD_CANISTER_ID } from '../tokensafety/padIdl.js';
+
+const studioPrimary = '#10b981';
+const studioSecondary = '#34d399';
 
 const customStyles = `
 @keyframes fadeInUp {
@@ -50,6 +54,7 @@ export default function SneedApp() {
     const [loading, setLoading] = useState(true);
     const [walletExpanded, setWalletExpanded] = useState(true);
     const [mintCounts, setMintCounts] = useState({});
+    const [padInfo, setPadInfo] = useState(null); // { fee, premiumFee, launches } from the launchpad canister
     const [selectedFamily, setSelectedFamily] = useState(null);
     const [resolvedWallet, setResolvedWallet] = useState([]);
     const [walletLoading, setWalletLoading] = useState(false);
@@ -114,9 +119,26 @@ export default function SneedApp() {
 
     const allFamilies = [...new Set(apps.flatMap(a => a.families || []))].sort();
 
+    // Apps minted by the Token Studio (their mint link points there) are one launchpad card, not one card each.
+    const studioApps = apps.filter(a => a.mintUrl && a.mintUrl.length > 0 && a.mintUrl[0].startsWith('/studio'));
+    const catalogueApps = apps.filter(a => !studioApps.includes(a));
+    const showStudioCard = !selectedFamily && (studioApps.length > 0 || !!PAD_CANISTER_ID);
     const filteredApps = selectedFamily
-        ? apps.filter(a => (a.families || []).includes(selectedFamily))
-        : apps;
+        ? catalogueApps.filter(a => (a.families || []).includes(selectedFamily))
+        : catalogueApps;
+
+    useEffect(() => {
+        if (!PAD_CANISTER_ID) return;
+        let live = true;
+        (async () => {
+            try {
+                const pad = Actor.createActor(padIdl, { agent: new HttpAgent({ host: 'https://icp-api.io' }), canisterId: PAD_CANISTER_ID });
+                const [cfg, launches] = await Promise.all([pad.get_config(), pad.list_launches(0n, 1n)]);
+                if (live) setPadInfo({ fee: cfg.creation_fee_e8s, premiumFee: cfg.premium_creation_fee_e8s, launches: Number(launches.total), paused: cfg.paused });
+            } catch (e) { console.warn('launchpad info unavailable', e); }
+        })();
+        return () => { live = false; };
+    }, []);
 
     // Load user wallet with WASM-based app type resolution
     useEffect(() => {
@@ -317,7 +339,7 @@ export default function SneedApp() {
                         <FaSpinner className="fa-spin" style={{ fontSize: 24, marginBottom: 8 }} />
                         <div>Loading apps...</div>
                     </div>
-                ) : filteredApps.length === 0 ? (
+                ) : filteredApps.length === 0 && !showStudioCard ? (
                     <div style={{
                         textAlign: 'center', padding: 40, color: theme.colors.secondaryText,
                         background: theme.colors.secondaryBg, borderRadius: 12
@@ -329,6 +351,43 @@ export default function SneedApp() {
                         display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
                         gap: 16, marginBottom: 40
                     }}>
+                        {showStudioCard && (
+                            <div key="token-studio" className="sneedapp-fade-in" style={{
+                                background: theme.colors.cardGradient, borderRadius: 12,
+                                border: `1px solid ${studioPrimary}30`,
+                                padding: 20, display: 'flex', flexDirection: 'column', gap: 12,
+                                transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer'
+                            }}
+                                onClick={() => navigate('/studio/launch')}
+                                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 8px 24px ${studioPrimary}20`; }}
+                                onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                    <div style={{ width: 40, height: 40, borderRadius: 8, background: `linear-gradient(135deg, ${studioPrimary}, ${studioSecondary})`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <FaRocket size={20} color="#fff" />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ color: theme.colors.primaryText, fontWeight: 600, fontSize: 16 }}>Token launchpad</div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                                            <span style={{ color: theme.colors.secondaryText, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>Sneed DAO <FaCheckCircle style={{ color: '#10b981', fontSize: 10 }} /></span>
+                                            {padInfo && <span style={{ color: theme.colors.secondaryText, fontSize: 12 }}>{padInfo.launches} launched</span>}
+                                        </div>
+                                    </div>
+                                </div>
+                                <p style={{ color: theme.colors.secondaryText, fontSize: 13, margin: 0, lineHeight: 1.5, flex: 1 }}>
+                                    Mint an ICRC token on the same NNS-approved ledger code every SNS runs, with an index canister if you want one. Configure it, see the full price, approve once. The ledger lands in your wallet like any other mint, and the Token Studio rates it the moment it exists.
+                                </p>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: `${studioPrimary}15`, padding: '4px 10px', borderRadius: 6, fontSize: 13, color: studioSecondary }}>
+                                        <FaTag style={{ fontSize: 10 }} />
+                                        {padInfo ? `${formatIcp(padInfo.fee)} ICP${padInfo.premiumFee !== padInfo.fee ? ` (${formatIcp(padInfo.premiumFee)} Premium)` : ''} + cycles` : 'fee + cycles'}
+                                    </div>
+                                    <Link to="/studio/launch" onClick={e => e.stopPropagation()} style={{ marginLeft: 'auto', padding: '8px 14px', borderRadius: 8, background: `linear-gradient(135deg, ${studioPrimary}, ${studioSecondary})`, color: '#fff', textDecoration: 'none', fontWeight: 600, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                        <FaRocket size={12} /> Launch a token
+                                    </Link>
+                                </div>
+                            </div>
+                        )}
                         {filteredApps.map((app, i) => {
                             const branding = BOT_BRANDING[app.appId];
                             const cardColor = branding?.color || appPrimary;
