@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import Login from './Login';
 import Wallet from './Wallet';
+import Nft from './pages/Nft';
 import Doc from './Doc';
 import Help from './Help';
 import Dashboard from './Dashboard';
@@ -178,6 +179,7 @@ function App() {
                     <Route path="/" element={<Hub />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/wallet" element={<Wallet />} />
+                    <Route path="/nft" element={<Nft />} />
                     <Route path="/doc" element={<Doc />} />
                     <Route path="/help" element={<Help />} />
                     <Route path="/help/neurons" element={<HelpNeurons />} />

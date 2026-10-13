@@ -88,6 +88,10 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
     
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
     const [activeTab, setActiveTab] = useState(defaultLocksExpanded ? 'locks' : 'balance'); // 'balance', 'locks', 'info'
+    // In range: the pool's current tick sits inside the position's tick range (null when unknown)
+    const inRange = (Number.isFinite(position.currentTick) && Number.isFinite(positionDetails.tickLower) && Number.isFinite(positionDetails.tickUpper))
+        ? (position.currentTick >= positionDetails.tickLower && position.currentTick < positionDetails.tickUpper)
+        : null;
     const [isClaiming, setIsClaiming] = useState(false);
     const [isClaimingLocked, setIsClaimingLocked] = useState(false);
     const [claimRequestId, setClaimRequestId] = useState(null);
@@ -315,8 +319,16 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                         </span>
                     </div>
                     {/* Row 4: Status icons (if any) */}
-                    {(isLockedPosition(positionDetails) || (positionDetails.tokensOwed0 > 0n || positionDetails.tokensOwed1 > 0n)) && (
+                    {(inRange !== null || isLockedPosition(positionDetails) || (positionDetails.tokensOwed0 > 0n || positionDetails.tokensOwed1 > 0n)) && (
                         <div className="header-row-4" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+                            {inRange !== null && (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 600, padding: '1px 8px', borderRadius: '999px', cursor: 'help',
+                                    background: inRange ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)', color: inRange ? '#22c55e' : '#f59e0b', border: `1px solid ${inRange ? 'rgba(34,197,94,0.4)' : 'rgba(245,158,11,0.4)'}` }}
+                                    title={inRange ? "The current price is inside this position's range: it is earning fees" : "The current price is outside this position's range: it earns nothing until the price comes back, or you move the range"}>
+                                    <span style={{ width: 6, height: 6, borderRadius: 3, background: 'currentColor' }} />
+                                    {inRange ? 'In range' : 'Out of range'}
+                                </span>
+                            )}
                             {isLockedPosition(positionDetails) && (
                                 <span style={{
                                     display: 'inline-flex',

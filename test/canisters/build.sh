@@ -29,6 +29,9 @@ done
 echo "== sneed_pad"
 "$MOC" -c $PKGS -o "$OUT/sneed_pad.wasm" "$ROOT/src/sneed_pad/main.mo" 2>&1 | grep -i "error" -A5 || true
 test -s "$OUT/sneed_pad.wasm"
+echo "== icrc7_demo"
+"$MOC" -c $PKGS -o "$OUT/Icrc7Demo.wasm" "$ROOT/src/icrc7_demo/main.mo" 2>&1 | grep -i "error" -A5 || true
+test -s "$OUT/Icrc7Demo.wasm"
 echo "== ledger suite wasms (from the SNS wasm canister, needs network; skipped when present)"
 if [ ! -s "$OUT/ledger.wasm.gz" ] || [ ! -s "$OUT/index.wasm.gz" ]; then
   node --import "$HERE/lib/loader-register.mjs" "$HERE/lib/fetch-ledger-suite.mjs" "$OUT" || echo "   (could not fetch; sneed_pad tests will be skipped)"

@@ -1,0 +1,34 @@
+.nft-grid {
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+    .nft-grid {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)) !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .nft-grid {
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)) !important;
+        gap: 16px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .nft-grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
+        gap: 12px !important;
+    }
+}
+

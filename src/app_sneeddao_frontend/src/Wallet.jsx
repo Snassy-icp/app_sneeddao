@@ -1983,6 +1983,7 @@ function Wallet() {
 
                         return {
                             positionId: position.id,
+                            tickLower: Number(position.tickLower), tickUpper: Number(position.tickUpper),
                             tokensOwed0: tokensOwed0,
                             tokensOwed1: tokensOwed1,
                             token0Amount: token0Amount,
@@ -2011,6 +2012,7 @@ function Wallet() {
                         token1_conversion_rate: token1_conversion_rate,
                         swapCanisterBalance0: swapCanisterBalance0,
                         swapCanisterBalance1: swapCanisterBalance1,
+                        currentTick: Number(swap_meta.ok.tick),
                         positions: positionDetails,
                         loading: false
                     };
@@ -3192,6 +3194,7 @@ function Wallet() {
                 const position = compoundPosition.position;
                 return {
                     positionId: position.id,
+                    tickLower: Number(position.tickLower), tickUpper: Number(position.tickUpper),
                     tokensOwed0: position.tokensOwed0,
                     tokensOwed1: position.tokensOwed1,
                     token0Amount: position.token0Amount,
@@ -3219,6 +3222,7 @@ function Wallet() {
                 token1_conversion_rate: token1_conversion_rate,
                 swapCanisterBalance0: swapCanisterBalance0,
                 swapCanisterBalance1: swapCanisterBalance1,
+                currentTick: Number(swap_meta.ok.tick),
                 positions: positionDetails,
                 loading: false
             };
@@ -5143,6 +5147,7 @@ function Wallet() {
                 const pos = compoundPosition.position;
                 return {
                     positionId: pos.id,
+                    tickLower: Number(pos.tickLower), tickUpper: Number(pos.tickUpper),
                     tokensOwed0: pos.tokensOwed0,
                     tokensOwed1: pos.tokensOwed1,
                     token0Amount: pos.token0Amount,
@@ -5170,6 +5175,7 @@ function Wallet() {
                 token1_conversion_rate: token1_conversion_rate,
                 swapCanisterBalance0: swapCanisterBalance0,
                 swapCanisterBalance1: swapCanisterBalance1,
+                currentTick: Number(swap_meta.ok.tick),
                 positions: positionDetails,
                 loading: false
             };

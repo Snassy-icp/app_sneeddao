@@ -161,6 +161,10 @@
     "sneed_pad": {
       "main": "src/sneed_pad/main.mo",
       "type": "motoko"
+    },
+    "icrc7_demo": {
+      "main": "src/icrc7_demo/main.mo",
+      "type": "motoko"
     }
   },
   "networks": {

@@ -141,3 +141,25 @@ export const mintedIndexIdl = ({ IDL }) => IDL.Service({
   ledger_id: IDL.Func([], [IDL.Principal], ['query']),
   status: IDL.Func([], [IDL.Record({ num_blocks_synced: IDL.Nat })], ['query']),
 });
+
+// ---- ICRC-7 demo collection ----
+export const icrc7Idl = ({ IDL }) => {
+  const Value = IDL.Rec();
+  Value.fill(IDL.Variant({ Blob: IDL.Vec(IDL.Nat8), Text: IDL.Text, Nat: IDL.Nat, Int: IDL.Int, Array: IDL.Vec(Value), Map: IDL.Vec(IDL.Tuple(IDL.Text, Value)) }));
+  const Account = IDL.Record({ owner: IDL.Principal, subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)) });
+  const TransferError = IDL.Variant({ NonExistingTokenId: IDL.Null, InvalidRecipient: IDL.Null, Unauthorized: IDL.Null, TooOld: IDL.Null, CreatedInFuture: IDL.Record({ ledger_time: IDL.Nat64 }), Duplicate: IDL.Record({ duplicate_of: IDL.Nat }), GenericError: IDL.Record({ error_code: IDL.Nat, message: IDL.Text }), GenericBatchError: IDL.Record({ error_code: IDL.Nat, message: IDL.Text }) });
+  return IDL.Service({
+    icrc7_name: IDL.Func([], [IDL.Text], ['query']), icrc7_symbol: IDL.Func([], [IDL.Text], ['query']), icrc7_total_supply: IDL.Func([], [IDL.Nat], ['query']),
+    icrc7_collection_metadata: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Text, Value))], ['query']),
+    icrc7_max_take_value: IDL.Func([], [IDL.Opt(IDL.Nat)], ['query']),
+    icrc7_token_metadata: IDL.Func([IDL.Vec(IDL.Nat)], [IDL.Vec(IDL.Opt(IDL.Vec(IDL.Tuple(IDL.Text, Value))))], ['query']),
+    icrc7_owner_of: IDL.Func([IDL.Vec(IDL.Nat)], [IDL.Vec(IDL.Opt(Account))], ['query']),
+    icrc7_balance_of: IDL.Func([IDL.Vec(Account)], [IDL.Vec(IDL.Nat)], ['query']),
+    icrc7_tokens: IDL.Func([IDL.Opt(IDL.Nat), IDL.Opt(IDL.Nat)], [IDL.Vec(IDL.Nat)], ['query']),
+    icrc7_tokens_of: IDL.Func([Account, IDL.Opt(IDL.Nat), IDL.Opt(IDL.Nat)], [IDL.Vec(IDL.Nat)], ['query']),
+    icrc7_transfer: IDL.Func([IDL.Vec(IDL.Record({ from_subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)), to: Account, token_id: IDL.Nat, memo: IDL.Opt(IDL.Vec(IDL.Nat8)), created_at_time: IDL.Opt(IDL.Nat64) }))], [IDL.Vec(IDL.Opt(IDL.Variant({ Ok: IDL.Nat, Err: TransferError })))], []),
+    icrc10_supported_standards: IDL.Func([], [IDL.Vec(IDL.Record({ name: IDL.Text, url: IDL.Text }))], ['query']),
+    mint: IDL.Func([Account, IDL.Vec(IDL.Tuple(IDL.Text, Value))], [IDL.Variant({ Ok: IDL.Nat, Err: IDL.Text })], []),
+  });
+};
+export const icrc7Init = [IDL.Record({ name: IDL.Text, symbol: IDL.Text, description: IDL.Opt(IDL.Text), logo: IDL.Opt(IDL.Text) })];

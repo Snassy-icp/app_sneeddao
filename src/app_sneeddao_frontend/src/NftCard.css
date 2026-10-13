@@ -1,0 +1,44 @@
+.nft-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.nft-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.nft-image-container {
+    position: relative;
+    transition: opacity 0.2s ease;
+}
+
+.nft-image-container:hover {
+    opacity: 0.95;
+}
+
+.nft-expanded-content {
+    animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        max-height: 0;
+    }
+    to {
+        opacity: 1;
+        max-height: 1000px;
+    }
+}
+
+.metadata-item:last-child {
+    border-bottom: none !important;
+}
+
+/* Responsive grid for NFT cards */
+@media (max-width: 768px) {
+    .nft-card {
+        max-width: 100%;
+    }
+}
+

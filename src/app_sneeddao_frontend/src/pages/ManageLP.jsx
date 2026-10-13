@@ -13,6 +13,10 @@ import { principalToSubAccount } from '@dfinity/utils';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
+import { createActor as createFactoryActor, canisterId as icpSwapFactoryCanisterId } from 'external/icp_swap_factory';
+import { Actor } from '@dfinity/agent';
+import TokenSelector from '../components/TokenSelector';
+import PositionTransferGuide from '../components/PositionTransferGuide';
 import Header from '../components/Header';
 import PrincipalInput from '../components/PrincipalInput';
 import SwapPoolPicker, { describeSwapPool } from '../components/SwapPoolPicker';
@@ -26,6 +30,23 @@ import { FaWater, FaSpinner, FaLock, FaArrowUp, FaCoins, FaPlus, FaMinus, FaExch
 const HOST = 'https://icp-api.io';
 const primary = '#06b6d4';
 const MIN_TICK = -887272; const MAX_TICK = 887272;
+// ICPSwap's pool creation: a passcode bought from the PasscodeManager (1 ICP in production), then the factory.
+const PASSCODE_MANAGER = '7eikv-2iaaa-aaaag-qdgwa-cai';
+const SWAP_CALCULATOR = 'phr2m-oyaaa-aaaag-qjuoq-cai';
+const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+const POOL_FEE = 3000n; // the only tier ICPSwap uses today
+const SwapError = (IDL) => IDL.Variant({ CommonError: IDL.Null, InternalError: IDL.Text, UnsupportedToken: IDL.Text, InsufficientFunds: IDL.Null });
+const passcodeIdl = ({ IDL }) => IDL.Service({
+    metadata: IDL.Func([], [IDL.Record({ tokenCid: IDL.Principal, factoryCid: IDL.Principal, passcodePrice: IDL.Nat, governanceCid: IDL.Principal })], ['query']),
+    balanceOf: IDL.Func([IDL.Principal], [IDL.Nat], ['query']),
+    depositFrom: IDL.Func([IDL.Record({ amount: IDL.Nat, fee: IDL.Nat })], [IDL.Variant({ ok: IDL.Nat, err: SwapError(IDL) })], []),
+    withdraw: IDL.Func([IDL.Record({ amount: IDL.Nat, fee: IDL.Nat })], [IDL.Variant({ ok: IDL.Nat, err: SwapError(IDL) })], []),
+    requestPasscode: IDL.Func([IDL.Principal, IDL.Principal, IDL.Nat], [IDL.Variant({ ok: IDL.Text, err: SwapError(IDL) })], []),
+});
+const calculatorIdl = ({ IDL }) => IDL.Service({
+    sortToken: IDL.Func([IDL.Text, IDL.Text], [IDL.Text, IDL.Text], ['query']),
+    getSqrtPriceX96: IDL.Func([IDL.Float64, IDL.Float64, IDL.Float64], [IDL.Int], ['query']),
+});
 const TICK_SPACING = { 500: 10, 3000: 60, 10000: 200 };
 
 // ---- v3 math: price <-> tick, amounts <-> liquidity (floats are fine for display and sizing; the pool decides) ----
@@ -81,6 +102,10 @@ function ManageLP() {
     const [removePct, setRemovePct] = useState(50);
     const [range, setRange] = useState({ preset: 'p25', lower: '', upper: '' });
     const [recipient, setRecipient] = useState('');
+    const [custody, setCustody] = useState(null); // ClaimedPosition when Sneed Lock holds this position for me
+    const [arrival, setArrival] = useState({ status: 'idle', checks: 0, arrived: [] }); // foreign position: watch for it to become mine
+    const arrivalRef = useRef(null);
+    const [create, setCreate] = useState({ t0: '', t1: '', price: '', info: null, checking: false, exists: null, passcodePrice: null });
     const runLock = useRef(false);
 
     const say = (m) => setLog((l) => [...l, `${new Date().toLocaleTimeString()} ${m}`]);
@@ -111,15 +136,22 @@ function ManageLP() {
                     const mine = await a.getUserPositionIdsByPrincipal(me);
                     if ('ok' in mine && mine.ok.some((id) => BigInt(id) === positionId)) who = 'me';
                 }
+                let held = null;
                 if (who !== 'me') {
                     try {
-                        const sl = createSneedLockActor(sneedLockCanisterId);
+                        const sl = createSneedLockActor(sneedLockCanisterId, me ? { agentOptions: { identity } } : undefined);
                         const locks = await sl.get_swap_position_locks(Principal.fromText(poolId));
                         const found = lockFromLocks(positionId, locks);
                         if (found) { who = 'sneedlock'; lk = found[2]; } else who = 'other';
-                    } catch { who = 'other'; }
+                        if (me) {
+                            // Sneed Lock may hold it for me without an active lock (lock ended, or deposited and never locked)
+                            const claimed = await sl.get_claimed_positions_for_principal(me);
+                            held = claimed.find((c) => c.swap_canister_id.toText() === poolId && BigInt(c.position_id) === positionId) || null;
+                            if (held) who = 'sneedlock';
+                        }
+                    } catch { who = who === 'unknown' ? 'other' : who; }
                 }
-                setOwner(who); setLock(lk);
+                setOwner(who); setLock(lk); setCustody(held);
             } else { setPosition(null); setOwner('me'); setLock(null); }
             if (me) {
                 const [u, b0, b1] = await Promise.all([
@@ -289,6 +321,85 @@ function ManageLP() {
         return `Position #${positionId} transferred to ${to.toText()}.`;
     });
 
+    const lockActive = (l) => l && l.expiry !== undefined && Number(BigInt(l.expiry) / 1000000n) > Date.now();
+    const custodyUnlocked = !!custody && !lockActive(custody.position_lock?.[0]);
+    const doWithdrawCustody = () => run('Withdraw from Sneed Lock', async () => {
+        say(`asking Sneed Lock to hand position #${positionId} back to your wallet`);
+        const sl = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+        const r = await sl.transfer_position(me, Principal.fromText(poolId), positionId);
+        if (r && typeof r === 'object' && 'err' in r) throw new Error(typeof r.err === 'string' ? r.err : JSON.stringify(r.err, (k, v) => (typeof v === 'bigint' ? v.toString() : v)));
+        return `Position #${positionId} is back in your wallet; everything on this page works on it now.`;
+    });
+    // Foreign position: once the owner transfers it to this principal on ICPSwap, the page notices.
+    const startArrivalWatch = () => {
+        if (!me) return;
+        if (arrivalRef.current) clearInterval(arrivalRef.current);
+        setArrival({ status: 'watching', checks: 0, arrived: [] });
+        const started = Date.now();
+        const tick = async () => {
+            try {
+                const r = await poolActor().getUserPositionIdsByPrincipal(me);
+                if ('ok' in r && r.ok.some((id) => BigInt(id) === positionId)) { clearInterval(arrivalRef.current); arrivalRef.current = null; setArrival({ status: 'arrived', checks: 0, arrived: [positionId.toString()] }); load(); return; }
+                setArrival((a) => ({ ...a, checks: a.checks + 1 }));
+            } catch { /* try again */ }
+            if (Date.now() - started > 10 * 60 * 1000) { clearInterval(arrivalRef.current); arrivalRef.current = null; setArrival((a) => ({ ...a, status: 'timeout' })); }
+        };
+        arrivalRef.current = setInterval(tick, 15000);
+    };
+    const stopArrivalWatch = () => { if (arrivalRef.current) clearInterval(arrivalRef.current); arrivalRef.current = null; setArrival((a) => ({ ...a, status: 'idle' })); };
+    useEffect(() => () => { if (arrivalRef.current) clearInterval(arrivalRef.current); }, []);
+
+    // ---- creating a pool ----
+    const checkPair = async () => {
+        let p0, p1; try { p0 = Principal.fromText(create.t0.trim()).toText(); p1 = Principal.fromText(create.t1.trim()).toText(); } catch { setError('two ledger canister ids are needed'); return; }
+        if (p0 === p1) { setError('two different tokens are needed'); return; }
+        setCreate((c) => ({ ...c, checking: true, info: null, exists: null })); setError('');
+        try {
+            const anon = new HttpAgent({ host: HOST });
+            const calc = Actor.createActor(calculatorIdl, { agent: anon, canisterId: SWAP_CALCULATOR });
+            const [s0, s1] = await calc.sortToken(p0, p1);
+            const [i0, i1, pm] = await Promise.all([getTokenInfo(s0, anon), getTokenInfo(s1, anon), Actor.createActor(passcodeIdl, { agent: anon, canisterId: PASSCODE_MANAGER }).metadata().catch(() => null)]);
+            const std = (id, info) => (id === ICP_LEDGER ? 'ICP' : info?.supportedStandards?.includes('icrc2') ? 'ICRC2' : 'ICRC1');
+            const token0 = { address: s0, standard: std(s0, i0) }; const token1 = { address: s1, standard: std(s1, i1) };
+            const factory = createFactoryActor(icpSwapFactoryCanisterId, { agentOptions: { host: HOST } });
+            const existing = await factory.getPool({ token0, token1, fee: POOL_FEE });
+            setCreate((c) => ({ ...c, checking: false, info: { token0, token1, i0, i1 }, exists: 'ok' in existing ? existing.ok.canisterId.toText() : null, passcodePrice: pm ? BigInt(pm.passcodePrice) : null }));
+        } catch (e) { setCreate((c) => ({ ...c, checking: false })); setError(`could not check the pair: ${e?.message || e}`); }
+    };
+    const doCreatePool = () => run('Create pool', async () => {
+        const { token0, token1, i0, i1 } = create.info || {};
+        if (!token0) throw new Error('check the pair first');
+        const price = Number(create.price);
+        if (!(price > 0)) throw new Error(`a starting price is needed: how many ${i1.symbol} one ${i0.symbol} is worth`);
+        const anon = new HttpAgent({ host: HOST });
+        const calc = Actor.createActor(calculatorIdl, { agent: anon, canisterId: SWAP_CALCULATOR });
+        const sqrt = await calc.getSqrtPriceX96(price, i0.decimals, i1.decimals);
+        say(`starting price ${price} ${i1.symbol} per ${i0.symbol} (sqrtPriceX96 ${sqrt})`);
+        const pm = Actor.createActor(passcodeIdl, { agent, canisterId: PASSCODE_MANAGER });
+        const meta = await pm.metadata();
+        const priceIcp = BigInt(meta.passcodePrice); const icpFee = 10_000n;
+        const have = BigInt(await pm.balanceOf(me));
+        if (have < priceIcp) {
+            const need = priceIcp - have;
+            say(`buying the passcode: ${fmtUnits(need, 8)} ICP to ICPSwap's PasscodeManager`);
+            const { allowance } = await checkAllowance(ICP_LEDGER, agent, me, Principal.fromText(PASSCODE_MANAGER));
+            if (allowance < need + icpFee) await approve(ICP_LEDGER, agent, Principal.fromText(PASSCODE_MANAGER), need + icpFee);
+            const d = await pm.depositFrom({ amount: need, fee: icpFee });
+            if ('err' in d) throw new Error(`deposit to PasscodeManager: ${errText(d.err)}`);
+        } else say('the PasscodeManager already holds your passcode price from an earlier try');
+        say('requesting the passcode');
+        const pc = await pm.requestPasscode(Principal.fromText(token0.address), Principal.fromText(token1.address), POOL_FEE);
+        if ('err' in pc) throw new Error(`passcode: ${errText(pc.err)}`);
+        say('creating the pool');
+        const factory = createFactoryActor(icpSwapFactoryCanisterId, { agentOptions: { identity, host: HOST } });
+        const r = await factory.createPool({ token0, token1, fee: POOL_FEE, sqrtPriceX96: sqrt.toString(), subnet: [] });
+        if ('err' in r) throw new Error(`createPool: ${errText(r.err)}`);
+        const newPool = r.ok.canisterId.toText();
+        say(`pool ${newPool} created`);
+        setTimeout(() => navigate(`/managelp?swap=${newPool}`), 800);
+        return `Pool ${newPool} created for ${i0.symbol}/${i1.symbol}. Add the first position below.`;
+    });
+
     // ---- rendering ----
     const card = { border: `1px solid ${theme.colors.border}`, borderRadius: 14, padding: '1rem 1.1rem', background: theme.colors.cardBg, marginBottom: '1rem' };
     const input = { padding: '8px 10px', borderRadius: 8, border: `1px solid ${theme.colors.border}`, background: theme.colors.primaryBg, color: theme.colors.primaryText, fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' };
@@ -343,7 +454,34 @@ function ManageLP() {
                     <div style={card}>
                         <h2 style={{ margin: '0 0 8px', fontSize: '1.05rem', color: theme.colors.primaryText }}>Which pool?</h2>
                         <SwapPoolPicker onPoolChange={(id, p, status) => { if (status === 'ready' && p) navigate(`/managelp?swap=${id}`); }} accentColor={primary} />
-                        <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, marginTop: 8 }}>A pool for a pair that does not exist yet has to be created on ICPSwap first (it sells pool creation for a fee); creating one from here is on the list.</div>
+                        <div style={{ marginTop: 16, paddingTop: 12, borderTop: `1px solid ${theme.colors.border}` }}>
+                            <h2 style={{ margin: '0 0 6px', fontSize: '1.05rem', color: theme.colors.primaryText }}>No pool for the pair yet? Create one</h2>
+                            <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, marginBottom: 10, lineHeight: 1.5 }}>ICPSwap sells pool creation through its PasscodeManager: the price is read from it live (1 ICP in production), paid from your wallet, and the pool is then created on the ICPSwap factory as you. The pool belongs to ICPSwap; your first position is minted into it right after.</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
+                                <div><TokenSelector value={create.t0} onChange={(id) => setCreate((c) => ({ ...c, t0: id, info: null, exists: null }))} placeholder="First token (pick, or a ledger id)" allowCustom /></div>
+                                <div><TokenSelector value={create.t1} onChange={(id) => setCreate((c) => ({ ...c, t1: id, info: null, exists: null }))} placeholder="Second token" allowCustom /></div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                                <button type="button" style={btn(false, create.checking || !create.t0 || !create.t1)} disabled={create.checking || !create.t0 || !create.t1} onClick={checkPair}>{create.checking ? <FaSpinner className="health-spin" /> : null} Check the pair</button>
+                                {create.exists && <span style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>A pool exists already: <Link to={`/managelp?swap=${create.exists}`} style={{ color: primary }}>open it</Link></span>}
+                            </div>
+                            {create.info && !create.exists && (
+                                <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
+                                    <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>ICPSwap orders the pair as <b>{create.info.i0.symbol}</b> / <b>{create.info.i1.symbol}</b> ({create.info.token0.standard}, {create.info.token1.standard}). Passcode price: {create.passcodePrice !== null ? `${fmtUnits(create.passcodePrice, 8)} ICP` : 'unknown'} plus ledger fees.</div>
+                                    <label style={label}>Starting price: {create.info.i1.symbol} per one {create.info.i0.symbol}<input style={input} value={create.price} onChange={(e) => setCreate((c) => ({ ...c, price: e.target.value }))} placeholder="e.g. 0.5" /></label>
+                                    <div style={{ fontSize: '0.78rem', color: theme.colors.mutedText }}>The first position sets the real price; this only places the pool's starting tick. Get it close to what you intend, or your first position will be one-sided.</div>
+                                    <div><button type="button" style={btn(true, !!busy || !isAuthenticated || !create.price)} disabled={!!busy || !isAuthenticated || !create.price} onClick={doCreatePool}>{busy === 'Create pool' ? <FaSpinner className="health-spin" /> : <FaPlus size={12} />} Buy the passcode and create the pool</button></div>
+                                </div>
+                            )}
+                            {(busy === 'Create pool' || (log.length > 0 && !pool)) && (
+                                <div style={{ marginTop: 12, padding: 10, borderRadius: 10, background: theme.colors.secondaryBg, fontSize: '0.8rem', color: theme.colors.secondaryText }}>
+                                    {busy && <div style={{ color: theme.colors.primaryText, fontWeight: 700 }}><FaSpinner className="health-spin" /> {busy}…</div>}
+                                    {done && <div style={{ color: '#22c55e', fontWeight: 700 }}><FaCheck /> {done}</div>}
+                                    {error && <div style={{ color: '#ef4444' }}>{error}</div>}
+                                    <pre style={{ ...mono, whiteSpace: 'pre-wrap', margin: 0 }}>{log.join('\n')}</pre>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
 
@@ -380,8 +518,20 @@ function ManageLP() {
                                     </div>
                                 )}
                                 {!isAuthenticated && <div style={{ marginTop: 10, color: theme.colors.mutedText, fontSize: '0.85rem' }}>Log in with your Sneed wallet to act on this position.</div>}
-                                {isAuthenticated && positionId !== null && owner === 'other' && <div style={{ marginTop: 10, color: '#f59e0b', fontSize: '0.85rem' }}>This position is not owned by your Sneed wallet, so you can only look at it.</div>}
-                                {isAuthenticated && owner === 'sneedlock' && <div style={{ marginTop: 10, color: '#f59e0b', fontSize: '0.85rem' }}>Locked positions cannot be changed until the lock ends; that is what the lock is for. Fees on locked positions are collected from the wallet card.</div>}
+                                {positionId !== null && owner === 'other' && (
+                                    <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: `${primary}10`, border: `1px solid ${primary}40`, fontSize: '0.88rem', color: theme.colors.primaryText }}>
+                                        <div style={{ fontWeight: 700, marginBottom: 4 }}>Is this your position?</div>
+                                        <div style={{ color: theme.colors.secondaryText, marginBottom: 6 }}>It is not owned by {isAuthenticated ? 'your Sneed wallet' : 'a Sneed wallet you are logged in with'}, so this page can only show it. A position created on ICPSwap belongs to your ICPSwap login; transfer it to your Sneed wallet principal and everything here works on it: add, remove, collect, move the range, lock.</div>
+                                        <PositionTransferGuide token0Symbol={sym0} token1Symbol={sym1} compact accentColor={primary} intro="" watch={arrival} onWatch={isAuthenticated ? startArrivalWatch : undefined} onStopWatch={stopArrivalWatch} />
+                                    </div>
+                                )}
+                                {isAuthenticated && owner === 'sneedlock' && custodyUnlocked && (
+                                    <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: '#22c55e14', border: '1px solid #22c55e55', fontSize: '0.88rem', color: theme.colors.primaryText, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                                        <span><b>Sneed Lock holds this position for you, and it is not locked.</b> Withdraw it to your wallet to manage it here.</span>
+                                        <button type="button" style={btn(true, !!busy)} disabled={!!busy} onClick={doWithdrawCustody}>{busy === 'Withdraw from Sneed Lock' ? <FaSpinner className="health-spin" /> : <FaArrowUp size={11} />} Withdraw to my wallet</button>
+                                    </div>
+                                )}
+                                {isAuthenticated && owner === 'sneedlock' && !custodyUnlocked && <div style={{ marginTop: 10, color: '#f59e0b', fontSize: '0.85rem' }}>Locked positions cannot be changed until the lock ends; that is what the lock is for. Fees on locked positions are collected from the wallet card.</div>}
                             </>
                         )}
                         {error && !busy && <div style={{ marginTop: 10, color: '#ef4444', fontSize: '0.88rem' }}>{error}</div>}

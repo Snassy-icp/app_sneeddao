@@ -1,0 +1,24 @@
+.nft-page {
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* Responsive layout */
+@media (max-width: 768px) {
+    .nft-page {
+        padding: 16px !important;
+    }
+    
+    .nft-page h1 {
+        font-size: 24px !important;
+    }
+}
+

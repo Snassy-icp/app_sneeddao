@@ -1460,6 +1460,7 @@ export const WalletProvider = ({ children }) => {
                             tokensOwed1: position.tokensOwed1,
                             amount0: position.token0Amount,
                             amount1: position.token1Amount,
+                            tickLower: Number(position.tickLower), tickUpper: Number(position.tickUpper),
                             frontendOwnership: compoundPosition.frontendOwnership,
                             lockInfo: (!compoundPosition.frontendOwnership && compoundPosition.claimInfo?.position_lock?.[0]) 
                                 ? compoundPosition.claimInfo.position_lock[0] 
@@ -1483,6 +1484,7 @@ export const WalletProvider = ({ children }) => {
                         token0_conversion_rate: 0, // Will be updated progressively
                         token1_conversion_rate: 0,
                         swapCanisterBalance0: 0n,
+                        currentTick: Number(swap_meta.ok.tick),
                         swapCanisterBalance1: 0n,
                         positions: positionDetails,
                         loading: false
