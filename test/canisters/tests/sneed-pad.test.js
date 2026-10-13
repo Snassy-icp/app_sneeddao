@@ -206,6 +206,10 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
     expect(launch.controllers.map((p) => p.toText())).toEqual([carol.toText()]); // the configured "blackhole"
     const idx = actorAs(pic, mintedIndexIdl, launch.index[0], alice);
     expect((await idx.ledger_id()).toText()).toBe(launch.ledger[0].toText());
+    // the ledger announces its index (ICRC-106), which is how the studio and wallets find it
+    const led = actorAs(pic, mintedLedgerIdl, launch.ledger[0], alice);
+    expect(unwrap(await led.icrc106_get_index_principal()).toText()).toBe(launch.index[0].toText());
+    expect(launch.steps.map(([s]) => s)).toContain('index_created');
     expect((await pic.canisterStatus({ canisterId: launch.ledger[0], sender: carol })).settings.controllers.map((p) => p.toText())).toEqual([carol.toText()]);
     expect((await pic.canisterStatus({ canisterId: launch.index[0], sender: carol })).settings.controllers.map((p) => p.toText())).toEqual([carol.toText()]);
     // the index syncs the genesis blocks once its timer runs

@@ -14,6 +14,7 @@ import { createActor as createBackendActor, canisterId as backendCanisterId } fr
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createActor as createSnsRootActor } from 'external/sns_root';
 import { getAllSnses } from '../utils/SnsUtils';
+import { setCanisterName, setPrincipalNickname } from '../utils/BackendUtils';
 import { padIdl, PAD_CANISTER_ID } from '../tokensafety/padIdl.js';
 import { FaRocket, FaSpinner, FaPlus, FaTrash, FaShieldAlt, FaExternalLinkAlt, FaExclamationTriangle } from 'react-icons/fa';
 
@@ -41,6 +42,7 @@ export function LaunchPanel({ onLaunched }) {
     const [dao, setDao] = useState({ root: null, governance: null, neurons: null, error: null }); // the DAO a handover goes to, and my proposal-capable neurons in it
     const [proposal, setProposal] = useState(null); // { id, root } once the registration proposal is filed, or { error }
     const [logoWarning, setLogoWarning] = useState(false);
+    const [names, setNames] = useState({ ledgerPublic: '', indexPublic: '', ledgerPrivate: '', indexPrivate: '', busy: '', done: [], errors: [] });
     const [quote, setQuote] = useState(null);
     const [quoting, setQuoting] = useState(false);
     const [launching, setLaunching] = useState(null); // step text
@@ -178,6 +180,7 @@ export function LaunchPanel({ onLaunched }) {
             setResult(r.Ok);
             setQuote(null);
             onLaunched?.(r.Ok);
+            setNames({ ledgerPublic: `${r.Ok.config.name}`, indexPublic: `${r.Ok.config.name} index`, ledgerPrivate: `${r.Ok.config.symbol} ledger`, indexPrivate: `${r.Ok.config.symbol} index`, busy: '', done: [], errors: [] });
             if (daoRoot) await fileRegistration(r.Ok);
             // The wallet: the token under tokens, the canisters under SneedApp mints. The pad lists them
             // itself when SneedApp authorizes it; these calls make sure, and are harmless twice.
@@ -193,6 +196,23 @@ export function LaunchPanel({ onLaunched }) {
         } catch (e) { setError(e?.message || String(e)); }
         finally { setLaunching(null); }
     };
+
+    /// Sneed names for the new canisters: public names need a controller (the backend checks), private nicknames are the creator's own.
+    const applyNames = async (kind) => {
+        if (!result || !identity) return;
+        const targets = [[result.ledger[0], kind === 'public' ? names.ledgerPublic : names.ledgerPrivate], ...(result.index[0] ? [[result.index[0], kind === 'public' ? names.indexPublic : names.indexPrivate]] : [])].filter(([id, n]) => id && n.trim());
+        setNames((n) => ({ ...n, busy: kind, errors: n.errors.filter((e) => !e.startsWith(kind)) }));
+        const done = []; const errors = [];
+        for (const [id, name] of targets) {
+            try {
+                const r = kind === 'public' ? await setCanisterName(identity, id.toText(), name.trim()) : await setPrincipalNickname(identity, id.toText(), name.trim());
+                if (r && 'err' in r) throw new Error(r.err);
+                done.push(`${kind}:${id.toText()}`);
+            } catch (e) { errors.push(`${kind} name for ${id.toText()}: ${e?.message || e}`); }
+        }
+        setNames((n) => ({ ...n, busy: '', done: [...n.done, ...done], errors: [...n.errors, ...errors] }));
+    };
+    const iControl = form.control === 'keep';
 
     const onLogo = (file) => {
         if (!file) { setForm((f) => ({ ...f, logo: null })); return; }
@@ -348,6 +368,22 @@ export function LaunchPanel({ onLaunched }) {
                                 ? <div style={{ color: '#f59e0b' }}>The registration proposal could not be filed: {proposal.error}. File it from your neuron: RegisterDappCanisters with the canister ids above.</div>
                                 : <div>Registration proposal {proposal.id !== undefined ? <Link to={`/proposal?proposalid=${proposal.id}&sns=${proposal.root}`} style={{ color: '#10b981' }}>#{String(proposal.id)}</Link> : ''} filed with your neuron; once it passes, the DAO manages the canisters.</div>)}
                             {daoRoot && !proposal && <div style={{ color: theme.colors.mutedText }}><FaSpinner className="health-spin" size={10} /> Filing the registration proposal with your neuron…</div>}
+                            <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${theme.colors.border}` }}>
+                                <div style={{ fontWeight: 700, marginBottom: 4 }}>Name them in Sneed names</div>
+                                <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, marginBottom: 8 }}>A public name shows for everyone wherever the canister appears on Sneed Hub{iControl ? '' : '; it can only be set by a controller, which you are not for this choice, so only private nicknames apply here'}. A private nickname shows only to you.</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
+                                    {iControl && <label style={label}>Public name, ledger<input style={input} value={names.ledgerPublic} onChange={(e) => setNames((n) => ({ ...n, ledgerPublic: e.target.value }))} maxLength={32} /></label>}
+                                    {iControl && result.index[0] && <label style={label}>Public name, index<input style={input} value={names.indexPublic} onChange={(e) => setNames((n) => ({ ...n, indexPublic: e.target.value }))} maxLength={32} /></label>}
+                                    <label style={label}>Private nickname, ledger<input style={input} value={names.ledgerPrivate} onChange={(e) => setNames((n) => ({ ...n, ledgerPrivate: e.target.value }))} maxLength={32} /></label>
+                                    {result.index[0] && <label style={label}>Private nickname, index<input style={input} value={names.indexPrivate} onChange={(e) => setNames((n) => ({ ...n, indexPrivate: e.target.value }))} maxLength={32} /></label>}
+                                </div>
+                                <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                                    {iControl && <button type="button" style={btn(false, !!names.busy)} disabled={!!names.busy} onClick={() => applyNames('public')}>{names.busy === 'public' ? <FaSpinner className="health-spin" /> : null} Set public names</button>}
+                                    <button type="button" style={btn(false, !!names.busy)} disabled={!!names.busy} onClick={() => applyNames('private')}>{names.busy === 'private' ? <FaSpinner className="health-spin" /> : null} Set private nicknames</button>
+                                </div>
+                                {names.done.length > 0 && <div style={{ color: '#10b981', fontSize: '0.82rem', marginTop: 6 }}>Named: {names.done.map((d) => d.replace(':', ' ')).join(', ')}.</div>}
+                                {names.errors.map((e) => <div key={e} style={{ color: '#ef4444', fontSize: '0.82rem', marginTop: 4 }}>{e}</div>)}
+                            </div>
                             <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap' }}>
                                 <Link to={`/studio/${result.ledger[0]?.toText()}`} style={{ color: '#10b981', display: 'inline-flex', gap: 6, alignItems: 'center' }}><FaShieldAlt size={12} /> Check it</Link>
                                 <a href={`https://dashboard.internetcomputer.org/canister/${result.ledger[0]?.toText()}`} target="_blank" rel="noopener noreferrer" style={{ color: '#10b981', display: 'inline-flex', gap: 6, alignItems: 'center' }}>Dashboard <FaExternalLinkAlt size={10} /></a>

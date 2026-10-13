@@ -1915,6 +1915,7 @@ export const WalletProvider = ({ children }) => {
                 canisterId: e.canisterId,
                 moduleHash: null,
                 resolvedAppId: '',
+                storedAppId: e.appId || '', // what the minter said it is (used when the hash matches no listed version)
             }));
 
             // Fetch module hashes for ALL canisters via backend proxy
@@ -1932,6 +1933,7 @@ export const WalletProvider = ({ children }) => {
                             }
                         }
                     } catch (_) {}
+                    if (!entry.resolvedAppId && entry.storedAppId && infoMap[entry.storedAppId]) entry.resolvedAppId = entry.storedAppId;
                 }));
             }
 

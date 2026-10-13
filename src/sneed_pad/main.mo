@@ -351,6 +351,18 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     } catch (e) { return fail(cid, launch, "could not create the ledger canister: " # Error.message(e)) };
     launch := step({ launch with ledger = ?ledgerId }, "ledger_created");
     putLaunch(launch);
+    // The index canister is created now (installed after the ledger) so the ledger can announce it through ICRC-106.
+    let indexId : ?Principal = switch (idxWasm) {
+      case (?_) {
+        let id = try {
+          (await (with cycles = quote.index_cycles) ic.create_canister({ settings = ?{ controllers = ?[self]; compute_allocation = null; memory_allocation = null; freezing_threshold = null }; sender_canister_version = null })).canister_id;
+        } catch (e) { return fail(cid, launch, "could not create the index canister: " # Error.message(e)) };
+        launch := step({ launch with index = ?id }, "index_created");
+        putLaunch(launch);
+        ?id;
+      };
+      case null { null };
+    };
     let mintingAccount : T.Account = switch (c.minting) { case (#nobody) { { owner = ledgerId; subaccount = null } }; case (#sneed_dao) { { owner = sneed_governance; subaccount = null } }; case (#principal(p)) { { owner = p; subaccount = null } } };
     let metadata : [(Text, T.MetadataValue)] = switch (c.logo) { case (?l) { [("icrc1:logo", #Text(l))] }; case null { [] } };
     let init : T.LedgerInitArgs = {
@@ -365,6 +377,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
         controller_id = archiveController;
       };
       max_memo_length = null; feature_flags = ?{ icrc2 = true };
+      index_principal = indexId;
     };
     let arg : T.LedgerArgument = #Init(init);
     try {
@@ -381,20 +394,17 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     ]);
 
     // 5. the index
-    switch (idxWasm) {
-      case (?iw) {
-        let indexId = try {
-          (await (with cycles = quote.index_cycles) ic.create_canister({ settings = ?{ controllers = ?[self]; compute_allocation = null; memory_allocation = null; freezing_threshold = null }; sender_canister_version = null })).canister_id;
-        } catch (e) { return fail(cid, launch, "ledger launched, but the index canister could not be created: " # Error.message(e)) };
+    switch (idxWasm, indexId) {
+      case (?iw, ?indexId) {
         let iarg : T.IndexArg = #Init({ ledger_id = ledgerId; retrieve_blocks_from_ledger_interval_seconds = null });
         try {
           await ic.install_code({ mode = #install; canister_id = indexId; wasm_module = iw; arg = to_candid(iarg); sender_canister_version = null });
         } catch (e) { return fail(cid, launch, "ledger launched, but the index could not be installed: " # Error.message(e)) };
-        launch := step({ launch with index = ?indexId }, "index_installed");
+        launch := step(launch, "index_installed");
         putLaunch(launch);
         icrc3_add("sneedpad_index_create", [("cid", #Nat(cid)), ("launch", #Nat(launch.id)), ("ledger", Icrc3Log.principal(ledgerId)), ("index", Icrc3Log.principal(indexId)), ("index_cycles", #Nat(quote.index_cycles))]);
       };
-      case null {};
+      case _ {};
     };
 
     // 6. control

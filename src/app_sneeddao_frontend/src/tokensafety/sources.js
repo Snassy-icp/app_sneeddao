@@ -8,6 +8,7 @@
 //   are fetched when it is expanded; nothing is known about nodes nobody has
 //   expanded. Works for every ledger with an index-ng (SNS tokens, ckBTC …).
 import { Principal } from '@dfinity/principal';
+import { padIdl, PAD_CANISTER_ID } from './padIdl.js';
 import { actor, ledgerIdl, IDL } from '../health/agent.js';
 import { holdersByOwner } from './scan.js';
 
@@ -82,7 +83,18 @@ export async function findIndex(ledgerId, snses) {
     const l = await actor(tokenIdl, ledgerId);
     try { const r = await l.icrc106_get_index_principal(); if ('Ok' in r) return r.Ok.toText(); } catch { /* no ICRC-106 */ }
     const sns = (snses || []).find((s) => s.ledger === ledgerId);
-    return sns?.index || null;
+    if (sns?.index) return sns.index;
+    return padIndexOf(ledgerId);
+}
+
+/// The launchpad's own record of a ledger it minted (for ledgers launched before the pad set ICRC-106).
+export async function padIndexOf(ledgerId) {
+    if (!PAD_CANISTER_ID) return null;
+    try {
+        const pad = await actor(padIdl, PAD_CANISTER_ID);
+        const l = await pad.get_launch_by_ledger(Principal.fromText(ledgerId));
+        return l[0]?.index[0]?.toText() || null;
+    } catch { return null; }
 }
 
 /// Lazy graph over an index canister. `tags` maps principals to labels.

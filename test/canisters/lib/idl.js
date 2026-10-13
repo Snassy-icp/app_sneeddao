@@ -133,6 +133,7 @@ export const mintedLedgerIdl = ({ IDL }) => IDL.Service({
   icrc1_total_supply: IDL.Func([], [IDL.Nat], ['query']),
   icrc1_balance_of: IDL.Func([Account], [IDL.Nat], ['query']),
   icrc1_minting_account: IDL.Func([], [IDL.Opt(Account)], ['query']),
+  icrc106_get_index_principal: IDL.Func([], [IDL.Variant({ Ok: IDL.Principal, Err: IDL.Reserved })], ['query']),
   icrc1_metadata: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Text, IDL.Variant({ Nat: IDL.Nat, Int: IDL.Int, Text: IDL.Text, Blob: IDL.Vec(IDL.Nat8) })))], ['query']),
   icrc1_supported_standards: IDL.Func([], [IDL.Vec(IDL.Record({ name: IDL.Text, url: IDL.Text }))], ['query']),
 });

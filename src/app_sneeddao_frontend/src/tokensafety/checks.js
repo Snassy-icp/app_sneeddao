@@ -10,6 +10,7 @@ import { sha256 } from '@noble/hashes/sha256';
 import { idlFactory as snswIdl } from 'declarations/nns_snsw/nns_snsw.did.js';
 import { idlFactory as rootIdl } from 'external/sns_root/sns_root.did.js';
 import { getPrincipalProfileUrl } from '../utils/PrincipalUtils';
+import { padIndexOf } from './sources.js';
 import { idlFactory as factoryIdl } from 'external/icp_swap_factory/icp_swap_factory.did.js';
 import { idlFactory as poolIdl } from 'external/icp_swap/icp_swap.did.js';
 import { idlFactory as sneedLockIdl } from 'declarations/sneed_lock/sneed_lock.did.js';
@@ -144,6 +145,8 @@ const loaders = {
         if (r && 'Ok' in r) return { id: r.Ok.toText(), how: 'ICRC-106' };
         const sns = (await ctx.load('snsw', loaders.snsw)).byLedger.get(ledgerId);
         if (sns?.index) return { id: sns.index, how: 'SNS registry' };
+        const fromPad = await padIndexOf(ledgerId);
+        if (fromPad) return { id: fromPad, how: 'launchpad record' };
         return null;
     },
     scan: (ledgerId) => async (ctx) => {

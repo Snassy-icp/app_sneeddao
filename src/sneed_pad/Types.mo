@@ -28,6 +28,7 @@ module {
     max_memo_length : ?Nat16;
     token_name : Text;
     feature_flags : ?FeatureFlags;
+    index_principal : ?Principal; // ICRC-106: the ledger announces its index (ledger suite 2025+; older wasms ignore the field)
   };
   /// Only `#Init` is ever sent; the `#Upgrade` alternative exists so the
   /// variant matches the ledger's argument type shape.
