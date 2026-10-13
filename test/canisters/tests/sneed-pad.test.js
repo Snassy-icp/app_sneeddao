@@ -10,7 +10,7 @@ import { Principal } from '@icp-sdk/core/principal';
 import {
   createPic, install, actorAs, account, admin, alice, bob, carol, ICP_LEDGER_ID, SNEED_GOVERNANCE, SNEED_SNS_ROOT, T, unwrap, errOf, BUILD,
 } from '../lib/pic.js';
-import { ledgerIdl, ledgerInit, cmcIdl, snsWasmIdl, premiumIdl, padIdl, mintedLedgerIdl, mintedIndexIdl, governanceIdl } from '../lib/idl.js';
+import { ledgerIdl, ledgerInit, cmcIdl, snsWasmIdl, premiumIdl, sneedAppIdl, padIdl, mintedLedgerIdl, mintedIndexIdl, governanceIdl } from '../lib/idl.js';
 import { fetchBlocks, btype, txField, archiveIdl } from '../lib/icrc3.js';
 
 const ICP_FEE = 10_000n;
@@ -19,8 +19,8 @@ const indexGz = resolve(BUILD, 'index.wasm.gz');
 const haveWasms = existsSync(ledgerGz) && existsSync(indexGz);
 const sha256 = (bytes) => Uint8Array.from(createHash('sha256').update(bytes).digest());
 
-let pic, icpId, cmcId, snsWasmId, govId, premiumId, padId;
-let icp, cmc, snsWasm, gov, premium, pad, padAlice, padBob;
+let pic, icpId, cmcId, snsWasmId, govId, premiumId, sneedAppId, padId;
+let icp, cmc, snsWasm, gov, premium, sneedApp, pad, padAlice, padBob;
 const hex = (b) => Buffer.from(b).toString('hex');
 let ledgerHash, indexHash;
 const NEURON = Uint8Array.from({ length: 32 }, (_, i) => i + 1);
@@ -40,12 +40,14 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
     snsWasmId = await install(pic, { name: 'MockSnsWasm' });
     govId = await install(pic, { name: 'MockSnsGovernance', targetCanisterId: SNEED_GOVERNANCE });
     premiumId = await install(pic, { name: 'MockPremium' });
+    sneedAppId = await install(pic, { name: 'MockSneedApp' });
     padId = await install(pic, { name: 'sneed_pad', cycles: 200n * T });
     icp = actorAs(pic, ledgerIdl, icpId, admin);
     cmc = actorAs(pic, cmcIdl, cmcId, admin);
     snsWasm = actorAs(pic, snsWasmIdl, snsWasmId, admin);
     gov = actorAs(pic, governanceIdl, govId, admin);
     premium = actorAs(pic, premiumIdl, premiumId, admin);
+    sneedApp = actorAs(pic, sneedAppIdl, sneedAppId, admin);
     pad = actorAs(pic, padIdl, padId, admin);
     padAlice = actorAs(pic, padIdl, padId, alice);
     padBob = actorAs(pic, padIdl, padId, bob);
@@ -54,7 +56,8 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
     await snsWasm.set_wasm(ledgerHash, Uint8Array.from(ledgerBytes));
     await snsWasm.set_wasm(indexHash, Uint8Array.from(indexBytes));
     await snsWasm.set_latest([['Root', '00'], ['Ledger', hex(ledgerHash)], ['Ledger Index', hex(indexHash)]]);
-    unwrap(await pad.admin_set_canisters({ icp_ledger: [icpId], cmc: [cmcId], sns_wasm: [snsWasmId], governance: [govId], root: [SNEED_SNS_ROOT], blackhole: [carol], sneed_premium: [[premiumId]] }));
+    unwrap(await pad.admin_set_canisters({ icp_ledger: [icpId], cmc: [cmcId], sns_wasm: [snsWasmId], governance: [govId], root: [SNEED_SNS_ROOT], blackhole: [carol], sneed_premium: [[premiumId]], sneedapp: [[sneedAppId]] }));
+    await sneedApp.set_authorized([padId]);
     unwrap(await pad.admin_set_config({ creation_fee_e8s: [500_000_000n], premium_creation_fee_e8s: [250_000_000n], sneed_dao_control_fee_e8s: [100_000_000n], ledger_cycles: [3n * T], index_cycles: [2n * T], fee_destination: [account(bob)], cycle_reserve: [2n * T], paused: [], follow_nns: [] }));
     await icp.mint(account(alice), 100n * 100_000_000n);
   }, 120_000);
@@ -155,7 +158,9 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
     expect(launch.ledger.length).toBe(1);
     expect(launch.index.length).toBe(0);
     expect(launch.controllers.map((p) => p.toText())).toEqual([alice.toText()]);
-    expect(launch.steps.map(([s]) => s)).toEqual(['paid', 'cycles', 'fee', 'ledger_created', 'ledger_installed', 'controllers_set']);
+    expect(launch.steps.map(([s]) => s)).toEqual(['paid', 'cycles', 'fee', 'ledger_created', 'ledger_installed', 'controllers_set', 'wallet_registered']);
+    // the creator's SneedApp wallet lists the ledger, as a SneedApp mint would
+    expect((await sneedApp.get_entries()).map(([u, c, a]) => [u.toText(), c.toText(), a])).toContainEqual([alice.toText(), launch.ledger[0].toText(), 'icrc-ledger']);
     // the ledger is real and configured as asked
     const ledgerId = launch.ledger[0];
     const l = actorAs(pic, mintedLedgerIdl, ledgerId, alice);

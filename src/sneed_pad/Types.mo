@@ -145,6 +145,11 @@ module {
     notify_top_up : shared ({ block_index : Nat64; canister_id : Principal }) -> async { #Ok : Nat; #Err : NotifyError };
     get_icp_xdr_conversion_rate : shared query () -> async { data : { xdr_permyriad_per_icp : Nat64; timestamp_seconds : Nat64 }; hash_tree : Blob; certificate : Blob };
   };
+  /// SneedApp keeps each user's list of minted canisters; the pad adds its ledgers there so
+  /// they show up in the wallet like any SneedApp mint (the pad must be an authorized caller).
+  public type SneedApp = actor {
+    registerCanisterFor : shared (Principal, Principal, Text) -> async { #Ok; #Err : Text };
+  };
   public type SnsWasmCanister = actor {
     get_wasm : shared query ({ hash : Blob }) -> async { wasm : ?{ wasm : Blob; canister_type : Int32; proposal_id : ?Nat64 } };
     /// The latest NNS-approved SNS version as (canister type, hex hash) pairs: "Ledger", "Index", ...

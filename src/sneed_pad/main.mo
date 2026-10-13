@@ -42,6 +42,9 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   transient let BLACKHOLE_ID = "e3mmv-5qaaa-aaaah-aadma-cai"; // ninegua's blackhole: immutable, exposes canister_status
   transient let SNEED_GOVERNANCE_ID = "fi3zi-fyaaa-aaaaq-aachq-cai";
   transient let SNEED_PREMIUM_ID = "7gump-4aaaa-aaaal-qtyka-cai";
+  transient let SNEEDAPP_ID = "sfamc-kyaaa-aaaau-adnpq-cai";
+  transient let APP_ID_LEDGER = "icrc-ledger"; // SneedApp app ids the wallet shows the canisters under
+  transient let APP_ID_INDEX = "icrc-index";
   transient let SNEED_ROOT_ID = "fp274-iaaaa-aaaaq-aacha-cai";
   transient let RLL_ID = "lvc4n-7aaaa-aaaam-adm6a-cai";
   transient let ICP_FEE : Nat = 10_000;
@@ -56,6 +59,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   stable var sneed_root : Principal = Principal.fromText(SNEED_ROOT_ID);
   stable var blackhole : Principal = Principal.fromText(BLACKHOLE_ID);
   stable var sneed_premium_id : ?Principal = ?Principal.fromText(SNEED_PREMIUM_ID);
+  stable var sneedapp_id : ?Principal = ?Principal.fromText(SNEEDAPP_ID);
   stable var premium_cache = PremiumClient.emptyCache();
 
   transient let ic : T.Management = actor ("aaaaa-aa");
@@ -373,6 +377,20 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
       } catch (e) { return fail(cid, launch, "launched, but setting the controllers of " # Principal.toText(id) # " failed: " # Error.message(e)) };
     };
     launch := step({ launch with controllers = finalControllers }, "controllers_set");
+    // 7. the creator's wallet: list the new canisters in SneedApp, as a SneedApp mint would (best effort)
+    switch (sneedapp_id) {
+      case (?appId) {
+        let app : T.SneedApp = actor (Principal.toText(appId));
+        var ok = true;
+        for ((id, kind) in Array.append<(Principal, Text)>([(ledgerId, APP_ID_LEDGER)], switch (launch.index) { case (?i) { [(i, APP_ID_INDEX)] }; case null { [] } }).vals()) {
+          try {
+            switch (await app.registerCanisterFor(caller, id, kind)) { case (#Ok) {}; case (#Err(e)) { ok := false; logText(cid, "error", "launch " # Nat.toText(launch.id) # ": SneedApp refused to list " # Principal.toText(id) # ": " # e) } };
+          } catch (e) { ok := false; logText(cid, "error", "launch " # Nat.toText(launch.id) # ": SneedApp call failed for " # Principal.toText(id) # ": " # Error.message(e)) };
+        };
+        if (ok) { launch := step(launch, "wallet_registered") };
+      };
+      case null {};
+    };
     icrc3_add("sneedpad_control_set", [("cid", #Nat(cid)), ("launch", #Nat(launch.id)), ("ledger", Icrc3Log.principal(ledgerId)), ("control", #Text(debug_show(c.control))), ("controllers", #Array(Array.map<Principal, T3.Value>(finalControllers, Icrc3Log.principal)))]);
     // Sneed DAO: register the canisters through the hotkeyed neuron (best effort, retried by the timer)
     switch (c.control) {
@@ -552,8 +570,9 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   public shared ({ caller }) func admin_add_admin(p : Principal) : async { #Ok; #Err : Text } { if (not isAdmin(caller)) { return #Err("admin only") }; if (Array.find<Principal>(admins, func(a) { a == p }) == null) { admins := Array.append(admins, [p]) }; #Ok };
   public shared ({ caller }) func admin_remove_admin(p : Principal) : async { #Ok; #Err : Text } { if (not isAdmin(caller)) { return #Err("admin only") }; admins := Array.filter<Principal>(admins, func(a) { a != p }); #Ok };
   /// Test deployments: point at mock canisters.
-  public shared ({ caller }) func admin_set_canisters(u : { icp_ledger : ?Principal; cmc : ?Principal; sns_wasm : ?Principal; governance : ?Principal; root : ?Principal; blackhole : ?Principal; sneed_premium : ??Principal }) : async { #Ok; #Err : Text } {
+  public shared ({ caller }) func admin_set_canisters(u : { icp_ledger : ?Principal; cmc : ?Principal; sns_wasm : ?Principal; governance : ?Principal; root : ?Principal; blackhole : ?Principal; sneed_premium : ??Principal; sneedapp : ??Principal }) : async { #Ok; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("admin only") };
+    switch (u.sneedapp) { case (?p) { sneedapp_id := p }; case null {} };
     switch (u.sneed_premium) { case (?p) { sneed_premium_id := p; premium_cache := PremiumClient.emptyCache() }; case null {} };
     switch (u.icp_ledger) { case (?p) { icp_ledger_id := p }; case null {} };
     switch (u.cmc) { case (?p) { cmc_id := p }; case null {} };

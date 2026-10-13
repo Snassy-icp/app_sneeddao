@@ -778,6 +778,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
             {
                 id: 'locks:cliffs', name: 'Unlock cliffs ahead', timeoutMs: SCAN_TIMEOUT_MS, run: async (ctx) => {
                     const { m, sl, neurons, now } = await lockedSupply(ctx);
+                    if (sl.count === 0 && !(neurons && neurons.total > 0n)) return skip('Nothing is locked, so nothing can unlock');
                     const windowSec = c.cliffWindowDays * 86400;
                     const soon = sl.locks.filter((l) => l.expiryMs - now <= windowSec * 1000);
                     let sum = soon.reduce((a, l) => a + l.amount, 0n);

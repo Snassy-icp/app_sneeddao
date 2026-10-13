@@ -9,6 +9,8 @@ import PrincipalInput from '../components/PrincipalInput';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { createActor as createSneedAppActor, canisterId as sneedAppCanisterId } from 'declarations/sneedapp';
+import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { padIdl, PAD_CANISTER_ID } from '../tokensafety/padIdl.js';
 import { FaRocket, FaSpinner, FaPlus, FaTrash, FaShieldAlt, FaExternalLinkAlt } from 'react-icons/fa';
 
@@ -110,6 +112,17 @@ export function LaunchPanel({ onLaunched }) {
             setResult(r.Ok);
             setQuote(null);
             onLaunched?.(r.Ok);
+            // The wallet: the token under tokens, the canisters under SneedApp mints. The pad lists them
+            // itself when SneedApp authorizes it; these calls make sure, and are harmless twice.
+            const ledgerId = r.Ok.ledger[0];
+            if (ledgerId) {
+                const quiet = (p) => p.catch((e) => console.warn('wallet registration skipped', e));
+                await Promise.all([
+                    quiet(createBackendActor(backendCanisterId, { agentOptions: { identity, host: HOST } }).register_ledger_canister_id(ledgerId)),
+                    quiet(createSneedAppActor(sneedAppCanisterId, { agentOptions: { identity, host: HOST } }).registerCanister(ledgerId, 'icrc-ledger')),
+                    ...(r.Ok.index[0] ? [quiet(createSneedAppActor(sneedAppCanisterId, { agentOptions: { identity, host: HOST } }).registerCanister(r.Ok.index[0], 'icrc-index'))] : []),
+                ]);
+            }
         } catch (e) { setError(e?.message || String(e)); }
         finally { setLaunching(null); }
     };
