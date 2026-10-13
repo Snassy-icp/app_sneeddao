@@ -634,6 +634,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         { name: 'ICRC-3 Browser', path: '/tools/icrc3' },
         { name: 'Token Safety', path: '/tools/token_safety' },
         { name: 'Follow the Money', path: '/tools/money' },
+        { name: 'Sneed Pad', path: '/tools/pad' },
     ];
     if (isAuthenticated) {
         toolsSubMenu.push(

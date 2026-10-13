@@ -190,6 +190,19 @@ the registry's vetted set (initially "present in the SNS wasm canister", widened
 DAO proposal); tops up cycles; exposes public canister status. Blackhole-grade safety
 with patchability.
 
+### Status (2026-10-13)
+
+`src/sneed_pad` implements stages 1 and 2: `get_quote`, `create_token` (one
+ICRC-2 pull of the quoted total; cycles through the CMC with the pad fronting
+them; ledger and optional index installed from SNS-W wasms under DAO-set
+hashes; control kept, blackholed, or handed to Sneed DAO with an automatic
+registration proposal), launch records, an ICRC-3 log, admin configuration.
+PocketIC tests in test/canisters/tests/sneed-pad.test.js use the real
+ledger-suite wasms. The wizard is `/tools/pad`. The pad is not deployed yet.
+Planned next: adopt existing ledgers, lock and liquidity stages, plan-then-pay
+across stages (one approval, staged execution), index canisters for existing
+ICRC-3 ledgers.
+
 ## 5. Order of work
 
 1. Token safety page reading live data: controllers and hashes through `read_state`,

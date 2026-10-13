@@ -111,6 +111,7 @@ import ToolsAccount from './pages/ToolsAccount';
 import ToolsIcrc3 from './pages/ToolsIcrc3';
 import TokenSafety from './pages/TokenSafety';
 import FollowMoney from './pages/FollowMoney';
+import SneedPad from './pages/SneedPad';
 
 // Sneedex pages
 import Sneedex from './pages/Sneedex';
@@ -269,6 +270,7 @@ function App() {
                     <Route path="/tools/token_safety" element={<TokenSafety />} />
                     <Route path="/tools/token_safety/:ledgerId" element={<TokenSafety />} />
                     <Route path="/tools/money" element={<FollowMoney />} />
+                    <Route path="/tools/pad" element={<SneedPad />} />
                     <Route path="/tools/escrow" element={<ToolsEscrow />} />
                     <Route path="/tools/escrow/swap" element={<EscrowSwap />} />
                     <Route path="/tools/sns_jailbreak" element={<SnsJailbreak />} />
