@@ -164,6 +164,16 @@ export const idlFactory = ({ IDL }) => {
     'processed' : IDL.Nat,
     'failed' : IDL.Nat,
   });
+  const TokenListStatus = IDL.Record({
+    'last_error' : IDL.Text,
+    'last_refresh_started' : IDL.Int,
+    'last_refresh_done' : IDL.Int,
+    'refresh_running' : IDL.Bool,
+    'last_import' : IDL.Int,
+    'interval_seconds' : IDL.Nat,
+    'tokens' : IDL.Nat,
+    'timer_scheduled' : IDL.Bool,
+  });
   const Neuron = IDL.Record({
     'id' : IDL.Opt(NeuronId),
     'permissions' : IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Vec(IDL.Int32))),
@@ -428,6 +438,7 @@ export const idlFactory = ({ IDL }) => {
     'get_projects' : IDL.Func([], [IDL.Vec(Project)], ['query']),
     'get_refresh_all_progress' : IDL.Func([], [RefreshAllProgress], ['query']),
     'get_swap_canister_ids' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
+    'get_token_list_status' : IDL.Func([], [TokenListStatus], ['query']),
     'get_tracked_canisters' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
     'get_user_ban_history' : IDL.Func([IDL.Principal], [Result_6], ['query']),
     'get_user_neurons' : IDL.Func([], [Result_5], []),
@@ -438,6 +449,7 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(WhitelistedToken)],
         ['query'],
       ),
+    'import_whitelist_from_icpswap' : IDL.Func([], [], []),
     'import_whitelist_from_swaprunner' : IDL.Func([], [], []),
     'is_token_whitelisted' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
     'mark_logs_seen' : IDL.Func([IDL.Principal, IDL.Nat], [], []),
@@ -462,6 +474,7 @@ export const idlFactory = ({ IDL }) => {
     'remove_partner' : IDL.Func([IDL.Nat], [Result_2], []),
     'remove_project' : IDL.Func([IDL.Nat], [Result_2], []),
     'remove_whitelisted_token' : IDL.Func([IDL.Principal], [], []),
+    'run_token_list_maintenance_now' : IDL.Func([], [], []),
     'save_jailbreak_config' : IDL.Func(
         [IDL.Principal, IDL.Text, IDL.Principal],
         [Result],

@@ -69,8 +69,8 @@ function HardenPanel({ ledgerId, header, theme }) {
             </div>
 
             <div {...card('cycles')}>
-                <h2 style={h}><FaWrench size={14} color={primary} /> Cycles<span style={soon}>guardian: planned</span></h2>
-                <p style={p}>A ledger that runs out of cycles stops, and a ledger whose cycles nobody can see cannot be trusted to keep running. Cycles are observable when the blackhole canister or an SNS root controls it. The planned guardian canister will keep vetted ledgers topped up and expose their status without owning them.</p>
+                <h2 style={h}><FaWrench size={14} color={primary} /> Cycles<span style={soon}>ic-unicycle: integration coming</span></h2>
+                <p style={p}>A ledger that runs out of cycles stops, and a ledger whose cycles nobody can see cannot be trusted to keep running. Cycles are observable when the blackhole canister or an SNS root controls it. Sneed DAO already runs ic-unicycle, a member-built monitor that watches cycles, tops canisters up, and can file treasury proposals for SNS-controlled canisters and dapps; the studio will hand ledgers and indexes to it from here.</p>
                 <a href={`https://dashboard.internetcomputer.org/canister/${ledgerId}`} target="_blank" rel="noopener noreferrer" style={{ ...btn, background: 'transparent', color: primary, border: `1px solid ${primary}` }}>Dashboard <FaExternalLinkAlt size={10} /></a>
             </div>
         </>

@@ -1,3 +1,15 @@
+type Value = 
+ variant {
+   Array: vec Value;
+   Blob: blob;
+   Int: int;
+   Map: vec record {
+              text;
+              Value;
+            };
+   Nat: nat;
+   Text: text;
+ };
 type TxIndex = nat;
 type TransferTokenLockOwnershipResult = 
  variant {
@@ -49,16 +61,34 @@ type TransferError =
 type TokenType = principal;
 type Timestamp = nat64;
 type SwapCanisterId = principal;
+type SupportedStandard = 
+ record {
+   name: text;
+   url: text;
+ };
 type Subaccount = blob;
+type Status = 
+ record {
+   governance: principal;
+   neuron: opt blob;
+   registrations: vec Registration;
+ };
 type SneedLock = 
  service {
+   /// Add liquidity to a locked ICPSwap position from the caller's backend
+   /// wallet. Amounts are in base units; either may be zero (out-of-range
+   /// positions take only one token). Tokens the pool does not use, because the
+   /// price moved since the amounts were chosen, are returned to the caller's
+   /// backend wallet. Only the current owner of the lock may add.
+   add_liquidity_to_locked_position: (swap_canister_id: SwapCanisterId,
+    position_id: PositionId, amount0: nat, amount1: nat) ->
+    (AddLiquidityResult);
    admin_add_admin: (new_admin: principal) -> (variant {
                                                  Err: text;
                                                  Ok: text;
                                                });
    admin_clear_completed_claim_requests: () -> (nat);
    admin_clear_failed_claim_requests: () -> (nat);
-   admin_emergency_stop_timer: () -> ();
    admin_get_payment_log: (offset: nat, limit: nat) ->
     (record {
        has_more: bool;
@@ -66,8 +96,51 @@ type SneedLock =
        total_count: nat;
      }) query;
    admin_get_payment_log_count: () -> (nat) query;
-   admin_pause_claim_queue: (reason: text) -> ();
-   admin_remove_active_claim_request: (request_id: ClaimRequestId) -> (bool);
+   admin_get_pool_unused_balance: (swap_canister_id: SwapCanisterId) ->
+    (variant {
+       Err: text;
+       Ok: record {
+             balance0: nat;
+             balance1: nat;
+           };
+     });
+   /// Write the log start and import blocks if that has not happened yet.
+   /// Returns the number of blocks written (0 when already imported).
+   admin_icrc3_import_history: () -> (variant {
+                                        Err: text;
+                                        Ok: nat;
+                                      });
+   /// Submit the pending registration proposals now instead of at the next spill check.
+   admin_icrc3_register_archives_now: () -> (variant {
+                                               Err: text;
+                                               Ok: nat;
+                                             });
+   /// Re-apply the intended controllers (this canister and SNS root) to every archive.
+   admin_icrc3_repair_archive_controllers: () ->
+    (vec record {
+           principal;
+           variant {
+             Err: text;
+             Ok;
+           };
+         });
+   /// Forget an archive's proposal (after a rejection) so a new one is submitted.
+   admin_icrc3_reset_archive_registration: (canister_id: principal) ->
+    (variant {
+       Err: text;
+       Ok: bool;
+     });
+   /// Move every live block to the archives now (creating archives as needed).
+   /// Returns the number of blocks moved.
+   admin_icrc3_spill_now: () -> (variant {
+                                   Err: text;
+                                   Ok: nat;
+                                 });
+   admin_pool_deposit: (swap_canister_id: SwapCanisterId, token_ledger:
+    TokenType, amount: nat) -> (variant {
+                                  Err: text;
+                                  Ok: nat;
+                                });
    admin_remove_admin: (admin_to_remove: principal) ->
     (variant {
        Err: text;
@@ -78,23 +151,28 @@ type SneedLock =
                      Err: text;
                      Ok: text;
                    });
-   admin_resume_claim_queue: () -> ();
-   admin_retry_claim_request: (request_id: ClaimRequestId) ->
-    (variant {
-       Err: text;
-       Ok: text;
-     });
    admin_return_token: (icrc1_ledger_canister_id: principal, amount: 
     nat, user_principal: principal) -> (TransferResult);
    admin_return_token_from_failed_request: (icrc1_ledger_canister_id:
     principal, amount: nat, recipient_principal: principal) ->
     (TransferResult);
-   admin_set_enforce_zero_balance_before_claim: (enforce: bool) -> ();
    admin_set_icp_fee_recipient: (recipient_principal: opt principal,
     recipient_subaccount: opt blob) -> (variant {
                                           Err: text;
                                           Ok: text;
                                         });
+   /// The SNS neuron (32-byte id) that has this canister as a hotkey and submits
+   /// the registration proposals; null switches the step off.
+   admin_set_icrc3_proposal_neuron: (neuron: opt blob) ->
+    (variant {
+       Err: text;
+       Ok;
+     });
+   admin_set_icrc3_settings: (update: SettingsUpdate) ->
+    (variant {
+       Err: text;
+       Ok: Settings;
+     });
    admin_set_lock_fees_icp: (token_lock_fee: opt nat64, position_lock_fee:
     opt nat64, premium_token_lock_fee: opt nat64, premium_position_lock_fee:
     opt nat64) -> (variant {
@@ -106,9 +184,18 @@ type SneedLock =
        Err: text;
        Ok: text;
      });
-   admin_trigger_claim_processing: () -> (text);
+   admin_withdraw_pool_balance_to_user: (swap_canister_id: SwapCanisterId,
+    token_ledger: TokenType, amount: nat, user: principal) ->
+    (variant {
+       Err: text;
+       Ok: nat;
+     });
    claim_position: (swap_canister_id: principal, position_id: PositionId) ->
     (bool);
+   /// Claim the accrued trading fees of a locked position. The pool delivers
+   /// them to the caller's wallet subaccount on this canister.
+   claim_position_fees: (swap_canister_id: SwapCanisterId, position_id:
+    PositionId) -> (ClaimFeesResult);
    clear_expired_locks: () -> ();
    clear_expired_position_locks: () -> ();
    create_lock: (amount: nat, icrc1_ledger_canister_id: principal,
@@ -123,8 +210,6 @@ type SneedLock =
      });
    getPaymentBalance: (user: principal) -> (nat);
    getPaymentSubaccount: (user: principal) -> (blob) query;
-   get_active_claim_request: (request_id: ClaimRequestId) ->
-    (opt ClaimRequest) query;
    get_active_position_locks: () -> (vec FullyQualifiedPositionLock) query;
    get_active_token_locks: () -> (vec FullyQualifiedLock) query;
    get_admin_list: () -> (vec principal) query;
@@ -133,17 +218,6 @@ type SneedLock =
    get_all_failed_claim_requests: () -> (vec ClaimRequest) query;
    get_all_position_locks: () -> (vec FullyQualifiedPositionLock) query;
    get_all_token_locks: () -> (vec FullyQualifiedLock) query;
-   get_claim_queue_status: () ->
-    (record {
-       active_total: nat;
-       completed_count: nat;
-       consecutive_empty_cycles: nat;
-       failed_count: nat;
-       is_currently_processing: bool;
-       pending_count: nat;
-       processing_count: nat;
-       processing_state: QueueProcessingState;
-     }) query;
    get_claim_request_status: (request_id: ClaimRequestId) ->
     (opt
       variant {
@@ -155,7 +229,6 @@ type SneedLock =
     (vec ClaimedPosition) query;
    get_completed_claim_request: (request_id: ClaimRequestId) ->
     (opt ClaimRequest) query;
-   get_enforce_zero_balance_before_claim: () -> (bool) query;
    get_error_entries: (start: nat, length: nat) -> (vec opt BufferEntry);
    get_error_id_range: () -> (opt record {
                                     nat;
@@ -190,7 +263,7 @@ type SneedLock =
        token_lock_fee_icp_e8s: nat64;
      }) query;
    get_lock_type: (lock_id: LockId) -> (opt LockType) query;
-   get_my_active_claim_requests: () -> (vec ClaimRequest) query;
+   get_my_claim_history: () -> (vec ClaimRequest) query;
    get_position_lock_by_id: (lock_id: LockId) ->
     (opt FullyQualifiedPositionLock) query;
    get_position_ownerships: () ->
@@ -204,15 +277,6 @@ type SneedLock =
                                 }) query;
    get_swap_position_locks: (swap_canister_id: SwapCanisterId) ->
     (vec FullyQualifiedPositionLock) query;
-   get_timer_status: () ->
-    (record {
-       is_active: bool;
-       last_execution_correlation_id: opt nat;
-       last_execution_time: opt Timestamp;
-       next_scheduled_time: opt Timestamp;
-       time_since_last_execution_seconds: opt nat64;
-       timer_id: opt nat;
-     }) query;
    get_token_lock_by_id: (lock_id: LockId) -> (opt FullyQualifiedLock) query;
    get_token_locks: () ->
     (vec record {
@@ -225,6 +289,17 @@ type SneedLock =
     (vec FullyQualifiedPositionLock) query;
    has_expired_locks: () -> (bool) query;
    has_expired_position_locks: () -> (bool) query;
+   icrc10_supported_standards: () -> (vec SupportedStandard) query;
+   icrc3_get_archives: (args: GetArchivesArgs) -> (GetArchivesResult) query;
+   icrc3_get_blocks: (args: GetBlocksArgs) -> (GetBlocksResult) query;
+   icrc3_get_tip_certificate: () -> (opt DataCertificate) query;
+   icrc3_log_status: () -> (LogStatus) query;
+   /// Where each archive stands with its RegisterDappCanisters proposal.
+   icrc3_registration_status: () -> (Status) query;
+   icrc3_supported_block_types: () -> (vec BlockType) query;
+   /// Compatibility entry point for older frontends: performs the claim
+   /// synchronously and returns the history id, which get_claim_request_status
+   /// then reports as completed or failed.
    request_claim_and_withdraw: (swap_canister_id: SwapCanisterId,
     position_id: PositionId) -> (ClaimAndWithdrawResult);
    set_max_lock_length_days: (new_max_lock_length_days: nat64) -> ();
@@ -240,10 +315,31 @@ type SneedLock =
    update_position_lock: (swap_canister_id: principal, position_id:
     PositionId, expires_at: Expiry) -> (CreateLockResult);
  };
-type QueueProcessingState = 
- variant {
-   Active;
-   Paused: text;
+type SettingsUpdate = 
+ record {
+   archive_initial_cycles: opt nat;
+   archive_max_blocks: opt nat;
+   archive_top_up_amount: opt nat;
+   archive_top_up_threshold: opt nat;
+   max_live_blocks: opt nat;
+   spill_batch_size: opt nat;
+ };
+type Settings = 
+ record {
+   archive_initial_cycles: nat;
+   archive_max_blocks: nat;
+   archive_top_up_amount: nat;
+   archive_top_up_threshold: nat;
+   max_live_blocks: nat;
+   spill_batch_size: nat;
+ };
+type Registration = 
+ record {
+   attempts: nat;
+   canister_id: principal;
+   last_error: opt text;
+   proposal_id: opt nat64;
+   start: nat;
  };
 type PositionLock = 
  record {
@@ -265,6 +361,17 @@ type PaymentLogEntry =
    payer: principal;
    timestamp: Timestamp;
  };
+type LogStatus = 
+ record {
+   archives: vec ArchiveInfo;
+   history_imported: bool;
+   last_block_hash: opt blob;
+   live_blocks: nat;
+   live_first_index: nat;
+   log_length: nat;
+   settings: Settings;
+   spilling: bool;
+ };
 type LockType = 
  variant {
    PositionLock;
@@ -282,6 +389,15 @@ type Lock =
    expiry: Expiry;
    lock_id: LockId;
  };
+type GetBlocksResult = 
+ record {
+   archived_blocks: vec ArchivedBlocks;
+   blocks: vec Block;
+   log_length: nat;
+ };
+type GetBlocksArgs = vec BlockRange;
+type GetArchivesResult = vec ArchiveRange;
+type GetArchivesArgs = record {from: opt principal;};
 type FullyQualifiedPositionLock = 
  record {
    principal;
@@ -296,6 +412,11 @@ type FullyQualifiedLock =
  };
 type Expiry = nat64;
 type Dex = nat;
+type DataCertificate = 
+ record {
+   certificate: blob;
+   hash_tree: blob;
+ };
 type CreateLockResult = 
  variant {
    Err: CreateLockError;
@@ -367,6 +488,18 @@ type ClaimRequest =
    token0: TokenType;
    token1: TokenType;
  };
+type ClaimFeesResult = 
+ variant {
+   Err: text;
+   Ok:
+    record {
+      amount0: nat;
+      amount1: nat;
+      request_id: ClaimRequestId;
+      token0: TokenType;
+      token1: TokenType;
+    };
+ };
 type ClaimAndWithdrawResult = 
  variant {
    Err: text;
@@ -380,5 +513,53 @@ type BufferEntry =
    id: nat;
    timestamp: int;
  };
+type BlockType = 
+ record {
+   block_type: text;
+   url: text;
+ };
+type BlockRange = 
+ record {
+   length: nat;
+   start: nat;
+ };
+type Block = 
+ record {
+   block: Value;
+   id: nat;
+ };
 type Balance = nat;
+type ArchivedBlocks = 
+ record {
+   args: GetBlocksArgs;
+   callback: func (GetBlocksArgs) -> (GetBlocksResult) query;
+ };
+type ArchiveRange = 
+ record {
+   canister_id: principal;
+   end: nat;
+   start: nat;
+ };
+type ArchiveInfo = 
+ record {
+   canister_id: principal;
+   length: nat;
+   max_blocks: nat;
+   start: nat;
+ };
+type AddLiquidityResult = 
+ variant {
+   Err: text;
+   Ok:
+    record {
+      credited0: nat;
+      credited1: nat;
+      increase_error: opt text;
+      position_id: PositionId;
+      returned0: nat;
+      returned1: nat;
+      used0: nat;
+      used1: nat;
+    };
+ };
 service : () -> SneedLock

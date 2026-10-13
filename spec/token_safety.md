@@ -217,8 +217,14 @@ section by section: lock supply and LP positions in Sneed Lock (the lock
 wizard takes `?type=token|position&token=<ledger>`), hand control to the
 blackhole or an SNS (commands today; filed from the studio with the user's
 own hotkeyed neuron next), add an index (pad stage, next), minting (cannot
-change after install), cycles (guardian, planned). Launch is the pad (was
+change after install), cycles (ic-unicycle integration, see below). Launch is the pad (was
 /tools/pad). The old routes redirect.
+
+**Cycles (2026-10-13):** no new guardian canister for cycles. Sneed DAO already
+runs ic-unicycle, a member-built monitor that watches cycles, tops canisters up and
+can file treasury proposals for SNS-controlled canisters; the studio integrates with
+it for ledgers, archives and indexes. `sneed_guardian` in section 3, if it is built
+at all, is only the code-vetting controller (installs registry-trusted hashes only).
 Planned next: adopt existing ledgers, lock and liquidity stages, plan-then-pay
 across stages (one approval, staged execution), index canisters for existing
 ICRC-3 ledgers.

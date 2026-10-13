@@ -1,8 +1,39 @@
-import type { Principal } from '@icp-sdk/core/principal';
-import type { ActorMethod } from '@icp-sdk/core/agent';
-import type { IDL } from '@icp-sdk/core/candid';
+import type { Principal } from '@dfinity/principal';
+import type { ActorMethod } from '@dfinity/agent';
+import type { IDL } from '@dfinity/candid';
 
+export type AddLiquidityResult = {
+    'Ok' : {
+      'returned0' : bigint,
+      'returned1' : bigint,
+      'credited0' : bigint,
+      'credited1' : bigint,
+      'used0' : bigint,
+      'used1' : bigint,
+      'increase_error' : [] | [string],
+      'position_id' : PositionId,
+    }
+  } |
+  { 'Err' : string };
+export interface ArchiveInfo {
+  'canister_id' : Principal,
+  'start' : bigint,
+  'length' : bigint,
+  'max_blocks' : bigint,
+}
+export interface ArchiveRange {
+  'end' : bigint,
+  'canister_id' : Principal,
+  'start' : bigint,
+}
+export interface ArchivedBlocks {
+  'args' : GetBlocksArgs,
+  'callback' : [Principal, string],
+}
 export type Balance = bigint;
+export interface Block { 'id' : bigint, 'block' : Value }
+export interface BlockRange { 'start' : bigint, 'length' : bigint }
+export interface BlockType { 'url' : string, 'block_type' : string }
 export interface BufferEntry {
   'id' : bigint,
   'content' : string,
@@ -11,6 +42,16 @@ export interface BufferEntry {
   'correlation_id' : bigint,
 }
 export type ClaimAndWithdrawResult = { 'Ok' : ClaimRequestId } |
+  { 'Err' : string };
+export type ClaimFeesResult = {
+    'Ok' : {
+      'request_id' : ClaimRequestId,
+      'amount0' : bigint,
+      'amount1' : bigint,
+      'token0' : TokenType,
+      'token1' : TokenType,
+    }
+  } |
   { 'Err' : string };
 export interface ClaimRequest {
   'request_id' : ClaimRequestId,
@@ -77,6 +118,10 @@ export interface CreateLockError {
 }
 export type CreateLockResult = { 'Ok' : LockId } |
   { 'Err' : CreateLockError };
+export interface DataCertificate {
+  'certificate' : Uint8Array | number[],
+  'hash_tree' : Uint8Array | number[],
+}
 export type Dex = bigint;
 export type Expiry = bigint;
 export type FullyQualifiedLock = [Principal, TokenType, Lock];
@@ -85,6 +130,14 @@ export type FullyQualifiedPositionLock = [
   SwapCanisterId,
   PositionLock,
 ];
+export interface GetArchivesArgs { 'from' : [] | [Principal] }
+export type GetArchivesResult = Array<ArchiveRange>;
+export type GetBlocksArgs = Array<BlockRange>;
+export interface GetBlocksResult {
+  'log_length' : bigint,
+  'blocks' : Array<Block>,
+  'archived_blocks' : Array<ArchivedBlocks>,
+}
 export interface Lock {
   'lock_id' : LockId,
   'expiry' : Expiry,
@@ -95,6 +148,16 @@ export type LockInfo = { 'PositionLock' : FullyQualifiedPositionLock } |
   { 'TokenLock' : FullyQualifiedLock };
 export type LockType = { 'PositionLock' : null } |
   { 'TokenLock' : null };
+export interface LogStatus {
+  'live_blocks' : bigint,
+  'live_first_index' : bigint,
+  'history_imported' : boolean,
+  'spilling' : boolean,
+  'settings' : Settings,
+  'log_length' : bigint,
+  'last_block_hash' : [] | [Uint8Array | number[]],
+  'archives' : Array<ArchiveInfo>,
+}
 export interface PaymentLogEntry {
   'id' : bigint,
   'amount_e8s' : bigint,
@@ -113,9 +176,41 @@ export interface PositionLock {
   'expiry' : Expiry,
   'position_id' : PositionId,
 }
-export type QueueProcessingState = { 'Paused' : string } |
-  { 'Active' : null };
+export interface Registration {
+  'last_error' : [] | [string],
+  'canister_id' : Principal,
+  'attempts' : bigint,
+  'start' : bigint,
+  'proposal_id' : [] | [bigint],
+}
+export interface Settings {
+  'archive_top_up_threshold' : bigint,
+  'archive_max_blocks' : bigint,
+  'max_live_blocks' : bigint,
+  'archive_initial_cycles' : bigint,
+  'spill_batch_size' : bigint,
+  'archive_top_up_amount' : bigint,
+}
+export interface SettingsUpdate {
+  'archive_top_up_threshold' : [] | [bigint],
+  'archive_max_blocks' : [] | [bigint],
+  'max_live_blocks' : [] | [bigint],
+  'archive_initial_cycles' : [] | [bigint],
+  'spill_batch_size' : [] | [bigint],
+  'archive_top_up_amount' : [] | [bigint],
+}
 export interface SneedLock {
+  /**
+   * / Add liquidity to a locked ICPSwap position from the caller's backend
+   * / wallet. Amounts are in base units; either may be zero (out-of-range
+   * / positions take only one token). Tokens the pool does not use, because the
+   * / price moved since the amounts were chosen, are returned to the caller's
+   * / backend wallet. Only the current owner of the lock may add.
+   */
+  'add_liquidity_to_locked_position' : ActorMethod<
+    [SwapCanisterId, PositionId, bigint, bigint],
+    AddLiquidityResult
+  >,
   'admin_add_admin' : ActorMethod<
     [Principal],
     { 'Ok' : string } |
@@ -123,7 +218,6 @@ export interface SneedLock {
   >,
   'admin_clear_completed_claim_requests' : ActorMethod<[], bigint>,
   'admin_clear_failed_claim_requests' : ActorMethod<[], bigint>,
-  'admin_emergency_stop_timer' : ActorMethod<[], undefined>,
   'admin_get_payment_log' : ActorMethod<
     [bigint, bigint],
     {
@@ -133,8 +227,57 @@ export interface SneedLock {
     }
   >,
   'admin_get_payment_log_count' : ActorMethod<[], bigint>,
-  'admin_pause_claim_queue' : ActorMethod<[string], undefined>,
-  'admin_remove_active_claim_request' : ActorMethod<[ClaimRequestId], boolean>,
+  'admin_get_pool_unused_balance' : ActorMethod<
+    [SwapCanisterId],
+    { 'Ok' : { 'balance0' : bigint, 'balance1' : bigint } } |
+      { 'Err' : string }
+  >,
+  /**
+   * / Write the log start and import blocks if that has not happened yet.
+   * / Returns the number of blocks written (0 when already imported).
+   */
+  'admin_icrc3_import_history' : ActorMethod<
+    [],
+    { 'Ok' : bigint } |
+      { 'Err' : string }
+  >,
+  /**
+   * / Submit the pending registration proposals now instead of at the next spill check.
+   */
+  'admin_icrc3_register_archives_now' : ActorMethod<
+    [],
+    { 'Ok' : bigint } |
+      { 'Err' : string }
+  >,
+  /**
+   * / Re-apply the intended controllers (this canister and SNS root) to every archive.
+   */
+  'admin_icrc3_repair_archive_controllers' : ActorMethod<
+    [],
+    Array<[Principal, { 'Ok' : null } | { 'Err' : string }]>
+  >,
+  /**
+   * / Forget an archive's proposal (after a rejection) so a new one is submitted.
+   */
+  'admin_icrc3_reset_archive_registration' : ActorMethod<
+    [Principal],
+    { 'Ok' : boolean } |
+      { 'Err' : string }
+  >,
+  /**
+   * / Move every live block to the archives now (creating archives as needed).
+   * / Returns the number of blocks moved.
+   */
+  'admin_icrc3_spill_now' : ActorMethod<
+    [],
+    { 'Ok' : bigint } |
+      { 'Err' : string }
+  >,
+  'admin_pool_deposit' : ActorMethod<
+    [SwapCanisterId, TokenType, bigint],
+    { 'Ok' : bigint } |
+      { 'Err' : string }
+  >,
   'admin_remove_admin' : ActorMethod<
     [Principal],
     { 'Ok' : string } |
@@ -142,12 +285,6 @@ export interface SneedLock {
   >,
   'admin_rescue_stuck_tokens' : ActorMethod<
     [TokenType, Principal],
-    { 'Ok' : string } |
-      { 'Err' : string }
-  >,
-  'admin_resume_claim_queue' : ActorMethod<[], undefined>,
-  'admin_retry_claim_request' : ActorMethod<
-    [ClaimRequestId],
     { 'Ok' : string } |
       { 'Err' : string }
   >,
@@ -159,13 +296,23 @@ export interface SneedLock {
     [Principal, bigint, Principal],
     TransferResult
   >,
-  'admin_set_enforce_zero_balance_before_claim' : ActorMethod<
-    [boolean],
-    undefined
-  >,
   'admin_set_icp_fee_recipient' : ActorMethod<
     [[] | [Principal], [] | [Uint8Array | number[]]],
     { 'Ok' : string } |
+      { 'Err' : string }
+  >,
+  /**
+   * / The SNS neuron (32-byte id) that has this canister as a hotkey and submits
+   * / the registration proposals; null switches the step off.
+   */
+  'admin_set_icrc3_proposal_neuron' : ActorMethod<
+    [[] | [Uint8Array | number[]]],
+    { 'Ok' : null } |
+      { 'Err' : string }
+  >,
+  'admin_set_icrc3_settings' : ActorMethod<
+    [SettingsUpdate],
+    { 'Ok' : Settings } |
       { 'Err' : string }
   >,
   'admin_set_lock_fees_icp' : ActorMethod<
@@ -178,8 +325,20 @@ export interface SneedLock {
     { 'Ok' : string } |
       { 'Err' : string }
   >,
-  'admin_trigger_claim_processing' : ActorMethod<[], string>,
+  'admin_withdraw_pool_balance_to_user' : ActorMethod<
+    [SwapCanisterId, TokenType, bigint, Principal],
+    { 'Ok' : bigint } |
+      { 'Err' : string }
+  >,
   'claim_position' : ActorMethod<[Principal, PositionId], boolean>,
+  /**
+   * / Claim the accrued trading fees of a locked position. The pool delivers
+   * / them to the caller's wallet subaccount on this canister.
+   */
+  'claim_position_fees' : ActorMethod<
+    [SwapCanisterId, PositionId],
+    ClaimFeesResult
+  >,
   'clear_expired_locks' : ActorMethod<[], undefined>,
   'clear_expired_position_locks' : ActorMethod<[], undefined>,
   'create_lock' : ActorMethod<[bigint, Principal, Expiry], CreateLockResult>,
@@ -193,10 +352,6 @@ export interface SneedLock {
   >,
   'getPaymentBalance' : ActorMethod<[Principal], bigint>,
   'getPaymentSubaccount' : ActorMethod<[Principal], Uint8Array | number[]>,
-  'get_active_claim_request' : ActorMethod<
-    [ClaimRequestId],
-    [] | [ClaimRequest]
-  >,
   'get_active_position_locks' : ActorMethod<
     [],
     Array<FullyQualifiedPositionLock>
@@ -208,19 +363,6 @@ export interface SneedLock {
   'get_all_failed_claim_requests' : ActorMethod<[], Array<ClaimRequest>>,
   'get_all_position_locks' : ActorMethod<[], Array<FullyQualifiedPositionLock>>,
   'get_all_token_locks' : ActorMethod<[], Array<FullyQualifiedLock>>,
-  'get_claim_queue_status' : ActorMethod<
-    [],
-    {
-      'pending_count' : bigint,
-      'is_currently_processing' : boolean,
-      'processing_count' : bigint,
-      'active_total' : bigint,
-      'completed_count' : bigint,
-      'processing_state' : QueueProcessingState,
-      'consecutive_empty_cycles' : bigint,
-      'failed_count' : bigint,
-    }
-  >,
   'get_claim_request_status' : ActorMethod<
     [ClaimRequestId],
     [] | [
@@ -237,7 +379,6 @@ export interface SneedLock {
     [ClaimRequestId],
     [] | [ClaimRequest]
   >,
-  'get_enforce_zero_balance_before_claim' : ActorMethod<[], boolean>,
   'get_error_entries' : ActorMethod<
     [bigint, bigint],
     Array<[] | [BufferEntry]>
@@ -280,7 +421,7 @@ export interface SneedLock {
     }
   >,
   'get_lock_type' : ActorMethod<[LockId], [] | [LockType]>,
-  'get_my_active_claim_requests' : ActorMethod<[], Array<ClaimRequest>>,
+  'get_my_claim_history' : ActorMethod<[], Array<ClaimRequest>>,
   'get_position_lock_by_id' : ActorMethod<
     [LockId],
     [] | [FullyQualifiedPositionLock]
@@ -294,17 +435,6 @@ export interface SneedLock {
     [SwapCanisterId],
     Array<FullyQualifiedPositionLock>
   >,
-  'get_timer_status' : ActorMethod<
-    [],
-    {
-      'timer_id' : [] | [bigint],
-      'next_scheduled_time' : [] | [Timestamp],
-      'time_since_last_execution_seconds' : [] | [bigint],
-      'last_execution_correlation_id' : [] | [bigint],
-      'last_execution_time' : [] | [Timestamp],
-      'is_active' : boolean,
-    }
-  >,
   'get_token_lock_by_id' : ActorMethod<[LockId], [] | [FullyQualifiedLock]>,
   'get_token_locks' : ActorMethod<
     [],
@@ -316,6 +446,21 @@ export interface SneedLock {
   >,
   'has_expired_locks' : ActorMethod<[], boolean>,
   'has_expired_position_locks' : ActorMethod<[], boolean>,
+  'icrc10_supported_standards' : ActorMethod<[], Array<SupportedStandard>>,
+  'icrc3_get_archives' : ActorMethod<[GetArchivesArgs], GetArchivesResult>,
+  'icrc3_get_blocks' : ActorMethod<[GetBlocksArgs], GetBlocksResult>,
+  'icrc3_get_tip_certificate' : ActorMethod<[], [] | [DataCertificate]>,
+  'icrc3_log_status' : ActorMethod<[], LogStatus>,
+  /**
+   * / Where each archive stands with its RegisterDappCanisters proposal.
+   */
+  'icrc3_registration_status' : ActorMethod<[], Status>,
+  'icrc3_supported_block_types' : ActorMethod<[], Array<BlockType>>,
+  /**
+   * / Compatibility entry point for older frontends: performs the claim
+   * / synchronously and returns the history id, which get_claim_request_status
+   * / then reports as completed or failed.
+   */
   'request_claim_and_withdraw' : ActorMethod<
     [SwapCanisterId, PositionId],
     ClaimAndWithdrawResult
@@ -342,7 +487,13 @@ export interface SneedLock {
     CreateLockResult
   >,
 }
+export interface Status {
+  'neuron' : [] | [Uint8Array | number[]],
+  'registrations' : Array<Registration>,
+  'governance' : Principal,
+}
 export type Subaccount = Uint8Array | number[];
+export interface SupportedStandard { 'url' : string, 'name' : string }
 export type SwapCanisterId = Principal;
 export type Timestamp = bigint;
 export type TokenType = Principal;
@@ -374,6 +525,12 @@ export interface TransferTokenLockOwnershipError {
 export type TransferTokenLockOwnershipResult = { 'Ok' : null } |
   { 'Err' : TransferTokenLockOwnershipError };
 export type TxIndex = bigint;
+export type Value = { 'Int' : bigint } |
+  { 'Map' : Array<[string, Value]> } |
+  { 'Nat' : bigint } |
+  { 'Blob' : Uint8Array | number[] } |
+  { 'Text' : string } |
+  { 'Array' : Array<Value> };
 export interface _SERVICE extends SneedLock {}
 export declare const idlFactory: IDL.InterfaceFactory;
 export declare const init: (args: { IDL: typeof IDL }) => IDL.Type[];

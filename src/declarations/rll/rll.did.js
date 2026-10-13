@@ -654,6 +654,7 @@ export const idlFactory = ({ IDL }) => {
     'import_all_new_neurons' : IDL.Func([], [Result], []),
     'import_all_new_proposals' : IDL.Func([], [Result], []),
     'import_all_proposals' : IDL.Func([], [Result], []),
+    'import_whitelisted_tokens_from_icpswap' : IDL.Func([], [], []),
     'import_whitelisted_tokens_from_swaprunner' : IDL.Func([], [], []),
     'imported_neurons_count' : IDL.Func([], [IDL.Nat], ['query']),
     'imported_owners_count' : IDL.Func([], [IDL.Nat], ['query']),

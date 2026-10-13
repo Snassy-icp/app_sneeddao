@@ -381,6 +381,8 @@ type SneedRLL =
    import_all_new_neurons: () -> (Result);
    import_all_new_proposals: () -> (Result);
    import_all_proposals: () -> (Result);
+   /// Import ICPSwap's trusted token list (admin). The old name below is kept for callers.
+   import_whitelisted_tokens_from_icpswap: () -> ();
    import_whitelisted_tokens_from_swaprunner: () -> ();
    imported_neurons_count: () -> (nat) query;
    imported_owners_count: () -> (nat) query;

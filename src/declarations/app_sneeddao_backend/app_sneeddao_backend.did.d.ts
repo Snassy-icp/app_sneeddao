@@ -1,6 +1,6 @@
-import type { Principal } from '@icp-sdk/core/principal';
-import type { ActorMethod } from '@icp-sdk/core/agent';
-import type { IDL } from '@icp-sdk/core/candid';
+import type { Principal } from '@dfinity/principal';
+import type { ActorMethod } from '@dfinity/agent';
+import type { IDL } from '@dfinity/candid';
 
 export interface AppSneedDaoBackend {
   'add_admin' : ActorMethod<[Principal], undefined>,
@@ -122,12 +122,21 @@ export interface AppSneedDaoBackend {
   'get_projects' : ActorMethod<[], Array<Project>>,
   'get_refresh_all_progress' : ActorMethod<[], RefreshAllProgress>,
   'get_swap_canister_ids' : ActorMethod<[], Array<Principal>>,
+  'get_token_list_status' : ActorMethod<[], TokenListStatus>,
   'get_tracked_canisters' : ActorMethod<[], Array<Principal>>,
   'get_user_ban_history' : ActorMethod<[Principal], Result_6>,
   'get_user_neurons' : ActorMethod<[], Result_5>,
   'get_user_tokens' : ActorMethod<[], Array<Principal>>,
   'get_wallet_layout' : ActorMethod<[], [] | [WalletLayout]>,
   'get_whitelisted_tokens' : ActorMethod<[], Array<WhitelistedToken>>,
+  /**
+   * / Import ICPSwap's trusted token list into the whitelist (admin). Existing
+   * / entries are updated, tokens added by hand are kept.
+   */
+  'import_whitelist_from_icpswap' : ActorMethod<[], undefined>,
+  /**
+   * / Kept for callers of the old name; Swaprunner is no longer involved.
+   */
   'import_whitelist_from_swaprunner' : ActorMethod<[], undefined>,
   'is_token_whitelisted' : ActorMethod<[Principal], boolean>,
   'mark_logs_seen' : ActorMethod<[Principal, bigint], undefined>,
@@ -147,6 +156,10 @@ export interface AppSneedDaoBackend {
   'remove_partner' : ActorMethod<[bigint], Result_2>,
   'remove_project' : ActorMethod<[bigint], Result_2>,
   'remove_whitelisted_token' : ActorMethod<[Principal], undefined>,
+  /**
+   * / Run the daily job now (admin), without waiting for the timer.
+   */
+  'run_token_list_maintenance_now' : ActorMethod<[], undefined>,
   'save_jailbreak_config' : ActorMethod<[Principal, string, Principal], Result>,
   'send_tokens' : ActorMethod<[Principal, bigint, Principal], TransferResult>,
   'set_cached_token_meta' : ActorMethod<[Principal, TokenMeta], undefined>,
@@ -346,6 +359,16 @@ export type Result_9 = {
   } |
   { 'err' : string };
 export type Timestamp = bigint;
+export interface TokenListStatus {
+  'last_error' : string,
+  'last_refresh_started' : bigint,
+  'last_refresh_done' : bigint,
+  'refresh_running' : boolean,
+  'last_import' : bigint,
+  'interval_seconds' : bigint,
+  'tokens' : bigint,
+  'timer_scheduled' : boolean,
+}
 export interface TokenMeta {
   'token0' : Array<[string, TokenMetaValue]>,
   'token1' : Array<[string, TokenMetaValue]>,

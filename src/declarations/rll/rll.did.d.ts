@@ -1,6 +1,6 @@
-import type { Principal } from '@icp-sdk/core/principal';
-import type { ActorMethod } from '@icp-sdk/core/agent';
-import type { IDL } from '@icp-sdk/core/candid';
+import type { Principal } from '@dfinity/principal';
+import type { ActorMethod } from '@dfinity/agent';
+import type { IDL } from '@dfinity/candid';
 
 export interface Account {
   'owner' : Principal,
@@ -476,6 +476,10 @@ export interface SneedRLL {
   'import_all_new_neurons' : ActorMethod<[], Result>,
   'import_all_new_proposals' : ActorMethod<[], Result>,
   'import_all_proposals' : ActorMethod<[], Result>,
+  /**
+   * / Import ICPSwap's trusted token list (admin). The old name below is kept for callers.
+   */
+  'import_whitelisted_tokens_from_icpswap' : ActorMethod<[], undefined>,
   'import_whitelisted_tokens_from_swaprunner' : ActorMethod<[], undefined>,
   'imported_neurons_count' : ActorMethod<[], bigint>,
   'imported_owners_count' : ActorMethod<[], bigint>,

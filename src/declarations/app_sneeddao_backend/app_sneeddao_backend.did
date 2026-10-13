@@ -128,6 +128,17 @@ type TokenMeta =
                  TokenMetaValue;
                };
  };
+type TokenListStatus = 
+ record {
+   interval_seconds: nat;
+   last_error: text;
+   last_import: int;
+   last_refresh_done: int;
+   last_refresh_started: int;
+   refresh_running: bool;
+   timer_scheduled: bool;
+   tokens: nat;
+ };
 type Timestamp = nat64;
 type Result_9 = 
  variant {
@@ -432,12 +443,17 @@ type AppSneedDaoBackend =
    get_projects: () -> (vec Project) query;
    get_refresh_all_progress: () -> (RefreshAllProgress) query;
    get_swap_canister_ids: () -> (vec principal) query;
+   get_token_list_status: () -> (TokenListStatus) query;
    get_tracked_canisters: () -> (vec principal) query;
    get_user_ban_history: (user: principal) -> (Result_6) query;
    get_user_neurons: () -> (Result_5);
    get_user_tokens: () -> (vec principal) query;
    get_wallet_layout: () -> (opt WalletLayout) query;
    get_whitelisted_tokens: () -> (vec WhitelistedToken) query;
+   /// Import ICPSwap's trusted token list into the whitelist (admin). Existing
+   /// entries are updated, tokens added by hand are kept.
+   import_whitelist_from_icpswap: () -> ();
+   /// Kept for callers of the old name; Swaprunner is no longer involved.
    import_whitelist_from_swaprunner: () -> ();
    is_token_whitelisted: (ledger_id: principal) -> (bool) query;
    mark_logs_seen: (canister_id: principal, log_id: nat) -> ();
@@ -455,6 +471,8 @@ type AppSneedDaoBackend =
    remove_partner: (id: nat) -> (Result_2);
    remove_project: (id: nat) -> (Result_2);
    remove_whitelisted_token: (ledger_id: principal) -> ();
+   /// Run the daily job now (admin), without waiting for the timer.
+   run_token_list_maintenance_now: () -> ();
    save_jailbreak_config: (sns_root_canister_id: principal, neuron_id_hex:
     text, target_principal: principal) -> (Result);
    send_tokens: (icrc1_ledger_canister_id: principal, amount: nat, to:
