@@ -106,6 +106,7 @@ import IcpProposals from './pages/IcpProposals';
 import IcpProposal from './pages/IcpProposal';
 import LockWizard from './pages/LockWizard';
 import TokenStudio from './pages/TokenStudio';
+import ManageLP from './pages/ManageLP';
 import SnsJailbreak from './pages/SnsJailbreak';
 import SnsJailbreakList from './pages/SnsJailbreakList';
 import ToolsAccount from './pages/ToolsAccount';
@@ -213,6 +214,7 @@ function App() {
                     <Route path="/sneedlock" element={<Sneedlock />} />
                     <Route path="/sneedlock_info" element={<SneedlockInfo />} />
                     <Route path="/lock_wizard" element={<LockWizard />} />
+                    <Route path="/managelp" element={<ManageLP />} />
                     <Route path="/products" element={<Products />} />
                     <Route path="/partners" element={<Partners />} />
                     <Route path="/projects" element={<Projects />} />

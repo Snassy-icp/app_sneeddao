@@ -246,6 +246,18 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                                     <FaArrowUp size={12} />
                                 </button>
                             )}
+                            {!hideButtons && (
+                                <Link
+                                    to={`/managelp?swap=${position.swapCanisterId}&position=${positionDetails.positionId}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{ padding: '4px', display: 'flex', alignItems: 'center', color: theme.colors.mutedText, transition: 'color 0.2s ease' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.accent}
+                                    onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.mutedText}
+                                    title={isLockedPosition(positionDetails) && !positionDetails.frontendOwnership ? 'View on the manage page (locked)' : 'Manage: add, remove, collect, move range, transfer'}
+                                >
+                                    <FaWater size={12} />
+                                </Link>
+                            )}
                             {onOpenDetailModal && (
                                 <button
                                     onClick={(e) => {

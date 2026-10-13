@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { FaCoins, FaWater, FaArrowRight, FaArrowLeft, FaLock, FaCheck, FaSpinner, FaCrown, FaShieldAlt, FaSync, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
@@ -1671,6 +1671,9 @@ function LockWizard() {
                                 {showTransferHelp ? <FaChevronUp size={10} /> : <FaChevronDown size={10} />}
                                 Have another {selectedPool.token0.symbol}/{selectedPool.token1.symbol} position on ICPSwap? How to move it here
                             </button>
+                            <div style={{ marginTop: 6 }}>
+                                <Link to={`/managelp?swap=${selectedPoolId}`} style={{ color: lockPrimary, fontSize: '0.85rem' }}>No position yet? Create one here, in your Sneed wallet, then come back to lock it</Link>
+                            </div>
                             {showTransferHelp && renderTransferSteps(selectedPool, true)}
                         </div>
                     </>
