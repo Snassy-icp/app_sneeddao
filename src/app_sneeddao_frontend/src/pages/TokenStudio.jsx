@@ -44,7 +44,7 @@ function HardenPanel({ ledgerId, header, theme }) {
                 <p style={p}>The report wants a pool on ICPSwap, depth in proportion to the market cap, and the position under safe control: locked in Sneed Lock, owned by a DAO, or burned. A position the creator can pull at any time rates as unsafe however deep it is. Positions are created and managed from here, in your Sneed wallet; a pool for a brand-new pair still has to be created on ICPSwap first.</p>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                     <Link to={`/lock_wizard?type=position&token=${ledgerId}`} style={btn}><FaLock size={12} /> Lock an LP position</Link>
-                    <Link to="/managelp" style={{ ...btn, background: 'transparent', color: primary, border: `1px solid ${primary}` }}>Create or grow a position</Link>
+                    <Link to="/position" style={{ ...btn, background: 'transparent', color: primary, border: `1px solid ${primary}` }}>Create or grow a position</Link>
                 </div>
             </div>
 

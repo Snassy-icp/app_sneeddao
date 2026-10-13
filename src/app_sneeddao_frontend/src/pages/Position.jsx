@@ -1,7 +1,8 @@
-// /managelp: one ICPSwap position, everything you can do to it, from here.
-//   /managelp?swap=<pool>&position=<id>   manage an existing position
-//   /managelp?swap=<pool>                 create a new position in that pool
-//   /managelp                             pick a pool first
+// /position: one ICPSwap position, everything you can do to it, from here.
+//   /position?swap=<pool>&id=<id>   one position: information for everyone, actions for its owner
+//   /position?swap=<pool>           create a new position in that pool
+//   /position                       pick a pool first, or create a pool
+// (/managelp is the old address and redirects here.)
 // Every call goes to the pool canister as the logged-in user, the way Sneed
 // Lock does it: one operation at a time, the pool's unused balances read
 // before and after, and leftovers withdrawn so nothing is stranded.
@@ -73,14 +74,14 @@ const toUnits = (text, d) => { const t = String(text).trim(); if (!/^\d*(\.\d*)?
 const fmtPrice = (p) => (p >= 1000 ? p.toLocaleString('en-US', { maximumFractionDigits: 2 }) : p.toPrecision(6).replace(/\.?0+$/, ''));
 const errText = (e) => (e && typeof e === 'object' ? ('InternalError' in e ? e.InternalError : 'UnsupportedToken' in e ? `unsupported token ${e.UnsupportedToken}` : Object.keys(e)[0]) : String(e));
 
-function ManageLP() {
+function Position() {
     const { theme } = useTheme();
     const navigate = useNavigate();
     const [params] = useSearchParams();
     const { identity, isAuthenticated } = useAuth();
     const me = identity?.getPrincipal?.() || null;
     const poolId = params.get('swap') || '';
-    const positionParam = params.get('position');
+    const positionParam = params.get('id') || params.get('position');
     const positionId = positionParam && /^\d+$/.test(positionParam) ? BigInt(positionParam) : null;
 
     const [pool, setPool] = useState(null);        // { poolId, fee, token0, token1 } from describeSwapPool
@@ -300,7 +301,7 @@ function ManageLP() {
         if ('err' in r) throw new Error(`remove: ${errText(r.err)}`);
         if (position.tokensOwed0 > 0n || position.tokensOwed1 > 0n) { say('collecting its fees'); const c = await a.claim({ positionId: Number(positionId) }); if ('err' in c) say(`fee claim failed (${errText(c.err)}), continuing`); }
         const newId = await mintWithUnused(a, chosenTicks);
-        setTimeout(() => navigate(`/managelp?swap=${poolId}&position=${newId}`), 800);
+        setTimeout(() => navigate(`/position?swap=${poolId}&id=${newId}`), 800);
         return `Moved: new position #${newId} (the old id #${positionId} is now empty).`;
     });
     const doNew = () => run('Create position', async (a) => {
@@ -310,7 +311,7 @@ function ManageLP() {
         await requireQuiet(a);
         await depositInto(a, pool.token0, u0); await depositInto(a, pool.token1, u1);
         const newId = await mintWithUnused(a, chosenTicks);
-        setTimeout(() => navigate(`/managelp?swap=${poolId}&position=${newId}`), 800);
+        setTimeout(() => navigate(`/position?swap=${poolId}&id=${newId}`), 800);
         return `Position #${newId} created and owned by your Sneed wallet.`;
     });
     const doTransfer = () => run('Transfer', async (a) => {
@@ -396,7 +397,7 @@ function ManageLP() {
         if ('err' in r) throw new Error(`createPool: ${errText(r.err)}`);
         const newPool = r.ok.canisterId.toText();
         say(`pool ${newPool} created`);
-        setTimeout(() => navigate(`/managelp?swap=${newPool}`), 800);
+        setTimeout(() => navigate(`/position?swap=${newPool}`), 800);
         return `Pool ${newPool} created for ${i0.symbol}/${i1.symbol}. Add the first position below.`;
     });
 
@@ -445,7 +446,7 @@ function ManageLP() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: '1rem' }}>
                     <div style={{ width: 52, height: 52, borderRadius: 14, background: `${primary}22`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FaWater size={24} color={primary} /></div>
                     <div style={{ flex: 1, minWidth: 220 }}>
-                        <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: theme.colors.primaryText }}>{positionId !== null ? `Position #${positionId}` : 'New liquidity position'}</h1>
+                        <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: theme.colors.primaryText }}>{positionId !== null ? `Position #${positionId}` : 'New liquidity position'} <Link to={poolId ? `/positions?swap=${poolId}` : '/positions'} style={{ fontSize: '0.8rem', fontWeight: 600, color: primary, marginLeft: 10 }}>browse positions</Link></h1>
                         <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>ICPSwap liquidity, managed from your Sneed wallet: create, add, remove, collect, move the range, transfer, lock. Every step runs as you against the pool canister; nothing passes through Sneed.</div>
                     </div>
                 </div>
@@ -453,7 +454,7 @@ function ManageLP() {
                 {!poolId && (
                     <div style={card}>
                         <h2 style={{ margin: '0 0 8px', fontSize: '1.05rem', color: theme.colors.primaryText }}>Which pool?</h2>
-                        <SwapPoolPicker onPoolChange={(id, p, status) => { if (status === 'ready' && p) navigate(`/managelp?swap=${id}`); }} accentColor={primary} />
+                        <SwapPoolPicker onPoolChange={(id, p, status) => { if (status === 'ready' && p) navigate(`/position?swap=${id}`); }} accentColor={primary} />
                         <div style={{ marginTop: 16, paddingTop: 12, borderTop: `1px solid ${theme.colors.border}` }}>
                             <h2 style={{ margin: '0 0 6px', fontSize: '1.05rem', color: theme.colors.primaryText }}>No pool for the pair yet? Create one</h2>
                             <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, marginBottom: 10, lineHeight: 1.5 }}>ICPSwap sells pool creation through its PasscodeManager: the price is read from it live (1 ICP in production), paid from your wallet, and the pool is then created on the ICPSwap factory as you. The pool belongs to ICPSwap; your first position is minted into it right after.</div>
@@ -463,7 +464,7 @@ function ManageLP() {
                             </div>
                             <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                                 <button type="button" style={btn(false, create.checking || !create.t0 || !create.t1)} disabled={create.checking || !create.t0 || !create.t1} onClick={checkPair}>{create.checking ? <FaSpinner className="health-spin" /> : null} Check the pair</button>
-                                {create.exists && <span style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>A pool exists already: <Link to={`/managelp?swap=${create.exists}`} style={{ color: primary }}>open it</Link></span>}
+                                {create.exists && <span style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>A pool exists already: <Link to={`/position?swap=${create.exists}`} style={{ color: primary }}>open it</Link></span>}
                             </div>
                             {create.info && !create.exists && (
                                 <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
@@ -594,7 +595,7 @@ function ManageLP() {
                         )}
                         {positionId !== null && tab === 'transfer' && (
                             <div style={{ display: 'grid', gap: 12 }}>
-                                <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>Transfers ownership of the position on ICPSwap. Send only to a principal that can act on ICPSwap positions, such as another Sneed wallet; a plain ICPSwap login is an account identifier, not a principal.</div>
+                                <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>Transfers ownership of the position on ICPSwap to another principal: another Sneed wallet, or an ICPSwap login (its principal is shown on ICPSwap's wallet page). The recipient then manages it from the matching place.</div>
                                 <PrincipalInput value={recipient} onChange={setRecipient} placeholder="Recipient principal or name" defaultTab="all" style={{ width: '100%' }} inputStyle={input} />
                                 <div><button type="button" style={btn(true, !!busy || !recipient)} disabled={!!busy || !recipient} onClick={doTransfer}>{busy === 'Transfer' ? <FaSpinner className="health-spin" /> : <FaArrowUp size={12} />} Transfer position</button></div>
                             </div>
@@ -619,4 +620,4 @@ function ManageLP() {
     );
 }
 
-export default ManageLP;
+export default Position;

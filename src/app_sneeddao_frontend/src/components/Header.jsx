@@ -211,7 +211,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         const path = location.pathname;
         // Check /msg paths first to avoid conflicts
         if (path.startsWith('/msg')) return 'Sneed Me';
-        if (['/', '/hub', '/sns', '/proposals', '/icp_proposals', '/icp_proposal', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/user', '/users', '/canisters', '/forum', '/feed', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Sneed Hub';
+        if (['/', '/hub', '/sns', '/proposals', '/icp_proposals', '/icp_proposal', '/neurons', '/transactions', '/positions', '/position', '/managelp', '/neuron', '/proposal', '/transaction', '/principal', '/user', '/users', '/canisters', '/forum', '/feed', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Sneed Hub';
         if (['/liquid_staking', '/sns_neuron_wizard', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) return 'Liquid Staking';
         if (['/me', '/names', '/premium', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/nft', '/canister', '/apps', '/active_proposals'].includes(path)) return 'Sneed Me';
         if (['/dao', '/dao_info', '/health', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'Sneed DAO';
@@ -350,7 +350,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         // Check /msg paths first to avoid conflicts
         if (path.startsWith('/msg')) {
             setActiveSection('Sneed Me');
-        } else if (['/', '/hub', '/sns', '/proposals', '/icp_proposals', '/icp_proposal', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/user', '/users', '/canisters', '/forum', '/feed', '/thread', '/post'].includes(path) || path.startsWith('/topic/')) {
+        } else if (['/', '/hub', '/sns', '/proposals', '/icp_proposals', '/icp_proposal', '/neurons', '/transactions', '/positions', '/position', '/managelp', '/neuron', '/proposal', '/transaction', '/principal', '/user', '/users', '/canisters', '/forum', '/feed', '/thread', '/post'].includes(path) || path.startsWith('/topic/')) {
             setActiveSection('Sneed Hub');
         } else if (['/liquid_staking', '/sns_neuron_wizard', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) {
             setActiveSection('Liquid Staking');
@@ -538,6 +538,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'ICP Proposals', path: '/icp_proposals' },
                 { name: 'Neurons', path: '/neurons' },
                 { name: 'Transactions', path: '/transactions' },
+                { name: 'Positions', path: '/positions' },
                 { name: 'Users', path: '/users' },
                 { name: 'Canisters', path: '/canisters' }
             ]
@@ -710,6 +711,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             '/proposals': ['/proposal'],
             '/neurons': ['/neuron'],
             '/transactions': ['/transaction'],
+            '/positions': ['/position', '/managelp'],
             '/forum': ['/thread', '/post'],
             '/sms': ['/msg']
         };

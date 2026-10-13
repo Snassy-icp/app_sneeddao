@@ -1672,7 +1672,7 @@ function LockWizard() {
                                 Have another {selectedPool.token0.symbol}/{selectedPool.token1.symbol} position on ICPSwap? How to move it here
                             </button>
                             <div style={{ marginTop: 6 }}>
-                                <Link to={`/managelp?swap=${selectedPoolId}`} style={{ color: lockPrimary, fontSize: '0.85rem' }}>No position yet? Create one here, in your Sneed wallet, then come back to lock it</Link>
+                                <Link to={`/position?swap=${selectedPoolId}`} style={{ color: lockPrimary, fontSize: '0.85rem' }}>No position yet? Create one here, in your Sneed wallet, then come back to lock it</Link>
                             </div>
                             {showTransferHelp && renderTransferSteps(selectedPool, true)}
                         </div>

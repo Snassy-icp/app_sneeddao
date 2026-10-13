@@ -252,7 +252,7 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                             )}
                             {!hideButtons && (
                                 <Link
-                                    to={`/managelp?swap=${position.swapCanisterId}&position=${positionDetails.positionId}`}
+                                    to={`/position?swap=${position.swapCanisterId}&id=${positionDetails.positionId}`}
                                     onClick={(e) => e.stopPropagation()}
                                     style={{ padding: '4px', display: 'flex', alignItems: 'center', color: theme.colors.mutedText, transition: 'color 0.2s ease' }}
                                     onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.accent}
@@ -405,6 +405,14 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                                 />
                                 ICPSwap
                             </a>
+                            <Link
+                                to={`/position?swap=${position.swapCanisterId}&id=${positionDetails.positionId}`}
+                                style={{ background: 'transparent', color: theme.colors.accent, border: `1px solid ${theme.colors.accent}`, borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '6px', textDecoration: 'none' }}
+                                title={isLockedPosition(positionDetails) && !positionDetails.frontendOwnership ? 'Position page (locked: read-only)' : 'Add, remove, collect, move the range, transfer'}
+                            >
+                                <FaWater size={12} />
+                                {isLockedPosition(positionDetails) && !positionDetails.frontendOwnership ? 'View' : 'Manage'}
+                            </Link>
 
                             {!isLockedPosition(positionDetails) && (
                                     <button
