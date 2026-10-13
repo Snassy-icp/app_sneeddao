@@ -13,25 +13,9 @@ import { useAuth } from '../AuthContext';
  * - compact: smaller spacing, for use inside cards and expanders
  * - accentColor: link / button colour (defaults to the theme accent)
  * - intro: optional text shown above the steps (defaults to a short explanation)
- * - videoUrl: a recording of the steps (defaults to TRANSFER_VIDEO_URL; nothing is shown while unset)
  * - watch / onWatch: the arrival watch (see TransferArrivalWatch); the wizard polls ICPSwap and
  *   reports here when the transferred position shows up in the Sneed wallet
  */
-
-/// A short recording of the ICPSwap "Transfer position" steps. Set it once the
-/// recording exists: a direct .mp4/.webm URL, or a YouTube embed URL
-/// (https://www.youtube.com/embed/<id>). Until then no player is rendered.
-export const TRANSFER_VIDEO_URL = null;
-
-export function TransferVideo({ url = TRANSFER_VIDEO_URL, compact = false }) {
-    const { theme } = useTheme();
-    if (!url) return null;
-    const box = { marginTop: compact ? 8 : 12, borderRadius: 10, overflow: 'hidden', border: `1px solid ${theme.colors.border}`, background: '#000', maxWidth: 640 };
-    if (/youtube\.com\/embed\/|youtu\.be\//.test(url)) {
-        return <div style={{ ...box, aspectRatio: '16 / 9' }}><iframe src={url} title="Moving an ICPSwap position to your Sneed wallet" style={{ width: '100%', height: '100%', border: 0 }} allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture" allowFullScreen /></div>;
-    }
-    return <div style={box}><video src={url} controls playsInline preload="metadata" style={{ width: '100%', display: 'block' }} /></div>;
-}
 
 /// The final check: once the user transferred on ICPSwap, the wizard keeps
 /// asking the pool until the position is in the Sneed wallet. `watch` is
@@ -114,7 +98,7 @@ export function WalletPrincipalBox({ compact = false, accentColor }) {
     );
 }
 
-function PositionTransferGuide({ token0Symbol, token1Symbol, compact = false, accentColor, intro, videoUrl = TRANSFER_VIDEO_URL, watch, onWatch, onStopWatch }) {
+function PositionTransferGuide({ token0Symbol, token1Symbol, compact = false, accentColor, intro, watch, onWatch, onStopWatch }) {
     const { theme } = useTheme();
     const accent = accentColor || theme.colors.accent;
     const pair = token0Symbol && token1Symbol ? `${token0Symbol}/${token1Symbol}` : 'liquidity';
@@ -143,7 +127,6 @@ function PositionTransferGuide({ token0Symbol, token1Symbol, compact = false, ac
                 <li>Confirm on ICPSwap{onWatch ? ', then let this page watch for it' : ', then refresh here'}. The position stays yours.</li>
             </ol>
             <TransferArrivalWatch watch={watch} onWatch={onWatch} onStop={onStopWatch} accentColor={accent} compact={compact} />
-            <TransferVideo url={videoUrl} compact={compact} />
         </div>
     );
 }

@@ -21,6 +21,7 @@ import LockModal from './LockModal';
 import LockPositionModal from './LockPositionModal';
 import AddSwapCanisterModal from './AddSwapCanisterModal';
 import PositionTransferGuide from './components/PositionTransferGuide';
+import PositionTransferPanel from './components/PositionTransferPanel';
 import AddLedgerCanisterModal from './AddLedgerCanisterModal';
 import SendLiquidityPositionModal from './SendLiquidityPositionModal';
 import ConfirmationModal from './ConfirmationModal';
@@ -755,6 +756,7 @@ function Wallet() {
     const [showLockModal, setShowLockModal] = useState(false);
     const [showLockPositionModal, setShowLockPositionModal] = useState(false);
     const [showAddLiquidityModal, setShowAddLiquidityModal] = useState(false);
+    const [showTransferPanel, setShowTransferPanel] = useState(false); // "Move a position here" under the liquidity tab
     const [addLiquidityTarget, setAddLiquidityTarget] = useState(null);
     const [showAddSwapModal, setShowAddSwapModal] = useState(false);
     const [showAddLedgerModal, setShowAddLedgerModal] = useState(false);
@@ -6790,6 +6792,27 @@ function Wallet() {
                                 }
                             </button>
                             <button
+                                onClick={() => setShowTransferPanel(v => !v)}
+                                style={{
+                                    background: showTransferPanel ? `${walletPrimary}30` : `${walletPrimary}15`,
+                                    color: walletPrimary,
+                                    border: `1px solid ${walletPrimary}30`,
+                                    borderRadius: '8px',
+                                    padding: '0.5rem 0.75rem',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '500',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    transition: 'all 0.2s ease'
+                                }}
+                                title="How to transfer a position from ICPSwap into this wallet, and watch for it to arrive"
+                            >
+                                <FaExchangeAlt size={12} />
+                                Move a position here
+                            </button>
+                            <button
                                 onClick={() => setShowAddSwapModal(true)}
                                 style={{
                                     background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
@@ -6807,6 +6830,11 @@ function Wallet() {
                             </button>
                         </div>
                     </div>
+                    {showTransferPanel && (
+                        <div style={{ marginBottom: '1rem' }}>
+                            <PositionTransferPanel accentColor={walletPrimary} onArrived={() => handleRefreshPositionsSection()} />
+                        </div>
+                    )}
                     <div className="card-grid">                
                     {(walletLayoutCtx?.sortByLayout
                         ? walletLayoutCtx.sortByLayout('positions', liquidityPositions, p => normalizeId(p.swapCanisterId))

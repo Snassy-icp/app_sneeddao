@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Header from '../components/Header';
-import { TransferVideo } from '../components/PositionTransferGuide';
+import PositionTransferPanel from '../components/PositionTransferPanel';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { 
     FaLock, FaArrowLeft, FaMagic, FaCoins, FaWater, FaUnlock, 
@@ -437,7 +437,6 @@ function HelpSneedlock() {
                             <FaWater size={20} color="#14b8a6" />
                         </div>
                         <h2 style={styles.subheading}>How to Lock Liquidity Positions</h2>
-                        <TransferVideo />
                     </div>
                     
                     <ol style={styles.stepList}>
@@ -446,6 +445,10 @@ function HelpSneedlock() {
                         <li style={styles.stepItem}><strong style={styles.strong}>Select Position:</strong> Pick the position in the wizard (or from the Liquidity Positions section of your wallet)</li>
                         <li style={styles.stepItem}><strong style={styles.strong}>Lock:</strong> Set the expiration date and confirm. The lock fee is paid as part of this step.</li>
                     </ol>
+
+                    <div style={{ margin: '0 0 1.25rem' }}>
+                        <PositionTransferPanel compact title="Move a position to your Sneed wallet now" />
+                    </div>
                     
                     <div style={styles.successBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
