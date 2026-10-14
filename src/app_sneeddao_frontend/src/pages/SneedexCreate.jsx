@@ -900,6 +900,7 @@ function SneedexCreate() {
         if (asset.type === 'neuron') return `neuron:${asset.governance_id}:${asset.neuron_id}`;
         if (asset.type === 'token') return `token:${asset.ledger_id}`;
         if (asset.type === 'nft') return `nft:${asset.collection_id}:${(asset.token_ids || []).join(',')}`;
+        if (asset.type === 'lock') return `lock:${asset.lock_id}`;
         return `unknown:${Date.now()}`;
     }, []);
     
@@ -1157,6 +1158,20 @@ function SneedexCreate() {
         } catch (e) { return { verified: false, message: `Could not check ownership: ${e?.message || e}` }; }
     }, [identity]);
     
+    // Sneed Lock: the lock must still exist and be yours (escrow moves its ownership to Sneedex)
+    const verifySneedLock = useCallback(async (asset) => {
+        if (!identity) return { verified: false, message: 'Not authenticated' };
+        try {
+            const sl = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+            const info = (await sl.get_lock_by_id(BigInt(asset.lock_id)))?.[0];
+            if (!info) return { verified: false, message: `Lock #${asset.lock_id} no longer exists` };
+            const owner = (info.TokenLock || info.PositionLock)[0].toText();
+            if (owner === SNEEDEX_CANISTER_ID) return { verified: false, message: `Lock #${asset.lock_id} is already held by Sneedex` };
+            if (owner !== identity.getPrincipal().toText()) return { verified: false, message: `Lock #${asset.lock_id} is not yours` };
+            return { verified: true, message: asset.kind === 'token' ? 'Your lock (escrow adds one ledger fee for the transfer)' : 'Your lock' };
+        } catch (e) { return { verified: false, message: `Could not check the lock: ${e?.message || e}` }; }
+    }, [identity]);
+
     const verifyTokenBalance = useCallback(async (ledgerId, amount, decimals) => {
         if (!identity) return { verified: false, message: 'Not authenticated' };
         
@@ -1273,6 +1288,8 @@ function SneedexCreate() {
             result = await verifyNeuronHotkey(asset.governance_id, asset.neuron_id);
         } else if (asset.type === 'nft') {
             result = await verifyNftOwnership(asset.collection_id, asset.token_ids);
+        } else if (asset.type === 'lock') {
+            result = await verifySneedLock(asset);
         } else {
             result = { verified: false, message: 'Unknown asset type' };
         }
@@ -1281,7 +1298,7 @@ function SneedexCreate() {
             ...prev,
             [key]: { verified: result.verified, checking: false, message: result.message }
         }));
-    }, [getAssetKey, verifyCanister, verifyTokenBalance, verifyNeuronHotkey]);
+    }, [getAssetKey, verifyCanister, verifyTokenBalance, verifyNeuronHotkey, verifyNftOwnership, verifySneedLock]);
     
     // Verify all assets when they change
     useEffect(() => {
@@ -1323,6 +1340,8 @@ function SneedexCreate() {
                     result = await verifyNeuronHotkey(asset.governance_id, asset.neuron_id);
                 } else if (asset.type === 'nft') {
                     result = await verifyNftOwnership(asset.collection_id, asset.token_ids);
+                } else if (asset.type === 'lock') {
+                    result = await verifySneedLock(asset);
                 } else {
                     result = { verified: false, message: 'Unknown asset type' };
                 }
@@ -1337,7 +1356,7 @@ function SneedexCreate() {
         }
         
         setAllAssetsReady(allReady);
-    }, [identity, assets, getAssetKey, verifyCanister, verifyTokenBalance, verifyNeuronHotkey]);
+    }, [identity, assets, getAssetKey, verifyCanister, verifyTokenBalance, verifyNeuronHotkey, verifyNftOwnership, verifySneedLock]);
     
     // Trigger review verification when entering step 3
     useEffect(() => {
