@@ -28,6 +28,8 @@ const snsWasmMockIdl = snsWasmIdl;
 let pic, icpId, snsWasmId, guardianId, childId, archiveId, holeId;
 let icp, icpAlice, snsWasm, g, gAlice, gBob, gCarol, gDao, gDao2;
 
+const opSub = (id) => { const s = new Uint8Array(32); s[0] = 0x6f; s[1] = 1; let n = BigInt(id); for (let i = 31; i >= 24; i--) { s[i] = Number(n % 256n); n /= 256n; } return s; };
+const payFee = async (gid, op) => { if (op.fee_e8s > 0n) unwrap(await icpAlice.icrc1_transfer({ from_subaccount: [], to: account(gid, opSub(op.id)), amount: op.fee_e8s + ICP_FEE, fee: [], memo: [], created_at_time: [] })); };
 const policy = (over = {}) => ({ guardians: [bob, carol], vetoes_to_block: 1n, oks_required: 0n, window_ns: BigInt(HOUR) * 1_000_000_000n, auto_upgrade: false, ...over });
 const initArg = (over = {}) => ({ name: 'test guardian', approvers: [dao], threshold: 1n, archive_controllers: [admin], admins: [carol], sneed_premium: [], fee_destination: [account(carol)], icp_ledger: [], sns_wasm: [], ...over });
 const advance = async (seconds) => { await pic.advanceTime(seconds * 1000); await pic.tick(3); };
@@ -80,22 +82,24 @@ describe('sneed_guardian', () => {
     expect(errOf(await gAlice.register(other, { ledger: null }, policy(), [], 'cmc'))).toMatch(/not a version the NNS blessed/);
   });
 
-  it('charges the op fee, takes approvals only from approvers, and lets a guardian veto', async () => {
+  it('stages for free, wants the fee in the op\'s payment account before the vote, and lets a guardian veto', async () => {
     const cfg = await g.get_config();
     expect(cfg.op_fee_e8s).toBe(100_000_000n);
-    // no allowance yet
-    expect(errOf(await gAlice.stage_op(childId, { set_policy: policy({ auto_upgrade: true }) }, 'turn on auto-upgrade'))).toMatch(/approve the guardian/);
-    unwrap(await icpAlice.icrc2_approve({ from_subaccount: [], spender: account(guardianId), amount: 10n * 100_000_000n, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] }));
-    const before = await icp.icrc1_balance_of(account(carol));
-    const op = unwrap(await gAlice.stage_op(childId, { set_policy: policy({ auto_upgrade: true }) }, 'turn on auto-upgrade'));
-    expect(op.fee_paid_e8s).toBe(100_000_000n);
-    expect((await icp.icrc1_balance_of(account(carol))) - before).toBe(100_000_000n); // the fee reached the destination
+    const op = unwrap(await gAlice.stage_op(childId, { set_policy: policy({ auto_upgrade: true }) }, 'turn on auto-upgrade', []));
+    expect(op.fee_e8s).toBe(100_000_000n); expect(op.fee_paid_e8s).toBe(0n); expect(op.payer.toText()).toBe(alice.toText());
     expect(Object.keys(op.state)[0]).toBe('pending');
+    // unpaid: the validator refuses, so the approval proposal cannot even be filed
+    expect(errOf(await g.validate_approve_op(op.id))).toMatch(/fee is not paid/);
+    const pay = unwrap(await g.get_op_payment(op.id));
+    expect(pay.amount_to_send_e8s).toBe(100_010_000n);
+    expect(Array.from(pay.account.subaccount[0])).toEqual(Array.from(opSub(op.id)));
+    await payFee(guardianId, op);
+    expect(unwrap(await g.get_op_payment(op.id)).paid_e8s).toBe(100_010_000n);
+    const text = unwrap(await g.validate_approve_op(op.id));
+    expect(text).toMatch(/AAA ledger/); expect(text).toMatch(/auto-upgrade true/); expect(text).toMatch(/1 of 1 approvers/); expect(text).toMatch(/Fee: 100000000 e8s/);
     expect(errOf(await gAlice.execute_op(op.id))).toMatch(/not approved/);
     expect(errOf(await gAlice.approve_op(op.id))).toMatch(/only an approver/);
     expect(errOf(await gDao2.approve_op(op.id))).toMatch(/only an approver/);
-    const text = unwrap(await g.validate_approve_op(op.id));
-    expect(text).toMatch(/AAA ledger/); expect(text).toMatch(/auto-upgrade true/); expect(text).toMatch(/1 of 1 approvers/);
     const approved = unwrap(await gDao.approve_op(op.id));
     expect(Object.keys(approved.state)[0]).toBe('approved');
     expect(errOf(await gDao.approve_op(op.id))).toMatch(/already/);
@@ -106,20 +110,31 @@ describe('sneed_guardian', () => {
     expect(Object.keys(vetoed.state)[0]).toBe('vetoed');
     await advance(HOUR + 60);
     expect(errOf(await gAlice.execute_op(op.id))).toMatch(/vetoed/);
+    // the fee of a dead op goes back to the payer, minus the ledger fee
+    const before = await icp.icrc1_balance_of(account(alice));
+    expect(unwrap(await gBob.refund_op(op.id))).toBe(100_000_000n);
+    expect((await icp.icrc1_balance_of(account(alice))) - before).toBe(100_000_000n);
+    expect(errOf(await gBob.refund_op(op.id))).toMatch(/nothing to refund/);
   });
 
   it('executes an approved op after the window, honouring required go-aheads', async () => {
     // tighten: two oks needed, no vetoes
-    const op = unwrap(await gAlice.stage_op(childId, { set_policy: policy({ vetoes_to_block: 0n, oks_required: 2n, window_ns: 0n, auto_upgrade: true }) }, ''));
+    const op = unwrap(await gAlice.stage_op(childId, { set_policy: policy({ vetoes_to_block: 0n, oks_required: 2n, window_ns: 0n, auto_upgrade: true }) }, '', []));
     unwrap(await gDao.approve_op(op.id));
     await advance(HOUR + 60);
+    expect(errOf(await gAlice.execute_op(op.id))).toMatch(/fee is not paid/); // approved, but unpaid: nothing runs
+    await payFee(guardianId, op);
+    const feeBefore = await icp.icrc1_balance_of(account(carol));
     const done = unwrap(await gAlice.execute_op(op.id));
     expect(Object.keys(done.state)[0]).toBe('executed');
+    expect(done.fee_paid_e8s).toBe(100_000_000n);
+    expect((await icp.icrc1_balance_of(account(carol))) - feeBefore).toBe(100_000_000n); // the fee reached the destination
     let child = (await g.get_child(childId))[0];
     expect(child.policy.auto_upgrade).toBe(true);
     expect(child.policy.oks_required).toBe(2n);
     // the new rules apply to the next op: approved, but not executable until two guardians ok
-    const op2 = unwrap(await gAlice.stage_op(childId, { set_policy: policy({ vetoes_to_block: 0n, oks_required: 0n, window_ns: 0n, auto_upgrade: true }) }, 'loosen'));
+    const op2 = unwrap(await gAlice.stage_op(childId, { set_policy: policy({ vetoes_to_block: 0n, oks_required: 0n, window_ns: 0n, auto_upgrade: true }) }, 'loosen', []));
+    await payFee(guardianId, op2);
     unwrap(await gDao.approve_op(op2.id));
     expect(errOf(await gAlice.execute_op(op2.id))).toMatch(/go-aheads/);
     unwrap(await gBob.ok_op(op2.id));
@@ -147,11 +162,12 @@ describe('sneed_guardian', () => {
     expect(unwrap(await g.admin_run_auto_upgrade())).toBe(0n);
     expect((await g.list_upgradable()).length).toBe(0);
     // the daily timer would do the same; an explicit install op to a non-next hash is refused at execution
-    const op = unwrap(await gAlice.stage_op(childId, { install: { hash: V1, arg: [] } }, 'downgrade?'));
+    const op = unwrap(await gAlice.stage_op(childId, { install: { hash: V1, arg: [] } }, 'downgrade?', []));
+    await payFee(guardianId, op);
     unwrap(await gDao.approve_op(op.id));
     expect(errOf(await gAlice.execute_op(op.id))).toMatch(/not on the blessed list, or is already its last version|one step at a time|already on/);
     const bogus = Uint8Array.from({ length: 32 }, () => 9);
-    expect(errOf(await gAlice.stage_op(childId, { install: { hash: bogus, arg: [] } }, ''))).toMatch(/not a hash the NNS blessed/);
+    expect(errOf(await gAlice.stage_op(childId, { install: { hash: bogus, arg: [] } }, '', []))).toMatch(/not a hash the NNS blessed/);
   });
 
   it('reports cycles for every child and discovers the archives a ledger spawned', async () => {
@@ -182,32 +198,34 @@ describe('sneed_guardian', () => {
   });
 
   it('changes its own configuration and approvers only through ops', async () => {
-    const op = unwrap(await gAlice.stage_op(guardianId, { set_config: { op_fee_e8s: [50_000_000n], premium_op_fee_e8s: [], fee_destination: [], op_ttl_ns: [], self_window_ns: [], status_interval_s: [], low_cycles_threshold: [], cycle_reserve: [], paused: [] } }, 'cheaper'));
-    expect(op.fee_paid_e8s).toBe(0n); // ops on the guardian itself are free
+    const op = unwrap(await gAlice.stage_op(guardianId, { set_config: { op_fee_e8s: [50_000_000n], premium_op_fee_e8s: [], fee_destination: [], op_ttl_ns: [], self_window_ns: [], status_interval_s: [], low_cycles_threshold: [], cycle_reserve: [], paused: [] } }, 'cheaper', []));
+    expect(op.fee_e8s).toBe(0n); // ops on the guardian itself are free
     unwrap(await gDao.approve_op(op.id));
     unwrap(await gAlice.execute_op(op.id));
     expect((await g.get_config()).op_fee_e8s).toBe(50_000_000n);
-    const op2 = unwrap(await gAlice.stage_op(guardianId, { set_approvers: { approvers: [dao, dao2], threshold: 2n } }, 'two DAOs'));
+    const op2 = unwrap(await gAlice.stage_op(guardianId, { set_approvers: { approvers: [dao, dao2], threshold: 2n } }, 'two DAOs', []));
     unwrap(await gDao.approve_op(op2.id));
     unwrap(await gAlice.execute_op(op2.id));
     expect((await g.get_config()).threshold).toBe(2n);
     // now both must approve
-    const op3 = unwrap(await gAlice.stage_op(childId, { set_policy: policy({ vetoes_to_block: 0n, window_ns: 0n }) }, ''));
+    const op3 = unwrap(await gAlice.stage_op(childId, { set_policy: policy({ vetoes_to_block: 0n, window_ns: 0n }) }, '', []));
+    await payFee(guardianId, op3);
     expect(Object.keys(unwrap(await gDao.approve_op(op3.id)).state)[0]).toBe('pending');
     expect(Object.keys(unwrap(await gDao2.approve_op(op3.id)).state)[0]).toBe('approved');
     unwrap(await gAlice.execute_op(op3.id));
     // the stager can cancel a pending op; an expired op cannot be approved
-    const op4 = unwrap(await gAlice.stage_op(childId, { set_policy: policy() }, ''));
+    const op4 = unwrap(await gAlice.stage_op(childId, { set_policy: policy() }, '', []));
     unwrap(await gAlice.cancel_op(op4.id));
     expect(errOf(await gDao.approve_op(op4.id))).toMatch(/cancelled/);
-    const op5 = unwrap(await gAlice.stage_op(childId, { set_policy: policy() }, ''));
+    const op5 = unwrap(await gAlice.stage_op(childId, { set_policy: policy() }, '', []));
     await advance(31 * 24 * HOUR);
     expect(errOf(await gDao.approve_op(op5.id))).toMatch(/expired/);
   });
 
   it('lets a listed admin approve alone during the trial period, until the list is emptied', async () => {
     expect((await g.get_admins()).map((p) => p.toText())).toEqual([carol.toText()]);
-    const op = unwrap(await gAlice.stage_op(childId, { set_policy: policy({ vetoes_to_block: 0n, window_ns: 0n }) }, 'admin test'));
+    const op = unwrap(await gAlice.stage_op(childId, { set_policy: policy({ vetoes_to_block: 0n, window_ns: 0n }) }, 'admin test', []));
+    await payFee(guardianId, op);
     const approved = unwrap(await gCarol.approve_op(op.id)); // carol is a guardian of the child too, but here she acts as admin: one approval, threshold 2
     expect(Object.keys(approved.state)[0]).toBe('approved');
     unwrap(await gAlice.execute_op(op.id));
@@ -217,13 +235,14 @@ describe('sneed_guardian', () => {
     unwrap(await gBob.admin_remove_admin(bob));
     expect(await g.get_admins()).toEqual([]);
     expect(errOf(await gCarol.admin_add_admin(carol))).toMatch(/admins only/); // nobody can refill the list (admin here is still a controller, so use carol)
-    const op2 = unwrap(await gAlice.stage_op(childId, { set_policy: policy() }, ''));
+    const op2 = unwrap(await gAlice.stage_op(childId, { set_policy: policy() }, '', []));
     expect(Object.keys(unwrap(await gDao.approve_op(op2.id)).state)[0]).toBe('pending'); // back to the real threshold
     unwrap(await gAlice.cancel_op(op2.id));
   });
 
   it('releases a child when the controllers op leaves the guardian out', async () => {
-    const op = unwrap(await gAlice.stage_op(childId, { set_controllers: [alice] }, 'take it back'));
+    const op = unwrap(await gAlice.stage_op(childId, { set_controllers: [alice] }, 'take it back', []));
+    await payFee(guardianId, op);
     unwrap(await gDao.approve_op(op.id)); unwrap(await gDao2.approve_op(op.id));
     unwrap(await gAlice.execute_op(op.id));
     expect((await g.get_child(childId)).length).toBe(0);
@@ -246,8 +265,8 @@ describe('sneed_guardian', () => {
     const c = unwrap(await holeAlice.register(childId, { ledger: null }, policy({ vetoes_to_block: 0n, window_ns: 0n }), [], 'AAA under the hole'));
     expect(sameHash(c.status[0].module_hash[0], V2)).toBe(true);
     const holeDao = actorAs(pic, guardianIdl, holeId, dao);
-    unwrap(await icpAlice.icrc2_approve({ from_subaccount: [], spender: account(holeId), amount: 2n * 100_000_000n, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] }));
-    const op = unwrap(await holeAlice.stage_op(childId, { set_policy: policy({ auto_upgrade: true, vetoes_to_block: 0n, window_ns: 0n }) }, ''));
+    const op = unwrap(await holeAlice.stage_op(childId, { set_policy: policy({ auto_upgrade: true, vetoes_to_block: 0n, window_ns: 0n }) }, '', []));
+    await payFee(holeId, op);
     unwrap(await holeDao.approve_op(op.id));
     unwrap(await holeAlice.execute_op(op.id));
     expect((await hole.get_child(childId))[0].policy.auto_upgrade).toBe(true);

@@ -56,6 +56,27 @@ function Guardian() {
     const [showAllOps, setShowAllOps] = useState(false);
     const [stage, setStage] = useState(null); // { child, kind: 'policy'|'controllers'|'install', ... }
     const [neurons, setNeurons] = useState(null);
+    const [payFor, setPayFor] = useState(null); // op id whose payment panel is open
+    const [payment, setPayment] = useState(null); // { account, fee_e8s, amount_to_send_e8s, paid_e8s }
+    useEffect(() => {
+        if (payFor === null) { setPayment(null); return; }
+        let live = true;
+        actor(false).get_op_payment(payFor).then((r) => { if (live) setPayment('Ok' in r ? r.Ok : { error: r.Err }); }).catch((e) => { if (live) setPayment({ error: e?.message || String(e) }); });
+        return () => { live = false; };
+    }, [payFor, actor, ops]);
+    const payNow = async (op) => {
+        if (!payment || payment.error) return;
+        await call(`Pay the fee of op #${op.id}`, async () => {
+            const ledger = createLedgerActor(ICP_LEDGER, { agentOptions: { identity, host: HOST } });
+            const due = payment.amount_to_send_e8s - payment.paid_e8s;
+            if (due <= 0n) return null;
+            const r = await ledger.icrc1_transfer({ from_subaccount: [], to: { owner: payment.account.owner, subaccount: payment.account.subaccount }, amount: due, fee: [], memo: [], created_at_time: [] });
+            if ('Err' in r) throw new Error(`transfer failed: ${JSON.stringify(r.Err, (k, v) => (typeof v === 'bigint' ? v.toString() : v))}`);
+            return null;
+        });
+        setPayFor(op.id);
+    };
+    const accountText = (acc) => `${acc.owner.toText()} · subaccount ${hex(acc.subaccount[0])}`;
 
     const actor = useCallback((withIdentity) => {
         if (!dep) return null;
@@ -101,6 +122,8 @@ function Guardian() {
         if (!dep.functionId) { setError('The DAO has not registered the approve_op generic function for this deployment yet. Propose it by hand: ExecuteGenericNervousSystemFunction with the function id, payload = candid (op id : nat).'); return; }
         if (!neurons?.length) { setError('You hold no Sneed neuron that may propose.'); return; }
         await call(`Propose approval of op #${op.id}`, async () => {
+            const v = await actor(false).validate_approve_op(op.id);
+            if ('Err' in v) throw new Error(v.Err);
             const gov = createSnsGovernanceActor(SNEED_GOVERNANCE, { agentOptions: { identity, host: HOST } });
             const payload = new Uint8Array(IDL.encode([IDL.Nat], [op.id]));
             const r = await gov.manage_neuron({
@@ -122,20 +145,13 @@ function Guardian() {
         if (!stage) return;
         const a = actor(true);
         await call('Stage op', async () => {
-            // the op fee is pulled by ICRC-2: approve it first (ops on the guardian itself are free)
-            const self = stage.child === dep.id;
-            if (!self && cfg && Number(cfg.op_fee_e8s) > 0) {
-                const ledger = createLedgerActor(ICP_LEDGER, { agentOptions: { identity, host: HOST } });
-                const r = await ledger.icrc2_approve({ from_subaccount: [], spender: { owner: Principal.fromText(dep.id), subaccount: [] }, amount: cfg.op_fee_e8s + 20_000n, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] });
-                if ('Err' in r) throw new Error(`fee approval failed: ${JSON.stringify(r.Err, (k, v) => (typeof v === 'bigint' ? v.toString() : v))}`);
-            }
             let kind;
             if (stage.kind === 'policy') kind = { set_policy: { guardians: stage.guardians.map((t) => Principal.fromText(t.trim())), vetoes_to_block: BigInt(stage.vetoesToBlock || 0), oks_required: BigInt(stage.oksRequired || 0), window_ns: BigInt(Math.round(Number(stage.windowDays || 0) * 86_400)) * 1_000_000_000n, auto_upgrade: !!stage.autoUpgrade } };
             else if (stage.kind === 'controllers') kind = { set_controllers: stage.controllers.map((t) => Principal.fromText(t.trim())) };
             else if (stage.kind === 'install') kind = { install: { hash: Uint8Array.from(stage.hash.match(/../g).map((h) => parseInt(h, 16))), arg: [] } };
             else throw new Error('unknown op');
-            const r = await a.stage_op(Principal.fromText(stage.child), kind, stage.memo || '');
-            if ('Ok' in r) setStage(null);
+            const r = await a.stage_op(Principal.fromText(stage.child), kind, stage.memo || '', []);
+            if ('Ok' in r) { setStage(null); if (r.Ok.fee_e8s > 0n) setPayFor(r.Ok.id); }
             return r;
         });
     };
@@ -295,7 +311,28 @@ function Guardian() {
                                         {child && child.policy.vetoes_to_block > 0n && <span>vetoes {op.vetoes.length}/{child.policy.vetoes_to_block.toString()}</span>}
                                         {s === 'approved' && child && <span>window until {when(BigInt(op.state.approved) + child.policy.window_ns)}</span>}
                                         {op.memo && <span>“{op.memo}”</span>}
+                                        {op.fee_e8s > 0n && <span style={{ color: op.fee_paid_e8s >= op.fee_e8s ? '#10b981' : amber }}>fee {(Number(op.fee_e8s) / 1e8).toFixed(2)} ICP {op.fee_paid_e8s >= op.fee_e8s ? 'paid' : 'due'}{op.refunded_e8s > 0n ? `, ${(Number(op.refunded_e8s) / 1e8).toFixed(4)} refunded` : ''} · payer <PrincipalDisplay principal={op.payer} short={true} showCopyButton={false} isAuthenticated={isAuthenticated} style={{ fontSize: '0.78rem' }} /></span>}
                                     </div>
+                                    {payFor === op.id && (
+                                        <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 8, background: theme.colors.tertiaryBg, border: `1px solid ${amber}`, fontSize: '0.8rem', color: theme.colors.secondaryText, lineHeight: 1.5 }}>
+                                            {!payment ? <><FaSpinner className="health-spin" /> reading the payment account…</> : payment.error ? <span style={{ color: theme.colors.error }}>{payment.error}</span> : (
+                                                <>
+                                                    <div>Send <b style={{ color: theme.colors.primaryText }}>{(Number(payment.amount_to_send_e8s) / 1e8).toFixed(4)} ICP</b> (the fee plus one ledger fee) to the op's payment account. Anyone may pay; refunds and surplus go to the payer.</div>
+                                                    <div className="health-mono" style={{ fontSize: '0.75rem', wordBreak: 'break-all', margin: '4px 0' }}>{accountText(payment.account)}</div>
+                                                    <div>Paid so far: {(Number(payment.paid_e8s) / 1e8).toFixed(4)} ICP{payment.paid_e8s >= payment.amount_to_send_e8s ? ' · paid in full' : ''}</div>
+                                                    <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                                                        {payment.paid_e8s < payment.amount_to_send_e8s && isAuthenticated && <button type="button" style={btn('#10b981')} disabled={!!busy} onClick={() => payNow(op)}>Pay from my wallet</button>}
+                                                        <button type="button" style={btn()} onClick={() => setPayFor(null)}>Close</button>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
+                                    {!open && isAuthenticated && op.fee_e8s > 0n && (
+                                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                                            <button type="button" style={btn()} disabled={!!busy} onClick={() => call(`Refund op #${op.id}`, () => actor(true).refund_op(op.id))}>Refund what is left to the payer</button>
+                                        </div>
+                                    )}
                                     {open && isAuthenticated && (
                                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
                                             {s === 'pending' && (isApprover
@@ -303,6 +340,7 @@ function Guardian() {
                                                 : <button type="button" style={btn('#10b981')} disabled={!!busy} onClick={() => proposeApproval(op)} title={dep.functionId ? 'File a Sneed DAO proposal from your neuron' : 'The approve_op function is not registered with the DAO yet'}><FaCheck size={10} /> Propose approval</button>)}
                                             {guard && <button type="button" style={btn('#10b981')} disabled={!!busy} onClick={() => call(`Go-ahead #${op.id}`, () => actor(true).ok_op(op.id))}><FaCheck size={10} /> Go-ahead</button>}
                                             {guard && <button type="button" style={btn('#ef4444')} disabled={!!busy} onClick={() => call(`Veto #${op.id}`, () => actor(true).veto_op(op.id))}><FaBan size={10} /> Veto</button>}
+                                            {op.fee_e8s > 0n && op.fee_paid_e8s < op.fee_e8s && <button type="button" style={btn(amber)} onClick={() => setPayFor(payFor === op.id ? null : op.id)}>Pay the fee</button>}
                                             {s === 'approved' && <button type="button" style={btn(amber)} disabled={!!busy} onClick={() => call(`Execute #${op.id}`, () => actor(true).execute_op(op.id))}><FaPlay size={10} /> Execute</button>}
                                             {(op.staged_by.toText() === me || isApprover) && <button type="button" style={btn()} disabled={!!busy} onClick={() => call(`Cancel #${op.id}`, () => actor(true).cancel_op(op.id))}><FaTimes size={10} /> Cancel</button>}
                                         </div>

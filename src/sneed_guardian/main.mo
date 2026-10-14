@@ -110,7 +110,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
   transient let icrc3_rt : Icrc3Log.Runtime = Icrc3Log.runtime();
   transient let icrc3_catalogue : Icrc3Log.Config = {
     block_types_url = "https://app.sneeddao.com/api/sneed_guardian#block-types";
-    block_types = ["guardian_register", "guardian_release", "guardian_op_stage", "guardian_op_approve", "guardian_op_ok", "guardian_op_veto", "guardian_op_execute", "guardian_op_fail", "guardian_op_cancel", "guardian_upgrade", "guardian_config_update", "guardian_approvers_set", "guardian_policy_set"];
+    block_types = ["guardian_register", "guardian_release", "guardian_op_stage", "guardian_op_approve", "guardian_op_ok", "guardian_op_veto", "guardian_op_execute", "guardian_op_fail", "guardian_op_cancel", "guardian_op_fee", "guardian_op_refund", "guardian_upgrade", "guardian_config_update", "guardian_approvers_set", "guardian_policy_set"];
   };
   private func icrc3_env() : Icrc3Log.Environment {
     {
@@ -293,32 +293,44 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
   private func isPremium(p : Principal) : async* Bool {
     switch (sneed_premium_id) { case (?id) { try { await* PremiumClient.isPremium(premium_cache, id, p) } catch (_) { false } }; case null { false } };
   };
-  /// Propose a change (anyone). The op fee, if any, is pulled from the caller on the ICP ledger
-  /// (ICRC-2) and forwarded to the fee destination before the op is recorded.
-  public shared ({ caller }) func stage_op(child : Principal, kind : T.OpKind, memo : Text) : async { #Ok : T.Op; #Err : Text } {
+  /// An op's payment subaccount: 'o', a version byte, and the op id big-endian in the last 8 bytes.
+  private func opSubaccount(id : Nat) : Blob {
+    var n = id;
+    let a = Array.init<Nat8>(32, 0);
+    a[0] := 0x6f; a[1] := 1;
+    var i = 31;
+    while (i >= 24) { a[i] := Nat8.fromNat(n % 256); n := n / 256; i -= 1 };
+    Blob.fromArray(Array.freeze(a));
+  };
+  private func opAccount(id : Nat) : T.Account { { owner = self(); subaccount = ?opSubaccount(id) } };
+  private func opBalance(id : Nat) : async* { #Ok : Nat; #Err : Text } {
+    try { #Ok(await icp_ledger().icrc1_balance_of(opAccount(id))) } catch (e) { #Err("could not read the ICP ledger: " # Error.message(e)) };
+  };
+  /// Where to pay an op's fee, and what has been paid so far (the balance is read live).
+  public shared func get_op_payment(id : Nat) : async { #Ok : T.OpPayment; #Err : Text } {
+    let op = switch (findOp(id)) { case (?o) { o }; case null { return #Err("no op " # Nat.toText(id)) } };
+    let bal = switch (await* opBalance(id)) { case (#Ok(b)) { b }; case (#Err(e)) { return #Err(e) } };
+    #Ok({ account = opAccount(id); fee_e8s = op.fee_e8s; amount_to_send_e8s = if (op.fee_e8s == 0) { 0 } else { op.fee_e8s + ICP_FEE }; paid_e8s = bal + op.fee_paid_e8s + op.refunded_e8s; refunded_e8s = op.refunded_e8s });
+  };
+  /// Propose a change (anyone, free to stage). The op fee, if any, is paid afterwards by a plain
+  /// transfer to the op's payment subaccount: the approval proposal cannot be filed until it is
+  /// there, execution sweeps it to the fee destination, and a dead op's money is refundable to the
+  /// payer. `payer` defaults to the caller; anyone may pay on the payer's behalf.
+  public shared ({ caller }) func stage_op(child : Principal, kind : T.OpKind, memo : Text, payer : ?Principal) : async { #Ok : T.Op; #Err : Text } {
     if (paused) { return #Err("the guardian is paused") };
     if (Principal.isAnonymous(caller)) { return #Err("log in first") };
     if (memo.size() > 500) { return #Err("memo: at most 500 characters") };
     if (kind == #set_config({ op_fee_e8s = null; premium_op_fee_e8s = null; fee_destination = null; op_ttl_ns = null; self_window_ns = null; status_interval_s = null; low_cycles_threshold = null; cycle_reserve = null; paused = null })) { return #Err("an empty configuration change") };
     switch (kind) { case (#install(_)) { await* ensureBlessed() }; case _ {} };
     switch (validateOp(child, kind)) { case (?e) { return #Err(e) }; case null {} };
-    let fee = if (child == self()) { 0 } else if (await* isPremium(caller)) { premium_op_fee_e8s } else { op_fee_e8s };
-    if (fee > 0) {
-      let r = try {
-        await icp_ledger().icrc2_transfer_from({ spender_subaccount = null; from = { owner = caller; subaccount = null }; to = fee_destination; amount = fee; fee = ?ICP_FEE; memo = null; created_at_time = null });
-      } catch (e) { return #Err("fee payment failed: " # Error.message(e)) };
-      switch (r) {
-        case (#Err(#InsufficientAllowance(a))) { return #Err("approve the guardian for " # Nat.toText(fee + ICP_FEE) # " e8s on the ICP ledger first (allowance is " # Nat.toText(a.allowance) # ")") };
-        case (#Err(#InsufficientFunds(b))) { return #Err("not enough ICP: balance " # Nat.toText(b.balance) # " e8s, need " # Nat.toText(fee + ICP_FEE)) };
-        case (#Err(e)) { return #Err("fee payment failed: " # debug_show(e)) };
-        case (#Ok(_)) {};
-      };
-    };
-    let op : T.Op = { id = next_op_id; child; kind; staged_by = caller; staged_at = Time.now(); memo; fee_paid_e8s = fee; approvals = []; oks = []; vetoes = []; state = #pending };
+    let who = switch (payer) { case (?p) { p }; case null { caller } };
+    if (Principal.isAnonymous(who)) { return #Err("the payer cannot be the anonymous principal") };
+    let fee = if (child == self()) { 0 } else if (await* isPremium(who)) { premium_op_fee_e8s } else { op_fee_e8s };
+    let op : T.Op = { id = next_op_id; child; kind; staged_by = caller; staged_at = Time.now(); memo; payer = who; fee_e8s = fee; fee_paid_e8s = 0; refunded_e8s = 0; approvals = []; oks = []; vetoes = []; state = #pending };
     next_op_id += 1;
     ops := Array.append(ops, [op]);
     let cid = newCid();
-    icrc3_add("guardian_op_stage", [("cid", #Nat(cid)), ("caller", pv(caller)), ("op", #Nat(op.id)), ("canister", pv(child)), ("what", #Text(opKindText(kind))), ("fee_e8s", #Nat(fee)), ("memo", #Text(memo))]);
+    icrc3_add("guardian_op_stage", [("cid", #Nat(cid)), ("caller", pv(caller)), ("op", #Nat(op.id)), ("canister", pv(child)), ("what", #Text(opKindText(kind))), ("fee_e8s", #Nat(fee)), ("payer", pv(who)), ("memo", #Text(memo))]);
     logText(cid, "info", "op " # Nat.toText(op.id) # " staged by " # Principal.toText(caller) # ": " # opKindText(kind) # " on " # Principal.toText(child));
     #Ok(op);
   };
@@ -337,14 +349,35 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     # "Rules: " # Nat.toText(threshold) # " of " # Nat.toText(approvers.size()) # " approvers"
     # (if (pol.window_ns > 0) { ", then a " # Nat.toText(pol.window_ns / 3600_000_000_000) # " h window in which " # Nat.toText(pol.vetoes_to_block) # " of " # Nat.toText(pol.guardians.size()) # " guardians can veto" } else { "" })
     # (if (pol.oks_required > 0) { ", and " # Nat.toText(pol.oks_required) # " guardian go-aheads" } else { "" }) # ".\n"
-    # "State: " # debug_show(op.state) # "; approvals " # Nat.toText(op.approvals.size()) # ", oks " # Nat.toText(op.oks.size()) # ", vetoes " # Nat.toText(op.vetoes.size()) # ".";
+    # "State: " # debug_show(op.state) # "; approvals " # Nat.toText(op.approvals.size()) # ", oks " # Nat.toText(op.oks.size()) # ", vetoes " # Nat.toText(op.vetoes.size()) # ".\n"
+    # (if (op.fee_e8s > 0) { "Fee: " # Nat.toText(op.fee_e8s) # " e8s ICP, paid by " # Principal.toText(op.payer) # " into the op's payment account, swept to " # Principal.toText(fee_destination.owner) # " when the op executes." } else { "No fee." });
   };
-  /// The proposal text for an `approve_op` generic function (its validator).
-  public query func validate_approve_op(id : Nat) : async { #Ok : Text; #Err : Text } {
-    switch (findOp(id)) {
-      case null { #Err("no op " # Nat.toText(id)) };
-      case (?op) { switch (op.state) { case (#pending) { #Ok(describeOp(op)) }; case (s) { #Err("op " # Nat.toText(id) # " is " # debug_show(s) # ", not pending") } } };
+  /// The proposal text for an `approve_op` generic function (its validator). Governance calls it
+  /// when the proposal is filed; it refuses until the op's fee is in its payment account, so a
+  /// proposal that would fail at execution for want of a fee never reaches the ballot.
+  public shared func validate_approve_op(id : Nat) : async { #Ok : Text; #Err : Text } {
+    let op = switch (findOp(id)) { case (?o) { current(o) }; case null { return #Err("no op " # Nat.toText(id)) } };
+    switch (op.state) { case (#pending) {}; case (s) { return #Err("op " # Nat.toText(id) # " is " # debug_show(s) # ", not pending") } };
+    if (op.fee_e8s > 0) {
+      let bal = switch (await* opBalance(id)) { case (#Ok(b)) { b }; case (#Err(e)) { return #Err(e) } };
+      if (bal < op.fee_e8s + ICP_FEE) { return #Err("the op's fee is not paid: send " # Nat.toText(op.fee_e8s + ICP_FEE) # " e8s ICP to the guardian's subaccount " # hex(opSubaccount(id)) # " (it holds " # Nat.toText(bal) # ")") };
     };
+    #Ok(describeOp(op));
+  };
+  /// Return what is left in a dead op's payment account (or an executed op's surplus) to its payer.
+  public shared ({ caller }) func refund_op(id : Nat) : async { #Ok : Nat; #Err : Text } {
+    if (Principal.isAnonymous(caller)) { return #Err("log in first") };
+    let op = switch (findOp(id)) { case (?o) { current(o) }; case null { return #Err("no op " # Nat.toText(id)) } };
+    switch (op.state) { case (#pending or #approved(_)) { return #Err("the op is still open; cancel it first") }; case _ {} };
+    let bal = switch (await* opBalance(id)) { case (#Ok(b)) { b }; case (#Err(e)) { return #Err(e) } };
+    if (bal <= ICP_FEE) { return #Err("nothing to refund") };
+    let amount = bal - ICP_FEE;
+    let r = try { await icp_ledger().icrc1_transfer({ from_subaccount = ?opSubaccount(id); to = { owner = op.payer; subaccount = null }; amount; fee = ?ICP_FEE; memo = null; created_at_time = null }) } catch (e) { return #Err("refund failed: " # Error.message(e)) };
+    switch (r) { case (#Err(e)) { return #Err("refund failed: " # debug_show(e)) }; case (#Ok(_)) {} };
+    // re-read: the op record may have moved on across the awaits
+    switch (findOp(id)) { case (?o) { putOp({ o with refunded_e8s = o.refunded_e8s + amount }) }; case null {} };
+    icrc3_add("guardian_op_refund", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("op", #Nat(id)), ("payer", pv(op.payer)), ("amount_e8s", #Nat(amount))]);
+    #Ok(amount);
   };
   /// An approver (a DAO's governance canister, through a passed proposal) approves an op. An admin's
   /// approval counts as the whole threshold, so a deployment can be exercised without the DAO.
@@ -416,6 +449,15 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     let op = switch (findOp(id)) { case (?o) { current(o) }; case null { return #Err("no op " # Nat.toText(id)) } };
     switch (notReady(op)) { case (?e) { return #Err(e) }; case null {} };
     let cid = newCid();
+    // the fee first: it pays for the attempt, so a failed op keeps it (stage a new one)
+    if (op.fee_e8s > 0 and op.fee_paid_e8s < op.fee_e8s) {
+      let bal = switch (await* opBalance(id)) { case (#Ok(b)) { b }; case (#Err(e)) { return #Err(e) } };
+      if (bal < op.fee_e8s + ICP_FEE) { return #Err("the op's fee is not paid: send " # Nat.toText(op.fee_e8s + ICP_FEE) # " e8s ICP to the guardian's subaccount " # hex(opSubaccount(id)) # " (it holds " # Nat.toText(bal) # ")") };
+      let sweep = try { await icp_ledger().icrc1_transfer({ from_subaccount = ?opSubaccount(id); to = fee_destination; amount = op.fee_e8s; fee = ?ICP_FEE; memo = null; created_at_time = null }) } catch (e) { return #Err("fee transfer failed: " # Error.message(e)) };
+      switch (sweep) { case (#Err(e)) { return #Err("fee transfer failed: " # debug_show(e)) }; case (#Ok(_)) {} };
+      switch (findOp(id)) { case (?o) { putOp({ o with fee_paid_e8s = op.fee_e8s }) }; case null {} };
+      icrc3_add("guardian_op_fee", [("cid", #Nat(cid)), ("op", #Nat(id)), ("payer", pv(op.payer)), ("amount_e8s", #Nat(op.fee_e8s)), ("to", pv(fee_destination.owner))]);
+    };
     let r = await* perform(op, cid);
     // re-read: the op may have been cancelled or executed by a concurrent call across the awaits
     let latest = switch (findOp(id)) { case (?o) { o }; case null { op } };

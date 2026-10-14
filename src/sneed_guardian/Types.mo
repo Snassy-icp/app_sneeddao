@@ -75,7 +75,10 @@ module {
     staged_by : Principal;
     staged_at : Int;
     memo : Text;
-    fee_paid_e8s : Nat;
+    payer : Principal; // whom refunds and any surplus in the op's payment subaccount go to
+    fee_e8s : Nat; // the fee due (0 for ops on the guardian itself), paid to the op's payment subaccount
+    fee_paid_e8s : Nat; // swept to the fee destination at execution
+    refunded_e8s : Nat;
     approvals : [Principal];
     oks : [Principal];
     vetoes : [Principal];
@@ -150,9 +153,17 @@ module {
     #InsufficientAllowance : { allowance : Nat }; #TooOld; #CreatedInFuture : { ledger_time : Nat64 }; #Duplicate : { duplicate_of : Nat };
     #TemporarilyUnavailable; #GenericError : { error_code : Nat; message : Text };
   };
-  public type IcpLedger = actor {
-    icrc2_transfer_from : shared (TransferFromArgs) -> async { #Ok : Nat; #Err : TransferFromError };
+  public type TransferArgs = { from_subaccount : ?Blob; to : Account; amount : Nat; fee : ?Nat; memo : ?Blob; created_at_time : ?Nat64 };
+  public type TransferError = {
+    #BadFee : { expected_fee : Nat }; #BadBurn : { min_burn_amount : Nat }; #InsufficientFunds : { balance : Nat };
+    #TooOld; #CreatedInFuture : { ledger_time : Nat64 }; #Duplicate : { duplicate_of : Nat }; #TemporarilyUnavailable; #GenericError : { error_code : Nat; message : Text };
   };
+  public type IcpLedger = actor {
+    icrc1_balance_of : shared query (Account) -> async Nat;
+    icrc1_transfer : shared (TransferArgs) -> async { #Ok : Nat; #Err : TransferError };
+  };
+  /// Where an op's fee is paid: a subaccount of the guardian that only the guardian can move.
+  public type OpPayment = { account : Account; fee_e8s : Nat; amount_to_send_e8s : Nat; paid_e8s : Nat; refunded_e8s : Nat };
   public type SnsVersion = {
     archive_wasm_hash : Blob; root_wasm_hash : Blob; swap_wasm_hash : Blob; ledger_wasm_hash : Blob; governance_wasm_hash : Blob; index_wasm_hash : Blob;
   };

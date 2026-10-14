@@ -19,7 +19,7 @@ export const OpKind = IDL.Variant({
     set_approvers: IDL.Record({ approvers: IDL.Vec(IDL.Principal), threshold: IDL.Nat }),
 });
 const OpState = IDL.Variant({ pending: IDL.Null, approved: IDL.Int, vetoed: IDL.Null, executed: IDL.Int, failed: IDL.Text, expired: IDL.Null, cancelled: IDL.Null });
-const Op = IDL.Record({ id: IDL.Nat, child: IDL.Principal, kind: OpKind, staged_by: IDL.Principal, staged_at: IDL.Int, memo: IDL.Text, fee_paid_e8s: IDL.Nat, approvals: IDL.Vec(IDL.Principal), oks: IDL.Vec(IDL.Principal), vetoes: IDL.Vec(IDL.Principal), state: OpState });
+const Op = IDL.Record({ id: IDL.Nat, child: IDL.Principal, kind: OpKind, staged_by: IDL.Principal, staged_at: IDL.Int, memo: IDL.Text, payer: IDL.Principal, fee_e8s: IDL.Nat, fee_paid_e8s: IDL.Nat, refunded_e8s: IDL.Nat, approvals: IDL.Vec(IDL.Principal), oks: IDL.Vec(IDL.Principal), vetoes: IDL.Vec(IDL.Principal), state: OpState });
 const Config = IDL.Record({
     name: IDL.Text, approvers: IDL.Vec(IDL.Principal), threshold: IDL.Nat, admins: IDL.Vec(IDL.Principal), op_fee_e8s: IDL.Nat, premium_op_fee_e8s: IDL.Nat, fee_destination: Account, sneed_premium: IDL.Opt(IDL.Principal),
     icp_ledger: IDL.Principal, sns_wasm: IDL.Principal, op_ttl_ns: IDL.Nat, self_window_ns: IDL.Nat, status_interval_s: IDL.Nat, low_cycles_threshold: IDL.Nat, cycle_reserve: IDL.Nat, paused: IDL.Bool,
@@ -39,11 +39,13 @@ export const guardianIdl = ({ IDL }) => IDL.Service({
     list_ops_for: IDL.Func([IDL.Principal], [IDL.Vec(Op)], ['query']),
     get_cycles_report: IDL.Func([IDL.Opt(IDL.Nat)], [IDL.Vec(CyclesRow)], ['query']),
     list_upgradable: IDL.Func([], [IDL.Vec(Upgradable)], ['query']),
-    validate_approve_op: IDL.Func([IDL.Nat], [Res(IDL.Text)], ['query']),
+    validate_approve_op: IDL.Func([IDL.Nat], [Res(IDL.Text)], []),
+    get_op_payment: IDL.Func([IDL.Nat], [Res(IDL.Record({ account: Account, fee_e8s: IDL.Nat, amount_to_send_e8s: IDL.Nat, paid_e8s: IDL.Nat, refunded_e8s: IDL.Nat }))], []),
+    refund_op: IDL.Func([IDL.Nat], [Res(IDL.Nat)], []),
     get_text_log: IDL.Func([IDL.Nat], [IDL.Vec(IDL.Text)], ['query']),
     is_approver: IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
     register: IDL.Func([IDL.Principal, Kind, Policy, IDL.Opt(IDL.Principal), IDL.Text], [Res(Child)], []),
-    stage_op: IDL.Func([IDL.Principal, OpKind, IDL.Text], [Res(Op)], []),
+    stage_op: IDL.Func([IDL.Principal, OpKind, IDL.Text, IDL.Opt(IDL.Principal)], [Res(Op)], []),
     approve_op: IDL.Func([IDL.Nat], [Res(Op)], []),
     ok_op: IDL.Func([IDL.Nat], [Res(Op)], []),
     veto_op: IDL.Func([IDL.Nat], [Res(Op)], []),

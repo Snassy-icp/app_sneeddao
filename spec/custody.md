@@ -82,18 +82,28 @@ stage ──► pending ──approvals ≥ threshold──► approved(at) ─�
           (any state but executed) ──ttl──► expired;  staged_by / approver ──► cancelled
 ```
 
-- `stage_op(child, kind, memo)`: anyone. Charges the op fee (ICRC-2 pull of ICP from
-  the caller; the premium rate for Sneed Premium members; 0 skips the pull) and
-  forwards it to the fee destination (the RLL). Validates the op against the child's
-  kind and the blessed lists.
+- `stage_op(child, kind, memo, payer)`: anyone, free. Validates the op against the
+  child's kind and the blessed lists, records the payer (the caller unless named) and
+  the fee due (the premium rate for Sneed Premium members; 0 for ops on the guardian
+  itself). The fee is then paid by a plain transfer to the op's **payment subaccount**
+  of the guardian ('o', version 1, op id big-endian in the last 8 bytes), which only
+  the guardian can move. `get_op_payment(id)` tells where and how much.
 - `approve_op(id)`: approvers only (the governance canisters, which call it through a
   GNSF when a proposal passes). At `threshold` approvals the op is approved and the
   veto window starts.
 - `ok_op(id)`, `veto_op(id)`: the child's guardians. Vetoes reaching
   `vetoes_to_block` block the op for good.
+- `validate_approve_op(id)`, the generic function's validator, refuses while the fee is
+  not in the payment subaccount, so an approval proposal cannot even be filed for an
+  unpaid op. (It is an update method: it reads the ICP ledger.)
 - `execute_op(id)`: anyone, once the window has passed, the oks are in and the vetoes
-  are short. The action runs; the result is recorded. A failed op stays failed; stage
-  a new one.
+  are short. First the fee is swept from the payment subaccount to the fee destination
+  (the RLL): it pays for the attempt, so a failed op keeps it. Then the action runs;
+  the result is recorded. A failed op stays failed; stage a new one.
+- `refund_op(id)`: anyone, for an op that is no longer open (vetoed, failed, expired,
+  cancelled, or executed with a surplus): whatever is left in the payment subaccount
+  goes to the recorded payer. Anyone may pay on the payer's behalf; the guardian never
+  attributes deposits to senders.
 - `cancel_op(id)`: the stager or an approver, before execution.
 - Ops not executed within `op_ttl_ns` (30 days) expire.
 
@@ -129,9 +139,11 @@ these; topping up is theirs to do (anyone can deposit cycles into any canister).
 |---|---|---|
 | registration | 0 | nobody |
 | blessed auto-upgrade | 0 | nobody |
-| staging an op | `op_fee_e8s` (1 ICP), `premium_op_fee_e8s` (0.5 ICP) | the stager |
+| an op | `op_fee_e8s` (1 ICP), `premium_op_fee_e8s` (0.5 ICP) | the op's payer, into the op's payment subaccount; swept at execution |
 
-Fees are set by `#set_config` ops and go to the RLL. A project that only ever needs
+Fees are set by `#set_config` ops and go to the RLL. The payment-subaccount pattern
+("pay first, the validator checks, the execution charges") works for any DAO service
+granted by proposal, not only custody. A project that only ever needs
 blessed upgrades pays nothing; the DAO carries no cost for them either.
 
 ## Trial period: admins
