@@ -12,6 +12,8 @@ import Buffer "mo:base/Buffer";
 import Error "mo:base/Error";
 import Cycles "mo:base/ExperimentalCycles";
 import Text "mo:base/Text";
+import Debug "mo:base/Debug";
+import Sha256 "mo:sha2/Sha256";
 
 import T "../sneed_bots/sneed_icp_staking_bot/Types";
 import PremiumClient "../PremiumClient";
@@ -333,6 +335,19 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     var userWalletStable: [(Principal, [UserCanisterEntry])] = [];
     transient var userWalletMap = HashMap.HashMap<Principal, [UserCanisterEntry]>(10, Principal.equal, Principal.hash);
 
+    // Canisters the factory created for a mint that did not complete and could
+    // not clean up (stop + delete failed, or the hand-over to the minter
+    // failed). The factory is their only controller; admins see them through
+    // getOrphanCanisters and settle them by hand.
+    type OrphanCanister = {
+        canisterId: Principal;
+        minter: Principal;
+        appId: Text;
+        recordedAt: Int;
+        reason: Text;
+    };
+    var orphanCanisters: [OrphanCanister] = [];
+
     // ============================================
     // PUBLISHER STATE
     // ============================================
@@ -359,6 +374,11 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
     // IC Management canister (for updating controllers after spawning)
     transient let ic: T.ManagementCanister = actor("aaaaa-aa");
+    // The same management canister, for discarding a canister whose mint failed
+    transient let icLifecycle: actor {
+        stop_canister: shared { canister_id: Principal } -> async ();
+        delete_canister: shared { canister_id: Principal } -> async ();
+    } = actor("aaaaa-aa");
     
     // ICP Ledger canister
     transient let ledger: T.LedgerActor = actor(T.LEDGER_CANISTER_ID);
@@ -551,15 +571,61 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         Array.find<AppVersion>(versions, func(v) { v.major == major and v.minor == minor and v.patch == patch });
     };
 
+    // True when version a is higher than version b (major, then minor, then patch)
+    func versionGreater(a: AppVersion, b: AppVersion): Bool {
+        if (a.major != b.major) { return a.major > b.major };
+        if (a.minor != b.minor) { return a.minor > b.minor };
+        a.patch > b.patch;
+    };
+
+    // The highest version (semantic order) that has a WASM blob
     func getLatestVersionWithWasm(appId: Text): ?AppVersion {
         let versions = getVersionsForApp(appId);
+        var best: ?AppVersion = null;
         for (v in versions.vals()) {
             let key = makeVersionKey(appId, v.major, v.minor, v.patch);
             if (appVersionWasmsMap.get(key) != null) {
-                return ?v;
+                switch (best) {
+                    case null { best := ?v };
+                    case (?b) { if (versionGreater(v, b)) { best := ?v } };
+                };
             };
         };
-        null;
+        best;
+    };
+
+    // -- WASM checks --
+
+    // A WASM module ("\00asm") or a gzipped one (1f 8b), as install_code accepts
+    func looksLikeWasm(wasm: Blob): Bool {
+        let b = Blob.toArray(wasm);
+        if (b.size() >= 4 and b[0] == 0x00 and b[1] == 0x61 and b[2] == 0x73 and b[3] == 0x6d) { return true };
+        b.size() >= 2 and b[0] == 0x1f and b[1] == 0x8b;
+    };
+
+    func hexOf(b: Blob): Text {
+        let digits = Iter.toArray("0123456789abcdef".chars());
+        var out = "";
+        for (byte in b.vals()) {
+            let n = Nat8.toNat(byte);
+            out #= Text.fromChar(digits[n / 16]) # Text.fromChar(digits[n % 16]);
+        };
+        out;
+    };
+
+    func wasmSha256Hex(wasm: Blob): Text { hexOf(Sha256.fromBlob(#sha256, wasm)) };
+
+    // The hash to store for a version given its declared hash and the actual
+    // blob: an empty declaration takes the actual sha256; any other declaration
+    // must equal it (hex, case-insensitive), otherwise the call traps.
+    func checkedWasmHash(declared: Text, wasm: Blob): Text {
+        let actual = wasmSha256Hex(wasm);
+        let d = Text.toLowercase(Text.trim(declared, #char ' '));
+        if (d == "") { return actual };
+        if (d != actual) {
+            Debug.trap("wasmHash mismatch: declared " # declared # " but the uploaded wasm has sha256 " # actual);
+        };
+        actual;
     };
 
     // -- Mint Log Helpers --
@@ -1477,13 +1543,157 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         };
     };
 
+    // -- Cycles pricing --
+
+    // Cycles the CMC currently gives per ICP, or 0 when the rate is unavailable
+    func currentCyclesPerIcp(): async* Nat {
+        try {
+            let rateResponse = await cmc.get_icp_xdr_conversion_rate();
+            Nat64.toNat(rateResponse.data.xdr_permyriad_per_icp) * 100_000_000;
+        } catch (_) { 0 };
+    };
+
+    // ICP (e8s) that buys `cycles` at `cyclesPerIcp` with 5% headroom, rounded up
+    func icpE8sForCycles(cycles: Nat, cyclesPerIcp: Nat): Nat64 {
+        let den = cyclesPerIcp * 100;
+        Nat64.fromNat((cycles * 100_000_000 * 105 + den - 1) / den);
+    };
+
+    type PaymentPlan = {
+        icpForCycles: Nat64;      // converted to cycles through the CMC
+        totalTransferFees: Nat64; // every ledger fee of the mint, the CMC transfer's included
+        profit: Nat64;            // what is left for the DAO / the publisher
+    };
+
+    // Splits a price paid with `userTransfers` transfers out of the caller's
+    // payment subaccount, plus the factory's own transfer of the cycles ICP
+    // from its main account to the CMC. The ICP for cycles is at least what
+    // buys the cycles a creation spends (canisterCreationCycles) and at most
+    // what buys targetCyclesAmount. A price that cannot cover the minimum, or
+    // an unknown rate, is refused: the factory never mints at its own expense
+    // while payment is required. Nothing moves here.
+    func planPayment(price: Nat64, userTransfers: Nat64): async* { #Ok: PaymentPlan; #Err: Text } {
+        let cyclesPerIcp = await* currentCyclesPerIcp();
+        if (cyclesPerIcp == 0) {
+            return #Err("The ICP/cycles rate is unavailable from the CMC, so the cycles a new canister costs cannot be priced; nothing was charged, please retry later");
+        };
+        let minimum = icpE8sForCycles(canisterCreationCycles, cyclesPerIcp);
+        let desired = icpE8sForCycles(Nat.max(targetCyclesAmount, canisterCreationCycles), cyclesPerIcp);
+        let totalTransferFees: Nat64 = T.ICP_FEE * (userTransfers + 1);
+        let available: Nat64 = if (price > totalTransferFees) { price - totalTransferFees } else { 0 };
+        if (available < minimum) {
+            return #Err("The price of " # Nat64.toText(price) # " e8s is too low to cover the cycles a new canister costs (at least " # Nat64.toText(minimum + totalTransferFees) # " e8s including ledger fees); nothing was charged");
+        };
+        let icpForCycles: Nat64 = if (desired > available) { available } else { desired };
+        #Ok({ icpForCycles = icpForCycles; totalTransferFees = totalTransferFees; profit = available - icpForCycles });
+    };
+
+    // -- Canister creation --
+
+    transient let EMPTY_ARGS: Blob = "\44\49\44\4c\00\00"; // DIDL header for empty args
+
+    func recordOrphan(canisterId: Principal, minter: Principal, appId: Text, reason: Text) {
+        orphanCanisters := Array.append(orphanCanisters, [{
+            canisterId = canisterId;
+            minter = minter;
+            appId = appId;
+            recordedAt = Time.now();
+            reason = reason;
+        }]);
+    };
+
+    // Stops and deletes a canister the factory created for a mint that did not
+    // complete (the factory is its only controller). If that fails, the
+    // canister is recorded for the admins.
+    func discardCanister(canisterId: Principal, minter: Principal, appId: Text, reason: Text): async* () {
+        try {
+            await icLifecycle.stop_canister({ canister_id = canisterId });
+            await icLifecycle.delete_canister({ canister_id = canisterId });
+        } catch (e) {
+            recordOrphan(canisterId, minter, appId, reason # "; deleting it failed: " # Error.message(e));
+        };
+    };
+
+    // Creates a canister controlled by the factory alone (so nobody else can
+    // change it before it is handed over) and installs `wasm`. A canister whose
+    // installation fails is discarded.
+    func createAndInstall(minter: Principal, appId: Text, wasm: Blob): async* { #Ok: Principal; #Err: Text } {
+        let canisterId = try {
+            let createResult = await (with cycles = canisterCreationCycles) ic.create_canister({
+                settings = ?{
+                    controllers = ?[Principal.fromActor(this)];
+                    compute_allocation = null;
+                    memory_allocation = null;
+                    freezing_threshold = null;
+                };
+            });
+            createResult.canister_id;
+        } catch (e) {
+            return #Err("Creating the canister failed: " # Error.message(e));
+        };
+        try {
+            await ic.install_code({
+                mode = #install;
+                canister_id = canisterId;
+                wasm_module = wasm;
+                arg = EMPTY_ARGS;
+            });
+            #Ok(canisterId);
+        } catch (e) {
+            let msg = "Installing the wasm failed: " # Error.message(e);
+            await* discardCanister(canisterId, minter, appId, msg);
+            #Err(msg);
+        };
+    };
+
+    // Makes `owner` the canister's only controller (the factory steps down).
+    // On failure the canister is recorded for the admins, who can hand it over.
+    func handOver(canisterId: Principal, owner: Principal, appId: Text): async* { #Ok; #Err: Text } {
+        try {
+            await ic.update_settings({
+                canister_id = canisterId;
+                settings = {
+                    controllers = ?[owner];
+                    compute_allocation = null;
+                    memory_allocation = null;
+                    freezing_threshold = null;
+                };
+            });
+            #Ok;
+        } catch (e) {
+            let msg = "Canister " # Principal.toText(canisterId) # " was created and installed but handing control to you failed (" # Error.message(e) # "); it is recorded for the admins to hand over";
+            recordOrphan(canisterId, owner, appId, msg);
+            #Err(msg);
+        };
+    };
+
+    // Admins: canisters of failed mints the factory could not clean up
+    public query ({ caller }) func getOrphanCanisters(): async [OrphanCanister] {
+        assert(isAdmin(caller));
+        orphanCanisters;
+    };
+
     // Create a new neuron manager canister for the caller
     // Users can create multiple managers (one neuron per manager)
     // Payment flow:
     // 1. User sends ICP to their subaccount on this factory
     // 2. User calls createNeuronManager
-    // 3. Factory checks balance, calculates ICP for cycles dynamically, processes payment, creates canister
+    // 3. Factory checks the wasm, the balance and the price, moves the ICP for
+    //    cycles to its main account, creates and installs the canister, takes
+    //    the creation fee, hands the canister over and buys the cycles back.
+    //    If creation fails, the payment is returned to the subaccount.
     public shared ({ caller }) func createNeuronManager(): async T.CreateManagerResult {
+        // Check that we have a WASM module to install (before any payment)
+        let wasm = switch (managerWasm) {
+            case null {
+                return #Err(#CanisterCreationFailed("No manager WASM uploaded. Admin must upload WASM first."));
+            };
+            case (?w) { w };
+        };
+        if (not looksLikeWasm(wasm)) {
+            return #Err(#CanisterCreationFailed("The manager WASM is not a WebAssembly module"));
+        };
+
         // Check cycles
         if (Cycles.balance() < canisterCreationCycles) {
             return #Err(#InsufficientCycles);
@@ -1495,10 +1705,10 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         var trackedIcpProfitE8s: Nat64 = 0;
         var trackedIcpTransferFeesE8s: Nat64 = 0;
         var trackedCyclesReceivedFromCmc: Nat = 0;
+        var wasPremium = false;
         let cyclesBalanceBefore = Cycles.balance();
 
-        // Process payment if required
-        if (paymentRequired) {
+        let canisterId: Principal = if (paymentRequired) {
             let userSubaccount = principalToSubaccount(caller);
 
             // Serialize with any other operation on this caller's payment
@@ -1513,10 +1723,11 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             // Check if user is a Sneed Premium member for discounted pricing
             let isPremiumMember: Bool = switch (sneedPremiumCanisterId) {
                 case null { false };
-                case (?canisterId) {
-                    await* PremiumClient.isPremium(premiumCache, canisterId, caller);
+                case (?premCanisterId) {
+                    await* PremiumClient.isPremium(premiumCache, premCanisterId, caller);
                 };
             };
+            wasPremium := isPremiumMember;
             
             // Determine the applicable fee (premium members get a discount)
             let applicableFeeE8s: Nat64 = if (isPremiumMember) {
@@ -1538,63 +1749,57 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 }));
             };
             
+            // Two transfers out of the subaccount: ICP for cycles and the creation fee
+            let plan = switch (await* planPayment(applicableFeeE8s, 2)) {
+                case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
+                case (#Ok(p)) { p };
+            };
+            let actualIcpForCycles = plan.icpForCycles;
+            let feeAmount = plan.profit;
             trackedIcpPaidE8s := applicableFeeE8s;
-            
-            let icpForCyclesE8s = await calculateIcpForCycles(targetCyclesAmount);
-            let rawIcpForCycles: Nat64 = if (icpForCyclesE8s > 0) {
-                icpForCyclesE8s;
-            } else {
-                2_000_000;
-            };
-            
-            let totalTransferFees: Nat64 = T.ICP_FEE * 2;
-            
-            // Cap cycles budget so it doesn't exceed the price minus transfer fees
-            let maxForCycles: Nat64 = if (applicableFeeE8s > totalTransferFees + T.ICP_FEE) {
-                applicableFeeE8s - totalTransferFees;
-            } else { 0 };
-            let actualIcpForCycles: Nat64 = if (rawIcpForCycles > maxForCycles) { maxForCycles } else { rawIcpForCycles };
             trackedIcpForCyclesE8s := actualIcpForCycles;
-            
-            let feeAmount: Nat64 = if (applicableFeeE8s > actualIcpForCycles + totalTransferFees) {
-                applicableFeeE8s - actualIcpForCycles - totalTransferFees;
-            } else {
-                0;
-            };
-            
             trackedIcpProfitE8s := feeAmount;
-            trackedIcpTransferFeesE8s := totalTransferFees;
+            trackedIcpTransferFeesE8s := plan.totalTransferFees;
             
             // Payment transfers. The subaccount is balance-checked and locked, so a
             // failure here is a genuine ledger error rather than a drain. Exact
-            // accounting: either every transfer succeeds and the mint proceeds, or
+            // accounting: either every step succeeds and the mint completes, or
             // the mint aborts and everything already moved is returned to the
             // caller's subaccount (less ledger fees). To make the undo possible,
-            // the transfer into an account this canister controls runs first and
-            // the single external transfer (the creation fee) runs last, so nothing
-            // leaves the canister until the internal step has landed.
+            // the transfer into an account this canister controls runs first, the
+            // canister is created and installed next (the factory its only
+            // controller), and the single external transfer (the creation fee)
+            // runs only once the canister is installed, before the hand-over.
 
-            // Step 1: Transfer ICP for cycles to factory's main account (for later CMC top-up)
-            if (actualIcpForCycles > 0) {
-                let cyclesTransfer = await ledger.icrc1_transfer({
-                    to = { owner = Principal.fromActor(this); subaccount = null };
-                    fee = ?Nat64.toNat(T.ICP_FEE);
-                    memo = null;
-                    from_subaccount = ?userSubaccount;
-                    created_at_time = null;
-                    amount = Nat64.toNat(actualIcpForCycles);
-                });
-
-                switch (cyclesTransfer) {
-                    case (#Err(_)) {
-                        // Nothing has moved yet.
-                        return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer ICP for cycles", 0)));
-                    };
-                    case (#Ok(_)) {};
+            // Step 1: ICP for cycles, plus the fee of its later transfer to the
+            // CMC, to the factory's main account
+            let cyclesLeg: Nat64 = actualIcpForCycles + T.ICP_FEE;
+            let cyclesTransfer = await ledger.icrc1_transfer({
+                to = { owner = Principal.fromActor(this); subaccount = null };
+                fee = ?Nat64.toNat(T.ICP_FEE);
+                memo = null;
+                from_subaccount = ?userSubaccount;
+                created_at_time = null;
+                amount = Nat64.toNat(cyclesLeg);
+            });
+            switch (cyclesTransfer) {
+                case (#Err(_)) {
+                    // Nothing has moved yet.
+                    return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer ICP for cycles", 0)));
                 };
+                case (#Ok(_)) {};
             };
 
-            // Step 2: Transfer the creation fee to the fee destination (external, last)
+            // Step 2: create the canister and install the manager
+            let newId = switch (await* createAndInstall(caller, "icp-staking-bot", wasm)) {
+                case (#Err(msg)) {
+                    let stuck = await* undoPaymentTransfers(userSubaccount, [(null, cyclesLeg)]);
+                    return #Err(#CanisterCreationFailed(paymentAbortMessage(msg, stuck)));
+                };
+                case (#Ok(id)) { id };
+            };
+
+            // Step 3: Transfer the creation fee to the fee destination (external, last)
             if (feeAmount > 0) {
                 let feeTransfer = await ledger.icrc1_transfer({
                     to = feeDestination;
@@ -1607,141 +1812,104 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
                 switch (feeTransfer) {
                     case (#Err(_)) {
-                        // Undo step 1 so the caller is not left partially charged.
-                        let stuck = await* undoPaymentTransfers(userSubaccount, [(null, actualIcpForCycles)]);
+                        // Discard the canister and undo step 1 so the caller is not left partially charged.
+                        await* discardCanister(newId, caller, "icp-staking-bot", "creation fee transfer failed");
+                        let stuck = await* undoPaymentTransfers(userSubaccount, [(null, cyclesLeg)]);
                         return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer creation fee", stuck)));
                     };
                     case (#Ok(_)) {};
                 };
             };
+
+            // Step 4: the caller becomes the only controller
+            switch (await* handOver(newId, caller, "icp-staking-bot")) {
+                case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
+                case (#Ok) {};
+            };
             
-            // Step 3: Top up factory with cycles from the ICP
-            if (actualIcpForCycles > 0) {
-                let topUpResult = await* topUpSelfWithCycles(actualIcpForCycles);
-                switch (topUpResult) {
-                    case (#Err(_)) {
-                        // Log but don't fail canister creation - we still have cycles from the fee
-                    };
-                    case (#Ok(cyclesReceived)) {
-                        // Track: Cycles received from CMC
-                        trackedCyclesReceivedFromCmc := cyclesReceived;
-                    };
+            // Step 5: Top up factory with cycles from the ICP
+            let topUpResult = await* topUpSelfWithCycles(actualIcpForCycles);
+            switch (topUpResult) {
+                case (#Err(_)) {
+                    // The ICP stays in the main account (adminTopUpCycles can convert it)
+                };
+                case (#Ok(cyclesReceived)) {
+                    // Track: Cycles received from CMC
+                    trackedCyclesReceivedFromCmc := cyclesReceived;
                 };
             };
+            newId;
             } finally {
                 unlockPayment(caller);
             };
-        };
-
-        // Check that we have a WASM module to install
-        let wasm = switch (managerWasm) {
-            case null {
-                return #Err(#CanisterCreationFailed("No manager WASM uploaded. Admin must upload WASM first."));
+        } else {
+            // Payment turned off by an admin: the factory pays the cycles
+            let newId = switch (await* createAndInstall(caller, "icp-staking-bot", wasm)) {
+                case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
+                case (#Ok(id)) { id };
             };
-            case (?w) { w };
+            switch (await* handOver(newId, caller, "icp-staking-bot")) {
+                case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
+                case (#Ok) {};
+            };
+            newId;
         };
 
         // Track cycles spent on creation
         let trackedCyclesSpentOnCreation = canisterCreationCycles;
 
-        // Now create the canister using management canister
-        try {
-            let factoryPrincipal = Principal.fromActor(this);
-            
-            // Step 1: Create a new empty canister with factory + user as controllers
-            // Factory needs to be a controller to install the WASM
-            let createResult = await (with cycles = canisterCreationCycles) ic.create_canister({
-                settings = ?{
-                    controllers = ?[caller, factoryPrincipal];
-                    compute_allocation = null;
-                    memory_allocation = null;
-                    freezing_threshold = null;
-                };
-            });
-            
-            let canisterId = createResult.canister_id;
+        // Track cycles balance after creation
+        let cyclesBalanceAfter = Cycles.balance();
 
-            // Step 2: Install the WASM code (empty Candid args: DIDL\00\00)
-            let emptyArgs: Blob = "\44\49\44\4c\00\00"; // DIDL header for empty args
-            await ic.install_code({
-                mode = #install;
-                canister_id = canisterId;
-                wasm_module = wasm;
-                arg = emptyArgs;
-            });
-            
-            // Step 3: Remove factory from controllers, leaving only the user
-            await ic.update_settings({
-                canister_id = canisterId;
-                settings = {
-                    controllers = ?[caller];
-                    compute_allocation = null;
-                    memory_allocation = null;
-                    freezing_threshold = null;
-                };
-            });
+        // Compute the account ID for the new canister
+        let accountId = computeAccountId(canisterId, null);
 
-            // Track cycles balance after creation
-            let cyclesBalanceAfter = Cycles.balance();
-
-            // Compute the account ID for the new canister
-            let accountId = computeAccountId(canisterId, null);
-
-            // Register the manager to the caller's wallet
-            let createdAt = Time.now();
-            walletAdd(caller, canisterId, "icp-staking-bot");
-            
-            // Add to creation log
-            let logEntry: T.CreationLogEntry = {
-                canisterId = canisterId;
-                caller = caller;
-                createdAt = createdAt;
-                index = creationLogNextIndex;
-            };
-            creationLog := Array.append(creationLog, [logEntry]);
-            creationLogNextIndex += 1;
-            
-            // Add to financial log
-            let financialEntry: T.FinancialLogEntry = {
-                canisterId = canisterId;
-                index = financialLogNextIndex;
-                createdAt = createdAt;
-                icpPaidE8s = trackedIcpPaidE8s;
-                icpForCyclesE8s = trackedIcpForCyclesE8s;
-                icpProfitE8s = trackedIcpProfitE8s;
-                icpTransferFeesE8s = trackedIcpTransferFeesE8s;
-                cyclesReceivedFromCmc = trackedCyclesReceivedFromCmc;
-                cyclesSpentOnCreation = trackedCyclesSpentOnCreation;
-                cyclesBalanceBefore = cyclesBalanceBefore;
-                cyclesBalanceAfter = cyclesBalanceAfter;
-            };
-            financialLog := Array.append(financialLog, [financialEntry]);
-            financialLogNextIndex += 1;
-            
-            // Update aggregate statistics
-            totalIcpPaidE8s += Nat64.toNat(trackedIcpPaidE8s);
-            totalIcpForCyclesE8s += Nat64.toNat(trackedIcpForCyclesE8s);
-            totalIcpProfitE8s += Nat64.toNat(trackedIcpProfitE8s);
-            totalIcpTransferFeesE8s += Nat64.toNat(trackedIcpTransferFeesE8s);
-            totalCyclesReceivedFromCmc += trackedCyclesReceivedFromCmc;
-            totalCyclesSpentOnCreation += trackedCyclesSpentOnCreation;
-
-            // Bridge: Record in immutable mint log
-            let isPremiumMember: Bool = switch (sneedPremiumCanisterId) {
-                case null { false };
-                case (?premCanisterId) {
-                    await* PremiumClient.isPremium(premiumCache, premCanisterId, caller);
-                };
-            };
-            addMintLogEntry(canisterId, caller, "icp-staking-bot", 0, 0, currentVersion.major, currentVersion.minor, currentVersion.patch, trackedIcpPaidE8s, isPremiumMember, trackedIcpProfitE8s, 0);
-
-            #Ok({
-                canisterId = canisterId;
-                accountId = accountId;
-            });
-        } catch (e) {
-            #Err(#CanisterCreationFailed(Error.message(e)));
+        // Register the manager to the caller's wallet
+        let createdAt = Time.now();
+        walletAdd(caller, canisterId, "icp-staking-bot");
+        
+        // Add to creation log
+        let logEntry: T.CreationLogEntry = {
+            canisterId = canisterId;
+            caller = caller;
+            createdAt = createdAt;
+            index = creationLogNextIndex;
         };
+        creationLog := Array.append(creationLog, [logEntry]);
+        creationLogNextIndex += 1;
+        
+        // Add to financial log
+        let financialEntry: T.FinancialLogEntry = {
+            canisterId = canisterId;
+            index = financialLogNextIndex;
+            createdAt = createdAt;
+            icpPaidE8s = trackedIcpPaidE8s;
+            icpForCyclesE8s = trackedIcpForCyclesE8s;
+            icpProfitE8s = trackedIcpProfitE8s;
+            icpTransferFeesE8s = trackedIcpTransferFeesE8s;
+            cyclesReceivedFromCmc = trackedCyclesReceivedFromCmc;
+            cyclesSpentOnCreation = trackedCyclesSpentOnCreation;
+            cyclesBalanceBefore = cyclesBalanceBefore;
+            cyclesBalanceAfter = cyclesBalanceAfter;
+        };
+        financialLog := Array.append(financialLog, [financialEntry]);
+        financialLogNextIndex += 1;
+        
+        // Update aggregate statistics
+        totalIcpPaidE8s += Nat64.toNat(trackedIcpPaidE8s);
+        totalIcpForCyclesE8s += Nat64.toNat(trackedIcpForCyclesE8s);
+        totalIcpProfitE8s += Nat64.toNat(trackedIcpProfitE8s);
+        totalIcpTransferFeesE8s += Nat64.toNat(trackedIcpTransferFeesE8s);
+        totalCyclesReceivedFromCmc += trackedCyclesReceivedFromCmc;
+        totalCyclesSpentOnCreation += trackedCyclesSpentOnCreation;
+
+        // Bridge: Record in immutable mint log
+        addMintLogEntry(canisterId, caller, "icp-staking-bot", 0, 0, currentVersion.major, currentVersion.minor, currentVersion.patch, trackedIcpPaidE8s, wasPremium, trackedIcpProfitE8s, 0);
+
+        #Ok({
+            canisterId = canisterId;
+            accountId = accountId;
+        });
     };
     
     // Admin function to manually top up factory with cycles from its ICP balance
@@ -2168,8 +2336,19 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         // Check for duplicate version number
         let dup = Array.find<AppVersion>(existing, func(v) { v.major == input.major and v.minor == input.minor and v.patch == input.patch });
         assert(dup == null);
-        // Prepend (newest first)
-        setVersionsForApp(appId, Array.append([version], existing));
+        // Insert in descending version order (highest first), so the list's
+        // first version with a wasm is the one mints default to
+        let buf = Buffer.Buffer<AppVersion>(existing.size() + 1);
+        var inserted = false;
+        for (v in existing.vals()) {
+            if (not inserted and versionGreater(version, v)) {
+                buf.add(version);
+                inserted := true;
+            };
+            buf.add(v);
+        };
+        if (not inserted) { buf.add(version) };
+        setVersionsForApp(appId, Buffer.toArray(buf));
     };
 
     // Update version metadata (publisher owner or admin)
@@ -2181,13 +2360,18 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             case null { 0 };
             case (?blob) { blob.size() };
         };
+        // With a wasm already uploaded, the hash must match it (empty = the actual hash)
+        let newHash = switch (appVersionWasmsMap.get(key)) {
+            case null { input.wasmHash };
+            case (?blob) { checkedWasmHash(input.wasmHash, blob) };
+        };
         setVersionsForApp(appId, Array.map<AppVersion, AppVersion>(versions, func(v) {
             if (v.major == major and v.minor == minor and v.patch == patch) {
                 {
                     major = input.major;
                     minor = input.minor;
                     patch = input.patch;
-                    wasmHash = input.wasmHash;
+                    wasmHash = newHash;
                     wasmUrl = input.wasmUrl;
                     sourceUrl = input.sourceUrl;
                     releaseNotes = input.releaseNotes;
@@ -2214,7 +2398,13 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     public shared ({ caller }) func uploadAppVersionWasm(appId: Text, major: Nat, minor: Nat, patch: Nat, wasm: Blob): async () {
         assertAppVersionAuth(caller, appId);
         // Ensure version exists
-        assert(findVersion(appId, major, minor, patch) != null);
+        let existingVersion = switch (findVersion(appId, major, minor, patch)) {
+            case null { Debug.trap("version not found") };
+            case (?v) { v };
+        };
+        if (not looksLikeWasm(wasm)) { Debug.trap("not a WebAssembly module (no wasm or gzip magic bytes)") };
+        // The declared hash must be the sha256 of this blob (an empty one is filled in)
+        let verifiedHash = checkedWasmHash(existingVersion.wasmHash, wasm);
         let key = makeVersionKey(appId, major, minor, patch);
         appVersionWasmsMap.put(key, wasm);
         // Update wasmSize in version metadata
@@ -2225,7 +2415,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     major = v.major;
                     minor = v.minor;
                     patch = v.patch;
-                    wasmHash = v.wasmHash;
+                    wasmHash = verifiedHash;
                     wasmUrl = v.wasmUrl;
                     sourceUrl = v.sourceUrl;
                     releaseNotes = v.releaseNotes;
@@ -2400,7 +2590,8 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // ============================================
 
     // Mint a canister for any app
-    // If version is null, uses latest version with WASM blob
+    // If version is null, uses the highest version with a WASM blob
+    // Only apps of verified publishers (and Sneed DAO's own, publisher 0) mint.
     public shared ({ caller }) func mintCanister(
         appId: Text,
         versionMajor: ?Nat,
@@ -2416,6 +2607,11 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         let publisher = switch (publisherMap.get(app.publisherId)) {
             case null { return #Err(#PublisherNotFound) };
             case (?p) { p };
+        };
+        // Anyone can create a publisher and an app; only an admin's verification
+        // lets the factory spend its cycles on that publisher's apps.
+        if (app.publisherId != 0 and not publisher.verified) {
+            return #Err(#PublisherNotVerified);
         };
 
         // 2. Resolve version
@@ -2440,6 +2636,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             case null { return #Err(#NoWasmForVersion) };
             case (?w) { w };
         };
+        if (not looksLikeWasm(wasm)) {
+            return #Err(#CanisterCreationFailed("The wasm of this version is not a WebAssembly module"));
+        };
 
         // 4. Check cycles
         if (Cycles.balance() < canisterCreationCycles) {
@@ -2457,8 +2656,8 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         let cyclesBalanceBefore = Cycles.balance();
         var wasPremium = false;
 
-        // 5. Process payment
-        if (paymentRequired) {
+        // 5. Process payment and create the canister
+        let newCanisterId: Principal = if (paymentRequired) {
             let userSubaccount = principalToSubaccount(caller);
 
             // Serialize with any other operation on this caller's payment
@@ -2495,244 +2694,203 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     provided = Nat64.fromNat(userBalance);
                 }));
             };
-            
-            trackedIcpPaidE8s := applicableFeeE8s;
-            
-            let icpForCycles = await calculateIcpForCycles(targetCyclesAmount);
-            let rawIcpForCycles: Nat64 = if (icpForCycles > 0) { icpForCycles } else { 2_000_000 };
 
             let isSneedDao = app.publisherId == 0;
+            // Transfers out of the subaccount: ICP for cycles, then the DAO
+            // profit (Sneed DAO) or the publisher share and the DAO cut
             let numTransfers: Nat64 = if (isSneedDao) { 2 } else { 3 };
-            let totalTransferFees = T.ICP_FEE * numTransfers;
-
-            // Cap cycles budget so it doesn't exceed the price minus transfer fees
-            let maxForCycles: Nat64 = if (applicableFeeE8s > totalTransferFees + T.ICP_FEE) {
-                applicableFeeE8s - totalTransferFees;
-            } else { 0 };
-            let actualIcpForCycles: Nat64 = if (rawIcpForCycles > maxForCycles) { maxForCycles } else { rawIcpForCycles };
+            let plan = switch (await* planPayment(applicableFeeE8s, numTransfers)) {
+                case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
+                case (#Ok(p)) { p };
+            };
+            let actualIcpForCycles = plan.icpForCycles;
+            let profit = plan.profit;
+            trackedIcpPaidE8s := applicableFeeE8s;
             trackedIcpForCyclesE8s := actualIcpForCycles;
+            trackedIcpTransferFeesE8s := plan.totalTransferFees;
+            trackedIcpProfitE8s := profit;
 
-            let profit: Nat64 = if (applicableFeeE8s > actualIcpForCycles + totalTransferFees) {
-                applicableFeeE8s - actualIcpForCycles - totalTransferFees;
-            } else { 0 };
-            trackedIcpTransferFeesE8s := totalTransferFees;
+            // Split the profit: all to the fee destination for Sneed DAO apps,
+            // otherwise a DAO cut and the publisher's share
+            let daoCut: Nat64 = if (isSneedDao) { profit } else {
+                Nat64.fromNat((Nat64.toNat(profit) * getEffectiveDaoCutBps(app)) / 10000);
+            };
+            let publisherShare: Nat64 = profit - daoCut;
+            trackedDaoCutE8s := daoCut;
+            trackedPublisherRevenueE8s := publisherShare;
+            let revSubaccount = getRevenueSubaccount(app);
             
             // Payment transfers. The subaccount is balance-checked and locked, so a
             // failure here is a genuine ledger error rather than a drain. Exact
-            // accounting: either every transfer succeeds and the mint proceeds, or
+            // accounting: either every step succeeds and the mint completes, or
             // the mint aborts and everything already moved is returned to the
             // caller's subaccount (less ledger fees). To make the undo possible,
             // transfers into accounts this canister controls (main account for
-            // cycles, the publisher's revenue subaccount) run first and the single
-            // external transfer (DAO profit / DAO cut to the fee destination) runs
-            // last, so nothing leaves the canister until all internal steps landed.
+            // cycles, the publisher's revenue subaccount) run first, the canister
+            // is then created and installed (the factory its only controller),
+            // and the single external transfer (DAO profit / DAO cut to the fee
+            // destination) runs only once it is installed, before the hand-over.
 
-            // Step 1: Transfer ICP for cycles to factory's main account
-            if (actualIcpForCycles > 0) {
-                let cyclesTransfer = await ledger.icrc1_transfer({
-                    to = { owner = Principal.fromActor(this); subaccount = null };
+            // Step 1: ICP for cycles, plus the fee of its later transfer to the
+            // CMC, to the factory's main account
+            let cyclesLeg: Nat64 = actualIcpForCycles + T.ICP_FEE;
+            let cyclesTransfer = await ledger.icrc1_transfer({
+                to = { owner = Principal.fromActor(this); subaccount = null };
+                fee = ?Nat64.toNat(T.ICP_FEE);
+                memo = null;
+                from_subaccount = ?userSubaccount;
+                created_at_time = null;
+                amount = Nat64.toNat(cyclesLeg);
+            });
+            switch (cyclesTransfer) {
+                case (#Err(_)) {
+                    // Nothing has moved yet.
+                    return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer ICP for cycles", 0)));
+                };
+                case (#Ok(_)) {};
+            };
+
+            // Step 2: Transfer publisher share to revenue subaccount (internal)
+            if (publisherShare > 0) {
+                let pubTransfer = await ledger.icrc1_transfer({
+                    to = { owner = Principal.fromActor(this); subaccount = ?revSubaccount };
                     fee = ?Nat64.toNat(T.ICP_FEE);
                     memo = null;
                     from_subaccount = ?userSubaccount;
                     created_at_time = null;
-                    amount = Nat64.toNat(actualIcpForCycles);
+                    amount = Nat64.toNat(publisherShare);
                 });
-                switch (cyclesTransfer) {
+                switch (pubTransfer) {
                     case (#Err(_)) {
-                        // Nothing has moved yet.
-                        return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer ICP for cycles", 0)));
+                        // Undo step 1.
+                        let stuck = await* undoPaymentTransfers(userSubaccount, [(null, cyclesLeg)]);
+                        return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer publisher share", stuck)));
+                    };
+                    case (#Ok(_)) {};
+                };
+            };
+            let internalMoves: [(?Blob, Nat64)] = [(?revSubaccount, publisherShare), (null, cyclesLeg)];
+
+            // Step 3: create the canister and install the version's wasm
+            let newId = switch (await* createAndInstall(caller, appId, wasm)) {
+                case (#Err(msg)) {
+                    // Undo steps 2 and 1.
+                    let stuck = await* undoPaymentTransfers(userSubaccount, internalMoves);
+                    return #Err(#CanisterCreationFailed(paymentAbortMessage(msg, stuck)));
+                };
+                case (#Ok(id)) { id };
+            };
+
+            // Step 4: Transfer DAO profit / DAO cut to the fee destination (external, last)
+            if (daoCut > 0) {
+                let daoCutTransfer = await ledger.icrc1_transfer({
+                    to = feeDestination;
+                    fee = ?Nat64.toNat(T.ICP_FEE);
+                    memo = null;
+                    from_subaccount = ?userSubaccount;
+                    created_at_time = null;
+                    amount = Nat64.toNat(daoCut);
+                });
+                switch (daoCutTransfer) {
+                    case (#Err(_)) {
+                        // Discard the canister, undo steps 2 and 1.
+                        let step = if (isSneedDao) { "Failed to transfer DAO profit" } else { "Failed to transfer DAO cut" };
+                        await* discardCanister(newId, caller, appId, step);
+                        let stuck = await* undoPaymentTransfers(userSubaccount, internalMoves);
+                        return #Err(#TransferFailed(paymentAbortMessage(step, stuck)));
                     };
                     case (#Ok(_)) {};
                 };
             };
 
-            if (isSneedDao) {
-                // Publisher 0: all profit goes to feeDestination
-                trackedIcpProfitE8s := profit;
-                trackedDaoCutE8s := profit;
-                trackedPublisherRevenueE8s := 0;
-                // Step 2: Transfer DAO profit to the fee destination (external, last)
-                if (profit > 0) {
-                    let feeTransfer = await ledger.icrc1_transfer({
-                        to = feeDestination;
-                        fee = ?Nat64.toNat(T.ICP_FEE);
-                        memo = null;
-                        from_subaccount = ?userSubaccount;
-                        created_at_time = null;
-                        amount = Nat64.toNat(profit);
-                    });
-                    switch (feeTransfer) {
-                        case (#Err(_)) {
-                            // Undo step 1.
-                            let stuck = await* undoPaymentTransfers(userSubaccount, [(null, actualIcpForCycles)]);
-                            return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer DAO profit", stuck)));
-                        };
-                        case (#Ok(_)) {};
-                    };
-                };
-            } else {
-                // Non-DAO publisher: split profit between DAO cut and publisher share
-                let effectiveCutBps = getEffectiveDaoCutBps(app);
-                let daoCut: Nat64 = Nat64.fromNat((Nat64.toNat(profit) * effectiveCutBps) / 10000);
-                let publisherShare: Nat64 = profit - daoCut;
-
-                trackedIcpProfitE8s := profit;
-                trackedDaoCutE8s := daoCut;
-                trackedPublisherRevenueE8s := publisherShare;
-
-                let revSubaccount = getRevenueSubaccount(app);
-
-                // Step 2: Transfer publisher share to revenue subaccount (internal)
-                if (publisherShare > 0) {
-                    let pubTransfer = await ledger.icrc1_transfer({
-                        to = { owner = Principal.fromActor(this); subaccount = ?revSubaccount };
-                        fee = ?Nat64.toNat(T.ICP_FEE);
-                        memo = null;
-                        from_subaccount = ?userSubaccount;
-                        created_at_time = null;
-                        amount = Nat64.toNat(publisherShare);
-                    });
-                    switch (pubTransfer) {
-                        case (#Err(_)) {
-                            // Undo step 1.
-                            let stuck = await* undoPaymentTransfers(userSubaccount, [(null, actualIcpForCycles)]);
-                            return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer publisher share", stuck)));
-                        };
-                        case (#Ok(_)) {};
-                    };
-                };
-
-                // Step 3: Transfer DAO cut to the fee destination (external, last)
-                if (daoCut > 0) {
-                    let daoCutTransfer = await ledger.icrc1_transfer({
-                        to = feeDestination;
-                        fee = ?Nat64.toNat(T.ICP_FEE);
-                        memo = null;
-                        from_subaccount = ?userSubaccount;
-                        created_at_time = null;
-                        amount = Nat64.toNat(daoCut);
-                    });
-                    switch (daoCutTransfer) {
-                        case (#Err(_)) {
-                            // Undo steps 2 and 1.
-                            let stuck = await* undoPaymentTransfers(userSubaccount, [
-                                (?revSubaccount, publisherShare),
-                                (null, actualIcpForCycles)
-                            ]);
-                            return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer DAO cut", stuck)));
-                        };
-                        case (#Ok(_)) {};
-                    };
-                };
+            // Step 5: the caller becomes the only controller
+            switch (await* handOver(newId, caller, appId)) {
+                case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
+                case (#Ok) {};
             };
             
-            // Top up factory with cycles
-            if (actualIcpForCycles > 0) {
-                let topUpResult = await* topUpSelfWithCycles(actualIcpForCycles);
-                switch (topUpResult) {
-                    case (#Err(_)) {};
-                    case (#Ok(cyclesReceived)) {
-                        trackedCyclesReceivedFromCmc := cyclesReceived;
-                    };
+            // Step 6: Top up factory with cycles
+            let topUpResult = await* topUpSelfWithCycles(actualIcpForCycles);
+            switch (topUpResult) {
+                case (#Err(_)) {};
+                case (#Ok(cyclesReceived)) {
+                    trackedCyclesReceivedFromCmc := cyclesReceived;
                 };
             };
+            newId;
             } finally {
                 unlockPayment(caller);
             };
+        } else {
+            // Payment turned off by an admin: the factory pays the cycles
+            let newId = switch (await* createAndInstall(caller, appId, wasm)) {
+                case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
+                case (#Ok(id)) { id };
+            };
+            switch (await* handOver(newId, caller, appId)) {
+                case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
+                case (#Ok) {};
+            };
+            newId;
         };
 
-        // 6. Create canister
-        try {
-            let factoryPrincipal = Principal.fromActor(this);
-            
-            let createResult = await (with cycles = canisterCreationCycles) ic.create_canister({
-                settings = ?{
-                    controllers = ?[caller, factoryPrincipal];
-                    compute_allocation = null;
-                    memory_allocation = null;
-                    freezing_threshold = null;
-                };
-            });
-            
-            let newCanisterId = createResult.canister_id;
+        // 6. Record the mint
+        let cyclesBalanceAfter = Cycles.balance();
+        let accountId = computeAccountId(newCanisterId, null);
 
-            let emptyArgs: Blob = "\44\49\44\4c\00\00";
-            await ic.install_code({
-                mode = #install;
-                canister_id = newCanisterId;
-                wasm_module = wasm;
-                arg = emptyArgs;
-            });
-            
-            await ic.update_settings({
-                canister_id = newCanisterId;
-                settings = {
-                    controllers = ?[caller];
-                    compute_allocation = null;
-                    memory_allocation = null;
-                    freezing_threshold = null;
-                };
-            });
+        // Record in wallet
+        walletAdd(caller, newCanisterId, appId);
 
-            let cyclesBalanceAfter = Cycles.balance();
-            let accountId = computeAccountId(newCanisterId, null);
+        // Record in immutable mint log
+        addMintLogEntry(newCanisterId, caller, appId, app.numericAppId, app.publisherId, version.major, version.minor, version.patch, trackedIcpPaidE8s, wasPremium, trackedDaoCutE8s, trackedPublisherRevenueE8s);
 
-            // Record in wallet
-            walletAdd(caller, newCanisterId, appId);
-
-            // Record in immutable mint log
-            addMintLogEntry(newCanisterId, caller, appId, app.numericAppId, app.publisherId, version.major, version.minor, version.patch, trackedIcpPaidE8s, wasPremium, trackedDaoCutE8s, trackedPublisherRevenueE8s);
-
-            // Record in old creation log (backward compat)
-            let createdAt = Time.now();
-            let logEntry: T.CreationLogEntry = {
-                canisterId = newCanisterId;
-                caller = caller;
-                createdAt = createdAt;
-                index = creationLogNextIndex;
-            };
-            creationLog := Array.append(creationLog, [logEntry]);
-            creationLogNextIndex += 1;
-            
-            let financialEntry: T.FinancialLogEntry = {
-                canisterId = newCanisterId;
-                index = financialLogNextIndex;
-                createdAt = createdAt;
-                icpPaidE8s = trackedIcpPaidE8s;
-                icpForCyclesE8s = trackedIcpForCyclesE8s;
-                icpProfitE8s = trackedIcpProfitE8s;
-                icpTransferFeesE8s = trackedIcpTransferFeesE8s;
-                cyclesReceivedFromCmc = trackedCyclesReceivedFromCmc;
-                cyclesSpentOnCreation = canisterCreationCycles;
-                cyclesBalanceBefore = cyclesBalanceBefore;
-                cyclesBalanceAfter = cyclesBalanceAfter;
-            };
-            financialLog := Array.append(financialLog, [financialEntry]);
-            financialLogNextIndex += 1;
-            
-            // Update aggregate statistics
-            totalIcpPaidE8s += Nat64.toNat(trackedIcpPaidE8s);
-            totalIcpForCyclesE8s += Nat64.toNat(trackedIcpForCyclesE8s);
-            totalIcpProfitE8s += Nat64.toNat(trackedIcpProfitE8s);
-            totalIcpTransferFeesE8s += Nat64.toNat(trackedIcpTransferFeesE8s);
-            totalCyclesReceivedFromCmc += trackedCyclesReceivedFromCmc;
-            totalCyclesSpentOnCreation += canisterCreationCycles;
-
-            // Update publisher/app revenue stats
-            if (app.publisherId == 0) {
-                totalDirectRevenueE8s += Nat64.toNat(trackedDaoCutE8s);
-            } else {
-                totalDaoCutReceivedE8s += Nat64.toNat(trackedDaoCutE8s);
-            };
-            updateStatsOnMint(app.publisherId, app.numericAppId, Nat64.toNat(trackedPublisherRevenueE8s), Nat64.toNat(trackedDaoCutE8s));
-
-            #Ok({
-                canisterId = newCanisterId;
-                accountId = accountId;
-            });
-        } catch (e) {
-            #Err(#CanisterCreationFailed(Error.message(e)));
+        // Record in old creation log (backward compat)
+        let createdAt = Time.now();
+        let logEntry: T.CreationLogEntry = {
+            canisterId = newCanisterId;
+            caller = caller;
+            createdAt = createdAt;
+            index = creationLogNextIndex;
         };
+        creationLog := Array.append(creationLog, [logEntry]);
+        creationLogNextIndex += 1;
+        
+        let financialEntry: T.FinancialLogEntry = {
+            canisterId = newCanisterId;
+            index = financialLogNextIndex;
+            createdAt = createdAt;
+            icpPaidE8s = trackedIcpPaidE8s;
+            icpForCyclesE8s = trackedIcpForCyclesE8s;
+            icpProfitE8s = trackedIcpProfitE8s;
+            icpTransferFeesE8s = trackedIcpTransferFeesE8s;
+            cyclesReceivedFromCmc = trackedCyclesReceivedFromCmc;
+            cyclesSpentOnCreation = canisterCreationCycles;
+            cyclesBalanceBefore = cyclesBalanceBefore;
+            cyclesBalanceAfter = cyclesBalanceAfter;
+        };
+        financialLog := Array.append(financialLog, [financialEntry]);
+        financialLogNextIndex += 1;
+        
+        // Update aggregate statistics
+        totalIcpPaidE8s += Nat64.toNat(trackedIcpPaidE8s);
+        totalIcpForCyclesE8s += Nat64.toNat(trackedIcpForCyclesE8s);
+        totalIcpProfitE8s += Nat64.toNat(trackedIcpProfitE8s);
+        totalIcpTransferFeesE8s += Nat64.toNat(trackedIcpTransferFeesE8s);
+        totalCyclesReceivedFromCmc += trackedCyclesReceivedFromCmc;
+        totalCyclesSpentOnCreation += canisterCreationCycles;
+
+        // Update publisher/app revenue stats
+        if (app.publisherId == 0) {
+            totalDirectRevenueE8s += Nat64.toNat(trackedDaoCutE8s);
+        } else {
+            totalDaoCutReceivedE8s += Nat64.toNat(trackedDaoCutE8s);
+        };
+        updateStatsOnMint(app.publisherId, app.numericAppId, Nat64.toNat(trackedPublisherRevenueE8s), Nat64.toNat(trackedDaoCutE8s));
+
+        #Ok({
+            canisterId = newCanisterId;
+            accountId = accountId;
+        });
     };
 
     // Get pricing info for an app (convenience method)
