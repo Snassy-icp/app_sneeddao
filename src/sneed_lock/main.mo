@@ -15,7 +15,7 @@ import Debug "mo:base/Debug";
 import Error "mo:base/Error";
 
 import Map "mo:map/Map";
-import { phash; nhash } "mo:map/Map";
+import { phash; nhash; thash } "mo:map/Map";
 import D "Dissolve";
 
 import T "Types";
@@ -159,6 +159,13 @@ shared (deployer) persistent actor class SneedLock() = this {
   // recipient and is put back from a copy if the transfer fails, so nothing may change
   // them meanwhile.
   transient var lock_ids_in_flight = Map.new<Nat, ()>();
+  // Positions whose withdrawal is awaiting the pool. Their claim must not change hands
+  // meanwhile: the withdrawal clears the withdrawer's claim afterwards, so a recipient would
+  // be left holding a claim on a position that has left.
+  transient var positions_in_flight = Map.new<Text, ()>();
+  private func position_key(swap_canister_id : Principal, position_id : T.PositionId) : Text {
+    Principal.toText(swap_canister_id) # ":" # Nat.toText(position_id)
+  };
   // When each lock was created (lock id -> ns). Locks created before this was kept get
   // their time once from the ICRC-3 log's create blocks (postupgrade); locks older than
   // the log have none. Kept after a lock is archived.
@@ -469,7 +476,36 @@ shared (deployer) persistent actor class SneedLock() = this {
     List.toArray<(T.SwapCanisterId, T.PositionId)>(result);
   };
 
+  /// True when `principal` holds a claim on the position and nobody else does. A claim records
+  /// that its holder owned the position on the pool when claiming; a claim left behind after
+  /// the position moved to someone else at the pool must never act for it (claim_position
+  /// removes such claims, and this refuses any that predate that).
   private func has_claimed_position_impl(principal : Principal, swap_canister_id : T.SwapCanisterId, position_id : T.PositionId): Bool {
+    if (not has_claim_record(principal, swap_canister_id, position_id)) { return false };
+    for (other in state.principal_position_ownerships.keys()) {
+      if (other != principal and has_claim_record(other, swap_canister_id, position_id)) { return false };
+    };
+    true;
+  };
+
+  /// Every principal holding a claim on the position.
+  private func position_claimants(swap_canister_id : T.SwapCanisterId, position_id : T.PositionId) : [Principal] {
+    Iter.toArray(Iter.filter<Principal>(state.principal_position_ownerships.keys(), func(p) { has_claim_record(p, swap_canister_id, position_id) }));
+  };
+
+  /// An unexpired lock on the position, whoever's record it is in.
+  private func position_has_active_lock(swap_canister_id : T.SwapCanisterId, position_id : T.PositionId) : Bool {
+    let now = NowAsNat64();
+    for (owner in state.principal_position_locks.keys()) {
+      switch (get_position_lock(owner, swap_canister_id, position_id)) {
+        case (?l) { if (l.expiry > now) { return true } };
+        case null {};
+      };
+    };
+    false;
+  };
+
+  private func has_claim_record(principal : Principal, swap_canister_id : T.SwapCanisterId, position_id : T.PositionId): Bool {
       
     let allPositions = switch (state.principal_position_ownerships.get(principal)) {
       case (?_swapPositions) _swapPositions;
@@ -769,11 +805,19 @@ shared (deployer) persistent actor class SneedLock() = this {
     };
 
     if (await verify_position_ownership(caller, swap_canister_id, position_id)) {
+      // The pool says the caller owns the position now, so it is not in this canister and
+      // any other claim on it is left over from an earlier owner: remove those, or they
+      // could take the position once the caller deposits and locks it.
+      let stale = Array.filter<Principal>(position_claimants(swap_canister_id, position_id), func(p) { p != caller });
+      for (p in stale.vals()) { clear_position_claim(p, swap_canister_id, position_id) };
+      if (stale.size() > 0) {
+        log_info(caller, correlation_id, "Removed stale claims on position " # debug_show(position_id) # " on swap canister " # debug_show(swap_canister_id) # " of " # debug_show(stale));
+      };
       add_position_ownership_for_principal(caller, swap_canister_id, position_id);
-      icrc3_add("sneedlock_position_claim", [
+      icrc3_add("sneedlock_position_claim", Array.append<(Text, T3.Value)>([
         ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("owner", Icrc3Log.principal(caller)),
         ("pool", Icrc3Log.principal(swap_canister_id)), ("position_id", #Nat(position_id)),
-      ]);
+      ], if (stale.size() > 0) { [("removed_claims", #Array(Array.map<Principal, T3.Value>(stale, Icrc3Log.principal)))] } else { [] }));
       log_info(caller, correlation_id, "Claimed position " # debug_show(position_id) # " on swap canister " # debug_show(swap_canister_id) # " for " # debug_show(caller));
       return true;
     };
@@ -881,6 +925,12 @@ shared (deployer) persistent actor class SneedLock() = this {
       };
       case null {};
     };
+    // Whoever's record the lock is in: a lock binds the position, not only its owner's claim.
+    if (position_has_active_lock(swap_canister_id, position_id)) {
+      let error = #err(#InternalError("Position " # Nat.toText(position_id) # " on swap canister " # debug_show(swap_canister_id) # " is locked and cannot be withdrawn before the lock expires"));
+      log_error(caller, correlation_id, debug_show(error));
+      return error;
+    };
 
     // Ensure the position is currently controlled by this canister
     if (await verify_position_ownership(this_canister_id(), swap_canister_id, position_id)) {
@@ -892,7 +942,16 @@ shared (deployer) persistent actor class SneedLock() = this {
             transferPosition(from : Principal, to : Principal, positionId : Nat) : async T.TransferPositionResult;
         };
 
-        let result = await swap_canister.transferPosition(this_canister_id(), to, position_id);
+        let pkey = position_key(swap_canister_id, position_id);
+        if (Map.has(positions_in_flight, thash, pkey)) {
+          return #err(#InternalError("A withdrawal of this position is already in progress"));
+        };
+        Map.set(positions_in_flight, thash, pkey, ());
+        let result = try { await swap_canister.transferPosition(this_canister_id(), to, position_id) } catch (e) {
+          Map.delete(positions_in_flight, thash, pkey);
+          throw e;
+        };
+        Map.delete(positions_in_flight, thash, pkey);
 
         // if result is #ok, we can clear the position claim. this code uses the switch keyword.
         switch (result) {
@@ -974,6 +1033,10 @@ shared (deployer) persistent actor class SneedLock() = this {
   public shared ({ caller }) func transfer_position_ownership(to_principal : Principal, swap_canister_id : T.SwapCanisterId, position_id : T.PositionId) : async TransferPositionOwnershipResult {
     let correlation_id = get_next_correlation_id();
     log_info(caller, correlation_id, "Transferring position ownership from " # debug_show(caller) # " to " # debug_show(to_principal) # " for position " # debug_show(position_id) # " on swap canister " # debug_show(swap_canister_id));
+
+    if (Map.has(positions_in_flight, thash, position_key(swap_canister_id, position_id))) {
+      return #Err({ message = "A withdrawal of this position is in progress" });
+    };
 
     // Verify that the caller is the current owner
     if (not has_claimed_position_impl(caller, swap_canister_id, position_id)) {
