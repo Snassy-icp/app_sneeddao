@@ -19,6 +19,7 @@ import { verifyTip, createIcrc3Actor } from '../utils/icrc3/client.js';
 import { holdersByOwner } from './scan.js';
 import { scanLedgerOffThread } from './scanClient.js';
 import { idlFactory as governanceIdl } from 'external/sns_governance/sns_governance.did.js';
+import { guardianIdl, guardianById, policySummary } from './guardianIdl.js';
 
 export const IDS = {
     snsw: 'qaa6y-5yaaa-aaaaa-aaafa-cai',
@@ -294,16 +295,20 @@ async function daoLabel(sns, ctx) {
 async function classifyControllers(controllers, ctx) {
     const snsw = await ctx.load('snsw', loaders.snsw);
     if (controllers.length === 0) return { grade: 'pass', label: 'Blackholed (no controllers)', kind: 'none' };
+    if (controllers.length === 1 && guardianById(controllers[0])) {
+        const g = guardianById(controllers[0]);
+        return { grade: 'pass', label: `Controlled by ${g.name}${g.blackholed ? ' (blackholed custody canister)' : ' (Sneed DAO custody canister)'}: only NNS-blessed code, changed only by DAO vote and the child's own rules`, kind: 'guardian', guardian: g };
+    }
     if (controllers.every((c) => BLACKHOLES[c])) return { grade: 'pass', label: `Blackholed through ${controllers.map((c) => BLACKHOLES[c]).join(', ')} (status observable)`, kind: 'blackhole' };
     if (controllers.length === 1 && controllers[0] === IDS.nnsRoot) return { grade: 'pass', label: 'Controlled by the NNS (NNS root)', kind: 'nns' };
     if (controllers.length === 1 && snsw.byRoot.has(controllers[0])) {
         const sns = snsw.byRoot.get(controllers[0]);
         return { grade: 'pass', label: `Controlled by ${await daoLabel(sns, ctx)}`, kind: 'sns', sns };
     }
-    const named = await Promise.all(controllers.map(async (c) => (BLACKHOLES[c] ? BLACKHOLES[c] : snsw.byRoot.has(c) ? await daoLabel(snsw.byRoot.get(c), ctx) : c === IDS.nnsRoot ? 'NNS root' : c)));
+    const named = await Promise.all(controllers.map(async (c) => (BLACKHOLES[c] ? BLACKHOLES[c] : guardianById(c) ? guardianById(c).name : snsw.byRoot.has(c) ? await daoLabel(snsw.byRoot.get(c), ctx) : c === IDS.nnsRoot ? 'NNS root' : c)));
     const canisters = controllers.filter((c) => c.length === 27);
     const users = controllers.filter((c) => c.length !== 27);
-    if (controllers.length > 1 && controllers.some((c) => BLACKHOLES[c] || snsw.byRoot.has(c))) {
+    if (controllers.length > 1 && controllers.some((c) => BLACKHOLES[c] || guardianById(c) || snsw.byRoot.has(c))) {
         return { grade: 'fail', label: `Mixed controllers: ${named.join(', ')}. The DAO or blackhole does not control this alone`, kind: 'mixed' };
     }
     return { grade: 'fail', label: `Controlled by ${users.length ? `${users.length} user principal(s)` : ''}${users.length && canisters.length ? ' and ' : ''}${canisters.length ? `${canisters.length} canister(s)` : ''}: ${named.join(', ')}`, kind: 'other' };
@@ -414,6 +419,12 @@ export function buildTokenTree(ledgerId, config, header = null) {
             const st = await status(ctx, cid);
             const cls = await classifyControllers(st.controllers, ctx);
             const details = { canister: cid, controllers: st.controllers, module_hash: st.moduleHash };
+            if (cls.kind === 'guardian') {
+                const child = await ctx.load(`guardian:${cls.guardian.id}:${cid}`, async () => { const g = await actor(guardianIdl, cls.guardian.id); const r = await g.get_child(Principal.fromText(cid)); return r[0] || null; });
+                if (!child) return { status: 'warn', summary: `${cls.label}, but the canister is not registered there (nobody can act on it until it is)`, details, link: HUB.canister(cid) };
+                details.policy = policySummary(child.policy); details.guardians = child.policy.guardians.map((p) => p.toText());
+                return { status: 'pass', summary: `${cls.label}. Rules: ${policySummary(child.policy)}`, details, link: `/guardian?deployment=${cls.guardian.key}&child=${cid}` };
+            }
             return { status: cls.grade, summary: cls.label, details, link: HUB.canister(cid) };
         },
     });
@@ -937,6 +948,11 @@ export function buildTokenTree(ledgerId, config, header = null) {
                     } else if (cls.kind === 'sns') {
                         const summary = await ctx2.load(`root:${cls.sns.root}`, loaders.rootSummary(cls.sns.root));
                         s = summary.get(t.id) || null; via = 'SNS root';
+                    } else if (cls.kind === 'guardian') {
+                        const g = await actor(guardianIdl, cls.guardian.id);
+                        const r = await ctx2.call(g.get_child(Principal.fromText(t.id)), 'custody status');
+                        const stt = r[0]?.status?.[0];
+                        if (stt && !stt.error.length) s = { cycles: stt.cycles, memory: stt.memory_size, running: stt.running }; via = cls.guardian.name;
                     }
                     if (!s) return skip(`Not observable: ${cls.kind === 'nns' ? 'NNS-controlled' : cls.kind === 'none' ? 'no controller to ask' : 'controllers do not publish status'}. A blackhole or DAO controller would make it visible`, { controllers: st.controllers });
                     const details = { via, cycles: s.cycles.toString(), memory: fmtBytes(s.memory), state: s.running };

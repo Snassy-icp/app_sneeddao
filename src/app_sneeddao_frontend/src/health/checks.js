@@ -12,6 +12,7 @@ import { idlFactory as poolIdl } from 'external/icp_swap/icp_swap.did.js';
 import { idlFactory as rllIdl } from 'declarations/rll/rll.did.js';
 import { verifyTip } from '../utils/icrc3/client.js';
 import { actor, withTimeout, ledgerIdl, swapIdl, pingIdl, archiveStatusIdl, sneedLockHealthIdl, stakingBotIdl, backendTokenListIdl, icpIndexIdl, accountIdentifierHex, hex, isMissingMethod, IDL, Principal } from './agent.js';
+import { GUARDIANS, guardianIdl } from '../tokensafety/guardianIdl.js';
 
 // ---- the DAO as the checks know it ----
 
@@ -414,6 +415,21 @@ export function buildTree(config) {
             pingLeaf(IDS.sms, 'Sneed SMS', 'get_admins'),
             pingLeaf(IDS.premium, 'Sneed Premium', 'getCanisterId'),
             pingLeaf(IDS.sneedex, 'Sneedex', 'getConfig'),
+            ...GUARDIANS.map((g) => ({
+                id: `custody:${g.id}`, name: `${g.name} (custody) and its children`, link: `/guardian?deployment=${g.key}`,
+                run: async (ctx) => {
+                    const a = await actor(guardianIdl, g.id);
+                    const [cfg, rows] = await Promise.all([ctx.call(a.get_config(), `${g.name}.get_config`), ctx.call(a.get_cycles_report([]), `${g.name}.get_cycles_report`)]);
+                    const ageH = cfg.status_last_run ? Math.round((Date.now() - Number(cfg.status_last_run) / 1e6) / 3_600_000) : null;
+                    const low = rows.filter((r) => r.low); const errs = rows.filter((r) => r.error.length);
+                    const details = { children: Number(cfg.children), open_ops: null, own_cycles: cfg.own_cycles.toString(), status_age_h: ageH, blessed_versions: cfg.blessed.ledger.length, blessed_error: cfg.blessed_error[0] || null, low: low.map((r) => `${r.title} ${r.canister_id.toText()}: ${(Number(r.cycles) / 1e12).toFixed(2)} T`), errors: errs.map((r) => `${r.title}: ${r.error[0]}`) };
+                    if (low.length) return fail(`${low.length} canister(s) under ${(Number(cfg.low_cycles_threshold) / 1e12).toFixed(1)} T cycles`, details);
+                    if (cfg.blessed_error.length) return warn(`Could not read the blessed versions: ${cfg.blessed_error[0]}`, details);
+                    if (errs.length) return warn(`${errs.length} child status read(s) failed`, details);
+                    if (ageH !== null && ageH > 2 * Number(cfg.status_interval_s) / 3600) return warn(`Last status run ${ageH} h ago`, details);
+                    return pass(`${Number(cfg.children)} children, none low; own balance ${(Number(cfg.own_cycles) / 1e12).toFixed(2)} T`, details);
+                },
+            })),
             {
                 id: `sneedex-timer:${IDS.sneedex}`, name: 'Sneedex expiration timer', link: DASHBOARD(IDS.sneedex),
                 run: async (ctx) => {

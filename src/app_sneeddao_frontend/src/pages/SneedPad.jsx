@@ -17,6 +17,7 @@ import { createActor as createSnsRootActor } from 'external/sns_root';
 import { getAllSnses } from '../utils/SnsUtils';
 import { setCanisterName, setPrincipalNickname } from '../utils/BackendUtils';
 import { padIdl, PAD_CANISTER_ID } from '../tokensafety/padIdl.js';
+import { GUARDIANS, policySummary } from '../tokensafety/guardianIdl.js';
 import { FaRocket, FaSpinner, FaPlus, FaTrash, FaShieldAlt, FaExternalLinkAlt, FaExclamationTriangle } from 'react-icons/fa';
 
 const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
@@ -40,7 +41,7 @@ export function LaunchPanel({ onLaunched }) {
     const { identity, isAuthenticated } = useAuth();
     const { fetchAllNames } = useNaming();
     const me = identity?.getPrincipal?.().toText?.() || null;
-    const [form, setForm] = useState({ name: '', symbol: '', decimals: 8, fee: '0.0001', logo: null, minting: 'nobody', mintingPrincipal: '', control: 'keep', extraControllers: [], snsRoot: '', withIndex: true, feeCollector: '', allocations: [{ owner: '', amount: '' }] });
+    const [form, setForm] = useState({ name: '', symbol: '', decimals: 8, fee: '0.0001', logo: null, minting: 'nobody', mintingPrincipal: '', control: 'keep', extraControllers: [], snsRoot: '', vetoPrincipals: [], vetoesToBlock: '1', oksRequired: '0', windowDays: '2', autoUpgrade: true, withIndex: true, feeCollector: '', allocations: [{ owner: '', amount: '' }] });
     const [dao, setDao] = useState({ root: null, governance: null, neurons: null, error: null }); // the DAO a handover goes to, and my proposal-capable neurons in it
     const [proposal, setProposal] = useState(null); // { id, root } once the registration proposal is filed, or { error }
     const [logoWarning, setLogoWarning] = useState(false);
@@ -100,6 +101,18 @@ export function LaunchPanel({ onLaunched }) {
             else control = { keep_with: extras };
         }
         if (form.control === 'sns') { const r = parsePrincipal(form.snsRoot); if (!r) problems.push('the SNS root canister is needed'); else control = { sns: r }; }
+        if (form.control.startsWith('guardian:')) {
+            const g = GUARDIANS.find((x) => x.key === form.control.slice(9));
+            const vetoes = form.vetoPrincipals.map((t) => parsePrincipal(t));
+            if (!g) problems.push('that custody canister is not deployed in this build');
+            else if (vetoes.some((x) => !x)) problems.push('veto council: every line needs a principal');
+            else {
+                const vb = Number(form.vetoesToBlock || 0); const ok = Number(form.oksRequired || 0); const days = Number(form.windowDays || 0);
+                if (vb > vetoes.length || ok > vetoes.length) problems.push('vetoes to block and go-aheads required cannot exceed the veto council size');
+                else if (vb > 0 && days <= 0) problems.push('a veto council needs a window of at least a day');
+                else control = { guardian: { canister: Principal.fromText(g.id), policy: { guardians: vetoes, vetoes_to_block: BigInt(vb), oks_required: BigInt(ok), window_ns: BigInt(Math.round(days * 86_400)) * 1_000_000_000n, auto_upgrade: !!form.autoUpgrade } } };
+            }
+        }
         const config = problems.length ? null : {
             name, symbol, decimals, transfer_fee: fee, logo: form.logo ? [form.logo] : [], allocations, minting, fee_collector,
             control, with_index: form.withIndex,
@@ -314,6 +327,30 @@ export function LaunchPanel({ onLaunched }) {
                                         <PrincipalInput value={form.snsRoot} onChange={(v) => setForm((f) => ({ ...f, snsRoot: v }))} placeholder="SNS root canister" defaultTab="all" style={{ width: '100%' }} inputStyle={input} />
                                     </div>
                                 )}
+                                {GUARDIANS.map((g) => radio('control', `guardian:${g.key}`, g.name, `${g.blurb}${padConfig ? ` ${fmtIcp(padConfig.sneed_dao_control_fee_e8s)} handover fee.` : ''}`))}
+                                {form.control.startsWith('guardian:') && (
+                                    <div style={{ marginLeft: 24, display: 'grid', gap: 8 }}>
+                                        <div style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, lineHeight: 1.5 }}>
+                                            The custody canister becomes the only controller. Nothing changes without a DAO vote, and your <b>veto council</b> can block any approved change inside the window, or be required to give the go-ahead. No proposal and no neuron needed from you: the pad registers the canisters on launch.
+                                        </div>
+                                        {form.vetoPrincipals.map((v, i) => (
+                                            <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                                <div style={{ flex: 1 }}><PrincipalInput value={v} onChange={(x) => setForm((f) => ({ ...f, vetoPrincipals: f.vetoPrincipals.map((y, j) => (j === i ? x : y)) }))} placeholder="Veto council member (principal or name)" defaultTab="all" style={{ width: '100%' }} inputStyle={input} isAuthenticated={!!identity} /></div>
+                                                <button type="button" style={btn(false)} title="Remove" onClick={() => setForm((f) => ({ ...f, vetoPrincipals: f.vetoPrincipals.filter((_, j) => j !== i) }))}><FaTrash size={11} /></button>
+                                            </div>
+                                        ))}
+                                        {form.vetoPrincipals.length < 20 && <button type="button" style={{ ...btn(false), fontSize: '0.8rem', padding: '6px 10px' }} onClick={() => setForm((f) => ({ ...f, vetoPrincipals: [...f.vetoPrincipals, identity && f.vetoPrincipals.length === 0 ? identity.getPrincipal().toText() : ''] }))}><FaPlus size={10} /> Add a veto council member</button>}
+                                        {form.vetoPrincipals.length > 0 && (
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, fontSize: '0.8rem', color: theme.colors.secondaryText }}>
+                                                <label>Vetoes that block<input style={input} type="number" min="0" max={form.vetoPrincipals.length} value={form.vetoesToBlock} onChange={(e) => setForm((f) => ({ ...f, vetoesToBlock: e.target.value }))} /></label>
+                                                <label>Go-aheads required<input style={input} type="number" min="0" max={form.vetoPrincipals.length} value={form.oksRequired} onChange={(e) => setForm((f) => ({ ...f, oksRequired: e.target.value }))} /></label>
+                                                <label>Veto window (days)<input style={input} type="number" min="0" max="90" value={form.windowDays} onChange={(e) => setForm((f) => ({ ...f, windowDays: e.target.value }))} /></label>
+                                            </div>
+                                        )}
+                                        <label style={{ display: 'flex', gap: 8, fontSize: '0.85rem', color: theme.colors.primaryText, cursor: 'pointer' }}><input type="checkbox" checked={!!form.autoUpgrade} onChange={(e) => setForm((f) => ({ ...f, autoUpgrade: e.target.checked }))} /> Follow the NNS: upgrade to each newly blessed ledger version without a vote</label>
+                                        {built.config?.control?.guardian && <div style={{ fontSize: '0.78rem', color: theme.colors.mutedText }}>Rules: {policySummary(built.config.control.guardian.policy)}</div>}
+                                    </div>
+                                )}
                                 {daoRoot && (
                                     <div style={{ marginLeft: 24, fontSize: '0.8rem', color: dao.neurons === null ? theme.colors.mutedText : dao.neurons.length ? '#10b981' : '#f59e0b', lineHeight: 1.5 }}>
                                         {!identity ? 'Log in to check your neurons in this DAO.'
@@ -366,7 +403,7 @@ export function LaunchPanel({ onLaunched }) {
                     {result && (
                         <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: '#10b98118', border: '1px solid #10b98155', color: theme.colors.primaryText, fontSize: '0.9rem', lineHeight: 1.7 }}>
                             <div><b>{result.config.name} ({result.config.symbol})</b> is live. Ledger <span className="health-mono">{result.ledger[0]?.toText()}</span>{result.index.length ? <>, index <span className="health-mono">{result.index[0].toText()}</span></> : null}.</div>
-                            <div>Controlled by {result.controllers.map((p) => p.toText()).join(', ')}.</div>
+                            <div>Controlled by {result.controllers.map((p) => p.toText()).join(', ')}.{result.config.control.guardian && <> Registered with {GUARDIANS.find((g) => g.id === result.config.control.guardian.canister.toText())?.name || 'the custody canister'}: <Link to={`/guardian?deployment=${GUARDIANS.find((g) => g.id === result.config.control.guardian.canister.toText())?.key || ''}&child=${result.ledger[0]?.toText()}`} style={{ color: '#10b981' }}>see its rules and status</Link>.</>}</div>
                             {proposal && (proposal.error
                                 ? <div style={{ color: '#f59e0b' }}>The registration proposal could not be filed: {proposal.error}. File it from your neuron: RegisterDappCanisters with the canister ids above.</div>
                                 : <div>Registration proposal {proposal.id !== undefined ? <Link to={`/proposal?proposalid=${proposal.id}&sns=${proposal.root}`} style={{ color: '#10b981' }}>#{String(proposal.id)}</Link> : ''} filed with your neuron; once it passes, the DAO manages the canisters.</div>)}

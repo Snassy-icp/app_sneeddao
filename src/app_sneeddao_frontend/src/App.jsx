@@ -111,6 +111,7 @@ import Position from './pages/Position';
 import Positions from './pages/Positions';
 import NftBrowser from './pages/NftBrowser';
 import RllLedger from './pages/RllLedger';
+import Guardian from './pages/Guardian';
 import NftItem from './pages/NftItem';
 import SnsJailbreak from './pages/SnsJailbreak';
 import SnsJailbreakList from './pages/SnsJailbreakList';
@@ -200,6 +201,7 @@ function App() {
                     <Route path="/rll" element={<RLL />} />
                     <Route path="/rll_info" element={<RLLInfo />} />
                     <Route path="/rll_ledger" element={<RllLedger />} />
+                    <Route path="/guardian" element={<Guardian />} />
                     <Route path="/scan_wallet" element={<ScanWallet />} />
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/tokenlock" element={<TokenLock />} />

@@ -51,7 +51,7 @@ export default function SneedPadAdmin() {
         try {
             const [cfg, cyc, l, lines, adm] = await Promise.all([a.get_config(), a.get_cycle_balance(), a.list_launches(0n, 200n), a.get_text_log(60n), a.get_admins()]);
             setConfig(cfg); setCycles(cyc); setLaunches([...l.launches].reverse()); setLog(lines); setAdmins(adm.map((p) => p.toText()));
-            setForm({ fee: (Number(cfg.creation_fee_e8s) / 1e8).toString(), premiumFee: (Number(cfg.premium_creation_fee_e8s) / 1e8).toString(), controlFee: (Number(cfg.sneed_dao_control_fee_e8s) / 1e8).toString(), ledgerT: (Number(cfg.ledger_cycles) / 1e12).toString(), indexT: (Number(cfg.index_cycles) / 1e12).toString(), reserveT: (Number(cfg.cycle_reserve) / 1e12).toString(), feeOwner: cfg.fee_destination.owner.toText(), paused: cfg.paused, followNns: cfg.follow_nns });
+            setForm({ fee: (Number(cfg.creation_fee_e8s) / 1e8).toString(), premiumFee: (Number(cfg.premium_creation_fee_e8s) / 1e8).toString(), controlFee: (Number(cfg.sneed_dao_control_fee_e8s) / 1e8).toString(), ledgerT: (Number(cfg.ledger_cycles) / 1e12).toString(), indexT: (Number(cfg.index_cycles) / 1e12).toString(), reserveT: (Number(cfg.cycle_reserve) / 1e12).toString(), feeOwner: cfg.fee_destination.owner.toText(), paused: cfg.paused, followNns: cfg.follow_nns, guardians: (cfg.guardians || []).map((p) => p.toText()).join('\n') });
         } catch (e) { setError(`Could not read the pad: ${e?.message || e}`); }
     }, [pad]);
     useEffect(() => { load(); }, [load]);
@@ -76,6 +76,7 @@ export default function SneedPadAdmin() {
             creation_fee_e8s: [fee], premium_creation_fee_e8s: [premiumFee], sneed_dao_control_fee_e8s: [controlFee],
             ledger_cycles: [ledger], index_cycles: [index], cycle_reserve: [reserve],
             fee_destination: [{ owner, subaccount: [] }], paused: [!!form.paused], follow_nns: [!!form.followNns],
+            guardians: [String(form.guardians || '').split(/[\s,]+/).filter(Boolean).map((t) => Principal.fromText(t))],
         });
     });
     const doRescue = () => call('Rescue', (a) => {
@@ -145,6 +146,7 @@ export default function SneedPadAdmin() {
                             <div style={{ display: 'flex', gap: 16, marginTop: 10, flexWrap: 'wrap', fontSize: '0.88rem', color: theme.colors.primaryText }}>
                                 <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={!!form.paused} onChange={(e) => setForm((f) => ({ ...f, paused: e.target.checked }))} /> Paused (no launches)</label>
                                 <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={!!form.followNns} onChange={(e) => setForm((f) => ({ ...f, followNns: e.target.checked }))} /> Follow the NNS's latest ledger suite</label>
+                                <label style={{ display: 'grid', gap: 4 }}><span>Custody canisters a creator may hand control to (one principal per line: sneed_guardian, sneed_hole, sneed_accord)</span><textarea rows={3} value={form.guardians || ''} onChange={(e) => setForm((f) => ({ ...f, guardians: e.target.value }))} style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'monospace', fontSize: '0.8rem', padding: 8, borderRadius: 8, border: `1px solid ${theme.colors.border}`, background: theme.colors.primaryBg, color: theme.colors.primaryText }} /></label>
                             </div>
                             <button type="button" style={{ ...btn(true), marginTop: 12 }} disabled={!!busy} onClick={saveConfig}>{busy === 'Save settings' ? <FaSpinner className="health-spin" /> : null} Save settings</button>
                         </>
