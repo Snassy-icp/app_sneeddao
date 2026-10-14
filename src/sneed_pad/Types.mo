@@ -47,7 +47,15 @@ module {
   /// `#keep_with` keeps the creator and adds more controllers; `#sns` hands the
   /// canisters to that SNS's root (the creator files the registration
   /// proposal with their own neuron; the pad files nothing).
-  public type ControlChoice = { #keep; #keep_with : [Principal]; #blackhole; #sneed_dao; #sns : Principal };
+  /// `#guardian` hands the canisters to a Sneed custody canister (sneed_guardian, sneed_hole or
+  /// sneed_accord, see spec/custody.md) and registers them there with this policy; the DAO then
+  /// changes them only through that canister's ops, with the creator's guardians able to veto.
+  public type GuardianPolicy = { guardians : [Principal]; vetoes_to_block : Nat; oks_required : Nat; window_ns : Nat; auto_upgrade : Bool };
+  public type ControlChoice = { #keep; #keep_with : [Principal]; #blackhole; #sneed_dao; #sns : Principal; #guardian : { canister : Principal; policy : GuardianPolicy } };
+  public type GuardianKind = { #ledger; #index; #archive };
+  public type GuardianActor = actor {
+    register : shared (Principal, GuardianKind, GuardianPolicy, ?Principal, Text) -> async { #Ok : Any; #Err : Text };
+  };
   public type TokenConfig = {
     name : Text;
     symbol : Text;
@@ -104,6 +112,7 @@ module {
     fee_destination : Account;
     cycle_reserve : Nat;
     paused : Bool;
+    guardians : [Principal];  // custody canisters a creator may hand control to (#guardian)
     follow_nns : Bool;        // the wasm hashes track the NNS's latest SNS version (daily); false when the DAO pinned them
     wasm_last_check : Int;    // when the NNS was last asked (ns, 0 never)
     wasm_last_refresh : Int;  // when the hashes last changed (ns)
@@ -119,6 +128,7 @@ module {
     cycle_reserve : ?Nat;
     paused : ?Bool;
     follow_nns : ?Bool;
+    guardians : ?[Principal];
   };
 
   // ---- other canisters ----

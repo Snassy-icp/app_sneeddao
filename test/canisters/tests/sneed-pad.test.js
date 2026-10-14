@@ -7,6 +7,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { Principal } from '@icp-sdk/core/principal';
+import { IDL } from '@icp-sdk/core/candid';
 import {
   createPic, install, actorAs, account, admin, alice, bob, carol, ICP_LEDGER_ID, SNEED_GOVERNANCE, SNEED_SNS_ROOT, T, unwrap, errOf, BUILD,
 } from '../lib/pic.js';
@@ -58,7 +59,7 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
     await snsWasm.set_latest([['Root', '00'], ['Ledger', hex(ledgerHash)], ['Ledger Index', hex(indexHash)]]);
     unwrap(await pad.admin_set_canisters({ icp_ledger: [icpId], cmc: [cmcId], sns_wasm: [snsWasmId], governance: [govId], root: [SNEED_SNS_ROOT], blackhole: [carol], sneed_premium: [[premiumId]], sneedapp: [[sneedAppId]] }));
     await sneedApp.set_authorized([padId]);
-    unwrap(await pad.admin_set_config({ creation_fee_e8s: [500_000_000n], premium_creation_fee_e8s: [250_000_000n], sneed_dao_control_fee_e8s: [100_000_000n], ledger_cycles: [3n * T], index_cycles: [2n * T], fee_destination: [account(bob)], cycle_reserve: [2n * T], paused: [], follow_nns: [] }));
+    unwrap(await pad.admin_set_config({ guardians: [], creation_fee_e8s: [500_000_000n], premium_creation_fee_e8s: [250_000_000n], sneed_dao_control_fee_e8s: [100_000_000n], ledger_cycles: [3n * T], index_cycles: [2n * T], fee_destination: [account(bob)], cycle_reserve: [2n * T], paused: [], follow_nns: [] }));
     await icp.mint(account(alice), 100n * 100_000_000n);
   }, 120_000);
   afterAll(async () => { await pic?.tearDown(); });
@@ -110,7 +111,7 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
     unwrap(await pad.admin_fetch_wasms());
     cfg = await pad.get_config();
     expect(Number(cfg.ledger_wasm_bytes)).toBeGreaterThan(100_000);
-    unwrap(await pad.admin_set_config({ creation_fee_e8s: [], premium_creation_fee_e8s: [], sneed_dao_control_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [], follow_nns: [true] }));
+    unwrap(await pad.admin_set_config({ guardians: [], creation_fee_e8s: [], premium_creation_fee_e8s: [], sneed_dao_control_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [], follow_nns: [true] }));
     expect((await pad.get_config()).follow_nns).toBe(true);
   });
 
@@ -265,14 +266,44 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
   }, 120_000);
 
   it('refuses while paused and for anonymous callers', async () => {
-    unwrap(await pad.admin_set_config({ creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [true], premium_creation_fee_e8s: [], sneed_dao_control_fee_e8s: [], follow_nns: [] }));
+    unwrap(await pad.admin_set_config({ guardians: [], creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [true], premium_creation_fee_e8s: [], sneed_dao_control_fee_e8s: [], follow_nns: [] }));
     expect(errOf(await padAlice.create_token(config()))).toMatch(/paused/);
-    unwrap(await pad.admin_set_config({ creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [false], premium_creation_fee_e8s: [], sneed_dao_control_fee_e8s: [], follow_nns: [] }));
-    expect(errOf(await pad.admin_set_config({ creation_fee_e8s: [], premium_creation_fee_e8s: [], sneed_dao_control_fee_e8s: [], ledger_cycles: [800_000_000_000n], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [], follow_nns: [] }))).toMatch(/at least 1 T/);
+    unwrap(await pad.admin_set_config({ guardians: [], creation_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [false], premium_creation_fee_e8s: [], sneed_dao_control_fee_e8s: [], follow_nns: [] }));
+    expect(errOf(await pad.admin_set_config({ guardians: [], creation_fee_e8s: [], premium_creation_fee_e8s: [], sneed_dao_control_fee_e8s: [], ledger_cycles: [800_000_000_000n], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [], follow_nns: [] }))).toMatch(/at least 1 T/);
     expect(errOf(await padBob.admin_set_canister_controllers(padId, [bob]))).toMatch(/admin/);
     expect(errOf(await pad.admin_set_canister_controllers(icpId, [bob]))).toMatch(/update_settings failed/); // not the pad's canister
-    expect(errOf(await padBob.admin_set_config({ creation_fee_e8s: [1n], premium_creation_fee_e8s: [], sneed_dao_control_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [], follow_nns: [] }))).toMatch(/admin only/);
+    expect(errOf(await padBob.admin_set_config({ guardians: [], creation_fee_e8s: [1n], premium_creation_fee_e8s: [], sneed_dao_control_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [], follow_nns: [] }))).toMatch(/admin only/);
   });
+
+  it('hands a launch to a custody canister and registers it there', async () => {
+    const { idlFactory: guardianIdl, init: guardianInit } = await import('../build/sneed_guardian.did.js');
+    const guardianId = await install(pic, { name: 'sneed_guardian', initTypes: guardianInit({ IDL }), initArgs: [{ name: 'guardian', approvers: [alice], threshold: 1n, archive_controllers: [], sneed_premium: [], fee_destination: [], icp_ledger: [icpId], sns_wasm: [snsWasmId] }], cycles: 50n * T });
+    const guardian = actorAs(pic, guardianIdl, guardianId, admin);
+    // the custody canister takes only blessed code: tell the SNS wasm mock the path
+    await snsWasm.set_steps([{ ledger: ledgerHash, index: indexHash, archive: ledgerHash }]);
+    unwrap(await guardian.refresh_blessed());
+    // not an allowed custody canister until the DAO lists it
+    const policy = { guardians: [bob], vetoes_to_block: 1n, oks_required: 0n, window_ns: 3_600_000_000_000n, auto_upgrade: true };
+    expect(errOf(await padAlice.get_quote(config({ control: { guardian: { canister: guardianId, policy } } })))).toMatch(/custody/);
+    unwrap(await pad.admin_set_config({ guardians: [[guardianId]], creation_fee_e8s: [], premium_creation_fee_e8s: [], sneed_dao_control_fee_e8s: [], ledger_cycles: [], index_cycles: [], fee_destination: [], cycle_reserve: [], paused: [], follow_nns: [] }));
+    const q = unwrap(await padAlice.get_quote(config({ control: { guardian: { canister: guardianId, policy } }, with_index: true, symbol: 'GRD' })));
+    expect(q.control_fee_e8s).toBe(100_000_000n); // the DAO-control fee applies
+    const icpAlice = actorAs(pic, ledgerIdl, icpId, alice);
+    unwrap(await icpAlice.icrc2_approve({ from_subaccount: [], spender: account(padId), amount: q.total_e8s + ICP_FEE, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] }));
+    const launch = unwrap(await padAlice.create_token(config({ control: { guardian: { canister: guardianId, policy } }, with_index: true, symbol: 'GRD' })));
+    expect(launch.status).toEqual({ created: null });
+    expect(launch.steps.map(([s]) => s)).toContain('guardian_registered');
+    expect(launch.controllers.map((p) => p.toText())).toEqual([guardianId.toText()]);
+    const ledger = (await guardian.get_child(launch.ledger[0]))[0];
+    expect(ledger.title).toBe('Test Token (GRD) ledger');
+    expect(ledger.policy.auto_upgrade).toBe(true);
+    expect(ledger.policy.guardians.map((p) => p.toText())).toEqual([bob.toText()]);
+    const index = (await guardian.get_child(launch.index[0]))[0];
+    expect(Object.keys(index.kind)[0]).toBe('index');
+    expect(index.suite[0].toText()).toBe(launch.ledger[0].toText());
+    expect((await pic.getControllers(launch.ledger[0])).map((p) => p.toText())).toEqual([guardianId.toText()]);
+    expect((await guardian.get_cycles_report([])).some((r) => r.canister_id.toText() === launch.ledger[0].toText() && r.cycles > 0n)).toBe(true);
+  }, 180_000);
 
   it('keeps every launch across an upgrade', async () => {
     const before = await pad.list_launches(0n, 100n);

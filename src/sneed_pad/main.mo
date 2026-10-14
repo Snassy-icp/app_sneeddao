@@ -88,6 +88,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   // canister for the latest SNS version and takes its ledger and index
   // hashes, so nobody has to run anything. The DAO can pin hashes instead.
   stable var follow_nns : Bool = true;
+  stable var guardians : [Principal] = []; // custody canisters a creator may choose (set by the DAO once they are deployed)
   stable var wasm_last_check : Int = 0;
   stable var wasm_last_refresh : Int = 0;
   stable var wasm_last_error : ?Text = null;
@@ -217,6 +218,14 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
         for (p in ps.vals()) { if (Principal.isAnonymous(p)) { return ?"the anonymous principal cannot be a controller" } };
       };
       case (#sns(root)) { if (Principal.isAnonymous(root)) { return ?"an SNS root canister is needed" } };
+      case (#guardian(g)) {
+        if (Array.find<Principal>(guardians, func(x) { x == g.canister }) == null) { return ?"that is not one of the Sneed custody canisters" };
+        if (g.policy.guardians.size() > 20) { return ?"at most 20 veto principals" };
+        for (p in g.policy.guardians.vals()) { if (Principal.isAnonymous(p)) { return ?"the anonymous principal cannot be a veto principal" } };
+        if (g.policy.vetoes_to_block > g.policy.guardians.size() or g.policy.oks_required > g.policy.guardians.size()) { return ?"vetoes_to_block and oks_required cannot exceed the number of veto principals" };
+        if (g.policy.vetoes_to_block > 0 and g.policy.window_ns == 0) { return ?"vetoes need a window: set window_ns" };
+        if (g.policy.window_ns > 90 * 86_400 * 1_000_000_000) { return ?"the veto window is at most 90 days" };
+      };
       case _ {};
     };
     null;
@@ -228,7 +237,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     Array.find<{ root_canister_id : ?Principal }>(r.instances, func(i) { i.root_canister_id == ?root }) != null;
   };
   private func handoverFee(control : T.ControlChoice) : Nat {
-    switch (control) { case (#sneed_dao) { sneed_dao_control_fee_e8s }; case (#sns(root)) { if (root == sneed_root) { sneed_dao_control_fee_e8s } else { 0 } }; case _ { 0 } };
+    switch (control) { case (#sneed_dao or #guardian(_)) { sneed_dao_control_fee_e8s }; case (#sns(root)) { if (root == sneed_root) { sneed_dao_control_fee_e8s } else { 0 } }; case _ { 0 } };
   };
 
   // ---- quotes ----
@@ -344,6 +353,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
       case (#blackhole) { [blackhole] };
       case (#sneed_dao) { [sneed_root] };
       case (#sns(root)) { [root] };
+      case (#guardian(g)) { [g.canister] };
     };
     let archiveController : Principal = finalControllers[0];
     let ledgerId = try {
@@ -408,7 +418,25 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     };
 
     // 6. control
-    for (id in Array.append<Principal>([ledgerId], switch (launch.index) { case (?i) { [i] }; case null { [] } }).vals()) {
+    let ids = Array.append<Principal>([ledgerId], switch (launch.index) { case (?i) { [i] }; case null { [] } });
+    switch (c.control) {
+      case (#guardian(g)) {
+        // the custody canister must be a controller to register the canister, and the pad must still be one to prove ownership
+        let guardian : T.GuardianActor = actor (Principal.toText(g.canister));
+        for (id in ids.vals()) {
+          try {
+            await ic.update_settings({ canister_id = id; settings = { controllers = ?[self, g.canister]; compute_allocation = null; memory_allocation = null; freezing_threshold = null }; sender_canister_version = null });
+          } catch (e) { return fail(cid, launch, "launched, but adding the custody canister as a controller of " # Principal.toText(id) # " failed: " # Error.message(e)) };
+          let kind : T.GuardianKind = if (id == ledgerId) { #ledger } else { #index };
+          let title = c.name # " (" # c.symbol # ") " # (if (id == ledgerId) { "ledger" } else { "index" });
+          let r = try { await guardian.register(id, kind, g.policy, if (id == ledgerId) { null } else { ?ledgerId }, title) } catch (e) { return fail(cid, launch, "launched, but the custody canister could not be reached to register " # Principal.toText(id) # ": " # Error.message(e)) };
+          switch (r) { case (#Err(e)) { return fail(cid, launch, "launched, but the custody canister refused " # Principal.toText(id) # ": " # e) }; case (#Ok(_)) {} };
+        };
+        launch := step(launch, "guardian_registered");
+      };
+      case _ {};
+    };
+    for (id in ids.vals()) {
       try {
         await ic.update_settings({ canister_id = id; settings = { controllers = ?finalControllers; compute_allocation = null; memory_allocation = null; freezing_threshold = null }; sender_canister_version = null });
       } catch (e) { return fail(cid, launch, "launched, but setting the controllers of " # Principal.toText(id) # " failed: " # Error.message(e)) };
@@ -459,7 +487,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
       ledger_wasm_bytes = switch (ledger_wasm) { case (?w) { w.size() }; case null { 0 } };
       index_wasm_bytes = switch (index_wasm) { case (?w) { w.size() }; case null { 0 } };
       creation_fee_e8s; premium_creation_fee_e8s; sneed_dao_control_fee_e8s; sneed_premium = sneed_premium_id; ledger_cycles; index_cycles; fee_destination; cycle_reserve; paused;
-      follow_nns; wasm_last_check; wasm_last_refresh; wasm_last_error;
+      follow_nns; guardians; wasm_last_check; wasm_last_refresh; wasm_last_error;
     };
   };
   public query func get_cycle_balance() : async Nat { Cycles.balance() };
@@ -589,6 +617,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     switch (u.premium_creation_fee_e8s) { case (?v) { note("premium_creation_fee_e8s", Nat.toText(premium_creation_fee_e8s), Nat.toText(v)); premium_creation_fee_e8s := v }; case null {} };
     switch (u.sneed_dao_control_fee_e8s) { case (?v) { note("sneed_dao_control_fee_e8s", Nat.toText(sneed_dao_control_fee_e8s), Nat.toText(v)); sneed_dao_control_fee_e8s := v }; case null {} };
     switch (u.follow_nns) { case (?v) { note("follow_nns", debug_show(follow_nns), debug_show(v)); follow_nns := v }; case null {} };
+    switch (u.guardians) { case (?v) { note("guardians", debug_show(guardians), debug_show(v)); guardians := v }; case null {} };
     switch (u.ledger_cycles) { case (?v) { if (v < MIN_CANISTER_CYCLES) { return #Err("ledger_cycles: a new canister needs at least 1 T cycles (0.5 T creation fee on a 13-node subnet, about 0.35 T to install the ledger)") }; note("ledger_cycles", Nat.toText(ledger_cycles), Nat.toText(v)); ledger_cycles := v }; case null {} };
     switch (u.index_cycles) { case (?v) { if (v < MIN_CANISTER_CYCLES) { return #Err("index_cycles: a new canister needs at least 1 T cycles (0.5 T creation fee on a 13-node subnet, about 0.35 T to install the index)") }; note("index_cycles", Nat.toText(index_cycles), Nat.toText(v)); index_cycles := v }; case null {} };
     switch (u.fee_destination) { case (?v) { note("fee_destination", Principal.toText(fee_destination.owner), Principal.toText(v.owner)); fee_destination := v }; case null {} };
