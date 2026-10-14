@@ -28,6 +28,7 @@ import { Link } from 'react-router-dom';
 import { FaDollarSign, FaLock, FaBrain, FaInfoCircle, FaTint, FaSeedling, FaHourglassHalf, FaGift, FaExpandAlt, FaSync, FaQuestionCircle, FaPlus, FaBan, FaPlay, FaStop, FaWallet, FaExchangeAlt, FaArrowDown, FaArrowUp, FaChevronDown, FaChevronRight, FaExclamationTriangle, FaCog, FaClock, FaCut, FaPaperPlane, FaShoppingCart, FaTag } from 'react-icons/fa';
 import SwapModal from './components/SwapModal';
 import { isUntilDissolved } from './utils/lockTime';
+import { LockUntil, LockTimeLeftAtLeast, LockAge } from './components/LockUntil';
 
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
@@ -2404,14 +2405,20 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             </div>
                                             <div className="lock-details">
                                                 <span className="lock-label">Expires:</span>
-                                                <span className="lock-value">{isUntilDissolved(lock.expiry) ? 'When dissolved (dissolve delay)' : dateToReadable(lock.expiry)}</span>
+                                                <span className="lock-value">{isUntilDissolved(lock.expiry) ? <LockUntil lockId={lock.lock_id} expiry={lock.expiry} /> : dateToReadable(lock.expiry)}</span>
                                             </div>
                                             <div className="lock-details">
                                                 <span className="lock-label">Duration:</span>
                                                 <span className="lock-value">
-                                                    <LockCountdown expiry={lock.expiry} />
+                                                    {isUntilDissolved(lock.expiry) ? <LockTimeLeftAtLeast lockId={lock.lock_id} /> : <LockCountdown expiry={lock.expiry} />}
                                                 </span>
                                             </div>
+                                            {lock.lock_id !== undefined && lock.lock_id !== null && <LockAge lockId={lock.lock_id} wrap={(v) => (
+                                                <div className="lock-details">
+                                                    <span className="lock-label">Age:</span>
+                                                    <span className="lock-value">{v}</span>
+                                                </div>
+                                            )} />}
                                             {lock.owner && (
                                                 <div className="lock-details">
                                                     <span className="lock-label">Owner:</span>

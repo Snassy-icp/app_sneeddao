@@ -10,6 +10,7 @@ import { useAuth } from './AuthContext';
 import { Principal } from '@dfinity/principal';
 import { Link } from 'react-router-dom';
 import { isUntilDissolved } from './utils/lockTime';
+import { LockUntil, LockTimeLeftAtLeast, LockAge } from './components/LockUntil';
 import { FaBriefcase, FaLock, FaSync, FaCoins, FaArrowDown, FaArrowUp, FaQuestionCircle, FaExternalLinkAlt, FaCheck, FaCopy, FaInfoCircle, FaUnlock, FaTimes, FaWater, FaDollarSign, FaChevronDown, FaChevronRight, FaExpandAlt } from 'react-icons/fa';
 
 // Countdown timer component for position locks expiring within 1 hour
@@ -997,7 +998,7 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                                 <span className="lock-label">Lock Expires:</span>
                                 <span className="lock-value">
                     {isLockedPosition(positionDetails)
-                        ? (isUntilDissolved(positionDetails.lockInfo.expiry) ? 'When dissolved (dissolve delay)' : bigDateToReadable(positionDetails.lockInfo.expiry))
+                        ? (isUntilDissolved(positionDetails.lockInfo.expiry) ? <LockUntil lockId={positionDetails.lockInfo.lock_id} expiry={positionDetails.lockInfo.expiry} /> : bigDateToReadable(positionDetails.lockInfo.expiry))
                         : 'No lock'}
                                 </span>
                             </div>
@@ -1005,10 +1006,16 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                                 <div className="lock-details">
                                     <span className="lock-label">Duration:</span>
                                     <span className="lock-value">
-                                        <PositionLockCountdown expiryNanos={positionDetails.lockInfo.expiry} />
+                                        {isUntilDissolved(positionDetails.lockInfo.expiry) ? <LockTimeLeftAtLeast lockId={positionDetails.lockInfo.lock_id} /> : <PositionLockCountdown expiryNanos={positionDetails.lockInfo.expiry} />}
                                     </span>
                                 </div>
                             )}
+                            {isLockedPosition(positionDetails) && positionDetails.lockInfo.lock_id !== undefined && <LockAge lockId={positionDetails.lockInfo.lock_id} wrap={(v) => (
+                                <div className="lock-details">
+                                    <span className="lock-label">Age:</span>
+                                    <span className="lock-value">{v}</span>
+                                </div>
+                            )} />}
                 </div>
                 {positionDetails.owner && (
                             <div className="lock-item" style={{ marginTop: '10px' }}>

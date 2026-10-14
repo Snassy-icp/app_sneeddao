@@ -172,6 +172,8 @@ export interface LockState {
   'owner' : Principal,
   'kind' : LockType,
   'locked' : boolean,
+  'created_at' : [] | [bigint],
+  'earliest_unlock' : Expiry,
   'token0' : [] | [TokenType],
   'token1' : [] | [TokenType],
   'ledger' : [] | [TokenType],

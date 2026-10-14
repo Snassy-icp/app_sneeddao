@@ -399,8 +399,10 @@ type LockState =
  record {
    amount: opt Balance;
    archived: bool;
+   created_at: opt nat64;
    dissolve_delay: nat64;
    dissolving_until: opt Expiry;
+   earliest_unlock: Expiry;
    expiry: Expiry;
    kind: LockType;
    ledger: opt TokenType;

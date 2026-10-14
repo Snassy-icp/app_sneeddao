@@ -6,7 +6,7 @@ import { FaHourglassHalf, FaPlay, FaStop, FaPlus, FaCalendarPlus } from 'react-i
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
-import { describeLockTime, formatNsDuration, lockExpiryToDate } from '../utils/lockTime';
+import { describeLockTime, formatNsDuration, lockExpiryToDate, earliestUnlockNs, lockAgeText, lockCreatedDate, invalidateLockState } from '../utils/lockTime';
 
 const errText = (e) => {
     if (!e) return 'Unknown error';
@@ -53,7 +53,7 @@ export default function LockDissolvePanel({ lockId, onChanged }) {
             const a = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
             const r = await fn(a);
             if ('Err' in r) setMsg({ ok: false, text: errText(r.Err) });
-            else { setSt(r.Ok); setMsg({ ok: true, text: `${label}: done.` }); onChanged?.(); }
+            else { setSt(r.Ok); invalidateLockState(lockId); setMsg({ ok: true, text: `${label}: done.` }); onChanged?.(); }
         } catch (e) { setMsg({ ok: false, text: e?.message || String(e) }); }
         finally { setBusy(''); }
     };
@@ -77,13 +77,15 @@ export default function LockDissolvePanel({ lockId, onChanged }) {
                 <FaHourglassHalf color="#f59e0b" /> Lock period and dissolve delay
             </div>
             <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText, marginBottom: 12, lineHeight: 1.5 }}>
-                A lock can have a <b>dissolve delay</b>, like an NNS neuron: once its lock period has ended, its owner can start dissolving it, and it unlocks when the delay has run out. Dissolving can be stopped (the time left becomes the delay again), and the delay can only grow.
+                A lock can have a <b>dissolve delay</b>, like an NNS neuron: once its lock period has ended, its owner can start dissolving it, and it unlocks when the delay has run out. So a lock with a 1 hour lock period and a 1 hour delay is free 2 hours from now at the soonest, and later if dissolving is not started right away. Dissolving can be stopped (the time left becomes the delay again), and the delay can only grow.
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 16px', alignItems: 'baseline' }}>
                 {row('Status', <b>{describeLockTime(st, fmt)}</b>)}
                 {row('Lock period ends', periodOver ? `${fmt(lockExpiryToDate(st.lock_end))} (over)` : fmt(lockExpiryToDate(st.lock_end)))}
                 {row('Dissolve delay', delay > 0n ? formatNsDuration(delay) : 'none')}
                 {dissolving && row(st.locked ? 'Free at' : 'Dissolved at', fmt(lockExpiryToDate(st.dissolving_until[0])))}
+                {st.locked && delay > 0n && !dissolving && row('Free at the soonest', `${fmt(lockExpiryToDate(earliestUnlockNs(st)))}${periodOver ? ' (if dissolving starts now)' : ''}`)}
+                {row('Created', lockCreatedDate(st) ? `${fmt(lockCreatedDate(st))} (${lockAgeText(st)} ago)` : 'before Sneed Lock recorded creation times')}
                 {limits && row('Limits', `lock period + delay between ${formatNsDuration(limits.min_lock_length_ns)} and ${formatNsDuration(limits.max_lock_length_ns)}`)}
             </div>
 

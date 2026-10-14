@@ -92,6 +92,8 @@ export const idlFactory = ({ IDL }) => {
     'owner' : IDL.Principal,
     'kind' : LockType,
     'locked' : IDL.Bool,
+    'created_at' : IDL.Opt(IDL.Nat64),
+    'earliest_unlock' : Expiry,
     'token0' : IDL.Opt(TokenType),
     'token1' : IDL.Opt(TokenType),
     'ledger' : IDL.Opt(TokenType),

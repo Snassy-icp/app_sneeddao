@@ -5,6 +5,8 @@
 // it reads as the year 2554, and a countdown runs for centuries. Everything that shows
 // a lock's expiry goes through these instead.
 
+import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
+
 export const NEVER_NS = 18_446_744_073_709_551_615n;
 
 const toBig = (v) => (typeof v === 'bigint' ? v : BigInt(v ?? 0));
@@ -61,6 +63,38 @@ export async function fetchLockStates(sneedLockActor, lockIds) {
     return out;
 }
 
+const nowNs = () => BigInt(Date.now()) * 1_000_000n;
+
+/**
+ * The soonest a lock can be free, in ns: its expiry, or for a lock with a dissolve delay that
+ * is not dissolving, the end of its lock period (or now, once that is past) plus the delay.
+ * For a lock that is not dissolving this moves forward with time once its lock period is over:
+ * it is "at the soonest", not a date the lock unlocks by itself. Uses the canister's
+ * `earliest_unlock` when it has one (computed the same way).
+ */
+export function earliestUnlockNs(state) {
+    if (!state) return null;
+    const delay = toBig(state.dissolve_delay);
+    if (delay === 0n || state.dissolving_until?.[0] !== undefined) return toBig(state.expiry);
+    const now = nowNs();
+    const end = toBig(state.lock_end);
+    return (end > now ? end : now) + delay;
+}
+
+/** When the lock was created (a Date), or null when Sneed Lock has no record of it. */
+export function lockCreatedDate(state) {
+    const c = state?.created_at?.[0];
+    return c === undefined ? null : new Date(Number(toBig(c) / 1_000_000n));
+}
+
+/** "3d 4h" since the lock was created, or null when unknown. */
+export function lockAgeText(state) {
+    const c = state?.created_at?.[0];
+    if (c === undefined) return null;
+    const age = nowNs() - toBig(c);
+    return age > 0n ? formatNsDuration(age) : '0s';
+}
+
 /** One line for a lock's time rules: "until <date>", or the delay/dissolving story. */
 export function describeLockTime(state, fmt = (d) => d.toLocaleString()) {
     if (!state) return '';
@@ -70,8 +104,50 @@ export function describeLockTime(state, fmt = (d) => d.toLocaleString()) {
     if (until !== undefined) {
         return state.locked ? `dissolving, free ${fmt(lockExpiryToDate(until))}` : `dissolved ${fmt(lockExpiryToDate(until))}`;
     }
-    const periodLeft = toBig(state.lock_end) - BigInt(Date.now()) * 1_000_000n;
+    const soonest = fmt(lockExpiryToDate(earliestUnlockNs(state)));
+    const periodLeft = toBig(state.lock_end) - nowNs();
     return periodLeft > 0n
-        ? `locked until ${fmt(lockExpiryToDate(state.lock_end))}, then a ${formatNsDuration(delay)} dissolve delay`
-        : `not dissolving (dissolve delay ${formatNsDuration(delay)})`;
+        ? `free ${soonest} at the soonest (lock period until ${fmt(lockExpiryToDate(state.lock_end))}, then a ${formatNsDuration(delay)} dissolve delay)`
+        : `not dissolving: free ${formatNsDuration(delay)} after dissolving starts (${soonest} at the soonest)`;
+}
+
+// ---- cached, batched lock states for lists of locks -------------------------------
+// Cards show many locks at once; their states are fetched in one get_lock_states call per
+// 100 locks and kept for a minute.
+const STATE_TTL_MS = 60_000;
+const stateCache = new Map(); // id -> { at, state }
+let queued = new Map(); // id -> [resolve]
+let flushTimer = null;
+
+async function flushQueue() {
+    flushTimer = null;
+    const batch = queued; queued = new Map();
+    const ids = [...batch.keys()];
+    let states = {};
+    try {
+        states = await fetchLockStates(createSneedLockActor(sneedLockCanisterId), ids.map((x) => BigInt(x)));
+    } catch (_) { /* leave empty */ }
+    const at = Date.now();
+    for (const id of ids) {
+        const st = states[id] || null;
+        stateCache.set(id, { at, state: st });
+        for (const r of batch.get(id)) r(st);
+    }
+}
+
+/** The lock's v2 state (cached), or null when unknown or the canister predates v2. */
+export function getLockStateCached(lockId) {
+    const id = toBig(lockId).toString();
+    const hit = stateCache.get(id);
+    if (hit && Date.now() - hit.at < STATE_TTL_MS) return Promise.resolve(hit.state);
+    return new Promise((resolve) => {
+        if (!queued.has(id)) queued.set(id, []);
+        queued.get(id).push(resolve);
+        if (!flushTimer) flushTimer = setTimeout(flushQueue, 30);
+    });
+}
+
+/** Forget cached states, e.g. after the owner changed a lock. */
+export function invalidateLockState(lockId) {
+    if (lockId === undefined) stateCache.clear(); else stateCache.delete(toBig(lockId).toString());
 }

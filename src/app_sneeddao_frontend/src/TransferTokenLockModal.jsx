@@ -7,6 +7,7 @@ import PrincipalInput from './components/PrincipalInput';
 import { formatAmount } from './utils/StringUtils';
 import { dateToReadable } from './utils/DateUtils';
 import { isUntilDissolved } from './utils/lockTime';
+import { LockUntil } from './components/LockUntil';
 import { get_available_backend } from './utils/TokenUtils';
 
 // Accent colors 
@@ -187,7 +188,7 @@ function TransferTokenLockModal({ show, onClose, onTransfer, tokenLock, token })
             color: theme.colors.primaryText
           }}>
             <span style={{ color: theme.colors.mutedText }}>Expires:</span>
-            <span style={{ fontWeight: '500' }}>{isUntilDissolved(tokenLock.expiry) ? 'When dissolved' : dateToReadable(tokenLock.expiry)}</span>
+            <span style={{ fontWeight: '500' }}>{isUntilDissolved(tokenLock.expiry) ? <LockUntil lockId={tokenLock.lock_id} expiry={tokenLock.expiry} /> : dateToReadable(tokenLock.expiry)}</span>
           </div>
         </div>
 

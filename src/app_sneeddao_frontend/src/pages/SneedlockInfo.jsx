@@ -17,7 +17,8 @@ import PrincipalInput from '../components/PrincipalInput';
 import TokenSelector from '../components/TokenSelector';
 import { FaLock, FaCoins, FaWater, FaChevronDown, FaChevronRight, FaFilter, FaSpinner, FaUser, FaClock, FaShieldAlt } from 'react-icons/fa';
 import { useDenomination } from '../contexts/DenominationContext';
-import { isUntilDissolved } from '../utils/lockTime';
+import { isUntilDissolved, NEVER_NS } from '../utils/lockTime';
+import { LockUntil } from '../components/LockUntil';
 
 // Custom CSS for animations
 const customStyles = `
@@ -462,13 +463,13 @@ function SneedlockInfo() {
         }
     };
 
-    const formatExpirationWithColor = (timestamp) => {
+    const formatExpirationWithColor = (timestamp, lockId) => {
         if (!timestamp) {
             return <span style={{ color: theme.colors.success }}>Never</span>;
         }
         // a lock with a dissolve delay that is not dissolving has no unlock time yet
         if (isUntilDissolved(typeof timestamp === 'object' && timestamp.expiry ? timestamp.expiry : timestamp)) {
-            return <span style={{ color: theme.colors.success }}>When dissolved (dissolve delay)</span>;
+            return <span style={{ color: theme.colors.success }}>{typeof lockId === 'bigint' ? <LockUntil lockId={lockId} expiry={NEVER_NS} /> : 'When dissolved (dissolve delay)'}</span>;
         }
         
         try {
@@ -1555,7 +1556,7 @@ function SneedlockInfo() {
                                                                     </div>
                                                                     <div style={styles.lockDetail}>
                                                                         <div style={styles.lockDetailLabel}>Expires</div>
-                                                                        <div style={styles.lockDetailValue}>{formatExpirationWithColor(lock.expiry)}</div>
+                                                                        <div style={styles.lockDetailValue}>{formatExpirationWithColor(lock.expiry, lock.lockId)}</div>
                                                                     </div>
                                                                     <div style={styles.lockDetail}>
                                                                         <div style={styles.lockDetailLabel}>Owner</div>
@@ -1612,7 +1613,7 @@ function SneedlockInfo() {
                                                                     </div>
                                                                     <div style={styles.lockDetail}>
                                                                         <div style={styles.lockDetailLabel}>Expires</div>
-                                                                        <div style={styles.lockDetailValue}>{formatExpirationWithColor(lock.expiry)}</div>
+                                                                        <div style={styles.lockDetailValue}>{formatExpirationWithColor(lock.expiry, lock.lockId)}</div>
                                                                     </div>
                                                                     <div style={styles.lockDetail}>
                                                                         <div style={styles.lockDetailLabel}>Owner</div>

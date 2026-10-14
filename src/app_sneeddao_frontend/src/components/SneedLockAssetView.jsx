@@ -11,6 +11,7 @@ import { getTokenMetadata } from '../hooks/useTokenCache';
 import { describeSwapPool } from './SwapPoolPicker';
 import { get_token_conversion_rate } from '../utils/TokenUtils';
 import { isUntilDissolved } from '../utils/lockTime';
+import { LockUntil, LockAge } from './LockUntil';
 
 const poolCache = new Map();
 const describePoolCached = (id) => { if (!poolCache.has(id)) { const p = describeSwapPool(id); p.catch(() => poolCache.delete(id)); poolCache.set(id, p); } return poolCache.get(id); };
@@ -129,8 +130,9 @@ export function SneedLockAssetDetails({ details }) {
                 {details.kind === 'position' && row('Pool', pool ? `${pool.token0.symbol}/${pool.token1.symbol}` : details.swap_id)}
                 {details.kind === 'position' && row('Position', <Link to={`/position?swap=${details.swap_id}&id=${details.position_id}`} style={{ color: theme.colors.accent }}>#{details.position_id.toString()} <FaExternalLinkAlt size={9} /></Link>)}
                 {row('Unlocks', dissolveHeld
-                    ? <span>When it has dissolved: it has a dissolve delay and is not dissolving. <Link to={lockUrl(details.lock_id)} style={{ color: theme.colors.accent }}>See the lock</Link></span>
+                    ? <span><LockUntil lockId={details.lock_id} expiry={details.expiry} />. <Link to={lockUrl(details.lock_id)} style={{ color: theme.colors.accent }}>See the lock</Link></span>
                     : `${expiry.toLocaleString()} (${daysLeft} day${daysLeft === 1 ? '' : 's'} left)`)}
+                <LockAge lockId={details.lock_id} wrap={(v) => row('Age', v)} />
                 {row('Held by', 'Sneed Lock, ownership escrowed in Sneedex')}
             </div>
         </div>
