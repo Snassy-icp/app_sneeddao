@@ -26,62 +26,12 @@ import Error "mo:base/Error";
 
 // This is the actual canister that gets deployed for each user
 // No constructor arguments needed - access control uses IC canister controllers
-(with migration = func (old : {
-    var distributionSettings : [(Text, {
-        lists : [{
-            id : Nat;
-            maxDistributionAmount : Nat;
-            name : Text;
-            sourceSubaccount : ?Blob;
-            targets : [{
-                account : { owner : Principal; subaccount : ?Blob };
-                basisPoints : ?Nat;
-            }];
-            thresholdAmount : Nat;
-            tokenLedgerCanisterId : Principal;
-        }];
-        nextListId : Nat;
-    })]
-}) : {
-    var distributionSettings : [(Text, {
-        lists : [DistributionTypes.DistributionList];
-        nextListId : Nat;
-    })]
-} {
-    type OldTarget = { account : { owner : Principal; subaccount : ?Blob }; basisPoints : ?Nat };
-    type OldList = { id : Nat; maxDistributionAmount : Nat; name : Text; sourceSubaccount : ?Blob; targets : [OldTarget]; thresholdAmount : Nat; tokenLedgerCanisterId : Principal };
-    type OldSettings = (Text, { lists : [OldList]; nextListId : Nat });
-    {
-        var distributionSettings = Array.map<OldSettings, (Text, { lists : [DistributionTypes.DistributionList]; nextListId : Nat })>(
-            old.distributionSettings,
-            func ((instanceId, ds)) {
-                (instanceId, {
-                    lists = Array.map<OldList, DistributionTypes.DistributionList>(ds.lists, func (l) {
-                        {
-                            id = l.id;
-                            name = l.name;
-                            tokenLedgerCanisterId = l.tokenLedgerCanisterId;
-                            thresholdAmount = l.thresholdAmount;
-                            maxDistributionAmount = l.maxDistributionAmount;
-                            targets = Array.map<OldTarget, DistributionTypes.DistributionTarget>(l.targets, func (t) {
-                                {
-                                    account = t.account;
-                                    basisPoints = t.basisPoints;
-                                    choreInstanceId = null;
-                                }
-                            });
-                            sourcePurseId = null;
-                            amountMode = 0;
-                            balancePercent = null;
-                            minDistributionAmount = 0;
-                        }
-                    });
-                    nextListId = ds.nextListId;
-                })
-            }
-        );
-    }
-})
+// The inline migration from the pre-0.9.2 distribution list shape was removed: it ran on every
+// upgrade and reset the newer list fields (amountMode, balancePercent, minDistributionAmount,
+// sourcePurseId, each target's choreInstanceId). It cannot be made idempotent, since its input
+// type drops those fields before the function sees them. A bot still on the old (0.9.1) shape must
+// first be upgraded to the earlier 0.9.2 wasm that carries the migration: upgraded directly, its
+// distributionSettings would not decode and would start empty (other stable state is kept).
 shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     // ============================================
@@ -678,7 +628,12 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                 return #Err(#GovernanceError(e));
             };
             case (?#NeuronId(nid)) {
-                // Neuron claimed - set dissolve delay
+                // Neuron claimed. No delay requested: nothing to set (governance refuses a
+                // dissolve timestamp of "now"), so the claim is the whole result.
+                if (dissolve_delay_seconds == 0) {
+                    return #Ok(nid);
+                };
+                // Set dissolve delay
                 let nowSeconds: Nat64 = Nat64.fromNat(Int.abs(Time.now() / 1_000_000_000));
                 let dissolveTimestamp: Nat64 = nowSeconds + dissolve_delay_seconds;
                 
@@ -785,35 +740,54 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                 
                 let claimResult = await governance.claim_or_refresh_neuron_from_account(claimRequest);
                 
+                // The ICP is now in the neuron account. If the claim fails, return and log the
+                // memo so the neuron can be claimed later with claimNeuronFromDeposit(memo, ...).
+                let memoText = Nat64.toText(memo);
+                let recoveryHint = " (ICP was sent to the neuron account with memo=" # memoText # "; claim it with claimNeuronFromDeposit)";
                 switch (claimResult.result) {
                     case null {
-                        return #Err(#GovernanceError({ error_message = "No result from claim"; error_type = 0 }));
+                        logEngine.logError("api", "stakeNeuron: no result from claim", ?caller, [("memo", memoText), ("amount_e8s", Nat64.toText(amount_e8s))]);
+                        return #Err(#GovernanceError({ error_message = "No result from claim" # recoveryHint; error_type = 0 }));
                     };
                     case (?#Error(e)) {
-                        return #Err(#GovernanceError(e));
+                        logEngine.logError("api", "stakeNeuron: claim failed", ?caller, [("memo", memoText), ("amount_e8s", Nat64.toText(amount_e8s)), ("error", e.error_message)]);
+                        return #Err(#GovernanceError({ e with error_message = e.error_message # recoveryHint }));
                     };
                     case (?#NeuronId(nid)) {
+                        func emitStaked<system>() {
+                            eventEngine.emitEvent<system>(T.StakingEvent.NeuronStaked, [
+                                ("neuronId", Nat64.toText(nid.id)),
+                                ("amount_e8s", Nat64.toText(amount_e8s)),
+                                ("dissolveDelay", Nat64.toText(dissolve_delay_seconds)),
+                            ]);
+                        };
+
+                        // No delay requested: nothing to set (governance refuses a dissolve
+                        // timestamp of "now")
+                        if (dissolve_delay_seconds == 0) {
+                            emitStaked<system>();
+                            return #Ok(nid);
+                        };
+
                         let nowSeconds: Nat64 = Nat64.fromNat(Int.abs(Time.now() / 1_000_000_000));
                         let dissolveTimestamp: Nat64 = nowSeconds + dissolve_delay_seconds;
                         
                         let configResult = await configureNeuron(nid, #SetDissolveTimestamp({
                             dissolve_timestamp_seconds = dissolveTimestamp;
                         }));
-                        
-                        eventEngine.emitEvent<system>(T.StakingEvent.NeuronStaked, [
-                            ("neuronId", Nat64.toText(nid.id)),
-                            ("amount_e8s", Nat64.toText(amount_e8s)),
-                            ("dissolveDelay", Nat64.toText(dissolve_delay_seconds)),
-                        ]);
 
                         switch (configResult) {
                             case (#Err(#GovernanceError(ge))) {
+                                // Neuron was staked but the dissolve delay was not set: no NeuronStaked event
+                                logEngine.logError("api", "stakeNeuron: neuron staked but setting the dissolve delay failed", ?caller, [("neuronId", Nat64.toText(nid.id)), ("memo", memoText), ("error", ge.error_message)]);
                                 return #Err(#GovernanceError(ge));
                             };
                             case (#Err(_)) {
+                                emitStaked<system>();
                                 return #Ok(nid);
                             };
                             case (#Ok) {
+                                emitStaked<system>();
                                 return #Ok(nid);
                             };
                         };
@@ -2497,6 +2471,12 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             let neuron = switch (neuronResult) {
                 case (#Err(e)) { return #Error("Failed to get neuron: " # e.error_message) };
                 case (#Ok(n)) { n };
+            };
+
+            // A spawning neuron cannot disburse maturity until the spawn completes: skip it
+            if (neuron.spawn_at_timestamp_seconds != null) {
+                logEngine.logInfo(src, "Neuron " # nidText # " is spawning, skipping", null, [("neuronId", nidText), ("action", "skipped")]);
+                return #Done;
             };
 
             let maturityE8s = neuron.maturity_e8s_equivalent;

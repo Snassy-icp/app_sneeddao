@@ -943,7 +943,7 @@ module {
     public let CURRENT_VERSION: Version = {
         major = 0;
         minor = 9;
-        patch = 2;
+        patch = 3;
     };
 
 };
