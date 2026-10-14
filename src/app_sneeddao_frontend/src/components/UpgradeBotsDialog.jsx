@@ -44,11 +44,20 @@ function versionLabel(v, moduleHash) {
     return `v${versionStr(v)}`;
 }
 
+/// A short reason for a failed install_code: the replica's reject text is long and mostly boilerplate.
+function installErrorText(e) {
+    const msg = String(e?.message || e || 'Unknown error');
+    if (/out of cycles|insufficient cycles|freezing threshold|not enough cycles/i.test(msg)) return 'the canister is low on cycles. Top it up and try again.';
+    if (/not (a|one of the) controllers?|only (the )?controllers/i.test(msg)) return 'you are not a controller of this canister.';
+    const m = msg.match(/Reject (?:text|message)"?: ?"?([^\n"]+)/i);
+    return (m ? m[1] : msg).slice(0, 300);
+}
+
 /**
  * Dialog for upgrading outdated app canisters from sneedapp.
  * Supports per-app version tracking — each canister upgrades to its own app's latest version.
  */
-export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = [], latestVersion, onUpgradeComplete }) {
+export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers: outdatedManagersProp = [], latestVersion, onUpgradeComplete }) {
     const { theme } = useTheme();
     const { identity } = useAuth();
     const { getPrincipalDisplayName } = useNaming();
@@ -83,29 +92,52 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
     const [isUpgrading, setIsUpgrading] = useState(false);
     const [wasmCache, setWasmCache] = useState({}); // wasmUrl -> Uint8Array, cached per URL
     const abortRef = useRef(false);
+    const runningRef = useRef(false); // one run at a time, whatever the buttons show
+    const reachedRef = useRef({}); // canisterId -> version installed by this dialog (a retry starts there)
+    // The list is taken when the dialog opens and kept until it closes: the wallet refreshes its bots
+    // after an upgrade, and rows must not vanish, regroup or lose their results while someone reads them.
+    const [outdatedManagers, setRows] = useState([]);
+    const wasOpenRef = useRef(false);
 
     // Count bots with unknown WASM hash (might not be staking bots)
     const unknownHashCount = outdatedManagers.filter(m => !m.hasKnownHash).length;
     const hasUnknownHash = unknownHashCount > 0;
 
-    // Initialize selection when outdatedManagers change
+    // Initialize when the dialog opens (not when the wallet's list changes underneath it).
     // Bots with unknown hash are NOT selected by default (safety precaution)
     useEffect(() => {
-        if (isOpen && outdatedManagers.length > 0) {
-            const newSelected = {};
-            outdatedManagers.forEach(m => {
+        const opening = isOpen && !wasOpenRef.current;
+        wasOpenRef.current = isOpen;
+        if (!opening || runningRef.current) return;
+        setRows(outdatedManagersProp);
+        const newSelected = {};
+        outdatedManagersProp.forEach(m => {
+            const id = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
+            newSelected[id] = m.hasKnownHash !== false; // Default OFF for unknown hash
+        });
+        setSelected(newSelected);
+        setUpgradeStatus({});
+        setUpgradeErrors({});
+        setUpgradeProgress({});
+        setIsUpgrading(false);
+        setWasmCache({});
+        reachedRef.current = {};
+        abortRef.current = false;
+    }, [isOpen, outdatedManagersProp]);
+
+    // While open and idle with nothing run yet, follow the wallet's list (it may still be loading).
+    useEffect(() => {
+        if (!isOpen || runningRef.current || Object.keys(upgradeStatus).length > 0) return;
+        setRows(outdatedManagersProp);
+        setSelected(prev => {
+            const next = {};
+            outdatedManagersProp.forEach(m => {
                 const id = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
-                newSelected[id] = m.hasKnownHash !== false; // Default OFF for unknown hash
+                next[id] = id in prev ? prev[id] : m.hasKnownHash !== false;
             });
-            setSelected(newSelected);
-            setUpgradeStatus({});
-            setUpgradeErrors({});
-            setUpgradeProgress({});
-            setIsUpgrading(false);
-            setWasmCache({});
-            abortRef.current = false;
-        }
-    }, [isOpen, outdatedManagers]);
+            return next;
+        });
+    }, [isOpen, outdatedManagersProp, upgradeStatus]);
 
     const toggleSelect = (canisterId) => {
         if (isUpgrading) return;
@@ -131,12 +163,15 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
     const allSelected = outdatedManagers.length > 0 && selectedIds.length === outdatedManagers.length;
 
     const handleUpgradeAll = useCallback(async () => {
-        if (!identity || selectedIds.length === 0) return;
+        if (runningRef.current) return;
+        // a retry leaves the ones that already went through alone
+        const runIds = selectedIds.filter(id => upgradeStatus[id] !== 'success');
+        if (!identity || runIds.length === 0) return;
 
         // Safety check: warn if any selected canisters have unknown WASM
         const unknownSelected = outdatedManagers.filter(m => {
             const id = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
-            return selectedIds.includes(id) && m.hasKnownHash === false;
+            return runIds.includes(id) && m.hasKnownHash === false;
         });
         if (unknownSelected.length > 0) {
             const confirmed = window.confirm(
@@ -147,13 +182,20 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
             if (!confirmed) return;
         }
 
+        runningRef.current = true;
         setIsUpgrading(true);
         abortRef.current = false;
 
-        const statusInit = {};
-        selectedIds.forEach(id => { statusInit[id] = 'pending'; });
-        setUpgradeStatus(statusInit);
-        setUpgradeErrors({});
+        setUpgradeStatus(prev => {
+            const next = { ...prev };
+            runIds.forEach(id => { next[id] = 'pending'; });
+            return next;
+        });
+        setUpgradeErrors(prev => {
+            const next = { ...prev };
+            runIds.forEach(id => { delete next[id]; });
+            return next;
+        });
 
         try {
             const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
@@ -168,7 +210,7 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
             // Per-app WASM cache: wasmUrl -> Uint8Array
             const wasmByUrl = { ...wasmCache };
 
-            for (const canisterId of selectedIds) {
+            for (const canisterId of runIds) {
                 if (abortRef.current) break;
                 setUpgradeStatus(prev => ({ ...prev, [canisterId]: 'upgrading' }));
 
@@ -192,13 +234,13 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                     // Bots step through every published version on the way (each migration expects
                     // the version before it); the running code is identified by its module hash.
                     const running = !fromNns && manager?.moduleHash && isKnownWasmHash ? isKnownWasmHash(manager.moduleHash) : null;
-                    const current = running?.wasmSource === 'snsw' ? null : (running || manager?.version || null);
+                    const current = reachedRef.current[canisterId] || (running?.wasmSource === 'snsw' ? null : (running || manager?.version || null));
                     const steps = fromNns ? [targetVer] : upgradeSteps(current, targetVer, versionsByApp[manager?.resolvedAppId || ''] || []);
 
                     for (let i = 0; i < steps.length; i++) {
                         if (abortRef.current) throw new Error(i > 0 ? `Stopped at ${versionLabel(steps[i - 1])}; upgrade again to continue` : 'Stopped');
                         const stepVer = steps[i];
-                        if (steps.length > 1) setUpgradeProgress(prev => ({ ...prev, [canisterId]: `${versionLabel(stepVer)} (${i + 1}/${steps.length})` }));
+                        setUpgradeProgress(prev => ({ ...prev, [canisterId]: steps.length > 1 ? `${versionLabel(stepVer)} (step ${i + 1} of ${steps.length})` : versionLabel(stepVer) }));
                         const rawUrl = stepVer?.wasmUrl;
                         const wasmUrl = fromNns ? `snsw:${stepVer.wasmHash}` : (Array.isArray(rawUrl) ? (rawUrl[0] || '') : (rawUrl || ''));
                         if (!wasmUrl) throw new Error(`No WASM URL available for ${versionLabel(stepVer)}`);
@@ -229,10 +271,12 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                                 arg: emptyArgs,
                             });
                         } catch (e) {
+                            const why = installErrorText(e);
                             throw new Error(i > 0
-                                ? `Upgraded to ${versionLabel(steps[i - 1])}, then ${versionLabel(stepVer)} failed: ${e.message || e}`
-                                : (e.message || String(e)));
+                                ? `Now on ${versionLabel(steps[i - 1])}; ${versionLabel(stepVer)} failed: ${why}`
+                                : `${versionLabel(stepVer)} failed: ${why}`);
                         }
+                        if (!fromNns) reachedRef.current[canisterId] = stepVer;
                     }
                     setUpgradeProgress(prev => { const n = { ...prev }; delete n[canisterId]; return n; });
 
@@ -245,17 +289,22 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
             }
             setWasmCache(wasmByUrl);
         } catch (err) {
-            const errStatus = {};
-            selectedIds.forEach(id => { errStatus[id] = 'error'; });
-            setUpgradeStatus(errStatus);
-            const errMsgs = {};
-            selectedIds.forEach(id => { errMsgs[id] = `Setup failed: ${err.message}`; });
-            setUpgradeErrors(errMsgs);
+            setUpgradeStatus(prev => {
+                const next = { ...prev };
+                runIds.forEach(id => { if (next[id] !== 'success') next[id] = 'error'; });
+                return next;
+            });
+            setUpgradeErrors(prev => {
+                const next = { ...prev };
+                runIds.forEach(id => { if (!next[id]) next[id] = `Setup failed: ${err.message}`; });
+                return next;
+            });
         } finally {
+            runningRef.current = false;
             setIsUpgrading(false);
             if (onUpgradeComplete) onUpgradeComplete();
         }
-    }, [identity, latestVersion, selectedIds, wasmCache, onUpgradeComplete, outdatedManagers, getTargetVersion, versionsByApp, isKnownWasmHash]);
+    }, [identity, latestVersion, selectedIds, upgradeStatus, wasmCache, onUpgradeComplete, outdatedManagers, getTargetVersion, versionsByApp, isKnownWasmHash]);
 
     const handleClose = () => {
         if (isUpgrading) {
