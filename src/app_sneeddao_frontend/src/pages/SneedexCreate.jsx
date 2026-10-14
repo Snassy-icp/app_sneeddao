@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Header from '../components/Header';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import { useAdminCheck } from '../hooks/useAdminCheck';
-import { FaArrowLeft, FaPlus, FaTrash, FaCubes, FaBrain, FaCoins, FaCheck, FaExclamationTriangle, FaServer, FaRobot, FaWallet, FaSync, FaPencilAlt, FaChevronDown, FaChevronUp, FaUnlock, FaChartLine } from 'react-icons/fa';
+import { FaArrowLeft, FaPlus, FaTrash, FaCubes, FaBrain, FaCoins, FaCheck, FaExclamationTriangle, FaServer, FaRobot, FaWallet, FaSync, FaPencilAlt, FaChevronDown, FaChevronUp, FaUnlock, FaChartLine, FaImage } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
@@ -33,6 +33,8 @@ import { createActor as createBackendActor } from 'declarations/app_sneeddao_bac
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createNeuronManagerActor } from 'declarations/sneed_icp_staking_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { createActor as createIcrc7Actor } from 'external/icrc7_ledger';
+import { loadNftCollection, detectStandards, approveToken, getNftImage, getNftName } from '../utils/NftUtils';
 import { createActor as createTradingBotActor } from 'external/sneed_trading_bot';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { getAllSnses, startBackgroundSnsFetch, fetchSnsLogo, getSnsById } from '../utils/SnsUtils';
@@ -707,6 +709,36 @@ function SneedexCreate() {
     const [newAssetTokenDecimals, setNewAssetTokenDecimals] = useState('8');
     const [newAssetTokenLogo, setNewAssetTokenLogo] = useState('');
     const [newAssetTokenBalance, setNewAssetTokenBalance] = useState(null);
+    // ICRC-7 NFT asset: a collection and the token ids to sell (picked from what the wallet owns, or typed)
+    const [newAssetNftCollection, setNewAssetNftCollection] = useState('');
+    const [newAssetNftTokens, setNewAssetNftTokens] = useState([]); // strings
+    const [newAssetNftIdsText, setNewAssetNftIdsText] = useState('');
+    const [newAssetNftInfo, setNewAssetNftInfo] = useState(null); // { name, symbol, nfts, supportsIcrc37 }
+    const [newAssetNftLoading, setNewAssetNftLoading] = useState(false);
+    const location = useLocation();
+    const loadNftsFor = async (collectionId) => {
+        if (!identity || !collectionId) return;
+        setNewAssetNftLoading(true); setNewAssetNftInfo(null);
+        try {
+            Principal.fromText(collectionId);
+            const agent = HttpAgent.createSync({ host: getHost(), identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
+            const c = await loadNftCollection(collectionId, { owner: identity.getPrincipal(), subaccount: [] }, identity, agent);
+            setNewAssetNftInfo({ name: c.name, symbol: c.symbol, nfts: c.nfts, supportsIcrc37: !!c.supportsIcrc37 });
+        } catch (e) { setError(`Could not read the collection: ${e?.message || e}`); }
+        finally { setNewAssetNftLoading(false); }
+    };
+    // Arriving from the NFT wallet: ?nft=<collection>:<id>[,<id>]
+    useEffect(() => {
+        const q = new URLSearchParams(location.search).get('nft');
+        if (!q || !identity) return;
+        const [collection, ids] = q.split(':');
+        if (!collection) return;
+        setShowAddAsset(true); setNewAssetType('nft'); setNewAssetNftCollection(collection);
+        setNewAssetNftTokens((ids || '').split(',').filter(Boolean));
+        loadNftsFor(collection);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [location.search, identity]);
     const [loadingTokenBalance, setLoadingTokenBalance] = useState(false);
     
     // Fetch balance for selected asset token
@@ -808,6 +840,7 @@ function SneedexCreate() {
         if (asset.type === 'canister') return `canister:${asset.canister_id}`;
         if (asset.type === 'neuron') return `neuron:${asset.governance_id}:${asset.neuron_id}`;
         if (asset.type === 'token') return `token:${asset.ledger_id}`;
+        if (asset.type === 'nft') return `nft:${asset.collection_id}:${(asset.token_ids || []).join(',')}`;
         return `unknown:${Date.now()}`;
     }, []);
     
@@ -1052,6 +1085,19 @@ function SneedexCreate() {
     }, [newAssetCanisterKind, canisterKindVerified, newAssetCanisterId, fetchNeuronManagerInfo]);
     
     // Verify ICRC1 token - check if user has sufficient balance
+    const verifyNftOwnership = useCallback(async (collectionId, tokenIds) => {
+        if (!identity) return { verified: false, message: 'Not authenticated' };
+        try {
+            const agent = HttpAgent.createSync({ host: getHost(), identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
+            const owners = await createIcrc7Actor(collectionId, { agent }).icrc7_owner_of(tokenIds.map((id) => BigInt(id)));
+            const me = identity.getPrincipal().toText();
+            const missing = tokenIds.filter((id, i) => owners[i]?.[0]?.owner?.toText() !== me);
+            if (missing.length) return { verified: false, message: `Not in your wallet: #${missing.join(', #')}` };
+            return { verified: true, message: `${tokenIds.length} token${tokenIds.length === 1 ? '' : 's'} in your wallet` };
+        } catch (e) { return { verified: false, message: `Could not check ownership: ${e?.message || e}` }; }
+    }, [identity]);
+    
     const verifyTokenBalance = useCallback(async (ledgerId, amount, decimals) => {
         if (!identity) return { verified: false, message: 'Not authenticated' };
         
@@ -1166,6 +1212,8 @@ function SneedexCreate() {
             result = await verifyTokenBalance(asset.ledger_id, asset.amount, asset.decimals);
         } else if (asset.type === 'neuron') {
             result = await verifyNeuronHotkey(asset.governance_id, asset.neuron_id);
+        } else if (asset.type === 'nft') {
+            result = await verifyNftOwnership(asset.collection_id, asset.token_ids);
         } else {
             result = { verified: false, message: 'Unknown asset type' };
         }
@@ -1214,6 +1262,8 @@ function SneedexCreate() {
                     result = await verifyTokenBalance(asset.ledger_id, asset.amount, asset.decimals);
                 } else if (asset.type === 'neuron') {
                     result = await verifyNeuronHotkey(asset.governance_id, asset.neuron_id);
+                } else if (asset.type === 'nft') {
+                    result = await verifyNftOwnership(asset.collection_id, asset.token_ids);
                 } else {
                     result = { verified: false, message: 'Unknown asset type' };
                 }
@@ -1348,6 +1398,24 @@ function SneedexCreate() {
                     logo: newAssetTokenLogo || '',
                     display: `${newAssetTokenAmount} ${newAssetTokenSymbol.trim() || 'TOKEN'}`
                 };
+            } else if (newAssetType === 'nft') {
+                Principal.fromText(newAssetNftCollection.trim());
+                const ids = [...new Set([...newAssetNftTokens, ...newAssetNftIdsText.split(/[\s,]+/).filter(Boolean)])];
+                if (ids.length === 0 || ids.some((x) => !/^\d+$/.test(x))) {
+                    setError('Pick or type at least one token id (numbers only)');
+                    return;
+                }
+                const first = newAssetNftInfo?.nfts?.find((n) => n.tokenId.toString() === ids[0]);
+                asset = {
+                    type: 'nft',
+                    collection_id: newAssetNftCollection.trim(),
+                    token_ids: ids,
+                    symbol: newAssetNftInfo?.symbol || 'NFT',
+                    collection_name: newAssetNftInfo?.name || '',
+                    image: first ? getNftImage(first.metadata, first) : '',
+                    supportsIcrc37: !!newAssetNftInfo?.supportsIcrc37,
+                    display: ids.length === 1 ? `${newAssetNftInfo?.symbol || 'NFT'} #${ids[0]}${first ? ` (${getNftName(first.metadata, first.tokenId, first)})` : ''}` : `${ids.length} ${newAssetNftInfo?.symbol || 'NFT'}s: #${ids.join(', #')}`
+                };
             }
         } catch (e) {
             setError('Invalid principal/app canister id format');
@@ -1445,6 +1513,12 @@ function SneedexCreate() {
             setNewAssetTokenSymbol(asset.symbol || '');
             setNewAssetTokenDecimals(asset.decimals?.toString() || '8');
             setNewAssetTokenLogo(asset.logo || '');
+        } else if (asset.type === 'nft') {
+            setNewAssetType('nft');
+            setNewAssetNftCollection(asset.collection_id);
+            setNewAssetNftTokens(asset.token_ids || []);
+            setNewAssetNftIdsText('');
+            loadNftsFor(asset.collection_id);
         }
     };
     
@@ -1721,6 +1795,8 @@ function SneedexCreate() {
                     } else if (asset.type === 'token') {
                         // Transfer tokens then escrow
                         await escrowTokenAsset(asset.ledger_id, asset.amount, asset.decimals, offerId, idx, identity.getPrincipal());
+                    } else if (asset.type === 'nft') {
+                        await escrowNftAsset(asset, offerId, idx);
                     }
                 }
                 updateProgressStep(stepIndex, 'complete');
@@ -1845,6 +1921,28 @@ function SneedexCreate() {
     };
     
     // Auto-escrow helper for ICRC1 tokens
+    /// NFTs: with ICRC-37, approve Sneedex and let it pull the tokens; otherwise transfer them into the escrow subaccount and have Sneedex verify.
+    const escrowNftAsset = async (asset, offerId, assetIndex) => {
+        const actor = createSneedexActor(identity);
+        const agent = HttpAgent.createSync({ host: getHost(), identity });
+        if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
+        const ids = asset.token_ids.map((id) => BigInt(id));
+        const std = await detectStandards(asset.collection_id, agent).catch(() => ({ icrc37: false }));
+        if (std.icrc37) {
+            for (const id of ids) await approveToken(asset.collection_id, id, SNEEDEX_CANISTER_ID, null, agent);
+            const r = await actor.escrowICRC7NFTsByApproval(offerId, BigInt(assetIndex));
+            if ('err' in r) throw new Error(`Failed to escrow NFTs by approval: ${getErrorMessage(r.err)}`);
+            return;
+        }
+        const escrowSubaccount = await actor.getOfferEscrowSubaccount(identity.getPrincipal(), offerId);
+        const collection = createIcrc7Actor(asset.collection_id, { agent });
+        const results = await collection.icrc7_transfer(ids.map((token_id) => ({ from_subaccount: [], to: { owner: Principal.fromText(SNEEDEX_CANISTER_ID), subaccount: [escrowSubaccount] }, token_id, memo: [], created_at_time: [] })));
+        const failed = results.map((r, i) => (r?.[0] && 'Err' in r[0] ? `#${ids[i]}: ${Object.keys(r[0].Err)[0]}` : null)).filter(Boolean);
+        if (failed.length) throw new Error(`NFT transfer failed: ${failed.join(', ')}`);
+        const r = await actor.escrowICRC7NFTs(offerId, BigInt(assetIndex));
+        if ('err' in r) throw new Error(`Failed to escrow NFTs: ${getErrorMessage(r.err)}`);
+    };
+    
     const escrowTokenAsset = async (ledgerId, amount, decimals, offerId, assetIndex, creatorPrincipal) => {
         const host = getHost();
         const agent = HttpAgent.createSync({ host, identity });
@@ -2000,6 +2098,10 @@ function SneedexCreate() {
                 }
                 return <FaCoins style={{ color: theme.colors.warning, fontSize: size }} />;
             }
+            case 'nft':
+                return asset.image
+                    ? <img src={asset.image} alt={asset.symbol || 'NFT'} style={{ width: size, height: size, borderRadius: 6, objectFit: 'cover' }} onError={(e) => { e.target.style.display = 'none'; }} />
+                    : <FaImage style={{ fontSize: size, color: '#a18cd1' }} />;
             default: return <FaCubes style={{ fontSize: size }} />;
         }
     };
@@ -3358,6 +3460,7 @@ function SneedexCreate() {
                                         { type: 'neuron_manager', icon: FaRobot, label: 'ICP Staking Bot', gradient: 'linear-gradient(135deg, #f5af19 0%, #f12711 100%)' },
                                         { type: 'trading_bot', icon: FaChartLine, label: 'Trading Bot', gradient: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)' },
                                         { type: 'neuron', icon: FaBrain, label: 'SNS Neuron', gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
+                                        { type: 'nft', icon: FaImage, label: 'NFT', gradient: 'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)' },
                                         { type: 'token', icon: FaCoins, label: 'ICRC1 Token', gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
                                     ].map(({ type, icon: Icon, label, gradient }) => {
                                         const isSelected = newAssetType === type;
@@ -4275,6 +4378,40 @@ function SneedexCreate() {
                                     </>
                                 )}
                                 
+                                {newAssetType === 'nft' && (
+                                    <>
+                                        <div style={styles.formGroup}>
+                                            <label style={styles.label}>Collection (ICRC-7 canister)</label>
+                                            <PrincipalInput value={newAssetNftCollection} onChange={(v) => { setNewAssetNftCollection(v); setNewAssetNftInfo(null); setNewAssetNftTokens([]); }} placeholder="Collection canister id or name" defaultTab="all" style={{ width: '100%' }} />
+                                            <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                                                <button type="button" style={styles.secondaryButton} disabled={newAssetNftLoading || !newAssetNftCollection} onClick={() => loadNftsFor(newAssetNftCollection.trim())}>{newAssetNftLoading ? 'Loading…' : 'Load my NFTs in it'}</button>
+                                                {newAssetNftInfo && <span style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>{newAssetNftInfo.name} ({newAssetNftInfo.symbol}) · you own {newAssetNftInfo.nfts.length} · {newAssetNftInfo.supportsIcrc37 ? 'ICRC-37: escrow by approval' : 'escrow by transfer'}</span>}
+                                            </div>
+                                        </div>
+                                        {newAssetNftInfo && newAssetNftInfo.nfts.length > 0 && (
+                                            <div style={styles.formGroup}>
+                                                <label style={styles.label}>Pick the tokens to sell</label>
+                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
+                                                    {newAssetNftInfo.nfts.map((n) => {
+                                                        const id = n.tokenId.toString(); const on = newAssetNftTokens.includes(id); const img = getNftImage(n.metadata, n);
+                                                        return (
+                                                            <label key={id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 8, borderRadius: 10, border: `1px solid ${on ? sneedexPrimary : theme.colors.border}`, background: on ? `${sneedexPrimary}15` : theme.colors.secondaryBg, cursor: 'pointer' }}>
+                                                                <input type="checkbox" checked={on} onChange={(e) => setNewAssetNftTokens((t) => (e.target.checked ? [...t, id] : t.filter((x) => x !== id)))} />
+                                                                {img ? <img src={img} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover' }} /> : <FaImage style={{ color: theme.colors.mutedText }} />}
+                                                                <span style={{ fontSize: '0.82rem', color: theme.colors.primaryText, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>#{id} {getNftName(n.metadata, n.tokenId, n)}</span>
+                                                            </label>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+                                        <div style={styles.formGroup}>
+                                            <label style={styles.label}>Or type token ids (comma separated)</label>
+                                            <input style={styles.input} value={newAssetNftIdsText} onChange={(e) => setNewAssetNftIdsText(e.target.value)} placeholder="e.g. 12, 13" />
+                                        </div>
+                                    </>
+                                )}
+                                
                                 {newAssetType === 'token' && (
                                     <>
                                         <div style={styles.formGroup}>
@@ -4722,6 +4859,7 @@ function SneedexCreate() {
                                                                     : asset.display
                                                             )}
                                                             {asset.type === 'token' && asset.display}
+                                                            {asset.type === 'nft' && asset.display}
                                                         </div>
                                                         {/* USD Value */}
                                                         {(() => {

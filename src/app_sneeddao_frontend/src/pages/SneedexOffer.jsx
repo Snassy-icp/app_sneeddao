@@ -5,7 +5,7 @@ import SwapModal from '../components/SwapModal';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync, FaWallet, FaChevronDown, FaChevronUp, FaMicrochip, FaMemory, FaBolt, FaLock, FaUserCheck, FaRobot, FaExclamationTriangle, FaExchangeAlt, FaShoppingCart, FaChartLine } from 'react-icons/fa';
+import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync, FaWallet, FaChevronDown, FaChevronUp, FaMicrochip, FaMemory, FaBolt, FaLock, FaUserCheck, FaRobot, FaExclamationTriangle, FaExchangeAlt, FaShoppingCart, FaChartLine, FaImage } from 'react-icons/fa';
 import { getLogoSync } from '../hooks/useLogoCache';
 
 // Fallback logo service — serves logos for most ICP tokens by canister ID
@@ -3030,6 +3030,11 @@ function SneedexOffer() {
                                                                 />
                                                             </div>
                                                         )}
+                                                        {details.type === 'ICRC7NFT' && (
+                                                            <div style={{ width: '36px', height: '36px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, background: '#a18cd122' }}>
+                                                                <FaImage style={{ fontSize: '20px', color: '#a18cd1' }} />
+                                                            </div>
+                                                        )}
                                                         {details.type === 'SNSNeuron' && (
                                                             <div style={{ 
                                                                 position: 'relative', 
@@ -3077,6 +3082,13 @@ function SneedexOffer() {
                                                                 const snsName = sns?.name || 'SNS';
                                                                 return `${snsName} Neuron`;
                                                             })()}
+                                                            {details.type === 'ICRC7NFT' && (
+                                                                <span>
+                                                                    {details.token_ids.length === 1 ? `NFT #${details.token_ids[0]}` : `${details.token_ids.length} NFTs (#${details.token_ids.join(', #')})`}
+                                                                    <span style={{ marginLeft: 8, fontFamily: 'monospace', fontSize: '0.75rem', color: theme.colors.mutedText }}>{details.collection_id}</span>
+                                                                    <Link to="/nft" style={{ marginLeft: 8, fontSize: '0.75rem', color: theme.colors.accent }}>NFT wallet</Link>
+                                                                </span>
+                                                            )}
                                                             {details.type === 'ICRC1Token' && (() => {
                                                                 // Check whitelisted tokens first, then dynamically fetched metadata
                                                                 const ledgerId = details.ledger_id;

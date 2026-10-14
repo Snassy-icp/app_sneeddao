@@ -224,6 +224,7 @@ export const getAssetType = (asset) => {
     if ('Canister' in asset) return 'Canister';
     if ('SNSNeuron' in asset) return 'SNSNeuron';
     if ('ICRC1Token' in asset) return 'ICRC1Token';
+    if ('ICRC7NFT' in asset) return 'ICRC7NFT';
     return 'Unknown';
 };
 
@@ -288,6 +289,14 @@ export const getAssetDetails = (assetEntry) => {
             escrowed,
         };
     }
+    if ('ICRC7NFT' in asset) {
+        return {
+            type: 'ICRC7NFT',
+            collection_id: asset.ICRC7NFT.collection_canister_id.toString(),
+            token_ids: asset.ICRC7NFT.token_ids.map((id) => BigInt(id)),
+            escrowed,
+        };
+    }
     
     return { type: 'Unknown', escrowed };
 };
@@ -340,6 +349,13 @@ export const createAssetVariant = (type, details) => {
                 ICRC1Token: {
                     ledger_canister_id: Principal.fromText(details.ledger_id),
                     amount: parseAmount(details.amount, details.decimals || 8),
+                }
+            };
+        case 'nft':
+            return {
+                ICRC7NFT: {
+                    collection_canister_id: Principal.fromText(details.collection_id),
+                    token_ids: details.token_ids.map((id) => BigInt(id)),
                 }
             };
         default:

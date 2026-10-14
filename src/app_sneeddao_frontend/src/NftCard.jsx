@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useTheme } from './contexts/ThemeContext';
 import { getNftImage, getNftName, getNftDescription, formatNftMetadata, getNftAttributes, getNftLinks } from './utils/NftUtils';
 import PrincipalInput from './components/PrincipalInput';
 import './NftCard.css';
 
-const NftCard = ({ nft, collectionName, collectionSymbol, onSend , supportsIcrc37 = false, onApprove, onRevoke }) => {
+const NftCard = ({ nft, collectionName, collectionSymbol, onSend , supportsIcrc37 = false, onApprove, onRevoke, collectionId }) => {
     const { theme } = useTheme();
     const [isExpanded, setIsExpanded] = useState(false);
     const [imageError, setImageError] = useState(false);
@@ -193,6 +194,11 @@ const NftCard = ({ nft, collectionName, collectionSymbol, onSend , supportsIcrc3
                             </div>
                         )}
 
+                        {collectionId && (
+                            <div style={{ marginTop: '12px' }}>
+                                <Link to={`/sneedex_create?nft=${collectionId}:${nft.tokenId.toString()}`} onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: 8, border: `1px solid ${theme.colors.accent}`, color: theme.colors.accent, textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>Sell on Sneedex</Link>
+                            </div>
+                        )}
                         {/* Action button */}
                         <div style={{
                             paddingTop: '12px',

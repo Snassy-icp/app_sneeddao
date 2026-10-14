@@ -3,7 +3,7 @@ import Header from '../components/Header';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot, FaChevronLeft, FaChevronRight, FaChevronDown, FaChevronUp, FaTimes, FaUnlock, FaExchangeAlt, FaChartLine } from 'react-icons/fa';
+import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot, FaChevronLeft, FaChevronRight, FaChevronDown, FaChevronUp, FaTimes, FaUnlock, FaExchangeAlt, FaChartLine, FaImage } from 'react-icons/fa';
 import { getLogoSync } from '../hooks/useLogoCache';
 import TokenSelector from '../components/TokenSelector';
 import PrincipalInput from '../components/PrincipalInput';
@@ -2270,6 +2270,9 @@ function SneedexOffers() {
                                                     const stakeText = stakeValue !== undefined ? `\nStake: ${stakeValue.toFixed(4)} ${snsInfo?.symbol || 'tokens'}` : '';
                                                     return `${snsInfo?.name || 'SNS'} Neuron\nGovernance: ${details.governance_id}\nNeuron ID: ${details.neuron_id?.slice(0, 16)}...${stakeText}`;
                                                 }
+                                                if (details.type === 'ICRC7NFT') {
+                                                    return `ICRC-7 NFT${details.token_ids.length === 1 ? '' : 's'}\nCollection: ${details.collection_id}\nToken ids: ${details.token_ids.join(', ')}`;
+                                                }
                                                 if (details.type === 'ICRC1Token') {
                                                     return `${assetTokenInfo?.name || assetTokenInfo?.symbol || 'Token'}\nLedger: ${details.ledger_id}\nAmount: ${formatAmount(details.amount, assetTokenInfo?.decimals || 8)} ${assetTokenInfo?.symbol || 'tokens'}`;
                                                 }
@@ -2368,6 +2371,12 @@ function SneedexOffers() {
                                                                 onError={(e) => { e.target.onerror = null; e.target.src = getProxyLogoUrl(details.ledger_id); }}
                                                             />
                                                             {formatAmount(details.amount, assetTokenInfo?.decimals || 8)} {assetTokenInfo?.symbol || 'TOKEN'}
+                                                        </>
+                                                    )}
+                                                    {details.type === 'ICRC7NFT' && (
+                                                        <>
+                                                            <FaImage style={{ color: '#a18cd1', fontSize: '15px' }} />
+                                                            {details.token_ids.length === 1 ? `NFT #${details.token_ids[0]}` : `${details.token_ids.length} NFTs`} <span style={{ color: theme.colors.mutedText, fontFamily: 'monospace', fontSize: '0.75rem' }}>{details.collection_id.slice(0, 5)}…</span>
                                                         </>
                                                     )}
                                                 </span>

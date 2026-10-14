@@ -335,6 +335,7 @@ const NftCollectionCard = ({ collection, onSendNft, onRemove, onRefresh, isRefre
                                     collectionSymbol={collection.symbol}
                                     onSend={(nft) => onSendNft(collection, nft)}
                                     supportsIcrc37={!!collection.supportsIcrc37}
+                                    collectionId={collection.canisterId}
                                     onApprove={onApproveToken ? (nft, spender, exp) => onApproveToken(collection, nft, spender, exp) : undefined}
                                     onRevoke={onRevokeToken ? (nft, spender) => onRevokeToken(collection, nft, spender) : undefined}
                                 />
