@@ -17,6 +17,7 @@ export const idlFactory = ({ IDL }) => {
     'standard' : IDL.Text,
     'symbol' : IDL.Text,
   });
+  const Result_1 = IDL.Variant({ 'ok' : IDL.Text, 'err' : IDL.Text });
   const NeuronId = IDL.Record({ 'id' : IDL.Vec(IDL.Nat8) });
   const NeuronNameKey = IDL.Record({
     'sns_root_canister_id' : IDL.Principal,
@@ -203,7 +204,6 @@ export const idlFactory = ({ IDL }) => {
     'InsufficientFunds' : IDL.Record({ 'balance' : Balance }),
   });
   const TransferResult = IDL.Variant({ 'Ok' : TxIndex, 'Err' : TransferError });
-  const Result_1 = IDL.Variant({ 'ok' : IDL.Text, 'err' : IDL.Text });
   const UserSettingsUpdate = IDL.Record({
     'expand_quick_links_on_desktop' : IDL.Opt(IDL.Bool),
     'canister_manager_cycle_threshold_orange' : IDL.Opt(IDL.Nat),
@@ -268,9 +268,11 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'add_whitelisted_token' : IDL.Func([WhitelistedToken], [], []),
+    'admin_clear_avatar' : IDL.Func([IDL.Principal], [Result_1], []),
     'ban_user' : IDL.Func([IDL.Principal, IDL.Nat, IDL.Text], [Result_2], []),
     'caller_is_admin' : IDL.Func([], [IDL.Bool], ['query']),
     'check_ban_status' : IDL.Func([IDL.Principal], [Result_2], ['query']),
+    'clear_my_avatar' : IDL.Func([], [Result_1], []),
     'delete_canister_groups' : IDL.Func([], [], []),
     'delete_jailbreak_config' : IDL.Func([IDL.Nat], [Result_2], []),
     'get_admins' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
@@ -303,6 +305,13 @@ export const idlFactory = ({ IDL }) => {
     'get_authorized_for_callers' : IDL.Func(
         [],
         [IDL.Vec(IDL.Principal)],
+        ['query'],
+      ),
+    'get_avatar' : IDL.Func([IDL.Principal], [IDL.Opt(IDL.Text)], ['query']),
+    'get_avatar_count' : IDL.Func([], [IDL.Nat], ['query']),
+    'get_avatars' : IDL.Func(
+        [IDL.Vec(IDL.Principal)],
+        [IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Text))],
         ['query'],
       ),
     'get_ban_log' : IDL.Func([], [Result_6], ['query']),
@@ -498,6 +507,7 @@ export const idlFactory = ({ IDL }) => {
         [Result_2],
         [],
       ),
+    'set_my_avatar' : IDL.Func([IDL.Text], [Result_1], []),
     'set_my_settings' : IDL.Func([UserSettingsUpdate], [Result_3], []),
     'set_neuron_name' : IDL.Func(
         [IDL.Principal, NeuronId, IDL.Text],

@@ -28,6 +28,8 @@ import {
     getAllNeuronNicknames,
     setPrincipalName,
     getPrincipalName,
+    setMyAvatar,
+    getAvatar,
     getMySettings,
     setMySettings,
     getPostsByUser,
@@ -64,7 +66,7 @@ import { useDenomination } from '../contexts/DenominationContext';
 import { CKUSDC_LEDGER, getCurrencySign } from '../utils/DenominationUtils';
 import { Principal } from '@dfinity/principal';
 import { createSneedexActor } from '../utils/SneedexUtils';
-import { FaUser, FaCrown, FaKey, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel, FaShareAlt, FaExternalLinkAlt, FaCopy, FaPen, FaChevronRight, FaChevronDown, FaVoteYea, FaUserShield, FaQuestion, FaTimes, FaExclamationTriangle } from 'react-icons/fa';
+import { FaUser, FaCrown, FaCamera, FaKey, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel, FaShareAlt, FaExternalLinkAlt, FaCopy, FaPen, FaChevronRight, FaChevronDown, FaVoteYea, FaUserShield, FaQuestion, FaTimes, FaExclamationTriangle } from 'react-icons/fa';
 
 // Custom CSS for animations
 const customStyles = `
@@ -161,6 +163,60 @@ export default function Me() {
     const [confirmAction, setConfirmAction] = useState(null);
     const [confirmMessage, setConfirmMessage] = useState('');
     const [principalName, setPrincipalNameState] = useState(null);
+    // Avatar: the saved url, the editor's draft, and its status
+    const [avatarUrl, setAvatarUrl] = useState(null);
+    useEffect(() => {
+        if (!identity) return;
+        let alive = true;
+        getAvatar(identity, identity.getPrincipal()).then((u) => { if (alive) setAvatarUrl(u); }).catch(() => {});
+        return () => { alive = false; };
+    }, [identity]);
+    const [avatarEditing, setAvatarEditing] = useState(false);
+    const [avatarDraft, setAvatarDraft] = useState('');
+    const [avatarBusy, setAvatarBusy] = useState(false);
+    const [avatarError, setAvatarError] = useState('');
+    const avatarFileRef = useRef(null);
+    const AVATAR_MAX_DATA = 32768;
+    /// Shrink a picked image to a small square and return a data URL that fits the backend's limit.
+    const fileToAvatarDataUrl = (file) => new Promise((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+            const trySize = (size, quality) => {
+                const c = document.createElement('canvas'); c.width = size; c.height = size;
+                const ctx = c.getContext('2d');
+                const side = Math.min(img.width, img.height);
+                ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
+                return c.toDataURL('image/webp', quality);
+            };
+            for (const [size, q] of [[128, 0.85], [128, 0.7], [96, 0.7], [64, 0.7], [64, 0.5], [48, 0.5]]) {
+                const d = trySize(size, q);
+                if (d.startsWith('data:image/webp') && d.length <= AVATAR_MAX_DATA) return resolve(d);
+            }
+            for (const [size, q] of [[96, 0.7], [64, 0.6], [48, 0.5]]) {
+                const c = document.createElement('canvas'); c.width = size; c.height = size;
+                const ctx = c.getContext('2d'); const side = Math.min(img.width, img.height);
+                ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
+                const d = c.toDataURL('image/jpeg', q);
+                if (d.length <= AVATAR_MAX_DATA) return resolve(d);
+            }
+            reject(new Error('could not shrink the image enough; try a simpler picture or link to one'));
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('that file is not an image the browser can read')); };
+        img.src = url;
+    });
+    const saveAvatar = async (value) => {
+        setAvatarBusy(true); setAvatarError('');
+        try {
+            const r = await setMyAvatar(identity, value);
+            if ('ok' in r) {
+                setAvatarUrl(value || null); setAvatarEditing(false); setAvatarDraft('');
+                namingSetKnownAvatar?.(identity.getPrincipal().toText(), value || null);
+            } else setAvatarError(r.err);
+        } catch (e) { setAvatarError(e?.message || String(e)); }
+        finally { setAvatarBusy(false); }
+    };
     const [isVerified, setIsVerified] = useState(false);
     const [editingPrincipalName, setEditingPrincipalName] = useState(false);
     const [principalNameInput, setPrincipalNameInput] = useState('');
@@ -914,7 +970,7 @@ export default function Me() {
     }, [cacheManagementExpanded]);
     
     // Get naming context
-    const { neuronNames, neuronNicknames, fetchAllNames, verifiedNames, principalNames, principalNicknames } = useNaming();
+    const { neuronNames, neuronNicknames, fetchAllNames, verifiedNames, principalNames, principalNicknames , setKnownAvatar: namingSetKnownAvatar } = useNaming();
     
     // Check premium status
     const { isPremium, loading: premiumLoading } = usePremiumStatus(identity);
@@ -1660,6 +1716,7 @@ export default function Me() {
                                 }}>
                                     {/* Avatar */}
                                     <div style={{
+                                        position: 'relative',
                                         width: '88px',
                                         height: '88px',
                                         borderRadius: '20px',
@@ -1675,11 +1732,17 @@ export default function Me() {
                                             : `0 8px 32px ${mePrimary}50`,
                                         border: `4px solid ${theme.colors.secondaryBg}`
                                     }}>
-                                        {isPremium && !premiumLoading ? (
+                                        {avatarUrl ? (
+                                            <img src={avatarUrl} alt="" referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '16px' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                                        ) : isPremium && !premiumLoading ? (
                                             <FaCrown size={36} color="white" />
                                         ) : (
                                             <FaUser size={36} color="white" />
                                         )}
+                                        <button type="button" title={avatarUrl ? 'Change avatar' : 'Set an avatar'} onClick={() => { setAvatarEditing((v) => !v); setAvatarDraft(avatarUrl && !avatarUrl.startsWith('data:') ? avatarUrl : ''); setAvatarError(''); }}
+                                            style={{ position: 'absolute', right: '-6px', bottom: '-6px', width: '28px', height: '28px', borderRadius: '50%', border: `2px solid ${theme.colors.secondaryBg}`, background: mePrimary, color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+                                            <FaCamera size={12} />
+                                        </button>
                                     </div>
                                     
                                     {/* Name & Badge Row */}
@@ -1713,6 +1776,40 @@ export default function Me() {
                                         </div>
                                     </div>
                                 </div>
+
+                                {avatarEditing && (
+                                    <div style={{ background: theme.colors.tertiaryBg, borderRadius: '12px', padding: '1rem', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                                        <label style={{ fontSize: '0.8rem', fontWeight: '600', color: theme.colors.secondaryText }}>Avatar</label>
+                                        <p style={{ fontSize: '0.75rem', color: theme.colors.mutedText, margin: '-0.4rem 0 0', lineHeight: 1.4 }}>
+                                            Shown next to your name everywhere on Sneed Hub: forum posts, offers, the principal picker. Upload a picture (it is shrunk to a small square and stored on-chain) or link to one you host (https, up to 512 characters).
+                                        </p>
+                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                                            <input ref={avatarFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
+                                                const f = e.target.files?.[0]; e.target.value = '';
+                                                if (!f) return;
+                                                setAvatarBusy(true); setAvatarError('');
+                                                try { const d = await fileToAvatarDataUrl(f); setAvatarDraft(d); } catch (err) { setAvatarError(err?.message || String(err)); }
+                                                finally { setAvatarBusy(false); }
+                                            }} />
+                                            <button type="button" disabled={avatarBusy} onClick={() => avatarFileRef.current?.click()} style={{ background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, borderRadius: '10px', color: theme.colors.primaryText, padding: '0.6rem 0.9rem', cursor: 'pointer', fontSize: '0.85rem' }}>Upload picture…</button>
+                                            <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>or</span>
+                                            <input type="text" value={avatarDraft.startsWith('data:') ? '' : avatarDraft} onChange={(e) => setAvatarDraft(e.target.value.trim())} placeholder="https://… link to an image" maxLength={512}
+                                                style={{ flex: 1, minWidth: '200px', backgroundColor: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, borderRadius: '10px', color: theme.colors.primaryText, padding: '0.6rem 0.9rem', fontSize: '0.9rem', boxSizing: 'border-box' }} />
+                                        </div>
+                                        {avatarDraft && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                                <img src={avatarDraft} alt="" referrerPolicy="no-referrer" style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover', border: `2px solid ${theme.colors.border}` }} onError={() => setAvatarError('the browser cannot load that image')} />
+                                                <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Preview{avatarDraft.startsWith('data:') ? ` · ${(avatarDraft.length / 1024).toFixed(1)} kB stored on-chain` : ''}</span>
+                                            </div>
+                                        )}
+                                        {avatarError && <div style={{ color: theme.colors.error, fontSize: '0.8rem' }}>{avatarError}</div>}
+                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                            <button type="button" disabled={avatarBusy || !avatarDraft} onClick={() => saveAvatar(avatarDraft)} style={{ background: mePrimary, border: 'none', borderRadius: '10px', color: 'white', padding: '0.6rem 1rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, opacity: avatarBusy || !avatarDraft ? 0.6 : 1 }}>{avatarBusy ? 'Saving…' : 'Save avatar'}</button>
+                                            {avatarUrl && <button type="button" disabled={avatarBusy} onClick={() => saveAvatar('')} style={{ background: 'transparent', border: `1px solid ${theme.colors.error}`, borderRadius: '10px', color: theme.colors.error, padding: '0.6rem 1rem', cursor: 'pointer', fontSize: '0.85rem' }}>Remove avatar</button>}
+                                            <button type="button" onClick={() => { setAvatarEditing(false); setAvatarError(''); }} style={{ background: 'transparent', border: `1px solid ${theme.colors.border}`, borderRadius: '10px', color: theme.colors.secondaryText, padding: '0.6rem 1rem', cursor: 'pointer', fontSize: '0.85rem' }}>Cancel</button>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Activity Stats */}
                                 <div style={{

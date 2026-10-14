@@ -172,6 +172,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   var stable_ban_log : [BanLogEntry] = [];
   var stable_banned_users : [(Principal, Int)] = [];
 
+  // Stable storage for avatars (a separate structure: the name records stay as they are)
+  var stable_avatars : [(Principal, Text)] = [];
+
   // Stable storage for principal names and nicknames
   var stable_principal_names : [(Principal, (Text, Bool))] = [];
   var stable_principal_nicknames : [(Principal, [(Principal, Text)])] = [];
@@ -338,6 +341,8 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
   // Runtime hashmaps for principal names and nicknames
   transient var principal_names = HashMap.HashMap<Principal, (Text, Bool)>(100, Principal.equal, Principal.hash);
+  // Avatar image per principal: an https URL or a data:image URL, set by the principal itself
+  transient var avatars = HashMap.HashMap<Principal, Text>(100, Principal.equal, Principal.hash);
   transient var principal_nicknames = HashMap.HashMap<Principal, HashMap.HashMap<Principal, Text>>(100, Principal.equal, Principal.hash);
 
   // Runtime storage for partners
@@ -2269,6 +2274,81 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
       Iter.toArray(principal_names.entries())
   };
 
+  // ---- Avatars ----
+  // An avatar is a URL shown next to the principal's name: either an https:// link (an image the
+  // user hosts elsewhere) or a small inline data:image/... URL stored here. Sizes are capped so a
+  // batch lookup stays well inside one reply.
+  let AVATAR_MAX_LINK_LENGTH : Nat = 512;
+  let AVATAR_MAX_DATA_LENGTH : Nat = 32_768;
+  let AVATAR_BATCH_MAX : Nat = 50;
+
+  private func validate_avatar_url(url : Text) : Result.Result<(), Text> {
+    let starts = func(prefix : Text) : Bool { Text.startsWith(url, #text prefix) };
+    if (starts("https://")) {
+      if (url.size() > AVATAR_MAX_LINK_LENGTH) return #err("Avatar link too long (max " # Nat.toText(AVATAR_MAX_LINK_LENGTH) # " characters)");
+      for (c in url.chars()) {
+        if (c == ' ' or c == '\n' or c == '\r' or c == '\t' or c == '\"' or c == '\'' or c == '<' or c == '>') return #err("Avatar link contains an invalid character");
+      };
+      return #ok(());
+    };
+    if (starts("data:image/png;base64,") or starts("data:image/jpeg;base64,") or starts("data:image/jpg;base64,")
+        or starts("data:image/webp;base64,") or starts("data:image/gif;base64,")) {
+      if (url.size() > AVATAR_MAX_DATA_LENGTH) return #err("Inline avatar too large (max " # Nat.toText(AVATAR_MAX_DATA_LENGTH) # " characters; use a smaller image, or link to one)");
+      // base64 payload: the characters after the comma
+      var seen_comma = false;
+      for (c in url.chars()) {
+        if (seen_comma) {
+          let ok = (c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z') or (c >= '0' and c <= '9') or c == '+' or c == '/' or c == '=';
+          if (not ok) return #err("Inline avatar is not valid base64");
+        } else if (c == ',') { seen_comma := true };
+      };
+      return #ok(());
+    };
+    #err("Avatar must be an https:// link or an inline data:image/png|jpeg|webp|gif;base64 URL")
+  };
+
+  /// Set the caller's avatar. An empty string clears it.
+  public shared ({ caller }) func set_my_avatar(url : Text) : async Result.Result<Text, Text> {
+    if (Principal.isAnonymous(caller)) return #err("Anonymous caller not allowed");
+    if (is_banned(caller)) return #err("You are banned");
+    if (url == "") { avatars.delete(caller); return #ok("Avatar cleared") };
+    switch (validate_avatar_url(url)) {
+      case (#err(e)) #err(e);
+      case (#ok(())) { avatars.put(caller, url); #ok("Avatar set") };
+    };
+  };
+
+  public shared ({ caller }) func clear_my_avatar() : async Result.Result<Text, Text> {
+    if (Principal.isAnonymous(caller)) return #err("Anonymous caller not allowed");
+    avatars.delete(caller);
+    #ok("Avatar cleared")
+  };
+
+  /// Admins can drop an abusive avatar.
+  public shared ({ caller }) func admin_clear_avatar(principal : Principal) : async Result.Result<Text, Text> {
+    if (not is_admin(caller)) return #err("Not authorized");
+    avatars.delete(principal);
+    #ok("Avatar cleared")
+  };
+
+  public query func get_avatar(principal : Principal) : async ?Text {
+    avatars.get(principal)
+  };
+
+  /// Avatars for up to 50 principals at once; principals without one are left out of the reply.
+  public query func get_avatars(principals : [Principal]) : async [(Principal, Text)] {
+    let out = Buffer.Buffer<(Principal, Text)>(principals.size());
+    var n = 0;
+    for (p in principals.vals()) {
+      if (n >= AVATAR_BATCH_MAX) return Buffer.toArray(out);
+      n += 1;
+      switch (avatars.get(p)) { case (?u) out.add((p, u)); case null {} };
+    };
+    Buffer.toArray(out)
+  };
+
+  public query func get_avatar_count() : async Nat { avatars.size() };
+
   public shared ({ caller }) func verify_principal_name(principal : Principal) : async Result.Result<Text, Text> {
       if (not is_admin(caller)) {
           return #err("Caller is not authorized to verify names");
@@ -3522,6 +3602,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
     // Save principal names and nicknames to stable storage
     stable_principal_names := Iter.toArray(principal_names.entries());
+    stable_avatars := Iter.toArray(avatars.entries());
     
     // Convert nested HashMap to stable format for principal nicknames
     let principal_nickname_entries = Buffer.Buffer<(Principal, [(Principal, Text)])>(principal_nicknames.size());
@@ -3686,6 +3767,12 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
           principal_names.put(principal, name);
       };
       stable_principal_names := [];
+
+      // Restore avatars
+      for ((principal, url) in stable_avatars.vals()) {
+          avatars.put(principal, url);
+      };
+      stable_avatars := [];
 
       // Restore principal nicknames
       for ((user, nicknames) in stable_principal_nicknames.vals()) {

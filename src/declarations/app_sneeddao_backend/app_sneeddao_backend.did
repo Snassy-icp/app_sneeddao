@@ -328,10 +328,13 @@ type AppSneedDaoBackend =
     project_type: ProjectType, links: vec ProjectLink, index: opt nat) ->
     (Result);
    add_whitelisted_token: (token: WhitelistedToken) -> ();
+   /// Admins can drop an abusive avatar.
+   admin_clear_avatar: ("principal": principal) -> (Result_1);
    ban_user: (user: principal, duration_hours: nat, reason: text) ->
     (Result_2);
    caller_is_admin: () -> (bool) query;
    check_ban_status: (user: principal) -> (Result_2) query;
+   clear_my_avatar: () -> (Result_1);
    delete_canister_groups: () -> ();
    delete_jailbreak_config: (id: nat) -> (Result_2);
    get_admins: () -> (vec principal) query;
@@ -365,6 +368,14 @@ type AppSneedDaoBackend =
                                              text;
                                            }) query;
    get_authorized_for_callers: () -> (vec principal) query;
+   get_avatar: ("principal": principal) -> (opt text) query;
+   get_avatar_count: () -> (nat) query;
+   /// Avatars for up to 50 principals at once; principals without one are left out of the reply.
+   get_avatars: (principals: vec principal) ->
+    (vec record {
+           principal;
+           text;
+         }) query;
    get_ban_log: () -> (Result_6) query;
    get_banned_users: () -> (Result_10) query;
    get_blacklisted_words: () -> (vec text) query;
@@ -484,6 +495,8 @@ type AppSneedDaoBackend =
    set_jailbreak_fee_settings: (fee_premium_e8s: opt nat, fee_regular_e8s:
     opt nat, fee_account_owner: opt opt principal, fee_account_subaccount:
     opt opt blob) -> (Result_2);
+   /// Set the caller's avatar. An empty string clears it.
+   set_my_avatar: (url: text) -> (Result_1);
    set_my_settings: (update: UserSettingsUpdate) -> (Result_3);
    set_neuron_name: (sns_root_canister_id: principal, neuron_id: NeuronId,
     name: text) -> (Result_1);

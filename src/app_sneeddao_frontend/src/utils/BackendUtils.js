@@ -227,6 +227,32 @@ export const setPrincipalName = async (identity, name) => {
     }
 };
 
+// ---- Avatars ----
+export const setMyAvatar = async (identity, url) => {
+    const actor = createBackendActor(identity);
+    return actor.set_my_avatar(url || '');
+};
+
+export const getAvatar = async (identity, principal) => {
+    const actor = createBackendActor(identity);
+    const r = await actor.get_avatar(principal);
+    return r && r.length ? r[0] : null;
+};
+
+/// Avatars for up to 50 principals: Map<principalText, url> (principals without one are absent).
+export const getAvatars = async (identity, principals) => {
+    const actor = createBackendActor(identity);
+    const r = await actor.get_avatars(principals.slice(0, 50));
+    const out = new Map();
+    for (const [p, url] of r) out.set(p.toString(), url);
+    return out;
+};
+
+export const adminClearAvatar = async (identity, principal) => {
+    const actor = createBackendActor(identity);
+    return actor.admin_clear_avatar(principal);
+};
+
 // Set a private nickname for a principal
 export const setPrincipalNickname = async (identity, principal, nickname) => {
     if (!identity || !principal || nickname === undefined) return null;

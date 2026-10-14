@@ -22,9 +22,11 @@ export interface AppSneedDaoBackend {
     Result
   >,
   'add_whitelisted_token' : ActorMethod<[WhitelistedToken], undefined>,
+  'admin_clear_avatar' : ActorMethod<[Principal], Result_1>,
   'ban_user' : ActorMethod<[Principal, bigint, string], Result_2>,
   'caller_is_admin' : ActorMethod<[], boolean>,
   'check_ban_status' : ActorMethod<[Principal], Result_2>,
+  'clear_my_avatar' : ActorMethod<[], Result_1>,
   'delete_canister_groups' : ActorMethod<[], undefined>,
   'delete_jailbreak_config' : ActorMethod<[bigint], Result_2>,
   'get_admins' : ActorMethod<[], Array<Principal>>,
@@ -41,6 +43,9 @@ export interface AppSneedDaoBackend {
   >,
   'get_all_principal_nicknames' : ActorMethod<[], Array<[Principal, string]>>,
   'get_authorized_for_callers' : ActorMethod<[], Array<Principal>>,
+  'get_avatar' : ActorMethod<[Principal], [] | [string]>,
+  'get_avatar_count' : ActorMethod<[], bigint>,
+  'get_avatars' : ActorMethod<[Array<Principal>], Array<[Principal, string]>>,
   'get_ban_log' : ActorMethod<[], Result_6>,
   'get_banned_users' : ActorMethod<[], Result_10>,
   'get_blacklisted_words' : ActorMethod<[], Array<string>>,
@@ -129,14 +134,7 @@ export interface AppSneedDaoBackend {
   'get_user_tokens' : ActorMethod<[], Array<Principal>>,
   'get_wallet_layout' : ActorMethod<[], [] | [WalletLayout]>,
   'get_whitelisted_tokens' : ActorMethod<[], Array<WhitelistedToken>>,
-  /**
-   * / Import ICPSwap's trusted token list into the whitelist (admin). Existing
-   * / entries are updated, tokens added by hand are kept.
-   */
   'import_whitelist_from_icpswap' : ActorMethod<[], undefined>,
-  /**
-   * / Kept for callers of the old name; Swaprunner is no longer involved.
-   */
   'import_whitelist_from_swaprunner' : ActorMethod<[], undefined>,
   'is_token_whitelisted' : ActorMethod<[Principal], boolean>,
   'mark_logs_seen' : ActorMethod<[Principal, bigint], undefined>,
@@ -156,9 +154,6 @@ export interface AppSneedDaoBackend {
   'remove_partner' : ActorMethod<[bigint], Result_2>,
   'remove_project' : ActorMethod<[bigint], Result_2>,
   'remove_whitelisted_token' : ActorMethod<[Principal], undefined>,
-  /**
-   * / Run the daily job now (admin), without waiting for the timer.
-   */
   'run_token_list_maintenance_now' : ActorMethod<[], undefined>,
   'save_jailbreak_config' : ActorMethod<[Principal, string, Principal], Result>,
   'send_tokens' : ActorMethod<[Principal, bigint, Principal], TransferResult>,
@@ -174,6 +169,7 @@ export interface AppSneedDaoBackend {
     ],
     Result_2
   >,
+  'set_my_avatar' : ActorMethod<[string], Result_1>,
   'set_my_settings' : ActorMethod<[UserSettingsUpdate], Result_3>,
   'set_neuron_name' : ActorMethod<[Principal, NeuronId, string], Result_1>,
   'set_neuron_nickname' : ActorMethod<[Principal, NeuronId, string], Result_1>,

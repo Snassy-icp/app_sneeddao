@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAuth } from './AuthContext';
-import { getAllNeuronNames, getAllNeuronNicknames, getAllPrincipalNames, getAllPrincipalNicknames } from './utils/BackendUtils';
+import { getAllNeuronNames, getAllNeuronNicknames, getAllPrincipalNames, getAllPrincipalNicknames, getAvatars } from './utils/BackendUtils';
+import { Principal } from '@dfinity/principal';
 import { uint8ArrayToHex } from './utils/NeuronUtils';
 import { getAllSnses, SNS_CACHE_UPDATED_EVENT } from './utils/SnsUtils';
 import { getCachedWhitelistTokens, WHITELIST_UPDATED_EVENT } from './hooks/useTokenCache';
@@ -9,6 +10,9 @@ const NamingContext = createContext();
 export { NamingContext };
 
 // LocalStorage keys for caching
+const AVATAR_CACHE_KEY = 'avatars_cache_v1';
+const AVATAR_CACHE_TTL_MS = 30 * 60 * 1000;
+
 const CACHE_KEYS = {
     NEURON_NAMES: 'sneed_neuron_names_cache',
     NEURON_NICKNAMES: 'sneed_neuron_nicknames_cache',
@@ -62,6 +66,55 @@ export function NamingProvider({ children }) {
     const [verifiedNames, setVerifiedNames] = useState(() => loadMapFromCache(CACHE_KEYS.VERIFIED_NAMES));
     const [loading, setLoading] = useState(true);
     const [snsCacheVersion, setSnsCacheVersion] = useState(0);
+
+    // Avatars: looked up in batches as components ask for them. Map<principalText, url | null>
+    // (null = asked and the principal has none). Cached in this browser for a while.
+    const [avatars, setAvatars] = useState(() => {
+        try {
+            const raw = JSON.parse(localStorage.getItem(AVATAR_CACHE_KEY) || 'null');
+            if (raw && Date.now() - raw.at < AVATAR_CACHE_TTL_MS && raw.entries) return new Map(raw.entries);
+        } catch { /* a stale or unreadable cache is just empty */ }
+        return new Map();
+    });
+    const avatarsRef = useRef(avatars);
+    avatarsRef.current = avatars;
+    const avatarQueue = useRef(new Set());
+    const avatarTimer = useRef(null);
+    const identityRef = useRef(identity);
+    identityRef.current = identity;
+    const flushAvatarQueue = async () => {
+        avatarTimer.current = null;
+        const wanted = [...avatarQueue.current].filter((p) => !avatarsRef.current.has(p));
+        avatarQueue.current.clear();
+        if (wanted.length === 0) return;
+        for (let i = 0; i < wanted.length; i += 50) {
+            const batch = wanted.slice(i, i + 50);
+            try {
+                const found = await getAvatars(identityRef.current, batch.map((t) => Principal.fromText(t)));
+                setAvatars((prev) => {
+                    const next = new Map(prev);
+                    for (const t of batch) next.set(t, found.get(t) || null);
+                    try { localStorage.setItem(AVATAR_CACHE_KEY, JSON.stringify({ at: Date.now(), entries: [...next.entries()].filter(([, v]) => v && v.length < 2048) })); } catch { /* storage full or blocked */ }
+                    return next;
+                });
+            } catch (e) {
+                console.warn('avatar lookup failed', e);
+            }
+        }
+    };
+    /// Ask for a principal's avatar; the answer lands in `avatars` shortly after.
+    const requestAvatar = useCallback((principalText) => {
+        if (!principalText || avatarsRef.current.has(principalText) || avatarQueue.current.has(principalText)) return;
+        try { Principal.fromText(principalText); } catch { return; }
+        avatarQueue.current.add(principalText);
+        if (!avatarTimer.current) avatarTimer.current = setTimeout(flushAvatarQueue, 60);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    /// After the user changed their own avatar: remember it without another round trip.
+    const setKnownAvatar = useCallback((principalText, url) => {
+        setAvatars((prev) => { const next = new Map(prev); next.set(principalText, url || null); return next; });
+        try { localStorage.removeItem(AVATAR_CACHE_KEY); } catch { /* ignore */ }
+    }, []);
     const [whitelistCacheVersion, setWhitelistCacheVersion] = useState(0);
     
     // Track if we've done initial load from cache
@@ -358,11 +411,24 @@ export function NamingProvider({ children }) {
             loading,
             fetchAllNames,
             getNeuronDisplayName,
-            getPrincipalDisplayName
+            getPrincipalDisplayName,
+            avatars,
+            requestAvatar,
+            setKnownAvatar
         }}>
             {children}
         </NamingContext.Provider>
     );
+}
+
+/// The avatar url for a principal (text or Principal), or null; asks the backend the first time.
+export function useAvatar(principal) {
+    const ctx = useContext(NamingContext);
+    const text = principal ? (typeof principal === 'string' ? principal : principal.toString?.()) : null;
+    const request = ctx?.requestAvatar;
+    useEffect(() => { if (text && request) request(text); }, [text, request]);
+    if (!text || !ctx) return null;
+    return ctx.avatars?.get(text) || null;
 }
 
 export function useNaming() {

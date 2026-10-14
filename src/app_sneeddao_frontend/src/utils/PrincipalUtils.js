@@ -234,6 +234,17 @@ const PremiumCrownIcon = ({ size = 14 }) => {
 };
 
 // User icon component (anonymous/person silhouette)
+/// A round avatar picture; falls back to nothing if the image fails to load (the caller's icon shows instead).
+export const AvatarImage = ({ url, size = 16, ring = null, style = {} }) => {
+    const [broken, setBroken] = useState(false);
+    useEffect(() => { setBroken(false); }, [url]);
+    if (!url || broken) return React.createElement(UserIcon, { size: Math.max(10, size - 2) });
+    return React.createElement('img', {
+        src: url, alt: '', loading: 'lazy', referrerPolicy: 'no-referrer', onError: () => setBroken(true),
+        style: { width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, verticalAlign: 'middle', boxShadow: ring ? `0 0 0 1.5px ${ring}` : 'none', ...style }
+    });
+};
+
 const UserIcon = ({ size = 14, color = '#888' }) => {
     return React.createElement('svg', {
         width: size,
@@ -332,7 +343,11 @@ const CanisterIcon = ({ size = 14, color = '#888' }) => {
 };
 
 // Principal type icon - shows crown for premium, user/canister icon otherwise. Canister icon uses canisterTypes when available.
-export const PrincipalTypeIcon = ({ principal, isPremium = false, size = 14, color = '#888', canisterTypes = null }) => {
+export const PrincipalTypeIcon = ({ principal, isPremium = false, size = 14, color = '#888', canisterTypes = null, avatarUrl = null }) => {
+    // A user-set avatar comes first (premium members get a thin gold ring instead of the crown)
+    if (avatarUrl && !isCanisterPrincipal(principal)) {
+        return React.createElement(AvatarImage, { url: avatarUrl, size: size + 2, ring: isPremium ? '#f59e0b' : null });
+    }
     // Premium always shows crown
     if (isPremium) {
         return React.createElement(PremiumCrownIcon, { size });
@@ -390,6 +405,11 @@ export const PrincipalDisplay = React.memo(({
     
     // Get naming context for automatic name lookup
     const namingContext = useContext(NamingContext);
+    // The principal's avatar, asked for in a batch the first time it is shown
+    const principalText = principal ? principal.toString() : null;
+    const requestAvatar = namingContext?.requestAvatar;
+    useEffect(() => { if (principalText && requestAvatar && !isCanisterPrincipal(principal)) requestAvatar(principalText); }, [principalText, requestAvatar]);
+    const avatarUrl = (principalText && namingContext?.avatars?.get(principalText)) || null;
     
     // If displayInfo wasn't passed, try to look up from naming context
     const effectiveDisplayInfo = useMemo(() => {
@@ -575,7 +595,7 @@ export const PrincipalDisplay = React.memo(({
                             style: { display: 'inline-flex', alignItems: 'center' },
                             title: principalId 
                         },
-                        React.createElement(PrincipalTypeIcon, { principal, isPremium, size: 14, color: principalColor, canisterTypes: canisterTypesForIcon }),
+                        React.createElement(PrincipalTypeIcon, { principal, isPremium, size: 14, color: principalColor, canisterTypes: canisterTypesForIcon, avatarUrl }),
                         formatted
                     )
                 ),
@@ -668,7 +688,7 @@ export const PrincipalDisplay = React.memo(({
                     // Principal type icon (crown for premium, user/canister otherwise)
                     React.createElement('span', 
                         { style: { display: 'inline-flex', alignItems: 'center', verticalAlign: 'middle', marginRight: '4px' } },
-                        React.createElement(PrincipalTypeIcon, { principal, isPremium, size: 14, color: principalColor, canisterTypes: canisterTypesForIcon })
+                        React.createElement(PrincipalTypeIcon, { principal, isPremium, size: 14, color: principalColor, canisterTypes: canisterTypesForIcon, avatarUrl })
                     ),
                     formatted.name && React.createElement('span',
                         {
