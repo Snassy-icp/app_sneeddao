@@ -10,10 +10,10 @@ layout, the lock lifecycle, the read API and the log. Features that only *use* l
 
 | Topic | Decision |
 |---|---|
-| Dissolve delay | Optional per lock. Dissolving can start only after the lock period ends. Start, stop and increase; never decrease except by dissolving. Lock period + delay ≤ the max lock length. |
+| Dissolve delay | Optional per lock. Dissolving can start only after the lock period ends. Start, stop and increase; never decrease except by dissolving. The min and max lock length apply to lock period + delay. |
 | How old code stays safe | The stored `expiry` becomes the **effective unlock time**: unchanged for a lock without a delay, "never" (`Nat64` max) while a delay lock is not dissolving, the dissolve end while it is. Every existing `expiry <= now` check stays correct without being touched. |
 | ICRC-7, phase 1 | **LP (position) locks** are NFTs. An ownership transfer is bookkeeping: no ledger call, no fee. |
-| ICRC-7, phase 2 | **Token locks** become NFTs once the money layout below is decided. That decision has to be made **before ossifying**. |
+| ICRC-7, phase 2 | **Token locks** become NFTs on today's layout (tokens in the owner's subaccount). An NFT transfer is paid by the lock itself: the lock shrinks by one ledger fee. Decided 2026-10-14. |
 | Token id | For an LP NFT, the position's first lock id, kept for as long as Sneed Lock holds the position, through extensions, expiry and re-locks. For a token lock, its lock id. One id space; ids are never reused. |
 | Subaccounts | A **label** per NFT (owner principal + subaccount). The principal stays the internal owner. Sufficient for ICRC-7 and ICRC-37: see "The subaccount question". |
 | ICRC-37 | Phase 1 with the LP NFTs: token and collection approvals, `transfer_from`. Approvals are cleared on every transfer. |
@@ -58,9 +58,13 @@ Dissolving    lock_id → Nat64       // the time dissolving finishes. Absent = 
 - **extend_lock(lock_id, new_end)**: owner only, while not dissolving; `new_end > lock_end`.
   This is new for token locks, which today cannot be extended at all. Position locks already
   extend through `update_position_lock`, which follows the same rule.
-- **The cap**: `max(lock_end − now, 0) + delay ≤ max_lock_length` at creation and after every
-  change. While dissolving, the cap applies to `dissolving_until − now`. The minimum lock
-  length applies to `lock_end` only when there is no delay.
+- **The limits** apply to lock period + delay. On mainnet the minimum is 5 seconds (the code's
+  default; the user remembered 5 minutes) and the maximum about 10 years (locks expiring in
+  2035 exist; the DAO sets it with `set_max_lock_length_days`).
+  - At creation: `min ≤ (lock_end − now) + delay ≤ max`.
+  - After any change: `max(lock_end − now, 0) + delay ≤ max`, or `dissolving_until − now ≤ max`
+    while dissolving.
+  - A new `get_lock_limits()` query exposes both, since today nothing does.
 - **Once dissolved**, a lock is free exactly as an expired lock is today: tokens can be
   withdrawn, a position claimed. Changing an unlocked lock is not allowed; lock again by
   creating a lock.
@@ -253,32 +257,37 @@ transfer plus an escrow call.
 
 ---
 
-## 4 · Token locks as NFTs (phase 2): decide the money layout before ossifying
+## 4 · Token locks as NFTs (phase 2): today's layout, the lock pays its own fee
 
-Today a token lock's tokens sit in Sneed Lock's subaccount **for the owner principal**,
-shared by all of that owner's locks of the ledger, with the locks reserving amounts in it.
-Moving a lock to another owner is therefore a real ledger transfer, with a fee, from the
-old owner's subaccount to the new one's (`transfer_token_lock_ownership`). ICRC-7 transfers
-are expected to be free and to just work. Two ways:
+**Decided 2026-10-14: keep the layout.** A token lock's tokens sit in Sneed Lock's subaccount for
+the owner principal, shared by that owner's locks of the ledger, with the locks reserving amounts
+in it. The accounting needs no state kept by Sneed Lock: the owner's tokens are in the owner's
+subaccount. If the lock records were ever lost, the failure would be that funds unlock, never that
+they are stranded. A per-lock vault subaccount would give that up, since its owner would exist only
+in Sneed Lock's state.
 
-- **A. Keep the layout; a transfer costs one ledger fee from the sender's free balance in Sneed
-  Lock.** No migration. A transfer without that fee available is refused with
-  `GenericError("fund one <symbol> fee in your Sneed Lock wallet")`. Marketplaces have to
-  fund it, as Sneedex's lock escrow does today.
-- **B. A vault subaccount per lock for new locks.** A lock created after v2 holds its tokens in
-  a subaccount derived from its lock id, so changing its owner is bookkeeping, with no fee, as
-  for LP locks. Withdrawal after unlock pays one fee from that subaccount, which is today's
-  cost. Existing locks stay on the owner layout. They would be NFTs under A, or move to B by
-  one opt-in call that pays one fee.
+The cost is that an ownership change is a ledger transfer from the old owner's subaccount to the
+new one's, which costs one ledger fee. ICRC-7 transfers are expected to just work, so **the lock
+pays its own fee**:
 
-**Lean: B.** It is the layout an ossified lock canister should have. Per-lock custody also
-makes "what backs lock N" a single balance query that integrators and the safety rating can
-check directly.
+- An NFT transfer (`icrc7_transfer`, `icrc37_transfer_from`) of a token lock of amount `A` sends
+  `A − fee` from the old owner's subaccount to the new owner's. The ledger debits `A` in all
+  (`A − fee` plus the fee).
+- The lock continues for the new owner with amount `A − fee`, same id, same lock and dissolve
+  state.
+- **The old owner's free balance is untouched:** their subaccount loses `A` and their locked
+  total loses `A`. Nobody has to pre-fund anything.
+- A lock with `A ≤ fee` cannot be transferred (`GenericError`).
+- Each transfer makes the lock one fee smaller. The NFT card shows the live amount, and the
+  metadata says so.
+- The existing `transfer_token_lock_ownership`, where the sender pays the fee from free balance,
+  stays as it is for existing callers (Sneedex's lock escrow).
+- Fee changes on the ledger are read at transfer time (`icrc1_fee`). `BadFee` is retried once
+  with the fee the ledger names.
 
-The cost is real: the free-balance and withdrawal code must handle both layouts. That code
-moves money, so B needs its own section of the PocketIC suite before it ships. If B is too
-much for this round, ship phase 1 and A, and keep B as the one change allowed after
-ossification is announced but before the blackhole.
+The ledger transfer is an await, so the lock is held by the existing per-principal
+`token_op_locks` for both the sender and the recipient while it runs, exactly as
+`transfer_token_lock_ownership` does today.
 
 ---
 
@@ -333,6 +342,21 @@ always act directly.
 `sneed_gov` turns Sneed Lock into a staking and governance module for any token,
 permissionlessly. It reads Sneed Lock and never holds locks.
 
+**One canister per DAO, bought on SneedApp.** Anyone creates a DAO canister for any token, the way
+bots are created today. It runs its own timer for rewards, holds its own treasury and runs its
+own proposals and votes. Nothing stops two people creating two DAOs around the same token, with
+different rewards, rules and purposes: each DAO is its own canister and its own community.
+
+- **Proposal archives** are canisters the DAO canister creates as it fills, the same pattern as
+  the ICRC-3 archives already in `src/icrc3`. Old proposals and ballots move out and stay
+  readable. Archive cycles come from the DAO, with SneedApp selling the top-up.
+- **Who controls a DAO canister** is the trust question. A DAO whose creator can upgrade it can
+  empty its treasury. After setup, control should pass to the custody canisters:
+  - on code SneedApp publishes (blessed versions);
+  - with upgrades approved by the DAO's own proposals.
+  Custody today blesses only NNS ledger-suite code, so this extends it to a second list of
+  blessed hashes. That needs its own design before treasuries hold real money.
+
 **Rewards ("staking")**
 - Anyone opens a reward program for token X:
   - a funding subaccount of `sneed_gov` that anyone can top up;
@@ -349,6 +373,12 @@ permissionlessly. It reads Sneed Lock and never holds locks.
 - A DAO is a token X plus its parameters: who may propose, the proposal deposit (spam
   control, refunded unless rejected), voting period, quorum, and minimum time-to-unlock to
   vote. The last one is the NNS's 6-month rule and the main defence against borrowed votes.
+- **Voting power is the DAO's choice within a small set of parameters**:
+  - the amount, times a time-to-unlock bonus that grows linearly from 1× at the voting minimum
+    to a chosen maximum (the NNS uses 2× at 8 years);
+  - an optional age bonus for locks held unchanged (owner and amount) for a while;
+  - a cap on any single lock's share, if wanted.
+  The defaults copy the NNS shape.
 - **Ballots are snapshotted per lock at proposal creation:** voting power from amount and time
   to unlock at that moment. Whoever owns the lock at vote time casts its ballot (owner or
   `sneed_hotkey` hotkey); one ballot per lock per proposal. Buying a lock mid-proposal buys at
@@ -395,11 +425,21 @@ Each Sneed Lock phase:
   - an upgrade from the live build with real locks.
 - runs the frontend audit of `expiry` arithmetic before release.
 
+## Decided (2026-10-14)
+
+- Lock limits: the min (5 s) and max (about 10 years, set by the DAO) apply to lock period +
+  delay.
+- Token locks keep today's layout; an NFT transfer is paid by the lock (section 4).
+- Dissolving locks can be transferred. While Sneedex holds a lock in escrow, only Sneedex could
+  change its dissolve state and it never does, so a listing cannot change under a buyer. Time
+  still runs, so a dissolving lock keeps dissolving while listed and the offer page shows the
+  live state. Whether Sneedex should refuse or flag a dissolving lock is Sneedex's decision, not
+  Sneed Lock's.
+- Voting power: DAO parameters with NNS-shaped defaults (section 7).
+- `sneed_gov` is one canister per DAO, sold on SneedApp, with its own proposal archives.
+
 ## Open questions
 
-1. The max lock length: what value should cap lock period + dissolve delay on mainnet?
-2. Token-lock layout for phase 2: A or B?
-3. Should a lock's NFT be non-transferable while dissolving? The NNS has no such rule; this
-   spec says transferable always.
-4. Voting power curve defaults for `sneed_gov` (NNS-like: up to 2× at max delay, plus an age
-   bonus?), or left entirely to each DAO?
+1. Control of DAO canisters: custody with SneedApp-blessed hashes (section 7). Needs a design.
+2. Should a lock's age (for an age bonus) survive an NFT transfer? The NNS resets age on some
+   changes; resetting on transfer stops age being bought.
