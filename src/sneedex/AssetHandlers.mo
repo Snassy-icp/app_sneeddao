@@ -665,6 +665,32 @@ module {
         };
     };
     
+    /// Move tokens out of Sneedex's own default account (no subaccount). Only ever needed for a
+    /// collection that ignored the escrow subaccount on deposit, which is not ICRC-7 compliant.
+    public func transferNftsFromDefault(
+        collectionCanisterId : Principal,
+        toAccount : T.Account,
+        tokenIds : [Nat]
+    ) : async* T.Result<()> {
+        let collection = getICRC7Collection(collectionCanisterId);
+        try {
+            let args = Array.map<Nat, T.ICRC7TransferArg>(tokenIds, func(id) { { from_subaccount = null; to = toAccount; token_id = id; memo = null; created_at_time = null } });
+            let results = await collection.icrc7_transfer(args);
+            var i = 0;
+            for (r in results.vals()) {
+                switch (r) {
+                    case (?#Ok(_)) {};
+                    case (?#Err(e)) { return #err(#TransferFailed("NFT " # (if (i < tokenIds.size()) { Nat.toText(tokenIds[i]) } else { "?" }) # ": " # nftErrorText(e))) };
+                    case null { return #err(#TransferFailed("NFT " # (if (i < tokenIds.size()) { Nat.toText(tokenIds[i]) } else { "?" }) # ": not processed")) };
+                };
+                i += 1;
+            };
+            #ok();
+        } catch (_e) {
+            #err(#TransferFailed("Failed to transfer NFTs"));
+        };
+    };
+
     /// ICRC-37 listing: the seller approved Sneedex; pull the tokens into the escrow subaccount.
     public func pullNfts(
         collectionCanisterId : Principal,

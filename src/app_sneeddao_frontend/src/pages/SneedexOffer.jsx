@@ -3,6 +3,7 @@ import Header from '../components/Header';
 import NeuronDisplay from '../components/NeuronDisplay';
 import SwapModal from '../components/SwapModal';
 import { Link, useParams, useNavigate } from 'react-router-dom';
+import { NftAssetIcon, NftAssetTitle, NftAssetDetails } from '../components/NftAssetView';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync, FaWallet, FaChevronDown, FaChevronUp, FaMicrochip, FaMemory, FaBolt, FaLock, FaUserCheck, FaRobot, FaExclamationTriangle, FaExchangeAlt, FaShoppingCart, FaChartLine, FaImage } from 'react-icons/fa';
@@ -3031,9 +3032,7 @@ function SneedexOffer() {
                                                             </div>
                                                         )}
                                                         {details.type === 'ICRC7NFT' && (
-                                                            <div style={{ width: '36px', height: '36px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, background: '#a18cd122' }}>
-                                                                <FaImage style={{ fontSize: '20px', color: '#a18cd1' }} />
-                                                            </div>
+                                                            <NftAssetIcon collectionId={details.collection_id} tokenIds={details.token_ids} size={36} />
                                                         )}
                                                         {details.type === 'SNSNeuron' && (
                                                             <div style={{ 
@@ -3083,11 +3082,7 @@ function SneedexOffer() {
                                                                 return `${snsName} Neuron`;
                                                             })()}
                                                             {details.type === 'ICRC7NFT' && (
-                                                                <span>
-                                                                    {details.token_ids.length === 1 ? `NFT #${details.token_ids[0]}` : `${details.token_ids.length} NFTs (#${details.token_ids.join(', #')})`}
-                                                                    <span style={{ marginLeft: 8, fontFamily: 'monospace', fontSize: '0.75rem', color: theme.colors.mutedText }}>{details.collection_id}</span>
-                                                                    <Link to="/nft" style={{ marginLeft: 8, fontSize: '0.75rem', color: theme.colors.accent }}>NFT wallet</Link>
-                                                                </span>
+                                                                <NftAssetTitle collectionId={details.collection_id} tokenIds={details.token_ids} />
                                                             )}
                                                             {details.type === 'ICRC1Token' && (() => {
                                                                 // Check whitelisted tokens first, then dynamically fetched metadata
@@ -5025,6 +5020,9 @@ function SneedexOffer() {
                                             )}
                                             
                                             {/* Expanded ICRC1 Token Info Section */}
+                                            {details.type === 'ICRC7NFT' && isExpanded && (
+                                                <NftAssetDetails collectionId={details.collection_id} tokenIds={details.token_ids} me={identity?.getPrincipal?.().toText?.() || null} />
+                                            )}
                                             {details.type === 'ICRC1Token' && details.escrowed && isExpanded && (
                                                 <div style={{
                                                     marginTop: '1rem',

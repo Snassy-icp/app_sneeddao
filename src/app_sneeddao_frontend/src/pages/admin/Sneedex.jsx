@@ -15,7 +15,7 @@ import ConfirmationModal from '../../ConfirmationModal';
 import { 
     FaCog, FaPercent, FaWallet, FaSave, FaSpinner, FaUserShield, 
     FaPlus, FaTrash, FaClock, FaCubes, FaChartLine, FaLayerGroup,
-    FaCheckCircle, FaTimesCircle, FaCoins
+    FaCheckCircle, FaTimesCircle, FaCoins, FaImage
 } from 'react-icons/fa';
 
 export default function SneedexAdmin() {
@@ -100,6 +100,7 @@ export default function SneedexAdmin() {
     const [togglingExpirationTimer, setTogglingExpirationTimer] = useState(false);
     const [savingExpirationInterval, setSavingExpirationInterval] = useState(false);
     const [triggeringExpirationCheck, setTriggeringExpirationCheck] = useState(false);
+    const [rescue, setRescue] = useState({ collection: '', tokenId: '', to: '', busy: false, msg: '' });
     const [savingOfferCreationFee, setSavingOfferCreationFee] = useState(false);
     const [savingPremiumSettings, setSavingPremiumSettings] = useState(false);
     const [savingMinIncrementSettings, setSavingMinIncrementSettings] = useState(false);
@@ -2367,6 +2368,33 @@ export default function SneedexAdmin() {
                                 {expirationWorkerRunning ? 'Worker Running...' : 'Trigger Now'}
                             </button>
                         </div>
+                    </div>
+                </section>
+
+                {/* NFT rescue: a non-compliant collection ignored the escrow subaccount and left a token in Sneedex's main account */}
+                <section style={styles.section}>
+                    <h2 style={styles.sectionTitle}>
+                        <FaImage style={{ color: theme.colors.warning || theme.colors.accent }} />
+                        Return a misplaced NFT
+                    </h2>
+                    <p style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', marginTop: 0 }}>
+                        Only for tokens that sit in Sneedex's default account (no subaccount) because the collection ignored the escrow subaccount on deposit. The canister refuses to move anything that is escrowed for an open offer.
+                    </p>
+                    <div style={{ display: 'grid', gap: '0.5rem', maxWidth: 520 }}>
+                        <input style={styles.input} placeholder="Collection canister id" value={rescue.collection} onChange={(e) => setRescue((r) => ({ ...r, collection: e.target.value.trim() }))} />
+                        <input style={styles.input} placeholder="Token id" value={rescue.tokenId} onChange={(e) => setRescue((r) => ({ ...r, tokenId: e.target.value.trim() }))} />
+                        <input style={styles.input} placeholder="Return to principal" value={rescue.to} onChange={(e) => setRescue((r) => ({ ...r, to: e.target.value.trim() }))} />
+                        <button disabled={rescue.busy || !rescue.collection || !rescue.tokenId || !rescue.to} onClick={async () => {
+                            setRescue((r) => ({ ...r, busy: true, msg: '' }));
+                            try {
+                                const actor = createSneedexActor(identity);
+                                const res = await actor.adminReturnMisplacedNft(Principal.fromText(rescue.collection), BigInt(rescue.tokenId), { owner: Principal.fromText(rescue.to), subaccount: [] });
+                                setRescue((r) => ({ ...r, busy: false, msg: 'ok' in res ? res.ok : `Error: ${JSON.stringify(res.err, (k, v) => (typeof v === 'bigint' ? v.toString() : v))}` }));
+                            } catch (e) { setRescue((r) => ({ ...r, busy: false, msg: e?.message || String(e) })); }
+                        }} style={{ ...styles.button, background: theme.colors.warning || theme.colors.accent, opacity: rescue.busy ? 0.6 : 1 }}>
+                            {rescue.busy ? <FaSpinner className="spin" /> : <FaImage />} Return token
+                        </button>
+                        {rescue.msg && <div style={{ fontSize: '0.85rem', color: rescue.msg.startsWith('Error') ? theme.colors.error : theme.colors.success }}>{rescue.msg}</div>}
                     </div>
                 </section>
                 

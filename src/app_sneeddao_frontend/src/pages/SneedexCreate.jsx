@@ -1952,9 +1952,33 @@ function SneedexCreate() {
         }
         const escrowSubaccount = await actor.getOfferEscrowSubaccount(identity.getPrincipal(), offerId);
         const collection = createIcrc7Actor(asset.collection_id, { agent });
-        const results = await collection.icrc7_transfer(ids.map((token_id) => ({ from_subaccount: [], to: { owner: Principal.fromText(SNEEDEX_CANISTER_ID), subaccount: [escrowSubaccount] }, token_id, memo: [], created_at_time: [] })));
+        const me = identity.getPrincipal();
+        const sameSub = (a, b) => a && b && a.length === b.length && a.every((x, i) => x === b[i]);
+        const ownerOf = async (id) => { const o = await collection.icrc7_owner_of([id]); return o?.[0]?.[0] || null; };
+        // Pre-flight: ICRC-7 requires `to.subaccount` to be honoured, but not every collection does. One that
+        // drops it would put the token in Sneedex's main account, where no offer can claim it. So first move
+        // the first token into one of the seller's own subaccounts: if the subaccount comes back, the collection
+        // keeps subaccounts and the deposit is safe; if not, the token is still the seller's and we stop here.
+        const canarySub = new Uint8Array(32); canarySub[31] = 1;
+        const canaryId = ids[0];
+        const canaryRes = await collection.icrc7_transfer([{ from_subaccount: [], to: { owner: me, subaccount: [canarySub] }, token_id: canaryId, memo: [], created_at_time: [] }]);
+        if (canaryRes?.[0]?.[0] && 'Err' in canaryRes[0][0]) throw new Error(`NFT transfer failed: #${canaryId}: ${Object.keys(canaryRes[0][0].Err)[0]}`);
+        const after = await ownerOf(canaryId);
+        const landedInSub = after && after.owner.toText() === me.toText() && after.subaccount?.length && sameSub(Array.from(after.subaccount[0]), Array.from(canarySub));
+        if (!landedInSub) {
+            if (after && after.owner.toText() === me.toText()) {
+                throw new Error('This collection ignores subaccounts on transfer (it is not ICRC-7 compliant), so Sneedex cannot escrow its tokens by transfer. Your NFT was not moved. Ask the collection to support subaccounts or ICRC-37 approvals.');
+            }
+            throw new Error(`Could not verify where the collection put token #${canaryId} (owner now ${after ? after.owner.toText() : 'unknown'}). Nothing was sent to Sneedex.`);
+        }
+        const args = ids.map((token_id) => ({ from_subaccount: token_id === canaryId ? [canarySub] : [], to: { owner: Principal.fromText(SNEEDEX_CANISTER_ID), subaccount: [escrowSubaccount] }, token_id, memo: [], created_at_time: [] }));
+        const results = await collection.icrc7_transfer(args);
         const failed = results.map((r, i) => (r?.[0] && 'Err' in r[0] ? `#${ids[i]}: ${Object.keys(r[0].Err)[0]}` : null)).filter(Boolean);
-        if (failed.length) throw new Error(`NFT transfer failed: ${failed.join(', ')}`);
+        if (failed.length) {
+            // best effort: bring the canary token back to the default subaccount so the wallet still shows it
+            if (failed.some((f) => f.startsWith(`#${canaryId}:`))) await collection.icrc7_transfer([{ from_subaccount: [canarySub], to: { owner: me, subaccount: [] }, token_id: canaryId, memo: [], created_at_time: [] }]).catch(() => {});
+            throw new Error(`NFT transfer failed: ${failed.join(', ')}`);
+        }
         const r = await actor.escrowICRC7NFTs(offerId, BigInt(assetIndex));
         if ('err' in r) throw new Error(`Failed to escrow NFTs: ${getErrorMessage(r.err)}`);
     };

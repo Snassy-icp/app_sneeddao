@@ -1,6 +1,6 @@
 import { createActor as createIcrc7Actor } from '../../../external/icrc7_ledger';
 import { Principal } from '@dfinity/principal';
-import { Actor } from '@dfinity/agent';
+import { Actor, HttpAgent } from '@dfinity/agent';
 
 // The demo collection's (and the coming launchpad's) minting interface: not part of ICRC-7.
 const adminIdl = ({ IDL }) => {
@@ -301,6 +301,53 @@ export async function loadNftCollection(canisterId, account, identity, agent, on
         console.error(`Error loading NFT collection ${canisterId}:`, error);
         throw error;
     }
+}
+
+// ---- Browsing a collection without owning anything in it ----
+
+/// An anonymous agent for read-only browsing (the NFT browser works logged out).
+export function anonymousNftAgent() {
+    const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
+    return HttpAgent.createSync({ host });
+}
+
+/// One page of a collection's token ids (ICRC-7 pages ascending by the last id seen).
+export async function fetchCollectionTokenIds(canisterId, agent, prevId = null, take = 100) {
+    const actor = createIcrc7Actor(canisterId, { agent });
+    const maxTake = Number((await actor.icrc7_max_take_value().catch(() => []))?.[0] ?? 100n) || 100;
+    const n = BigInt(Math.min(maxTake, take));
+    const chunk = await actor.icrc7_tokens(prevId === null ? [] : [BigInt(prevId)], [n]);
+    const ids = [...chunk];
+    const last = ids.length ? ids.reduce((m, x) => (x > m ? x : m), ids[0]) : null; // largest, in case the ledger did not sort
+    return { ids, last, done: BigInt(ids.length) < n };
+}
+
+/// Full detail of some tokens: metadata, ICRC-97 document, owner. Returns [{ tokenId, metadata, icrc97, owner }].
+export async function fetchTokenDetails(canisterId, tokenIds, agent, { withOwner = true, withIcrc97 = true } = {}) {
+    const actor = createIcrc7Actor(canisterId, { agent });
+    const ids = tokenIds.map((x) => BigInt(x));
+    const out = [];
+    for (let i = 0; i < ids.length; i += 50) {
+        const batch = ids.slice(i, i + 50);
+        const [metas, owners] = await Promise.all([
+            actor.icrc7_token_metadata(batch),
+            withOwner ? actor.icrc7_owner_of(batch).catch(() => batch.map(() => [])) : Promise.resolve(batch.map(() => [])),
+        ]);
+        batch.forEach((tokenId, j) => {
+            const m = metas[j]; const o = owners[j];
+            out.push({ tokenId, metadata: m && m.length ? m[0] : [], owner: o && o.length ? o[0] : null, exists: !!(m && m.length) });
+        });
+    }
+    if (withIcrc97) await Promise.allSettled(out.map(async (n) => { const j = await fetchIcrc97(n.metadata); if (j) n.icrc97 = j; }));
+    return out;
+}
+
+/// The owner account of one token, or null if it does not exist (or the collection does not answer).
+export async function fetchTokenOwner(canisterId, tokenId, agent) {
+    const actor = createIcrc7Actor(canisterId, { agent });
+    const r = await actor.icrc7_owner_of([BigInt(tokenId)]);
+    const o = r[0];
+    return o && o.length ? o[0] : null;
 }
 
 /**

@@ -4493,6 +4493,38 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
     
+    /// Admin rescue for an NFT that a non-compliant collection put in Sneedex's default account
+    /// instead of the offer's escrow subaccount (the escrow check refuses such a deposit, so the
+    /// token belongs to nobody's offer). Returns it to the account given. Refused while any open
+    /// offer lists the token, so a legitimately escrowed token can never be moved this way.
+    public shared ({ caller }) func adminReturnMisplacedNft(collection : Principal, tokenId : Nat, to : T.Account) : async T.Result<Text> {
+        if (not isAdmin(caller)) { return #err(#NotAuthorized) };
+        for (o in offers.vals()) {
+            if (o.state == #PendingEscrow or o.state == #Active) {
+                for (entry in o.assets.vals()) {
+                    switch (entry.asset) {
+                        case (#ICRC7NFT(nft)) {
+                            if (entry.escrowed and Principal.equal(nft.collection_canister_id, collection)
+                                and Array.find<Nat>(nft.token_ids, func(id) { id == tokenId }) != null) {
+                                return #err(#InvalidState("Token is escrowed for offer " # Nat.toText(o.id)));
+                            };
+                        };
+                        case (_) {};
+                    };
+                };
+            };
+        };
+        // the token must really sit in the default account, not in some escrow subaccount
+        switch (await* AssetHandlers.verifyNftEscrow(collection, self(), Blob.fromArray(Array.tabulate<Nat8>(32, func(_) { 0 })), [tokenId])) {
+            case (#err(_)) { return #err(#InvalidAsset("Token " # Nat.toText(tokenId) # " is not in Sneedex's default account")) };
+            case (#ok(_)) {};
+        };
+        switch (await* AssetHandlers.transferNftsFromDefault(collection, to, [tokenId])) {
+            case (#err(e)) { #err(e) };
+            case (#ok(_)) { #ok("Token " # Nat.toText(tokenId) # " returned") };
+        };
+    };
+
     /// Admin function to manually reclaim stuck tokens from an offer
     /// This is useful when autoReclaimAssets failed to transfer tokens
     /// but already updated the state to Reclaimed

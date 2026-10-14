@@ -109,6 +109,8 @@ import LockWizard from './pages/LockWizard';
 import TokenStudio from './pages/TokenStudio';
 import Position from './pages/Position';
 import Positions from './pages/Positions';
+import NftBrowser from './pages/NftBrowser';
+import NftItem from './pages/NftItem';
 import SnsJailbreak from './pages/SnsJailbreak';
 import SnsJailbreakList from './pages/SnsJailbreakList';
 import ToolsAccount from './pages/ToolsAccount';
@@ -219,6 +221,8 @@ function App() {
                     <Route path="/lock_wizard" element={<LockWizard />} />
                     <Route path="/position" element={<Position />} />
                     <Route path="/positions" element={<Positions />} />
+                    <Route path="/nfts" element={<NftBrowser />} />
+                    <Route path="/nft_item" element={<NftItem />} />
                     <Route path="/managelp" element={<Position />} />
                     <Route path="/products" element={<Products />} />
                     <Route path="/partners" element={<Partners />} />
