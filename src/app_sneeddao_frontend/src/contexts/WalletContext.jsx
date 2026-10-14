@@ -2420,6 +2420,16 @@ export const WalletProvider = ({ children }) => {
         return map;
     }, [allKnownWasmHashes, compareVersions, ledgerSuite]);
 
+    // Per-app published versions: appId → [version], for upgrades that step through each one
+    const versionsByApp = React.useMemo(() => {
+        const map = {};
+        for (const { appId, version } of Object.values(allKnownWasmHashes)) {
+            if (!appId || !version) continue;
+            (map[appId] = map[appId] || []).push(version);
+        }
+        return map;
+    }, [allKnownWasmHashes]);
+
     // Computed: list of outdated managers (only ones we are controller of)
     // Only compares a canister against the latest version of its OWN app (WASM-resolved)
     const outdatedManagers = React.useMemo(() => {
@@ -3204,6 +3214,7 @@ export const WalletProvider = ({ children }) => {
             officialVersions,
             latestOfficialVersion,
             latestVersionByApp,
+            versionsByApp,
             outdatedManagers,
             isVersionOutdated,
             compareVersions,

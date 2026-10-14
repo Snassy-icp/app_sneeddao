@@ -9,6 +9,7 @@ import { useNaming } from '../NamingContext';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { useWalletOptional } from '../contexts/WalletContext';
 import { fetchLedgerSuiteWasm } from '../utils/ledgerSuite';
+import { upgradeSteps } from '../utils/upgradePath';
 
 // Management canister IDL with install_code
 const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
@@ -54,6 +55,8 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
     const walletContext = useWalletOptional();
     const appInfoMap = walletContext?.appInfoMap || {};
     const latestVersionByApp = walletContext?.latestVersionByApp || {};
+    const versionsByApp = walletContext?.versionsByApp || {};
+    const isKnownWasmHash = walletContext?.isKnownWasmHash;
 
     const getAppLabel = (resolvedAppId) => {
         if (!resolvedAppId) return 'Unknown App';
@@ -76,6 +79,7 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
     const [selected, setSelected] = useState({}); // canisterId -> boolean
     const [upgradeStatus, setUpgradeStatus] = useState({}); // canisterId -> 'pending' | 'upgrading' | 'success' | 'error'
     const [upgradeErrors, setUpgradeErrors] = useState({}); // canisterId -> error message
+    const [upgradeProgress, setUpgradeProgress] = useState({}); // canisterId -> 'v0.9.1 (1/2)' while stepping
     const [isUpgrading, setIsUpgrading] = useState(false);
     const [wasmCache, setWasmCache] = useState({}); // wasmUrl -> Uint8Array, cached per URL
     const abortRef = useRef(false);
@@ -96,6 +100,7 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
             setSelected(newSelected);
             setUpgradeStatus({});
             setUpgradeErrors({});
+            setUpgradeProgress({});
             setIsUpgrading(false);
             setWasmCache({});
             abortRef.current = false;
@@ -174,28 +179,6 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                     });
                     const targetVer = manager ? getTargetVersion(manager) : latestVersion;
                     const fromNns = targetVer?.wasmSource === 'snsw';
-                    const rawUrl = targetVer?.wasmUrl;
-                    const wasmUrl = fromNns ? `snsw:${targetVer.wasmHash}` : (Array.isArray(rawUrl) ? (rawUrl[0] || '') : (rawUrl || ''));
-                    if (!wasmUrl) throw new Error('No WASM URL available for this app version');
-
-                    let wasm = wasmByUrl[wasmUrl];
-                    if (!wasm && fromNns) {
-                        // the NNS is the source: bytes from the SNS wasm canister, refused unless the hash matches
-                        wasm = await fetchLedgerSuiteWasm(targetVer.wasmHash);
-                        wasmByUrl[wasmUrl] = wasm;
-                    }
-                    if (!wasm) {
-                        const response = await fetch(wasmUrl);
-                        if (!response.ok) throw new Error(`Failed to fetch WASM: ${response.status}`);
-                        const arrayBuffer = await response.arrayBuffer();
-                        wasm = new Uint8Array(arrayBuffer);
-                        if (wasm.length === 0) throw new Error('Downloaded WASM file is empty');
-                        const isWasmMagic = wasm[0] === 0x00 && wasm[1] === 0x61 && wasm[2] === 0x73 && wasm[3] === 0x6D;
-                        const isGzip = wasm[0] === 0x1F && wasm[1] === 0x8B;
-                        if (!isWasmMagic && !isGzip) throw new Error('Downloaded file is not a valid WASM module');
-                        wasmByUrl[wasmUrl] = wasm;
-                    }
-
                     const canisterPrincipal = Principal.fromText(canisterId);
                     const managementCanister = Actor.createActor(managementCanisterIdlFactory, {
                         agent,
@@ -206,16 +189,57 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                         }),
                     });
 
-                    await managementCanister.install_code({
-                        mode: { upgrade: null },
-                        canister_id: canisterPrincipal,
-                        wasm_module: wasm,
-                        arg: emptyArgs,
-                    });
+                    // Bots step through every published version on the way (each migration expects
+                    // the version before it); the running code is identified by its module hash.
+                    const running = !fromNns && manager?.moduleHash && isKnownWasmHash ? isKnownWasmHash(manager.moduleHash) : null;
+                    const current = running?.wasmSource === 'snsw' ? null : (running || manager?.version || null);
+                    const steps = fromNns ? [targetVer] : upgradeSteps(current, targetVer, versionsByApp[manager?.resolvedAppId || ''] || []);
+
+                    for (let i = 0; i < steps.length; i++) {
+                        if (abortRef.current) throw new Error(i > 0 ? `Stopped at ${versionLabel(steps[i - 1])}; upgrade again to continue` : 'Stopped');
+                        const stepVer = steps[i];
+                        if (steps.length > 1) setUpgradeProgress(prev => ({ ...prev, [canisterId]: `${versionLabel(stepVer)} (${i + 1}/${steps.length})` }));
+                        const rawUrl = stepVer?.wasmUrl;
+                        const wasmUrl = fromNns ? `snsw:${stepVer.wasmHash}` : (Array.isArray(rawUrl) ? (rawUrl[0] || '') : (rawUrl || ''));
+                        if (!wasmUrl) throw new Error(`No WASM URL available for ${versionLabel(stepVer)}`);
+
+                        let wasm = wasmByUrl[wasmUrl];
+                        if (!wasm && fromNns) {
+                            // the NNS is the source: bytes from the SNS wasm canister, refused unless the hash matches
+                            wasm = await fetchLedgerSuiteWasm(stepVer.wasmHash);
+                            wasmByUrl[wasmUrl] = wasm;
+                        }
+                        if (!wasm) {
+                            const response = await fetch(wasmUrl);
+                            if (!response.ok) throw new Error(`Failed to fetch WASM: ${response.status}`);
+                            const arrayBuffer = await response.arrayBuffer();
+                            wasm = new Uint8Array(arrayBuffer);
+                            if (wasm.length === 0) throw new Error('Downloaded WASM file is empty');
+                            const isWasmMagic = wasm[0] === 0x00 && wasm[1] === 0x61 && wasm[2] === 0x73 && wasm[3] === 0x6D;
+                            const isGzip = wasm[0] === 0x1F && wasm[1] === 0x8B;
+                            if (!isWasmMagic && !isGzip) throw new Error('Downloaded file is not a valid WASM module');
+                            wasmByUrl[wasmUrl] = wasm;
+                        }
+
+                        try {
+                            await managementCanister.install_code({
+                                mode: { upgrade: null },
+                                canister_id: canisterPrincipal,
+                                wasm_module: wasm,
+                                arg: emptyArgs,
+                            });
+                        } catch (e) {
+                            throw new Error(i > 0
+                                ? `Upgraded to ${versionLabel(steps[i - 1])}, then ${versionLabel(stepVer)} failed: ${e.message || e}`
+                                : (e.message || String(e)));
+                        }
+                    }
+                    setUpgradeProgress(prev => { const n = { ...prev }; delete n[canisterId]; return n; });
 
                     setUpgradeStatus(prev => ({ ...prev, [canisterId]: 'success' }));
                 } catch (err) {
                     setUpgradeStatus(prev => ({ ...prev, [canisterId]: 'error' }));
+                    setUpgradeProgress(prev => { const n = { ...prev }; delete n[canisterId]; return n; });
                     setUpgradeErrors(prev => ({ ...prev, [canisterId]: err.message || 'Unknown error' }));
                 }
             }
@@ -231,7 +255,7 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
             setIsUpgrading(false);
             if (onUpgradeComplete) onUpgradeComplete();
         }
-    }, [identity, latestVersion, selectedIds, wasmCache, onUpgradeComplete, outdatedManagers, getTargetVersion]);
+    }, [identity, latestVersion, selectedIds, wasmCache, onUpgradeComplete, outdatedManagers, getTargetVersion, versionsByApp, isKnownWasmHash]);
 
     const handleClose = () => {
         if (isUpgrading) {
@@ -481,6 +505,11 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                                                     </span>
                                                 )}
                                             </div>
+                                            {status === 'upgrading' && upgradeProgress[canisterId] && (
+                                                <div style={{ fontSize: '10px', color: theme.colors.mutedText, marginTop: '4px' }}>
+                                                    Installing {upgradeProgress[canisterId]}
+                                                </div>
+                                            )}
                                             {error && (
                                                 <div style={{
                                                     fontSize: '10px',

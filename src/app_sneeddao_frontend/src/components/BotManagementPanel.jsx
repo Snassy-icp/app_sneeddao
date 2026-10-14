@@ -40,6 +40,7 @@ import TokenIcon from './TokenIcon';
 import ConfirmDialog from './ConfirmDialog';
 import BotEventPanel from './BotEventPanel';
 import { getTokenMetadataSync, fetchAndCacheTokenMetadata } from '../hooks/useTokenCache';
+import { upgradeSteps } from '../utils/upgradePath';
 import StatusLamp, {
     LAMP_OFF, LAMP_OK, LAMP_ACTIVE, LAMP_WARN, LAMP_ERROR, LAMP_CB,
     LAMP_COLORS, LAMP_LABELS, CHORE_DEADLINES,
@@ -1076,20 +1077,11 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
             return;
         }
         setUpgrading(true); setUpgradeMode(mode); setUpgradeError(''); setUpgradeSuccess('');
+        // An upgrade steps through every published version on the way (each migration expects
+        // the version before it); a reinstall goes straight to the target.
+        const steps = mode === 'upgrade' ? upgradeSteps(matchedOfficialVersion, targetVersion, versionsWithWasm) : [targetVersion];
+        let installed = null;
         try {
-            const versionStr = fmtVer(targetVersion);
-
-            const response = await fetch(wasmUrl);
-            if (!response.ok) throw new Error(`Failed to fetch WASM: ${response.status} ${response.statusText}`);
-
-            const arrayBuffer = await response.arrayBuffer();
-            const wasmModule = new Uint8Array(arrayBuffer);
-            if (wasmModule.length === 0) throw new Error('Downloaded WASM file is empty');
-
-            const isWasm = wasmModule[0] === 0x00 && wasmModule[1] === 0x61 && wasmModule[2] === 0x73 && wasmModule[3] === 0x6D;
-            const isGzip = wasmModule[0] === 0x1F && wasmModule[1] === 0x8B;
-            if (!isWasm && !isGzip) throw new Error('Downloaded file does not appear to be a valid WASM module');
-
             const canisterPrincipal = Principal.fromText(canisterId);
             const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
                 ? 'https://icp0.io' : 'http://localhost:4943';
@@ -1102,16 +1094,33 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                     ...callConfig, effectiveCanisterId: canisterPrincipal,
                 }),
             });
-
             const emptyArgs = new Uint8Array([0x44, 0x49, 0x44, 0x4C, 0x00, 0x00]);
-            await mgmt.install_code({
-                mode: { [mode]: null },
-                canister_id: canisterPrincipal,
-                wasm_module: wasmModule,
-                arg: emptyArgs,
-            });
 
-            setUpgradeSuccess(`✅ Successfully ${mode === 'reinstall' ? 'reinstalled' : 'upgraded'} to v${versionStr}`);
+            for (const step of steps) {
+                if (!step.wasmUrl || !step.wasmUrl.trim()) throw new Error(`No WASM URL available for v${fmtVer(step)}`);
+                const response = await fetch(step.wasmUrl);
+                if (!response.ok) throw new Error(`Failed to fetch WASM: ${response.status} ${response.statusText}`);
+
+                const arrayBuffer = await response.arrayBuffer();
+                const wasmModule = new Uint8Array(arrayBuffer);
+                if (wasmModule.length === 0) throw new Error('Downloaded WASM file is empty');
+
+                const isWasm = wasmModule[0] === 0x00 && wasmModule[1] === 0x61 && wasmModule[2] === 0x73 && wasmModule[3] === 0x6D;
+                const isGzip = wasmModule[0] === 0x1F && wasmModule[1] === 0x8B;
+                if (!isWasm && !isGzip) throw new Error('Downloaded file does not appear to be a valid WASM module');
+
+                await mgmt.install_code({
+                    mode: { [mode]: null },
+                    canister_id: canisterPrincipal,
+                    wasm_module: wasmModule,
+                    arg: emptyArgs,
+                });
+                installed = step;
+            }
+
+            const versionStr = fmtVer(targetVersion);
+            const via = steps.length > 1 ? ` (via ${steps.slice(0, -1).map(v => `v${fmtVer(v)}`).join(', ')})` : '';
+            setUpgradeSuccess(`✅ Successfully ${mode === 'reinstall' ? 'reinstalled' : 'upgraded'} to v${versionStr}${via}`);
 
             await Promise.all([loadCanisterStatus(), loadBotVersion()]);
 
@@ -1121,7 +1130,9 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
             setBotVersion(versionStr);
         } catch (err) {
             console.error('Upgrade failed:', err);
-            setUpgradeError(`${mode === 'reinstall' ? 'Reinstall' : 'Upgrade'} failed: ${err.message || 'Unknown error'}`);
+            const reached = installed ? ` (now on v${fmtVer(installed)}; upgrade again to continue)` : '';
+            setUpgradeError(`${mode === 'reinstall' ? 'Reinstall' : 'Upgrade'} failed: ${err.message || 'Unknown error'}${reached}`);
+            if (installed) await Promise.all([loadCanisterStatus(), loadBotVersion()]).catch(() => {});
         } finally { setUpgrading(false); }
     };
 
