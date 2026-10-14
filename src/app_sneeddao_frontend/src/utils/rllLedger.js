@@ -1,14 +1,27 @@
-// The revenue loop's four stations and their on-chain history, read from the
-// ICP and SNEED index canisters: the 2-year neuron's vector, the ICP splitter,
-// the SNEED buyback vector and the SNEED splitter. Pure data; the page
-// /rll_ledger renders it.
+// The revenue loop's books, read from the ICP and SNEED index canisters.
+//
+// How the pylons move money (checked against the indexes on 2026-10-14):
+// a Neutrinite/ICPCoins pylon keeps ONE main account per ledger. Every node
+// has a "source" subaccount (01 00 00 00 00 <node>) where deposits land; the
+// pylon sweeps each deposit into its main account at once, and from then on
+// balances are virtual. A transfer from one node to another node of the SAME
+// pylon never touches the ledger. A transfer to another pylon or to an
+// outside account is sent FROM the pylon's main account. The NNS mints the
+// neuron's maturity into a separate maturity subaccount of the neuron node
+// (01 01 00 00 00 01), which is swept the same way.
+//
+// So the loop is measured where it is visible: maturity = the mints; the ICP
+// splitter's outputs = what arrives at the buyback's source account and at
+// the DAO's ICP account from the pylon main; the SNEED splitter's outputs =
+// the burns and the transfers to the treasury and the RLL from the pylon's
+// main SNEED account. The 25% the ICP splitter sends back into the neuron
+// stays inside the pylon and leaves no transaction.
 import { Principal } from '@dfinity/principal';
 import { idlFactory as indexIdl } from 'external/sns_index/sns_index.did.js';
 import { idlFactory as nnsGovIdl } from 'external/nns_gov/nns_gov.did.js';
 import { idlFactory as vectorIdl } from 'external/icrc55_vector/icrc55_vector.did.js';
 import { idlFactory as exVectorIdl } from 'external/icrc55_exvector/icrc55_exvector.did.js';
 import { actor, icpIndexIdl, accountIdentifierHex, hex } from '../health/agent.js';
-import { parseExtendedAddress } from './AccountParser';
 
 export const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 export const ICP_INDEX = 'qhbym-qaaaa-aaaaa-aaafq-cai';
@@ -25,88 +38,75 @@ export const RLL = 'lvc4n-7aaaa-aaaam-adm6a-cai';
 export const DEFI = 'ok64y-uiaaa-aaaag-qdcbq-cai';
 export const SNEED_ICP_POOL = 'osyzs-xiaaa-aaaag-qc76q-cai';
 
-/// The four stations. `account` is the vector node's ICRC-1 account (textual form).
-export const STATIONS = {
-    neuron: { key: 'neuron', name: '2-year ICP neuron', token: 'ICP', account: '6jvpj-sqaaa-aaaaj-azwnq-cai-wu6phoy.100000000010000000000000000000000000000000000000000000000000000', nodeId: 1, pylon: PYLON, link: `https://vectors.neuronpool.com/vectors/${GOVERNANCE}/1`, dashboard: `https://dashboard.internetcomputer.org/neuron/${NEURON_2Y}` },
-    icpSplitter: { key: 'icpSplitter', name: 'ICP splitter', token: 'ICP', account: '6jvpj-sqaaa-aaaaj-azwnq-cai-m7u3kpi.100000000060000000000000000000000000000000000000000000000000000', nodeId: 6, pylon: PYLON, link: `https://vectors.neuronpool.com/vectors/${GOVERNANCE}/6` },
-    buyback: { key: 'buyback', name: 'SNEED buyback vector', token: 'ICP', token2: 'SNEED', account: 'togwv-zqaaa-aaaal-qr7aa-cai-ihr3xbq.100000000120000000000000000000000000000000000000000000000000000', nodeId: 18, pylon: BUYBACK_PYLON, exchange: true, link: `https://beta.icpcoins.com/#/vector/modify/${BUYBACK_PYLON}/exchange/18` },
-    sneedSplitter: { key: 'sneedSplitter', name: 'SNEED splitter', token: 'SNEED', account: '6jvpj-sqaaa-aaaaj-azwnq-cai-vilbrxq.1000000002d0000000000000000000000000000000000000000000000000000', nodeId: 45, pylon: PYLON, link: `https://vectors.neuronpool.com/vectors/${GOVERNANCE}/45` },
+const nodeSub = (node, prefix = [1, 0]) => { const s = new Uint8Array(32); s[0] = prefix[0]; s[1] = prefix[1]; s[5] = node; return s; };
+const hexSub = (h) => Uint8Array.from(h.match(/../g).map((x) => parseInt(x, 16)));
+const principalSub = (p) => { const b = Principal.fromText(p).toUint8Array(); const s = new Uint8Array(32); s[0] = b.length; s.set(b, 1); return s; };
+
+/// Accounts the loop touches. `key` is the ICRC key owner:subhex; `icpHex` the ICP account identifier.
+const mk = (name, ledger, owner, sub) => ({ name, ledger, owner, sub, key: `${owner}:${sub ? hex(sub) : ''}`, icpHex: accountIdentifierHex(owner, sub) });
+export const ACCOUNTS = {
+    maturity: mk('2-year neuron: maturity account', ICP_LEDGER, PYLON, nodeSub(1, [1, 1])),
+    neuronSource: mk('2-year neuron: stake deposit account', ICP_LEDGER, PYLON, nodeSub(1)),
+    splitterSource: mk('ICP splitter: deposit account', ICP_LEDGER, PYLON, nodeSub(6)),
+    buybackSource: mk('SNEED buyback: deposit account', ICP_LEDGER, BUYBACK_PYLON, nodeSub(18)),
+    treasuryIcp: mk('DAO treasury (ICP)', ICP_LEDGER, GOVERNANCE, null),
+    pylonMainIcp: mk('Neutrinite pylon main account', ICP_LEDGER, PYLON, null),
+    buybackPylonMainIcp: mk('ICPCoins pylon main account', ICP_LEDGER, BUYBACK_PYLON, null),
+    sneedSplitterSource: mk('SNEED splitter: deposit account', SNEED_LEDGER, PYLON, nodeSub(45)),
+    pylonMainSneed: mk('Neutrinite pylon main account', SNEED_LEDGER, PYLON, null),
+    buybackPylonMainSneed: mk('ICPCoins pylon main account', SNEED_LEDGER, BUYBACK_PYLON, null),
+    treasurySneed: mk('DAO treasury (SNEED)', SNEED_LEDGER, GOVERNANCE, hexSub(TREASURY_SNEED_SUB)),
+    mintingSneed: mk('SNEED minting account (burn)', SNEED_LEDGER, GOVERNANCE, null),
+    rll: mk('RLL rewards (member rewards)', SNEED_LEDGER, RLL, null),
+    defi: mk('Sneed DeFi canister', ICP_LEDGER, DEFI, null),
+    defiFees: mk('Sneed DeFi canister (its ICPSwap fee subaccount)', ICP_LEDGER, DEFI, principalSub(DEFI)),
 };
+const byIcpHex = new Map(); const byKey = new Map();
+for (const a of Object.values(ACCOUNTS)) { byIcpHex.set(a.icpHex, a.name); byKey.set(a.key, a.name); }
+const byOwner = new Map([[SNEED_ICP_POOL, 'SNEED/ICP pool (ICPSwap)'], [NNS_GOVERNANCE, 'NNS governance'], [PYLON, 'Neutrinite pylon (another node)'], [BUYBACK_PYLON, 'ICPCoins pylon (another node)'], [DEFI, 'Sneed DeFi canister (a subaccount)']]);
 
-export const parseStationAccount = (text) => {
-    const p = parseExtendedAddress(text);
-    const owner = p.principal;
-    const sub = p.subaccount?.resolved ? Uint8Array.from(p.subaccount.resolved) : null;
-    return { owner, sub, key: `${owner.toText()}:${sub ? hex(sub) : ''}`, icpHex: accountIdentifierHex(owner, sub) };
-};
-
-// ---- names for counterparties ----
-const subHex = (s) => (s && s.length ? hex(Uint8Array.from(s)) : '');
-const known = (() => {
-    const byIcp = new Map(); // ICP account-id hex -> name
-    const byIcrc = new Map(); // owner:subhex -> name
-    const byOwner = new Map(); // owner -> name (any subaccount)
-    const add = (ownerText, sub, name) => {
-        const owner = Principal.fromText(ownerText);
-        const subBytes = sub ? Uint8Array.from(sub.match(/../g).map((h) => parseInt(h, 16))) : null;
-        byIcp.set(accountIdentifierHex(owner, subBytes), name);
-        byIcrc.set(`${ownerText}:${subBytes ? hex(subBytes) : ''}`, name);
-    };
-    for (const s of Object.values(STATIONS)) { const a = parseStationAccount(s.account); byIcp.set(a.icpHex, s.name); byIcrc.set(a.key, s.name); }
-    add(GOVERNANCE, null, 'SNS governance (treasury ICP / SNEED minting account)');
-    add(GOVERNANCE, TREASURY_SNEED_SUB, 'DAO treasury (SNEED)');
-    add(RLL, null, 'RLL rewards (member rewards)');
-    add(DEFI, null, 'Sneed DeFi canister');
-    byOwner.set(SNEED_ICP_POOL, 'SNEED/ICP pool (ICPSwap)');
-    byOwner.set(NNS_GOVERNANCE, 'NNS governance');
-    add(PYLON, null, 'Neutrinite pylon (its own account: fees)');
-    add(BUYBACK_PYLON, null, 'ICPCoins pylon (its own account: fees)');
-    byOwner.set(PYLON, 'Neutrinite pylon (other node)');
-    byOwner.set(BUYBACK_PYLON, 'ICPCoins pylon (other node)');
-    return { byIcp, byIcrc, byOwner };
-})();
-
-/// Human name for a counterparty of a row ({ hex } for ICP, { owner, sub } for ICRC), or null.
+/// Human name for a counterparty ({ hex } on ICP, { owner, sub } on SNEED), or null.
 export function nameFor(cp) {
     if (!cp) return null;
-    if (cp.hex) return known.byIcp.get(cp.hex) || null;
-    const k = `${cp.owner}:${cp.sub || ''}`;
-    return known.byIcrc.get(k) || known.byOwner.get(cp.owner) || null;
+    if (cp.hex) return byIcpHex.get(cp.hex) || null;
+    return byKey.get(`${cp.owner}:${cp.sub || ''}`) || byOwner.get(cp.owner) || null;
 }
+export const isPylonMain = (cp) => !!cp && (cp.hex ? [ACCOUNTS.pylonMainIcp.icpHex, ACCOUNTS.buybackPylonMainIcp.icpHex].includes(cp.hex) : [ACCOUNTS.pylonMainSneed.key, ACCOUNTS.buybackPylonMainSneed.key].includes(`${cp.owner}:${cp.sub || ''}`));
+const cpIs = (cp, acct) => !!cp && (cp.hex ? cp.hex === acct.icpHex : `${cp.owner}:${cp.sub || ''}` === acct.key);
 
-// ---- history ----
-const cache = new Map(); // key -> { at, rows }
+// ---- reading an account's history ----
+const cache = new Map();
 const TTL = 10 * 60 * 1000;
-const MAX_ROWS = 4000;
+const MAX_ROWS = 6000;
+const subHex = (s) => (s && s.length ? hex(Uint8Array.from(s)) : '');
 
-/// Every transaction of `stationKey` on `ledger` since `sinceMs` (0 = all), newest first:
-/// { id, at (ms), kind, dir ('in'|'out'|'self'), amount (bigint, base units), fee, cp: counterparty, memo }.
-export async function fetchStationHistory(stationKey, ledger, sinceMs, onProgress) {
-    const st = STATIONS[stationKey];
-    const acct = parseStationAccount(st.account);
-    const ck = `${stationKey}:${ledger}:${sinceMs}`;
+/// Every transaction of an account since `sinceMs` (0 = all), newest first:
+/// { id, at (ms), kind, dir ('in'|'out'|'self'), amount, fee, cp }.
+export async function fetchAccountRows(acct, sinceMs, onProgress) {
+    const ck = `${acct.key}:${acct.ledger}:${sinceMs}`;
     const c = cache.get(ck);
     if (c && Date.now() - c.at < TTL) return c.rows;
+    const owner = Principal.fromText(acct.owner);
     const rows = [];
     let start = [];
     const page = 500n;
     while (rows.length < MAX_ROWS) {
         let txs; let oldest;
-        if (ledger === ICP_LEDGER) {
+        if (acct.ledger === ICP_LEDGER) {
             const index = await actor(icpIndexIdl, ICP_INDEX);
-            const r = await index.get_account_transactions({ account: { owner: acct.owner, subaccount: acct.sub ? [acct.sub] : [] }, start, max_results: page });
+            const r = await index.get_account_transactions({ account: { owner, subaccount: acct.sub ? [acct.sub] : [] }, start, max_results: page });
             if ('Err' in r) throw new Error(r.Err.message);
             txs = r.Ok.transactions.map(({ id, transaction: t }) => {
                 const k = Object.keys(t.operation)[0]; const op = t.operation[k];
                 const at = Number(t.timestamp?.[0]?.timestamp_nanos ?? 0n) / 1e6;
                 const from = op.from || null; const to = op.to || null;
                 const isOut = from === acct.icpHex; const isIn = to === acct.icpHex;
-                return { id: BigInt(id), at, kind: k.toLowerCase(), dir: isOut && isIn ? 'self' : isOut ? 'out' : 'in', amount: BigInt(op.amount?.e8s ?? 0n), fee: BigInt(op.fee?.e8s ?? 0n), cp: isOut ? (to ? { hex: to } : null) : (from ? { hex: from } : null), memo: t.memo ? t.memo.toString() : '' };
+                return { id: BigInt(id), at, kind: k.toLowerCase(), dir: isOut && isIn ? 'self' : isOut ? 'out' : 'in', amount: BigInt(op.amount?.e8s ?? 0n), fee: BigInt(op.fee?.e8s ?? 0n), cp: isOut ? (to ? { hex: to } : null) : (from ? { hex: from } : null) };
             }).filter((t) => t.kind !== 'approve');
             oldest = r.Ok.oldest_tx_id?.[0];
         } else {
             const index = await actor(indexIdl, SNEED_INDEX);
-            const r = await index.get_account_transactions({ account: { owner: acct.owner, subaccount: acct.sub ? [acct.sub] : [] }, start, max_results: page });
+            const r = await index.get_account_transactions({ account: { owner, subaccount: acct.sub ? [acct.sub] : [] }, start, max_results: page });
             if ('Err' in r) throw new Error(r.Err.message);
             txs = r.Ok.transactions.map(({ id, transaction: t }) => {
                 const x = t.transfer?.[0] || t.mint?.[0] || t.burn?.[0];
@@ -114,7 +114,7 @@ export async function fetchStationHistory(stationKey, ledger, sinceMs, onProgres
                 const from = x?.from ? key(x.from) : null; const to = x?.to ? key(x.to) : null;
                 const isOut = from === acct.key; const isIn = to === acct.key;
                 const cpAcc = isOut ? x?.to : x?.from;
-                return { id: BigInt(id), at: Number(t.timestamp) / 1e6, kind: t.kind, dir: isOut && isIn ? 'self' : isOut ? 'out' : 'in', amount: BigInt(x?.amount ?? 0n), fee: BigInt(x?.fee?.[0] ?? 0n), cp: cpAcc ? { owner: cpAcc.owner.toText(), sub: subHex(cpAcc.subaccount?.[0]) } : null, memo: '' };
+                return { id: BigInt(id), at: Number(t.timestamp) / 1e6, kind: t.kind, dir: isOut && isIn ? 'self' : isOut ? 'out' : t.kind === 'burn' && isOut ? 'out' : 'in', amount: BigInt(x?.amount ?? 0n), fee: BigInt(x?.fee?.[0] ?? 0n), cp: cpAcc ? { owner: cpAcc.owner.toText(), sub: subHex(cpAcc.subaccount?.[0]) } : (t.kind === 'burn' ? { owner: GOVERNANCE, sub: '' } : null) };
             }).filter((t) => t.kind !== 'approve');
             oldest = r.Ok.oldest_tx_id?.[0];
         }
@@ -129,21 +129,65 @@ export async function fetchStationHistory(stationKey, ledger, sinceMs, onProgres
     return rows;
 }
 
-/// Totals and a per-day series for a list of rows.
-export function summarize(rows, decimals, sinceMs) {
-    let inn = 0n; let out = 0n; let fees = 0n; let nIn = 0; let nOut = 0;
+// ---- the flows: what each station really receives and sends ----
+/// A line is one measurable flow: rows of one account, filtered. `virtual` lines are inside a
+/// pylon and leave no transactions: they are shown as a note, never summed.
+export const SECTIONS = [
+    {
+        key: 'neuron', title: '1 · The 2-year ICP neuron', token: 'ICP',
+        intro: 'The DAO\'s NNS neuron, controlled by a Neutrinite vector. The NNS mints its maturity into the node\'s maturity account about once a day; the pylon sweeps it into its main account and hands it to the ICP splitter inside the pylon, where it leaves no transaction. A quarter comes back to the neuron as new stake.',
+        account: ACCOUNTS.maturity, link: `https://vectors.neuronpool.com/vectors/${GOVERNANCE}/1`, dashboard: `https://dashboard.internetcomputer.org/neuron/${NEURON_2Y}`,
+        lines: [
+            { key: 'maturity', title: 'Maturity minted by the NNS', dir: 'in', account: ACCOUNTS.maturity, keep: (r) => r.kind === 'mint' },
+            { key: 'stake', title: 'Stake deposits (the DAO\'s original stake, swept into the neuron)', dir: 'in', account: ACCOUNTS.neuronSource, keep: (r) => r.dir === 'in' && !isPylonMain(r.cp), aside: true },
+        ],
+        virtual: ['A quarter of the ICP splitter\'s output is staked back into this neuron inside the pylon (no transaction).'],
+    },
+    {
+        key: 'icpSplitter', title: '2 · The ICP splitter', token: 'ICP',
+        intro: 'Splits what it gets by the configured shares: half to the SNEED buyback vector on the ICPCoins pylon, a quarter to the DAO\'s ICP treasury, a quarter back into the neuron. The maturity reaches it inside the pylon; product revenue reaches it as deposits to its account. Its outputs are visible where they land.',
+        account: ACCOUNTS.splitterSource, link: `https://vectors.neuronpool.com/vectors/${GOVERNANCE}/6`, splitsNode: 6,
+        lines: [
+            { key: 'maturity', title: 'Maturity from the neuron (inside the pylon)', dir: 'in', account: ACCOUNTS.maturity, keep: (r) => r.kind === 'mint' },
+            { key: 'deposits', title: 'Deposits: product revenue and other ICP sent here', dir: 'in', account: ACCOUNTS.splitterSource, keep: (r) => r.dir === 'in' && !isPylonMain(r.cp) },
+            { key: 'toBuyback', title: 'To the SNEED buyback vector', dir: 'out', account: ACCOUNTS.buybackSource, keep: (r) => r.dir === 'in' && cpIs(r.cp, ACCOUNTS.pylonMainIcp), dest: ACCOUNTS.buybackSource },
+            { key: 'toTreasury', title: 'To the DAO\'s ICP treasury', dir: 'out', account: ACCOUNTS.treasuryIcp, keep: (r) => r.dir === 'in' && cpIs(r.cp, ACCOUNTS.pylonMainIcp), dest: ACCOUNTS.treasuryIcp },
+        ],
+        virtual: ['The quarter that goes back into the neuron stays inside the pylon: it never appears on the ledger, so "out" below is the other three quarters.'],
+    },
+    {
+        key: 'buyback', title: '3 · The SNEED buyback vector', token: 'ICP', token2: 'SNEED',
+        intro: 'ICP arriving at its account on the ICPCoins pylon is swept and spent on the SNEED/ICP pool from the pylon\'s main account, so the swaps themselves are not separable on the ledger. What the swaps bought is: the SNEED that the ICPCoins pylon sends on to the SNEED splitter.',
+        account: ACCOUNTS.buybackSource, link: `https://beta.icpcoins.com/#/vector/modify/${BUYBACK_PYLON}/exchange/18`,
+        lines: [
+            { key: 'icpIn', title: 'ICP handed to the buyback', dir: 'in', account: ACCOUNTS.buybackSource, keep: (r) => r.dir === 'in' && !isPylonMain(r.cp) || (r.dir === 'in' && cpIs(r.cp, ACCOUNTS.pylonMainIcp)) },
+            { key: 'sneedOut', title: 'SNEED bought and sent to the SNEED splitter', dir: 'out', token: 'SNEED', account: ACCOUNTS.sneedSplitterSource, keep: (r) => r.dir === 'in' && cpIs(r.cp, ACCOUNTS.buybackPylonMainSneed), dest: ACCOUNTS.sneedSplitterSource },
+        ],
+    },
+    {
+        key: 'sneedSplitter', title: '4 · The SNEED splitter', token: 'SNEED',
+        intro: 'Splits the bought SNEED by the configured shares: burned (sent to the ledger\'s minting account, which destroys it), kept in the DAO treasury, and paid to the RLL rewards canister for voters. The deposit arrives at its account; the three outputs leave from the pylon\'s main SNEED account.',
+        account: ACCOUNTS.sneedSplitterSource, link: `https://vectors.neuronpool.com/vectors/${GOVERNANCE}/45`, splitsNode: 45,
+        lines: [
+            { key: 'in', title: 'SNEED from the buyback', dir: 'in', account: ACCOUNTS.sneedSplitterSource, keep: (r) => r.dir === 'in' && !isPylonMain(r.cp) || (r.dir === 'in' && cpIs(r.cp, ACCOUNTS.buybackPylonMainSneed)) },
+            { key: 'burn', title: 'Burned', dir: 'out', account: ACCOUNTS.pylonMainSneed, keep: (r) => r.kind === 'burn', dest: ACCOUNTS.mintingSneed, burn: true },
+            { key: 'treasury', title: 'To the DAO\'s SNEED treasury', dir: 'out', account: ACCOUNTS.pylonMainSneed, keep: (r) => r.dir === 'out' && cpIs(r.cp, ACCOUNTS.treasurySneed), dest: ACCOUNTS.treasurySneed },
+            { key: 'rll', title: 'To RLL rewards', dir: 'out', account: ACCOUNTS.pylonMainSneed, keep: (r) => r.dir === 'out' && cpIs(r.cp, ACCOUNTS.rll), dest: ACCOUNTS.rll },
+        ],
+        note: 'The burns, treasury and RLL transfers are read from the Neutrinite pylon\'s main SNEED account; Sneed\'s splitter is the only node known to send SNEED to those three places.',
+    },
+];
+
+/// Totals and a per-day series for one line's rows.
+export function summarizeLine(rows, decimals) {
+    let total = 0n; let fees = 0n;
     const byDay = new Map();
-    const byCp = new Map(); // outflows per counterparty
     for (const r of rows) {
+        total += r.amount; fees += r.fee;
         const day = new Date(r.at).toISOString().slice(0, 10);
-        const d = byDay.get(day) || { day, in: 0, out: 0 };
-        if (r.dir === 'in') { inn += r.amount; nIn++; d.in += Number(r.amount) / 10 ** decimals; }
-        else if (r.dir === 'out') { out += r.amount; fees += r.fee; nOut++; d.out += Number(r.amount) / 10 ** decimals; const k = r.cp ? (r.cp.hex || `${r.cp.owner}:${r.cp.sub || ''}`) : '?'; const c = byCp.get(k) || { cp: r.cp, amount: 0n, n: 0 }; c.amount += r.amount; c.n++; byCp.set(k, c); }
-        byDay.set(day, d);
+        byDay.set(day, (byDay.get(day) || 0) + Number(r.amount) / 10 ** decimals);
     }
-    const days = [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day));
-    const spanDays = Math.max(1, Math.round(((rows.length ? Date.now() : 0) - (sinceMs || (rows.length ? rows[rows.length - 1].at : Date.now()))) / 86_400_000));
-    return { in: inn, out, fees, nIn, nOut, days, spanDays, byCp: [...byCp.values()].sort((a, b) => (b.amount > a.amount ? 1 : -1)) };
+    return { total, fees, n: rows.length, byDay };
 }
 
 /// The NNS neuron's facts.
@@ -155,10 +199,9 @@ export async function fetchNeuron() {
 }
 
 /// A splitter node's live destinations with shares: [{ owner, sub, ledger, pct, name }].
-export async function fetchSplits(stationKey) {
-    const st = STATIONS[stationKey];
-    const a = await actor(st.exchange ? exVectorIdl : vectorIdl, st.pylon);
-    const nodes = await a.icrc55_get_nodes([{ id: st.nodeId }]);
+export async function fetchSplits(node, exchange = false) {
+    const a = await actor(exchange ? exVectorIdl : vectorIdl, exchange ? BUYBACK_PYLON : PYLON);
+    const nodes = await a.icrc55_get_nodes([{ id: node }]);
     const info = nodes?.[0]?.[0];
     if (!info) return [];
     const shares = info.custom?.[0]?.devefi_split?.variables?.split || [];
@@ -168,6 +211,6 @@ export async function fetchSplits(stationKey) {
         const sub = acc?.subaccount?.[0] ? hex(Uint8Array.from(acc.subaccount[0])) : '';
         const ledger = d.endpoint?.ic?.ledger?.toText?.() || '';
         const pct = Number(shares[i] ?? parseFloat(d.name) ?? 0);
-        return { owner, sub, ledger, pct, name: nameFor({ owner, sub }) || d.name || owner };
+        return { owner, sub, ledger, pct, key: `${owner}:${sub}`, name: nameFor({ owner, sub }) || d.name || owner };
     }).filter((d) => d.pct > 0);
 }
