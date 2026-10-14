@@ -492,6 +492,9 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                                     Transfer
                                 </button>
                             )}
+                            {!hideButtons && isLockedPosition(positionDetails) && !positionDetails.frontendOwnership && positionDetails.lockInfo?.lock_id && (
+                                <Link to={`/sneedex_create?lock=${positionDetails.lockInfo.lock_id.toString()}`} title="Create a Sneedex offer with this locked position as the asset" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '6px', border: '1px solid #8b5cf6', color: '#a78bfa', textDecoration: 'none', fontSize: '0.85rem', fontWeight: '600' }}>Sell on Sneedex</Link>
+                            )}
 
                         </div>
                     )}

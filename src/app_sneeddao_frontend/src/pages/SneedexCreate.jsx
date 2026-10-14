@@ -6,7 +6,7 @@ import { usePremiumStatus } from '../hooks/usePremiumStatus';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import { useAdminCheck } from '../hooks/useAdminCheck';
-import { FaArrowLeft, FaPlus, FaTrash, FaCubes, FaBrain, FaCoins, FaCheck, FaExclamationTriangle, FaServer, FaRobot, FaWallet, FaSync, FaPencilAlt, FaChevronDown, FaChevronUp, FaUnlock, FaChartLine, FaImage } from 'react-icons/fa';
+import { FaLock, FaArrowLeft, FaPlus, FaTrash, FaCubes, FaBrain, FaCoins, FaCheck, FaExclamationTriangle, FaServer, FaRobot, FaWallet, FaSync, FaPencilAlt, FaChevronDown, FaChevronUp, FaUnlock, FaChartLine, FaImage } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
@@ -34,6 +34,10 @@ import { createActor as createFactoryActor, canisterId as factoryCanisterId } fr
 import { createActor as createNeuronManagerActor } from 'declarations/sneed_icp_staking_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcrc7Actor } from 'external/icrc7_ledger';
+import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
+import { SneedLockAssetIcon, sneedLockAssetText, fmtUnits as fmtLockUnits, lockExpiryDate } from '../components/SneedLockAssetView';
+import { getTokenMetadata } from '../hooks/useTokenCache';
+import { describeSwapPool } from '../components/SwapPoolPicker';
 import { loadNftCollection, detectStandards, approveToken, getNftImage, getNftName, getSavedNftCollections, fetchCollectionInfo } from '../utils/NftUtils';
 import { createActor as createTradingBotActor } from 'external/sneed_trading_bot';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
@@ -715,6 +719,45 @@ function SneedexCreate() {
     const [newAssetNftIdsText, setNewAssetNftIdsText] = useState('');
     const [newAssetNftInfo, setNewAssetNftInfo] = useState(null); // { name, symbol, nfts, supportsIcrc37 }
     const [newAssetNftLoading, setNewAssetNftLoading] = useState(false);
+    // Sneed Lock asset: the user's own locks (token locks and locked LP positions), one picked
+    const [myLocks, setMyLocks] = useState(null); // null = not loaded; [{ kind, lock_id, ledger_id, amount, expiry, swap_id, position_id, token, pool }]
+    const [myLocksLoading, setMyLocksLoading] = useState(false);
+    const [newAssetLockId, setNewAssetLockId] = useState('');
+    const loadMyLocks = async () => {
+        if (!identity) return;
+        setMyLocksLoading(true);
+        try {
+            const sl = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+            const me = identity.getPrincipal();
+            const [tokenLocks, claimed] = await Promise.all([sl.get_token_locks(), sl.get_claimed_positions_for_principal(me)]);
+            const nowNs = BigInt(Date.now()) * 1_000_000n;
+            const list = [];
+            for (const [lock_id, ledger, amount, expiry] of tokenLocks) {
+                if (BigInt(expiry) <= nowNs) continue;
+                list.push({ kind: 'token', lock_id: BigInt(lock_id), ledger_id: ledger.toString(), amount: BigInt(amount), expiry: BigInt(expiry), token: null });
+            }
+            for (const c of claimed) {
+                const pl = c.position_lock?.[0];
+                if (!pl || BigInt(pl.expiry) <= nowNs) continue;
+                list.push({ kind: 'position', lock_id: BigInt(pl.lock_id), swap_id: c.swap_canister_id.toString(), position_id: BigInt(c.position_id), expiry: BigInt(pl.expiry), pool: null });
+            }
+            setMyLocks(list);
+            // names and logos, filled in as they arrive
+            for (const l of list) {
+                if (l.kind === 'token') getTokenMetadata(l.ledger_id).then((t) => setMyLocks((cur) => cur?.map((x) => (x.lock_id === l.lock_id ? { ...x, token: t } : x)) || cur)).catch(() => {});
+                else describeSwapPool(l.swap_id).then((p) => setMyLocks((cur) => cur?.map((x) => (x.lock_id === l.lock_id ? { ...x, pool: p } : x)) || cur)).catch(() => {});
+            }
+        } catch (e) { setError(`Could not read your locks: ${e?.message || e}`); }
+        finally { setMyLocksLoading(false); }
+    };
+    useEffect(() => { if (newAssetType === 'lock' && identity && myLocks === null && !myLocksLoading) loadMyLocks(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [newAssetType, identity]);
+    // Arriving from the wallet: ?lock=<lock id>
+    useEffect(() => {
+        const q = new URLSearchParams(location.search).get('lock');
+        if (!q || !identity) return;
+        setShowAddAsset(true); setNewAssetType('lock'); setNewAssetLockId(q);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [location.search, identity]);
     const location = useLocation();
     // The collections the user added to the NFT wallet, offered as one-click choices (names read lazily)
     const [myNftCollections, setMyNftCollections] = useState([]); // [{ id, name, symbol, logo }]
@@ -1414,6 +1457,24 @@ function SneedexCreate() {
                     logo: newAssetTokenLogo || '',
                     display: `${newAssetTokenAmount} ${newAssetTokenSymbol.trim() || 'TOKEN'}`
                 };
+            } else if (newAssetType === 'lock') {
+                const l = (myLocks || []).find((x) => x.lock_id.toString() === newAssetLockId);
+                if (!l) { setError('Pick one of your locks'); return; }
+                const text = sneedLockAssetText(l, l.token, l.pool);
+                asset = {
+                    type: 'lock',
+                    kind: l.kind,
+                    lock_id: l.lock_id.toString(),
+                    ledger_id: l.ledger_id || null,
+                    amount_e8s: l.amount ? l.amount.toString() : null,
+                    symbol: l.token?.symbol || null,
+                    decimals: l.token?.decimals != null ? Number(l.token.decimals) : 8,
+                    logo: l.token?.logo || l.pool?.token0?.logo || '',
+                    swap_id: l.swap_id || null,
+                    position_id: l.position_id ? l.position_id.toString() : null,
+                    expiry: l.expiry.toString(),
+                    display: text
+                };
             } else if (newAssetType === 'nft') {
                 Principal.fromText(newAssetNftCollection.trim());
                 const ids = [...new Set([...newAssetNftTokens, ...newAssetNftIdsText.split(/[\s,]+/).filter(Boolean)])];
@@ -1522,6 +1583,9 @@ function SneedexCreate() {
             if (sns) {
                 setSelectedSnsRoot(sns.rootCanisterId);
             }
+        } else if (asset.type === 'lock') {
+            setNewAssetType('lock');
+            setNewAssetLockId(asset.lock_id);
         } else if (asset.type === 'token') {
             setNewAssetType('token');
             setNewAssetTokenLedger(asset.ledger_id);
@@ -1813,6 +1877,8 @@ function SneedexCreate() {
                         await escrowTokenAsset(asset.ledger_id, asset.amount, asset.decimals, offerId, idx, identity.getPrincipal());
                     } else if (asset.type === 'nft') {
                         await escrowNftAsset(asset, offerId, idx);
+                    } else if (asset.type === 'lock') {
+                        await escrowLockAsset(asset, offerId, idx);
                     }
                 }
                 updateProgressStep(stepIndex, 'complete');
@@ -1937,6 +2003,56 @@ function SneedexCreate() {
     };
     
     // Auto-escrow helper for ICRC1 tokens
+    /// Sneed Locks: move the lock's ownership inside Sneed Lock to Sneedex, then have Sneedex verify it.
+    /// A token lock costs one ledger fee to pass on, paid from the owner's free balance in their Sneed Lock
+    /// wallet: the seller's for the escrow transfer, Sneedex's for the delivery. Both are topped up here.
+    const escrowLockAsset = async (asset, offerId, assetIndex) => {
+        const actor = createSneedexActor(identity);
+        const sl = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+        const me = identity.getPrincipal();
+        const sneedex = Principal.fromText(SNEEDEX_CANISTER_ID);
+        const lockId = BigInt(asset.lock_id);
+        const ownerOfLock = async () => { const r = await sl.get_lock_by_id(lockId); const info = r?.[0]; if (!info) return null; return (info.TokenLock || info.PositionLock)[0].toText(); };
+        const owner = await ownerOfLock();
+        if (owner !== sneedex.toText()) {
+            if (owner !== me.toText()) throw new Error(`Lock #${asset.lock_id} is owned by ${owner || 'nobody'}, not by you`);
+            if (asset.kind === 'token') {
+                const ledgerId = Principal.fromText(asset.ledger_id);
+                const agent = HttpAgent.createSync({ host: getHost(), identity });
+                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
+                const ledger = createLedgerActor(ledgerId, { agent });
+                const fee = BigInt(await ledger.icrc1_fee());
+                const sneedLock = Principal.fromText(sneedLockCanisterId);
+                const lockSub = (p) => { const b = p.toUint8Array(); const out = new Uint8Array(32); out[0] = b.length; out.set(b, 1); return out; };
+                const lockedOf = (locks, ledgerText) => locks.filter(([, l]) => l.toString() === ledgerText).reduce((a, [, , amt]) => a + BigInt(amt), 0n);
+                // 1. the seller's free balance in their Sneed Lock wallet must cover one fee for the ownership transfer
+                const myLocks = await sl.get_token_locks();
+                const myBal = BigInt(await ledger.icrc1_balance_of({ owner: sneedLock, subaccount: [lockSub(me)] }));
+                const myFree = myBal - lockedOf(myLocks, asset.ledger_id);
+                if (myFree < fee) {
+                    const r = await ledger.icrc1_transfer({ to: { owner: sneedLock, subaccount: [lockSub(me)] }, amount: fee - myFree + fee, fee: [], memo: [], from_subaccount: [], created_at_time: [] });
+                    if ('Err' in r) throw new Error(`Could not fund the transfer fee in your Sneed Lock wallet: ${toJsonString(r.Err)}`);
+                }
+                // 2. Sneedex's free balance there must cover a fee too, for the delivery (and one spare for a reclaim)
+                const all = await sl.get_all_token_locks();
+                const dexLocked = all.filter(([o, l]) => o.toText() === sneedex.toText() && l.toString() === asset.ledger_id).reduce((a, [, , l]) => a + BigInt(l.amount), 0n);
+                const dexBal = BigInt(await ledger.icrc1_balance_of({ owner: sneedLock, subaccount: [lockSub(sneedex)] }));
+                const dexFree = dexBal - dexLocked;
+                if (dexFree < 2n * fee) {
+                    const r = await ledger.icrc1_transfer({ to: { owner: sneedLock, subaccount: [lockSub(sneedex)] }, amount: 2n * fee - dexFree, fee: [], memo: [], from_subaccount: [], created_at_time: [] });
+                    if ('Err' in r) throw new Error(`Could not fund Sneedex's delivery fee in Sneed Lock: ${toJsonString(r.Err)}`);
+                }
+                const t = await sl.transfer_token_lock_ownership(sneedex, ledgerId, lockId);
+                if ('Err' in t) throw new Error(`Sneed Lock refused the lock transfer: ${t.Err.message}`);
+            } else {
+                const t = await sl.transfer_position_ownership(sneedex, Principal.fromText(asset.swap_id), BigInt(asset.position_id));
+                if ('Err' in t) throw new Error(`Sneed Lock refused the position transfer: ${t.Err.message}`);
+            }
+        }
+        const r = await actor.escrowSneedLock(offerId, BigInt(assetIndex));
+        if ('err' in r) throw new Error(`Failed to escrow the lock: ${getErrorMessage(r.err)}`);
+    };
+    
     /// NFTs: with ICRC-37, approve Sneedex and let it pull the tokens; otherwise transfer them into the escrow subaccount and have Sneedex verify.
     const escrowNftAsset = async (asset, offerId, assetIndex) => {
         const actor = createSneedexActor(identity);
@@ -2138,6 +2254,8 @@ function SneedexCreate() {
                 }
                 return <FaCoins style={{ color: theme.colors.warning, fontSize: size }} />;
             }
+            case 'lock':
+                return <SneedLockAssetIcon details={{ kind: asset.kind, ledger_id: asset.ledger_id, swap_id: asset.swap_id, amount: asset.amount_e8s ? BigInt(asset.amount_e8s) : 0n, expiry: BigInt(asset.expiry), lock_id: BigInt(asset.lock_id), position_id: asset.position_id ? BigInt(asset.position_id) : 0n }} size={size} />;
             case 'nft':
                 return asset.image
                     ? <img src={asset.image} alt={asset.symbol || 'NFT'} style={{ width: size, height: size, borderRadius: 6, objectFit: 'cover' }} onError={(e) => { e.target.style.display = 'none'; }} />
@@ -2165,6 +2283,9 @@ function SneedexCreate() {
                 const stake = Number(asset.stake) / Math.pow(10, decimals);
                 return stake * price;
             }
+        } else if (asset.type === 'lock' && asset.kind === 'token') {
+            const price = assetPrices[asset.ledger_id];
+            if (price && asset.amount_e8s) return (Number(asset.amount_e8s) / Math.pow(10, asset.decimals || 8)) * price;
         } else if (asset.type === 'canister' && asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
             // ICP Neuron Manager - use stored totalIcpE8s and ICP price
             if (asset.totalIcpE8s && icpPrice) {
@@ -3502,6 +3623,7 @@ function SneedexCreate() {
                                         { type: 'neuron', icon: FaBrain, label: 'SNS Neuron', gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
                                         { type: 'nft', icon: FaImage, label: 'NFT', gradient: 'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)' },
                                         { type: 'token', icon: FaCoins, label: 'ICRC1 Token', gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
+                                        { type: 'lock', icon: FaLock, label: 'Sneed Lock', gradient: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)' },
                                     ].map(({ type, icon: Icon, label, gradient }) => {
                                         const isSelected = newAssetType === type;
                                         const isDisabled = editingAssetIndex !== null; // Can't change type when editing
@@ -4471,6 +4593,37 @@ function SneedexCreate() {
                                     </>
                                 )}
                                 
+                                {newAssetType === 'lock' && (
+                                    <>
+                                        <div style={styles.formGroup}>
+                                            <label style={styles.label}>Your Sneed Locks</label>
+                                            <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, marginBottom: 8, lineHeight: 1.4 }}>
+                                                Token locks and locked LP positions you hold in Sneed Lock. The buyer receives the lock itself: the tokens or the position stay locked until the lock's expiry, which must be later than the offer's. Expired locks are not listed.
+                                            </div>
+                                            {myLocksLoading && <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>Reading your locks…</div>}
+                                            {!myLocksLoading && myLocks && myLocks.length === 0 && <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>You have no active locks. <Link to="/sneedlock" style={{ color: sneedexPrimary }}>Create one in Sneed Lock</Link>.</div>}
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 8 }}>
+                                                {(myLocks || []).map((l) => {
+                                                    const id = l.lock_id.toString(); const on = newAssetLockId === id;
+                                                    return (
+                                                        <label key={id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 10, borderRadius: 10, cursor: 'pointer', border: `1px solid ${on ? sneedexPrimary : theme.colors.border}`, background: on ? `${sneedexPrimary}22` : theme.colors.secondaryBg }}>
+                                                            <input type="radio" name="sneed-lock-pick" checked={on} onChange={() => setNewAssetLockId(id)} />
+                                                            <SneedLockAssetIcon details={l} size={32} />
+                                                            <span style={{ minWidth: 0 }}>
+                                                                <span style={{ display: 'block', fontSize: '0.85rem', color: theme.colors.primaryText }}>{l.kind === 'token' ? `${fmtLockUnits(l.amount, Number(l.token?.decimals ?? 8))} ${l.token?.symbol || '…'}` : `LP position #${l.position_id} ${l.pool ? `(${l.pool.token0.symbol}/${l.pool.token1.symbol})` : ''}`}</span>
+                                                                <span style={{ display: 'block', fontSize: '0.75rem', color: theme.colors.mutedText }}>Lock #{id} · unlocks {lockExpiryDate(l.expiry).toLocaleDateString()}</span>
+                                                            </span>
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                            <div style={{ marginTop: 8 }}>
+                                                <button type="button" style={styles.secondaryButton} disabled={myLocksLoading} onClick={loadMyLocks}>{myLocksLoading ? 'Loading…' : 'Refresh'}</button>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                                
                                 {newAssetType === 'token' && (
                                     <>
                                         <div style={styles.formGroup}>
@@ -4919,6 +5072,7 @@ function SneedexCreate() {
                                                             )}
                                                             {asset.type === 'token' && asset.display}
                                                             {asset.type === 'nft' && asset.display}
+                                                            {asset.type === 'lock' && asset.display}
                                                         </div>
                                                         {/* USD Value */}
                                                         {(() => {

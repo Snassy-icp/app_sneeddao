@@ -225,6 +225,7 @@ export const getAssetType = (asset) => {
     if ('SNSNeuron' in asset) return 'SNSNeuron';
     if ('ICRC1Token' in asset) return 'ICRC1Token';
     if ('ICRC7NFT' in asset) return 'ICRC7NFT';
+    if ('SneedLock' in asset) return 'SneedLock';
     return 'Unknown';
 };
 
@@ -297,6 +298,13 @@ export const getAssetDetails = (assetEntry) => {
             escrowed,
         };
     }
+    if ('SneedLock' in asset) {
+        const l = asset.SneedLock;
+        if ('Token' in l.lock) {
+            return { type: 'SneedLock', kind: 'token', lock_id: BigInt(l.lock_id), ledger_id: l.lock.Token.ledger_canister_id.toString(), amount: BigInt(l.lock.Token.amount), expiry: BigInt(l.lock.Token.expiry), escrowed };
+        }
+        return { type: 'SneedLock', kind: 'position', lock_id: BigInt(l.lock_id), swap_id: l.lock.Position.swap_canister_id.toString(), position_id: BigInt(l.lock.Position.position_id), expiry: BigInt(l.lock.Position.expiry), escrowed };
+    }
     
     return { type: 'Unknown', escrowed };
 };
@@ -349,6 +357,15 @@ export const createAssetVariant = (type, details) => {
                 ICRC1Token: {
                     ledger_canister_id: Principal.fromText(details.ledger_id),
                     amount: parseAmount(details.amount, details.decimals || 8),
+                }
+            };
+        case 'lock':
+            return {
+                SneedLock: {
+                    lock_id: BigInt(details.lock_id),
+                    lock: details.kind === 'token'
+                        ? { Token: { ledger_canister_id: Principal.fromText(details.ledger_id), amount: BigInt(details.amount_e8s), expiry: BigInt(details.expiry) } }
+                        : { Position: { swap_canister_id: Principal.fromText(details.swap_id), position_id: BigInt(details.position_id), expiry: BigInt(details.expiry) } },
                 }
             };
         case 'nft':

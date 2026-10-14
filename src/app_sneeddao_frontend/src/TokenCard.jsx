@@ -2462,6 +2462,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                         />
                                                         Transfer Ownership
                                                     </button>
+                                                    {lock.lock_id && (
+                                                        <Link to={`/sneedex_create?lock=${lock.lock_id.toString()}`} title="Create a Sneedex offer with this lock as the asset" style={{ marginLeft: '8px', display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '6px', border: '1px solid #8b5cf6', color: '#a78bfa', textDecoration: 'none', fontSize: '0.85rem', fontWeight: '600' }}>Sell on Sneedex</Link>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>

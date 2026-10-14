@@ -33,7 +33,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // Counters for unique IDs
     var nextOfferId : T.OfferId = 0;
     var nextBidId : T.BidId = 0;
-    var nextAssetTypeId : T.AssetTypeId = 4; // 0, 1, 2, 3 are reserved for built-in types
+    var nextAssetTypeId : T.AssetTypeId = 5; // 0..4 are reserved for built-in types
     
     // Asset types registry
     var assetTypes : [T.AssetType] = [
@@ -41,13 +41,17 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         { id = T.ASSET_TYPE_SNS_NEURON; name = "SNS Neuron"; description = "SNS governance neuron"; active = true },
         { id = T.ASSET_TYPE_ICRC1_TOKEN; name = "ICRC1 Token"; description = "ICRC1 fungible token"; active = true },
         { id = T.ASSET_TYPE_ICRC7_NFT; name = "ICRC-7 NFT"; description = "Non-fungible tokens of an ICRC-7 collection"; active = true },
+        { id = T.ASSET_TYPE_SNEED_LOCK; name = "Sneed Lock"; description = "A Sneed Lock token lock or locked LP position"; active = true },
     ];
     /// Deployments from before the NFT type keep their registry across upgrades; add the entry once.
     private func ensureBuiltInAssetTypes() {
         if (Array.find<T.AssetType>(assetTypes, func(t) { t.id == T.ASSET_TYPE_ICRC7_NFT }) == null) {
             assetTypes := Array.append(assetTypes, [{ id = T.ASSET_TYPE_ICRC7_NFT; name = "ICRC-7 NFT"; description = "Non-fungible tokens of an ICRC-7 collection"; active = true }]);
         };
-        if (nextAssetTypeId <= T.ASSET_TYPE_ICRC7_NFT) { nextAssetTypeId := T.ASSET_TYPE_ICRC7_NFT + 1 };
+        if (Array.find<T.AssetType>(assetTypes, func(t) { t.id == T.ASSET_TYPE_SNEED_LOCK }) == null) {
+            assetTypes := Array.append(assetTypes, [{ id = T.ASSET_TYPE_SNEED_LOCK; name = "Sneed Lock"; description = "A Sneed Lock token lock or locked LP position"; active = true }]);
+        };
+        if (nextAssetTypeId <= T.ASSET_TYPE_SNEED_LOCK) { nextAssetTypeId := T.ASSET_TYPE_SNEED_LOCK + 1 };
     };
     // The actor body runs on every install, upgrades included, while the registry above keeps its stored value.
     ensureBuiltInAssetTypes();
@@ -117,6 +121,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // These are optional - if not set, wallet registration is skipped
     var backendCanisterId : ?Principal = null;
     var neuronManagerFactoryCanisterId : ?Principal = null;
+    // Sneed Lock, whose token and position locks can be escrowed as assets (staging points this elsewhere)
+    var sneedLockCanisterId : Principal = Principal.fromText("pqsms-lqaaa-aaaal-ajjza-cai");
     
     // Expiration auto-processing timer settings
     var expirationCheckIntervalSeconds : Nat = 3600; // Default: 1 hour
@@ -815,6 +821,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             let subaccount = Utils.offerEscrowSubaccount(offer.creator, offerId);
                                             let _ = await* AssetHandlers.transferNfts(asset.collection_canister_id, subaccount, { owner = bid.bidder; subaccount = null }, asset.token_ids);
                                         };
+                                        case (#SneedLock(asset)) {
+                                            let _ = await* AssetHandlers.transferSneedLock(sneedLockCanisterId, asset, bid.bidder);
+                                        };
                                     };
                                 };
                                 
@@ -833,6 +842,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         case (#ICRC7NFT(_)) {
                                             // NFT collections are listed per user in the browser's NFT page
                                         };
+                                        case (#SneedLock(_)) {};
                                     };
                                 };
                                 
@@ -1047,6 +1057,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 let subaccount = Utils.offerEscrowSubaccount(offer.creator, offerId);
                                 let _ = await* AssetHandlers.transferNfts(asset.collection_canister_id, subaccount, { owner = offer.creator; subaccount = null }, asset.token_ids);
                             };
+                            case (#SneedLock(asset)) {
+                                let _ = await* AssetHandlers.transferSneedLock(sneedLockCanisterId, asset, offer.creator);
+                            };
                         };
                     };
                 };
@@ -1065,6 +1078,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 // Tokens don't need re-registration (user already has it in their wallet)
                             };
                             case (#ICRC7NFT(_)) {};
+                                case (#SneedLock(_)) {};
                         };
                     };
                 };
@@ -1203,6 +1217,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 updatedAssets.add(entry);
                             };
                             case (#ICRC7NFT(_)) { updatedAssets.add(entry) };
+                            case (#SneedLock(_)) { updatedAssets.add(entry) };
                         };
                     };
                 };
@@ -1499,6 +1514,21 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // Internal: check if a canister is currently held in escrow by a live offer.
     // Only PendingEscrow and Active offers actually hold custody of assets;
     // Cancelled/Expired/Reclaimed/Completed/Claimed offers no longer do.
+    /// A lock listed in any offer that is still open (draft, awaiting escrow, or active).
+    func isSneedLockListed(lockId : Nat) : Bool {
+        for (offer in offers.vals()) {
+            if (offer.state == #Draft or offer.state == #PendingEscrow or offer.state == #Active) {
+                for (assetEntry in offer.assets.vals()) {
+                    switch (assetEntry.asset) {
+                        case (#SneedLock(l)) { if (l.lock_id == lockId) { return true } };
+                        case (_) {};
+                    };
+                };
+            };
+        };
+        false;
+    };
+    
     func isCanisterInEscrow(canisterId : Principal) : Bool {
         for (offer in offers.vals()) {
             if (offer.state == #PendingEscrow or offer.state == #Active) {
@@ -1790,6 +1820,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         return true;
                     };
                 };
+                case (#SneedLock(existing), #SneedLock(new)) {
+                    if (existing.lock_id == new.lock_id) { return true };
+                };
                 case (#ICRC7NFT(existing), #ICRC7NFT(new)) {
                     if (Principal.equal(existing.collection_canister_id, new.collection_canister_id)) {
                         for (id in new.token_ids.vals()) { if (Array.find<Nat>(existing.token_ids, func(x) { x == id }) != null) { return true } };
@@ -1803,6 +1836,31 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     
     /// Add an asset to an offer (must be in Draft state)
     public shared ({ caller }) func addAsset(request : T.AddAssetRequest) : async T.Result<()> {
+        // A Sneed Lock is checked against Sneed Lock itself before anything is recorded: it must
+        // exist, be the caller's, and be the kind the caller says. The stored snapshot is the live one.
+        var asset = request.asset;
+        switch (request.asset) {
+            case (#SneedLock(l)) {
+                switch (await* AssetHandlers.readSneedLock(sneedLockCanisterId, l.lock_id)) {
+                    case (#err(e)) { return #err(e) };
+                    case (#ok((owner, kind))) {
+                        if (not Principal.equal(owner, caller)) { return #err(#InvalidAsset("Lock " # Nat.toText(l.lock_id) # " is not yours")) };
+                        let same = switch (l.lock, kind) {
+                            case (#Token(a), #Token(b)) { Principal.equal(a.ledger_canister_id, b.ledger_canister_id) };
+                            case (#Position(a), #Position(b)) { Principal.equal(a.swap_canister_id, b.swap_canister_id) and a.position_id == b.position_id };
+                            case (_, _) { false };
+                        };
+                        if (not same) { return #err(#InvalidAsset("Lock " # Nat.toText(l.lock_id) # " is not the lock you described")) };
+                        asset := #SneedLock({ lock_id = l.lock_id; lock = kind });
+                    };
+                };
+            };
+            case (_) {};
+        };
+        addAssetSync(caller, { offer_id = request.offer_id; asset = asset });
+    };
+    
+    func addAssetSync(caller : Principal, request : T.AddAssetRequest) : T.Result<()> {
         switch (getOffer(request.offer_id)) {
             case null { return #err(#OfferNotFound) };
             case (?offer) {
@@ -1853,6 +1911,15 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             var j = 0;
                             for (other in nft.token_ids.vals()) { if (i != j and id == other) { return #err(#InvalidAsset("Token id " # Nat.toText(id) # " is listed twice")) }; j += 1 };
                             i += 1;
+                        };
+                    };
+                    case (#SneedLock(l)) {
+                        if (isSneedLockListed(l.lock_id)) { return #err(#InvalidAsset("Lock " # Nat.toText(l.lock_id) # " is already listed in an open offer")) };
+                        let expiry = switch (l.lock) { case (#Token(t)) { t.expiry }; case (#Position(p)) { p.expiry } };
+                        if (Nat64.toNat(expiry) <= Int.abs(Time.now())) { return #err(#InvalidAsset("Lock " # Nat.toText(l.lock_id) # " has expired")) };
+                        switch (offer.expiration) {
+                            case (?e) { if (Nat64.toNat(expiry) <= Int.abs(e)) { return #err(#InvalidAsset("The lock expires before the offer does; a lock must outlive the offer")) } };
+                            case null {};
                         };
                     };
                     case _ {};
@@ -2239,6 +2306,79 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     public shared ({ caller }) func escrowICRC7NFTsByApproval(offerId : T.OfferId, assetIndex : Nat) : async T.Result<()> {
         await* escrowNftsInternal(caller, offerId, assetIndex, true);
     };
+    /// Escrow a Sneed Lock: the seller has moved the lock's ownership in Sneed Lock to this canister
+    /// (transfer_token_lock_ownership / transfer_position_ownership); verify it, and for a token lock
+    /// make sure Sneedex can afford to pass it on (one ledger fee free in its Sneed Lock wallet).
+    public shared ({ caller }) func escrowSneedLock(offerId : T.OfferId, assetIndex : Nat) : async T.Result<()> {
+        switch (getOffer(offerId)) {
+            case null { return #err(#OfferNotFound) };
+            case (?offer) {
+                if (not Principal.equal(caller, offer.creator)) { return #err(#NotAuthorized) };
+                if (offer.state != #PendingEscrow) { return #err(#InvalidState("Offer must be in PendingEscrow state")) };
+                if (assetIndex >= offer.assets.size()) { return #err(#InvalidAsset("Asset index out of bounds")) };
+                let assetEntry = offer.assets[assetIndex];
+                if (assetEntry.escrowed) { return #err(#InvalidAsset("Asset already escrowed")) };
+                switch (assetEntry.asset) {
+                    case (#SneedLock(l)) {
+                        let (owner, live) = switch (await* AssetHandlers.readSneedLock(sneedLockCanisterId, l.lock_id)) {
+                            case (#err(e)) { return #err(e) };
+                            case (#ok(x)) { x };
+                        };
+                        if (not Principal.equal(owner, self())) { return #err(#InvalidAsset("Lock " # Nat.toText(l.lock_id) # " has not been transferred to Sneedex")) };
+                        let same = switch (l.lock, live) {
+                            case (#Token(a), #Token(b)) { Principal.equal(a.ledger_canister_id, b.ledger_canister_id) and a.amount == b.amount };
+                            case (#Position(a), #Position(b)) { Principal.equal(a.swap_canister_id, b.swap_canister_id) and a.position_id == b.position_id };
+                            case (_, _) { false };
+                        };
+                        if (not same) { return #err(#InvalidAsset("Lock " # Nat.toText(l.lock_id) # " no longer matches the listed asset")) };
+                        switch (live) {
+                            case (#Token(t)) {
+                                switch (await* AssetHandlers.sneedexFreeBalanceInSneedLock(sneedLockCanisterId, self(), t.ledger_canister_id)) {
+                                    case (#err(e)) { return #err(e) };
+                                    case (#ok((free, fee))) {
+                                        if (free < fee) {
+                                            return #err(#InvalidAsset("Sneedex needs " # Nat.toText(fee) # " free units of this token in its Sneed Lock wallet to pass the lock on (it has " # Nat.toText(free) # "); send the fee to Sneed Lock's subaccount for Sneedex and try again"));
+                                        };
+                                    };
+                                };
+                            };
+                            case (#Position(_)) {};
+                        };
+                        // re-read: the offer may have changed across the awaits
+                        switch (getOffer(offerId)) {
+                            case null { return #err(#OfferNotFound) };
+                            case (?offer2) {
+                                if (offer2.state != #PendingEscrow or assetIndex >= offer2.assets.size() or offer2.assets[assetIndex].escrowed) { return #err(#InvalidState("Offer changed while escrowing")) };
+                                let updatedEntry : T.AssetEntry = { asset = #SneedLock({ lock_id = l.lock_id; lock = live }); escrowed = true };
+                                let updatedAssets = Utils.updateAt(offer2.assets, assetIndex, updatedEntry);
+                                let updatedOffer : T.Offer = {
+                                    id = offer2.id;
+                                    creator = offer2.creator;
+                                    min_bid_price = offer2.min_bid_price;
+                                    buyout_price = offer2.buyout_price;
+                                    expiration = offer2.expiration;
+                                    price_token_ledger = offer2.price_token_ledger;
+                                    assets = updatedAssets;
+                                    state = offer2.state;
+                                    min_bid_increment_fee_multiple = offer2.min_bid_increment_fee_multiple;
+                                    approved_bidders = offer2.approved_bidders;
+                                    fee_rate_bps = offer2.fee_rate_bps;
+                                    public_note = offer2.public_note;
+                                    note_to_buyer = offer2.note_to_buyer;
+                                    created_at = offer2.created_at;
+                                    activated_at = offer2.activated_at;
+                                };
+                                updateOffer(offerId, updatedOffer);
+                                #ok();
+                            };
+                        };
+                    };
+                    case (_) { return #err(#InvalidAsset("Asset at index is not a Sneed Lock")) };
+                };
+            };
+        };
+    };
+    
     private func escrowNftsInternal(caller : Principal, offerId : T.OfferId, assetIndex : Nat, pull : Bool) : async* T.Result<()> {
         switch (getOffer(offerId)) {
             case null { return #err(#OfferNotFound) };
@@ -2990,6 +3130,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             let subaccount = Utils.offerEscrowSubaccount(offer.creator, offerId);
                                             let _ = await* AssetHandlers.transferNfts(asset.collection_canister_id, subaccount, { owner = caller; subaccount = null }, asset.token_ids);
                                         };
+                                        case (#SneedLock(asset)) {
+                                            let _ = await* AssetHandlers.transferSneedLock(sneedLockCanisterId, asset, caller);
+                                        };
                                     };
                                 };
                                 
@@ -3011,6 +3154,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                                 await registerTokenToWallet(buyerPrincipal, asset.ledger_canister_id);
                                             };
                                             case (#ICRC7NFT(_)) {};
+                                case (#SneedLock(_)) {};
                                         };
                                     };
                                 });
@@ -3346,6 +3490,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 let subaccount = Utils.offerEscrowSubaccount(caller, offerId);
                                 let _ = await* AssetHandlers.transferNfts(asset.collection_canister_id, subaccount, { owner = caller; subaccount = null }, asset.token_ids);
                             };
+                            case (#SneedLock(asset)) {
+                                let _ = await* AssetHandlers.transferSneedLock(sneedLockCanisterId, asset, caller);
+                            };
                         };
                     };
                 };
@@ -3362,6 +3509,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 case (#SNSNeuron(_asset)) {};
                                 case (#ICRC1Token(_asset)) {};
                                 case (#ICRC7NFT(_)) {};
+                                case (#SneedLock(_)) {};
                             };
                         };
                     };
@@ -3908,6 +4056,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             case (#SNSNeuron(_)) T.ASSET_TYPE_SNS_NEURON;
             case (#ICRC1Token(_)) T.ASSET_TYPE_ICRC1_TOKEN;
             case (#ICRC7NFT(_)) T.ASSET_TYPE_ICRC7_NFT;
+            case (#SneedLock(_)) T.ASSET_TYPE_SNEED_LOCK;
         };
     };
     
@@ -4358,6 +4507,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         #ok();
     };
     
+    public shared ({ caller }) func setSneedLockCanisterId(canisterId : Principal) : async T.Result<()> {
+        if (not isAdmin(caller)) { return #err(#NotAuthorized) };
+        sneedLockCanisterId := canisterId;
+        #ok();
+    };
+    public query func getSneedLockCanisterId() : async Principal { sneedLockCanisterId };
+    
     /// Get the neuron manager factory canister ID
     public query func getNeuronManagerFactoryCanisterId() : async ?Principal {
         neuronManagerFactoryCanisterId;
@@ -4605,6 +4761,15 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                                 message := message # "Canister transfer failed: " # errMsg # "\n";
                                             };
                                         };
+                                    };
+                                };
+                            };
+                            case (#SneedLock(asset)) {
+                                switch (await* AssetHandlers.transferSneedLock(sneedLockCanisterId, asset, offer.creator)) {
+                                    case (#ok(_)) { message := message # "Lock returned to the seller\n"; };
+                                    case (#err(e)) {
+                                        let errMsg = switch (e) { case (#TransferFailed(msg)) { msg }; case _ { "Unknown error" } };
+                                        message := message # "Lock transfer failed: " # errMsg # "\n";
                                     };
                                 };
                             };

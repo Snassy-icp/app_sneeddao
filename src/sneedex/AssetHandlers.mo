@@ -691,6 +691,69 @@ module {
         };
     };
 
+    // ============================================
+    // SNEED LOCK HANDLERS
+    // ============================================
+    
+    /// Sneed Lock's wallet subaccount for a principal: byte 0 = principal length, then the bytes.
+    public func sneedLockSubaccount(p : Principal) : Blob {
+        let pa = Blob.toArray(Principal.toBlob(p));
+        let a = Array.init<Nat8>(32, 0);
+        a[0] := Nat8.fromNat(pa.size());
+        var i = 1;
+        for (x in pa.vals()) { if (i < 32) { a[i] := x }; i += 1 };
+        Blob.fromArray(Array.freeze(a));
+    };
+    
+    func sneedLock(id : Principal) : T.SneedLockActor { actor (Principal.toText(id)) : T.SneedLockActor };
+    
+    /// The lock as Sneed Lock sees it now: its owner and the kind, or an error if it does not exist.
+    public func readSneedLock(sneedLockId : Principal, lockId : Nat) : async* T.Result<(Principal, T.SneedLockKind)> {
+        try {
+            switch (await sneedLock(sneedLockId).get_lock_by_id(lockId)) {
+                case null { #err(#InvalidAsset("Lock " # Nat.toText(lockId) # " does not exist in Sneed Lock")) };
+                case (?#TokenLock(owner, ledger, l)) { #ok((owner, #Token({ ledger_canister_id = ledger; amount = l.amount; expiry = l.expiry }))) };
+                case (?#PositionLock(owner, swap, l)) { #ok((owner, #Position({ swap_canister_id = swap; position_id = l.position_id; expiry = l.expiry }))) };
+            };
+        } catch (_e) { #err(#TransferFailed("Failed to read the lock from Sneed Lock")) };
+    };
+    
+    /// Delivering a token lock costs one ledger fee out of Sneedex's free balance in its Sneed Lock
+    /// wallet. This is how much is free there now (balance minus every lock Sneedex holds in that token).
+    public func sneedexFreeBalanceInSneedLock(sneedLockId : Principal, sneedex : Principal, ledger : Principal) : async* T.Result<(Nat, Nat)> {
+        try {
+            let l : T.ICRC1Actor = actor (Principal.toText(ledger));
+            let acct : T.Account = { owner = sneedLockId; subaccount = ?sneedLockSubaccount(sneedex) };
+            let balance = await l.icrc1_balance_of(acct);
+            let fee = await l.icrc1_fee();
+            var locked = 0;
+            for ((_id, token, amount, _exp) in (await sneedLock(sneedLockId).get_token_locks()).vals()) {
+                if (Principal.equal(token, ledger)) { locked += amount };
+            };
+            #ok((if (balance > locked) { balance - locked } else { 0 }, fee));
+        } catch (_e) { #err(#TransferFailed("Failed to read Sneedex's balance in Sneed Lock")) };
+    };
+    
+    /// Move a lock Sneedex owns to someone else (the buyer, or the seller on reclaim).
+    public func transferSneedLock(sneedLockId : Principal, asset : T.SneedLockAsset, to : Principal) : async* T.Result<()> {
+        try {
+            switch (asset.lock) {
+                case (#Token(t)) {
+                    switch (await sneedLock(sneedLockId).transfer_token_lock_ownership(to, t.ledger_canister_id, asset.lock_id)) {
+                        case (#Ok) { #ok() };
+                        case (#Err(e)) { #err(#TransferFailed("Sneed Lock refused the token lock transfer: " # e.message)) };
+                    };
+                };
+                case (#Position(p)) {
+                    switch (await sneedLock(sneedLockId).transfer_position_ownership(to, p.swap_canister_id, p.position_id)) {
+                        case (#Ok) { #ok() };
+                        case (#Err(e)) { #err(#TransferFailed("Sneed Lock refused the position transfer: " # e.message)) };
+                    };
+                };
+            };
+        } catch (_e) { #err(#TransferFailed("Failed to call Sneed Lock")) };
+    };
+    
     /// ICRC-37 listing: the seller approved Sneedex; pull the tokens into the escrow subaccount.
     public func pullNfts(
         collectionCanisterId : Principal,

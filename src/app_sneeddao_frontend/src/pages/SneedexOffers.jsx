@@ -5,6 +5,7 @@ import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot, FaChevronLeft, FaChevronRight, FaChevronDown, FaChevronUp, FaTimes, FaUnlock, FaExchangeAlt, FaChartLine, FaImage } from 'react-icons/fa';
 import { NftAssetIcon } from '../components/NftAssetView';
+import { SneedLockAssetIcon, SneedLockAssetTitle } from '../components/SneedLockAssetView';
 import { getLogoSync } from '../hooks/useLogoCache';
 import TokenSelector from '../components/TokenSelector';
 import PrincipalInput from '../components/PrincipalInput';
@@ -684,6 +685,8 @@ function SneedexOffers() {
                 if (filterType === 'trading_bot') return type === 'Canister' && details.canister_kind === CANISTER_KIND_TRADING_BOT;
                 if (filterType === 'neuron') return type === 'SNSNeuron';
                 if (filterType === 'token') return type === 'ICRC1Token';
+                if (filterType === 'nft') return type === 'ICRC7NFT';
+                if (filterType === 'lock') return type === 'SneedLock';
                 return true;
             });
             if (!hasType) return false;
@@ -1756,6 +1759,8 @@ function SneedexOffers() {
                                     <option value="trading_bot">Trading Bots</option>
                                     <option value="neuron">SNS Neurons</option>
                                     <option value="token">ICRC1 Tokens</option>
+                                    <option value="nft">NFTs</option>
+                                    <option value="lock">Sneed Locks</option>
                                 </select>
                             </div>
                             
@@ -2293,6 +2298,9 @@ function SneedexOffers() {
                                                 if (details.type === 'ICRC7NFT') {
                                                     return `ICRC-7 NFT${details.token_ids.length === 1 ? '' : 's'}\nCollection: ${details.collection_id}\nToken ids: ${details.token_ids.join(', ')}`;
                                                 }
+                                                if (details.type === 'SneedLock') {
+                                                    return `Sneed Lock #${details.lock_id}${details.kind === 'token' ? `\nLedger: ${details.ledger_id}` : `\nPool: ${details.swap_id}\nPosition: ${details.position_id}`}\nUnlocks: ${new Date(Number(details.expiry / 1_000_000n)).toLocaleString()}`;
+                                                }
                                                 if (details.type === 'ICRC1Token') {
                                                     return `${assetTokenInfo?.name || assetTokenInfo?.symbol || 'Token'}\nLedger: ${details.ledger_id}\nAmount: ${formatAmount(details.amount, assetTokenInfo?.decimals || 8)} ${assetTokenInfo?.symbol || 'tokens'}`;
                                                 }
@@ -2391,6 +2399,12 @@ function SneedexOffers() {
                                                                 onError={(e) => { e.target.onerror = null; e.target.src = getProxyLogoUrl(details.ledger_id); }}
                                                             />
                                                             {formatAmount(details.amount, assetTokenInfo?.decimals || 8)} {assetTokenInfo?.symbol || 'TOKEN'}
+                                                        </>
+                                                    )}
+                                                    {details.type === 'SneedLock' && (
+                                                        <>
+                                                            <SneedLockAssetIcon details={details} size={18} />
+                                                            <SneedLockAssetTitle details={details} />
                                                         </>
                                                     )}
                                                     {details.type === 'ICRC7NFT' && (

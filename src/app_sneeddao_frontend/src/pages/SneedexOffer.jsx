@@ -4,6 +4,7 @@ import NeuronDisplay from '../components/NeuronDisplay';
 import SwapModal from '../components/SwapModal';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { NftAssetIcon, NftAssetTitle, NftAssetDetails } from '../components/NftAssetView';
+import { SneedLockAssetIcon, SneedLockAssetTitle, SneedLockAssetDetails } from '../components/SneedLockAssetView';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync, FaWallet, FaChevronDown, FaChevronUp, FaMicrochip, FaMemory, FaBolt, FaLock, FaUserCheck, FaRobot, FaExclamationTriangle, FaExchangeAlt, FaShoppingCart, FaChartLine, FaImage } from 'react-icons/fa';
@@ -3034,6 +3035,9 @@ function SneedexOffer() {
                                                         {details.type === 'ICRC7NFT' && (
                                                             <NftAssetIcon collectionId={details.collection_id} tokenIds={details.token_ids} size={36} />
                                                         )}
+                                                        {details.type === 'SneedLock' && (
+                                                            <SneedLockAssetIcon details={details} size={36} />
+                                                        )}
                                                         {details.type === 'SNSNeuron' && (
                                                             <div style={{ 
                                                                 position: 'relative', 
@@ -3083,6 +3087,9 @@ function SneedexOffer() {
                                                             })()}
                                                             {details.type === 'ICRC7NFT' && (
                                                                 <NftAssetTitle collectionId={details.collection_id} tokenIds={details.token_ids} />
+                                                            )}
+                                                            {details.type === 'SneedLock' && (
+                                                                <SneedLockAssetTitle details={details} />
                                                             )}
                                                             {details.type === 'ICRC1Token' && (() => {
                                                                 // Check whitelisted tokens first, then dynamically fetched metadata
@@ -5020,6 +5027,9 @@ function SneedexOffer() {
                                             )}
                                             
                                             {/* Expanded ICRC1 Token Info Section */}
+                                            {details.type === 'SneedLock' && isExpanded && (
+                                                <SneedLockAssetDetails details={details} />
+                                            )}
                                             {details.type === 'ICRC7NFT' && isExpanded && (
                                                 <NftAssetDetails collectionId={details.collection_id} tokenIds={details.token_ids} me={identity?.getPrincipal?.().toText?.() || null} />
                                             )}

@@ -31,6 +31,7 @@ module {
     public let ASSET_TYPE_SNS_NEURON : AssetTypeId = 1;
     public let ASSET_TYPE_ICRC1_TOKEN : AssetTypeId = 2;
     public let ASSET_TYPE_ICRC7_NFT : AssetTypeId = 3;
+    public let ASSET_TYPE_SNEED_LOCK : AssetTypeId = 4;
     
     // ============================================
     // CANISTER KINDS - Extensible System for known canister types
@@ -380,12 +381,40 @@ module {
         token_ids : [Nat];
     };
     
+    /// A Sneed Lock: either a token lock (tokens held in Sneed Lock until an expiry) or a locked
+    /// ICPSwap LP position. Escrowed by moving the lock's ownership inside Sneed Lock to this
+    /// canister (transfer_token_lock_ownership / transfer_position_ownership), verified with
+    /// get_lock_by_id, delivered by moving the ownership on to the buyer. The details are a
+    /// snapshot taken from Sneed Lock when the asset is added, for display.
+    public type SneedLockAsset = {
+        lock_id : Nat;
+        lock : SneedLockKind;
+    };
+    public type SneedLockKind = {
+        #Token : { ledger_canister_id : Principal; amount : Nat; expiry : Nat64 };
+        #Position : { swap_canister_id : Principal; position_id : Nat; expiry : Nat64 };
+    };
+    // Sneed Lock's own view of a lock (get_lock_by_id)
+    public type SneedLockTokenLock = { lock_id : Nat; amount : Nat; expiry : Nat64 };
+    public type SneedLockPositionLock = { dex : Nat; lock_id : Nat; position_id : Nat; expiry : Nat64; token0 : Principal; token1 : Principal };
+    public type SneedLockInfo = {
+        #TokenLock : (Principal, Principal, SneedLockTokenLock);
+        #PositionLock : (Principal, Principal, SneedLockPositionLock);
+    };
+    public type SneedLockActor = actor {
+        get_lock_by_id : shared query (Nat) -> async ?SneedLockInfo;
+        get_token_locks : shared query () -> async [(Nat, Principal, Nat, Nat64)];
+        transfer_token_lock_ownership : shared (Principal, Principal, Nat) -> async { #Ok; #Err : { message : Text; transfer_error : ?TransferError } };
+        transfer_position_ownership : shared (Principal, Principal, Nat) -> async { #Ok; #Err : { message : Text } };
+    };
+    
     // Union type for all assets
     public type Asset = {
         #Canister : CanisterAsset;
         #SNSNeuron : SNSNeuronAsset;
         #ICRC1Token : ICRC1TokenAsset;
         #ICRC7NFT : ICRC7NFTAsset;
+        #SneedLock : SneedLockAsset;
     };
     
     // Asset with escrow status
