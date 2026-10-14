@@ -90,6 +90,32 @@ shared (deployer) persistent actor class SneedRLL() = this {
   stable var claim_incidents : [T.ClaimIncident] = [];
   stable var next_incident_id : Nat = 0;
 
+  // Per token, the amounts of claims whose transfer is awaiting the ledger: already debited
+  // from the local balances but still in the canister's ledger balance. Transient: a claim's
+  // continuation does not survive an upgrade either.
+  transient let in_flight_claims = Map.HashMap<Principal, Nat>(10, Principal.equal, Principal.hash);
+
+  private func add_in_flight(token_id : Principal, amount : Nat) {
+    let cur = switch (in_flight_claims.get(token_id)) { case (?a) a; case null 0 };
+    in_flight_claims.put(token_id, cur + amount);
+  };
+
+  private func remove_in_flight(token_id : Principal, amount : Nat) {
+    let cur = switch (in_flight_claims.get(token_id)) { case (?a) a; case null 0 };
+    if (cur > amount) { in_flight_claims.put(token_id, cur - amount) } else { in_flight_claims.delete(token_id) };
+  };
+
+  // Amounts of a token the canister may still hold that are owed although no local balance
+  // shows them: claims awaiting the ledger, and unresolved incidents (debited owners whose
+  // transfer may not have landed). A distribution must not share these out again.
+  private func reserved_balance(token_id : Principal) : Nat {
+    var total : Nat = switch (in_flight_claims.get(token_id)) { case (?a) a; case null 0 };
+    for (inc in claim_incidents.vals()) {
+      if (not inc.resolved and inc.token_id == token_id) { total += inc.total };
+    };
+    total;
+  };
+
   private func create_claim_incident(
     seq : Nat,
     token_id : Principal,
@@ -212,6 +238,10 @@ shared (deployer) persistent actor class SneedRLL() = this {
   };
 
   public query func total_balance(icrc1_ledger_canister_id : Principal) : async Nat {
+    local_total_balance(icrc1_ledger_canister_id);
+  };
+
+  private func local_total_balance(icrc1_ledger_canister_id : Principal) : Nat {
     var total : Nat = 0;
     for ((owner, local_balances) in balances.entries()) {
       for (local_balance in local_balances.balances.vals()) {
@@ -568,6 +598,14 @@ shared (deployer) persistent actor class SneedRLL() = this {
     assert token_distribution_timer_id == null;
     assert token_balance_check_timer_id == null;
 
+    begin_distribution_cycle<system>();
+    Debug.print("Started distribution cycle with timer id " # debug_show(distribution_cycle_timer_id));
+    #ok("Started distribution cycle with timer id " # debug_show(distribution_cycle_timer_id))
+  };
+
+  // Resets the cycle progress and starts the orchestrator at its first stage. Synchronous,
+  // so it can also be called from postupgrade to restart a cycle an upgrade interrupted.
+  private func begin_distribution_cycle<system>() {
     orchestrator_stage := #importing_whitelist;
     Debug.print("Starting distribution cycle");
 
@@ -584,8 +622,6 @@ shared (deployer) persistent actor class SneedRLL() = this {
     
     // Start the orchestration cycle and store the timer ID
     distribution_cycle_timer_id := ?Timer.setTimer<system>(#seconds 0, orchestrate_imports_tick);
-    Debug.print("Started distribution cycle with timer id " # debug_show(distribution_cycle_timer_id));
-    #ok("Started distribution cycle with timer id " # debug_show(distribution_cycle_timer_id))
   };
 
   public query func get_import_stage() : async Text {
@@ -859,14 +895,16 @@ shared (deployer) persistent actor class SneedRLL() = this {
         icrc1_balance_of : shared query (account : T.Account) -> async Nat;
       };
 
-      // 1. Get server balance
+      // 1. What the canister owes in this token, taken before the balance is read (claims
+      //    that complete while the balance call is out only make the balance smaller): the
+      //    local balances plus amounts reserved for in-flight claims and unresolved incidents.
+      let total_distributed = local_total_balance(token_id) + reserved_balance(token_id);
+
+      // 2. Get server balance
       let server_balance = await token_canister.icrc1_balance_of({
         owner = this_canister_id();
         subaccount = null;
       });
-    
-      // 2. Get total distributed balance
-      let total_distributed = await total_balance(token_id);
 
       Debug.print("Server balance: " # debug_show(server_balance) # ", total distributed: " # debug_show(total_distributed));
 
@@ -890,7 +928,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
             token_id,
             { id = 1 },  // First proposal
             { id = getHighestClosedProposalId() },  // Last imported proposal
-            null  // No exclusion
+            ?sneed_exclude_principal  // the exclusion principal's neurons get nothing
           );
         };
       };
@@ -1110,6 +1148,9 @@ shared (deployer) persistent actor class SneedRLL() = this {
     // Log that we're about to attempt the transfer
     log_claim(seq, hotkey, icrc1_ledger_canister_id, amount, fee, #Pending, null, null);
 
+    // Debited but still on the ledger until the transfer answers: keep it out of distributions.
+    add_in_flight(icrc1_ledger_canister_id, total_balance);
+
 
     try {
         let transfer_args : T.TransferArgs = {
@@ -1130,7 +1171,8 @@ shared (deployer) persistent actor class SneedRLL() = this {
         };  
 
         let result = await icrc1_ledger_canister.icrc1_transfer(transfer_args);
-        
+        remove_in_flight(icrc1_ledger_canister_id, total_balance);
+
         switch (result) {
             case (#Ok(index)) {
                 // Log successful claim with tx_index
@@ -1149,6 +1191,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
         return result;
 
     } catch e {
+        remove_in_flight(icrc1_ledger_canister_id, total_balance);
         log_claim(seq, hotkey, icrc1_ledger_canister_id, total_balance - fee, fee, #Failed, ?Error.message(e), null);
 
         // Classify the thrown call by its error code. These codes guarantee the
@@ -1895,6 +1938,64 @@ shared (deployer) persistent actor class SneedRLL() = this {
     stable_wallet_known_tokens := [];
     stable_token_min_distributions := [];
     stable_token_max_distributions := [];
+
+    recover_timers_after_upgrade<system>();
+  };
+
+  // Timers do not survive an upgrade, but their ids are stable variables: left alone, every
+  // process would report itself running (and refuse to start) while nothing is scheduled.
+  // The stale ids are dropped without cancelling them (timer ids restart after an upgrade,
+  // so a stale id may name a new timer). Then:
+  // - a distribution cycle the upgrade interrupted is restarted from its first stage. This
+  //   cannot pay anything twice: each token is shared in one message (no await between
+  //   computing and crediting), and a restarted cycle recomputes what is undistributed from
+  //   the ledger balance minus the local balances and the reserved amounts.
+  // - the main loop, if it was enabled, is re-armed on its schedule: last cycle start +
+  //   interval, or at once if that is past.
+  // Manual imports and balance checks the upgrade interrupted are left stopped (idle).
+  private func recover_timers_after_upgrade<system>() {
+    let loop_was_enabled = main_loop_timer_id != null;
+    let cycle_was_running = distribution_cycle_timer_id != null or orchestrator_stage != #idle;
+
+    main_loop_timer_id := null;
+    distribution_cycle_timer_id := null;
+    neuron_import_timer_id := null;
+    proposal_import_timer_id := null;
+    token_distribution_timer_id := null;
+    token_balance_check_timer_id := null;
+    wallet_token_check_timer_id := null;
+
+    orchestrator_stage := #idle;
+    import_prop_ticks := 0;
+    import_neuron_ticks := 0;
+    distribute_tokens_ticks := 0;
+    import_next_neuron_id := null;
+    processed_token_count := 0;
+    total_tokens_to_process := 0;
+    current_distribution_token := null;
+    tokens_to_check := [];
+    current_token_check_index := 0;
+    token_check_ticks := 0;
+    wallet_tokens_to_check := [];
+    current_wallet_token_check_index := 0;
+    wallet_token_check_ticks := 0;
+    current_wallet_being_checked := null;
+
+    if (cycle_was_running) {
+      begin_distribution_cycle<system>();
+    };
+
+    if (loop_was_enabled) {
+      let now = Int.abs(Time.now());
+      let interval_ns = main_loop_frequence_seconds * 1_000_000_000;
+      let due = switch (cycle_last_started) {
+        case (?started) { started + interval_ns };
+        case (null) { now };
+      };
+      let delay_seconds : Nat = if (due > now) { (due - now) / 1_000_000_000 } else { 0 };
+      main_loop_next_scheduled := ?(now + delay_seconds * 1_000_000_000);
+      main_loop_timer_id := ?Timer.setTimer<system>(#seconds delay_seconds, main_loop_tick);
+    };
   };
 
 
