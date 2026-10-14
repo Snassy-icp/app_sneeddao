@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { HttpAgent } from '@dfinity/agent';
@@ -6,9 +6,11 @@ import Header from '../components/Header';
 import NftCollectionCard from '../NftCollectionCard';
 import SendNftModal from '../SendNftModal';
 import AddNftCollectionModal from '../AddNftCollectionModal';
-import { loadNftCollection, transferNft, fetchCollectionAdmins, mintNft, approveToken, revokeTokenApproval, approveCollection, revokeCollectionApproval } from '../utils/NftUtils';
+import { getSavedNftCollections, NFT_COLLECTIONS_STORAGE_KEY, loadNftCollection, transferNft, fetchCollectionAdmins, mintNft, approveToken, revokeTokenApproval, approveCollection, revokeCollectionApproval } from '../utils/NftUtils';
 import { app_sneeddao_backend } from 'declarations/app_sneeddao_backend';
 import './Nft.css';
+
+const spinnerStyle = (theme) => ({ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', border: `2px solid ${theme.colors.border}`, borderTopColor: theme.colors.primaryText, animation: 'nft-spin 0.8s linear infinite', verticalAlign: '-2px', marginRight: '6px' });
 
 const Nft = () => {
     const { isAuthenticated, identity, login } = useAuth();
@@ -29,7 +31,12 @@ const Nft = () => {
     const [refreshingCollections, setRefreshingCollections] = useState(new Set());
     
     // Saved collection IDs
-    const [savedCollectionIds, setSavedCollectionIds] = useState([]);
+    const [savedCollectionIds, setSavedCollectionIds] = useState(() => getSavedNftCollections());
+    // What each saved collection is doing while it loads: id -> { stage, name, symbol, logo, found, error }
+    const [loadProgress, setLoadProgress] = useState({});
+    const inFlight = useRef(new Set()); // collection ids being loaded right now
+    const mounted = useRef(true);
+    useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
     
     // Initialize agent
     useEffect(() => {
@@ -46,74 +53,50 @@ const Nft = () => {
         }
     }, [identity]);
     
-    // Load saved collection IDs from backend
+    // Load the saved collections, each on its own: a card appears as soon as its collection has loaded,
+    // and until then its placeholder shows what the loader is doing.
     useEffect(() => {
-        const loadSavedCollections = async () => {
-            if (!isAuthenticated || !identity) return;
-            
+        if (!isAuthenticated || !identity || !agent) return;
+        if (savedCollectionIds.length === 0) { setIsInitialLoad(false); setIsLoading(false); return; }
+        const me = identity.getPrincipal().toText();
+        const account = { owner: identity.getPrincipal(), subaccount: [] };
+        const pending = savedCollectionIds.filter((id) => !collections.some((c) => c.canisterId === id) && !inFlight.current.has(id));
+        if (pending.length === 0) { setIsInitialLoad(false); if (inFlight.current.size === 0) setIsLoading(false); return; }
+        for (const id of pending) inFlight.current.add(id);
+        const alive = mounted; // only unmounting cancels; adding a collection while others load must not
+        setIsLoading(true);
+        setIsInitialLoad(false);
+        setError('');
+        setLoadProgress((p) => { const n = { ...p }; for (const id of pending) n[id] = { stage: 'Connecting…' }; return n; });
+        Promise.allSettled(pending.map(async (canisterId) => {
             try {
-                // Try to get saved NFT collections from backend
-                // For now, we'll use localStorage as fallback
-                const stored = localStorage.getItem('nft_collections');
-                if (stored) {
-                    const ids = JSON.parse(stored);
-                    setSavedCollectionIds(ids);
-                }
-            } catch (err) {
-                console.error('Error loading saved collections:', err);
-            }
-        };
-        
-        loadSavedCollections();
-    }, [isAuthenticated, identity]);
-    
-    // Load NFT collections
-    useEffect(() => {
-        const loadCollections = async () => {
-            if (!isAuthenticated || !identity || !agent || savedCollectionIds.length === 0) {
-                setIsInitialLoad(false);
-                return;
-            }
-            
-            setIsLoading(true);
-            setError('');
-            
-            try {
-                const account = {
-                    owner: identity.getPrincipal(),
-                    subaccount: []
-                };
-                
-                const loadedCollections = await Promise.allSettled(
-                    savedCollectionIds.map(canisterId => 
-                        loadNftCollection(canisterId, account, identity, agent)
-                    )
-                );
-                
-                const successfulCollections = loadedCollections
-                    .filter(result => result.status === 'fulfilled')
-                    .map(result => result.value); // every saved collection, owned tokens or not (an admin may own none yet)
-                const me = identity.getPrincipal().toText();
-                await Promise.all(successfulCollections.map(async (c) => { c.isAdmin = (await fetchCollectionAdmins(c.canisterId, agent)).includes(me); }));
-                setCollections(successfulCollections);
-                
-                // Log any failures
-                loadedCollections.forEach((result, index) => {
-                    if (result.status === 'rejected') {
-                        console.error(`Failed to load collection ${savedCollectionIds[index]}:`, result.reason);
-                    }
+                const c = await loadNftCollection(canisterId, account, identity, agent, (prog) => {
+                    if (alive.current) setLoadProgress((p) => ({ ...p, [canisterId]: { ...prog } }));
                 });
+                c.isAdmin = (await fetchCollectionAdmins(c.canisterId, agent)).includes(me);
+                if (!alive.current) return;
+                // every saved collection is listed, owned tokens or not (an admin may own none yet); keep the saved order
+                setCollections((prev) => {
+                    const next = prev.filter((x) => x.canisterId !== canisterId).concat([c]);
+                    return next.sort((a, b) => savedCollectionIds.indexOf(a.canisterId) - savedCollectionIds.indexOf(b.canisterId));
+                });
+                setLoadProgress((p) => { const n = { ...p }; delete n[canisterId]; return n; });
             } catch (err) {
-                console.error('Error loading collections:', err);
-                setError('Failed to load NFT collections');
+                console.error(`Failed to load collection ${canisterId}:`, err);
+                if (alive.current) setLoadProgress((p) => ({ ...p, [canisterId]: { ...(p[canisterId] || {}), stage: null, error: err?.message || String(err) } }));
             } finally {
-                setIsLoading(false);
-                setIsInitialLoad(false);
+                inFlight.current.delete(canisterId);
             }
-        };
-        
-        loadCollections();
+        })).then(() => { if (alive.current && inFlight.current.size === 0) setIsLoading(false); });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isAuthenticated, identity, agent, savedCollectionIds]);
+    
+    const retryCollection = (canisterId) => {
+        // dropping the stale entry makes the loader effect pick it up again
+        setLoadProgress((p) => { const n = { ...p }; delete n[canisterId]; return n; });
+        setCollections((prev) => prev.filter((c) => c.canisterId !== canisterId));
+        setSavedCollectionIds((ids) => [...ids]);
+    };
     
     const handleRefreshCollection = async (collection) => {
         if (!identity || !agent) return;
@@ -154,7 +137,7 @@ const Nft = () => {
         // Add to saved collections
         const updatedIds = [...new Set([...savedCollectionIds, canisterId])];
         setSavedCollectionIds(updatedIds);
-        localStorage.setItem('nft_collections', JSON.stringify(updatedIds));
+        localStorage.setItem(NFT_COLLECTIONS_STORAGE_KEY, JSON.stringify(updatedIds));
         
         // The saved-ids effect reloads the list; appending here as well showed the collection twice.
     };
@@ -177,7 +160,7 @@ const Nft = () => {
             // Remove from saved IDs
             const updatedIds = savedCollectionIds.filter(id => id !== collection.canisterId);
             setSavedCollectionIds(updatedIds);
-            localStorage.setItem('nft_collections', JSON.stringify(updatedIds));
+            localStorage.setItem(NFT_COLLECTIONS_STORAGE_KEY, JSON.stringify(updatedIds));
         }
     };
     
@@ -342,15 +325,10 @@ const Nft = () => {
                     </button>
                 </div>
                 
-                {/* Loading State */}
-                {isInitialLoad && (
-                    <div style={{
-                        textAlign: 'center',
-                        padding: '60px 20px',
-                        color: theme.colors.mutedText
-                    }}>
-                        <div style={{ fontSize: '48px', marginBottom: '16px' }}>⏳</div>
-                        <div style={{ fontSize: '18px' }}>Loading your NFT collections...</div>
+                {/* Before the agent exists there is nothing to show yet */}
+                {isInitialLoad && savedCollectionIds.length > 0 && (
+                    <div style={{ textAlign: 'center', padding: '40px 20px', color: theme.colors.mutedText, fontSize: '15px' }}>
+                        <span className="nft-spinner" style={spinnerStyle(theme)} /> Connecting your wallet…
                     </div>
                 )}
                 
@@ -369,9 +347,41 @@ const Nft = () => {
                     </div>
                 )}
                 
-                {/* Collections */}
-                {!isInitialLoad && collections.length > 0 && (
+                {/* Collections: loaded cards in saved order, placeholders for the ones still loading */}
+                {!isInitialLoad && savedCollectionIds.length > 0 && (
                     <div>
+                        {isLoading && (
+                            <div style={{ fontSize: '13px', color: theme.colors.mutedText, marginBottom: '12px' }}>
+                                Loaded {collections.length} of {savedCollectionIds.length} collections…
+                            </div>
+                        )}
+                        {savedCollectionIds.map((id) => {
+                            const collection = collections.find((c) => c.canisterId === id);
+                            if (collection) return null;
+                            const p = loadProgress[id] || { stage: 'Waiting…' };
+                            return (
+                                <div key={`pending-${id}`} style={{ background: theme.colors.cardBg, border: `1px solid ${theme.colors.border}`, borderRadius: '12px', marginBottom: '20px', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                    <div style={{ width: '48px', height: '48px', borderRadius: '8px', background: theme.colors.primaryBg, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                                        {p.logo ? <img src={p.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '22px' }}>🖼️</span>}
+                                    </div>
+                                    <div style={{ minWidth: 0, flex: 1 }}>
+                                        <div style={{ fontSize: '18px', fontWeight: '600', color: theme.colors.primaryText, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {p.name || <span style={{ fontFamily: 'monospace', fontSize: '14px', color: theme.colors.secondaryText }}>{id}</span>}
+                                        </div>
+                                        <div style={{ fontSize: '14px', color: p.error ? theme.colors.error : theme.colors.mutedText, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                            {p.symbol && <><span>{p.symbol}</span><span>•</span></>}
+                                            {p.error ? <span>Could not load: {p.error}</span> : <><span className="nft-spinner" style={spinnerStyle(theme)} /><span>{p.stage}</span></>}
+                                        </div>
+                                    </div>
+                                    {p.error && (
+                                        <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                                            <button onClick={() => retryCollection(id)} style={{ background: 'none', border: `1px solid ${theme.colors.border}`, borderRadius: '8px', color: theme.colors.primaryText, padding: '6px 10px', cursor: 'pointer', fontSize: '13px' }}>Retry</button>
+                                            <button onClick={() => handleRemoveCollection({ canisterId: id, name: id })} style={{ background: 'none', border: `1px solid ${theme.colors.border}`, borderRadius: '8px', color: theme.colors.mutedText, padding: '6px 10px', cursor: 'pointer', fontSize: '13px' }}>Remove</button>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                         {collections.map(collection => (
                             <NftCollectionCard
                                 key={collection.canisterId}
@@ -393,7 +403,7 @@ const Nft = () => {
                 )}
                 
                 {/* Empty State */}
-                {!isInitialLoad && !isLoading && collections.length === 0 && (
+                {!isInitialLoad && !isLoading && savedCollectionIds.length === 0 && (
                     <div style={{
                         background: theme.colors.cardBg,
                         border: `1px solid ${theme.colors.border}`,

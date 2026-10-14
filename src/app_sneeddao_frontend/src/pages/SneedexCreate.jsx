@@ -34,7 +34,7 @@ import { createActor as createFactoryActor, canisterId as factoryCanisterId } fr
 import { createActor as createNeuronManagerActor } from 'declarations/sneed_icp_staking_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcrc7Actor } from 'external/icrc7_ledger';
-import { loadNftCollection, detectStandards, approveToken, getNftImage, getNftName } from '../utils/NftUtils';
+import { loadNftCollection, detectStandards, approveToken, getNftImage, getNftName, getSavedNftCollections, fetchCollectionInfo } from '../utils/NftUtils';
 import { createActor as createTradingBotActor } from 'external/sneed_trading_bot';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { getAllSnses, startBackgroundSnsFetch, fetchSnsLogo, getSnsById } from '../utils/SnsUtils';
@@ -716,6 +716,22 @@ function SneedexCreate() {
     const [newAssetNftInfo, setNewAssetNftInfo] = useState(null); // { name, symbol, nfts, supportsIcrc37 }
     const [newAssetNftLoading, setNewAssetNftLoading] = useState(false);
     const location = useLocation();
+    // The collections the user added to the NFT wallet, offered as one-click choices (names read lazily)
+    const [myNftCollections, setMyNftCollections] = useState([]); // [{ id, name, symbol, logo }]
+    useEffect(() => {
+        if (newAssetType !== 'nft' || !identity) return;
+        const ids = getSavedNftCollections();
+        if (ids.length === 0) { setMyNftCollections([]); return; }
+        setMyNftCollections(ids.map((id) => ({ id, name: null, symbol: null, logo: null })));
+        let alive = true;
+        const agent = HttpAgent.createSync({ host: getHost(), identity });
+        for (const id of ids) {
+            fetchCollectionInfo(id, agent)
+                .then((info) => { if (alive) setMyNftCollections((l) => l.map((c) => (c.id === id ? { ...c, name: info.name, symbol: info.symbol, logo: info.logo } : c))); })
+                .catch(() => {});
+        }
+        return () => { alive = false; };
+    }, [newAssetType, identity]);
     const loadNftsFor = async (collectionId) => {
         if (!identity || !collectionId) return;
         setNewAssetNftLoading(true); setNewAssetNftInfo(null);
@@ -4380,6 +4396,25 @@ function SneedexCreate() {
                                 
                                 {newAssetType === 'nft' && (
                                     <>
+                                        {myNftCollections.length > 0 && (
+                                            <div style={styles.formGroup}>
+                                                <label style={styles.label}>Your collections</label>
+                                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                                    {myNftCollections.map((c) => {
+                                                        const on = newAssetNftCollection.trim() === c.id;
+                                                        return (
+                                                            <button key={c.id} type="button" title={c.id} onClick={() => { setNewAssetNftCollection(c.id); setNewAssetNftInfo(null); setNewAssetNftTokens([]); loadNftsFor(c.id); }}
+                                                                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 10, cursor: 'pointer', border: `1px solid ${on ? sneedexPrimary : theme.colors.border}`, background: on ? `${sneedexPrimary}22` : theme.colors.secondaryBg, color: theme.colors.primaryText, fontSize: '0.85rem' }}>
+                                                                {c.logo ? <img src={c.logo} alt="" style={{ width: 22, height: 22, borderRadius: 5, objectFit: 'cover' }} /> : <FaImage style={{ color: theme.colors.mutedText }} />}
+                                                                <span>{c.name || `${c.id.slice(0, 5)}…${c.id.slice(-3)}`}</span>
+                                                                {c.symbol && <span style={{ color: theme.colors.mutedText }}>{c.symbol}</span>}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: 6 }}>From your NFT wallet. Any other ICRC-7 collection can be typed below.</div>
+                                            </div>
+                                        )}
                                         <div style={styles.formGroup}>
                                             <label style={styles.label}>Collection (ICRC-7 canister)</label>
                                             <PrincipalInput value={newAssetNftCollection} onChange={(v) => { setNewAssetNftCollection(v); setNewAssetNftInfo(null); setNewAssetNftTokens([]); }} placeholder="Collection canister id or name" defaultTab="all" style={{ width: '100%' }} />

@@ -22,3 +22,5 @@
     }
 }
 
+
+@keyframes nft-spin { to { transform: rotate(360deg); } }

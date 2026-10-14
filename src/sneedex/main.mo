@@ -49,6 +49,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
         if (nextAssetTypeId <= T.ASSET_TYPE_ICRC7_NFT) { nextAssetTypeId := T.ASSET_TYPE_ICRC7_NFT + 1 };
     };
+    // The actor body runs on every install, upgrades included, while the registry above keeps its stored value.
+    ensureBuiltInAssetTypes();
     
     // Canister kinds registry (for known canister types with enhanced display)
     var canisterKinds : [T.CanisterKind] = [

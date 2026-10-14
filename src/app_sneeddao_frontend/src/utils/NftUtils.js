@@ -216,9 +216,20 @@ export function formatNftMetadata(metadata) {
 /**
  * Load NFT collection data
  */
-export async function loadNftCollection(canisterId, account, identity, agent) {
+export const NFT_COLLECTIONS_STORAGE_KEY = 'nft_collections';
+
+/// The collection canister ids the user added to the NFT wallet (kept in this browser).
+export function getSavedNftCollections() {
+    try { const v = JSON.parse(localStorage.getItem(NFT_COLLECTIONS_STORAGE_KEY) || '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []; }
+    catch { return []; }
+}
+
+/// `onProgress({ stage, name?, symbol?, logo?, found?, total? })` reports the loading steps so a page can show them as they happen.
+export async function loadNftCollection(canisterId, account, identity, agent, onProgress = null) {
+    const progress = (p) => { try { onProgress?.(p); } catch { /* a progress listener never breaks the load */ } };
     try {
         const actor = createIcrc7Actor(canisterId, { agent });
+        progress({ stage: 'Reading collection info…' });
         
         // Fetch collection metadata
         const [name, symbol, logo, totalSupply, description] = await Promise.all([
@@ -232,12 +243,15 @@ export async function loadNftCollection(canisterId, account, identity, agent) {
         // Fetch user's NFTs from this collection, page by page (ICRC-7 pages by the last id seen)
         const maxTake = Number((await actor.icrc7_max_take_value().catch(() => []))?.[0] ?? 100n) || 100;
         const take = BigInt(Math.min(maxTake, 200));
+        const head = { name, symbol, logo: logo.length > 0 ? logo[0] : null, totalSupply };
+        progress({ ...head, stage: 'Looking for your tokens…' });
         const tokenIds = [];
         let prev = [];
         for (let page = 0; page < 200; page++) {
             const chunk = await actor.icrc7_tokens_of(account, prev, [take]);
             if (chunk.length === 0) break;
             for (const id of chunk) if (!tokenIds.some((x) => x === id)) tokenIds.push(id);
+            progress({ ...head, stage: `Found ${tokenIds.length} of yours…`, found: tokenIds.length });
             if (BigInt(chunk.length) < take) break; // a short page is the last page
             // the spec pages by the last id of an ascending page; use the largest id in case the ledger did not sort
             prev = [chunk.reduce((m, x) => (x > m ? x : m), chunk[0])];
@@ -248,6 +262,7 @@ export async function loadNftCollection(canisterId, account, identity, agent) {
         const allMetadata = [];
         
         for (let i = 0; i < tokenIds.length; i += batchSize) {
+            progress({ ...head, stage: `Reading metadata ${Math.min(i + batchSize, tokenIds.length)} / ${tokenIds.length}…`, found: tokenIds.length });
             const batch = tokenIds.slice(i, i + batchSize);
             const metadataBatch = await actor.icrc7_token_metadata(batch);
             allMetadata.push(...metadataBatch);
@@ -260,8 +275,10 @@ export async function loadNftCollection(canisterId, account, identity, agent) {
             collectionName: name,
             collectionSymbol: symbol
         }));
+        progress({ ...head, stage: tokenIds.length ? 'Fetching token documents…' : 'Checking standards…', found: tokenIds.length });
         await Promise.allSettled(nfts.map(async (n) => { const j = await fetchIcrc97(n.metadata); if (j) n.icrc97 = j; }));
         const std = await detectStandards(canisterId, agent);
+        if (std.icrc37) progress({ ...head, stage: 'Reading approvals…', found: tokenIds.length });
         const supportsIcrc37 = std.icrc37;
         let approvals = { supported: false, byToken: new Map(), collection: [] };
         if (supportsIcrc37) approvals = await fetchApprovals(canisterId, account, tokenIds, agent);
