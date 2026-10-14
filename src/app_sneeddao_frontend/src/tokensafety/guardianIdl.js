@@ -21,7 +21,7 @@ export const OpKind = IDL.Variant({
 const OpState = IDL.Variant({ pending: IDL.Null, approved: IDL.Int, vetoed: IDL.Null, executed: IDL.Int, failed: IDL.Text, expired: IDL.Null, cancelled: IDL.Null });
 const Op = IDL.Record({ id: IDL.Nat, child: IDL.Principal, kind: OpKind, staged_by: IDL.Principal, staged_at: IDL.Int, memo: IDL.Text, fee_paid_e8s: IDL.Nat, approvals: IDL.Vec(IDL.Principal), oks: IDL.Vec(IDL.Principal), vetoes: IDL.Vec(IDL.Principal), state: OpState });
 const Config = IDL.Record({
-    name: IDL.Text, approvers: IDL.Vec(IDL.Principal), threshold: IDL.Nat, op_fee_e8s: IDL.Nat, premium_op_fee_e8s: IDL.Nat, fee_destination: Account, sneed_premium: IDL.Opt(IDL.Principal),
+    name: IDL.Text, approvers: IDL.Vec(IDL.Principal), threshold: IDL.Nat, admins: IDL.Vec(IDL.Principal), op_fee_e8s: IDL.Nat, premium_op_fee_e8s: IDL.Nat, fee_destination: Account, sneed_premium: IDL.Opt(IDL.Principal),
     icp_ledger: IDL.Principal, sns_wasm: IDL.Principal, op_ttl_ns: IDL.Nat, self_window_ns: IDL.Nat, status_interval_s: IDL.Nat, low_cycles_threshold: IDL.Nat, cycle_reserve: IDL.Nat, paused: IDL.Bool,
     children: IDL.Nat, ops: IDL.Nat, blessed: IDL.Record({ ledger: IDL.Vec(IDL.Vec(IDL.Nat8)), index: IDL.Vec(IDL.Vec(IDL.Nat8)), archive: IDL.Vec(IDL.Vec(IDL.Nat8)) }), blessed_at: IDL.Int, blessed_error: IDL.Opt(IDL.Text), status_last_run: IDL.Int, own_cycles: IDL.Nat,
 });
@@ -51,6 +51,9 @@ export const guardianIdl = ({ IDL }) => IDL.Service({
     cancel_op: IDL.Func([IDL.Nat], [Res(Op)], []),
     refresh_status: IDL.Func([IDL.Principal], [Res(Child)], []),
     refresh_blessed: IDL.Func([], [Res(IDL.Nat)], []),
+    get_admins: IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
+    admin_add_admin: IDL.Func([IDL.Principal], [Res(IDL.Null)], []),
+    admin_remove_admin: IDL.Func([IDL.Principal], [Res(IDL.Null)], []),
     admin_run_status: IDL.Func([], [Res(IDL.Nat)], []),
     admin_run_auto_upgrade: IDL.Func([], [Res(IDL.Nat)], []),
 });

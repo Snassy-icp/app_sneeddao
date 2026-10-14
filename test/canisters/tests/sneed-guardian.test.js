@@ -29,7 +29,7 @@ let pic, icpId, snsWasmId, guardianId, childId, archiveId, holeId;
 let icp, icpAlice, snsWasm, g, gAlice, gBob, gCarol, gDao, gDao2;
 
 const policy = (over = {}) => ({ guardians: [bob, carol], vetoes_to_block: 1n, oks_required: 0n, window_ns: BigInt(HOUR) * 1_000_000_000n, auto_upgrade: false, ...over });
-const initArg = (over = {}) => ({ name: 'test guardian', approvers: [dao], threshold: 1n, archive_controllers: [admin], sneed_premium: [], fee_destination: [account(carol)], icp_ledger: [], sns_wasm: [], ...over });
+const initArg = (over = {}) => ({ name: 'test guardian', approvers: [dao], threshold: 1n, archive_controllers: [admin], admins: [carol], sneed_premium: [], fee_destination: [account(carol)], icp_ledger: [], sns_wasm: [], ...over });
 const advance = async (seconds) => { await pic.advanceTime(seconds * 1000); await pic.tick(3); };
 
 describe('sneed_guardian', () => {
@@ -205,6 +205,23 @@ describe('sneed_guardian', () => {
     expect(errOf(await gDao.approve_op(op5.id))).toMatch(/expired/);
   });
 
+  it('lets a listed admin approve alone during the trial period, until the list is emptied', async () => {
+    expect((await g.get_admins()).map((p) => p.toText())).toEqual([carol.toText()]);
+    const op = unwrap(await gAlice.stage_op(childId, { set_policy: policy({ vetoes_to_block: 0n, window_ns: 0n }) }, 'admin test'));
+    const approved = unwrap(await gCarol.approve_op(op.id)); // carol is a guardian of the child too, but here she acts as admin: one approval, threshold 2
+    expect(Object.keys(approved.state)[0]).toBe('approved');
+    unwrap(await gAlice.execute_op(op.id));
+    expect(errOf(await gBob.admin_add_admin(bob))).toMatch(/admins only/);
+    unwrap(await gCarol.admin_add_admin(bob));
+    unwrap(await gBob.admin_remove_admin(carol));
+    unwrap(await gBob.admin_remove_admin(bob));
+    expect(await g.get_admins()).toEqual([]);
+    expect(errOf(await gCarol.admin_add_admin(carol))).toMatch(/admins only/); // nobody can refill the list (admin here is still a controller, so use carol)
+    const op2 = unwrap(await gAlice.stage_op(childId, { set_policy: policy() }, ''));
+    expect(Object.keys(unwrap(await gDao.approve_op(op2.id)).state)[0]).toBe('pending'); // back to the real threshold
+    unwrap(await gAlice.cancel_op(op2.id));
+  });
+
   it('releases a child when the controllers op leaves the guardian out', async () => {
     const op = unwrap(await gAlice.stage_op(childId, { set_controllers: [alice] }, 'take it back'));
     unwrap(await gDao.approve_op(op.id)); unwrap(await gDao2.approve_op(op.id));
@@ -215,12 +232,12 @@ describe('sneed_guardian', () => {
   });
 
   it('runs exactly the same without any controller (sneed_hole)', async () => {
-    holeId = await install(pic, { name: 'sneed_guardian', initTypes: guardianInit({ IDL }), initArgs: [initArg({ name: 'hole', icp_ledger: [icpId], sns_wasm: [snsWasmId], archive_controllers: [] })], cycles: 50n * T });
+    holeId = await install(pic, { name: 'sneed_guardian', initTypes: guardianInit({ IDL }), initArgs: [initArg({ name: 'hole', icp_ledger: [icpId], sns_wasm: [snsWasmId], archive_controllers: [], admins: [] })], cycles: 50n * T });
     await pic.updateCanisterSettings({ canisterId: holeId, sender: admin, controllers: [] });
     expect(await pic.getControllers(holeId)).toEqual([]);
     const hole = actorAs(pic, guardianIdl, holeId, admin);
-    expect(errOf(await hole.admin_run_status())).toMatch(/controllers only/);
-    expect(errOf(await hole.admin_set_canisters({ icp_ledger: [], sns_wasm: [], sneed_premium: [] }))).toMatch(/controllers only/);
+    expect(errOf(await hole.admin_run_status())).toMatch(/admins only/);
+    expect(errOf(await hole.admin_set_canisters({ icp_ledger: [], sns_wasm: [], sneed_premium: [] }))).toMatch(/admins only/);
     await advance(5); // the install-time timer read the blessed list
     expect((await hole.get_config()).blessed.ledger.length).toBe(2);
     // alice gives the hole her ledger and registers it

@@ -277,7 +277,7 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
 
   it('hands a launch to a custody canister and registers it there', async () => {
     const { idlFactory: guardianIdl, init: guardianInit } = await import('../build/sneed_guardian.did.js');
-    const guardianId = await install(pic, { name: 'sneed_guardian', initTypes: guardianInit({ IDL }), initArgs: [{ name: 'guardian', approvers: [alice], threshold: 1n, archive_controllers: [], sneed_premium: [], fee_destination: [], icp_ledger: [icpId], sns_wasm: [snsWasmId] }], cycles: 50n * T });
+    const guardianId = await install(pic, { name: 'sneed_guardian', initTypes: guardianInit({ IDL }), initArgs: [{ name: 'guardian', approvers: [alice], threshold: 1n, archive_controllers: [], admins: [], sneed_premium: [], fee_destination: [], icp_ledger: [icpId], sns_wasm: [snsWasmId] }], cycles: 50n * T });
     const guardian = actorAs(pic, guardianIdl, guardianId, admin);
     // the custody canister takes only blessed code: tell the SNS wasm mock the path
     await snsWasm.set_steps([{ ledger: ledgerHash, index: indexHash, archive: ledgerHash }]);

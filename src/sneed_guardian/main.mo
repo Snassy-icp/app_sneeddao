@@ -53,6 +53,10 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
   stable var approvers : [Principal] = init.approvers;
   stable var threshold : Nat = init.threshold;
   stable var archive_controllers : [Principal] = init.archive_controllers;
+  // Admins stand in for the DAO while a deployment is being tried out: they approve ops on their
+  // own and run the timers. The list only shrinks by its own members' hand and cannot be refilled
+  // once empty, so a matured deployment ends up with nobody above the approvers.
+  stable var admins : [Principal] = init.admins;
   stable var sneed_premium_id : ?Principal = init.sneed_premium;
   stable var premium_cache = PremiumClient.emptyCache();
   stable var icp_ledger_id : Principal = switch (init.icp_ledger) { case (?p) { p }; case null { Principal.fromText(ICP_LEDGER_ID) } };
@@ -142,9 +146,9 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
   private func findOp(id : Nat) : ?T.Op { Array.find<T.Op>(ops, func(o) { o.id == id }) };
   private func putOp(o : T.Op) { ops := Array.map<T.Op, T.Op>(ops, func(x) { if (x.id == o.id) { o } else { x } }) };
   private func isApprover(p : Principal) : Bool { has(approvers, p) };
-  /// Controllers (SNS root for the `sneed_guardian` deployment, a developer on staging, nobody
-  /// once blackholed) may only point tests at mocks and run the timers early.
-  private func isAdmin(p : Principal) : Bool { not Principal.isAnonymous(p) and Principal.isController(p) };
+  /// Admins: the listed principals, plus controllers (SNS root for the `sneed_guardian`
+  /// deployment, a developer on staging, nobody once blackholed).
+  private func isAdmin(p : Principal) : Bool { not Principal.isAnonymous(p) and (Principal.isController(p) or has(admins, p)) };
   private func blessedFor(k : T.Kind) : [Blob] { switch (k) { case (#ledger) { blessed_ledger }; case (#index) { blessed_index }; case (#archive) { blessed_archive } } };
   private func isBlessed(k : T.Kind, h : Blob) : Bool { Array.find<Blob>(blessedFor(k), func(x) { x == h }) != null };
   /// The hash after `current` on the blessed list of a kind, if `current` is on it and not last.
@@ -342,17 +346,19 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
       case (?op) { switch (op.state) { case (#pending) { #Ok(describeOp(op)) }; case (s) { #Err("op " # Nat.toText(id) # " is " # debug_show(s) # ", not pending") } } };
     };
   };
-  /// An approver (a DAO's governance canister, through a passed proposal) approves an op.
+  /// An approver (a DAO's governance canister, through a passed proposal) approves an op. An admin's
+  /// approval counts as the whole threshold, so a deployment can be exercised without the DAO.
   public shared ({ caller }) func approve_op(id : Nat) : async { #Ok : T.Op; #Err : Text } {
-    if (not isApprover(caller)) { return #Err("only an approver can approve") };
+    let admin = isAdmin(caller);
+    if (not isApprover(caller) and not admin) { return #Err("only an approver can approve") };
     let op = switch (findOp(id)) { case (?o) { current(o) }; case null { return #Err("no op " # Nat.toText(id)) } };
     if (has(op.approvals, caller)) { return #Err("already approved by this approver") };
     if (op.state != #pending) { return #Err("op is " # debug_show(op.state) # ", not pending") };
     let approvals = Array.append(op.approvals, [caller]);
-    let state : T.OpState = if (approvals.size() >= threshold) { #approved(Time.now()) } else { #pending };
+    let state : T.OpState = if (admin or approvals.size() >= threshold) { #approved(Time.now()) } else { #pending };
     let u = { op with approvals; state }; putOp(u);
     let cid = newCid();
-    icrc3_add("guardian_op_approve", [("cid", #Nat(cid)), ("caller", pv(caller)), ("op", #Nat(id)), ("approvals", #Nat(approvals.size())), ("approved", #Text(debug_show(approvals.size() >= threshold)))]);
+    icrc3_add("guardian_op_approve", [("cid", #Nat(cid)), ("caller", pv(caller)), ("op", #Nat(id)), ("approvals", #Nat(approvals.size())), ("approved", #Text(debug_show(admin or approvals.size() >= threshold))), ("as_admin", #Text(debug_show(admin)))]);
     logText(cid, "info", "op " # Nat.toText(id) # " approved by " # Principal.toText(caller) # " (" # Nat.toText(approvals.size()) # "/" # Nat.toText(threshold) # ")");
     #Ok(u);
   };
@@ -621,7 +627,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
   // ---- queries ----
   public query func get_config() : async T.Config {
     {
-      name; approvers; threshold; op_fee_e8s; premium_op_fee_e8s; fee_destination; sneed_premium = sneed_premium_id; icp_ledger = icp_ledger_id; sns_wasm = sns_wasm_id;
+      name; approvers; threshold; admins; op_fee_e8s; premium_op_fee_e8s; fee_destination; sneed_premium = sneed_premium_id; icp_ledger = icp_ledger_id; sns_wasm = sns_wasm_id;
       op_ttl_ns; self_window_ns; status_interval_s; low_cycles_threshold; cycle_reserve; paused; children = children.size(); ops = ops.size();
       blessed = { ledger = blessed_ledger; index = blessed_index; archive = blessed_archive }; blessed_at; blessed_error; status_last_run; own_cycles = Cycles.balance();
     };
@@ -659,12 +665,26 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
 
   // ---- controllers only (nobody once blackholed): mocks for tests, timers now ----
   public shared ({ caller }) func admin_set_canisters(u : { icp_ledger : ?Principal; sns_wasm : ?Principal; sneed_premium : ??Principal }) : async { #Ok; #Err : Text } {
-    if (not isAdmin(caller)) { return #Err("controllers only") };
+    if (not isAdmin(caller)) { return #Err("admins only") };
     switch (u.icp_ledger) { case (?p) { icp_ledger_id := p }; case null {} };
     switch (u.sns_wasm) { case (?p) { sns_wasm_id := p }; case null {} };
     switch (u.sneed_premium) { case (?p) { sneed_premium_id := p; premium_cache := PremiumClient.emptyCache() }; case null {} };
     #Ok;
   };
+  /// Admins may add admins while the deployment is being tried out, and remove themselves or each
+  /// other as it matures; once the list is empty (and there are no controllers) it stays empty.
+  public shared ({ caller }) func admin_add_admin(p : Principal) : async { #Ok; #Err : Text } {
+    if (not isAdmin(caller)) { return #Err("admins only") };
+    if (Principal.isAnonymous(p)) { return #Err("not the anonymous principal") };
+    if (not has(admins, p)) { admins := Array.append(admins, [p]); icrc3_add("guardian_config_update", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("key", #Text("admin_added")), ("old_value", #Text("")), ("value", #Text(Principal.toText(p)))]) };
+    #Ok;
+  };
+  public shared ({ caller }) func admin_remove_admin(p : Principal) : async { #Ok; #Err : Text } {
+    if (not isAdmin(caller)) { return #Err("admins only") };
+    if (has(admins, p)) { admins := Array.filter<Principal>(admins, func(a) { a != p }); icrc3_add("guardian_config_update", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("key", #Text("admin_removed")), ("old_value", #Text(Principal.toText(p))), ("value", #Text(""))]) };
+    #Ok;
+  };
+  public query func get_admins() : async [Principal] { admins };
   public shared ({ caller }) func admin_run_status() : async { #Ok : Nat; #Err : Text } { if (not isAdmin(caller)) { return #Err("controllers only") }; #Ok(await* statusRunImpl()) };
   public shared ({ caller }) func admin_run_auto_upgrade() : async { #Ok : Nat; #Err : Text } { if (not isAdmin(caller)) { return #Err("controllers only") }; #Ok(await* autoUpgradeImpl()) };
 

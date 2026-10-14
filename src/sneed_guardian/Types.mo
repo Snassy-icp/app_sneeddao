@@ -86,6 +86,7 @@ module {
     name : Text;
     approvers : [Principal];
     threshold : Nat;
+    admins : [Principal];
     op_fee_e8s : Nat;
     premium_op_fee_e8s : Nat;
     fee_destination : Account;
@@ -114,6 +115,7 @@ module {
     approvers : [Principal];
     threshold : Nat;
     archive_controllers : [Principal]; // controllers of the ICRC-3 log's archives, next to the guardian itself
+    admins : [Principal]; // may approve ops alone and run the timers; meant for staging, emptied as the deployment matures, [] for a blackholed one
     sneed_premium : ?Principal;
     fee_destination : ?Account;
     icp_ledger : ?Principal; // tests point these at mocks

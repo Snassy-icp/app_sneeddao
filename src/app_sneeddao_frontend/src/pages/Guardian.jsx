@@ -94,7 +94,8 @@ function Guardian() {
         finally { setBusy(''); }
     };
     const isGuardianOf = (child) => !!(me && child && child.policy.guardians.some((p) => p.toText() === me));
-    const isApprover = !!(cfg && me && cfg.approvers.some((p) => p.toText() === me));
+    const isAdmin = !!(cfg && me && cfg.admins.some((p) => p.toText() === me));
+    const isApprover = !!(cfg && me && (cfg.approvers.some((p) => p.toText() === me) || isAdmin));
 
     const proposeApproval = async (op) => {
         if (!dep.functionId) { setError('The DAO has not registered the approve_op generic function for this deployment yet. Propose it by hand: ExecuteGenericNervousSystemFunction with the function id, payload = candid (op id : nat).'); return; }
@@ -273,7 +274,9 @@ function Guardian() {
                         <h2 style={{ margin: 0, fontSize: '1.1rem', color: theme.colors.primaryText }}>Ops</h2>
                         <label style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={showAllOps} onChange={(e) => setShowAllOps(e.target.checked)} /> show closed ops</label>
                     </div>
-                    {isApprover && <div style={{ fontSize: '0.8rem', color: amber, marginTop: 6 }}>You are an approver of this deployment.</div>}
+                    {isApprover && <div style={{ fontSize: '0.8rem', color: amber, marginTop: 6 }}>You are an {isAdmin ? 'admin' : 'approver'} of this deployment{isAdmin ? ': your approval alone counts as the whole threshold' : ''}.</div>}
+                    {cfg && cfg.admins.length > 0 && <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>Admins (trial period): {cfg.admins.map((p) => <PrincipalDisplay key={p.toText()} principal={p} short={true} showCopyButton={false} isAuthenticated={isAuthenticated} />)}{isAdmin && <button type="button" style={btn()} disabled={!!busy} onClick={() => call('Remove me as admin', () => actor(true).admin_remove_admin(Principal.fromText(me)))}>remove me</button>}</div>}
+                    {isAdmin && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}><button type="button" style={btn()} disabled={!!busy} onClick={() => call('Status run', () => actor(true).admin_run_status())}><FaSync size={10} /> Run status now</button><button type="button" style={btn()} disabled={!!busy} onClick={() => call('Auto-upgrade run', () => actor(true).admin_run_auto_upgrade())}><FaPlay size={10} /> Run auto-upgrade now</button><button type="button" style={btn()} disabled={!!busy} onClick={() => call('Blessed list', () => actor(true).refresh_blessed())}><FaSync size={10} /> Re-read blessed versions</button></div>}
                     {shownOps.length === 0 && <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginTop: 8 }}>No {showAllOps ? '' : 'open '}ops.</div>}
                     <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
                         {shownOps.map((op) => {

@@ -134,6 +134,14 @@ these; topping up is theirs to do (anyone can deposit cycles into any canister).
 Fees are set by `#set_config` ops and go to the RLL. A project that only ever needs
 blessed upgrades pays nothing; the DAO carries no cost for them either.
 
+## Trial period: admins
+
+Each deployment is installed with an `admins` list. An admin's approval counts as the whole
+threshold and admins may run the timers early, so a deployment can be exercised on staging and
+in its first weeks on mainnet without a DAO vote per op. Admins can add admins and remove
+themselves or each other; once the list is empty it cannot be refilled, so maturing a
+deployment is a one-way step. Blackholed deployments are installed with an empty list.
+
 ## What the DAO registers
 
 Per deployment, three GNSFs on the DAO's governance: `approve_op(id)` with validator
