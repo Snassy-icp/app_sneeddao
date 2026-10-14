@@ -57,15 +57,39 @@ export function sneedLockAssetText(details, token, pool) {
     return `Locked LP position #${details.position_id} in ${pair} until ${until}`;
 }
 
+/// One token's logo in a circle; the symbol's first letter while there is none.
+function LogoCircle({ logo, symbol, size, style }) {
+    return (
+        <div style={{ width: size, height: size, borderRadius: '50%', overflow: 'hidden', background: 'rgba(6,182,212,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.45, fontWeight: 700, color: '#06b6d4', ...style }}>
+            {logo ? <img src={logo} alt={symbol || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (symbol ? symbol.slice(0, 1).toUpperCase() : <FaWater style={{ fontSize: size * 0.5 }} />)}
+        </div>
+    );
+}
+
 export function SneedLockAssetIcon({ details, size = 36 }) {
     const { token, pool } = useSneedLockAsset(details);
-    const img = details?.kind === 'token' ? token?.logo : pool?.token0?.logo;
+    const badgeAt = (side) => <FaLock style={{ position: 'absolute', bottom: -2, [side]: -2, fontSize: Math.max(10, size * 0.38), color: '#f59e0b', background: '#1f2937', borderRadius: '50%', padding: 2 }} />;
+    const badge = badgeAt('right');
+    if (details?.kind === 'position') {
+        // an LP position is a pair: both logos, overlapping, as the wallet draws them
+        const d = Math.round(size * 0.68);
+        const ring = { border: '2px solid #1f2937', boxSizing: 'border-box' };
+        return (
+            <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+                <LogoCircle logo={pool?.token0?.logo} symbol={pool?.token0?.symbol} size={d} style={{ position: 'absolute', left: 0, top: (size - d) / 2 - size * 0.08, ...ring }} />
+                <LogoCircle logo={pool?.token1?.logo} symbol={pool?.token1?.symbol} size={d} style={{ position: 'absolute', right: 0, top: (size - d) / 2 + size * 0.08, ...ring }} />
+                {/* bottom-left, under the raised first logo, so it covers neither */}
+                {badgeAt('left')}
+            </div>
+        );
+    }
+    const img = token?.logo;
     return (
         <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
             <div style={{ width: size, height: size, borderRadius: '50%', overflow: 'hidden', background: 'rgba(245,158,11,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {img ? <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (details?.kind === 'position' ? <FaWater style={{ fontSize: size * 0.5, color: '#06b6d4' }} /> : <FaLock style={{ fontSize: size * 0.5, color: '#f59e0b' }} />)}
+                {img ? <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <FaLock style={{ fontSize: size * 0.5, color: '#f59e0b' }} />}
             </div>
-            <FaLock style={{ position: 'absolute', bottom: -2, right: -2, fontSize: Math.max(10, size * 0.38), color: '#f59e0b', background: '#1f2937', borderRadius: '50%', padding: 2 }} />
+            {badge}
         </div>
     );
 }
