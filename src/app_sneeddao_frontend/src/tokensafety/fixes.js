@@ -4,12 +4,14 @@
 const lockTokens = (id) => ({ label: 'Lock tokens', href: `/lock_wizard?type=token&token=${id}` });
 const lockPosition = (id) => ({ label: 'Lock the LP position', href: `/lock_wizard?type=position&token=${id}` });
 const harden = (id, section, label) => ({ label, href: `/studio/${id}/harden#${section}` });
+const handover = (id, label) => ({ label, href: `/studio/${id}/handover` });
+const index = (id, label) => ({ label, href: `/studio/${id}/index` });
 
 export const FIXES = {
-    'controllers': (id) => harden(id, 'control', 'Hand control over'),
-    'ctl:Ledger': (id) => harden(id, 'control', 'Hand control over'),
-    'ctl:Index': (id) => harden(id, 'index', 'Add or hand over the index'),
-    'ctl:noarchive': (id) => harden(id, 'control', 'Hand control over'),
+    'controllers': (id) => handover(id, 'Hand control over'),
+    'ctl:Ledger': (id) => handover(id, 'Hand control over'),
+    'ctl:Index': (id) => index(id, 'Add or hand over the index'),
+    'ctl:noarchive': (id) => handover(id, 'Hand control over'),
     'code': (id) => harden(id, 'control', 'Move to vetted code'),
     'code:standards': (id) => harden(id, 'control', 'Move to vetted code'),
     'mint:account': (id) => harden(id, 'minting', 'What can be done'),

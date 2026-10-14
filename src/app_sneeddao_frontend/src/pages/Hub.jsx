@@ -3,7 +3,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
 import { Link } from 'react-router-dom';
-import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaCube, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock, FaShieldAlt, FaGlobe, FaBrain, FaGavel, FaNetworkWired, FaStore, FaChartLine, FaRobot } from 'react-icons/fa';
+import { FaFlask, FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaCube, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock, FaShieldAlt, FaGlobe, FaBrain, FaGavel, FaNetworkWired, FaStore, FaChartLine, FaRobot } from 'react-icons/fa';
 import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
@@ -1080,6 +1080,26 @@ function Hub() {
     };
 
     const featuredProducts = [
+        {
+            title: 'Sneed Custody',
+            icon: <FaShieldAlt size={28} />,
+            desc: 'Put your token under DAO control without giving up your say: Sneed\'s custody canisters keep a ledger on NNS-blessed code, change it only by DAO vote, let your own veto council block anything, and watch its cycles. The original Sneed product, open to any token.',
+            path: '/custody',
+            cta: 'Hand over a token',
+            color: '#f59e0b',
+            badge: 'Flagship',
+            gradient: 'linear-gradient(135deg, #f59e0b20 0%, #fbbf2410 100%)',
+        },
+        {
+            title: 'Token Studio',
+            icon: <FaFlask size={28} />,
+            desc: 'Check any token\'s safety from public data, harden what the report flags, launch a new token on the NNS-blessed ledger code, or add an index canister to a token that has none.',
+            path: '/studio',
+            cta: 'Open the studio',
+            color: '#6366f1',
+            badge: 'New',
+            gradient: 'linear-gradient(135deg, #6366f120 0%, #818cf810 100%)',
+        },
         {
             title: 'Sneedex Swap',
             icon: <FaExchangeAlt size={28} />,

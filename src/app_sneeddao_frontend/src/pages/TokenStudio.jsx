@@ -6,12 +6,15 @@ import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import Header from '../components/Header';
 import TokenSelector from '../components/TokenSelector';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaFlask, FaShieldAlt, FaRocket, FaWrench, FaSearch, FaSpinner, FaLock, FaExternalLinkAlt } from 'react-icons/fa';
+import { FaFlask, FaShieldAlt, FaRocket, FaWrench, FaSearch, FaSpinner, FaLock, FaExternalLinkAlt, FaDatabase } from 'react-icons/fa';
 import { customStyles, primary } from '../health/TreeView.jsx';
 import { fetchTokenHeader } from '../tokensafety/checks.js';
 import { parsePrincipal } from '../utils/icrc3/client.js';
 import { CheckPanel } from './TokenSafety.jsx';
 import { LaunchPanel } from './SneedPad.jsx';
+import { HandoverPanel } from './studio/HandoverPanel.jsx';
+import { IndexPanel } from './studio/IndexPanel.jsx';
+import { useSearchParams } from 'react-router-dom';
 
 const BLACKHOLE = 'e3mmv-5qaaa-aaaah-aadma-cai';
 
@@ -49,7 +52,12 @@ function HardenPanel({ ledgerId, header, theme }) {
             </div>
 
             <div {...card('control')}>
-                <h2 style={h}><FaShieldAlt size={14} color={primary} /> Who controls the code<span style={soon}>handover from here: soon</span></h2>
+                <h2 style={h}><FaShieldAlt size={14} color={primary} /> Who controls the code</h2>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+                    <Link to={`/studio/${ledgerId}/handover`} style={btn}><FaShieldAlt size={12} /> Hand it to Sneed custody</Link>
+                    <Link to={`/studio/${ledgerId}/index`} style={{ ...btn, background: 'transparent', color: primary, border: `1px solid ${primary}` }}><FaDatabase size={12} /> Create an index</Link>
+                </div>
+                <p style={p}>Sneed custody keeps the ledger on NNS-blessed code, changed only by DAO vote and your own veto council, with its cycles watched. The commands below are the do-it-yourself alternatives.</p>
                 <p style={p}>A ledger whose controller is a wallet can be replaced by any code at any time, so the report cannot verify anything else about it. The honest end states are the blackhole canister (nobody can ever change it, and its cycles stay observable) or an SNS DAO (changes take a public proposal). The studio will file these from here; today they are two commands for the controller.</p>
                 <p style={{ ...p, marginBottom: 2 }}>Blackhole the ledger (and each archive and the index the same way):</p>
                 <code style={code}>{`dfx canister --network ic update-settings ${ledgerId} --set-controller ${BLACKHOLE}`}</code>
@@ -77,13 +85,16 @@ function HardenPanel({ ledgerId, header, theme }) {
     );
 }
 
-function TokenStudio() {
+function TokenStudio({ intent = null }) {
     const { theme } = useTheme();
     const navigate = useNavigate();
     const { ledgerId: routeLedger, tab: routeTab } = useParams();
-    const isLaunch = routeLedger === 'launch' || (!routeLedger);
-    const ledgerId = !isLaunch && parsePrincipal(routeLedger) ? routeLedger : null;
-    const tab = isLaunch ? 'launch' : routeTab === 'harden' ? 'harden' : 'check';
+    const [searchParams] = useSearchParams();
+    const isLaunch = routeLedger === 'launch' || (!routeLedger && !intent);
+    const isIndexPicker = routeLedger === 'index';
+    const ledgerId = !isLaunch && !isIndexPicker && parsePrincipal(routeLedger) ? routeLedger : null;
+    const tab = isLaunch ? 'launch' : isIndexPicker ? 'index' : ['harden', 'handover', 'index'].includes(routeTab) ? routeTab : (!ledgerId && intent) ? intent : 'check';
+    const indexOverride = parsePrincipal(searchParams.get('index') || '')?.toText() || null;
     const [text, setText] = useState(ledgerId || '');
     const [header, setHeader] = useState(null);
     const [rating, setRating] = useState(null);
@@ -97,7 +108,7 @@ function TokenStudio() {
         const p = parsePrincipal(value || '');
         if (!p) { setError('That is not a principal'); return; }
         setError(null);
-        navigate(`/studio/${p.toText()}`);
+        navigate(`/studio/${p.toText()}${intent ? `/${intent}` : ''}`);
     };
 
     const tabStyle = (active, disabled) => ({ padding: '9px 16px', borderRadius: 10, border: `1px solid ${active ? primary : theme.colors.border}`, background: active ? `${primary}22` : 'transparent', color: disabled ? theme.colors.mutedText : theme.colors.primaryText, cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '0.9rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 8 });
@@ -127,6 +138,8 @@ function TokenStudio() {
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
                         <button type="button" style={tabStyle(tab === 'check', !ledgerId)} disabled={!ledgerId} onClick={() => navigate(`/studio/${ledgerId}`)}><FaShieldAlt size={12} /> Check</button>
                         <button type="button" style={tabStyle(tab === 'harden', !ledgerId)} disabled={!ledgerId} onClick={() => navigate(`/studio/${ledgerId}/harden`)}><FaWrench size={12} /> Harden</button>
+                        <button type="button" style={tabStyle(tab === 'handover', !ledgerId)} disabled={!ledgerId} onClick={() => navigate(`/studio/${ledgerId}/handover`)}><FaShieldAlt size={12} /> Hand over</button>
+                        <button type="button" style={tabStyle(tab === 'index', false)} onClick={() => navigate(ledgerId ? `/studio/${ledgerId}/index` : '/studio/index')}><FaDatabase size={12} /> Index</button>
                         <button type="button" style={tabStyle(tab === 'launch', false)} onClick={() => navigate('/studio/launch')}><FaRocket size={12} /> Launch</button>
                     </div>
                 </div>
@@ -150,10 +163,13 @@ function TokenStudio() {
 
                 {ledgerId && (
                     <div style={{ display: tab === 'check' ? 'block' : 'none' }}>
-                        <CheckPanel ledgerId={ledgerId} onRating={onRating} />
+                        <CheckPanel ledgerId={ledgerId} onRating={onRating} indexOverride={indexOverride} />
                     </div>
                 )}
                 {ledgerId && tab === 'harden' && <HardenPanel ledgerId={ledgerId} header={header} theme={theme} />}
+                {ledgerId && tab === 'handover' && <HandoverPanel ledgerId={ledgerId} header={header} />}
+                {tab === 'index' && <IndexPanel ledgerId={ledgerId} header={header} />}
+                {!ledgerId && tab === 'handover' && <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Pick the ledger you control above to hand it to Sneed custody.</div>}
                 {tab === 'launch' && <LaunchPanel />}
             </main>
         </div>

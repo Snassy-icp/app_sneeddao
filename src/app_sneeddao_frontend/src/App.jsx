@@ -285,6 +285,7 @@ function App() {
                     <Route path="/tools/account" element={<ToolsAccount />} />
                     <Route path="/tools/icrc3" element={<ToolsIcrc3 />} />
                     <Route path="/studio" element={<TokenStudio />} />
+                    <Route path="/custody" element={<TokenStudio intent="handover" />} />
                     <Route path="/studio/:ledgerId" element={<TokenStudio />} />
                     <Route path="/studio/:ledgerId/:tab" element={<TokenStudio />} />
                     <Route path="/tools/token_safety" element={<TokenSafety />} />

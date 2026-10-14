@@ -141,6 +141,12 @@ const loaders = {
         return legacy.map((a) => ({ id: a.canister_id.toText(), start: a.block_range_start, end: a.block_range_end }));
     },
     index: (ledgerId) => async (ctx) => {
+        if (ctx.config.indexOverride) {
+            const idx = await actor(({ IDL }) => IDL.Service({ ledger_id: IDL.Func([], [IDL.Principal], ['query']) }), ctx.config.indexOverride);
+            const owner = await quiet(ctx.call(idx.ledger_id(), 'index ledger_id'), null);
+            if (owner && owner.toText() === ledgerId) return { id: ctx.config.indexOverride, how: 'given by you (it says it indexes this ledger)' };
+            throw new Error(`the index you gave (${ctx.config.indexOverride}) does not index this ledger`);
+        }
         const l = await actor(tokenIdl, ledgerId);
         const r = await quiet(ctx.call(l.icrc106_get_index_principal(), 'index principal'), null);
         if (r && 'Ok' in r) return { id: r.Ok.toText(), how: 'ICRC-106' };

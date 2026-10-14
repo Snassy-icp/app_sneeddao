@@ -47,9 +47,10 @@ const reportCache = new Map(); // key -> { state, header, graphData, startedAt, 
 const cacheKey = (ledgerId, cfg) => `${ledgerId}|${JSON.stringify(Object.fromEntries(Object.entries(cfg).filter(([, v]) => typeof v !== 'function')))}`;
 
 /// Rates `ledgerId`; `onHeader` and `onRating` let the studio show the token and its grade in its own header.
-export function CheckPanel({ ledgerId, onHeader, onRating }) {
+export function CheckPanel({ ledgerId, onHeader, onRating, indexOverride = null }) {
     const { theme } = useTheme();
-    const [config, setConfig] = useState(loadConfig);
+    const [baseConfig, setConfig] = useState(loadConfig);
+    const config = useMemo(() => (indexOverride ? { ...baseConfig, indexOverride } : baseConfig), [baseConfig, indexOverride]);
     const cached = ledgerId ? reportCache.get(cacheKey(ledgerId, config)) : null;
     const fresh = cached && Date.now() - cached.finishedAt < REPORT_CACHE_MAX_AGE_MS ? cached : null;
     const [state, setState] = useState(fresh ? fresh.state : { tree: null, results: new Map() });

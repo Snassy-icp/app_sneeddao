@@ -8,7 +8,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { getCanisterInfo } from '../utils/BackendUtils';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
-import { FaRocket, FaCubes, FaExternalLinkAlt, FaStore, FaSpinner, FaChevronDown, FaChevronUp, FaPlus, FaEye, FaCog, FaTag, FaCheckCircle, FaBrain, FaChartLine, FaBox, FaRobot } from 'react-icons/fa';
+import { FaDatabase, FaRocket, FaCubes, FaExternalLinkAlt, FaStore, FaSpinner, FaChevronDown, FaChevronUp, FaPlus, FaEye, FaCog, FaTag, FaCheckCircle, FaBrain, FaChartLine, FaBox, FaRobot } from 'react-icons/fa';
 import BotIcon from '../components/BotIcon';
 import { padIdl, PAD_CANISTER_ID } from '../tokensafety/padIdl.js';
 
@@ -134,7 +134,7 @@ export default function SneedApp() {
             try {
                 const pad = Actor.createActor(padIdl, { agent: new HttpAgent({ host: 'https://icp-api.io' }), canisterId: PAD_CANISTER_ID });
                 const [cfg, launches] = await Promise.all([pad.get_config(), pad.list_launches(0n, 1n)]);
-                if (live) setPadInfo({ fee: cfg.creation_fee_e8s, premiumFee: cfg.premium_creation_fee_e8s, launches: Number(launches.total), paused: cfg.paused });
+                if (live) setPadInfo({ fee: cfg.creation_fee_e8s, premiumFee: cfg.premium_creation_fee_e8s, indexFee: cfg.index_creation_fee_e8s, premiumIndexFee: cfg.premium_index_creation_fee_e8s, launches: Number(launches.total), paused: cfg.paused });
             } catch (e) { console.warn('launchpad info unavailable', e); }
         })();
         return () => { live = false; };
@@ -384,6 +384,42 @@ export default function SneedApp() {
                                     </div>
                                     <Link to="/studio/launch" onClick={e => e.stopPropagation()} style={{ marginLeft: 'auto', padding: '8px 14px', borderRadius: 8, background: `linear-gradient(135deg, ${studioPrimary}, ${studioSecondary})`, color: '#fff', textDecoration: 'none', fontWeight: 600, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                                         <FaRocket size={12} /> Launch a token
+                                    </Link>
+                                </div>
+                            </div>
+                        )}
+                        {showStudioCard && (
+                            <div key="token-index" className="sneedapp-fade-in" style={{
+                                background: theme.colors.cardGradient, borderRadius: 12,
+                                border: '1px solid #6366f130',
+                                padding: 20, display: 'flex', flexDirection: 'column', gap: 12,
+                                transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer'
+                            }}
+                                onClick={() => navigate('/studio/index')}
+                                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px #6366f120'; }}
+                                onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                    <div style={{ width: 40, height: 40, borderRadius: 8, background: 'linear-gradient(135deg, #6366f1, #818cf8)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <FaDatabase size={20} color="#fff" />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ color: theme.colors.primaryText, fontWeight: 600, fontSize: 16 }}>Index canister</div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                                            <span style={{ color: theme.colors.secondaryText, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>Sneed DAO <FaCheckCircle style={{ color: '#10b981', fontSize: 10 }} /></span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p style={{ color: theme.colors.secondaryText, fontSize: 13, margin: 0, lineHeight: 1.5, flex: 1 }}>
+                                    Per-account history for any ICRC token, on the NNS-blessed index code. For a token that has no index, or as a second one for redundancy. Listed in your wallet like any app canister.
+                                </p>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#6366f115', padding: '4px 10px', borderRadius: 6, fontSize: 13, color: '#818cf8' }}>
+                                        <FaTag style={{ fontSize: 10 }} />
+                                        {padInfo?.indexFee !== undefined ? `${formatIcp(padInfo.indexFee)} ICP${padInfo.premiumIndexFee !== padInfo.indexFee ? ` (${formatIcp(padInfo.premiumIndexFee)} Premium)` : ''} + cycles` : 'fee + cycles'}
+                                    </div>
+                                    <Link to="/studio/index" onClick={e => e.stopPropagation()} style={{ marginLeft: 'auto', padding: '8px 14px', borderRadius: 8, background: 'linear-gradient(135deg, #6366f1, #818cf8)', color: '#fff', textDecoration: 'none', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <FaDatabase size={12} /> Create an index
                                     </Link>
                                 </div>
                             </div>
