@@ -17,6 +17,7 @@ import PrincipalInput from '../components/PrincipalInput';
 import TokenSelector from '../components/TokenSelector';
 import { FaLock, FaCoins, FaWater, FaChevronDown, FaChevronRight, FaFilter, FaSpinner, FaUser, FaClock, FaShieldAlt } from 'react-icons/fa';
 import { useDenomination } from '../contexts/DenominationContext';
+import { isUntilDissolved } from '../utils/lockTime';
 
 // Custom CSS for animations
 const customStyles = `
@@ -464,6 +465,10 @@ function SneedlockInfo() {
     const formatExpirationWithColor = (timestamp) => {
         if (!timestamp) {
             return <span style={{ color: theme.colors.success }}>Never</span>;
+        }
+        // a lock with a dissolve delay that is not dissolving has no unlock time yet
+        if (isUntilDissolved(typeof timestamp === 'object' && timestamp.expiry ? timestamp.expiry : timestamp)) {
+            return <span style={{ color: theme.colors.success }}>When dissolved (dissolve delay)</span>;
         }
         
         try {

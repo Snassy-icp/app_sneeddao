@@ -27,6 +27,7 @@ import {
 import { Link } from 'react-router-dom';
 import { FaDollarSign, FaLock, FaBrain, FaInfoCircle, FaTint, FaSeedling, FaHourglassHalf, FaGift, FaExpandAlt, FaSync, FaQuestionCircle, FaPlus, FaBan, FaPlay, FaStop, FaWallet, FaExchangeAlt, FaArrowDown, FaArrowUp, FaChevronDown, FaChevronRight, FaExclamationTriangle, FaCog, FaClock, FaCut, FaPaperPlane, FaShoppingCart, FaTag } from 'react-icons/fa';
 import SwapModal from './components/SwapModal';
+import { isUntilDissolved } from './utils/lockTime';
 
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
@@ -42,6 +43,8 @@ const LockCountdown = ({ expiry }) => {
 
     useEffect(() => {
         const updateTimer = () => {
+            // a lock with a dissolve delay that is not dissolving has no unlock time yet
+            if (isUntilDissolved(new Date(expiry))) { setTimeLeft('until dissolved'); setIsCountdown(false); return; }
             const now = new Date();
             const expiryDate = new Date(expiry);
             const diff = expiryDate - now;
@@ -77,6 +80,7 @@ const LockCountdown = ({ expiry }) => {
     }, [expiry]);
 
     if (timeLeft === null) {
+        if (isUntilDissolved(new Date(expiry))) return 'until dissolved';
         return format_duration(expiry - new Date());
     }
 
@@ -2400,7 +2404,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             </div>
                                             <div className="lock-details">
                                                 <span className="lock-label">Expires:</span>
-                                                <span className="lock-value">{dateToReadable(lock.expiry)}</span>
+                                                <span className="lock-value">{isUntilDissolved(lock.expiry) ? 'When dissolved (dissolve delay)' : dateToReadable(lock.expiry)}</span>
                                             </div>
                                             <div className="lock-details">
                                                 <span className="lock-label">Duration:</span>

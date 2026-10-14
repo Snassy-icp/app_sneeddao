@@ -15,6 +15,7 @@ import PositionCard from './PositionCard';
 import './Wallet.css';
 import { lockFromLocks } from './utils/PositionUtils';
 import Header from './components/Header';
+import LockDissolvePanel from './components/LockDissolvePanel';
 
 function Lock() {
     const { theme } = useTheme();
@@ -360,6 +361,10 @@ function Lock() {
                     />
                 )}
                 
+                {!loading && !error && lockType && (
+                    <LockDissolvePanel lockId={id} onChanged={() => fetchLockById(id)} />
+                )}
+
                 {!loading && !error && lockType === 'position' && position && positionDetails && (
                     <PositionCard
                         position={position}

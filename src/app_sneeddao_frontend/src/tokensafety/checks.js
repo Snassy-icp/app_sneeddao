@@ -20,6 +20,8 @@ import { holdersByOwner } from './scan.js';
 import { scanLedgerOffThread } from './scanClient.js';
 import { idlFactory as governanceIdl } from 'external/sns_governance/sns_governance.did.js';
 import { guardianIdl, guardianById, policySummary } from './guardianIdl.js';
+import { NEVER_NS } from '../utils/lockTime';
+const NEVER_MS = Number(NEVER_NS / 1_000_000n);
 
 export const IDS = {
     snsw: 'qaa6y-5yaaa-aaaaa-aaafa-cai',
@@ -908,7 +910,7 @@ export function buildTokenTree(ledgerId, config, header = null) {
                                 const lock = plocks.find((l) => l.pool === main.id && l.positionId === p.id);
                                 if (!lock) { cls = 'other'; who = 'Sneed Lock, but no active lock on this position'; }
                                 else if (lock.expiryMs - now < c.minLockDays * 86400e3) { cls = 'other'; who = `Sneed Lock, lock #${lock.lockId} ends in ${days(lock.expiryMs - now)} days (under ${c.minLockDays})`; }
-                                else who = `Sneed Lock, lock #${lock.lockId} for ${days(lock.expiryMs - now)} more days`;
+                                else who = lock.expiryMs >= NEVER_MS ? `Sneed Lock, lock #${lock.lockId} until dissolved (dissolve delay)` : `Sneed Lock, lock #${lock.lockId} for ${days(lock.expiryMs - now)} more days`;
                             }
                             return { ...p, cls, who };
                         });

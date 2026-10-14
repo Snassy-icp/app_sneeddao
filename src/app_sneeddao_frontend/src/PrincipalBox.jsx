@@ -833,7 +833,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             const result = await sneedLockActor.create_lock(
                 bigIntAmount,
                 ledgerPrincipal,
-                BigInt(expiry) * (10n ** 6n)
+                BigInt(expiry) * (10n ** 6n),
+                []
             );
 
             console.log('create_lock result:', result);

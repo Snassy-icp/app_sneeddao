@@ -9,6 +9,7 @@ import { useNaming } from './NamingContext';
 import { useAuth } from './AuthContext';
 import { Principal } from '@dfinity/principal';
 import { Link } from 'react-router-dom';
+import { isUntilDissolved } from './utils/lockTime';
 import { FaBriefcase, FaLock, FaSync, FaCoins, FaArrowDown, FaArrowUp, FaQuestionCircle, FaExternalLinkAlt, FaCheck, FaCopy, FaInfoCircle, FaUnlock, FaTimes, FaWater, FaDollarSign, FaChevronDown, FaChevronRight, FaExpandAlt } from 'react-icons/fa';
 
 // Countdown timer component for position locks expiring within 1 hour
@@ -18,6 +19,8 @@ const PositionLockCountdown = ({ expiryNanos }) => {
 
     useEffect(() => {
         const updateTimer = () => {
+            // a lock with a dissolve delay that is not dissolving has no unlock time yet
+            if (isUntilDissolved(expiryNanos)) { setTimeLeft('until dissolved'); setIsCountdown(false); return; }
             const now = new Date();
             // Convert nanoseconds to milliseconds
             const expiryDate = new Date(Number(expiryNanos / 1000000n));
@@ -54,6 +57,7 @@ const PositionLockCountdown = ({ expiryNanos }) => {
     }, [expiryNanos]);
 
     if (timeLeft === null) {
+        if (isUntilDissolved(expiryNanos)) return 'until dissolved';
         const expiryDate = new Date(Number(expiryNanos / 1000000n));
         const diff = expiryDate - new Date();
         return format_duration(diff);
@@ -993,7 +997,7 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                                 <span className="lock-label">Lock Expires:</span>
                                 <span className="lock-value">
                     {isLockedPosition(positionDetails)
-                        ? bigDateToReadable(positionDetails.lockInfo.expiry)
+                        ? (isUntilDissolved(positionDetails.lockInfo.expiry) ? 'When dissolved (dissolve delay)' : bigDateToReadable(positionDetails.lockInfo.expiry))
                         : 'No lock'}
                                 </span>
                             </div>

@@ -85,6 +85,31 @@ export const idlFactory = ({ IDL }) => {
     'Err' : CreateLockError,
   });
   const Dex = IDL.Nat;
+  const LockState = IDL.Record({
+    'dissolve_delay' : IDL.Nat64,
+    'lock_id' : LockId,
+    'owner_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'owner' : IDL.Principal,
+    'kind' : LockType,
+    'locked' : IDL.Bool,
+    'token0' : IDL.Opt(TokenType),
+    'token1' : IDL.Opt(TokenType),
+    'ledger' : IDL.Opt(TokenType),
+    'lock_end' : Expiry,
+    'dissolving_until' : IDL.Opt(Expiry),
+    'swap_canister_id' : IDL.Opt(SwapCanisterId),
+    'expiry' : Expiry,
+    'amount' : IDL.Opt(Balance),
+    'archived' : IDL.Bool,
+    'position_id' : IDL.Opt(PositionId),
+  });
+  const LockOpError = IDL.Variant({
+    'Invalid' : IDL.Text,
+    'NotFound' : IDL.Null,
+    'NotOwner' : IDL.Null,
+    'InProgress' : IDL.Null,
+  });
+  const LockOpResult = IDL.Variant({ 'Ok' : LockState, 'Err' : LockOpError });
   const PositionLock = IDL.Record({
     'dex' : Dex,
     'lock_id' : LockId,
@@ -167,6 +192,19 @@ export const idlFactory = ({ IDL }) => {
   const LockInfo = IDL.Variant({
     'PositionLock' : FullyQualifiedPositionLock,
     'TokenLock' : FullyQualifiedLock,
+  });
+  const LockLimits = IDL.Record({
+    'min_lock_length_ns' : IDL.Nat64,
+    'max_lock_length_ns' : IDL.Nat64,
+  });
+  const LockPageQuery = IDL.Record({
+    'owner' : IDL.Opt(IDL.Principal),
+    'kind' : IDL.Opt(LockType),
+    'prev' : IDL.Opt(LockId),
+    'take' : IDL.Opt(IDL.Nat),
+    'ledger' : IDL.Opt(TokenType),
+    'swap_canister_id' : IDL.Opt(SwapCanisterId),
+    'include_archived' : IDL.Bool,
   });
   const SupportedStandard = IDL.Record({ 'url' : IDL.Text, 'name' : IDL.Text });
   const GetArchivesArgs = IDL.Record({ 'from' : IDL.Opt(IDL.Principal) });
@@ -397,15 +435,24 @@ export const idlFactory = ({ IDL }) => {
     'clear_expired_locks' : IDL.Func([], [], []),
     'clear_expired_position_locks' : IDL.Func([], [], []),
     'create_lock' : IDL.Func(
-        [IDL.Nat, IDL.Principal, Expiry],
+        [IDL.Nat, IDL.Principal, Expiry, IDL.Opt(IDL.Nat64)],
         [CreateLockResult],
         [],
       ),
     'create_position_lock' : IDL.Func(
-        [IDL.Principal, Dex, PositionId, Expiry, TokenType, TokenType],
+        [
+          IDL.Principal,
+          Dex,
+          PositionId,
+          Expiry,
+          TokenType,
+          TokenType,
+          IDL.Opt(IDL.Nat64),
+        ],
         [CreateLockResult],
         [],
       ),
+    'extend_lock' : IDL.Func([LockId, Expiry], [LockOpResult], []),
     'getEffectiveLockFee' : IDL.Func(
         [IDL.Principal, IDL.Bool],
         [IDL.Record({ 'is_premium' : IDL.Bool, 'fee_e8s' : IDL.Nat64 })],
@@ -543,6 +590,18 @@ export const idlFactory = ({ IDL }) => {
         ],
         ['query'],
       ),
+    'get_lock_limits' : IDL.Func([], [LockLimits], ['query']),
+    'get_lock_state' : IDL.Func([LockId], [IDL.Opt(LockState)], ['query']),
+    'get_lock_states' : IDL.Func(
+        [IDL.Vec(LockId)],
+        [IDL.Vec(IDL.Opt(LockState))],
+        ['query'],
+      ),
+    'get_lock_states_page' : IDL.Func(
+        [LockPageQuery],
+        [IDL.Vec(LockState)],
+        ['query'],
+      ),
     'get_lock_type' : IDL.Func([LockId], [IDL.Opt(LockType)], ['query']),
     'get_my_claim_history' : IDL.Func([], [IDL.Vec(ClaimRequest)], ['query']),
     'get_position_lock_by_id' : IDL.Func(
@@ -609,12 +668,19 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(BlockType)],
         ['query'],
       ),
+    'increase_dissolve_delay' : IDL.Func(
+        [LockId, IDL.Nat64],
+        [LockOpResult],
+        [],
+      ),
     'request_claim_and_withdraw' : IDL.Func(
         [SwapCanisterId, PositionId],
         [ClaimAndWithdrawResult],
         [],
       ),
     'set_max_lock_length_days' : IDL.Func([IDL.Nat64], [], []),
+    'start_dissolving' : IDL.Func([LockId], [LockOpResult], []),
+    'stop_dissolving' : IDL.Func([LockId], [LockOpResult], []),
     'transfer_position' : IDL.Func(
         [IDL.Principal, IDL.Principal, PositionId],
         [TransferPositionResult],

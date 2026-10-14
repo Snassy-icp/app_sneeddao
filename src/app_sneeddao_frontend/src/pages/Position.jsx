@@ -30,6 +30,7 @@ import { getTokenInfo, checkAllowance, approve, transfer } from '../services/dex
 import { lockFromLocks } from '../utils/PositionUtils';
 import { customStyles } from '../health/TreeView.jsx';
 import { FaWater, FaSpinner, FaLock, FaArrowUp, FaCoins, FaPlus, FaMinus, FaExchangeAlt, FaExternalLinkAlt, FaSync, FaCheck } from 'react-icons/fa';
+import { isUntilDissolved } from '../utils/lockTime';
 
 const HOST = 'https://icp-api.io';
 const primary = '#06b6d4';
@@ -546,7 +547,7 @@ function Position() {
                                         <div><div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', textTransform: 'uppercase' }}>Range</div>{fmtPrice(tickToHuman(position.tickLower))} to {fmtPrice(tickToHuman(position.tickUpper))} {sym1} per {sym0}<div style={{ color: posAmounts.inRange ? '#22c55e' : '#f59e0b', fontWeight: 700 }}>{posAmounts.inRange ? 'in range, earning fees' : 'out of range, earning nothing'}</div></div>
                                         <div><div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', textTransform: 'uppercase' }}>Holds</div>{fmtUnits(posAmounts.amount0, d0)} {sym0}<br />{fmtUnits(posAmounts.amount1, d1)} {sym1}{usd && (usd.p0 || usd.p1) && <div style={{ color: theme.colors.primaryText, fontWeight: 700 }}>{formatValue(posAmounts.amount0 / 10 ** d0 * (usd.p0 || 0) + posAmounts.amount1 / 10 ** d1 * (usd.p1 || 0))}</div>}</div>
                                         <div><div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', textTransform: 'uppercase' }}>Uncollected fees</div>{fmtUnits(position.tokensOwed0, d0)} {sym0}<br />{fmtUnits(position.tokensOwed1, d1)} {sym1}{usd && (usd.p0 || usd.p1) && <div style={{ color: theme.colors.primaryText, fontWeight: 700 }}>{formatValue(Number(position.tokensOwed0) / 10 ** d0 * (usd.p0 || 0) + Number(position.tokensOwed1) / 10 ** d1 * (usd.p1 || 0))}</div>}</div>
-                                        <div><div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', textTransform: 'uppercase' }}>Owner</div>{owner === 'me' ? 'you (Sneed wallet)' : owner === 'sneedlock' ? <span><FaLock size={11} /> locked in Sneed Lock{lock?.expiry ? `, until ${new Date(Number(BigInt(lock.expiry) / 1000000n)).toLocaleDateString()}` : ''}</span> : owner === 'other' ? 'someone else' : '…'}<br /><span style={{ color: theme.colors.mutedText }}>liquidity {position.liquidity.toString()}</span></div>
+                                        <div><div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', textTransform: 'uppercase' }}>Owner</div>{owner === 'me' ? 'you (Sneed wallet)' : owner === 'sneedlock' ? <span><FaLock size={11} /> locked in Sneed Lock{lock?.expiry ? `, until ${isUntilDissolved(lock.expiry) ? 'dissolved' : new Date(Number(BigInt(lock.expiry) / 1000000n)).toLocaleDateString()}` : ''}</span> : owner === 'other' ? 'someone else' : '…'}<br /><span style={{ color: theme.colors.mutedText }}>liquidity {position.liquidity.toString()}</span></div>
                                     </div>
                                 )}
 

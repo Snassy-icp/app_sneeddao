@@ -32,6 +32,7 @@ import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import { useDenomination } from '../contexts/DenominationContext';
+import { isUntilDissolved } from '../utils/lockTime';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
@@ -2299,7 +2300,7 @@ function SneedexOffers() {
                                                     return `ICRC-7 NFT${details.token_ids.length === 1 ? '' : 's'}\nCollection: ${details.collection_id}\nToken ids: ${details.token_ids.join(', ')}`;
                                                 }
                                                 if (details.type === 'SneedLock') {
-                                                    return `Sneed Lock #${details.lock_id}${details.kind === 'token' ? `\nLedger: ${details.ledger_id}` : `\nPool: ${details.swap_id}\nPosition: ${details.position_id}`}\nUnlocks: ${new Date(Number(details.expiry / 1_000_000n)).toLocaleString()}`;
+                                                    return `Sneed Lock #${details.lock_id}${details.kind === 'token' ? `\nLedger: ${details.ledger_id}` : `\nPool: ${details.swap_id}\nPosition: ${details.position_id}`}\nUnlocks: ${isUntilDissolved(details.expiry) ? 'when it has dissolved (dissolve delay)' : new Date(Number(details.expiry / 1_000_000n)).toLocaleString()}`;
                                                 }
                                                 if (details.type === 'ICRC1Token') {
                                                     return `${assetTokenInfo?.name || assetTokenInfo?.symbol || 'Token'}\nLedger: ${details.ledger_id}\nAmount: ${formatAmount(details.amount, assetTokenInfo?.decimals || 8)} ${assetTokenInfo?.symbol || 'tokens'}`;

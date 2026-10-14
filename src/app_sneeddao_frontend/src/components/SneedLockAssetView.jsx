@@ -10,6 +10,7 @@ import { useDenomination } from '../contexts/DenominationContext';
 import { getTokenMetadata } from '../hooks/useTokenCache';
 import { describeSwapPool } from './SwapPoolPicker';
 import { get_token_conversion_rate } from '../utils/TokenUtils';
+import { isUntilDissolved } from '../utils/lockTime';
 
 const poolCache = new Map();
 const describePoolCached = (id) => { if (!poolCache.has(id)) { const p = describeSwapPool(id); p.catch(() => poolCache.delete(id)); poolCache.set(id, p); } return poolCache.get(id); };
@@ -48,7 +49,7 @@ export function useSneedLockAsset(details) {
 /// One line: "1,000 SNEED locked until 3 Jan 2027" / "Locked LP position #12 in SNEED/ICP until …".
 export function sneedLockAssetText(details, token, pool) {
     if (!details) return '';
-    const until = lockExpiryDate(details.expiry).toLocaleDateString();
+    const until = isUntilDissolved(details.expiry) ? 'it dissolves' : lockExpiryDate(details.expiry).toLocaleDateString();
     if (details.kind === 'token') {
         const d = Number(token?.decimals ?? 8);
         return `${fmtUnits(details.amount, d)} ${token?.symbol || 'tokens'} locked until ${until}`;
@@ -111,8 +112,9 @@ export function SneedLockAssetDetails({ details }) {
     const { token, pool, usd } = useSneedLockAsset(details);
     const label = { fontSize: '0.72rem', fontWeight: 600, color: theme.colors.mutedText, textTransform: 'uppercase', letterSpacing: '0.5px' };
     const row = (k, v) => (<React.Fragment key={k}><span style={label}>{k}</span><span style={{ fontSize: '0.85rem', color: theme.colors.primaryText, wordBreak: 'break-all' }}>{v}</span></React.Fragment>);
+    const dissolveHeld = isUntilDissolved(details.expiry);
     const expiry = lockExpiryDate(details.expiry);
-    const daysLeft = Math.max(0, Math.round((expiry.getTime() - Date.now()) / 86_400_000));
+    const daysLeft = dissolveHeld ? 0 : Math.max(0, Math.round((expiry.getTime() - Date.now()) / 86_400_000));
     return (
         <div onClick={(e) => e.stopPropagation()} style={{ marginTop: '1rem', padding: '1rem', background: theme.colors.secondaryBg, borderRadius: 10, border: `1px solid ${theme.colors.border}` }}>
             <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText, marginBottom: 10, lineHeight: 1.5 }}>
@@ -126,7 +128,9 @@ export function SneedLockAssetDetails({ details }) {
                 {details.kind === 'token' && row('Ledger', <Link to={`/tokenlock?ledger=${details.ledger_id}&locks=${details.lock_id}`} style={{ color: theme.colors.accent, fontFamily: 'monospace', fontSize: '0.8rem' }}>{token?.name ? `${token.name} · ` : ''}{details.ledger_id}</Link>)}
                 {details.kind === 'position' && row('Pool', pool ? `${pool.token0.symbol}/${pool.token1.symbol}` : details.swap_id)}
                 {details.kind === 'position' && row('Position', <Link to={`/position?swap=${details.swap_id}&id=${details.position_id}`} style={{ color: theme.colors.accent }}>#{details.position_id.toString()} <FaExternalLinkAlt size={9} /></Link>)}
-                {row('Unlocks', `${expiry.toLocaleString()} (${daysLeft} day${daysLeft === 1 ? '' : 's'} left)`)}
+                {row('Unlocks', dissolveHeld
+                    ? <span>When it has dissolved: it has a dissolve delay and is not dissolving. <Link to={lockUrl(details.lock_id)} style={{ color: theme.colors.accent }}>See the lock</Link></span>
+                    : `${expiry.toLocaleString()} (${daysLeft} day${daysLeft === 1 ? '' : 's'} left)`)}
                 {row('Held by', 'Sneed Lock, ownership escrowed in Sneedex')}
             </div>
         </div>

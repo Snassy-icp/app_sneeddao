@@ -4363,7 +4363,8 @@ function Wallet() {
         const result = await sneedLockActor.create_lock(
             bigIntAmount,
             ledger_canister_id,
-            BigInt(expiry) * (10n ** 6n)
+            BigInt(expiry) * (10n ** 6n),
+            []
         );
 
         locks[token] = locks[token] || [];
@@ -4521,7 +4522,8 @@ function Wallet() {
                         position.id,
                         expiryBig,
                         position.token0,
-                        position.token1
+                        position.token1,
+                        []
                     );
                 } else {
                     result = { "Err": { "message": "Unable to transfer position to Sneedlock: "
@@ -4550,7 +4552,8 @@ function Wallet() {
                     position.id,
                     expiryBig,
                     position.token0,
-                    position.token1
+                    position.token1,
+                    []
                 );
         }
 

@@ -6,6 +6,7 @@ import { useTheme } from './contexts/ThemeContext';
 import PrincipalInput from './components/PrincipalInput';
 import { formatAmount } from './utils/StringUtils';
 import { dateToReadable } from './utils/DateUtils';
+import { isUntilDissolved } from './utils/lockTime';
 import { get_available_backend } from './utils/TokenUtils';
 
 // Accent colors 
@@ -86,7 +87,7 @@ function TransferTokenLockModal({ show, onClose, onTransfer, tokenLock, token })
       ? ` (including 1 tx fee to prepare your backend subaccount for the transfer)`
       : ` (drawn from your backend liquid balance)`;
     
-    setConfirmMessage(`You are about to transfer ownership of lock #${tokenLock.lock_id} (${lockAmount} ${token.symbol}, expires ${dateToReadable(tokenLock.expiry)}) to ${trimmedRecipient}. This will cost ${feeAmount} ${token.symbol} in transaction fees${feeExplanation}. The lock will remain active and ownership will be transferred to the recipient.`);
+    setConfirmMessage(`You are about to transfer ownership of lock #${tokenLock.lock_id} (${lockAmount} ${token.symbol}, ${isUntilDissolved(tokenLock.expiry) ? 'held until dissolved; its dissolve delay transfers with it' : `expires ${dateToReadable(tokenLock.expiry)}`}) to ${trimmedRecipient}. This will cost ${feeAmount} ${token.symbol} in transaction fees${feeExplanation}. The lock will remain active and ownership will be transferred to the recipient.`);
     setShowConfirmModal(true);
   };
 
@@ -186,7 +187,7 @@ function TransferTokenLockModal({ show, onClose, onTransfer, tokenLock, token })
             color: theme.colors.primaryText
           }}>
             <span style={{ color: theme.colors.mutedText }}>Expires:</span>
-            <span style={{ fontWeight: '500' }}>{dateToReadable(tokenLock.expiry)}</span>
+            <span style={{ fontWeight: '500' }}>{isUntilDissolved(tokenLock.expiry) ? 'When dissolved' : dateToReadable(tokenLock.expiry)}</span>
           </div>
         </div>
 

@@ -198,11 +198,15 @@ type SneedLock =
     PositionId) -> (ClaimFeesResult);
    clear_expired_locks: () -> ();
    clear_expired_position_locks: () -> ();
+   /// `dissolve_delay` (v2, optional): with one, the lock period may be zero, the limits apply
+   /// to period + delay, and the tokens stay locked until the lock has dissolved.
    create_lock: (amount: nat, icrc1_ledger_canister_id: principal,
-    expires_at: Expiry) -> (CreateLockResult);
+    expires_at: Expiry, dissolve_delay: opt nat64) -> (CreateLockResult);
    create_position_lock: (swap_canister_id: principal, dex: Dex, position_id:
-    PositionId, expires_at: Expiry, token0: TokenType, token1: TokenType) ->
-    (CreateLockResult);
+    PositionId, expires_at: Expiry, token0: TokenType, token1: TokenType,
+    dissolve_delay: opt nat64) -> (CreateLockResult);
+   /// Move the end of the lock period out, for token and position locks. Not while dissolving.
+   extend_lock: (lock_id: LockId, new_lock_end: Expiry) -> (LockOpResult);
    getEffectiveLockFee: (user: principal, is_position_lock: bool) ->
     (record {
        fee_e8s: nat64;
@@ -262,6 +266,12 @@ type SneedLock =
        sneed_premium_canister_id: opt principal;
        token_lock_fee_icp_e8s: nat64;
      }) query;
+   get_lock_limits: () -> (LockLimits) query;
+   get_lock_state: (lock_id: LockId) -> (opt LockState) query;
+   get_lock_states: (lock_ids: vec LockId) -> (vec opt LockState) query;
+   /// Locks in ascending id order, filtered by owner, ledger, pool and kind, paged by the last
+   /// id seen. Archived (unlocked and cleared) locks only when asked for.
+   get_lock_states_page: (q: LockPageQuery) -> (vec LockState) query;
    get_lock_type: (lock_id: LockId) -> (opt LockType) query;
    get_my_claim_history: () -> (vec ClaimRequest) query;
    get_position_lock_by_id: (lock_id: LockId) ->
@@ -297,12 +307,20 @@ type SneedLock =
    /// Where each archive stands with its RegisterDappCanisters proposal.
    icrc3_registration_status: () -> (Status) query;
    icrc3_supported_block_types: () -> (vec BlockType) query;
+   /// Add to the dissolve delay (a lock without one gets one). While dissolving, the end moves
+   /// out by the same amount. Lock period + delay stay within the max lock length.
+   increase_dissolve_delay: (lock_id: LockId, additional_ns: nat64) ->
+    (LockOpResult);
    /// Compatibility entry point for older frontends: performs the claim
    /// synchronously and returns the history id, which get_claim_request_status
    /// then reports as completed or failed.
    request_claim_and_withdraw: (swap_canister_id: SwapCanisterId,
     position_id: PositionId) -> (ClaimAndWithdrawResult);
    set_max_lock_length_days: (new_max_lock_length_days: nat64) -> ();
+   /// Start dissolving: allowed once the lock period has ended, for a lock with a delay.
+   start_dissolving: (lock_id: LockId) -> (LockOpResult);
+   /// Stop dissolving: the time left becomes the delay again.
+   stop_dissolving: (lock_id: LockId) -> (LockOpResult);
    transfer_position: (to: principal, swap_canister_id: principal,
     position_id: PositionId) -> (TransferPositionResult);
    transfer_position_ownership: (to_principal: principal, swap_canister_id:
@@ -376,6 +394,52 @@ type LockType =
  variant {
    PositionLock;
    TokenLock;
+ };
+type LockState = 
+ record {
+   amount: opt Balance;
+   archived: bool;
+   dissolve_delay: nat64;
+   dissolving_until: opt Expiry;
+   expiry: Expiry;
+   kind: LockType;
+   ledger: opt TokenType;
+   lock_end: Expiry;
+   lock_id: LockId;
+   locked: bool;
+   owner: principal;
+   owner_subaccount: opt blob;
+   position_id: opt PositionId;
+   swap_canister_id: opt SwapCanisterId;
+   token0: opt TokenType;
+   token1: opt TokenType;
+ };
+type LockPageQuery = 
+ record {
+   include_archived: bool;
+   kind: opt LockType;
+   ledger: opt TokenType;
+   owner: opt principal;
+   prev: opt LockId;
+   swap_canister_id: opt SwapCanisterId;
+   take: opt nat;
+ };
+type LockOpResult = 
+ variant {
+   Err: LockOpError;
+   Ok: LockState;
+ };
+type LockOpError = 
+ variant {
+   InProgress;
+   Invalid: text;
+   NotFound;
+   NotOwner;
+ };
+type LockLimits = 
+ record {
+   max_lock_length_ns: nat64;
+   min_lock_length_ns: nat64;
  };
 type LockInfo = 
  variant {

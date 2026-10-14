@@ -16,6 +16,7 @@ import SwapPoolPicker, { SwapPoolSummary, describeSwapPool } from '../components
 import PositionTransferGuide, { WalletPrincipalBox } from '../components/PositionTransferGuide';
 import { formatAmount } from '../utils/StringUtils';
 import { get_short_timezone, format_duration, dateToReadable, getInitialExpiry } from '../utils/DateUtils';
+import { formatNsDuration } from '../utils/lockTime';
 import ConfirmationModal from '../ConfirmationModal';
 import { usePremiumStatus, PremiumBadge } from '../hooks/usePremiumStatus';
 
@@ -141,6 +142,20 @@ function LockWizard() {
     // Step 3: Lock configuration state
     const [lockAmount, setLockAmount] = useState('');
     const [lockExpiry, setLockExpiry] = useState('');
+    // v2: optional dissolve delay in days (spec/sneed_lock_v2.md). With one, the lock period may be
+    // empty: the lock then behaves like a neuron and unlocks a delay after dissolving starts.
+    const [dissolveDays, setDissolveDays] = useState('');
+    const dissolveDelayNs = (() => {
+        const d = Number(dissolveDays);
+        return Number.isFinite(d) && d > 0 ? BigInt(Math.round(d * 86_400)) * 1_000_000_000n : 0n;
+    })();
+    // the lock period's end; with a delay and no (or a past) date there is no lock period: 0
+    const lockEndNs = () => {
+        const t = lockExpiry ? new Date(lockExpiry).getTime() : 0;
+        if (dissolveDelayNs > 0n && (!lockExpiry || t <= Date.now())) return 0n;
+        return BigInt(t) * 1000000n;
+    };
+    const delayArg = () => (dissolveDelayNs > 0n ? [dissolveDelayNs] : []);
     const [isLocking, setIsLocking] = useState(false);
     const [lockProgress, setLockProgress] = useState([]); // [{ label, state: 'done'|'active'|'pending' }]
     const [lockError, setLockError] = useState('');
@@ -705,14 +720,21 @@ function LockWizard() {
             }
         }
         
-        if (!lockExpiry) {
-            setLockError("Please enter an expiration date.");
+        if (dissolveDays && dissolveDelayNs === 0n) {
+            setLockError("The dissolve delay must be a positive number of days.");
             return false;
         }
-        
-        if (new Date(lockExpiry) < new Date()) {
-            setLockError("Expiration must be in the future.");
-            return false;
+
+        if (dissolveDelayNs === 0n) {
+            if (!lockExpiry) {
+                setLockError("Please enter an expiration date.");
+                return false;
+            }
+            
+            if (new Date(lockExpiry) < new Date()) {
+                setLockError("Expiration must be in the future.");
+                return false;
+            }
         }
         
         return true;
@@ -743,20 +765,15 @@ function LockWizard() {
         
         const expiryDate = new Date(lockExpiry);
         const duration = format_duration(expiryDate - new Date());
-        
-        if (lockType === 'token') {
-            setConfirmMessage(
-                `You are about to lock ${lockAmount} ${selectedToken.symbol} ` +
-                `until ${dateToReadable(expiryDate)} ${get_short_timezone()} ` +
-                `(for ${duration}). ` + describeFeePlan(plan)
-            );
-        } else {
-            setConfirmMessage(
-                `You are about to lock position #${selectedPosition.id} (${selectedPosition.symbols}) ` +
-                `until ${dateToReadable(expiryDate)} ${get_short_timezone()} ` +
-                `(for ${duration}). ` + describeFeePlan(plan)
-            );
-        }
+        const what = lockType === 'token'
+            ? `${lockAmount} ${selectedToken.symbol}`
+            : `position #${selectedPosition.id} (${selectedPosition.symbols})`;
+        const when = dissolveDelayNs > 0n
+            ? (lockEndNs() === 0n
+                ? `with a ${formatNsDuration(dissolveDelayNs)} dissolve delay and no lock period: it stays locked until you start dissolving it, and unlocks ${formatNsDuration(dissolveDelayNs)} after that. `
+                : `until ${dateToReadable(expiryDate)} ${get_short_timezone()} (for ${duration}), and then with a ${formatNsDuration(dissolveDelayNs)} dissolve delay: it stays locked until you start dissolving it, and unlocks ${formatNsDuration(dissolveDelayNs)} after that. `)
+            : `until ${dateToReadable(expiryDate)} ${get_short_timezone()} (for ${duration}). `;
+        setConfirmMessage(`You are about to lock ${what} ${when}` + describeFeePlan(plan));
         
         setConfirmAction(() => executeLock);
         setShowConfirmModal(true);
@@ -848,11 +865,12 @@ function LockWizard() {
         }
         
         // Create the lock
-        const expiryBigInt = BigInt(new Date(lockExpiry).getTime()) * 1000000n;
+        const expiryBigInt = lockEndNs();
         const result = await sneedLockActor.create_lock(
             bigIntAmount,
             selectedToken.ledger_canister_id,
-            expiryBigInt
+            expiryBigInt,
+            delayArg()
         );
         
         if (result.Err) {
@@ -865,7 +883,7 @@ function LockWizard() {
         const swapActor = createIcpSwapActor(selectedPosition.swapCanisterId, { agentOptions: { identity } });
         const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
         
-        const expiryBigInt = BigInt(new Date(lockExpiry).getTime()) * 1000000n;
+        const expiryBigInt = lockEndNs();
         
         if (selectedPosition.frontendOwnership) {
             // Position is owned by user - need to claim and transfer
@@ -895,7 +913,8 @@ function LockWizard() {
                 selectedPosition.id,
                 expiryBigInt,
                 selectedPosition.token0,
-                selectedPosition.token1
+                selectedPosition.token1,
+                delayArg()
             );
             
             if (lockResult.Err) {
@@ -910,7 +929,8 @@ function LockWizard() {
                 selectedPosition.id,
                 expiryBigInt,
                 selectedPosition.token0,
-                selectedPosition.token1
+                selectedPosition.token1,
+                delayArg()
             );
             
             if (lockResult.Err) {
@@ -1817,7 +1837,9 @@ function LockWizard() {
                         🎉 Lock Created Successfully!
                     </h2>
                     <p style={{ color: theme.colors.secondaryText, marginBottom: '1.5rem', fontSize: '1rem', lineHeight: '1.6' }}>
-                        Your {lockType === 'token' ? 'tokens have' : 'liquidity position has'} been locked until <strong style={{ color: theme.colors.primaryText }}>{dateToReadable(new Date(lockExpiry))}</strong>.
+                        {dissolveDelayNs > 0n
+                            ? <>Your {lockType === 'token' ? 'tokens have' : 'liquidity position has'} been locked{lockEndNs() > 0n ? <> until <strong style={{ color: theme.colors.primaryText }}>{dateToReadable(new Date(lockExpiry))}</strong> and then</> : ''} with a <strong style={{ color: theme.colors.primaryText }}>{formatNsDuration(dissolveDelayNs)}</strong> dissolve delay. Start dissolving it from its lock page when you want it to unlock.</>
+                            : <>Your {lockType === 'token' ? 'tokens have' : 'liquidity position has'} been locked until <strong style={{ color: theme.colors.primaryText }}>{dateToReadable(new Date(lockExpiry))}</strong>.</>}
                     </p>
                     <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
                         <button
@@ -1981,13 +2003,30 @@ function LockWizard() {
 
                     {/* Expiry input */}
                     <div style={styles.inputGroup}>
-                        <label style={styles.label}>Lock Until ({get_short_timezone()}):</label>
+                        <label style={styles.label}>Lock Until ({get_short_timezone()}){dissolveDelayNs > 0n ? ', optional' : ''}:</label>
                         <input
                             type="datetime-local"
                             value={lockExpiry}
                             onChange={(e) => setLockExpiry(e.target.value)}
                             style={{ ...styles.input, width: '100%' }}
                         />
+                    </div>
+
+                    {/* Dissolve delay (v2), optional */}
+                    <div style={styles.inputGroup}>
+                        <label style={styles.label}>Dissolve delay in days (optional):</label>
+                        <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            placeholder="none"
+                            value={dissolveDays}
+                            onChange={(e) => setDissolveDays(e.target.value)}
+                            style={{ ...styles.input, width: '100%' }}
+                        />
+                        <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, marginTop: 6, lineHeight: 1.5 }}>
+                            Like an NNS neuron: with a dissolve delay the lock does not unlock by itself. Once the lock period above has ended (or straight away, if you leave the date empty) you can start dissolving it, and it unlocks when the delay has run out. You can stop dissolving and increase the delay later, but never shorten it. Lock period + delay must stay within Sneed Lock's maximum.
+                        </div>
                     </div>
 
                     {renderFeePanel()}
