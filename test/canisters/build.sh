@@ -22,6 +22,14 @@ dfx +"$DFX_VERSION" build --check sneed_guardian 2>&1 | grep -iv "warning\|^ *$\
 cp .dfx/local/canisters/sneed_guardian/sneed_guardian.wasm "$OUT/sneed_guardian.wasm"
 cp .dfx/local/canisters/sneed_guardian/service.did.js "$OUT/sneed_guardian.did.js"
 
+# every other canister under test: a check build with the release toolchain (no canister id needed)
+for c in app_sneeddao_backend sneedapp sneed_sns_forum sneed_sms sneed_premium rll sneed_icp_staking_bot sneed_trading_bot; do
+  echo "== $c (dfx +$DFX_VERSION build --check)"
+  dfx +"$DFX_VERSION" build --check "$c" 2>&1 | grep -iv "warning\|^ *$\|^\s*[0-9]* |\|^  \^\|Nat$\|bespoke\|does not cover\|#Err\|#Ok" | tail -1
+  cp ".dfx/local/canisters/$c/$c.wasm" "$OUT/$c.wasm"
+  cp ".dfx/local/canisters/$c/service.did.js" "$OUT/$c.did.js"
+done
+
 echo "== sneedex (dfx +$DFX_VERSION build --network ic)"
 dfx +"$DFX_VERSION" build --network ic sneedex 2>&1 | grep -iv "warning\|^ *$\|^\s*[0-9]* |\|^  \^\|Nat$\|bespoke" | tail -2
 cp .dfx/ic/canisters/sneedex/sneedex.wasm "$OUT/sneedex.wasm"
@@ -29,7 +37,9 @@ cp .dfx/ic/canisters/sneedex/service.did.js "$OUT/sneedex.did.js"
 
 MOC="$(dfx +"$DFX_VERSION" cache show)/moc"
 PKGS="$(mops sources)"
-for c in MockLedger MockLedgerV2 MockSwapPool MockSnsGovernance MockCmc MockSnsWasm MockPremium MockSneedApp Icrc3Demo; do
+for c in MockLedger MockLedgerV2 MockLedgerFaulty MockRejectLedger MockSwapPool MockDexPool MockIcpswapFactory MockKongSwap \
+         MockSnsGovernance MockSnsNeurons MockHubSns MockForumGovernance MockForumSnsW MockRllGovernance MockNnsGovernance \
+         MockCmc MockSnsWasm MockPremium MockSneedApp MockIcpSwapList MockIcpSwapTokenList Icrc3Demo; do
   echo "== $c"
   # shellcheck disable=SC2086
   "$MOC" -c $PKGS -o "$OUT/$c.wasm" "$HERE/canisters/$c.mo" 2>&1 | grep -i "error" -A5 || true

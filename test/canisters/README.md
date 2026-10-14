@@ -21,6 +21,15 @@ Requirements: Node 22+, `dfx` with version 0.28.0 installed (`dfxvm install 0.28
 | `tests/icrc3-hash.test.js` | The ICRC-3 value hash, LEB128 and IC hash trees: Motoko implementation run in the interpreter against the IC request-id vector, a rep-indy-hash cross-check vector and agent-js tree hashes; the JavaScript verifier against the same vectors. |
 | `tests/icrc3-library.test.js` | The `src/icrc3` library through `canisters/Icrc3Demo.mo` (a canister written from the library README): empty log, chaining and certification, range queries, tamper detection, settings validation and config blocks, forced spills into size-limited archives, archive controllers, callbacks, parent-only writes and ingress refusal, cycle top-ups and the cycle reserve, the periodic timer, and upgrades. |
 | `tests/sneed-lock.test.js` | `sneed_lock` with a mock ICRC-1 ledger (also installed at the real ICP ledger id for fees) and a mock ICPSwap pool: token locks and their limits, withdrawals bounded by locks, the per-caller mutex (interleaved calls), expiry and archiving, liquid locking with rollback on ledger failure, ICP lock fees (payment subaccount, recipient, stats, payment log), position claims, locks, the no-withdraw-while-locked rule, extension, ownership transfer, fee claims with dust, liquidity additions (leftovers, pool refusal), withdrawal after expiry, admin guards and config trail, the ICRC-3 log (every action's block, archives, verification) and an upgrade. |
+| `tests/sneed-pad.test.js` | The launchpad with the real ledger-suite wasms: following the NNS's latest version, quotes and premium rates, launches with each control choice (keep, extra controllers, blackhole, Sneed DAO, any SNS, a custody canister), index-only launches for existing ledgers, failure paths and an upgrade. |
+| `tests/sneed-guardian.test.js` | The custody canister: registration rules, payment-gated ops (validator, sweep, refunds), approvals, vetoes, go-aheads, windows, expiry, admin trial period, auto-upgrade along the blessed path, reconfiguration, cycles reports, archive discovery, release, and a blackholed instance. |
+| `tests/sneedex-core.test.js`, `sneedex-admin.test.js`, `sneedex-nft.test.js`, `sneedex-lock.test.js` | Sneedex: offer validation and the full state machine, token, canister, SNS neuron, NFT and Sneed Lock assets, bids, buyouts, fees and cut accounting, expiration timers, every admin method and an upgrade. |
+| `tests/sneedapp.test.js`, `sneedapp-mint.test.js` | The SneedApp factory: publishers, apps, versions, wallet registry, minting with deposits, revenue splits, premium prices, rollbacks on failed transfers, the legacy neuron-manager path and an upgrade. |
+| `tests/backend-names.test.js`, `backend-user.test.js`, `backend-admin.test.js` | The Sneed Hub backend (a public API): names, nicknames, neuron and canister names, avatars, bans and the word blacklist, settings, registries, canister groups, wallet layouts, whitelist import and metadata refresh, partners, projects, jailbreak fees, admin transfers and an upgrade. |
+| `tests/forum.test.js`, `tests/sms.test.js` | The forum and messaging canisters (public APIs): content, votes, polls, tips, read tracking, feeds, premium limits, admins, rate limits, privacy on leaving a message, and upgrades. |
+| `tests/premium.test.js`, `tests/rll.test.js` | Sneed Premium (tiers, ICP purchases, voting-power claims, promo codes, grants) and the reward loop (whitelist import, neuron and proposal imports, exact weights, claims and incidents, the main loop on timers, upgrades). |
+| `tests/staking-bot.test.js` | The ICP staking bot against a mock NNS governance: staking, claiming, dissolve, maturity, split and merge, disburse, permissions and botkeys, chores on timers, events between bots and upgrades. |
+| `tests/trading-bot.test.js` | The trading bot against mock ICPSwap and KongSwap at their mainnet ids: permissions on every mutating method, configuration, deposits and withdrawals, chore purses, one-off trades on both ICPSwap paths and Kong, the circuit breaker, chores on timers and an upgrade. |
 
 Every integration test file verifies the ICRC-3 log it produced with an independent
 JavaScript implementation of the hash (`lib/icrc3.js`): certificate against the
@@ -28,7 +37,7 @@ subnet key, hash tree, `phash` chain across live and archived blocks.
 
 ## Layout
 
-- `canisters/` test-only Motoko canisters: `MockLedger.mo`, `MockSwapPool.mo`, `Icrc3Demo.mo`
+- `canisters/` test-only Motoko canisters: mock ledgers, DEXes, NNS and SNS governance, SNS-W, CMC, Premium, SneedApp, ICPSwap lists, and `Icrc3Demo.mo`
 - `lib/` harness: PocketIC setup, identities, Candid IDLs of the mocks, the ICRC-3 verifier
 - `motoko/` Motoko unit tests run with `moc -r`
 - `build/` build output (ignored by git)
@@ -39,6 +48,8 @@ subnet key, hash tree, `phash` chain across live and archived blocks.
   fresh. Tests that advance time disable only the 5-minute freshness check of the
   agent, not signature or tree verification.
 - pic-js returns the subnet public key as a plain array; the harness converts it.
+- Canisters that talk to hard-coded mainnet ids (ICP ledger, NNS governance, SNS-W, ICPSwap's list and factory, KongSwap, Sneed governance) get mocks installed at those exact ids; PocketIC creates the owning subnet.
+- The backend, forum and SMS canisters use enhanced orthogonal persistence: their upgrade tests pass `wasm_memory_persistence: keep`.
 - `sneed_lock` talks to the ICP ledger by its mainnet id, which is why the mock ledger
   is installed at `ryjl3-tyaaa-aaaaa-aaaba-cai` on the NNS subnet.
 - Timers fire only when time advances and rounds execute: use `pic.advanceTime` followed
