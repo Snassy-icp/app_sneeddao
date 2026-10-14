@@ -685,8 +685,8 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     #Ok;
   };
   public query func get_admins() : async [Principal] { admins };
-  public shared ({ caller }) func admin_run_status() : async { #Ok : Nat; #Err : Text } { if (not isAdmin(caller)) { return #Err("controllers only") }; #Ok(await* statusRunImpl()) };
-  public shared ({ caller }) func admin_run_auto_upgrade() : async { #Ok : Nat; #Err : Text } { if (not isAdmin(caller)) { return #Err("controllers only") }; #Ok(await* autoUpgradeImpl()) };
+  public shared ({ caller }) func admin_run_status() : async { #Ok : Nat; #Err : Text } { if (not isAdmin(caller)) { return #Err("admins only") }; #Ok(await* statusRunImpl()) };
+  public shared ({ caller }) func admin_run_auto_upgrade() : async { #Ok : Nat; #Err : Text } { if (not isAdmin(caller)) { return #Err("admins only") }; #Ok(await* autoUpgradeImpl()) };
 
   // ---- ICRC-3 endpoints ----
   public query func icrc3_get_blocks(args : T3.GetBlocksArgs) : async T3.GetBlocksResult { Icrc3Log.getBlocks(icrc3, args) };
