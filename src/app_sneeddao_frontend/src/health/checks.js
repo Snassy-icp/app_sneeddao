@@ -414,6 +414,32 @@ export function buildTree(config) {
             pingLeaf(IDS.sms, 'Sneed SMS', 'get_admins'),
             pingLeaf(IDS.premium, 'Sneed Premium', 'getCanisterId'),
             pingLeaf(IDS.sneedex, 'Sneedex', 'getConfig'),
+            {
+                id: `sneedex-timer:${IDS.sneedex}`, name: 'Sneedex expiration timer', link: DASHBOARD(IDS.sneedex),
+                run: async (ctx) => {
+                    const idl = ({ IDL }) => IDL.Service({
+                        isExpirationTimerRunning: IDL.Func([], [IDL.Bool], ['query']),
+                        isExpirationWorkerRunning: IDL.Func([], [IDL.Bool], ['query']),
+                        getExpirationCheckInterval: IDL.Func([], [IDL.Nat], ['query']),
+                        getActiveOffers: IDL.Func([], [IDL.Vec(IDL.Record({ id: IDL.Nat, expiration: IDL.Opt(IDL.Int) }))], ['query']),
+                    });
+                    const a = await actor(idl, IDS.sneedex);
+                    const [running, working, interval, active] = await Promise.all([
+                        ctx.call(a.isExpirationTimerRunning(), 'Sneedex.isExpirationTimerRunning'),
+                        ctx.call(a.isExpirationWorkerRunning(), 'Sneedex.isExpirationWorkerRunning'),
+                        ctx.call(a.getExpirationCheckInterval(), 'Sneedex.getExpirationCheckInterval'),
+                        ctx.call(a.getActiveOffers(), 'Sneedex.getActiveOffers'),
+                    ]);
+                    const nowNs = BigInt(Date.now()) * 1_000_000n;
+                    const intervalS = Number(interval);
+                    // an offer is overdue when it ran out more than two timer intervals ago and is still Active
+                    const overdue = active.filter((o) => o.expiration.length && o.expiration[0] + BigInt(2 * intervalS) * 1_000_000_000n < nowNs);
+                    const details = { timer_running: running, worker_running: working, interval_s: intervalS, active_offers: active.length, overdue_offers: overdue.map((o) => Number(o.id)) };
+                    if (!running) return fail('The expiration timer is not running (offers will not expire on their own)', details);
+                    if (overdue.length) return warn(`${overdue.length} offer(s) ran out more than ${2 * intervalS} s ago and are still Active`, details);
+                    return pass(`Timer running every ${intervalS} s; ${active.length} active offers, none overdue`, details);
+                },
+            },
             pingLeaf(IDS.sneedapp, 'Sneedapp (bot factory)', 'getCurrentVersion'),
             pingLeaf(IDS.sgldt, 'sGLDT', 'get_fee_collector'),
             pingLeaf(IDS.stakingBot, 'ICP staking bot', 'getVersion', stakingBotIdl),

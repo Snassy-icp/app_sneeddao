@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot, FaChevronLeft, FaChevronRight, FaChevronDown, FaChevronUp, FaTimes, FaUnlock, FaExchangeAlt, FaChartLine, FaImage } from 'react-icons/fa';
+import { NftAssetIcon } from '../components/NftAssetView';
 import { getLogoSync } from '../hooks/useLogoCache';
 import TokenSelector from '../components/TokenSelector';
 import PrincipalInput from '../components/PrincipalInput';
@@ -396,6 +397,7 @@ function SneedexOffers() {
             }
             
             setOffers(fetchedOffers);
+            bumpRanOutOffers(actor, fetchedOffers);
             
             // Start fetching token metadata immediately (don't wait for useEffect)
             // This runs in parallel with bid info fetching for faster logo loading
@@ -645,13 +647,31 @@ function SneedexOffers() {
         setValueRatioFilter('');
     };
     
+    // Offers whose time ran out but which the canister still lists as Active: ask it to process them.
+    // processExpiration is permissionless (it only checks the clock), so the browser can do what the
+    // canister's own timer would do; the list is reloaded once they are through.
+    const bumpedRef = React.useRef(new Set());
+    const bumpRanOutOffers = (actor, list) => {
+        const due = list.filter((o) => 'Active' in o.state && isOfferPastExpiration(o.expiration?.[0]) && !bumpedRef.current.has(o.id.toString())).slice(0, 10);
+        if (due.length === 0) return;
+        due.forEach((o) => bumpedRef.current.add(o.id.toString()));
+        Promise.allSettled(due.map((o) => actor.processExpiration(o.id))).then((rs) => {
+            const changed = rs.some((r) => r.status === 'fulfilled' && r.value && 'ok' in r.value);
+            if (changed) setTimeout(() => fetchOffersRef.current?.(), 1500);
+        });
+    };
+    const fetchOffersRef = React.useRef(null);
+    fetchOffersRef.current = fetchOffers;
+
     const filteredOffers = offers.filter(offer => {
         // Filter by state toggles (Active, Sold, Expired)
         const effectiveShowActive = showActiveOffers || (!showActiveOffers && !showSoldOffers && !showExpiredOffers);
+        // An Active offer whose time has run out counts as expired here, even before the canister's timer records it
+        const ranOut = 'Active' in offer.state && isOfferPastExpiration(offer.expiration?.[0]);
         const stateMatch = (
-            (effectiveShowActive && 'Active' in offer.state) ||
+            (effectiveShowActive && 'Active' in offer.state && !ranOut) ||
             (showSoldOffers && ('Completed' in offer.state || 'Claimed' in offer.state)) ||
-            (showExpiredOffers && ('Expired' in offer.state || 'Cancelled' in offer.state || 'Reclaimed' in offer.state))
+            (showExpiredOffers && (ranOut || 'Expired' in offer.state || 'Cancelled' in offer.state || 'Reclaimed' in offer.state))
         );
         if (!stateMatch) return false;
         
@@ -2375,7 +2395,7 @@ function SneedexOffers() {
                                                     )}
                                                     {details.type === 'ICRC7NFT' && (
                                                         <>
-                                                            <FaImage style={{ color: '#a18cd1', fontSize: '15px' }} />
+                                                            <NftAssetIcon collectionId={details.collection_id} tokenIds={details.token_ids} size={18} radius={4} />
                                                             {details.token_ids.length === 1 ? `NFT #${details.token_ids[0]}` : `${details.token_ids.length} NFTs`} <span style={{ color: theme.colors.mutedText, fontFamily: 'monospace', fontSize: '0.75rem' }}>{details.collection_id.slice(0, 5)}…</span>
                                                         </>
                                                     )}
