@@ -165,6 +165,18 @@
     "icrc7_demo": {
       "main": "src/icrc7_demo/main.mo",
       "type": "motoko"
+    },
+    "sneed_guardian": {
+      "main": "src/sneed_guardian/main.mo",
+      "type": "motoko"
+    },
+    "sneed_hole": {
+      "main": "src/sneed_guardian/main.mo",
+      "type": "motoko"
+    },
+    "sneed_accord": {
+      "main": "src/sneed_guardian/main.mo",
+      "type": "motoko"
     }
   },
   "networks": {

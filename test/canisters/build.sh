@@ -17,6 +17,11 @@ dfx +"$DFX_VERSION" build --network ic sneed_lock 2>&1 | grep -iv "warning\|^ *$
 cp .dfx/ic/canisters/sneed_lock/sneed_lock.wasm "$OUT/sneed_lock.wasm"
 cp .dfx/ic/canisters/sneed_lock/service.did.js "$OUT/sneed_lock.did.js"
 
+echo "== sneed_guardian (dfx +$DFX_VERSION build --check: no canister id yet)"
+dfx +"$DFX_VERSION" build --check sneed_guardian 2>&1 | grep -iv "warning\|^ *$\|^\s*[0-9]* |\|^  \^\|Nat$\|bespoke" | tail -2
+cp .dfx/local/canisters/sneed_guardian/sneed_guardian.wasm "$OUT/sneed_guardian.wasm"
+cp .dfx/local/canisters/sneed_guardian/service.did.js "$OUT/sneed_guardian.did.js"
+
 echo "== sneedex (dfx +$DFX_VERSION build --network ic)"
 dfx +"$DFX_VERSION" build --network ic sneedex 2>&1 | grep -iv "warning\|^ *$\|^\s*[0-9]* |\|^  \^\|Nat$\|bespoke" | tail -2
 cp .dfx/ic/canisters/sneedex/sneedex.wasm "$OUT/sneedex.wasm"
@@ -24,7 +29,7 @@ cp .dfx/ic/canisters/sneedex/service.did.js "$OUT/sneedex.did.js"
 
 MOC="$(dfx +"$DFX_VERSION" cache show)/moc"
 PKGS="$(mops sources)"
-for c in MockLedger MockSwapPool MockSnsGovernance MockCmc MockSnsWasm MockPremium MockSneedApp Icrc3Demo; do
+for c in MockLedger MockLedgerV2 MockSwapPool MockSnsGovernance MockCmc MockSnsWasm MockPremium MockSneedApp Icrc3Demo; do
   echo "== $c"
   # shellcheck disable=SC2086
   "$MOC" -c $PKGS -o "$OUT/$c.wasm" "$HERE/canisters/$c.mo" 2>&1 | grep -i "error" -A5 || true

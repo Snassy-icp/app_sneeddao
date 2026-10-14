@@ -1,0 +1,179 @@
+/// sneed_guardian types: a custody canister that is the controller of ledger
+/// suite canisters on behalf of one or more DAOs. See spec/custody.md.
+module {
+  public type Account = { owner : Principal; subaccount : ?Blob };
+
+  public type Kind = { #ledger; #index; #archive };
+
+  public type Policy = {
+    guardians : [Principal];
+    vetoes_to_block : Nat; // 0 = vetoes off
+    oks_required : Nat; // 0 = no go-aheads needed
+    window_ns : Nat; // an approved op waits this long for vetoes
+    auto_upgrade : Bool;
+  };
+
+  public type Status = {
+    at : Int;
+    cycles : Nat;
+    memory_size : Nat;
+    module_hash : ?Blob;
+    controllers : [Principal];
+    running : Text; // "running" | "stopping" | "stopped"
+    idle_cycles_burned_per_day : Nat;
+    freezing_threshold : Nat;
+    error : ?Text; // the last status read failed with this (the fields are then the previous reading)
+  };
+
+  public type Child = {
+    canister_id : Principal;
+    kind : Kind;
+    suite : ?Principal; // the ledger this index or archive belongs to
+    title : Text;
+    policy : Policy;
+    registered_at : Int;
+    registered_by : Principal;
+    status : ?Status;
+    last_upgrade : ?{ at : Int; from : ?Blob; to : Blob; by : Text }; // "auto" or an op id
+    last_upgrade_error : ?Text;
+  };
+
+  public type ConfigUpdate = {
+    op_fee_e8s : ?Nat;
+    premium_op_fee_e8s : ?Nat;
+    fee_destination : ?Account;
+    op_ttl_ns : ?Nat;
+    self_window_ns : ?Nat;
+    status_interval_s : ?Nat;
+    low_cycles_threshold : ?Nat;
+    cycle_reserve : ?Nat;
+    paused : ?Bool;
+  };
+
+  public type OpKind = {
+    #set_controllers : [Principal];
+    #install : { hash : Blob; arg : ?Blob };
+    #set_policy : Policy;
+    #set_config : ConfigUpdate;
+    #set_approvers : { approvers : [Principal]; threshold : Nat };
+  };
+
+  public type OpState = {
+    #pending;
+    #approved : Int;
+    #vetoed;
+    #executed : Int;
+    #failed : Text;
+    #expired;
+    #cancelled;
+  };
+
+  public type Op = {
+    id : Nat;
+    child : Principal; // the guardian itself for #set_config / #set_approvers
+    kind : OpKind;
+    staged_by : Principal;
+    staged_at : Int;
+    memo : Text;
+    fee_paid_e8s : Nat;
+    approvals : [Principal];
+    oks : [Principal];
+    vetoes : [Principal];
+    state : OpState;
+  };
+
+  public type Config = {
+    name : Text;
+    approvers : [Principal];
+    threshold : Nat;
+    op_fee_e8s : Nat;
+    premium_op_fee_e8s : Nat;
+    fee_destination : Account;
+    sneed_premium : ?Principal;
+    icp_ledger : Principal;
+    sns_wasm : Principal;
+    op_ttl_ns : Nat;
+    self_window_ns : Nat;
+    status_interval_s : Nat;
+    low_cycles_threshold : Nat;
+    cycle_reserve : Nat;
+    paused : Bool;
+    children : Nat;
+    ops : Nat;
+    blessed : { ledger : [Blob]; index : [Blob]; archive : [Blob] };
+    blessed_at : Int;
+    blessed_error : ?Text;
+    status_last_run : Int;
+    own_cycles : Nat;
+  };
+
+  /// Install-time configuration: everything a blackholed deployment needs, since nothing
+  /// else can set it afterwards (ops can change the fee and timer values).
+  public type Init = {
+    name : Text;
+    approvers : [Principal];
+    threshold : Nat;
+    archive_controllers : [Principal]; // controllers of the ICRC-3 log's archives, next to the guardian itself
+    sneed_premium : ?Principal;
+    fee_destination : ?Account;
+    icp_ledger : ?Principal; // tests point these at mocks
+    sns_wasm : ?Principal;
+  };
+
+  public type CyclesRow = {
+    canister_id : Principal;
+    title : Text;
+    kind : Kind;
+    cycles : Nat;
+    at : Int;
+    low : Bool;
+    error : ?Text;
+  };
+
+  public type Upgradable = {
+    canister_id : Principal;
+    kind : Kind;
+    title : Text;
+    current : ?Blob;
+    next : Blob;
+    auto_upgrade : Bool;
+  };
+
+  // ---- other canisters ----
+  public type TransferFromArgs = {
+    spender_subaccount : ?Blob; from : Account; to : Account; amount : Nat; fee : ?Nat; memo : ?Blob; created_at_time : ?Nat64;
+  };
+  public type TransferFromError = {
+    #BadFee : { expected_fee : Nat }; #BadBurn : { min_burn_amount : Nat }; #InsufficientFunds : { balance : Nat };
+    #InsufficientAllowance : { allowance : Nat }; #TooOld; #CreatedInFuture : { ledger_time : Nat64 }; #Duplicate : { duplicate_of : Nat };
+    #TemporarilyUnavailable; #GenericError : { error_code : Nat; message : Text };
+  };
+  public type IcpLedger = actor {
+    icrc2_transfer_from : shared (TransferFromArgs) -> async { #Ok : Nat; #Err : TransferFromError };
+  };
+  public type SnsVersion = {
+    archive_wasm_hash : Blob; root_wasm_hash : Blob; swap_wasm_hash : Blob; ledger_wasm_hash : Blob; governance_wasm_hash : Blob; index_wasm_hash : Blob;
+  };
+  public type SnsWasmCanister = actor {
+    get_wasm : shared query ({ hash : Blob }) -> async { wasm : ?{ wasm : Blob; canister_type : Int32; proposal_id : ?Nat64 } };
+    list_upgrade_steps : shared query ({ limit : Nat32; starting_at : ?SnsVersion; sns_governance_canister_id : ?Principal }) -> async { steps : [{ version : ?SnsVersion }] };
+  };
+  /// The ledger's own list of archives (ICRC ledger suite).
+  public type LedgerActor = actor {
+    archives : shared query () -> async [{ canister_id : Principal; block_range_start : Nat; block_range_end : Nat }];
+  };
+  public type CanisterSettings = { controllers : ?[Principal]; compute_allocation : ?Nat; memory_allocation : ?Nat; freezing_threshold : ?Nat };
+  public type CanisterStatus = {
+    status : { #running; #stopping; #stopped };
+    settings : { controllers : [Principal]; compute_allocation : Nat; memory_allocation : Nat; freezing_threshold : Nat };
+    module_hash : ?Blob;
+    memory_size : Nat;
+    cycles : Nat;
+    idle_cycles_burned_per_day : Nat;
+  };
+  public type Management = actor {
+    canister_status : shared ({ canister_id : Principal }) -> async CanisterStatus;
+    install_code : shared ({ mode : { #install; #reinstall; #upgrade : ?{ skip_pre_upgrade : ?Bool } }; canister_id : Principal; wasm_module : Blob; arg : Blob; sender_canister_version : ?Nat64 }) -> async ();
+    update_settings : shared ({ canister_id : Principal; settings : CanisterSettings; sender_canister_version : ?Nat64 }) -> async ();
+  };
+};

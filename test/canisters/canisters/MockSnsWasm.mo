@@ -13,6 +13,16 @@ persistent actor MockSnsWasm {
     { instances = Array.map<Principal, { root_canister_id : ?Principal }>(deployed, func(r) { { root_canister_id = ?r } }) };
   };
 
+  // the blessed upgrade path, oldest first (what list_upgrade_steps answers)
+  public type SnsVersion = { archive_wasm_hash : Blob; root_wasm_hash : Blob; swap_wasm_hash : Blob; ledger_wasm_hash : Blob; governance_wasm_hash : Blob; index_wasm_hash : Blob };
+  stable var steps : [SnsVersion] = [];
+  public shared func set_steps(s : [{ ledger : Blob; index : Blob; archive : Blob }]) : async () {
+    steps := Array.map<{ ledger : Blob; index : Blob; archive : Blob }, SnsVersion>(s, func(x) { { archive_wasm_hash = x.archive; root_wasm_hash = ""; swap_wasm_hash = ""; ledger_wasm_hash = x.ledger; governance_wasm_hash = ""; index_wasm_hash = x.index } });
+  };
+  public query func list_upgrade_steps(_ : { limit : Nat32; starting_at : ?SnsVersion; sns_governance_canister_id : ?Principal }) : async { steps : [{ version : ?SnsVersion }] } {
+    { steps = Array.map<SnsVersion, { version : ?SnsVersion }>(steps, func(v) { { version = ?v } }) };
+  };
+
   public shared func set_wasm(hash : Blob, bytes : Blob) : async () {
     wasms := Array.append(Array.filter<(Blob, Blob)>(wasms, func((h, _)) { h != hash }), [(hash, bytes)]);
   };
