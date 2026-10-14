@@ -57,6 +57,9 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
   // own and run the timers. The list only shrinks by its own members' hand and cannot be refilled
   // once empty, so a matured deployment ends up with nobody above the approvers.
   stable var admins : [Principal] = init.admins;
+  // The id of the DAO's generic nervous system function that calls approve_op, once registered;
+  // the frontend files approval proposals with it.
+  stable var approve_function_id : ?Nat64 = null;
   stable var sneed_premium_id : ?Principal = init.sneed_premium;
   stable var premium_cache = PremiumClient.emptyCache();
   stable var icp_ledger_id : Principal = switch (init.icp_ledger) { case (?p) { p }; case null { Principal.fromText(ICP_LEDGER_ID) } };
@@ -320,7 +323,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     if (paused) { return #Err("the guardian is paused") };
     if (Principal.isAnonymous(caller)) { return #Err("log in first") };
     if (memo.size() > 500) { return #Err("memo: at most 500 characters") };
-    if (kind == #set_config({ op_fee_e8s = null; premium_op_fee_e8s = null; fee_destination = null; op_ttl_ns = null; self_window_ns = null; status_interval_s = null; low_cycles_threshold = null; cycle_reserve = null; paused = null })) { return #Err("an empty configuration change") };
+    if (kind == #set_config({ op_fee_e8s = null; premium_op_fee_e8s = null; fee_destination = null; op_ttl_ns = null; self_window_ns = null; status_interval_s = null; low_cycles_threshold = null; cycle_reserve = null; paused = null; approve_function_id = null })) { return #Err("an empty configuration change") };
     switch (kind) { case (#install(_)) { await* ensureBlessed() }; case _ {} };
     switch (validateOp(child, kind)) { case (?e) { return #Err(e) }; case null {} };
     let who = switch (payer) { case (?p) { p }; case null { caller } };
@@ -522,6 +525,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     switch (u.low_cycles_threshold) { case (?v) { note("low_cycles_threshold", Nat.toText(low_cycles_threshold), Nat.toText(v)); low_cycles_threshold := v }; case null {} };
     switch (u.cycle_reserve) { case (?v) { note("cycle_reserve", Nat.toText(cycle_reserve), Nat.toText(v)); cycle_reserve := v }; case null {} };
     switch (u.paused) { case (?v) { note("paused", debug_show(paused), debug_show(v)); paused := v }; case null {} };
+    switch (u.approve_function_id) { case (?v) { note("approve_function_id", debug_show(approve_function_id), debug_show(v)); approve_function_id := v }; case null {} };
   };
 
   // ---- upgrades along the blessed path ----
@@ -544,10 +548,15 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     let c = await* refreshChildStatus(c0);
     let currentHash = switch (c.status) { case (?s) { switch (s.error) { case (?e) { return #Err("could not read the canister's status: " # e) }; case null { s.module_hash } } }; case null { null } };
     let cur = switch (currentHash) { case (?h) { h }; case null { return #Err("the canister has no code installed") } };
-    if (cur == hash) { return #Err("already on " # hex(hash)) };
-    switch (nextBlessed(c.kind, cur)) {
-      case (?n) { if (n != hash) { return #Err("the next blessed " # kindText(c.kind) # " after " # hex(cur) # " is " # hex(n) # ", not " # hex(hash) # "; upgrades go one step at a time") } };
-      case null { return #Err("the canister's current code (" # hex(cur) # ") is not on the blessed list, or is already its last version") };
+    // the same code with an explicit argument is a reconfiguration (e.g. pointing a ledger at its
+    // index through ICRC-106); otherwise the hash must be the next blessed one
+    let reconfigure = cur == hash and arg != null;
+    if (cur == hash and not reconfigure) { return #Err("already on " # hex(hash) # "; give an upgrade argument to reconfigure") };
+    if (not reconfigure) {
+      switch (nextBlessed(c.kind, cur)) {
+        case (?n) { if (n != hash) { return #Err("the next blessed " # kindText(c.kind) # " after " # hex(cur) # " is " # hex(n) # ", not " # hex(hash) # "; upgrades go one step at a time") } };
+        case null { return #Err("the canister's current code (" # hex(cur) # ") is not on the blessed list, or is already its last version") };
+      };
     };
     let wasm = switch (await* fetchWasm(hash)) { case (#Ok(w)) { w }; case (#Err(e)) { return #Err(e) } };
     let argBytes = switch (arg) { case (?a) { a }; case null { defaultArg(c.kind) } };
@@ -560,7 +569,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     };
     let after = await* refreshChildStatus(c);
     putChild({ after with last_upgrade = ?{ at = Time.now(); from = ?cur; to = hash; by }; last_upgrade_error = null });
-    icrc3_add("guardian_upgrade", [("cid", #Nat(cid)), ("canister", pv(c.canister_id)), ("kind", #Text(kindText(c.kind))), ("from", #Blob(cur)), ("to", #Blob(hash)), ("by", #Text(by))]);
+    icrc3_add("guardian_upgrade", [("cid", #Nat(cid)), ("canister", pv(c.canister_id)), ("kind", #Text(kindText(c.kind))), ("from", #Blob(cur)), ("to", #Blob(hash)), ("by", #Text(by)), ("reconfigure", #Text(debug_show(reconfigure)))]);
     logText(cid, "info", "upgraded " # kindText(c.kind) # " " # Principal.toText(c.canister_id) # " " # hex(cur) # " -> " # hex(hash) # " (" # by # ")");
     #Ok;
   };
@@ -669,7 +678,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
   // ---- queries ----
   public query func get_config() : async T.Config {
     {
-      name; approvers; threshold; admins; op_fee_e8s; premium_op_fee_e8s; fee_destination; sneed_premium = sneed_premium_id; icp_ledger = icp_ledger_id; sns_wasm = sns_wasm_id;
+      name; approvers; threshold; admins; approve_function_id; op_fee_e8s; premium_op_fee_e8s; fee_destination; sneed_premium = sneed_premium_id; icp_ledger = icp_ledger_id; sns_wasm = sns_wasm_id;
       op_ttl_ns; self_window_ns; status_interval_s; low_cycles_threshold; cycle_reserve; paused; children = children.size(); ops = ops.size();
       blessed = { ledger = blessed_ledger; index = blessed_index; archive = blessed_archive }; blessed_at; blessed_error; status_last_run; own_cycles = Cycles.balance();
     };
@@ -727,6 +736,13 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     #Ok;
   };
   public query func get_admins() : async [Principal] { admins };
+  /// Admins record the generic function's id during the trial period (afterwards: a #set_config op).
+  public shared ({ caller }) func admin_set_approve_function_id(id : ?Nat64) : async { #Ok; #Err : Text } {
+    if (not isAdmin(caller)) { return #Err("admins only") };
+    icrc3_add("guardian_config_update", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("key", #Text("approve_function_id")), ("old_value", #Text(debug_show(approve_function_id))), ("value", #Text(debug_show(id)))]);
+    approve_function_id := id;
+    #Ok;
+  };
   public shared ({ caller }) func admin_run_status() : async { #Ok : Nat; #Err : Text } { if (not isAdmin(caller)) { return #Err("admins only") }; #Ok(await* statusRunImpl()) };
   public shared ({ caller }) func admin_run_auto_upgrade() : async { #Ok : Nat; #Err : Text } { if (not isAdmin(caller)) { return #Err("admins only") }; #Ok(await* autoUpgradeImpl()) };
 

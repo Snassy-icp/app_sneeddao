@@ -69,6 +69,24 @@ module {
     with_index : Bool;
   };
 
+  /// An index canister for a ledger that already exists (ours or anyone's). A ledger may have
+  /// several indexes; a redundant one is still useful, and one the ledger cannot be pointed at
+  /// (ICRC-106) is still queryable on its own.
+  public type IndexConfig = { ledger : Principal; control : ControlChoice };
+  public type IndexLaunch = {
+    id : Nat;
+    creator : Principal;
+    created_at : Int;
+    config : IndexConfig;
+    quote : Quote;
+    paid_e8s : Nat;
+    index : ?Principal;
+    index_wasm_hash : ?Blob;
+    controllers : [Principal];
+    status : LaunchStatus;
+    steps : [(Text, Int)];
+  };
+
   // ---- quotes, launches, configuration ----
   public type Quote = {
     creation_fee_e8s : Nat; // the pad's fee, forwarded to the fee destination
@@ -106,6 +124,8 @@ module {
     creation_fee_e8s : Nat;
     premium_creation_fee_e8s : Nat; // for Sneed Premium members
     sneed_dao_control_fee_e8s : Nat; // added when control is handed to Sneed DAO
+    index_creation_fee_e8s : Nat;    // an index for an existing ledger
+    premium_index_creation_fee_e8s : Nat;
     sneed_premium : ?Principal;     // the membership canister asked (none: everybody pays the standard fee)
     ledger_cycles : Nat;
     index_cycles : Nat;
@@ -122,6 +142,8 @@ module {
     creation_fee_e8s : ?Nat;
     premium_creation_fee_e8s : ?Nat;
     sneed_dao_control_fee_e8s : ?Nat;
+    index_creation_fee_e8s : ?Nat;
+    premium_index_creation_fee_e8s : ?Nat;
     ledger_cycles : ?Nat;
     index_cycles : ?Nat;
     fee_destination : ?Account;
@@ -161,6 +183,7 @@ module {
   };
   /// SneedApp keeps each user's list of minted canisters; the pad adds its ledgers there so
   /// they show up in the wallet like any SneedApp mint (the pad must be an authorized caller).
+  public type AnyLedger = actor { icrc1_symbol : shared query () -> async Text };
   public type SneedApp = actor {
     registerCanisterFor : shared (Principal, Principal, Text) -> async { #Ok; #Err : Text };
   };

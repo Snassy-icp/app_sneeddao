@@ -160,6 +160,23 @@ Per deployment, three GNSFs on the DAO's governance: `approve_op(id)` with valid
 `validate_approve_op(id)`, and nothing else. (`cancel_op` by an approver is optional.)
 Guardians act directly; everybody else's calls are permissionless.
 
+## Around the custody canisters
+
+- **Handover of any ledger** (`/studio/<ledger>/handover`, also `/custody`): for a ledger the
+  signed-in principal controls, the wizard reads the suite (ledger, announced or pad-made
+  indexes, archives), adds the custody canister as controller, registers each canister with
+  the maintainer's policy (a veto council is optional) and, by default, steps down so the
+  custody canister is the only controller. The guardian refuses code that is not blessed, so
+  the wizard says so per canister before anything moves.
+- **Index for an existing ledger** (`/studio/<ledger>/index`, `/studio/index`): the pad's
+  `create_index` creates an index on the blessed index code for any ICRC-1 ledger, with the
+  same payment flow and control choices as a launch, listed in the creator's wallet. A ledger
+  may have several. Announcing it through ICRC-106 is a same-code upgrade with an argument:
+  under custody that is an `#install` op with the current hash and an explicit `arg` (a
+  reconfiguration, allowed when the hash is unchanged); otherwise a dfx upgrade by the
+  controller. The safety check accepts an index the user names (`?index=`) and verifies it
+  indexes the ledger.
+
 ## Not in v1
 
 Custom wasms, non-ledger canisters, paying for cycles, moving children between

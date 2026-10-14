@@ -166,6 +166,16 @@ describe('sneed_guardian', () => {
     await payFee(guardianId, op);
     unwrap(await gDao.approve_op(op.id));
     expect(errOf(await gAlice.execute_op(op.id))).toMatch(/not on the blessed list, or is already its last version|one step at a time|already on/);
+    // the same hash with an explicit argument is a reconfiguration (how a ledger gets pointed at an index)
+    const re = unwrap(await gAlice.stage_op(childId, { install: { hash: V2, arg: [new Uint8Array(IDL.encode([IDL.Opt(IDL.Record({}))], [[]]))] } }, 'reconfigure', []));
+    await payFee(guardianId, re);
+    unwrap(await gDao.approve_op(re.id));
+    unwrap(await gAlice.execute_op(re.id));
+    expect((await g.get_child(childId))[0].last_upgrade[0].by).toMatch(/op/);
+    const same = unwrap(await gAlice.stage_op(childId, { install: { hash: V2, arg: [] } }, 'same again', []));
+    await payFee(guardianId, same);
+    unwrap(await gDao.approve_op(same.id));
+    expect(errOf(await gAlice.execute_op(same.id))).toMatch(/already on/);
     const bogus = Uint8Array.from({ length: 32 }, () => 9);
     expect(errOf(await gAlice.stage_op(childId, { install: { hash: bogus, arg: [] } }, '', []))).toMatch(/not a hash the NNS blessed/);
   });
@@ -198,7 +208,7 @@ describe('sneed_guardian', () => {
   });
 
   it('changes its own configuration and approvers only through ops', async () => {
-    const op = unwrap(await gAlice.stage_op(guardianId, { set_config: { op_fee_e8s: [50_000_000n], premium_op_fee_e8s: [], fee_destination: [], op_ttl_ns: [], self_window_ns: [], status_interval_s: [], low_cycles_threshold: [], cycle_reserve: [], paused: [] } }, 'cheaper', []));
+    const op = unwrap(await gAlice.stage_op(guardianId, { set_config: { op_fee_e8s: [50_000_000n], premium_op_fee_e8s: [], fee_destination: [], op_ttl_ns: [], self_window_ns: [], status_interval_s: [], low_cycles_threshold: [], cycle_reserve: [], paused: [], approve_function_id: [] } }, 'cheaper', []));
     expect(op.fee_e8s).toBe(0n); // ops on the guardian itself are free
     unwrap(await gDao.approve_op(op.id));
     unwrap(await gAlice.execute_op(op.id));

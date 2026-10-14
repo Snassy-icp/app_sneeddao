@@ -118,11 +118,26 @@ function Guardian() {
     const isAdmin = !!(cfg && me && cfg.admins.some((p) => p.toText() === me));
     const isApprover = !!(cfg && me && (cfg.approvers.some((p) => p.toText() === me) || isAdmin));
 
+    const functionId = cfg?.approve_function_id?.[0] ?? null;
+    /// One step for a maintainer with a Sneed neuron: pay what is still due into the op's payment
+    /// account, wait for the ledger to show it, then file the approval proposal from the neuron.
     const proposeApproval = async (op) => {
-        if (!dep.functionId) { setError('The DAO has not registered the approve_op generic function for this deployment yet. Propose it by hand: ExecuteGenericNervousSystemFunction with the function id, payload = candid (op id : nat).'); return; }
-        if (!neurons?.length) { setError('You hold no Sneed neuron that may propose.'); return; }
-        await call(`Propose approval of op #${op.id}`, async () => {
-            const v = await actor(false).validate_approve_op(op.id);
+        if (functionId === null) { setError('The DAO has not registered the approve_op generic function for this deployment yet (an admin records its id here once it is). Until then, propose by hand: ExecuteGenericNervousSystemFunction with the function id and payload = candid (op id : nat).'); return; }
+        if (!neurons?.length) { setError('You hold no Sneed neuron that may propose. Approval proposals are filed from your own neuron.'); return; }
+        await call(`Pay and propose approval of op #${op.id}`, async () => {
+            const a = actor(true);
+            if (op.fee_e8s > 0n) {
+                let pay = await a.get_op_payment(op.id);
+                if ('Err' in pay) throw new Error(pay.Err);
+                const due = pay.Ok.amount_to_send_e8s - pay.Ok.paid_e8s;
+                if (due > 0n) {
+                    const ledger = createLedgerActor(ICP_LEDGER, { agentOptions: { identity, host: HOST } });
+                    const r = await ledger.icrc1_transfer({ from_subaccount: [], to: { owner: pay.Ok.account.owner, subaccount: pay.Ok.account.subaccount }, amount: due, fee: [], memo: [], created_at_time: [] });
+                    if ('Err' in r) throw new Error(`fee transfer failed: ${JSON.stringify(r.Err, (k, v) => (typeof v === 'bigint' ? v.toString() : v))}`);
+                    for (let i = 0; i < 10; i++) { pay = await a.get_op_payment(op.id); if ('Ok' in pay && pay.Ok.paid_e8s >= pay.Ok.amount_to_send_e8s) break; await new Promise((res) => setTimeout(res, 1500)); }
+                }
+            }
+            const v = await a.validate_approve_op(op.id);
             if ('Err' in v) throw new Error(v.Err);
             const gov = createSnsGovernanceActor(SNEED_GOVERNANCE, { agentOptions: { identity, host: HOST } });
             const payload = new Uint8Array(IDL.encode([IDL.Nat], [op.id]));
@@ -132,7 +147,7 @@ function Guardian() {
                     title: `Approve custody op #${op.id}: ${opText(op, children).slice(0, 80)}`,
                     url: `https://app.sneeddao.com/guardian?deployment=${dep.key}`,
                     summary: `${opText(op, children)}\n\nStaged by ${op.staged_by.toText()}${op.memo ? ` with memo: ${op.memo}` : ''}.\n\nAdopting this proposal calls approve_op(${op.id}) on ${dep.name} (${dep.id}). The child's own rules (veto council, window) still apply before it executes.`,
-                    action: [{ ExecuteGenericNervousSystemFunction: { function_id: BigInt(dep.functionId), payload } }],
+                    action: [{ ExecuteGenericNervousSystemFunction: { function_id: BigInt(functionId), payload } }],
                 } }],
             });
             const cmd = r.command[0];
@@ -292,6 +307,7 @@ function Guardian() {
                     </div>
                     {isApprover && <div style={{ fontSize: '0.8rem', color: amber, marginTop: 6 }}>You are an {isAdmin ? 'admin' : 'approver'} of this deployment{isAdmin ? ': your approval alone counts as the whole threshold' : ''}.</div>}
                     {cfg && cfg.admins.length > 0 && <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>Admins (trial period): {cfg.admins.map((p) => <PrincipalDisplay key={p.toText()} principal={p} short={true} showCopyButton={false} isAuthenticated={isAuthenticated} />)}{isAdmin && <button type="button" style={btn()} disabled={!!busy} onClick={() => call('Remove me as admin', () => actor(true).admin_remove_admin(Principal.fromText(me)))}>remove me</button>}</div>}
+                    {cfg && <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: 4 }}>approve_op generic function id: {functionId !== null ? String(functionId) : 'not registered yet'}{isAdmin && <button type="button" style={{ ...btn(), marginLeft: 8 }} disabled={!!busy} onClick={() => { const v = window.prompt('The id of the DAO generic function that calls approve_op (empty to clear)', functionId !== null ? String(functionId) : ''); if (v === null) return; call('Set function id', () => actor(true).admin_set_approve_function_id(v.trim() ? [BigInt(v.trim())] : [])); }}>set</button>}</div>}
                     {isAdmin && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}><button type="button" style={btn()} disabled={!!busy} onClick={() => call('Status run', () => actor(true).admin_run_status())}><FaSync size={10} /> Run status now</button><button type="button" style={btn()} disabled={!!busy} onClick={() => call('Auto-upgrade run', () => actor(true).admin_run_auto_upgrade())}><FaPlay size={10} /> Run auto-upgrade now</button><button type="button" style={btn()} disabled={!!busy} onClick={() => call('Blessed list', () => actor(true).refresh_blessed())}><FaSync size={10} /> Re-read blessed versions</button></div>}
                     {shownOps.length === 0 && <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginTop: 8 }}>No {showAllOps ? '' : 'open '}ops.</div>}
                     <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
@@ -337,7 +353,7 @@ function Guardian() {
                                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
                                             {s === 'pending' && (isApprover
                                                 ? <button type="button" style={btn('#10b981')} disabled={!!busy} onClick={() => call(`Approve #${op.id}`, () => actor(true).approve_op(op.id))}><FaCheck size={10} /> Approve (you are an approver)</button>
-                                                : <button type="button" style={btn('#10b981')} disabled={!!busy} onClick={() => proposeApproval(op)} title={dep.functionId ? 'File a Sneed DAO proposal from your neuron' : 'The approve_op function is not registered with the DAO yet'}><FaCheck size={10} /> Propose approval</button>)}
+                                                : <button type="button" style={btn('#10b981')} disabled={!!busy} onClick={() => proposeApproval(op)} title={functionId !== null ? 'Pay what is due, then file a Sneed DAO proposal from your neuron' : 'The approve_op function is not registered with the DAO yet'}><FaCheck size={10} /> {op.fee_e8s > 0n && op.fee_paid_e8s < op.fee_e8s ? 'Pay and propose approval' : 'Propose approval'}</button>)}
                                             {guard && <button type="button" style={btn('#10b981')} disabled={!!busy} onClick={() => call(`Go-ahead #${op.id}`, () => actor(true).ok_op(op.id))}><FaCheck size={10} /> Go-ahead</button>}
                                             {guard && <button type="button" style={btn('#ef4444')} disabled={!!busy} onClick={() => call(`Veto #${op.id}`, () => actor(true).veto_op(op.id))}><FaBan size={10} /> Veto</button>}
                                             {op.fee_e8s > 0n && op.fee_paid_e8s < op.fee_e8s && <button type="button" style={btn(amber)} onClick={() => setPayFor(payFor === op.id ? null : op.id)}>Pay the fee</button>}

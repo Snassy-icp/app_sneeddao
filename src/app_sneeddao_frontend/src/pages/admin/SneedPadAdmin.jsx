@@ -51,7 +51,7 @@ export default function SneedPadAdmin() {
         try {
             const [cfg, cyc, l, lines, adm] = await Promise.all([a.get_config(), a.get_cycle_balance(), a.list_launches(0n, 200n), a.get_text_log(60n), a.get_admins()]);
             setConfig(cfg); setCycles(cyc); setLaunches([...l.launches].reverse()); setLog(lines); setAdmins(adm.map((p) => p.toText()));
-            setForm({ fee: (Number(cfg.creation_fee_e8s) / 1e8).toString(), premiumFee: (Number(cfg.premium_creation_fee_e8s) / 1e8).toString(), controlFee: (Number(cfg.sneed_dao_control_fee_e8s) / 1e8).toString(), ledgerT: (Number(cfg.ledger_cycles) / 1e12).toString(), indexT: (Number(cfg.index_cycles) / 1e12).toString(), reserveT: (Number(cfg.cycle_reserve) / 1e12).toString(), feeOwner: cfg.fee_destination.owner.toText(), paused: cfg.paused, followNns: cfg.follow_nns, guardians: (cfg.guardians || []).map((p) => p.toText()).join('\n') });
+            setForm({ fee: (Number(cfg.creation_fee_e8s) / 1e8).toString(), premiumFee: (Number(cfg.premium_creation_fee_e8s) / 1e8).toString(), controlFee: (Number(cfg.sneed_dao_control_fee_e8s) / 1e8).toString(), ledgerT: (Number(cfg.ledger_cycles) / 1e12).toString(), indexT: (Number(cfg.index_cycles) / 1e12).toString(), reserveT: (Number(cfg.cycle_reserve) / 1e12).toString(), feeOwner: cfg.fee_destination.owner.toText(), paused: cfg.paused, indexFee: (Number(cfg.index_creation_fee_e8s) / 1e8).toString(), premiumIndexFee: (Number(cfg.premium_index_creation_fee_e8s) / 1e8).toString(), followNns: cfg.follow_nns, guardians: (cfg.guardians || []).map((p) => p.toText()).join('\n') });
         } catch (e) { setError(`Could not read the pad: ${e?.message || e}`); }
     }, [pad]);
     useEffect(() => { load(); }, [load]);
@@ -74,6 +74,7 @@ export default function SneedPadAdmin() {
         if ([fee, premiumFee, controlFee, ledger, index, reserve].some((v) => v === null) || !owner) throw new Error('check the numbers and the fee destination');
         return a.admin_set_config({
             creation_fee_e8s: [fee], premium_creation_fee_e8s: [premiumFee], sneed_dao_control_fee_e8s: [controlFee],
+            index_creation_fee_e8s: [BigInt(Math.round(Number(form.indexFee || 0) * 1e8))], premium_index_creation_fee_e8s: [BigInt(Math.round(Number(form.premiumIndexFee || 0) * 1e8))],
             ledger_cycles: [ledger], index_cycles: [index], cycle_reserve: [reserve],
             fee_destination: [{ owner, subaccount: [] }], paused: [!!form.paused], follow_nns: [!!form.followNns],
             guardians: [String(form.guardians || '').split(/[\s,]+/).filter(Boolean).map((t) => Principal.fromText(t))],

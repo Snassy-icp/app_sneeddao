@@ -93,6 +93,8 @@ export const TokenConfig = IDL.Record({
   minting: MintingPolicy, fee_collector: IDL.Opt(Account), control: ControlChoice, with_index: IDL.Bool,
 });
 const Quote = IDL.Record({ creation_fee_e8s: IDL.Nat, control_fee_e8s: IDL.Nat, ledger_cycles: IDL.Nat, index_cycles: IDL.Nat, icp_for_cycles_e8s: IDL.Nat, ledger_fees_e8s: IDL.Nat, total_e8s: IDL.Nat, xdr_permyriad_per_icp: IDL.Nat64, premium: IDL.Bool });
+const IndexConfig = IDL.Record({ ledger: IDL.Principal, control: ControlChoice });
+const IndexLaunch = IDL.Record({ id: IDL.Nat, creator: IDL.Principal, created_at: IDL.Int, config: IndexConfig, quote: Quote, paid_e8s: IDL.Nat, index: IDL.Opt(IDL.Principal), index_wasm_hash: IDL.Opt(IDL.Vec(IDL.Nat8)), controllers: IDL.Vec(IDL.Principal), status: IDL.Variant({ created: IDL.Null, failed: IDL.Text }), steps: IDL.Vec(IDL.Tuple(IDL.Text, IDL.Int)) });
 const Launch = IDL.Record({
   id: IDL.Nat, creator: IDL.Principal, created_at: IDL.Int, config: TokenConfig, quote: Quote, paid_e8s: IDL.Nat,
   ledger: IDL.Opt(IDL.Principal), index: IDL.Opt(IDL.Principal), ledger_wasm_hash: IDL.Opt(IDL.Vec(IDL.Nat8)), index_wasm_hash: IDL.Opt(IDL.Vec(IDL.Nat8)),
@@ -100,13 +102,18 @@ const Launch = IDL.Record({
 });
 const PadConfig = IDL.Record({
   ledger_wasm_hash: IDL.Opt(IDL.Vec(IDL.Nat8)), index_wasm_hash: IDL.Opt(IDL.Vec(IDL.Nat8)), ledger_wasm_bytes: IDL.Nat, index_wasm_bytes: IDL.Nat,
-  creation_fee_e8s: IDL.Nat, premium_creation_fee_e8s: IDL.Nat, sneed_dao_control_fee_e8s: IDL.Nat, sneed_premium: IDL.Opt(IDL.Principal), ledger_cycles: IDL.Nat, index_cycles: IDL.Nat, fee_destination: Account, cycle_reserve: IDL.Nat, paused: IDL.Bool,
+  creation_fee_e8s: IDL.Nat, premium_creation_fee_e8s: IDL.Nat, sneed_dao_control_fee_e8s: IDL.Nat, index_creation_fee_e8s: IDL.Nat, premium_index_creation_fee_e8s: IDL.Nat, sneed_premium: IDL.Opt(IDL.Principal), ledger_cycles: IDL.Nat, index_cycles: IDL.Nat, fee_destination: Account, cycle_reserve: IDL.Nat, paused: IDL.Bool,
   follow_nns: IDL.Bool, guardians: IDL.Vec(IDL.Principal), wasm_last_check: IDL.Int, wasm_last_refresh: IDL.Int, wasm_last_error: IDL.Opt(IDL.Text),
 });
 const Registration = IDL.Record({ canister_id: IDL.Principal, start: IDL.Nat, proposal_id: IDL.Opt(IDL.Nat64), attempts: IDL.Nat, last_error: IDL.Opt(IDL.Text) });
 const RegistrationStatus = IDL.Record({ governance: IDL.Principal, neuron: IDL.Opt(IDL.Vec(IDL.Nat8)), registrations: IDL.Vec(Registration) });
 export const padIdl = ({ IDL }) => IDL.Service({
   ...icrc3Service(IDL),
+  get_index_quote: IDL.Func([IndexConfig], [IDL.Variant({ Ok: Quote, Err: IDL.Text })], []),
+  create_index: IDL.Func([IndexConfig], [IDL.Variant({ Ok: IndexLaunch, Err: IDL.Text })], []),
+  list_index_launches: IDL.Func([IDL.Nat, IDL.Nat], [IDL.Record({ total: IDL.Nat, launches: IDL.Vec(IndexLaunch) })], ['query']),
+  get_index_launches_by_creator: IDL.Func([IDL.Principal], [IDL.Vec(IndexLaunch)], ['query']),
+  get_indexes_of_ledger: IDL.Func([IDL.Principal], [IDL.Vec(IDL.Principal)], ['query']),
   get_quote: IDL.Func([TokenConfig], [IDL.Variant({ Ok: Quote, Err: IDL.Text })], []),
   create_token: IDL.Func([TokenConfig], [IDL.Variant({ Ok: Launch, Err: IDL.Text })], []),
   get_launch: IDL.Func([IDL.Nat], [IDL.Opt(Launch)], ['query']),
@@ -120,7 +127,7 @@ export const padIdl = ({ IDL }) => IDL.Service({
   admin_set_wasm_hashes: IDL.Func([IDL.Opt(IDL.Vec(IDL.Nat8)), IDL.Opt(IDL.Vec(IDL.Nat8))], [IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })], []),
   admin_fetch_wasms: IDL.Func([], [IDL.Variant({ Ok: IDL.Record({ ledger_bytes: IDL.Nat, index_bytes: IDL.Nat }), Err: IDL.Text })], []),
   refresh_wasms: IDL.Func([], [IDL.Variant({ Ok: IDL.Record({ ledger_bytes: IDL.Nat, index_bytes: IDL.Nat, changed: IDL.Bool }), Err: IDL.Text })], []),
-  admin_set_config: IDL.Func([IDL.Record({ creation_fee_e8s: IDL.Opt(IDL.Nat), premium_creation_fee_e8s: IDL.Opt(IDL.Nat), sneed_dao_control_fee_e8s: IDL.Opt(IDL.Nat), ledger_cycles: IDL.Opt(IDL.Nat), index_cycles: IDL.Opt(IDL.Nat), fee_destination: IDL.Opt(Account), cycle_reserve: IDL.Opt(IDL.Nat), paused: IDL.Opt(IDL.Bool), follow_nns: IDL.Opt(IDL.Bool), guardians: IDL.Opt(IDL.Vec(IDL.Principal)) })], [IDL.Variant({ Ok: PadConfig, Err: IDL.Text })], []),
+  admin_set_config: IDL.Func([IDL.Record({ creation_fee_e8s: IDL.Opt(IDL.Nat), premium_creation_fee_e8s: IDL.Opt(IDL.Nat), sneed_dao_control_fee_e8s: IDL.Opt(IDL.Nat), index_creation_fee_e8s: IDL.Opt(IDL.Nat), premium_index_creation_fee_e8s: IDL.Opt(IDL.Nat), ledger_cycles: IDL.Opt(IDL.Nat), index_cycles: IDL.Opt(IDL.Nat), fee_destination: IDL.Opt(Account), cycle_reserve: IDL.Opt(IDL.Nat), paused: IDL.Opt(IDL.Bool), follow_nns: IDL.Opt(IDL.Bool), guardians: IDL.Opt(IDL.Vec(IDL.Principal)) })], [IDL.Variant({ Ok: PadConfig, Err: IDL.Text })], []),
   admin_set_canisters: IDL.Func([IDL.Record({ icp_ledger: IDL.Opt(IDL.Principal), cmc: IDL.Opt(IDL.Principal), sns_wasm: IDL.Opt(IDL.Principal), governance: IDL.Opt(IDL.Principal), root: IDL.Opt(IDL.Principal), blackhole: IDL.Opt(IDL.Principal), sneed_premium: IDL.Opt(IDL.Opt(IDL.Principal)), sneedapp: IDL.Opt(IDL.Opt(IDL.Principal)) })], [IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })], []),
   admin_set_canister_controllers: IDL.Func([IDL.Principal, IDL.Vec(IDL.Principal)], [IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })], []),
   admin_set_registration_neuron: IDL.Func([IDL.Opt(IDL.Vec(IDL.Nat8))], [IDL.Variant({ Ok: IDL.Null, Err: IDL.Text })], []),

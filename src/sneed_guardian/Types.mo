@@ -48,6 +48,7 @@ module {
     low_cycles_threshold : ?Nat;
     cycle_reserve : ?Nat;
     paused : ?Bool;
+    approve_function_id : ??Nat64; // the DAO's generic function that calls approve_op (null = not registered yet)
   };
 
   public type OpKind = {
@@ -90,6 +91,7 @@ module {
     approvers : [Principal];
     threshold : Nat;
     admins : [Principal];
+    approve_function_id : ?Nat64;
     op_fee_e8s : Nat;
     premium_op_fee_e8s : Nat;
     fee_destination : Account;

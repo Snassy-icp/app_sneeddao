@@ -84,6 +84,10 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   stable var creation_fee_e8s : Nat = 500_000_000; // 5 ICP
   stable var premium_creation_fee_e8s : Nat = 250_000_000; // 2.5 ICP for Sneed Premium members
   stable var sneed_dao_control_fee_e8s : Nat = 500_000_000; // 5 ICP more when control goes to Sneed DAO, which then keeps the canisters running
+  stable var index_creation_fee_e8s : Nat = 100_000_000; // 1 ICP for an index of an existing ledger
+  stable var premium_index_creation_fee_e8s : Nat = 50_000_000;
+  stable var index_launches : [T.IndexLaunch] = [];
+  stable var next_index_launch_id : Nat = 1;
   // The wasm hashes follow the NNS: once a day the pad asks the SNS wasm
   // canister for the latest SNS version and takes its ledger and index
   // hashes, so nobody has to run anything. The DAO can pin hashes instead.
@@ -202,17 +206,8 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   private func step(l : T.Launch, name : Text) : T.Launch { { l with steps = Array.append(l.steps, [(name, Time.now())]) } };
 
   // ---- validation ----
-  private func validate(c : T.TokenConfig) : ?Text {
-    if (c.symbol.size() == 0 or c.symbol.size() > 12) { return ?"symbol must be 1 to 12 characters" };
-    if (c.name.size() == 0 or c.name.size() > 64) { return ?"name must be 1 to 64 characters" };
-    if (c.decimals > 18) { return ?"decimals must be at most 18" };
-    switch (c.logo) { case (?l) { if (l.size() > 200_000) { return ?"logo must be a data URL of at most 200 kB" }; if (not Text.startsWith(l, #text "data:image/")) { return ?"logo must be a data:image/... URL" } }; case null {} };
-    var total = 0;
-    for (a in c.allocations.vals()) { if (a.amount == 0) { return ?"an allocation of 0 makes no sense" }; total += a.amount };
-    if (total == 0) { return ?"at least one allocation is needed: a token with no supply cannot be traded" };
-    if (c.allocations.size() > 1000) { return ?"at most 1000 allocations at launch; more can be distributed afterwards" };
-    switch (c.minting) { case (#principal(p)) { if (Principal.isAnonymous(p)) { return ?"the anonymous principal cannot be the minting account; choose #nobody for a fixed supply" } }; case _ {} };
-    switch (c.control) {
+  private func validateControl(control : T.ControlChoice) : ?Text {
+    switch (control) {
       case (#keep_with(ps)) {
         if (ps.size() > 10) { return ?"at most 10 extra controllers" };
         for (p in ps.vals()) { if (Principal.isAnonymous(p)) { return ?"the anonymous principal cannot be a controller" } };
@@ -228,6 +223,19 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
       };
       case _ {};
     };
+    null;
+  };
+  private func validate(c : T.TokenConfig) : ?Text {
+    if (c.symbol.size() == 0 or c.symbol.size() > 12) { return ?"symbol must be 1 to 12 characters" };
+    if (c.name.size() == 0 or c.name.size() > 64) { return ?"name must be 1 to 64 characters" };
+    if (c.decimals > 18) { return ?"decimals must be at most 18" };
+    switch (c.logo) { case (?l) { if (l.size() > 200_000) { return ?"logo must be a data URL of at most 200 kB" }; if (not Text.startsWith(l, #text "data:image/")) { return ?"logo must be a data:image/... URL" } }; case null {} };
+    var total = 0;
+    for (a in c.allocations.vals()) { if (a.amount == 0) { return ?"an allocation of 0 makes no sense" }; total += a.amount };
+    if (total == 0) { return ?"at least one allocation is needed: a token with no supply cannot be traded" };
+    if (c.allocations.size() > 1000) { return ?"at most 1000 allocations at launch; more can be distributed afterwards" };
+    switch (c.minting) { case (#principal(p)) { if (Principal.isAnonymous(p)) { return ?"the anonymous principal cannot be the minting account; choose #nobody for a fixed supply" } }; case _ {} };
+    switch (validateControl(c.control)) { case (?e) { return ?e }; case null {} };
     null;
   };
   /// The SNS root a creator hands control to must be one the NNS deployed.
@@ -472,6 +480,146 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     #Err(why);
   };
 
+  // ---- an index for an existing ledger ----
+  private func makeIndexQuote(control : T.ControlChoice, rate : Nat64, premium : Bool) : T.Quote {
+    let forCycles = icpForCycles(index_cycles, rate);
+    let fees = ICP_FEE * 3;
+    let fee = if (premium) { premium_index_creation_fee_e8s } else { index_creation_fee_e8s };
+    let controlFee = handoverFee(control);
+    { creation_fee_e8s = fee; control_fee_e8s = controlFee; ledger_cycles = 0; index_cycles = index_cycles; icp_for_cycles_e8s = forCycles; ledger_fees_e8s = fees; total_e8s = fee + controlFee + forCycles + fees; xdr_permyriad_per_icp = rate; premium };
+  };
+  private func findIndexLaunch(id : Nat) : ?T.IndexLaunch { Array.find<T.IndexLaunch>(index_launches, func(l) { l.id == id }) };
+  private func putIndexLaunch(l : T.IndexLaunch) {
+    if (findIndexLaunch(l.id) == null) { index_launches := Array.append(index_launches, [l]) }
+    else { index_launches := Array.map<T.IndexLaunch, T.IndexLaunch>(index_launches, func(x) { if (x.id == l.id) { l } else { x } }) };
+  };
+  private func istep(l : T.IndexLaunch, name : Text) : T.IndexLaunch { { l with steps = Array.append(l.steps, [(name, Time.now())]) } };
+  private func ifail(cid : Nat, l : T.IndexLaunch, why : Text) : { #Ok : T.IndexLaunch; #Err : Text } {
+    putIndexLaunch({ l with status = #failed(why) });
+    logText(cid, "error", "index launch " # Nat.toText(l.id) # " failed: " # why);
+    icrc3_add("sneedpad_launch_failed", [("cid", #Nat(cid)), ("launch", #Nat(l.id)), ("creator", Icrc3Log.principal(l.creator)), ("reason", #Text(why)), ("kind", #Text("index"))]);
+    #Err(why);
+  };
+  /// What an index for an existing ledger costs the caller today.
+  public shared ({ caller }) func get_index_quote(c : T.IndexConfig) : async { #Ok : T.Quote; #Err : Text } {
+    switch (validateControl(c.control)) { case (?e) { return #Err(e) }; case null {} };
+    let premium = await* isPremium(caller);
+    let rate = try { (await cmc().get_icp_xdr_conversion_rate()).data.xdr_permyriad_per_icp } catch (e) { return #Err("could not read the ICP/XDR rate: " # Error.message(e)) };
+    #Ok(makeIndexQuote(c.control, rate, premium));
+  };
+  /// Create an index canister (the NNS-blessed index wasm) for a ledger that already exists. Same
+  /// payment flow as a token launch. Pointing the ledger at it (ICRC-106) is the ledger
+  /// controller's job afterwards; the index works without it.
+  public shared ({ caller }) func create_index(c : T.IndexConfig) : async { #Ok : T.IndexLaunch; #Err : Text } {
+    if (paused) { return #Err("the launchpad is paused") };
+    if (Principal.isAnonymous(caller)) { return #Err("log in first") };
+    switch (validateControl(c.control)) { case (?e) { return #Err(e) }; case null {} };
+    let iw = switch (index_wasm) { case (?w) { w }; case null { return #Err("no index wasm is loaded yet; try again later") } };
+    switch (c.control) { case (#sns(root)) { if (not (await* isDeployedSnsRoot(root))) { return #Err("that is not the root canister of a deployed SNS") } }; case _ {} };
+    // the ledger must at least answer like one
+    let ledgerActor : T.AnyLedger = actor (Principal.toText(c.ledger));
+    let symbol = try { await ledgerActor.icrc1_symbol() } catch (e) { return #Err("that canister does not answer icrc1_symbol, so it is not an ICRC-1 ledger: " # Error.message(e)) };
+    let cid = newCid();
+    let premium = await* isPremium(caller);
+    let rate = try { (await cmc().get_icp_xdr_conversion_rate()).data.xdr_permyriad_per_icp } catch (e) { return #Err("could not read the ICP/XDR rate: " # Error.message(e)) };
+    let quote = makeIndexQuote(c.control, rate, premium);
+    if (Cycles.balance() < cycle_reserve + quote.index_cycles) { return #Err("the launchpad is low on cycles; try again later") };
+    var launch : T.IndexLaunch = { id = next_index_launch_id; creator = caller; created_at = Time.now(); config = c; quote; paid_e8s = 0; index = null; index_wasm_hash = index_wasm_hash; controllers = []; status = #created; steps = [] };
+    next_index_launch_id += 1;
+    // 1. the payment
+    let pull = try {
+      await icp_ledger().icrc2_transfer_from({ spender_subaccount = null; from = { owner = caller; subaccount = null }; to = { owner = Principal.fromActor(this); subaccount = null }; amount = quote.total_e8s; fee = ?ICP_FEE; memo = null; created_at_time = null });
+    } catch (e) { return #Err("payment failed: " # Error.message(e)) };
+    switch (pull) {
+      case (#Err(#InsufficientAllowance(a))) { return #Err("approve the launchpad for " # Nat.toText(quote.total_e8s) # " e8s on the ICP ledger first (allowance is " # Nat.toText(a.allowance) # ")") };
+      case (#Err(#InsufficientFunds(b))) { return #Err("not enough ICP: balance " # Nat.toText(b.balance) # " e8s, need " # Nat.toText(quote.total_e8s + ICP_FEE)) };
+      case (#Err(e)) { return #Err("payment failed: " # debug_show(e)) };
+      case (#Ok(_)) {};
+    };
+    launch := istep({ launch with paid_e8s = quote.total_e8s }, "paid");
+    putIndexLaunch(launch);
+    // 2. ICP to cycles (best effort)
+    if (quote.icp_for_cycles_e8s > ICP_FEE) {
+      try {
+        switch (await icp_ledger().icrc1_transfer({ from_subaccount = null; to = { owner = cmc_id; subaccount = ?principalToSubaccount(Principal.fromActor(this)) }; amount = quote.icp_for_cycles_e8s; fee = ?ICP_FEE; memo = ?TOP_UP_MEMO; created_at_time = null })) {
+          case (#Ok(block)) { switch (await cmc().notify_top_up({ block_index = Nat64.fromNat(block); canister_id = Principal.fromActor(this) })) { case (#Ok(_)) { launch := istep(launch, "cycles") }; case (#Err(e)) { logText(cid, "error", "index launch " # Nat.toText(launch.id) # ": CMC notify failed: " # debug_show(e)) } } };
+          case (#Err(e)) { logText(cid, "error", "index launch " # Nat.toText(launch.id) # ": transfer to the CMC failed: " # debug_show(e)) };
+        };
+      } catch (e) { logText(cid, "error", "index launch " # Nat.toText(launch.id) # ": CMC step failed: " # Error.message(e)) };
+    };
+    // 3. the fees
+    let feeTotal = quote.creation_fee_e8s + quote.control_fee_e8s;
+    if (feeTotal > ICP_FEE) {
+      try { switch (await icp_ledger().icrc1_transfer({ from_subaccount = null; to = fee_destination; amount = feeTotal - ICP_FEE; fee = ?ICP_FEE; memo = null; created_at_time = null })) { case (#Ok(_)) { launch := istep(launch, "fee") }; case (#Err(e)) { logText(cid, "error", "index launch " # Nat.toText(launch.id) # ": fee transfer failed: " # debug_show(e)) } } }
+      catch (e) { logText(cid, "error", "index launch " # Nat.toText(launch.id) # ": fee transfer failed: " # Error.message(e)) };
+    };
+    putIndexLaunch(launch);
+    // 4. the canister
+    let self = Principal.fromActor(this);
+    let finalControllers : [Principal] = switch (c.control) {
+      case (#keep) { [caller] };
+      case (#keep_with(ps)) { Array.append([caller], Array.filter<Principal>(ps, func(p) { p != caller })) };
+      case (#blackhole) { [blackhole] };
+      case (#sneed_dao) { [sneed_root] };
+      case (#sns(root)) { [root] };
+      case (#guardian(g)) { [g.canister] };
+    };
+    let indexId = try {
+      (await (with cycles = quote.index_cycles) ic.create_canister({ settings = ?{ controllers = ?[self]; compute_allocation = null; memory_allocation = null; freezing_threshold = null }; sender_canister_version = null })).canister_id;
+    } catch (e) { return ifail(cid, launch, "could not create the index canister: " # Error.message(e)) };
+    launch := istep({ launch with index = ?indexId }, "index_created");
+    putIndexLaunch(launch);
+    let iarg : T.IndexArg = #Init({ ledger_id = c.ledger; retrieve_blocks_from_ledger_interval_seconds = null });
+    try {
+      await ic.install_code({ mode = #install; canister_id = indexId; wasm_module = iw; arg = to_candid(iarg); sender_canister_version = null });
+    } catch (e) { return ifail(cid, launch, "the index could not be installed: " # Error.message(e)) };
+    launch := istep(launch, "index_installed");
+    putIndexLaunch(launch);
+    icrc3_add("sneedpad_index_create", [("cid", #Nat(cid)), ("launch", #Nat(launch.id)), ("ledger", Icrc3Log.principal(c.ledger)), ("index", Icrc3Log.principal(indexId)), ("index_cycles", #Nat(quote.index_cycles)), ("standalone", #Text("true")), ("creator", Icrc3Log.principal(caller)), ("paid_e8s", #Nat(quote.total_e8s))]);
+    // 5. control
+    switch (c.control) {
+      case (#guardian(g)) {
+        let guardian : T.GuardianActor = actor (Principal.toText(g.canister));
+        try { await ic.update_settings({ canister_id = indexId; settings = { controllers = ?[self, g.canister]; compute_allocation = null; memory_allocation = null; freezing_threshold = null }; sender_canister_version = null }) }
+        catch (e) { return ifail(cid, launch, "installed, but adding the custody canister as a controller failed: " # Error.message(e)) };
+        let r = try { await guardian.register(indexId, #index, g.policy, null, symbol # " index") } catch (e) { return ifail(cid, launch, "installed, but the custody canister could not be reached: " # Error.message(e)) };
+        switch (r) { case (#Err(e)) { return ifail(cid, launch, "installed, but the custody canister refused it: " # e) }; case (#Ok(_)) {} };
+        launch := istep(launch, "guardian_registered");
+      };
+      case _ {};
+    };
+    try { await ic.update_settings({ canister_id = indexId; settings = { controllers = ?finalControllers; compute_allocation = null; memory_allocation = null; freezing_threshold = null }; sender_canister_version = null }) }
+    catch (e) { return ifail(cid, launch, "installed, but setting the controllers failed: " # Error.message(e)) };
+    launch := istep({ launch with controllers = finalControllers }, "controllers_set");
+    // 6. the creator's wallet
+    switch (sneedapp_id) {
+      case (?appId) {
+        let app : T.SneedApp = actor (Principal.toText(appId));
+        try { switch (await app.registerCanisterFor(caller, indexId, APP_ID_INDEX)) { case (#Ok) { launch := istep(launch, "wallet_registered") }; case (#Err(e)) { logText(cid, "error", "index launch " # Nat.toText(launch.id) # ": SneedApp refused to list the index: " # e) } } }
+        catch (e) { logText(cid, "error", "index launch " # Nat.toText(launch.id) # ": SneedApp call failed: " # Error.message(e)) };
+      };
+      case null {};
+    };
+    icrc3_add("sneedpad_control_set", [("cid", #Nat(cid)), ("launch", #Nat(launch.id)), ("ledger", Icrc3Log.principal(c.ledger)), ("control", #Text(debug_show(c.control))), ("controllers", #Array(Array.map<Principal, T3.Value>(finalControllers, Icrc3Log.principal))), ("kind", #Text("index"))]);
+    putIndexLaunch(launch);
+    logText(cid, "info", "index launch " # Nat.toText(launch.id) # " done: index " # Principal.toText(indexId) # " for " # Principal.toText(c.ledger));
+    #Ok(launch);
+  };
+  public query func list_index_launches(start : Nat, length : Nat) : async { total : Nat; launches : [T.IndexLaunch] } {
+    let n = index_launches.size();
+    let from = if (start >= n) { n } else { start };
+    let to = if (from + length > n) { n } else { from + length };
+    { total = n; launches = Array.tabulate<T.IndexLaunch>(to - from, func(i) { index_launches[from + i] }) };
+  };
+  public query func get_index_launches_by_creator(p : Principal) : async [T.IndexLaunch] { Array.filter<T.IndexLaunch>(index_launches, func(l) { l.creator == p }) };
+  /// Every index the pad created for a ledger (a launch's own index first).
+  public query func get_indexes_of_ledger(ledger : Principal) : async [Principal] {
+    let out = Buffer.Buffer<Principal>(2);
+    for (l in launches.vals()) { if (l.ledger == ?ledger) { switch (l.index) { case (?i) { out.add(i) }; case null {} } } };
+    for (l in index_launches.vals()) { if (l.config.ledger == ledger) { switch (l.index) { case (?i) { out.add(i) }; case null {} } } };
+    Buffer.toArray(out);
+  };
+
   // ---- queries ----
   public query func get_launch(id : Nat) : async ?T.Launch { findLaunch(id) };
   public query func list_launches(start : Nat, length : Nat) : async { total : Nat; launches : [T.Launch] } {
@@ -486,7 +634,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
       ledger_wasm_hash; index_wasm_hash;
       ledger_wasm_bytes = switch (ledger_wasm) { case (?w) { w.size() }; case null { 0 } };
       index_wasm_bytes = switch (index_wasm) { case (?w) { w.size() }; case null { 0 } };
-      creation_fee_e8s; premium_creation_fee_e8s; sneed_dao_control_fee_e8s; sneed_premium = sneed_premium_id; ledger_cycles; index_cycles; fee_destination; cycle_reserve; paused;
+      creation_fee_e8s; premium_creation_fee_e8s; sneed_dao_control_fee_e8s; index_creation_fee_e8s; premium_index_creation_fee_e8s; sneed_premium = sneed_premium_id; ledger_cycles; index_cycles; fee_destination; cycle_reserve; paused;
       follow_nns; guardians; wasm_last_check; wasm_last_refresh; wasm_last_error;
     };
   };
@@ -616,6 +764,8 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     switch (u.creation_fee_e8s) { case (?v) { note("creation_fee_e8s", Nat.toText(creation_fee_e8s), Nat.toText(v)); creation_fee_e8s := v }; case null {} };
     switch (u.premium_creation_fee_e8s) { case (?v) { note("premium_creation_fee_e8s", Nat.toText(premium_creation_fee_e8s), Nat.toText(v)); premium_creation_fee_e8s := v }; case null {} };
     switch (u.sneed_dao_control_fee_e8s) { case (?v) { note("sneed_dao_control_fee_e8s", Nat.toText(sneed_dao_control_fee_e8s), Nat.toText(v)); sneed_dao_control_fee_e8s := v }; case null {} };
+    switch (u.index_creation_fee_e8s) { case (?v) { note("index_creation_fee_e8s", Nat.toText(index_creation_fee_e8s), Nat.toText(v)); index_creation_fee_e8s := v }; case null {} };
+    switch (u.premium_index_creation_fee_e8s) { case (?v) { note("premium_index_creation_fee_e8s", Nat.toText(premium_index_creation_fee_e8s), Nat.toText(v)); premium_index_creation_fee_e8s := v }; case null {} };
     switch (u.follow_nns) { case (?v) { note("follow_nns", debug_show(follow_nns), debug_show(v)); follow_nns := v }; case null {} };
     switch (u.guardians) { case (?v) { note("guardians", debug_show(guardians), debug_show(v)); guardians := v }; case null {} };
     switch (u.ledger_cycles) { case (?v) { if (v < MIN_CANISTER_CYCLES) { return #Err("ledger_cycles: a new canister needs at least 1 T cycles (0.5 T creation fee on a 13-node subnet, about 0.35 T to install the ledger)") }; note("ledger_cycles", Nat.toText(ledger_cycles), Nat.toText(v)); ledger_cycles := v }; case null {} };

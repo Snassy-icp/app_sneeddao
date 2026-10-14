@@ -107,7 +107,8 @@ export function LaunchPanel({ onLaunched }) {
             if (!g) problems.push('that custody canister is not deployed in this build');
             else if (vetoes.some((x) => !x)) problems.push('veto council: every line needs a principal');
             else {
-                const vb = Number(form.vetoesToBlock || 0); const ok = Number(form.oksRequired || 0); const days = Number(form.windowDays || 0);
+                // no council: no vetoes, no go-aheads, no window (the DAO vote alone decides)
+                const vb = vetoes.length ? Number(form.vetoesToBlock || 0) : 0; const ok = vetoes.length ? Number(form.oksRequired || 0) : 0; const days = vb > 0 ? Number(form.windowDays || 0) : 0;
                 if (vb > vetoes.length || ok > vetoes.length) problems.push('vetoes to block and go-aheads required cannot exceed the veto council size');
                 else if (vb > 0 && days <= 0) problems.push('a veto council needs a window of at least a day');
                 else control = { guardian: { canister: Principal.fromText(g.id), policy: { guardians: vetoes, vetoes_to_block: BigInt(vb), oks_required: BigInt(ok), window_ns: BigInt(Math.round(days * 86_400)) * 1_000_000_000n, auto_upgrade: !!form.autoUpgrade } } };
@@ -339,6 +340,7 @@ export function LaunchPanel({ onLaunched }) {
                                                 <button type="button" style={btn(false)} title="Remove" onClick={() => setForm((f) => ({ ...f, vetoPrincipals: f.vetoPrincipals.filter((_, j) => j !== i) }))}><FaTrash size={11} /></button>
                                             </div>
                                         ))}
+                                        {form.vetoPrincipals.length === 0 && <div style={{ fontSize: '0.78rem', color: theme.colors.mutedText }}>No veto council: a DAO vote alone decides every change. Add members to give your project a say.</div>}
                                         {form.vetoPrincipals.length < 20 && <button type="button" style={{ ...btn(false), fontSize: '0.8rem', padding: '6px 10px' }} onClick={() => setForm((f) => ({ ...f, vetoPrincipals: [...f.vetoPrincipals, identity && f.vetoPrincipals.length === 0 ? identity.getPrincipal().toText() : ''] }))}><FaPlus size={10} /> Add a veto council member</button>}
                                         {form.vetoPrincipals.length > 0 && (
                                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, fontSize: '0.8rem', color: theme.colors.secondaryText }}>
