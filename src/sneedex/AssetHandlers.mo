@@ -4,6 +4,9 @@ import Buffer "mo:base/Buffer";
 
 import T "Types";
 import Utils "Utils";
+import Array "mo:base/Array";
+import Nat "mo:base/Nat";
+import Nat8 "mo:base/Nat8";
 
 module {
     // ============================================
@@ -596,6 +599,103 @@ module {
             };
         } catch (_e) {
             #err(#TransferFailed("Failed to reclaim tokens"));
+        };
+    };
+    
+    // ============================================
+    // ICRC-7 NFTs
+    // ============================================
+    public func getICRC7Collection(collectionCanisterId : Principal) : T.ICRC7Actor {
+        actor (Principal.toText(collectionCanisterId)) : T.ICRC7Actor;
+    };
+    
+    /// Every listed token must sit in Sneedex's escrow subaccount.
+    public func verifyNftEscrow(
+        collectionCanisterId : Principal,
+        sneedex : Principal,
+        subaccount : Blob,
+        tokenIds : [Nat]
+    ) : async* T.Result<()> {
+        let collection = getICRC7Collection(collectionCanisterId);
+        try {
+            let owners = await collection.icrc7_owner_of(tokenIds);
+            if (owners.size() != tokenIds.size()) { return #err(#TransferFailed("The collection answered for a different number of tokens")) };
+            var i = 0;
+            for (o in owners.vals()) {
+                switch (o) {
+                    case (?a) {
+                        let sub = switch (a.subaccount) { case (?b) { b }; case null { Blob.fromArray(Array.tabulate<Nat8>(32, func(_) { 0 })) } };
+                        if (not Principal.equal(a.owner, sneedex) or not Blob.equal(sub, subaccount)) {
+                            return #err(#InvalidAsset("Token " # Nat.toText(tokenIds[i]) # " is not in the escrow account"));
+                        };
+                    };
+                    case null { return #err(#InvalidAsset("Token " # Nat.toText(tokenIds[i]) # " does not exist")) };
+                };
+                i += 1;
+            };
+            #ok();
+        } catch (_e) {
+            #err(#TransferFailed("Failed to check NFT owners"));
+        };
+    };
+    
+    /// Move the listed tokens out of an escrow subaccount to a recipient. Stops at the first failure.
+    public func transferNfts(
+        collectionCanisterId : Principal,
+        fromSubaccount : Blob,
+        toAccount : T.Account,
+        tokenIds : [Nat]
+    ) : async* T.Result<()> {
+        let collection = getICRC7Collection(collectionCanisterId);
+        try {
+            let args = Array.map<Nat, T.ICRC7TransferArg>(tokenIds, func(id) { { from_subaccount = ?fromSubaccount; to = toAccount; token_id = id; memo = null; created_at_time = null } });
+            let results = await collection.icrc7_transfer(args);
+            var i = 0;
+            for (r in results.vals()) {
+                switch (r) {
+                    case (?#Ok(_)) {};
+                    case (?#Err(e)) { return #err(#TransferFailed("NFT " # (if (i < tokenIds.size()) { Nat.toText(tokenIds[i]) } else { "?" }) # ": " # nftErrorText(e))) };
+                    case null { return #err(#TransferFailed("NFT " # (if (i < tokenIds.size()) { Nat.toText(tokenIds[i]) } else { "?" }) # ": not processed")) };
+                };
+                i += 1;
+            };
+            #ok();
+        } catch (_e) {
+            #err(#TransferFailed("Failed to transfer NFTs"));
+        };
+    };
+    
+    /// ICRC-37 listing: the seller approved Sneedex; pull the tokens into the escrow subaccount.
+    public func pullNfts(
+        collectionCanisterId : Principal,
+        from : T.Account,
+        sneedex : Principal,
+        subaccount : Blob,
+        tokenIds : [Nat]
+    ) : async* T.Result<()> {
+        let collection = getICRC7Collection(collectionCanisterId);
+        try {
+            let args = Array.map<Nat, T.ICRC37TransferFromArg>(tokenIds, func(id) { { spender_subaccount = null; from = from; to = { owner = sneedex; subaccount = ?subaccount }; token_id = id; memo = null; created_at_time = null } });
+            let results = await collection.icrc37_transfer_from(args);
+            var i = 0;
+            for (r in results.vals()) {
+                switch (r) {
+                    case (?#Ok(_)) {};
+                    case (?#Err(e)) { return #err(#TransferFailed("NFT " # (if (i < tokenIds.size()) { Nat.toText(tokenIds[i]) } else { "?" }) # ": " # nftErrorText(e))) };
+                    case null { return #err(#TransferFailed("NFT " # (if (i < tokenIds.size()) { Nat.toText(tokenIds[i]) } else { "?" }) # ": not processed")) };
+                };
+                i += 1;
+            };
+            #ok();
+        } catch (_e) {
+            #err(#TransferFailed("Failed to pull NFTs (does the collection implement ICRC-37, and is Sneedex approved?)"));
+        };
+    };
+    func nftErrorText(e : T.ICRC7TransferError) : Text {
+        switch (e) {
+            case (#NonExistingTokenId) { "no such token" }; case (#InvalidRecipient) { "invalid recipient" }; case (#Unauthorized) { "unauthorized" };
+            case (#TooOld) { "too old" }; case (#CreatedInFuture(_)) { "created in future" }; case (#Duplicate(d)) { "duplicate of " # Nat.toText(d.duplicate_of) };
+            case (#GenericError(g)) { g.message }; case (#GenericBatchError(g)) { g.message };
         };
     };
     

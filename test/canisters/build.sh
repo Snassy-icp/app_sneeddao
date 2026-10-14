@@ -17,6 +17,11 @@ dfx +"$DFX_VERSION" build --network ic sneed_lock 2>&1 | grep -iv "warning\|^ *$
 cp .dfx/ic/canisters/sneed_lock/sneed_lock.wasm "$OUT/sneed_lock.wasm"
 cp .dfx/ic/canisters/sneed_lock/service.did.js "$OUT/sneed_lock.did.js"
 
+echo "== sneedex (dfx +$DFX_VERSION build --network ic)"
+dfx +"$DFX_VERSION" build --network ic sneedex 2>&1 | grep -iv "warning\|^ *$\|^\s*[0-9]* |\|^  \^\|Nat$\|bespoke" | tail -2
+cp .dfx/ic/canisters/sneedex/sneedex.wasm "$OUT/sneedex.wasm"
+cp .dfx/ic/canisters/sneedex/service.did.js "$OUT/sneedex.did.js"
+
 MOC="$(dfx +"$DFX_VERSION" cache show)/moc"
 PKGS="$(mops sources)"
 for c in MockLedger MockSwapPool MockSnsGovernance MockCmc MockSnsWasm MockPremium MockSneedApp Icrc3Demo; do

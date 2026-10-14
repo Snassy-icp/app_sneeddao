@@ -33,14 +33,22 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // Counters for unique IDs
     var nextOfferId : T.OfferId = 0;
     var nextBidId : T.BidId = 0;
-    var nextAssetTypeId : T.AssetTypeId = 3; // 0, 1, 2 are reserved for built-in types
+    var nextAssetTypeId : T.AssetTypeId = 4; // 0, 1, 2, 3 are reserved for built-in types
     
     // Asset types registry
     var assetTypes : [T.AssetType] = [
         { id = T.ASSET_TYPE_CANISTER; name = "Canister"; description = "Internet Computer canister"; active = true },
         { id = T.ASSET_TYPE_SNS_NEURON; name = "SNS Neuron"; description = "SNS governance neuron"; active = true },
         { id = T.ASSET_TYPE_ICRC1_TOKEN; name = "ICRC1 Token"; description = "ICRC1 fungible token"; active = true },
+        { id = T.ASSET_TYPE_ICRC7_NFT; name = "ICRC-7 NFT"; description = "Non-fungible tokens of an ICRC-7 collection"; active = true },
     ];
+    /// Deployments from before the NFT type keep their registry across upgrades; add the entry once.
+    private func ensureBuiltInAssetTypes() {
+        if (Array.find<T.AssetType>(assetTypes, func(t) { t.id == T.ASSET_TYPE_ICRC7_NFT }) == null) {
+            assetTypes := Array.append(assetTypes, [{ id = T.ASSET_TYPE_ICRC7_NFT; name = "ICRC-7 NFT"; description = "Non-fungible tokens of an ICRC-7 collection"; active = true }]);
+        };
+        if (nextAssetTypeId <= T.ASSET_TYPE_ICRC7_NFT) { nextAssetTypeId := T.ASSET_TYPE_ICRC7_NFT + 1 };
+    };
     
     // Canister kinds registry (for known canister types with enhanced display)
     var canisterKinds : [T.CanisterKind] = [
@@ -801,6 +809,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                                 { owner = bid.bidder; subaccount = null }
                                             );
                                         };
+                                        case (#ICRC7NFT(asset)) {
+                                            let subaccount = Utils.offerEscrowSubaccount(offer.creator, offerId);
+                                            let _ = await* AssetHandlers.transferNfts(asset.collection_canister_id, subaccount, { owner = bid.bidder; subaccount = null }, asset.token_ids);
+                                        };
                                     };
                                 };
                                 
@@ -815,6 +827,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         };
                                         case (#ICRC1Token(asset)) {
                                             await registerTokenToWallet(bid.bidder, asset.ledger_canister_id);
+                                        };
+                                        case (#ICRC7NFT(_)) {
+                                            // NFT collections are listed per user in the browser's NFT page
                                         };
                                     };
                                 };
@@ -1026,6 +1041,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     { owner = offer.creator; subaccount = null }
                                 );
                             };
+                            case (#ICRC7NFT(asset)) {
+                                let subaccount = Utils.offerEscrowSubaccount(offer.creator, offerId);
+                                let _ = await* AssetHandlers.transferNfts(asset.collection_canister_id, subaccount, { owner = offer.creator; subaccount = null }, asset.token_ids);
+                            };
                         };
                     };
                 };
@@ -1043,6 +1062,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             case (#ICRC1Token(_asset)) {
                                 // Tokens don't need re-registration (user already has it in their wallet)
                             };
+                            case (#ICRC7NFT(_)) {};
                         };
                     };
                 };
@@ -1180,6 +1200,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 // No caching needed for tokens
                                 updatedAssets.add(entry);
                             };
+                            case (#ICRC7NFT(_)) { updatedAssets.add(entry) };
                         };
                     };
                 };
@@ -1767,6 +1788,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         return true;
                     };
                 };
+                case (#ICRC7NFT(existing), #ICRC7NFT(new)) {
+                    if (Principal.equal(existing.collection_canister_id, new.collection_canister_id)) {
+                        for (id in new.token_ids.vals()) { if (Array.find<Nat>(existing.token_ids, func(x) { x == id }) != null) { return true } };
+                    };
+                };
                 case (_, _) {};
             };
         };
@@ -1815,6 +1841,16 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 };
                             };
                             case null {};
+                        };
+                    };
+                    case (#ICRC7NFT(nft)) {
+                        if (nft.token_ids.size() == 0) { return #err(#InvalidAsset("List at least one token id")) };
+                        if (nft.token_ids.size() > 50) { return #err(#InvalidAsset("At most 50 tokens of one collection per asset")) };
+                        var i = 0;
+                        for (id in nft.token_ids.vals()) {
+                            var j = 0;
+                            for (other in nft.token_ids.vals()) { if (i != j and id == other) { return #err(#InvalidAsset("Token id " # Nat.toText(id) # " is listed twice")) }; j += 1 };
+                            i += 1;
                         };
                     };
                     case _ {};
@@ -2186,6 +2222,67 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     case (_) {
                         return #err(#InvalidAsset("Asset at index is not an ICRC1 Token"));
                     };
+                };
+            };
+        };
+    };
+    
+    /// Mark an ICRC-7 asset escrowed once every listed token sits in the offer's escrow
+    /// subaccount of this canister (the seller transferred them there with icrc7_transfer).
+    public shared ({ caller }) func escrowICRC7NFTs(offerId : T.OfferId, assetIndex : Nat) : async T.Result<()> {
+        await* escrowNftsInternal(caller, offerId, assetIndex, false);
+    };
+    /// ICRC-37 listing: the seller approved this canister for the tokens (or the collection);
+    /// Sneedex pulls them into the escrow subaccount itself, then marks the asset escrowed.
+    public shared ({ caller }) func escrowICRC7NFTsByApproval(offerId : T.OfferId, assetIndex : Nat) : async T.Result<()> {
+        await* escrowNftsInternal(caller, offerId, assetIndex, true);
+    };
+    private func escrowNftsInternal(caller : Principal, offerId : T.OfferId, assetIndex : Nat, pull : Bool) : async* T.Result<()> {
+        switch (getOffer(offerId)) {
+            case null { return #err(#OfferNotFound) };
+            case (?offer) {
+                if (not Principal.equal(caller, offer.creator)) { return #err(#NotAuthorized) };
+                if (offer.state != #PendingEscrow) { return #err(#InvalidState("Offer must be in PendingEscrow state")) };
+                if (assetIndex >= offer.assets.size()) { return #err(#InvalidAsset("Asset index out of bounds")) };
+                let assetEntry = offer.assets[assetIndex];
+                if (assetEntry.escrowed) { return #err(#InvalidAsset("Asset already escrowed")) };
+                switch (assetEntry.asset) {
+                    case (#ICRC7NFT(nft)) {
+                        let subaccount = Utils.offerEscrowSubaccount(caller, offerId);
+                        if (pull) {
+                            switch (await* AssetHandlers.pullNfts(nft.collection_canister_id, { owner = caller; subaccount = null }, self(), subaccount, nft.token_ids)) {
+                                case (#err(e)) { return #err(e) };
+                                case (#ok(_)) {};
+                            };
+                        };
+                        switch (await* AssetHandlers.verifyNftEscrow(nft.collection_canister_id, self(), subaccount, nft.token_ids)) {
+                            case (#err(e)) { return #err(e) };
+                            case (#ok(_)) {
+                                let updatedEntry : T.AssetEntry = { asset = assetEntry.asset; escrowed = true };
+                                let updatedAssets = Utils.updateAt(offer.assets, assetIndex, updatedEntry);
+                                let updatedOffer : T.Offer = {
+                                    id = offer.id;
+                                    creator = offer.creator;
+                                    min_bid_price = offer.min_bid_price;
+                                    buyout_price = offer.buyout_price;
+                                    expiration = offer.expiration;
+                                    price_token_ledger = offer.price_token_ledger;
+                                    assets = updatedAssets;
+                                    state = offer.state;
+                                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
+                                    approved_bidders = offer.approved_bidders;
+                                    fee_rate_bps = offer.fee_rate_bps;
+                                    public_note = offer.public_note;
+                                    note_to_buyer = offer.note_to_buyer;
+                                    created_at = offer.created_at;
+                                    activated_at = offer.activated_at;
+                                };
+                                updateOffer(offerId, updatedOffer);
+                                #ok();
+                            };
+                        };
+                    };
+                    case (_) { return #err(#InvalidAsset("Asset at index is not an ICRC-7 NFT")) };
                 };
             };
         };
@@ -2887,6 +2984,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                                 { owner = caller; subaccount = null }
                                             );
                                         };
+                                        case (#ICRC7NFT(asset)) {
+                                            let subaccount = Utils.offerEscrowSubaccount(offer.creator, offerId);
+                                            let _ = await* AssetHandlers.transferNfts(asset.collection_canister_id, subaccount, { owner = caller; subaccount = null }, asset.token_ids);
+                                        };
                                     };
                                 };
                                 
@@ -2907,6 +3008,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             case (#ICRC1Token(asset)) {
                                                 await registerTokenToWallet(buyerPrincipal, asset.ledger_canister_id);
                                             };
+                                            case (#ICRC7NFT(_)) {};
                                         };
                                     };
                                 });
@@ -3238,6 +3340,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     { owner = caller; subaccount = null }
                                 );
                             };
+                            case (#ICRC7NFT(asset)) {
+                                let subaccount = Utils.offerEscrowSubaccount(caller, offerId);
+                                let _ = await* AssetHandlers.transferNfts(asset.collection_canister_id, subaccount, { owner = caller; subaccount = null }, asset.token_ids);
+                            };
                         };
                     };
                 };
@@ -3253,6 +3359,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 };
                                 case (#SNSNeuron(_asset)) {};
                                 case (#ICRC1Token(_asset)) {};
+                                case (#ICRC7NFT(_)) {};
                             };
                         };
                     };
@@ -3798,6 +3905,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             case (#Canister(_)) T.ASSET_TYPE_CANISTER;
             case (#SNSNeuron(_)) T.ASSET_TYPE_SNS_NEURON;
             case (#ICRC1Token(_)) T.ASSET_TYPE_ICRC1_TOKEN;
+            case (#ICRC7NFT(_)) T.ASSET_TYPE_ICRC7_NFT;
         };
     };
     

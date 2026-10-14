@@ -30,6 +30,7 @@ module {
     public let ASSET_TYPE_CANISTER : AssetTypeId = 0;
     public let ASSET_TYPE_SNS_NEURON : AssetTypeId = 1;
     public let ASSET_TYPE_ICRC1_TOKEN : AssetTypeId = 2;
+    public let ASSET_TYPE_ICRC7_NFT : AssetTypeId = 3;
     
     // ============================================
     // CANISTER KINDS - Extensible System for known canister types
@@ -83,6 +84,17 @@ module {
         #Err : TransferError;
     };
     
+    public type ICRC7TransferArg = { from_subaccount : ?Blob; to : Account; token_id : Nat; memo : ?Blob; created_at_time : ?Nat64 };
+    public type ICRC7TransferError = {
+        #NonExistingTokenId; #InvalidRecipient; #Unauthorized; #TooOld; #CreatedInFuture : { ledger_time : Nat64 };
+        #Duplicate : { duplicate_of : Nat }; #GenericError : { error_code : Nat; message : Text }; #GenericBatchError : { error_code : Nat; message : Text };
+    };
+    public type ICRC37TransferFromArg = { spender_subaccount : ?Blob; from : Account; to : Account; token_id : Nat; memo : ?Blob; created_at_time : ?Nat64 };
+    public type ICRC7Actor = actor {
+        icrc7_owner_of : shared query ([Nat]) -> async [?Account];
+        icrc7_transfer : shared ([ICRC7TransferArg]) -> async [?{ #Ok : Nat; #Err : ICRC7TransferError }];
+        icrc37_transfer_from : shared ([ICRC37TransferFromArg]) -> async [?{ #Ok : Nat; #Err : ICRC7TransferError }];
+    };
     public type ICRC1Actor = actor {
         icrc1_transfer : shared (TransferArg) -> async TransferResult;
         icrc1_balance_of : shared query (Account) -> async Nat;
@@ -360,11 +372,20 @@ module {
         amount : Nat; // Amount in smallest units (e8s)
     };
     
+    /// One or more NFTs of one ICRC-7 collection, escrowed in the offer's escrow subaccount
+    /// of this canister (the seller transfers them there, or approves Sneedex to pull them
+    /// through ICRC-37). Verified with icrc7_owner_of; delivered with icrc7_transfer.
+    public type ICRC7NFTAsset = {
+        collection_canister_id : Principal;
+        token_ids : [Nat];
+    };
+    
     // Union type for all assets
     public type Asset = {
         #Canister : CanisterAsset;
         #SNSNeuron : SNSNeuronAsset;
         #ICRC1Token : ICRC1TokenAsset;
+        #ICRC7NFT : ICRC7NFTAsset;
     };
     
     // Asset with escrow status
