@@ -57,7 +57,7 @@ describe('sneedex: Sneed Lock assets', () => {
   it('sells a token lock: ownership moves to Sneedex for escrow and on to the winner', async () => {
     await tokenA.mint(sneedWallet(alice), 100_000n);
     const expiry = await expiryIn(3 * 86_400);
-    const tokenLockId = unwrap(await lockAlice.create_lock(60_000n, tokenAId, expiry));
+    const tokenLockId = unwrap(await lockAlice.create_lock(60_000n, tokenAId, expiry, []));
     expect(await lockOwner(tokenLockId)).toBe(alice.toText());
 
     const tokenAsset = (amount = 60_000n, ledger = tokenAId) => ({ SneedLock: { lock_id: tokenLockId, lock: { Token: { ledger_canister_id: ledger, amount, expiry } } } });
@@ -107,7 +107,7 @@ describe('sneedex: Sneed Lock assets', () => {
     expect(await lockAlice.claim_position(poolId, POS)).toBe(true); // claimed while alice still holds it on the pool
     unwrap(await poolAlice.transferPosition(alice, lockId, POS));
     const expiry = await expiryIn(3 * 86_400);
-    const posLockId = unwrap(await lockAlice.create_position_lock(poolId, 1n, POS, expiry, tokenAId, tokenBId));
+    const posLockId = unwrap(await lockAlice.create_position_lock(poolId, 1n, POS, expiry, tokenAId, tokenBId, []));
     expect(await lockOwner(posLockId)).toBe(alice.toText());
 
     const offerId = await newOffer();

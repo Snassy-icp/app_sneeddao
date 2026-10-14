@@ -91,18 +91,18 @@ describe('fresh install', () => {
 
 describe('token locks', () => {
   it('rejects locks that are too short, too long or unfunded', async () => {
-    const tooShort = await lockAlice.create_lock(1_000n, tokenAId, await expiryIn(1));
+    const tooShort = await lockAlice.create_lock(1_000n, tokenAId, await expiryIn(1), []);
     expect(errOf(tooShort).message).toBe('Minimum lock time not fulfilled.');
-    const tooLong = await lockAlice.create_lock(1_000n, tokenAId, await expiryIn(8 * 86_400));
+    const tooLong = await lockAlice.create_lock(1_000n, tokenAId, await expiryIn(8 * 86_400), []);
     expect(errOf(tooLong).message).toBe('Maximum lock time exceeded.');
-    const unfunded = await lockAlice.create_lock(1_000n, tokenAId, await expiryIn(3600));
+    const unfunded = await lockAlice.create_lock(1_000n, tokenAId, await expiryIn(3600), []);
     expect(errOf(unfunded).message).toMatch(/Insufficient balance to lock/);
   });
 
   it('locks part of the Sneed wallet balance and records it', async () => {
     await tokenA.mint(sneedWallet(alice), 100_000n);
     const expiry = await expiryIn(3600);
-    const lockIdNum = unwrap(await lockAlice.create_lock(60_000n, tokenAId, expiry));
+    const lockIdNum = unwrap(await lockAlice.create_lock(60_000n, tokenAId, expiry, []));
     expect(lockIdNum).toBe(1n);
     const active = await lock.get_active_token_locks();
     expect(active).toHaveLength(1);
@@ -125,7 +125,7 @@ describe('token locks', () => {
   });
 
   it('refuses to lock more than the unlocked balance', async () => {
-    const r = await lockAlice.create_lock(50_000n, tokenAId, await expiryIn(3600));
+    const r = await lockAlice.create_lock(50_000n, tokenAId, await expiryIn(3600), []);
     expect(errOf(r).message).toMatch(/Insufficient unlocked balance to lock/);
   });
 
@@ -180,7 +180,7 @@ describe('liquid locking of token locks', () => {
   beforeAll(async () => {
     await tokenA.mint(sneedWallet(alice), 50_000n);
     expiry = await expiryIn(2 * 86_400);
-    unwrap(await lockAlice.create_lock(50_000n, tokenAId, expiry)); // lock id 2, nothing free
+    unwrap(await lockAlice.create_lock(50_000n, tokenAId, expiry, [])); // lock id 2, nothing free
   });
 
   it('needs the lock to exist and one free ledger fee', async () => {
@@ -246,7 +246,7 @@ describe('ICP lock fees', () => {
     expect((await lock.getEffectiveLockFee(alice, true)).fee_e8s).toBe(100_000_000n);
 
     await tokenA.mint(sneedWallet(alice), 10_000n);
-    const unpaid = await lockAlice.create_lock(10_000n, tokenAId, await expiryIn(3600));
+    const unpaid = await lockAlice.create_lock(10_000n, tokenAId, await expiryIn(3600), []);
     expect(errOf(unpaid).message).toMatch(/ICP payment verification failed: Insufficient ICP payment/);
     expect(await lock.get_active_token_locks()).toHaveLength(1); // bob's only
 
@@ -255,7 +255,7 @@ describe('ICP lock fees', () => {
     await icp.mint(payment(alice), 60_000_000n);
     expect(await lock.getPaymentBalance(alice)).toBe(60_000_000n);
 
-    const lockIdNum = unwrap(await lockAlice.create_lock(10_000n, tokenAId, await expiryIn(3600)));
+    const lockIdNum = unwrap(await lockAlice.create_lock(10_000n, tokenAId, await expiryIn(3600), []));
     expect(lockIdNum).toBe(3n);
     expect(await lock.getPaymentBalance(alice)).toBe(10_000_000n); // exactly fee_e8s left the subaccount
     expect(await balance(icp, account(lockId))).toBe(50_000_000n - ICP_FEE); // default recipient: this canister
@@ -281,7 +281,7 @@ describe('ICP lock fees', () => {
     expect(txField(await lastBlock(), 'key')).toEqual({ Text: 'icp_fee_recipient' });
     await icp.mint(payment(alice), 50_000_000n);
     await tokenA.mint(sneedWallet(alice), 5_000n);
-    unwrap(await lockAlice.create_lock(5_000n, tokenAId, await expiryIn(3600)));
+    unwrap(await lockAlice.create_lock(5_000n, tokenAId, await expiryIn(3600), []));
     expect(await balance(icp, account(carol))).toBe(50_000_000n - ICP_FEE);
     unwrap(await lock.admin_set_icp_fee_recipient([], []));
     unwrap(await lock.admin_set_lock_fees_icp([0n], [0n], [0n], [0n]));
@@ -307,13 +307,13 @@ describe('positions', () => {
 
   it('locks a position only once it is held by the canister, with a supported dex', async () => {
     expiry = await expiryIn(86_400);
-    expect(errOf(await lockAlice.create_position_lock(poolId, 1n, POS, expiry, tokenAId, tokenBId)).message).toBe('Position is not transferred to this canister.');
+    expect(errOf(await lockAlice.create_position_lock(poolId, 1n, POS, expiry, tokenAId, tokenBId, [])).message).toBe('Position is not transferred to this canister.');
     unwrap(await poolAlice.transferPosition(alice, lockId, POS));
     expect((await pool.position_owner(POS))[0].toText()).toBe(lockId.toText());
-    expect(errOf(await lockAlice.create_position_lock(poolId, 2n, POS, expiry, tokenAId, tokenBId)).message).toBe('Dex not supported.');
-    expect(errOf(await lockAlice.create_position_lock(poolId, 1n, POS, await expiryIn(1), tokenAId, tokenBId)).message).toBe('Minimum lock time not fulfilled.');
-    expect(errOf(await lockBob.create_position_lock(poolId, 1n, POS, expiry, tokenAId, tokenBId)).message).toBe('Position not claimed by caller.');
-    const id = unwrap(await lockAlice.create_position_lock(poolId, 1n, POS, expiry, tokenAId, tokenBId));
+    expect(errOf(await lockAlice.create_position_lock(poolId, 2n, POS, expiry, tokenAId, tokenBId, [])).message).toBe('Dex not supported.');
+    expect(errOf(await lockAlice.create_position_lock(poolId, 1n, POS, await expiryIn(1), tokenAId, tokenBId, [])).message).toBe('Minimum lock time not fulfilled.');
+    expect(errOf(await lockBob.create_position_lock(poolId, 1n, POS, expiry, tokenAId, tokenBId, [])).message).toBe('Position not claimed by caller.');
+    const id = unwrap(await lockAlice.create_position_lock(poolId, 1n, POS, expiry, tokenAId, tokenBId, []));
     expect(id).toBe(5n);
     const active = await lock.get_active_position_locks();
     expect(active).toHaveLength(1);
@@ -485,7 +485,7 @@ describe('admin operations', () => {
     expect(txField(block, 'old_value')).toEqual({ Nat: 7n * DAY_NS });
     expect(principalOf(txField(block, 'caller'))).toBe(carol.toText());
     await tokenA.mint(sneedWallet(alice), 1_000n);
-    expect(errOf(await lockAlice.create_lock(1_000n, tokenAId, await expiryIn(2 * 86_400))).message).toBe('Maximum lock time exceeded.');
+    expect(errOf(await lockAlice.create_lock(1_000n, tokenAId, await expiryIn(2 * 86_400), [])).message).toBe('Maximum lock time exceeded.');
     unwrap(await lock.admin_remove_admin(carol));
     await expect(lockCarol.set_max_lock_length_days(7n)).rejects.toThrow();
     await lock.set_max_lock_length_days(7n);
@@ -578,7 +578,195 @@ describe('ICRC-3 log of sneed_lock', () => {
     await verifyLog(lock, lockId, rootKey, archiveActor);
     // still operational after the upgrade
     await tokenA.mint(sneedWallet(alice), 2_000n);
-    unwrap(await lockAlice.create_lock(1_000n, tokenAId, await expiryIn(3600)));
+    unwrap(await lockAlice.create_lock(1_000n, tokenAId, await expiryIn(3600), []));
     expect((await lock.icrc3_log_status()).log_length).toBe(before.log_length + 1n);
+  });
+});
+
+// ---- v2: dissolve delays (spec/sneed_lock_v2.md, section 1) ----------------
+describe('dissolve delays', () => {
+  const NEVER = 18_446_744_073_709_551_615n;
+  const HOUR = 3600n * 1_000_000_000n;
+  const advance = async (ns) => { await pic.advanceTime(Number(ns / 1_000_000n) + 1000); await pic.tick(); };
+  const ok = (r) => { expect(r).toHaveProperty('Ok'); return r.Ok; };
+  const err = (r) => { expect(r).toHaveProperty('Err'); return r.Err; };
+  const state = async (id) => (await lock.get_lock_state(id))[0];
+  let neuronId, vestId, plainId;
+
+  it('exposes the limits, which apply to lock period + delay', async () => {
+    expect(await lock.get_lock_limits()).toEqual({ min_lock_length_ns: 5_000_000_000n, max_lock_length_ns: 7n * DAY_NS });
+    await tokenA.mint(sneedWallet(alice), 100_000n);
+    const now = await nowNs();
+    expect(errOf(await lockAlice.create_lock(1_000n, tokenAId, now + 6n * DAY_NS, [2n * DAY_NS])).message).toBe('Maximum lock time exceeded.');
+    expect(errOf(await lockAlice.create_lock(1_000n, tokenAId, 0n, [1_000_000_000n])).message).toBe('Minimum lock time not fulfilled.');
+  });
+
+  it('a lock with only a delay is held until it has dissolved, like a neuron', async () => {
+    const now = await nowNs();
+    // no lock period: a lock end of 0 (or any moment already past) means "dissolving may start at once"
+    neuronId = unwrap(await lockAlice.create_lock(40_000n, tokenAId, 0n, [DAY_NS]));
+    const s = await state(neuronId);
+    expect(s).toMatchObject({ kind: { TokenLock: null }, amount: [40_000n], dissolve_delay: DAY_NS, dissolving_until: [], expiry: NEVER, locked: true, archived: false });
+    expect(s.lock_end).toBeGreaterThanOrEqual(now); // clamped to the moment the call ran
+    expect((await lock.get_lock_by_id(neuronId))[0].TokenLock[2].expiry).toBe(NEVER); // old readers see it locked
+    const block = await lastBlock();
+    expect(btype(block)).toBe('sneedlock_token_lock_create');
+    expect(txField(block, 'dissolve_delay')).toEqual({ Nat: DAY_NS });
+    // two days later it is still held: it has not started dissolving
+    await advance(2n * DAY_NS);
+    expect((await state(neuronId)).locked).toBe(true);
+    const free = (await balance(tokenA, sneedWallet(alice))) - (await lockAlice.get_summed_locks()).find(([l]) => l.toText() === tokenAId.toText())[1];
+    expect(errOf(await lockAlice.transfer_tokens(alice, [], tokenAId, free + 1n))).toHaveProperty('GenericError');
+  });
+
+  it('only the owner starts and stops dissolving; stopping keeps the time left as the delay', async () => {
+    expect(err(await lockBob.start_dissolving(neuronId))).toEqual({ NotOwner: null });
+    expect(err(await lockAlice.start_dissolving(999_999n))).toEqual({ NotFound: null });
+    expect(err(await lockAlice.stop_dissolving(neuronId))).toEqual({ Invalid: 'The lock is not dissolving.' });
+    const t0 = await nowNs();
+    const s = ok(await lockAlice.start_dissolving(neuronId));
+    expect(s.dissolving_until[0]).toBeGreaterThanOrEqual(t0 + DAY_NS);
+    expect(s.expiry).toBe(s.dissolving_until[0]);
+    expect(btype(await lastBlock())).toBe('sneedlock_dissolve_start');
+    expect(err(await lockAlice.start_dissolving(neuronId))).toEqual({ Invalid: 'The lock is already dissolving.' });
+    await advance(6n * HOUR);
+    const stopped = ok(await lockAlice.stop_dissolving(neuronId));
+    expect(stopped.dissolving_until).toEqual([]);
+    expect(stopped.expiry).toBe(NEVER);
+    expect(stopped.dissolve_delay).toBeLessThan(DAY_NS - 5n * HOUR);
+    expect(stopped.dissolve_delay).toBeGreaterThan(DAY_NS - 7n * HOUR);
+    expect(btype(await lastBlock())).toBe('sneedlock_dissolve_stop');
+  });
+
+  it('the delay only grows, within the limit, also while dissolving', async () => {
+    const before = (await state(neuronId)).dissolve_delay;
+    expect(err(await lockAlice.increase_dissolve_delay(neuronId, 0n))).toHaveProperty('Invalid');
+    expect(err(await lockAlice.increase_dissolve_delay(neuronId, 7n * DAY_NS))).toEqual({ Invalid: 'Maximum lock time exceeded.' });
+    expect(ok(await lockAlice.increase_dissolve_delay(neuronId, HOUR)).dissolve_delay).toBe(before + HOUR);
+    expect(btype(await lastBlock())).toBe('sneedlock_dissolve_delay_increase');
+    const started = ok(await lockAlice.start_dissolving(neuronId));
+    const moved = ok(await lockAlice.increase_dissolve_delay(neuronId, HOUR));
+    expect(moved.dissolving_until[0]).toBe(started.dissolving_until[0] + HOUR);
+    expect(moved.expiry).toBe(moved.dissolving_until[0]);
+    expect(err(await lockAlice.extend_lock(neuronId, moved.dissolving_until[0] + DAY_NS))).toHaveProperty('Invalid'); // not while dissolving
+  });
+
+  it('once dissolved the tokens are free and the lock cannot be changed', async () => {
+    const s = await state(neuronId);
+    await advance(s.dissolving_until[0] - (await nowNs()));
+    expect((await state(neuronId)).locked).toBe(false);
+    expect(err(await lockAlice.increase_dissolve_delay(neuronId, HOUR))).toEqual({ Invalid: 'The lock is no longer locked.' });
+    expect(err(await lockAlice.start_dissolving(neuronId))).toHaveProperty('Invalid');
+    await lockAlice.clear_expired_locks();
+    const archived = await state(neuronId);
+    expect(archived).toMatchObject({ archived: true, locked: false, dissolve_delay: expect.any(BigInt) });
+    expect(archived.dissolving_until).toHaveLength(1);
+    unwrap(await lockAlice.transfer_tokens(alice, [], tokenAId, 39_000n)); // the 40_000 are free again
+  });
+
+  it('a vesting lock: dissolving can start only after the lock period, which can be extended', async () => {
+    const now = await nowNs();
+    vestId = unwrap(await lockAlice.create_lock(10_000n, tokenAId, now + HOUR, [HOUR]));
+    expect(err(await lockAlice.start_dissolving(vestId))).toEqual({ Invalid: 'Dissolving can start when the lock period ends.' });
+    expect(err(await lockAlice.extend_lock(vestId, now + HOUR - 1n))).toHaveProperty('Invalid');
+    const ext = ok(await lockAlice.extend_lock(vestId, now + 2n * HOUR));
+    expect(ext).toMatchObject({ lock_end: now + 2n * HOUR, expiry: NEVER });
+    const block = await lastBlock();
+    expect(btype(block)).toBe('sneedlock_token_lock_extend');
+    expect(txField(block, 'lock_end')).toEqual({ Nat: now + 2n * HOUR });
+    await advance(2n * HOUR);
+    expect((await state(vestId)).locked).toBe(true); // the period is over, the delay is not
+    ok(await lockAlice.start_dissolving(vestId));
+    await advance(HOUR);
+    expect((await state(vestId)).locked).toBe(false);
+  });
+
+  it('a plain lock can be extended, and given a delay', async () => {
+    const end = await expiryIn(3600);
+    plainId = unwrap(await lockAlice.create_lock(5_000n, tokenAId, end, []));
+    expect(err(await lockAlice.extend_lock(plainId, end - 1n))).toHaveProperty('Invalid');
+    const ext = ok(await lockAlice.extend_lock(plainId, end + HOUR));
+    expect(ext).toMatchObject({ lock_end: end + HOUR, expiry: end + HOUR, dissolve_delay: 0n });
+    expect((await lock.get_lock_by_id(plainId))[0].TokenLock[2].expiry).toBe(end + HOUR);
+    const delayed = ok(await lockAlice.increase_dissolve_delay(plainId, HOUR));
+    expect(delayed).toMatchObject({ lock_end: end + HOUR, dissolve_delay: HOUR, expiry: NEVER, locked: true });
+  });
+
+  it('the lock and its dissolve state travel with an ownership transfer', async () => {
+    await tokenA.mint(sneedWallet(alice), FEE_A);
+    unwrap(await lockAlice.transfer_token_lock_ownership(bob, tokenAId, plainId));
+    const s = await state(plainId);
+    expect(s.owner.toText()).toBe(bob.toText());
+    expect(s).toMatchObject({ dissolve_delay: HOUR, expiry: NEVER, amount: [5_000n] });
+    expect(err(await lockAlice.increase_dissolve_delay(plainId, HOUR))).toEqual({ NotOwner: null });
+    ok(await lockBob.increase_dissolve_delay(plainId, HOUR));
+  });
+
+  it('nobody changes a lock while its transfer waits on the ledger', async () => {
+    // ICP's ledger is on another subnet, so the transfer's ledger call takes several rounds:
+    // one round runs the transfer up to that call, and bob's call lands while it waits.
+    await icp.mint(sneedWallet(alice), 1_000_000n);
+    const id = unwrap(await lockAlice.create_lock(500_000n, ICP_LEDGER_ID, 0n, [DAY_NS]));
+    const asAlice = pic.createDeferredActor({ idlFactory: sneedLockIdl, canisterId: lockId });
+    asAlice.setPrincipal(alice);
+    const asBob = pic.createDeferredActor({ idlFactory: sneedLockIdl, canisterId: lockId });
+    asBob.setPrincipal(bob);
+    const pending = await asAlice.transfer_token_lock_ownership(bob, ICP_LEDGER_ID, id);
+    await pic.tick();
+    const duringCall = await asBob.start_dissolving(id);
+    const during = await duringCall();
+    unwrap(await pending());
+    expect(err(during)).toEqual({ InProgress: null });
+    const s = await state(id);
+    expect(s.owner.toText()).toBe(bob.toText());
+    expect(s).toMatchObject({ dissolve_delay: DAY_NS, dissolving_until: [], expiry: NEVER });
+    ok(await lockBob.start_dissolving(id)); // and once the transfer is done, the new owner can
+  });
+
+  it('position locks: created with a delay, extended by the dissolve rules, withdrawn once dissolved', async () => {
+    const POS2 = 9n;
+    await pool.mint_position(carol, POS2, 500_000n);
+    expect(await lockCarol.claim_position(poolId, POS2)).toBe(true);
+    unwrap(await actorAs(pic, poolIdl, poolId, carol).transferPosition(carol, lockId, POS2));
+    const now = await nowNs();
+    const id = unwrap(await lockCarol.create_position_lock(poolId, 1n, POS2, now + HOUR, tokenAId, tokenBId, [HOUR]));
+    expect(await state(id)).toMatchObject({ kind: { PositionLock: null }, position_id: [POS2], lock_end: now + HOUR, dissolve_delay: HOUR, expiry: NEVER, locked: true });
+    expect(btype(await lastBlock())).toBe('sneedlock_position_lock_create');
+    // the old update path extends the lock period, not the effective expiry
+    expect(unwrap(await lockCarol.update_position_lock(poolId, POS2, now + 2n * HOUR))).toBe(id);
+    expect(await state(id)).toMatchObject({ lock_end: now + 2n * HOUR, expiry: NEVER });
+    expect(btype(await lastBlock())).toBe('sneedlock_position_lock_extend');
+    expect(errOf(await lockCarol.create_position_lock(poolId, 1n, POS2, now + 3n * HOUR, tokenAId, tokenBId, [HOUR])).message).toMatch(/already locked/);
+    await advance(3n * HOUR);
+    expect(errOf(await lockCarol.transfer_position(carol, poolId, POS2))).toHaveProperty('InternalError'); // period over, not dissolved
+    ok(await lockCarol.start_dissolving(id));
+    await advance(HOUR);
+    unwrap(await lockCarol.transfer_position(carol, poolId, POS2));
+    expect((await pool.position_owner(POS2))[0].toText()).toBe(carol.toText());
+  });
+
+  it('pages lock states in id order, by owner, ledger and kind', async () => {
+    const mine = await lock.get_lock_states_page({ owner: [alice], ledger: [], swap_canister_id: [], kind: [{ TokenLock: null }], include_archived: true, prev: [], take: [] });
+    const ids = mine.map((s) => s.lock_id);
+    expect(ids).toEqual([...ids].sort((a, b) => (a < b ? -1 : 1)));
+    expect(ids).toContain(neuronId); // archived, asked for
+    expect(mine.every((s) => s.owner.toText() === alice.toText() && 'TokenLock' in s.kind)).toBe(true);
+    const page1 = await lock.get_lock_states_page({ owner: [alice], ledger: [tokenAId], swap_canister_id: [], kind: [], include_archived: true, prev: [], take: [2n] });
+    const page2 = await lock.get_lock_states_page({ owner: [alice], ledger: [tokenAId], swap_canister_id: [], kind: [], include_archived: true, prev: [page1[1].lock_id], take: [2n] });
+    expect(page1).toHaveLength(2);
+    expect(page2[0].lock_id).toBeGreaterThan(page1[1].lock_id);
+    const activeOnly = await lock.get_lock_states_page({ owner: [], ledger: [], swap_canister_id: [], kind: [], include_archived: false, prev: [], take: [] });
+    expect(activeOnly.every((s) => !s.archived)).toBe(true);
+    expect((await lock.get_lock_states([neuronId, 999_999n])).map((x) => x.length)).toEqual([1, 0]);
+  });
+
+  it('keeps every dissolve state across an upgrade, and the log still verifies', async () => {
+    const before = await lock.get_lock_states([neuronId, vestId, plainId]);
+    await pic.upgradeCanister({ sender: admin, canisterId: lockId, wasm: wasm('sneed_lock'), arg: IDL.encode([], []) });
+    await pic.tick(2);
+    expect(await lock.get_lock_states([neuronId, vestId, plainId])).toEqual(before);
+    const types = (await lock.icrc3_supported_block_types()).map((t) => t.block_type);
+    for (const t of ['sneedlock_dissolve_start', 'sneedlock_dissolve_stop', 'sneedlock_dissolve_delay_increase', 'sneedlock_token_lock_extend']) expect(types).toContain(t);
+    await verifyLog(lock, lockId, rootKey, archiveActor);
   });
 });

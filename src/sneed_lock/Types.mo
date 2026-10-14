@@ -52,6 +52,51 @@ module {
         #PositionLock : FullyQualifiedPositionLock;
     };
 
+    // ---- v2: one view of a lock, for integrators (spec/sneed_lock_v2.md) ----
+    // `expiry` is the effective unlock time: for a lock with a dissolve delay that is
+    // not dissolving it is 0xFFFF_FFFF_FFFF_FFFF ("not before it dissolves").
+    public type LockState = {
+        lock_id : LockId;
+        kind : LockType;
+        owner : Principal;
+        owner_subaccount : ?Blob;          // always null until locks are NFTs (labels, spec section 2)
+        ledger : ?TokenType;               // token locks
+        amount : ?Balance;                 // token locks
+        swap_canister_id : ?SwapCanisterId; // position locks
+        position_id : ?PositionId;
+        token0 : ?TokenType;
+        token1 : ?TokenType;
+        lock_end : Expiry;                 // end of the lock period
+        dissolve_delay : Nat64;            // 0 = none
+        dissolving_until : ?Expiry;        // set while dissolving or once dissolved
+        expiry : Expiry;                   // the effective unlock time
+        locked : Bool;
+        archived : Bool;                   // cleared from the active set after unlocking
+    };
+    public type LockOpError = {
+        #NotFound;
+        #NotOwner;
+        #InProgress;                       // a transfer of this lock (or its owner's tokens) is running
+        #Invalid : Text;                   // the change is not allowed; the text says why
+    };
+    public type LockOpResult = {
+        #Ok : LockState;
+        #Err : LockOpError;
+    };
+    public type LockLimits = {
+        min_lock_length_ns : Nat64;        // applies to lock period + dissolve delay
+        max_lock_length_ns : Nat64;
+    };
+    public type LockPageQuery = {
+        owner : ?Principal;
+        ledger : ?TokenType;
+        swap_canister_id : ?SwapCanisterId;
+        kind : ?LockType;
+        include_archived : Bool;
+        prev : ?LockId;                    // ascending lock ids after this one
+        take : ?Nat;                       // default 100, at most 500
+    };
+
     // return types
     public type CreateLockError = {
         message : Text;

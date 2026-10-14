@@ -15,7 +15,8 @@ import Debug "mo:base/Debug";
 import Error "mo:base/Error";
 
 import Map "mo:map/Map";
-import { phash } "mo:map/Map";
+import { phash; nhash } "mo:map/Map";
+import D "Dissolve";
 
 import T "Types";
 
@@ -148,6 +149,16 @@ shared (deployer) persistent actor class SneedLock() = this {
   // Payment log stable storage
   stable var payment_log : [T.PaymentLogEntry] = [];
   stable var next_payment_log_id : Nat = 0;
+
+  // Dissolve delays (spec/sneed_lock_v2.md, section 1; rules in Dissolve.mo). One entry per
+  // lock that has or had a delay, kept after the lock is archived so its history reads
+  // right. A lock's record carries the EFFECTIVE expiry (Dissolve.effectiveExpiry), so
+  // every existing expiry check keeps deciding correctly what is locked.
+  stable var dissolve_infos = Map.new<Nat, D.Info>();
+  // Token locks whose ownership transfer is awaiting the ledger. Their record sits with the
+  // recipient and is put back from a copy if the transfer fails, so nothing may change
+  // them meanwhile.
+  transient var lock_ids_in_flight = Map.new<Nat, ()>();
 
   // ICRC-3 activity log: hash-chained, certified blocks of every action, with
   // archive canisters for old blocks. Library: src/icrc3; design and the block
@@ -1056,6 +1067,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       return error;
     };
     lock_token_op(caller);
+    Map.set(lock_ids_in_flight, nhash, lock_id, ());
 
     try {
     // Find the lock (without removing it yet)
@@ -1220,6 +1232,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     };
     } finally {
       unlock_token_op(caller);
+      Map.delete(lock_ids_in_flight, nhash, lock_id);
     };
   };
 
@@ -1252,7 +1265,9 @@ shared (deployer) persistent actor class SneedLock() = this {
       false;
   };
 
-  public shared ({ caller }) func create_lock(amount : Nat, icrc1_ledger_canister_id : Principal, expires_at : Expiry) : async CreateLockResult {
+  /// `dissolve_delay` (v2, optional): with one, the lock period may be zero, the limits apply
+  /// to period + delay, and the tokens stay locked until the lock has dissolved.
+  public shared ({ caller }) func create_lock(amount : Nat, icrc1_ledger_canister_id : Principal, expires_at : Expiry, dissolve_delay : ?Nat64) : async CreateLockResult {
       
       let correlation_id = get_next_correlation_id();
       log_info(caller, correlation_id, " Creating lock for " # debug_show(amount) 
@@ -1260,6 +1275,17 @@ shared (deployer) persistent actor class SneedLock() = this {
 
       // Sneed DAO token cannot be locked
       
+      let delay : Nat64 = switch (dissolve_delay) { case (?d) d; case null 0 };
+      if (delay > 0) {
+        switch (D.createRefusal(NowAsNat64(), expires_at, delay, lock_limits())) {
+          case (?why) {
+            let error = #Err({ message = why; transfer_error = null });
+            log_error(caller, correlation_id, debug_show(error));
+            return error;
+          };
+          case null {};
+        };
+      } else {
       if ((TimeAsNat64(Time.now()) + min_lock_length_ns) > expires_at) {
           let error = #Err({
             message = "Minimum lock time not fulfilled.";
@@ -1276,6 +1302,7 @@ shared (deployer) persistent actor class SneedLock() = this {
           });
           log_error(caller, correlation_id, debug_show(error));
           return error;
+      };
       };
 
       let subaccount = PrincipalToSubaccount(caller);
@@ -1339,14 +1366,17 @@ shared (deployer) persistent actor class SneedLock() = this {
           case (#Ok(fee)) { fee };
       };
 
-      // Step 2: Create the lock
-      let lock = add_new_lock_for_principal(caller, icrc1_ledger_canister_id, amount, expires_at);
+      // Step 2: Create the lock. With a delay its record carries NEVER until it dissolves.
+      let lock = add_new_lock_for_principal(caller, icrc1_ledger_canister_id, amount, if (delay > 0) { D.NEVER } else { expires_at });
+      if (delay > 0) {
+        Map.set(dissolve_infos, nhash, lock.lock_id, { lock_end = D.clampEnd(NowAsNat64(), expires_at); delay = delay; dissolving_until = null } : D.Info);
+      };
       log_info(caller, correlation_id, "Created lock:" # debug_show(lock));
-      icrc3_add("sneedlock_token_lock_create", [
+      icrc3_add("sneedlock_token_lock_create", Array.append<(Text, T3.Value)>([
         ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("owner", Icrc3Log.principal(caller)),
         ("ledger", Icrc3Log.principal(icrc1_ledger_canister_id)), ("lock_id", #Nat(lock.lock_id)),
         ("amount", #Nat(amount)), ("expiry", Icrc3Log.nat64(expires_at)),
-      ]);
+      ], if (delay > 0) { [("dissolve_delay", Icrc3Log.nat64(delay))] } else { [] }));
 
       // Step 3: Charge the ICP fee (only after lock is successfully created)
       if (fee_to_charge > 0) {
@@ -1369,10 +1399,11 @@ shared (deployer) persistent actor class SneedLock() = this {
     position_id : T.PositionId,
     expires_at : Expiry,
     token0 : T.TokenType,
-    token1 : T.TokenType) : async T.CreateLockResult {
+    token1 : T.TokenType,
+    dissolve_delay : ?Nat64) : async T.CreateLockResult {
       let correlation_id = get_next_correlation_id();
       log_info(caller, correlation_id, "Creating position lock for " # debug_show(caller) # " on swap canister " # debug_show(swap_canister_id) # " for position " # debug_show(position_id) # " to expire at " # debug_show(expires_at));
-      let result = await create_or_update_position_lock(caller, correlation_id, swap_canister_id, ?dex, position_id, expires_at, ?token0, ?token1);
+      let result = await create_or_update_position_lock(caller, correlation_id, swap_canister_id, ?dex, position_id, expires_at, ?token0, ?token1, dissolve_delay);
       switch (result) {
         case (#Ok(_)) {
           log_info(caller, correlation_id, "Created position lock for " # debug_show(caller) # " on swap canister " # debug_show(swap_canister_id) # " for position " # debug_show(position_id) # " to expire at " # debug_show(expires_at) # ", result: " # debug_show(result));
@@ -1390,7 +1421,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     expires_at : Expiry) : async T.CreateLockResult {
       let correlation_id = get_next_correlation_id();
       log_info(caller, correlation_id, "Updating position lock for " # debug_show(caller) # " on swap canister " # debug_show(swap_canister_id) # " for position " # debug_show(position_id) # " to expire at " # debug_show(expires_at));
-      let result = await create_or_update_position_lock(caller, correlation_id, swap_canister_id, null, position_id, expires_at, null, null);
+      let result = await create_or_update_position_lock(caller, correlation_id, swap_canister_id, null, position_id, expires_at, null, null, null);
       switch (result) {
         case (#Ok(_)) {
           log_info(caller, correlation_id, "Updated position lock for " # debug_show(caller) # " on swap canister " # debug_show(swap_canister_id) # " for position " # debug_show(position_id) # " to expire at " # debug_show(expires_at) # ", result: " # debug_show(result));
@@ -1410,8 +1441,25 @@ shared (deployer) persistent actor class SneedLock() = this {
     position_id : T.PositionId,
     expires_at : Expiry,
     token0 : ?T.TokenType,
-    token1 : ?T.TokenType) : async T.CreateLockResult {
+    token1 : ?T.TokenType,
+    dissolve_delay : ?Nat64) : async T.CreateLockResult {
 
+      let delay : Nat64 = switch (dissolve_delay) { case (?d) d; case null 0 };
+      // A lock that already has a dissolve delay is extended by the dissolve rules, checked
+      // after the ownership check below. A delay is only set when a lock is created.
+      let existing_has_delay = switch (get_position_lock(caller, swap_canister_id, position_id)) {
+        case (?pl) { Map.get(dissolve_infos, nhash, pl.lock_id) != null and pl.expiry > NowAsNat64() };
+        case null false;
+      };
+      if (delay > 0) {
+        if (get_position_lock(caller, swap_canister_id, position_id) != null and existing_has_delay) {
+          return #Err({ message = "This position is already locked; use increase_dissolve_delay to change its delay."; transfer_error = null });
+        };
+        switch (D.createRefusal(NowAsNat64(), expires_at, delay, lock_limits())) {
+          case (?why) { return #Err({ message = why; transfer_error = null }) };
+          case null {};
+        };
+      } else if (not existing_has_delay) {
       if ((TimeAsNat64(Time.now()) + min_lock_length_ns) > expires_at) {
           return #Err({
             message = "Minimum lock time not fulfilled.";
@@ -1424,6 +1472,7 @@ shared (deployer) persistent actor class SneedLock() = this {
             message = "Maximum lock time exceeded.";
             transfer_error = null;
           });
+      };
       };
 
       let position_is_claimed = has_claimed_position_impl(caller, swap_canister_id, position_id);
@@ -1499,14 +1548,17 @@ shared (deployer) persistent actor class SneedLock() = this {
                 case (#Ok(fee)) { fee };
             };
 
-            // Step 2: Create the position lock
+            // Step 2: Create the position lock. With a delay its record carries NEVER until it dissolves.
             let new_position_lock = add_new_position_lock_for_principal(
-              caller, correlation_id, swap_canister_id, dex_value, position_id, expires_at, token0_value, token1_value);
-            icrc3_add("sneedlock_position_lock_create", [
+              caller, correlation_id, swap_canister_id, dex_value, position_id, if (delay > 0) { D.NEVER } else { expires_at }, token0_value, token1_value);
+            if (delay > 0) {
+              Map.set(dissolve_infos, nhash, new_position_lock.lock_id, { lock_end = D.clampEnd(NowAsNat64(), expires_at); delay = delay; dissolving_until = null } : D.Info);
+            };
+            icrc3_add("sneedlock_position_lock_create", Array.append<(Text, T3.Value)>([
               ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("owner", Icrc3Log.principal(caller)),
               ("pool", Icrc3Log.principal(swap_canister_id)), ("position_id", #Nat(position_id)), ("lock_id", #Nat(new_position_lock.lock_id)),
               ("expiry", Icrc3Log.nat64(expires_at)), ("token0", Icrc3Log.principal(token0_value)), ("token1", Icrc3Log.principal(token1_value)), ("dex", #Nat(dex_value)),
-            ]);
+            ], if (delay > 0) { [("dissolve_delay", Icrc3Log.nat64(delay))] } else { [] }));
 
             // Step 3: Charge the ICP fee (only after lock is successfully created)
             if (fee_to_charge > 0) {
@@ -1523,6 +1575,20 @@ shared (deployer) persistent actor class SneedLock() = this {
             return #Ok(new_position_lock.lock_id);
           };
           case (?locked_position) {
+            if (delay > 0) {
+              return #Err({ message = "This position is already locked; use increase_dissolve_delay to give it a delay."; transfer_error = null });
+            };
+            // A lock with a dissolve delay is extended by the dissolve rules (its record
+            // carries the effective expiry, not the end of its lock period).
+            switch (Map.get(dissolve_infos, nhash, locked_position.lock_id)) {
+              case (?_) {
+                return switch (change_lock(caller, locked_position.lock_id, #Extend(expires_at), correlation_id)) {
+                  case (#Ok(st)) #Ok(st.lock_id);
+                  case (#Err(e)) #Err({ message = lock_op_error_text(e); transfer_error = null });
+                };
+              };
+              case null {};
+            };
             if (expires_at < locked_position.expiry) {
                 return #Err({
                   message = "New expiry is before current expiry.";
@@ -1795,6 +1861,215 @@ shared (deployer) persistent actor class SneedLock() = this {
   };
 
   ////////////////
+  // v2: dissolve delays, extending token locks, and one view of a lock for integrators
+  // (spec/sneed_lock_v2.md)
+  ////////////////
+
+  private func lock_limits() : D.Limits { { min = min_lock_length_ns; max = max_lock_length_ns } };
+
+  /// Every ACTIVE record of this lock id. More than one means a transfer whose outcome was
+  /// unknown left it on both owners pending reconciliation (transfer_token_lock_ownership).
+  private func token_lock_records(lock_id : T.LockId) : [(Principal, TokenType, Lock)] {
+    var out = List.nil<(Principal, TokenType, Lock)>();
+    for ((owner, token_locks_map) in state.principal_token_locks.entries()) {
+      for ((token_type, locks_list) in token_locks_map.entries()) {
+        for (lock in List.toIter(locks_list)) {
+          if (lock.lock_id == lock_id) { out := List.push((owner, token_type, lock), out) };
+        };
+      };
+    };
+    List.toArray(out);
+  };
+
+  private func position_lock_records(lock_id : T.LockId) : [(Principal, T.SwapCanisterId, T.PositionLock)] {
+    var out = List.nil<(Principal, T.SwapCanisterId, T.PositionLock)>();
+    for ((owner, position_locks_map) in state.principal_position_locks.entries()) {
+      for ((swap, locks_list) in position_locks_map.entries()) {
+        for (lock in List.toIter(locks_list)) {
+          if (lock.lock_id == lock_id) { out := List.push((owner, swap, lock), out) };
+        };
+      };
+    };
+    List.toArray(out);
+  };
+
+  private func lock_op_error_text(e : T.LockOpError) : Text {
+    switch (e) {
+      case (#NotFound) "No such lock.";
+      case (#NotOwner) "Only the lock's owner can change it.";
+      case (#InProgress) "A transfer of this lock is in progress; try again shortly.";
+      case (#Invalid(why)) why;
+    }
+  };
+
+  private func token_lock_state(owner : Principal, ledger : TokenType, lock : Lock, archived : Bool) : T.LockState {
+    let info = Map.get(dissolve_infos, nhash, lock.lock_id);
+    {
+      lock_id = lock.lock_id; kind = #TokenLock; owner; owner_subaccount = null;
+      ledger = ?ledger; amount = ?lock.amount;
+      swap_canister_id = null; position_id = null; token0 = null; token1 = null;
+      lock_end = switch (info) { case (?i) i.lock_end; case null lock.expiry };
+      dissolve_delay = switch (info) { case (?i) i.delay; case null 0 };
+      dissolving_until = switch (info) { case (?i) i.dissolving_until; case null null };
+      expiry = lock.expiry; locked = lock.expiry > NowAsNat64(); archived;
+    }
+  };
+
+  private func position_lock_state(owner : Principal, swap : T.SwapCanisterId, lock : T.PositionLock, archived : Bool) : T.LockState {
+    let info = Map.get(dissolve_infos, nhash, lock.lock_id);
+    {
+      lock_id = lock.lock_id; kind = #PositionLock; owner; owner_subaccount = null;
+      ledger = null; amount = null;
+      swap_canister_id = ?swap; position_id = ?lock.position_id; token0 = ?lock.token0; token1 = ?lock.token1;
+      lock_end = switch (info) { case (?i) i.lock_end; case null lock.expiry };
+      dissolve_delay = switch (info) { case (?i) i.delay; case null 0 };
+      dissolving_until = switch (info) { case (?i) i.dissolving_until; case null null };
+      expiry = lock.expiry; locked = lock.expiry > NowAsNat64(); archived;
+    }
+  };
+
+  private func lock_state_impl(lock_id : T.LockId) : ?T.LockState {
+    switch (token_lock_records(lock_id)) { case (r) { if (r.size() > 0) { return ?token_lock_state(r[0].0, r[0].1, r[0].2, false) } } };
+    switch (position_lock_records(lock_id)) { case (r) { if (r.size() > 0) { return ?position_lock_state(r[0].0, r[0].1, r[0].2, false) } } };
+    switch (archived_token_locks.get(lock_id)) { case (?a) { return ?token_lock_state(a.owner, a.token_type, a.lock, true) }; case null {} };
+    switch (archived_position_locks.get(lock_id)) { case (?a) { return ?position_lock_state(a.owner, a.swap_canister_id, a.lock, true) }; case null {} };
+    null
+  };
+
+  /// One change to one lock (Dissolve.applyOp), owner only. Synchronous: no await between
+  /// the checks and the write, so nothing can interleave.
+  private func change_lock(caller : Principal, lock_id : T.LockId, op : D.Op, correlation_id : Nat) : T.LockOpResult {
+    if (Map.has(lock_ids_in_flight, nhash, lock_id)) { return #Err(#InProgress) };
+    let tokens = token_lock_records(lock_id);
+    let positions = position_lock_records(lock_id);
+    if (tokens.size() + positions.size() == 0) {
+      if (archived_token_locks.get(lock_id) != null or archived_position_locks.get(lock_id) != null) {
+        return #Err(#Invalid("The lock is no longer locked."));
+      };
+      return #Err(#NotFound);
+    };
+    if (tokens.size() + positions.size() > 1) { return #Err(#InProgress) };
+    let now = NowAsNat64();
+    let (owner, stored) = if (tokens.size() == 1) { (tokens[0].0, tokens[0].2.expiry) } else { (positions[0].0, positions[0].2.expiry) };
+    if (owner != caller) { return #Err(#NotOwner) };
+    if (tokens.size() == 1 and is_token_op_locked(owner)) { return #Err(#InProgress) };
+    let before = Map.get(dissolve_infos, nhash, lock_id);
+    let (after, expiry) = switch (D.applyOp(op, before, stored, now, lock_limits())) {
+      case (#err(why)) { return #Err(#Invalid(why)) };
+      case (#ok(r)) r;
+    };
+    switch (after) { case (?i) { Map.set(dissolve_infos, nhash, lock_id, i) }; case null {} };
+    let (kind, block) = if (tokens.size() == 1) {
+      let (_, ledger, lock) = tokens[0];
+      remove_token_lock(owner, ledger, lock_id);
+      add_lock_for_principal(owner, ledger, { lock with expiry = expiry });
+      ("token", ("ledger", Icrc3Log.principal(ledger)))
+    } else {
+      let (_, swap, lock) = positions[0];
+      update_position_lock_expiry(owner, correlation_id, swap, lock, expiry);
+      ("position", ("pool", Icrc3Log.principal(swap)))
+    };
+    let btype = switch (op) {
+      case (#Start) "sneedlock_dissolve_start";
+      case (#Stop) "sneedlock_dissolve_stop";
+      case (#Increase(_)) "sneedlock_dissolve_delay_increase";
+      case (#Extend(_)) { if (kind == "token") "sneedlock_token_lock_extend" else "sneedlock_position_lock_extend" };
+    };
+    let lock_end = switch (after) { case (?i) i.lock_end; case null expiry };
+    icrc3_add(btype, Array.append<(Text, T3.Value)>([
+      ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("owner", Icrc3Log.principal(owner)),
+      ("lock_id", #Nat(lock_id)), ("kind", #Text(kind)), block,
+      ("old_expiry", Icrc3Log.nat64(stored)), ("expiry", Icrc3Log.nat64(expiry)), ("lock_end", Icrc3Log.nat64(lock_end)),
+    ], switch (after) {
+      case (?i) {
+        Array.append<(Text, T3.Value)>([("dissolve_delay", Icrc3Log.nat64(i.delay))],
+          switch (i.dissolving_until) { case (?u) [("dissolving_until", Icrc3Log.nat64(u))]; case null [] })
+      };
+      case null [];
+    }));
+    log_info(caller, correlation_id, "Lock " # Nat.toText(lock_id) # ": " # btype # ", expiry " # debug_show(stored) # " -> " # debug_show(expiry));
+    switch (lock_state_impl(lock_id)) { case (?st) #Ok(st); case null #Err(#NotFound) };
+  };
+
+  /// Start dissolving: allowed once the lock period has ended, for a lock with a delay.
+  public shared ({ caller }) func start_dissolving(lock_id : T.LockId) : async T.LockOpResult {
+    change_lock(caller, lock_id, #Start, get_next_correlation_id());
+  };
+
+  /// Stop dissolving: the time left becomes the delay again.
+  public shared ({ caller }) func stop_dissolving(lock_id : T.LockId) : async T.LockOpResult {
+    change_lock(caller, lock_id, #Stop, get_next_correlation_id());
+  };
+
+  /// Add to the dissolve delay (a lock without one gets one). While dissolving, the end moves
+  /// out by the same amount. Lock period + delay stay within the max lock length.
+  public shared ({ caller }) func increase_dissolve_delay(lock_id : T.LockId, additional_ns : Nat64) : async T.LockOpResult {
+    change_lock(caller, lock_id, #Increase(additional_ns), get_next_correlation_id());
+  };
+
+  /// Move the end of the lock period out, for token and position locks. Not while dissolving.
+  public shared ({ caller }) func extend_lock(lock_id : T.LockId, new_lock_end : Expiry) : async T.LockOpResult {
+    change_lock(caller, lock_id, #Extend(new_lock_end), get_next_correlation_id());
+  };
+
+  public query func get_lock_limits() : async T.LockLimits {
+    { min_lock_length_ns; max_lock_length_ns }
+  };
+
+  public query func get_lock_state(lock_id : T.LockId) : async ?T.LockState { lock_state_impl(lock_id) };
+
+  public query func get_lock_states(lock_ids : [T.LockId]) : async [?T.LockState] {
+    if (lock_ids.size() > 100) { Debug.trap("At most 100 lock ids per call") };
+    Array.map<T.LockId, ?T.LockState>(lock_ids, lock_state_impl);
+  };
+
+  /// Locks in ascending id order, filtered by owner, ledger, pool and kind, paged by the last
+  /// id seen. Archived (unlocked and cleared) locks only when asked for.
+  public query func get_lock_states_page(q : T.LockPageQuery) : async [T.LockState] {
+    let take = switch (q.take) { case (?t) Nat.min(t, 500); case null 100 };
+    let after = func(id : T.LockId) : Bool { switch (q.prev) { case (?p) id > p; case null true } };
+    let ownerOk = func(o : Principal) : Bool { switch (q.owner) { case (?x) x == o; case null true } };
+    let want = func(k : T.LockType) : Bool { switch (q.kind) { case (?x) x == k; case null true } };
+    var out = List.nil<T.LockState>();
+    if (want(#TokenLock) and q.swap_canister_id == null) {
+      let ledgerOk = func(l : TokenType) : Bool { switch (q.ledger) { case (?x) x == l; case null true } };
+      for ((owner, m) in state.principal_token_locks.entries()) {
+        if (ownerOk(owner)) {
+          for ((ledger, locks) in m.entries()) {
+            if (ledgerOk(ledger)) {
+              for (lock in List.toIter(locks)) { if (after(lock.lock_id)) { out := List.push(token_lock_state(owner, ledger, lock, false), out) } };
+            };
+          };
+        };
+      };
+      if (q.include_archived) {
+        for ((id, a) in archived_token_locks.entries()) {
+          if (after(id) and ownerOk(a.owner) and ledgerOk(a.token_type)) { out := List.push(token_lock_state(a.owner, a.token_type, a.lock, true), out) };
+        };
+      };
+    };
+    if (want(#PositionLock) and q.ledger == null) {
+      let swapOk = func(sw : T.SwapCanisterId) : Bool { switch (q.swap_canister_id) { case (?x) x == sw; case null true } };
+      for ((owner, m) in state.principal_position_locks.entries()) {
+        if (ownerOk(owner)) {
+          for ((swap, locks) in m.entries()) {
+            if (swapOk(swap)) {
+              for (lock in List.toIter(locks)) { if (after(lock.lock_id)) { out := List.push(position_lock_state(owner, swap, lock, false), out) } };
+            };
+          };
+        };
+      };
+      if (q.include_archived) {
+        for ((id, a) in archived_position_locks.entries()) {
+          if (after(id) and ownerOk(a.owner) and swapOk(a.swap_canister_id)) { out := List.push(position_lock_state(a.owner, a.swap_canister_id, a.lock, true), out) };
+        };
+      };
+    };
+    let sorted = Array.sort<T.LockState>(List.toArray(out), func(a, b) { Nat.compare(a.lock_id, b.lock_id) });
+    if (sorted.size() <= take) { sorted } else { Array.tabulate<T.LockState>(take, func(i) { sorted[i] }) };
+  };
+
+  ////////////////
   // ICRC-3 activity log (library src/icrc3, design spec/sneed_lock_icrc3.md)
   ////////////////
 
@@ -1821,6 +2096,11 @@ shared (deployer) persistent actor class SneedLock() = this {
       "sneedlock_admin_pool_deposit",
       "sneedlock_admin_pool_withdraw",
       "sneedlock_config_update",
+      // v2 (spec/sneed_lock_v2.md)
+      "sneedlock_dissolve_start",
+      "sneedlock_dissolve_stop",
+      "sneedlock_dissolve_delay_increase",
+      "sneedlock_token_lock_extend",
     ];
   };
 
