@@ -52,7 +52,7 @@ export const NAMES = {
 };
 export const nameOf = (id) => NAMES[id] || id;
 
-const NEURON_8Y = 4000934039483276792n;
+const NEURON_2Y = 4000934039483276792n;
 const EIGHT_YEARS_S = 8n * 365n * 24n * 3600n + 2n * 24n * 3600n; // 252_460_800 as the NNS counts it
 const TREASURY_SNEED_SUB = '8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de';
 const EXPECTED_LP_POSITIONS = [24n, 25n, 26n];
@@ -186,7 +186,7 @@ const loaders = {
     },
     nnsNeuron: async (ctx) => {
         const gov = await actor(nnsGovIdl, IDS.nnsGovernance);
-        const r = await ctx.call(gov.get_neuron_info(NEURON_8Y), 'NNS neuron info');
+        const r = await ctx.call(gov.get_neuron_info(NEURON_2Y), 'NNS neuron info');
         if ('Err' in r) throw new Error(r.Err.error_message || 'NNS governance returned an error');
         return r.Ok;
     },
@@ -496,11 +496,11 @@ export function buildTree(config) {
         children: async (ctx) => {
             const nodes = await ctx.load('daoNodes', loaders.daoNodes);
             const leaves = [{
-                id: 'rev:neuron', name: 'DAO ICP neuron locked', link: `https://dashboard.internetcomputer.org/neuron/${NEURON_8Y}`,
+                id: 'rev:neuron', name: 'DAO ICP neuron locked', link: `https://dashboard.internetcomputer.org/neuron/${NEURON_2Y}`,
                 run: async (ctx2) => {
                     const n = await ctx2.load('nnsNeuron', loaders.nnsNeuron);
                     const dd = BigInt(n.dissolve_delay_seconds);
-                    const details = { neuron: NEURON_8Y.toString(), stake_icp: fmtUnits(n.stake_e8s), dissolve_delay_days: Number(dd / 86400n), state: Number(n.state), age_days: Number(BigInt(n.age_seconds) / 86400n) };
+                    const details = { neuron: NEURON_2Y.toString(), stake_icp: fmtUnits(n.stake_e8s), dissolve_delay_days: Number(dd / 86400n), state: Number(n.state), age_days: Number(BigInt(n.age_seconds) / 86400n) };
                     if (Number(n.state) !== 1) return fail(`Neuron is not locked (state ${Number(n.state)})`, details);
                     if (dd < BigInt(Math.round(c.minNeuronDissolveDays)) * 86400n) return warn(`Dissolve delay is ${Number(dd / 86400n)} days, below the ${c.minNeuronDissolveDays} expected`, details);
                     return pass(`Locked for ${Number(dd / 86400n)} days with ${fmtUnits(n.stake_e8s, 8, 0)} ICP`, details);
