@@ -17,6 +17,18 @@ dfx +"$DFX_VERSION" build --network ic sneed_lock 2>&1 | grep -iv "warning\|^ *$
 cp .dfx/ic/canisters/sneed_lock/sneed_lock.wasm "$OUT/sneed_lock.wasm"
 cp .dfx/ic/canisters/sneed_lock/service.did.js "$OUT/sneed_lock.did.js"
 
+# sneed_lock as of v2a (dissolve delays, before lock creation times were kept), for the
+# upgrade test that fills in creation times from the ICRC-3 log
+PREV_COMMIT=7023ef32
+echo "== sneed_lock at $PREV_COMMIT (moc, for the upgrade test)"
+PREV_SRC="$(mktemp -d)"
+git archive "$PREV_COMMIT" src/sneed_lock src/icrc3 src/PremiumClient.mo | tar -x -C "$PREV_SRC"
+MOC="$(dfx +"$DFX_VERSION" cache show)/moc"
+# shellcheck disable=SC2046
+"$MOC" $(mops sources) "$PREV_SRC/src/sneed_lock/main.mo" -o "$OUT/sneed_lock_v2a.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneed_lock_v2a.wasm"
+
 echo "== sneed_guardian (dfx +$DFX_VERSION build --check: no canister id yet)"
 dfx +"$DFX_VERSION" build --check sneed_guardian 2>&1 | grep -iv "warning\|^ *$\|^\s*[0-9]* |\|^  \^\|Nat$\|bespoke" | tail -2
 cp .dfx/local/canisters/sneed_guardian/sneed_guardian.wasm "$OUT/sneed_guardian.wasm"

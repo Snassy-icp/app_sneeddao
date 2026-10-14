@@ -35,6 +35,21 @@ module {
 
   public func isLocked(i : Info, now : Nat64) : Bool { effectiveExpiry(i) > now };
 
+  /// The soonest the lock can be free: while dissolving, the end of the dissolve; otherwise
+  /// if dissolving started as soon as allowed (the end of the lock period, or now if that is
+  /// past), plus the delay. For a lock that is not dissolving this moves forward with time
+  /// once its lock period is over. Saturates at NEVER.
+  public func earliestUnlock(i : Info, now : Nat64) : Nat64 {
+    switch (i.dissolving_until) {
+      case (?_) effectiveExpiry(i);
+      case null {
+        let from = if (i.lock_end > now) i.lock_end else now;
+        let t = Nat64.toNat(from) + Nat64.toNat(i.delay);
+        if (t >= Nat64.toNat(NEVER)) NEVER else Nat64.fromNat(t)
+      };
+    }
+  };
+
   /// How long the lock would still be held if dissolving started as soon as allowed:
   /// the rest of the lock period plus the delay, or the rest of the dissolve. In Nat,
   /// so nothing here can overflow.

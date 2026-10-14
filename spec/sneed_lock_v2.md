@@ -102,20 +102,39 @@ traps), in the canister and in the frontend:
 
 ### Reads
 
-`get_lock_state(lock_id)` returns:
+`get_lock_state(lock_id)` returns (as built in v2a; see `LockState` in Types.mo):
 
 ```
 {
-  kind;
-  owner : Account;          // the label is included
-  lock_end;
-  dissolve_delay;
+  lock_id; kind; owner; owner_subaccount;   // the label, once locks are NFTs
+  ledger; amount;                           // token locks
+  swap_canister_id; position_id; token0; token1;   // position locks
+  lock_end;                 // end of the lock period: dissolving can start from here
+  dissolve_delay;           // 0 = none
   dissolving_until : ?Nat64;
-  effective_expiry;
+  expiry;                   // the effective (stored) expiry, see above
+  earliest_unlock;          // the soonest it can be free
+  created_at : ?Nat64;      // when the lock was created
   locked : Bool;
-  time_to_unlock : ?Nat64;  // null = not dissolving
+  archived : Bool;
 }
 ```
+
+**`earliest_unlock`, not "never".** A delay lock that is not dissolving stores `NEVER`,
+because it must not unlock by itself; but what a person wants to know is when it can be
+free. `earliest_unlock` is `expiry` for a plain or dissolving lock, and otherwise
+`max(lock_end, now) + dissolve_delay`. A lock with a 1 h lock period and a 1 h delay shows
+"2 h from now at the soonest". Once its lock period is over and it still is not dissolving,
+the value moves forward with time: it says "if dissolving started now". GUIs show this,
+labelled "at the soonest", wherever a plain lock shows its expiry.
+
+**`created_at`, the lock's age.** Lock records never carried a creation time. v2 keeps one
+per lock id in a stable map, set when the lock is created and kept after it is archived.
+On the upgrade that adds it, the canister fills it in once from the `*_lock_create` blocks
+of its ICRC-3 log, so every lock created since the log began (October 2026) has its time.
+Older locks have none (`null`), and GUIs say so. Re-locking or extending a position keeps its
+lock id and so its age. Whether an age bonus survives an NFT transfer is an open question
+(below); `created_at` itself never changes.
 
 Plus a batch form and paged forms per owner and per ledger. This is the single query
 `sneed_gov` and integrators build on.

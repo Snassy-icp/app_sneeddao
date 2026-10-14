@@ -70,6 +70,10 @@ module {
         dissolve_delay : Nat64;            // 0 = none
         dissolving_until : ?Expiry;        // set while dissolving or once dissolved
         expiry : Expiry;                   // the effective unlock time
+        earliest_unlock : Expiry;          // the soonest it can be free: `expiry`, or for a delay lock
+                                           // not dissolving, max(lock_end, now) + dissolve_delay
+        created_at : ?Nat64;               // when the lock was created; null for locks created
+                                           // before Sneed Lock recorded it (and its ICRC-3 log began)
         locked : Bool;
         archived : Bool;                   // cleared from the active set after unlocking
     };

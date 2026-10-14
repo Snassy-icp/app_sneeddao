@@ -761,12 +761,71 @@ describe('dissolve delays', () => {
   });
 
   it('keeps every dissolve state across an upgrade, and the log still verifies', async () => {
-    const before = await lock.get_lock_states([neuronId, vestId, plainId]);
+    // earliest_unlock of a delay lock that is not dissolving counts from now, which moves
+    const kept = async () => (await lock.get_lock_states([neuronId, vestId, plainId])).map(([x]) => { const { earliest_unlock, ...rest } = x; return rest; });
+    const before = await kept();
     await pic.upgradeCanister({ sender: admin, canisterId: lockId, wasm: wasm('sneed_lock'), arg: IDL.encode([], []) });
     await pic.tick(2);
-    expect(await lock.get_lock_states([neuronId, vestId, plainId])).toEqual(before);
+    expect(await kept()).toEqual(before);
     const types = (await lock.icrc3_supported_block_types()).map((t) => t.block_type);
     for (const t of ['sneedlock_dissolve_start', 'sneedlock_dissolve_stop', 'sneedlock_dissolve_delay_increase', 'sneedlock_token_lock_extend']) expect(types).toContain(t);
     await verifyLog(lock, lockId, rootKey, archiveActor);
+  });
+});
+
+describe('lock age and earliest unlock', () => {
+  const HOUR = 3600n * 1_000_000_000n;
+  const state = async (actor, id) => (await actor.get_lock_state(id))[0];
+
+  it('records when a lock was created; a plain lock unlocks at its expiry', async () => {
+    await tokenA.mint(sneedWallet(alice), 10_000n);
+    const before = await nowNs();
+    const id = unwrap(await lockAlice.create_lock(2_000n, tokenAId, await expiryIn(3600), []));
+    const s = await state(lock, id);
+    expect(s.created_at).toHaveLength(1);
+    expect(s.created_at[0]).toBeGreaterThanOrEqual(before);
+    expect(s.created_at[0]).toBeLessThanOrEqual((await nowNs()) + 1_000_000n); // nowNs is in whole ms
+    expect(s.earliest_unlock).toBe(s.expiry);
+  });
+
+  it('a delay lock shows the soonest it can be free: lock period + delay, then delay from now, then the dissolve end', async () => {
+    await tokenA.mint(sneedWallet(alice), 10_000n);
+    const id = unwrap(await lockAlice.create_lock(2_000n, tokenAId, await expiryIn(3600), [HOUR]));
+    let s = await state(lock, id);
+    expect(s.expiry).toBe(18_446_744_073_709_551_615n); // held until it dissolves
+    expect(s.earliest_unlock).toBe(s.lock_end + HOUR); // 1h lock period + 1h delay
+    // two hours on, not dissolving: still at least the delay away, counted from now
+    await pic.advanceTime(2 * 3600 * 1000); await pic.tick();
+    s = await state(lock, id);
+    const now = await nowNs();
+    expect(s.earliest_unlock).toBeGreaterThanOrEqual(now + HOUR);
+    expect(s.earliest_unlock).toBeLessThan(now + HOUR + 60n * 1_000_000_000n);
+    // dissolving: the end of the dissolve
+    const d = (await lockAlice.start_dissolving(id)).Ok;
+    expect(d.earliest_unlock).toBe(d.dissolving_until[0]);
+    expect(d.earliest_unlock).toBe(d.expiry);
+  });
+
+  it('an upgrade fills in creation times of earlier locks from their ICRC-3 create blocks', async () => {
+    const oldId = await install(pic, { name: 'sneed_lock_v2a', cycles: 20n * T, targetSubnetId: appSubnet });
+    await pic.tick(2);
+    const oldAlice = actorAs(pic, sneedLockIdl, oldId, alice);
+    const oldAdmin = actorAs(pic, sneedLockIdl, oldId, admin);
+    await tokenA.mint(account(oldId, principalToSubaccount(alice)), 50_000n);
+    const plain = unwrap(await oldAlice.create_lock(5_000n, tokenAId, await expiryIn(3600), []));
+    const withDelay = unwrap(await oldAlice.create_lock(5_000n, tokenAId, 0n, [HOUR]));
+    const s = await oldAdmin.icrc3_log_status();
+    const blocks = await fetchBlocks(oldAdmin, archiveActor, 0n, s.log_length - 1n);
+    const createdTs = new Map();
+    for (const b of blocks.values()) if (btype(b) === 'sneedlock_token_lock_create') createdTs.set(txField(b, 'lock_id').Nat, b.Map.find(([k]) => k === 'ts')[1].Nat);
+    expect(createdTs.size).toBe(2);
+    await pic.upgradeCanister({ sender: admin, canisterId: oldId, wasm: wasm('sneed_lock'), arg: IDL.encode([], []) });
+    await pic.tick(2);
+    for (const id of [plain, withDelay]) expect((await state(oldAdmin, id)).created_at).toEqual([createdTs.get(id)]);
+    // the delay lock kept its dissolve state through the upgrade
+    expect(await state(oldAdmin, withDelay)).toMatchObject({ dissolve_delay: HOUR, dissolving_until: [], locked: true });
+    // and a second upgrade changes nothing
+    await pic.upgradeCanister({ sender: admin, canisterId: oldId, wasm: wasm('sneed_lock'), arg: IDL.encode([], []) });
+    expect((await state(oldAdmin, plain)).created_at).toEqual([createdTs.get(plain)]);
   });
 });

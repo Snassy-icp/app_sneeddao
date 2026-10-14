@@ -159,6 +159,11 @@ shared (deployer) persistent actor class SneedLock() = this {
   // recipient and is put back from a copy if the transfer fails, so nothing may change
   // them meanwhile.
   transient var lock_ids_in_flight = Map.new<Nat, ()>();
+  // When each lock was created (lock id -> ns). Locks created before this was kept get
+  // their time once from the ICRC-3 log's create blocks (postupgrade); locks older than
+  // the log have none. Kept after a lock is archived.
+  stable var lock_created_at = Map.new<Nat, Nat64>();
+  stable var lock_created_at_backfilled : Bool = false;
 
   // ICRC-3 activity log: hash-chained, certified blocks of every action, with
   // archive canisters for old blocks. Library: src/icrc3; design and the block
@@ -1368,6 +1373,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
       // Step 2: Create the lock. With a delay its record carries NEVER until it dissolves.
       let lock = add_new_lock_for_principal(caller, icrc1_ledger_canister_id, amount, if (delay > 0) { D.NEVER } else { expires_at });
+      Map.set(lock_created_at, nhash, lock.lock_id, NowAsNat64());
       if (delay > 0) {
         Map.set(dissolve_infos, nhash, lock.lock_id, { lock_end = D.clampEnd(NowAsNat64(), expires_at); delay = delay; dissolving_until = null } : D.Info);
       };
@@ -1551,6 +1557,7 @@ shared (deployer) persistent actor class SneedLock() = this {
             // Step 2: Create the position lock. With a delay its record carries NEVER until it dissolves.
             let new_position_lock = add_new_position_lock_for_principal(
               caller, correlation_id, swap_canister_id, dex_value, position_id, if (delay > 0) { D.NEVER } else { expires_at }, token0_value, token1_value);
+            Map.set(lock_created_at, nhash, new_position_lock.lock_id, NowAsNat64());
             if (delay > 0) {
               Map.set(dissolve_infos, nhash, new_position_lock.lock_id, { lock_end = D.clampEnd(NowAsNat64(), expires_at); delay = delay; dissolving_until = null } : D.Info);
             };
@@ -1912,6 +1919,8 @@ shared (deployer) persistent actor class SneedLock() = this {
       dissolve_delay = switch (info) { case (?i) i.delay; case null 0 };
       dissolving_until = switch (info) { case (?i) i.dissolving_until; case null null };
       expiry = lock.expiry; locked = lock.expiry > NowAsNat64(); archived;
+      earliest_unlock = switch (info) { case (?i) D.earliestUnlock(i, NowAsNat64()); case null lock.expiry };
+      created_at = Map.get(lock_created_at, nhash, lock.lock_id);
     }
   };
 
@@ -1925,7 +1934,48 @@ shared (deployer) persistent actor class SneedLock() = this {
       dissolve_delay = switch (info) { case (?i) i.delay; case null 0 };
       dissolving_until = switch (info) { case (?i) i.dissolving_until; case null null };
       expiry = lock.expiry; locked = lock.expiry > NowAsNat64(); archived;
+      earliest_unlock = switch (info) { case (?i) D.earliestUnlock(i, NowAsNat64()); case null lock.expiry };
+      created_at = Map.get(lock_created_at, nhash, lock.lock_id);
     }
+  };
+
+  /// Once: creation times of locks created since the ICRC-3 log began, from their create
+  /// blocks still held by this canister. Blocks already moved to an archive are skipped
+  /// (their locks show no creation time). Reads only; never traps on an odd block.
+  private func backfill_lock_created_at() {
+    if (lock_created_at_backfilled) { return };
+    lock_created_at_backfilled := true;
+    let live = icrc3.live;
+    var i = 0;
+    while (i < live.count) {
+      switch (Icrc3Log.decode(live.blocks[i])) {
+        case (?#Map(fields)) {
+          var btype = ""; var ts : ?Nat = null; var lock_id : ?Nat = null;
+          for ((k, v) in fields.vals()) {
+            switch (k, v) {
+              case ("btype", #Text(t)) { btype := t };
+              case ("ts", #Nat(n)) { ts := ?n };
+              case ("tx", #Map(tx)) {
+                for ((k2, v2) in tx.vals()) { switch (k2, v2) { case ("lock_id", #Nat(n)) { lock_id := ?n }; case _ {} } };
+              };
+              case _ {};
+            };
+          };
+          if (btype == "sneedlock_token_lock_create" or btype == "sneedlock_position_lock_create") {
+            switch (ts, lock_id) {
+              case (?t, ?id) {
+                if (t < 0x1_0000_0000_0000_0000 and Map.get(lock_created_at, nhash, id) == null) {
+                  Map.set(lock_created_at, nhash, id, Nat64.fromNat(t));
+                };
+              };
+              case _ {};
+            };
+          };
+        };
+        case _ {};
+      };
+      i += 1;
+    };
   };
 
   private func lock_state_impl(lock_id : T.LockId) : ?T.LockState {
@@ -3702,6 +3752,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
   // initialize ephemeral state and empty stable arrays to save memory
   system func postupgrade() {
+      backfill_lock_created_at();
 
       /// stableLocks
       let stableIter : Iter.Iter<FullyQualifiedLock> = stableLocks.vals();      
