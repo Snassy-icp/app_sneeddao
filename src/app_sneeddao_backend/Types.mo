@@ -203,6 +203,17 @@ module {
         permissions : [(Principal, [Int32])];
     };
 
+    // Neuron as decoded from SNS governance list_neurons (subset of fields)
+    public type SnsNeuronPermission = {
+        principal : ?Principal;
+        permission_type : [Int32];
+    };
+
+    public type SnsNeuron = {
+        id : ?NeuronId;
+        permissions : [SnsNeuronPermission];
+    };
+
     // Partner types
     public type PartnerLink = {
         title : Text;

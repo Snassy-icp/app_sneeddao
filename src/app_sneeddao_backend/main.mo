@@ -185,6 +185,11 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   // Stable storage for projects
   var stable_projects : [Project] = [];
 
+  // Persistent next-id counters for partners and projects so ids are never reused after
+  // deletions + upgrade. 0 = not yet recorded (postupgrade then falls back to max id + 1).
+  var stable_next_partner_id : Nat = 0;
+  var stable_next_project_id : Nat = 0;
+
   // Jailbreak configuration types and storage
   type JailbreakConfig = {
     id: Nat;
@@ -847,7 +852,19 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     cached_token_meta.get(swap_canister_id); 
   };
 
-  public shared func set_cached_token_meta(swap_canister_id : Principal, new_token_meta : T.TokenMeta) : async () {
+  // Any signed-in user may fill an empty cache entry (the frontend fills it from users' browsers);
+  // only admins may overwrite an existing entry with different data. Refused writes are ignored
+  // silently (no trap) so callers' metadata lookups keep working.
+  public shared ({ caller }) func set_cached_token_meta(swap_canister_id : Principal, new_token_meta : T.TokenMeta) : async () {
+    if (Principal.isAnonymous(caller)) { return; };
+    switch (cached_token_meta.get(swap_canister_id)) {
+      case (?existing) {
+        if (existing == new_token_meta or not is_admin(caller)) { return; };
+      };
+      case null {
+        if (is_banned(caller)) { return; };
+      };
+    };
     cached_token_meta.put(swap_canister_id, new_token_meta);
   };
 
@@ -1118,6 +1135,12 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   };
 
   public shared ({ caller }) func set_canister_groups(groups: CanisterGroupsRoot) : async Result.Result<(), Text> {
+    if (Principal.isAnonymous(caller)) {
+      return #err("Anonymous users cannot save canister groups");
+    };
+    if (is_banned(caller)) {
+      return #err("You are banned");
+    };
     // Get limits based on premium status
     let (maxGroups, maxCanistersPerGroup, maxTotalCanisters) = await* get_canister_group_limits(caller);
     
@@ -1144,6 +1167,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   };
 
   public shared ({ caller }) func delete_canister_groups() : async () {
+    if (Principal.isAnonymous(caller)) {
+      throw Error.reject("Anonymous users cannot delete canister groups");
+    };
     principal_canister_groups.delete(caller);
   };
 
@@ -1153,6 +1179,12 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   };
 
   public shared ({ caller }) func set_wallet_layout(layout: WalletLayout) : async () {
+    if (Principal.isAnonymous(caller)) {
+      throw Error.reject("Anonymous users cannot save a wallet layout");
+    };
+    if (is_banned(caller)) {
+      throw Error.reject("You are banned");
+    };
     principal_wallet_layouts.put(caller, layout);
   };
 
@@ -2815,6 +2847,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
     partners.add(partner);
     next_partner_id += 1;
+    stable_next_partner_id := next_partner_id;
     #ok(partner.id)
   };
 
@@ -2939,7 +2972,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
                 limit : Nat32;
                 start_page_at : ?NeuronId;
             }) -> async {
-                neurons : [T.Neuron];
+                neurons : [T.SnsNeuron];
             };
         };
 
@@ -2949,7 +2982,18 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
             start_page_at = null;
         });
 
-        #ok(response.neurons)
+        // SNS governance returns permissions as records with an optional principal;
+        // convert to the public (Principal, [Int32]) shape, skipping entries without a principal.
+        #ok(Array.map<T.SnsNeuron, T.Neuron>(response.neurons, func (n : T.SnsNeuron) : T.Neuron {
+            let perms = Buffer.Buffer<(Principal, [Int32])>(n.permissions.size());
+            for (perm in n.permissions.vals()) {
+                switch (perm.principal) {
+                    case (?p) { perms.add((p, perm.permission_type)) };
+                    case null {};
+                };
+            };
+            { id = n.id; permissions = Buffer.toArray(perms) }
+        }))
     } catch (e) {
         #err("Failed to fetch neurons: " # Error.message(e))
     }
@@ -2984,6 +3028,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
     projects.add(project);
     next_project_id += 1;
+    stable_next_project_id := next_project_id;
     #ok(project.id)
   };
 
@@ -3797,7 +3842,8 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
           max_id := partner.id + 1;
         };
       };
-      next_partner_id := max_id;
+      next_partner_id := Nat.max(max_id, stable_next_partner_id);
+      stable_next_partner_id := next_partner_id;
 
       // Restore projects from stable storage
       for (project in stable_projects.vals()) {
@@ -3951,7 +3997,8 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
           max_project_id := project.id + 1;
         };
       };
-      next_project_id := max_project_id;
+      next_project_id := Nat.max(max_project_id, stable_next_project_id);
+      stable_next_project_id := next_project_id;
 
       // Restore jailbreak configs from stable storage
       for ((user, configs) in stable_jailbreak_configs.vals()) {
