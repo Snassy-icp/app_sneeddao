@@ -751,6 +751,7 @@ function SneedexCreate() {
         finally { setMyLocksLoading(false); }
     };
     useEffect(() => { if (newAssetType === 'lock' && identity && myLocks === null && !myLocksLoading) loadMyLocks(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [newAssetType, identity]);
+    const location = useLocation();
     // Arriving from the wallet: ?lock=<lock id>
     useEffect(() => {
         const q = new URLSearchParams(location.search).get('lock');
@@ -758,7 +759,6 @@ function SneedexCreate() {
         setShowAddAsset(true); setNewAssetType('lock'); setNewAssetLockId(q);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [location.search, identity]);
-    const location = useLocation();
     // The collections the user added to the NFT wallet, offered as one-click choices (names read lazily)
     const [myNftCollections, setMyNftCollections] = useState([]); // [{ id, name, symbol, logo }]
     useEffect(() => {
