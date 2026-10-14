@@ -814,7 +814,12 @@ module {
             case (?subtopic_ids) {
                 for (subtopic_id in Vector.vals(subtopic_ids)) {
                     switch (get_topic(state, subtopic_id)) {
-                        case (?topic_response) topics.add(topic_response);
+                        case (?topic_response) {
+                            // Skip stale index entries left by re-parenting before the index was kept in step
+                            if (topic_response.parent_topic_id == ?topic_id) {
+                                topics.add(topic_response);
+                            };
+                        };
                         case null {};
                     };
                 };
@@ -831,7 +836,8 @@ module {
                 for (subtopic_id in Vector.vals(subtopic_ids)) {
                     switch (get_topic(state, subtopic_id)) {
                         case (?topic_response) {
-                            if (show_deleted or not topic_response.deleted) {
+                            // Skip stale index entries left by re-parenting before the index was kept in step
+                            if ((show_deleted or not topic_response.deleted) and topic_response.parent_topic_id == ?topic_id) {
                                 topics.add(topic_response);
                             };
                         };
@@ -1216,10 +1222,14 @@ module {
             case (#ok()) {};
         };
 
-        // Check if thread exists
+        // Check if thread exists and is not deleted
         switch (Map.get(state.threads, Map.nhash, thread_id)) {
             case null return #err(#NotFound("Thread not found"));
-            case (?_) {};
+            case (?thread) {
+                if (thread.deleted) {
+                    return #err(#InvalidInput("Cannot post in a deleted thread"));
+                };
+            };
         };
 
         // Check if reply_to_post exists and belongs to the same thread
@@ -2057,7 +2067,7 @@ module {
                 };
 
                 // Update poll option counts
-                switch (update_poll_vote_counts(state, poll_id, existing_vote.option_id, option_id, existing_vote.voting_power, voting_power, current_time)) {
+                switch (update_poll_vote_counts(state, poll_id, existing_vote.option_id, option_id, existing_vote.voting_power, voting_power, false, current_time)) {
                     case (#err(error)) return #err(error);
                     case (#ok()) {};
                 };
@@ -2077,7 +2087,7 @@ module {
                 };
 
                 // Update poll option counts
-                switch (update_poll_vote_counts(state, poll_id, option_id, option_id, 0, voting_power, current_time)) {
+                switch (update_poll_vote_counts(state, poll_id, option_id, option_id, 0, voting_power, true, current_time)) {
                     case (#err(error)) return #err(error);
                     case (#ok()) {};
                 };
@@ -2096,6 +2106,7 @@ module {
         new_option_id: Nat,
         old_voting_power: Nat,
         new_voting_power: Nat,
+        is_new_vote: Bool, // a first vote by this neuron: counts once on new_option_id
         current_time: Int
     ) : Result<(), ForumError> {
         let poll = switch (Map.get(state.polls, Map.nhash, poll_id)) {
@@ -2121,9 +2132,10 @@ module {
                     total_voting_power = option.total_voting_power + new_voting_power;
                 }
             } else if (option.id == new_option_id and old_option_id == new_option_id) {
-                // Update vote on same option
+                // Update vote on same option (or a first vote, which also adds one to the count)
                 {
                     option with
+                    vote_count = if (is_new_vote) option.vote_count + 1 else option.vote_count;
                     total_voting_power = if (option.total_voting_power >= old_voting_power) {
                         (option.total_voting_power - old_voting_power) + new_voting_power
                     } else { new_voting_power };
@@ -3177,6 +3189,25 @@ module {
                                     if (parent_topic.forum_id != topic.forum_id) {
                                         return #err(#InvalidInput("Parent topic must belong to the same forum"));
                                     };
+                                    // Refuse a parent that is a descendant of this topic (would form a cycle)
+                                    var ancestor = parent_topic.parent_topic_id;
+                                    var steps = 0;
+                                    let max_steps = Map.size(state.topics);
+                                    label walk while (steps <= max_steps) {
+                                        switch (ancestor) {
+                                            case null break walk;
+                                            case (?ancestor_id) {
+                                                if (ancestor_id == topic_id) {
+                                                    return #err(#InvalidInput("Parent topic cannot be a subtopic of this topic"));
+                                                };
+                                                ancestor := switch (Map.get(state.topics, Map.nhash, ancestor_id)) {
+                                                    case (?t) t.parent_topic_id;
+                                                    case null null;
+                                                };
+                                            };
+                                        };
+                                        steps += 1;
+                                    };
                                 };
                             };
                         } else {
@@ -3196,6 +3227,21 @@ module {
                     updated_at = Time.now();
                 };
                 ignore Map.put(state.topics, Map.nhash, topic_id, updated_topic);
+
+                // Keep the subtopic index in step with a changed parent
+                if (topic.parent_topic_id != input.parent_topic_id) {
+                    switch (topic.parent_topic_id) {
+                        case (?old_parent) remove_from_index(state.topic_subtopics, old_parent, topic_id);
+                        case null {};
+                    };
+                    switch (input.parent_topic_id) {
+                        case (?new_parent) {
+                            remove_from_index(state.topic_subtopics, new_parent, topic_id); // no duplicate from a stale entry
+                            add_to_index(state.topic_subtopics, new_parent, topic_id);
+                        };
+                        case null {};
+                    };
+                };
                 #ok()
             };
             case null #err(#NotFound("Topic not found"));
@@ -4215,7 +4261,8 @@ module {
             current_id -= 1;
         };
 
-        let has_more = current_id > 0 and checked_count < max_checks;
+        // More ids remain below where scanning stopped, whether the page filled or the check budget ran out
+        let has_more = current_id > 0 and input.length > 0;
         let next_start_id = if (has_more) ?current_id else null;
 
         {

@@ -204,6 +204,9 @@ persistent actor SneedSNSForum {
     };
 
     public shared ({ caller }) func create_special_topic(input: T.CreateSpecialTopicInput) : async T.Result<Nat, T.ForumError> {
+        if (Principal.isAnonymous(caller)) {
+            return #err(#Unauthorized("Authentication required to create special topics"));
+        };
         await Lib.create_special_topic(state, caller, input)
     };
 
@@ -423,6 +426,9 @@ persistent actor SneedSNSForum {
         amount: Nat,
         transaction_block_index: ?Nat
     ) : async T.Result<Nat, T.ForumError> {
+        if (Principal.isAnonymous(caller)) {
+            return #err(#Unauthorized("Authentication required to create tips"));
+        };
         let input : T.CreateTipInput = {
             to_principal;
             post_id;
@@ -637,10 +643,16 @@ persistent actor SneedSNSForum {
     };
 
     public shared ({ caller }) func create_proposal_thread(input: T.CreateProposalThreadInput) : async T.Result<Nat, T.ForumError> {
+        if (Principal.isAnonymous(caller)) {
+            return #err(#Unauthorized("Authentication required to create proposal threads"));
+        };
         Lib.create_proposal_thread(state, caller, input)
     };
 
     public shared ({ caller }) func create_proposal_thread_with_auto_setup(input: T.CreateProposalThreadInput) : async T.Result<Nat, T.ForumError> {
+        if (Principal.isAnonymous(caller)) {
+            return #err(#Unauthorized("Authentication required to create proposal threads"));
+        };
         let (result, updated_cache) = await Lib.create_proposal_thread_with_auto_setup(state, caller, input, sns_cache);
         sns_cache := updated_cache;
         result
@@ -648,6 +660,9 @@ persistent actor SneedSNSForum {
 
     // Create forum with governance and proposals topics for an SNS
     public shared ({ caller }) func create_sns_forum_setup(sns_root_canister_id: Principal) : async T.Result<Nat, T.ForumError> {
+        if (Principal.isAnonymous(caller)) {
+            return #err(#Unauthorized("Authentication required to create an SNS forum setup"));
+        };
         let current_time = Time.now();
         let (result, updated_cache) = await Lib.ensure_sns_proposal_structure(state, caller, sns_root_canister_id, sns_cache, current_time);
         sns_cache := updated_cache;
