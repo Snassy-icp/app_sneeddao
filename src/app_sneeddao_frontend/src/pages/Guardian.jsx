@@ -58,6 +58,22 @@ function Guardian() {
     const [neurons, setNeurons] = useState(null);
     const [payFor, setPayFor] = useState(null); // op id whose payment panel is open
     const [payment, setPayment] = useState(null); // { account, fee_e8s, amount_to_send_e8s, paid_e8s }
+    const actor = useCallback((withIdentity) => {
+        if (!dep) return null;
+        return Actor.createActor(guardianIdl, { agent: new HttpAgent({ host: HOST, ...(withIdentity && identity ? { identity } : {}) }), canisterId: dep.id });
+    }, [dep, identity]);
+
+    const load = useCallback(async () => {
+        const a = actor(false); if (!a) return;
+        setError('');
+        try {
+            const [c, ch, o, u] = await Promise.all([a.get_config(), a.list_children(), a.list_ops(false, 200n), a.list_upgradable()]);
+            setCfg(c); setChildren(ch); setOps(o); setUpgradable(u);
+        } catch (e) { setError(`Could not read ${dep?.name}: ${e?.message || e}`); }
+    }, [actor, dep]);
+    useEffect(() => { load(); }, [load]);
+
+    // the payment panel: below `actor`, which its dependency list reads during render
     useEffect(() => {
         if (payFor === null) { setPayment(null); return; }
         let live = true;
@@ -78,20 +94,6 @@ function Guardian() {
     };
     const accountText = (acc) => `${acc.owner.toText()} · subaccount ${hex(acc.subaccount[0])}`;
 
-    const actor = useCallback((withIdentity) => {
-        if (!dep) return null;
-        return Actor.createActor(guardianIdl, { agent: new HttpAgent({ host: HOST, ...(withIdentity && identity ? { identity } : {}) }), canisterId: dep.id });
-    }, [dep, identity]);
-
-    const load = useCallback(async () => {
-        const a = actor(false); if (!a) return;
-        setError('');
-        try {
-            const [c, ch, o, u] = await Promise.all([a.get_config(), a.list_children(), a.list_ops(false, 200n), a.list_upgradable()]);
-            setCfg(c); setChildren(ch); setOps(o); setUpgradable(u);
-        } catch (e) { setError(`Could not read ${dep?.name}: ${e?.message || e}`); }
-    }, [actor, dep]);
-    useEffect(() => { load(); }, [load]);
 
     // my proposal-capable neurons in Sneed DAO, for approving by proposal
     useEffect(() => {
