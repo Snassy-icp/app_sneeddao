@@ -438,7 +438,7 @@ const TokenAnimationManager = ({ edges, nodes }) => {
     const reactFlowInstance = useReactFlow();
 
     const isSourceNode = useCallback((nodeId) => {
-        return ['1', '11', '13', '14'].includes(nodeId); // 8y neuron, LP Rewards, SneedLock, Swaprunner
+        return ['1', '11', '13', '14'].includes(nodeId); // 2y neuron, LP Rewards, SneedLock, Swaprunner
     }, []);
 
     const createToken = useCallback((edge, percentage = 1, tokenType = null) => {
@@ -459,7 +459,7 @@ const TokenAnimationManager = ({ edges, nodes }) => {
             // For revenue sources that can generate both types, randomly choose
             type = Math.random() < 0.5 ? 'icp' : 'sneed';
         } else if (sourceNode.id === '1') {
-            // 8y neuron always generates ICP
+            // 2y neuron always generates ICP
             type = 'icp';
         } else {
             type = 'sneed'; // default fallback
@@ -527,9 +527,9 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                         // When tokens reach ICP Neuron Vector (node 2)
                         // Check where the token came from to determine where it should go
                         const nextEdge = edge.source === '1' ?
-                            // If from 8y neuron (maturity), send to ICP Splitter
+                            // If from 2y neuron (maturity), send to ICP Splitter
                             edges.find(e => e.id === 'e2') :
-                            // If from ICP Splitter (compounding), send to 8y neuron
+                            // If from ICP Splitter (compounding), send to 2y neuron
                             edges.find(e => e.id === 'e1b');
                         
                         if (nextEdge) {
@@ -590,7 +590,7 @@ const TokenAnimationManager = ({ edges, nodes }) => {
 
             // Then spawn new tokens at source nodes (keeping original size)
             edges.forEach(edge => {
-                // For 8y neuron, spawn tokens to ICP Neuron Vector
+                // For 2y neuron, spawn tokens to ICP Neuron Vector
                 if (edge.source === '1' && edge.target === '2') {
                     if (Math.random() < 0.005) {
                         const newToken = createToken(edge, 1, 'icp');
@@ -860,7 +860,7 @@ const edges = {
                 style: edgeStyles.icp,
                 markerEnd: { type: MarkerType.ArrowClosed },
                 data: {
-                    description: "Maturity from 8y neuron to Neuron Vector",
+                    description: "Maturity from the 2-year neuron to Neuron Vector",
                     token: "ICP",
                     percentage: "100%"
                 }
@@ -876,7 +876,7 @@ const edges = {
                 style: edgeStyles.icp,
                 markerEnd: { type: MarkerType.ArrowClosed },
                 data: {
-                    description: "ICP compounding back to 8y neuron",
+                    description: "ICP compounding back to the 2-year neuron",
                     token: "ICP",
                     percentage: "100%"
                 }
@@ -1294,7 +1294,7 @@ const initialEdges = [
         style: edgeStyles.icp,
         markerEnd: { type: MarkerType.ArrowClosed },
         data: {
-            description: "Maturity from 8y neuron to Neuron Vector",
+            description: "Maturity from the 2-year neuron to Neuron Vector",
             token: "ICP",
             percentage: "100%"
         }
@@ -1308,7 +1308,7 @@ const initialEdges = [
         style: edgeStyles.icp,
         markerEnd: { type: MarkerType.ArrowClosed },
         data: {
-            description: "ICP compounding back to 8y neuron",
+            description: "ICP compounding back to the 2-year neuron",
             token: "ICP",
             percentage: "100%"
         }

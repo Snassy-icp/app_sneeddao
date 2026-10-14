@@ -49,7 +49,7 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
     
     // Dissolve delay limits
     const MIN_DISSOLVE_DELAY_DAYS = 183; // ~6 months to vote
-    const MAX_DISSOLVE_DELAY_DAYS = 2922; // 8 years
+    const MAX_DISSOLVE_DELAY_DAYS = 730; // 2 years, the NNS maximum since the 2026 tokenomics change
     
     // Payment subaccount
     const [paymentSubaccount, setPaymentSubaccount] = useState(null);
@@ -1027,7 +1027,7 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                                 </button>
                             </div>
                             <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '6px' }}>
-                                Min {MIN_DISSOLVE_DELAY_DAYS} days to vote. Max {MAX_DISSOLVE_DELAY_DAYS} days (8 years) for maximum rewards.
+                                Min {MIN_DISSOLVE_DELAY_DAYS} days to vote. Max {MAX_DISSOLVE_DELAY_DAYS} days (2 years) for maximum rewards.
                             </div>
                         </div>
                     </div>

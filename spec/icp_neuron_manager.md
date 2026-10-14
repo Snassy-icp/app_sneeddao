@@ -517,7 +517,7 @@ setAutoStakeMaturity(percentage: Nat32): async OperationResult
 | Min Stake | 1 ICP (100_000_000 e8s) | Minimum to create neuron |
 | ICP Fee | 0.0001 ICP (10_000 e8s) | Ledger transfer fee |
 | Min Dissolve (voting) | 6 months (15,778,800 s) | Min for voting power |
-| Max Dissolve | 8 years (252,460,800 s) | Max dissolve delay |
+| Max Dissolve | 2 years (63,072,000 s) | Max dissolve delay since the 2026 NNS tokenomics change (was 8 years) |
 
 ---
 

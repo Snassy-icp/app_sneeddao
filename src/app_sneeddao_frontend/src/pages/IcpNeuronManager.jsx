@@ -1790,8 +1790,8 @@ function IcpNeuronManager() {
         //    setError('Minimum dissolve delay is 183 days (~6 months) to vote');
         //    return;
         //}
-        //if (delayDays > 2922) {
-        //    setError('Maximum dissolve delay is 2922 days (8 years)');
+        //if (delayDays > 730) {
+        //    setError('Maximum dissolve delay is 730 days (2 years)');
         //    return;
         //}
         
@@ -7605,7 +7605,7 @@ function IcpNeuronManager() {
                                         </button>
                                     </div>
                                     <p style={{ color: theme.colors.mutedText, fontSize: '0.75rem', margin: 0 }}>
-                                        💡 Min 183 days to vote, max 8 years. Stakes directly from your wallet ({formatIcp(userIcpBalance)} ICP available)
+                                        💡 Min 183 days to vote, max 2 years. Stakes directly from your wallet ({formatIcp(userIcpBalance)} ICP available)
                                     </p>
                                 </div>
                             )}
@@ -7888,7 +7888,7 @@ function IcpNeuronManager() {
                                         <div style={{ marginBottom: '25px' }}>
                                             <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '10px' }}>Increase Dissolve Delay</h4>
                                             <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '10px' }}>
-                                                <strong>Note:</strong> This <em>adds</em> to your current delay. Max total is 8 years (2922 days).
+                                                <strong>Note:</strong> This <em>adds</em> to your current delay. Max total is 2 years (730 days).
                                             </p>
                                             <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
                                                 <div style={{ flex: 1, minWidth: '150px' }}>
