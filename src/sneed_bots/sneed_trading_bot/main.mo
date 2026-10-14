@@ -2169,6 +2169,35 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // DEX AGGREGATOR — SWAP EXECUTION
     // ============================================
 
+    /// Upper bound for every basis-point setting (100 %).
+    transient let MAX_BPS: Nat = 10_000;
+
+    /// Refuse (trap) a basis-point setting above 100 %.
+    func assertBpsInRange(name: Text, bps: Nat) {
+        if (bps > MAX_BPS) { Debug.trap(name # " must be at most " # Nat.toText(MAX_BPS) # " bps") };
+    };
+
+    /// Validate a trade action configuration on write (existing stored actions are not re-validated).
+    func assertValidTradeActionConfig(config: T.ActionConfigInput) {
+        if (config.minAmount > config.maxAmount) {
+            Debug.trap("minAmount (" # Nat.toText(config.minAmount) # ") must not exceed maxAmount (" # Nat.toText(config.maxAmount) # ")");
+        };
+        switch (config.outputToken) {
+            case (?out) { if (out == config.inputToken) { Debug.trap("Input and output tokens must be different") } };
+            case null {};
+        };
+        switch (config.maxSlippageBps) { case (?b) { assertBpsInRange("maxSlippageBps", b) }; case null {} };
+        switch (config.maxPriceImpactBps) { case (?b) { assertBpsInRange("maxPriceImpactBps", b) }; case null {} };
+    };
+
+    /// Minimum acceptable output for a quote at the given slippage tolerance.
+    /// Saturating: a tolerance above 100 % (possible in configurations stored
+    /// before validation existed) means a minimum of 0, never a Nat underflow.
+    func minOutputAfterSlippage(expectedOutput: Nat, slippageBps: Nat): Nat {
+        let bps = Nat.min(slippageBps, MAX_BPS);
+        expectedOutput - (expectedOutput * bps / MAX_BPS)
+    };
+
     /// Execute a swap on ICPSwap.
     /// Uses ICRC-2 (approve → depositFromAndSwap) or ICRC-1 (transfer → depositAndSwap)
     /// based on ICPSwap's own cached view of the token standard.
@@ -2187,7 +2216,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
         let zfo = isZeroForOne(quote.inputToken, quote.outputToken);
         let effectiveInput = quote.effectiveInputAmount;
-        let minOutput = quote.expectedOutput - (quote.expectedOutput * slippageBps / 10000);
+        let minOutput = minOutputAfterSlippage(quote.expectedOutput, slippageBps);
 
         let pool: T.ICPSwapPoolActor = actor(Principal.toText(poolCid));
         let inputLedger = getLedger(quote.inputToken);
@@ -2297,7 +2326,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
 
         let effectiveInput = quote.effectiveInputAmount;
-        let minOutput = quote.expectedOutput - (quote.expectedOutput * slippageBps / 10000);
+        let minOutput = minOutputAfterSlippage(quote.expectedOutput, slippageBps);
 
         let inputLedger = getLedger(quote.inputToken);
         let kongPrincipal = Principal.fromText(T.KONG_SWAP);
@@ -2368,19 +2397,42 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     /// Transfer tokens (internal helper).
     func transferTokens(token: Principal, fromSubaccount: ?Blob, to: T.Account, amount: Nat): async* T.TransferResult {
+        (await* transferTokensWithFee(token, fromSubaccount, to, amount)).0
+    };
+
+    /// Transfer tokens with the registry fee, or with no fee (the ledger applies
+    /// its own) when the token is not registered. A #BadFee rejection moves
+    /// nothing, so it is retried once with the fee the ledger expects (this also
+    /// covers a stale registry fee). Returns the result and the fee used, when known.
+    func transferTokensWithFee(token: Principal, fromSubaccount: ?Blob, to: T.Account, amount: Nat): async* (T.TransferResult, ?Nat) {
         let ledger = getLedger(token);
-        let fee = switch (getTokenInfo(token)) {
-            case (?info) { info.fee };
-            case null { 0 }; // will be fetched by ledger
+        let fee: ?Nat = switch (getTokenInfo(token)) {
+            case (?info) { ?info.fee };
+            case null { null }; // let the ledger apply its fee
         };
-        await ledger.icrc1_transfer({
+        let first = await ledger.icrc1_transfer({
             to = to;
-            fee = ?fee;
+            fee = fee;
             memo = null;
             from_subaccount = fromSubaccount;
             created_at_time = null;
             amount = amount;
-        })
+        });
+        switch (first) {
+            case (#Err(#BadFee({ expected_fee }))) {
+                logEngine.logWarning("api", "Transfer of " # tokenLabel(token) # " rejected with BadFee; retrying with the ledger fee " # Nat.toText(expected_fee), null, []);
+                let retry = await ledger.icrc1_transfer({
+                    to = to;
+                    fee = ?expected_fee;
+                    memo = null;
+                    from_subaccount = fromSubaccount;
+                    created_at_time = null;
+                    amount = amount;
+                });
+                (retry, ?expected_fee)
+            };
+            case _ { (first, fee) };
+        }
     };
 
     /// Get balance of a token in a subaccount.
@@ -7248,6 +7300,19 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             };
         });
 
+        // A one-off trade cannot be in flight across an upgrade (the canister is
+        // stopped first), so an entry still marked Processing was left by a trap:
+        // mark it Failed so it no longer looks active.
+        oneOffTradeQueue := Array.map<T.OneOffTradeEntry, T.OneOffTradeEntry>(oneOffTradeQueue, func(e) {
+            if (e.status == T.OneOffTradeStatus.Processing) {
+                { e with
+                    status = T.OneOffTradeStatus.Failed;
+                    errorMessage = ?"Interrupted: left in Processing (trapped before an upgrade)";
+                    completedAt = ?Time.now();
+                }
+            } else { e }
+        });
+
         choreEngine.resumeTimers<system>();
         _restartOneOffQueueIfNeeded<system>();
     };
@@ -7267,8 +7332,50 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         if (_oneOffProcessing) return;
         _oneOffProcessing := true;
         ignore Timer.setTimer<system>(#seconds 2, func(): async () {
-            await _processNextOneOffTrade<system>();
+            await _runOneOffTimer<system>();
         });
+    };
+
+    /// Timer body: processes the next pending trade in its own message. If that
+    /// message traps (before or after its awaits), the trap is caught here: the
+    /// entry it was working on ends as Failed instead of Processing, the
+    /// processing flag is cleared and the queue continues.
+    func _runOneOffTimer<system>(): async () {
+        let targetId: ?Nat = switch (Array.find<T.OneOffTradeEntry>(oneOffTradeQueue, func(e) { e.status == T.OneOffTradeStatus.Pending })) {
+            case (?e) ?e.id;
+            case null null;
+        };
+        try {
+            await _processNextOneOffTrade<system>();
+        } catch (err) {
+            let msg = "Trade processing trapped: " # Error.message(err);
+            logEngine.logError("one-off", msg, null, []);
+            switch (targetId) {
+                case (?tid) {
+                    oneOffTradeQueue := Array.map<T.OneOffTradeEntry, T.OneOffTradeEntry>(oneOffTradeQueue, func(e) {
+                        if (e.id == tid and (e.status == T.OneOffTradeStatus.Processing or e.status == T.OneOffTradeStatus.Pending)) {
+                            { e with status = T.OneOffTradeStatus.Failed; errorMessage = ?msg; completedAt = ?Time.now() }
+                        } else { e }
+                    });
+                    // release a purse lock the trapped trade may have taken
+                    switch (Array.find<T.OneOffTradeEntry>(oneOffTradeQueue, func(e) { e.id == tid })) {
+                        case (?e) {
+                            switch (e.sourcePurseId) {
+                                case (?pid) {
+                                    let holder = "one-off:" # Nat.toText(tid);
+                                    _purseLocks := Array.filter<(Text, Text, Int)>(_purseLocks, func((p, h, _)) { not (p == pid and h == holder) });
+                                };
+                                case null {};
+                            };
+                        };
+                        case null {};
+                    };
+                };
+                case null {};
+            };
+            _oneOffProcessing := false;
+            _restartOneOffQueueIfNeeded<system>();
+        };
     };
 
     func _processNextOneOffTrade<system>(): async () {
@@ -7294,7 +7401,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 let hasMore = Array.find<T.OneOffTradeEntry>(oneOffTradeQueue, func(e) { e.status == T.OneOffTradeStatus.Pending }) != null;
                 if (hasMore) {
                     ignore Timer.setTimer<system>(#seconds 2, func(): async () {
-                        await _processNextOneOffTrade<system>();
+                        await _runOneOffTimer<system>();
                     });
                 } else {
                     _oneOffProcessing := false;
@@ -7858,12 +7965,13 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         let amount = Nat64.toNat(amount_e8s);
         let balance = await* getBalance(token, null);
         reconcileBalance(token, balance, "api");
-        let fee = switch (getTokenInfo(token)) { case (?i) i.fee; case null 10_000 };
-        if (balance < amount + fee) {
+        let fee0 = switch (getTokenInfo(token)) { case (?i) i.fee; case null 10_000 };
+        if (balance < amount + fee0) {
             return #Err(#TransferFailed("Insufficient balance"));
         };
 
-        let result = await* transferTokens(token, null, to_account, amount);
+        let (result, feeUsed) = await* transferTokensWithFee(token, null, to_account, amount);
+        let fee = switch (feeUsed) { case (?f) f; case null fee0 };
         switch (result) {
             case (#Ok(blockIdx)) {
                 logEngine.logInfo("api", "withdrawIcp: " # Nat.toText(amount) # " to " # Principal.toText(to_account.owner), ?msg.caller, []);
@@ -7913,12 +8021,13 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
         let balance = await* getBalance(ledger_canister_id, null);
         reconcileBalance(ledger_canister_id, balance, "api");
-        let fee = switch (getTokenInfo(ledger_canister_id)) { case (?i) i.fee; case null 0 };
-        if (balance < amount + fee) {
+        let fee0 = switch (getTokenInfo(ledger_canister_id)) { case (?i) i.fee; case null 0 };
+        if (balance < amount + fee0) {
             return #Err(#TransferFailed("Insufficient balance"));
         };
 
-        let result = await* transferTokens(ledger_canister_id, null, to_account, amount);
+        let (result, feeUsed) = await* transferTokensWithFee(ledger_canister_id, null, to_account, amount);
+        let fee = switch (feeUsed) { case (?f) f; case null fee0 };
         switch (result) {
             case (#Ok(blockIdx)) {
                 logEngine.logInfo("api", "withdrawToken: " # Nat.toText(amount) # " of " # Principal.toText(ledger_canister_id) # " to " # Principal.toText(to_account.owner), ?msg.caller, []);
@@ -7981,16 +8090,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             };
         };
 
-        let fee = switch (getTokenInfo(token)) { case (?i) i.fee; case null 0 };
-        if (effectiveBal < amount + fee) {
+        let fee0 = switch (getTokenInfo(token)) { case (?i) i.fee; case null 0 };
+        if (effectiveBal < amount + fee0) {
             return #Err(#TransferFailed("Insufficient balance"));
         };
 
-        let result = await* transferTokens(
+        let (result, feeUsed) = await* transferTokensWithFee(
             token, null,
             { owner = destinationOwner; subaccount = destinationSubaccount },
             amount
         );
+        let fee = switch (feeUsed) { case (?f) f; case null fee0 };
 
         switch (result) {
             case (#Ok(blockIdx)) {
@@ -8211,18 +8321,25 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             logEngine.logWarning("api", "Cannot set empty DEX list. At least one DEX must be enabled.", ?msg.caller, []);
             return;
         };
+        for (d in dexIds.vals()) {
+            if (Array.find<(Nat, Text, Text)>(T.SUPPORTED_DEXES, func((id, _, _)) { id == d }) == null) {
+                Debug.trap("Unknown DEX ID: " # Nat.toText(d));
+            };
+        };
         enabledDexes := dexIds;
         logEngine.logInfo("api", "Updated enabled DEXes: " # debug_show(dexIds), ?msg.caller, []);
     };
 
     public shared (msg) func setDefaultSlippage(bps: Nat): async () {
         assertPermission(msg.caller, T.TradingPermission.ManageDexSettings);
+        assertBpsInRange("Slippage", bps);
         defaultSlippageBps := bps;
         logEngine.logInfo("api", "Set default slippage to " # Nat.toText(bps) # " bps", ?msg.caller, []);
     };
 
     public shared (msg) func setDefaultMaxPriceImpact(bps: Nat): async () {
         assertPermission(msg.caller, T.TradingPermission.ManageDexSettings);
+        assertBpsInRange("Max price impact", bps);
         defaultMaxPriceImpactBps := bps;
         logEngine.logInfo("api", "Set default max price impact to " # Nat.toText(bps) # " bps", ?msg.caller, []);
     };
@@ -8238,6 +8355,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     public shared (msg) func addTradeAction(instanceId: Text, config: T.ActionConfigInput): async Nat {
         assertPermission(msg.caller, T.TradingPermission.ManageTrades);
+        assertValidTradeActionConfig(config);
         let existing = getTradeActionsForInstance(instanceId);
         let nextId = getTradeNextId(instanceId);
         let actionKey = if (config.key == "") { generateActionKey(config, existing) } else {
@@ -8292,6 +8410,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     public shared (msg) func updateTradeAction(instanceId: Text, id: Nat, config: T.ActionConfigInput): async Bool {
         assertPermission(msg.caller, T.TradingPermission.ManageTrades);
+        assertValidTradeActionConfig(config);
         let actions = getTradeActionsForInstance(instanceId);
         let actionKey = if (config.key == "") {
             switch (Array.find<T.ActionConfig>(actions, func(a) { a.id == id })) {
@@ -8582,11 +8701,13 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     public shared (msg) func setRebalanceMaxPriceImpactBps(instanceId: Text, bps: Nat): async () {
         assertPermission(msg.caller, T.TradingPermission.ManageRebalancer);
+        assertBpsInRange("Max price impact", bps);
         rebalanceMaxPriceImpactBps := setInMap(rebalanceMaxPriceImpactBps, instanceId, bps);
     };
 
     public shared (msg) func setRebalanceMaxSlippageBps(instanceId: Text, bps: Nat): async () {
         assertPermission(msg.caller, T.TradingPermission.ManageRebalancer);
+        assertBpsInRange("Max slippage", bps);
         rebalanceMaxSlippageBps := setInMap(rebalanceMaxSlippageBps, instanceId, bps);
     };
 
@@ -9512,6 +9633,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         if (isTokenPausedOrFrozen(input.outputToken)) { return #Err("Output token is paused or frozen") };
         switch (input.preferredDex) {
             case (?d) { if (d != T.DexId.ICPSwap and d != T.DexId.KongSwap) { return #Err("Unknown DEX ID: " # Nat.toText(d)) } };
+            case null {};
+        };
+        switch (input.maxSlippageBps) {
+            case (?b) { if (b > MAX_BPS) { return #Err("Max slippage must be at most " # Nat.toText(MAX_BPS) # " bps") } };
+            case null {};
+        };
+        switch (input.maxPriceImpactBps) {
+            case (?b) { if (b > MAX_BPS) { return #Err("Max price impact must be at most " # Nat.toText(MAX_BPS) # " bps") } };
             case null {};
         };
         switch (input.sourcePurseId) {
