@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import PrincipalBox from './PrincipalBox';
@@ -14,7 +14,7 @@ import ReactFlow, {
     useReactFlow
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { useCallback as useTooltipCallback } from 'react';
+import './RLLInfo.css';
 import { Principal } from '@dfinity/principal';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { Actor, HttpAgent } from '@dfinity/agent';
@@ -27,43 +27,12 @@ import { createActor as createRllActor, canisterId as rllCanisterId } from 'decl
 import priceService from './services/PriceService';
 import Header from './components/Header';
 import { useTheme } from './contexts/ThemeContext';
-import { FaCoins, FaChartLine, FaWallet, FaCubes, FaArrowRight, FaSpinner, FaDollarSign, FaLayerGroup, FaLeaf } from 'react-icons/fa';
+import { FaCoins, FaChartLine, FaWallet, FaCubes, FaDollarSign, FaLayerGroup, FaLeaf, FaExternalLinkAlt } from 'react-icons/fa';
 import { useDenomination } from './contexts/DenominationContext';
 
-// Custom CSS for animations
-const customAnimations = `
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-@keyframes rllFloat {
-    0%, 100% { transform: translateY(0px); }
-    50% { transform: translateY(-8px); }
-}
-
-.rll-float {
-    animation: rllFloat 3s ease-in-out infinite;
-}
-
-.rll-fade-in {
-    animation: fadeInUp 0.5s ease-out forwards;
-}
-
-.rll-spin {
-    animation: spin 1s linear infinite;
-}
-`;
 
 // Page accent colors - gold/amber theme for tokenomics
 const rllPrimary = '#f59e0b';
-const rllSecondary = '#fbbf24';
 
 // Styles for the expandable sections
 const getStyles = (theme) => ({
@@ -77,11 +46,11 @@ const getStyles = (theme) => ({
         boxShadow: theme.colors.cardShadow
     },
     expandableHeader: {
-        background: `${rllPrimary}08`,
-        border: `1px solid ${rllPrimary}20`,
+        background: theme.colors.secondaryBg,
+        border: `1px solid ${theme.colors.border}`,
         padding: '12px 16px',
         marginBottom: '8px',
-        borderRadius: '12px',
+        borderRadius: '10px',
         cursor: 'pointer',
         display: 'flex',
         alignItems: 'center',
@@ -101,13 +70,11 @@ const getStyles = (theme) => ({
         padding: '10px'
     },
     item: {
-        background: `${rllPrimary}08`,
-        border: `1px solid ${rllPrimary}20`,
-        borderRadius: '12px',
-        padding: '15px',
-        marginBottom: '10px',
-        boxShadow: theme.colors.cardShadow,
-        transition: 'all 0.3s ease'
+        background: theme.colors.primaryBg,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '10px',
+        padding: '12px 14px',
+        marginBottom: '8px'
     },
     itemHeader: {
         cursor: 'pointer',
@@ -118,7 +85,9 @@ const getStyles = (theme) => ({
         alignItems: 'center'
     },
     itemContent: {
-        marginLeft: '20px'
+        marginLeft: '4px',
+        fontSize: '0.92rem',
+        lineHeight: 1.5
     },
     list: {
         listStyle: 'none',
@@ -169,6 +138,8 @@ const getStyles = (theme) => ({
     statusItem: {
         display: 'flex',
         justifyContent: 'space-between',
+        gap: '12px',
+        flexWrap: 'wrap',
         marginBottom: '5px'
     },
     infoIcon: {
@@ -192,10 +163,11 @@ const getStyles = (theme) => ({
         marginBottom: '20px'
     },
     sectionHeader: {
-        background: `${rllPrimary}08`,
-        border: `1px solid ${rllPrimary}20`,
-        padding: '12px 16px',
-        borderRadius: '12px',
+        background: 'transparent',
+        border: 'none',
+        padding: '0 0 12px',
+        borderBottom: `1px solid ${theme.colors.border}`,
+        borderRadius: 0,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -204,10 +176,10 @@ const getStyles = (theme) => ({
         transition: 'all 0.2s ease'
     },
     sectionIcon: {
-        width: '36px',
-        height: '36px',
-        borderRadius: '10px',
-        background: `linear-gradient(135deg, ${rllPrimary}20, ${rllPrimary}10)`,
+        width: '32px',
+        height: '32px',
+        borderRadius: '8px',
+        background: `${rllPrimary}18`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -255,30 +227,9 @@ const getStyles = (theme) => ({
 
 // Node styles
 const getNodeStyles = (theme) => ({
-    infrastructure: {
-        background: theme.colors.tertiaryBg,
-        color: theme.colors.primaryText,
-        border: `1px solid ${theme.colors.accent}`,
-        borderRadius: '8px',
-        padding: '10px',
-        width: 180,
-    },
-    tokenManagement: {
-        background: theme.colors.tertiaryBg,
-        color: theme.colors.primaryText,
-        border: `1px solid ${theme.colors.success}`,
-        borderRadius: '8px',
-        padding: '10px',
-        width: 180,
-    },
-    revenue: {
-        background: theme.colors.tertiaryBg,
-        color: theme.colors.primaryText,
-        border: `1px solid ${theme.colors.warning}`,
-        borderRadius: '8px',
-        padding: '10px',
-        width: 180,
-    }
+    infrastructure: { background: theme.colors.primaryBg, color: theme.colors.primaryText, border: `1.5px solid ${theme.colors.accent}`, width: 180 },
+    tokenManagement: { background: theme.colors.primaryBg, color: theme.colors.primaryText, border: `1.5px solid ${theme.colors.success}`, width: 180 },
+    revenue: { background: theme.colors.primaryBg, color: theme.colors.primaryText, border: `1.5px solid ${rllPrimary}`, width: 180 }
 });
 
 // Edge styles
@@ -650,35 +601,84 @@ const TokenAnimationManager = ({ edges, nodes }) => {
     );
 };
 
-// Update the TooltipOverlay to accept tooltip and theme as props
-const TooltipOverlay = ({ tooltip, theme }) => {
-    // Only render if tooltip exists and has content
-    if (!tooltip || !tooltip.content || !theme) return null;
-    
+// A small floating card. Hover cards follow the pointer and take no clicks; pinned
+// cards (opened by a tap or a click) stay until closed, and can carry a link.
+const Popover = ({ x, y, hover, onClose, link, ignoreRef, children }) => {
+    const ref = useRef(null);
+    const [pos, setPos] = useState({ left: -9999, top: -9999 });
+    useLayoutEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        const w = el.offsetWidth, h = el.offsetHeight;
+        const vw = window.innerWidth, vh = window.innerHeight;
+        let left, top;
+        if (x == null) {
+            left = Math.max(12, (vw - w) / 2);
+            top = Math.max(12, (vh - h) / 2);
+        } else {
+            left = Math.min(Math.max(12, x + 12), Math.max(12, vw - w - 12));
+            top = y + 12 + h > vh - 12 ? Math.max(12, y - h - 12) : y + 12;
+        }
+        setPos((p) => (p.left === left && p.top === top ? p : { left, top }));
+    });
+    useEffect(() => {
+        if (hover) return;
+        const down = (e) => {
+            if (ref.current?.contains(e.target)) return;
+            if (ignoreRef?.current?.contains(e.target)) return;
+            onClose?.();
+        };
+        const key = (e) => { if (e.key === 'Escape') onClose?.(); };
+        document.addEventListener('pointerdown', down, true);
+        document.addEventListener('keydown', key);
+        return () => { document.removeEventListener('pointerdown', down, true); document.removeEventListener('keydown', key); };
+    }, [hover, onClose, ignoreRef]);
     return (
-        <div
-            style={{
-                position: 'fixed',
-                left: `${tooltip.x + 10}px`,
-                top: `${tooltip.y + 10}px`,
-                zIndex: 1000,
-                maxWidth: '300px',
-                background: theme.colors?.modalBg || 'rgba(0, 0, 0, 0.9)',
-                color: theme.colors?.primaryText || 'white',
-                padding: '12px 16px',
-                borderRadius: '6px',
-                fontSize: '13px',
-                lineHeight: '1.4',
-                boxShadow: theme.colors?.cardShadow || '0 4px 6px rgba(0, 0, 0, 0.1)',
-                pointerEvents: 'none',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                wordWrap: 'break-word',
-                overflowWrap: 'break-word',
-                whiteSpace: 'normal'
-            }}
-        >
-            {tooltip.content}
+        <div ref={ref} className={`rll-popover${hover ? ' rll-popover-hover' : ''}`} style={pos} role={hover ? 'tooltip' : 'dialog'}>
+            {!hover && <button type="button" className="rll-popover-close" aria-label="Close" onClick={onClose}>×</button>}
+            <div style={{ paddingRight: hover ? 0 : 24 }}>{children}</div>
+            {!hover && link && (
+                <div className="rll-popover-actions">
+                    <a href={link} target="_blank" rel="noopener noreferrer">Open <FaExternalLinkAlt size={10} /></a>
+                </div>
+            )}
         </div>
+    );
+};
+
+// The "i" beside a heading: shows on hover with a mouse, toggles on a tap or a click.
+const InfoTip = ({ text, label = 'What is this?' }) => {
+    const [tip, setTip] = useState(null);
+    const ref = useRef(null);
+    const place = () => {
+        const r = ref.current?.getBoundingClientRect();
+        return r ? { x: r.left + r.width / 2 - 12, y: r.bottom - 4 } : { x: 0, y: 0 };
+    };
+    const close = useCallback(() => setTip(null), []);
+    return (
+        <>
+            <button
+                type="button"
+                ref={ref}
+                className="rll-infotip"
+                aria-label={label}
+                aria-expanded={!!tip}
+                onPointerEnter={(e) => { if (e.pointerType === 'mouse') setTip((t) => t || { ...place(), pinned: false }); }}
+                onPointerLeave={() => setTip((t) => (t && !t.pinned ? null : t))}
+                onClick={(e) => { e.stopPropagation(); e.preventDefault(); setTip((t) => (t?.pinned ? null : { ...place(), pinned: true })); }}
+            >i</button>
+            {tip && <Popover x={tip.x} y={tip.y} hover={!tip.pinned} onClose={close} ignoreRef={ref}>{text}</Popover>}
+        </>
+    );
+};
+
+// Diagram card: hover follows the pointer; a tap or click pins it with a link.
+const TooltipOverlay = ({ tooltip, onClose }) => {
+    if (!tooltip || !tooltip.content) return null;
+    return (
+        <Popover x={tooltip.x} y={tooltip.y} hover={!tooltip.pinned} onClose={onClose} link={tooltip.link}>
+            {tooltip.content}
+        </Popover>
     );
 };
 
@@ -699,10 +699,11 @@ const formatDurationStatic = (seconds) => {
 const nodes = {
     infrastructure: {
         title: "Core Infrastructure",
+        description: "The ICP side of the loop: the neuron that earns maturity, the vector that controls it, and the splitter that routes ICP",
         items: [
             {
                 id: "1",
-                title: "ICP NNS Neuron",
+                title: "2-year ICP neuron",
                 description: "Long-term ICP staking neuron (its current dissolve delay is shown below)",
                 inputs: ["ICP from Neuron Vector"],
                 outputs: ["Maturity to Neuron Vector"],
@@ -712,7 +713,7 @@ const nodes = {
             {
                 id: "2",
                 title: "ICP Neuron Vector",
-                description: "Controls NNS Neuron and manages maturity collection",
+                description: "Controls the NNS neuron: collects its maturity and compounds ICP back into it",
                 inputs: ["ICP from Splitter (25%)", "Maturity from NNS Neuron"],
                 outputs: ["ICP to NNS Neuron"],
                 canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-wu6phoy.100000000010000000000000000000000000000000000000000000000000000",
@@ -722,7 +723,7 @@ const nodes = {
             {
                 id: "3",
                 title: "ICP Splitter Vector",
-                description: "Distributes ICP to multiple destinations with fixed proportions",
+                description: "Splits the ICP it receives between its destinations in the proportions set on the vector (read live below)",
                 inputs: [
                     "ICP from Neuron Vector",
                     "ICP from Other Revenue Sources"
@@ -740,11 +741,12 @@ const nodes = {
     },
     tokenManagement: {
         title: "Token Management",
+        description: "The SNEED side of the loop: buyback, the SNEED splitter, and where the SNEED ends up (burn, treasury, member rewards)",
         items: [
             {
                 id: "4",
                 title: "SNEED Buyback Vector",
-                description: "Purchases SNEED from market using ICP",
+                description: "Buys SNEED with ICP on the open market, in timed batches",
                 inputs: ["ICP from Splitter (50%)"],
                 outputs: ["100% SNEED to SNEED Splitter"],
                 canisterId: "togwv-zqaaa-aaaal-qr7aa-cai",
@@ -755,7 +757,7 @@ const nodes = {
             {
                 id: "5",
                 title: "SNEED Splitter Vector",
-                description: "Distributes SNEED to multiple destinations with fixed proportions",
+                description: "Splits the SNEED it receives between burn, treasury and member rewards in the proportions set on the vector (read live below)",
                 inputs: ["SNEED from Buyback"],
                 outputs: [
                     "10% SNEED to Burn Address",
@@ -769,7 +771,7 @@ const nodes = {
             {
                 id: "6",
                 title: "Sneed DAO Treasury",
-                description: "Main DAO treasury for ICP and SNEED",
+                description: "The SNS treasury: ICP and SNEED that only a DAO proposal can move",
                 inputs: [
                     "ICP from Splitter (25%)", 
                     "SNEED from Splitter (10%)"
@@ -796,7 +798,7 @@ const nodes = {
             {
                 id: "8",
                 title: "SNEED Burn Address",
-                description: "Permanent SNEED removal from circulation",
+                description: "SNEED sent here is burned: it leaves the supply for good",
                 inputs: ["SNEED from Splitter (10%)"],
                 outputs: [],
                 canisterId: "fi3zi-fyaaa-aaaaq-aachq-cai"
@@ -804,7 +806,7 @@ const nodes = {
             {
                 id: "9",
                 title: "RLL Distribution Canister",
-                description: "Distributes tokens to DAO voting members",
+                description: "Holds rewards until SNEED voters claim them on the Rewards page",
                 inputs: ["80% of bought SNEED from SNEED Splitter", "Tokens from DeFi Canister"],
                 outputs: ["100% to Sneed Members (Rewards claimable on app.sneeddao.com)"],
                 canisterId: "lvc4n-7aaaa-aaaam-adm6a-cai",
@@ -814,6 +816,7 @@ const nodes = {
     },
     revenue: {
         title: "Revenue Sources",
+        description: "Where ICP and SNEED enter the loop besides neuron maturity: LP fees and product revenue",
         items: [
             {
                 id: "11",
@@ -1038,7 +1041,7 @@ const initialNodes = [
         id: '1',
         type: 'default',
         data: { 
-            label: 'ICP NNS Neuron',
+            label: '2-year ICP neuron',
             description: "Long-term ICP staking neuron (its current dissolve delay is shown below)",
             inputs: ["ICP from Neuron Vector"],
             outputs: ["Maturity to Neuron Vector"],
@@ -1055,7 +1058,7 @@ const initialNodes = [
         type: 'default',
         data: { 
             label: 'ICP Neuron Vector',
-            description: "Controls NNS Neuron and manages maturity collection",
+            description: "Controls the NNS neuron: collects its maturity and compounds ICP back into it",
             inputs: ["ICP from Splitter (25%)", "Maturity from NNS Neuron"],
             outputs: ["ICP to NNS Neuron"],
             canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-wu6phoy.100000000010000000000000000000000000000000000000000000000000000",
@@ -1072,7 +1075,7 @@ const initialNodes = [
         type: 'default',
         data: { 
             label: 'ICP Splitter Vector',
-            description: "Distributes ICP to multiple destinations with fixed proportions",
+            description: "Splits the ICP it receives between its destinations in the proportions set on the vector (read live below)",
             inputs: [
                 "ICP from Neuron Vector",
                 "ICP from Other Revenue Sources"
@@ -1098,7 +1101,7 @@ const initialNodes = [
         type: 'default',
         data: { 
             label: 'SNEED Buyback Vector',
-            description: "Purchases SNEED from market using ICP",
+            description: "Buys SNEED with ICP on the open market, in timed batches",
             inputs: ["ICP from Splitter (50%)"],
             outputs: ["100% SNEED to SNEED Splitter"],
             canisterId: "togwv-zqaaa-aaaal-qr7aa-cai",
@@ -1116,7 +1119,7 @@ const initialNodes = [
         type: 'default',
         data: { 
             label: 'SNEED Splitter Vector',
-            description: "Distributes SNEED to multiple destinations with fixed proportions",
+            description: "Splits the SNEED it receives between burn, treasury and member rewards in the proportions set on the vector (read live below)",
             inputs: ["SNEED from Buyback"],
             outputs: [
                 "10% SNEED to Burn Address",
@@ -1137,7 +1140,7 @@ const initialNodes = [
         type: 'default',
         data: { 
             label: 'Sneed DAO Treasury',
-            description: "Main DAO treasury for ICP and SNEED",
+            description: "The SNS treasury: ICP and SNEED that only a DAO proposal can move",
             inputs: [
                 "ICP from Splitter (25%)", 
                 "SNEED from Splitter (10%)"
@@ -1178,7 +1181,7 @@ const initialNodes = [
         type: 'default',
         data: { 
             label: 'SNEED Burn Address',
-            description: "Permanent SNEED removal from circulation",
+            description: "SNEED sent here is burned: it leaves the supply for good",
             inputs: ["SNEED from Splitter (10%)"],
             outputs: [],
             canisterId: "fi3zi-fyaaa-aaaaq-aachq-cai"
@@ -1193,7 +1196,7 @@ const initialNodes = [
         type: 'default',
         data: { 
             label: 'RLL Distribution',
-            description: "Distributes tokens to DAO voting members",
+            description: "Holds rewards until SNEED voters claim them on the Rewards page",
             inputs: ["80% of bought SNEED from SNEED Splitter", "Tokens from DeFi Canister"],
             outputs: ["100% to Sneed Members (Rewards claimable on app.sneeddao.com)"],
             canisterId: "lvc4n-7aaaa-aaaam-adm6a-cai",
@@ -1433,7 +1436,7 @@ const initialEdges = [
         id: 'e10',
         source: '11',
         target: '10',
-        label: 'LP Rewards to Revenue Collector',
+        label: 'LP fees',
         type: 'smoothstep',
         style: edgeStyles.various,
         markerEnd: { type: MarkerType.ArrowClosed },
@@ -1447,7 +1450,7 @@ const initialEdges = [
         id: 'e11',
         source: '12',
         target: '10',
-        label: 'Product Revenue to Collector',
+        label: 'revenue',
         type: 'smoothstep',
         style: edgeStyles.various,
         markerEnd: { type: MarkerType.ArrowClosed },
@@ -1461,7 +1464,7 @@ const initialEdges = [
         id: 'e12',
         source: '10',
         target: '3',
-        label: 'ICP Revenue to ICP Splitter',
+        label: 'ICP',
         type: 'smoothstep',
         style: edgeStyles.icp,
         markerEnd: { type: MarkerType.ArrowClosed },
@@ -1475,7 +1478,7 @@ const initialEdges = [
         id: 'e12b',
         source: '10',
         target: '5',
-        label: 'SNEED Revenue to SNEED Splitter',
+        label: 'SNEED',
         type: 'smoothstep',
         style: edgeStyles.sneed,
         markerEnd: { type: MarkerType.ArrowClosed },
@@ -1489,7 +1492,7 @@ const initialEdges = [
         id: 'e13',
         source: '7',
         target: '9',
-        label: 'Tokens to RLL Distribution',
+        label: 'tokens',
         type: 'smoothstep',
         style: edgeStyles.various,
         markerEnd: { type: MarkerType.ArrowClosed },
@@ -1503,7 +1506,7 @@ const initialEdges = [
         id: 'e14',
         source: '13',
         target: '12',
-        label: 'SneedLock Revenue',
+        label: 'fees',
         type: 'smoothstep',
         style: edgeStyles.various,
         markerEnd: { type: MarkerType.ArrowClosed },
@@ -1517,7 +1520,7 @@ const initialEdges = [
         id: 'e15',
         source: '14',
         target: '12',
-        label: 'Swaprunner Revenue',
+        label: 'fees',
         type: 'smoothstep',
         style: edgeStyles.various,
         markerEnd: { type: MarkerType.ArrowClosed },
@@ -1532,7 +1535,7 @@ const initialEdges = [
 function RLLInfo() {
     const { identity, isAuthenticated, logout } = useAuth();
     const { theme } = useTheme();
-    const { formatValue: denomFormatValue } = useDenomination();
+    const { formatValue: denomFormatValue, convertUSD, currencySign, denomTokenSymbol } = useDenomination();
     const styles = getStyles(theme);
     // Override global styles with theme-aware versions
     const themedNodeStyles = getNodeStyles(theme);
@@ -1662,7 +1665,23 @@ function RLLInfo() {
         if (id === '1' && neuronDescription) out.description = neuronDescription;
         return out;
     };
-    const liveNodes = useMemo(() => initialNodes.map((n) => ({ ...n, data: patchItem({ ...n.data, id: n.id }) })), [liveText, neuronDescription]); // eslint-disable-line react-hooks/exhaustive-deps
+    const nodeKind = (n) => (n.style === nodeStyles.infrastructure ? 'infrastructure' : n.style === nodeStyles.revenue ? 'revenue' : 'tokenManagement');
+    const liveNodes = useMemo(() => initialNodes.map((n) => ({ ...n, style: themedNodeStyles[nodeKind(n)], data: patchItem({ ...n.data, id: n.id }) })), [liveText, neuronDescription, theme]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // The Token Flows list says what the vectors say today, like the diagram does
+    const liveFlowSections = useMemo(() => Object.fromEntries(Object.entries(edges).map(([key, section]) => {
+        const kept = section.items.filter((e) => !liveSplits[e.source]);
+        const added = [];
+        for (const [src, { token, dests }] of Object.entries(liveSplits)) {
+            if ((key === 'icpFlows') !== (token === 'ICP')) continue;
+            dests.forEach((d, i) => {
+                if (!d.target) return;
+                added.push({ id: `flow-${src}-${i}`, source: src, target: d.target, description: `${token} to ${NODE_LABELS[d.target]}`, token, percentage: `${d.pct}%`, live: true });
+            });
+        }
+        return [key, { ...section, items: [...kept, ...added] }];
+    })), [liveSplits]); // eslint-disable-line react-hooks/exhaustive-deps
+    const nodeTitle = (id) => initialNodes.find((n) => n.id === id)?.data.label || id;
     const liveSections = useMemo(() => Object.fromEntries(Object.entries(nodes).map(([k, section]) => [k, { ...section, items: section.items.map(patchItem) }])), [liveText, neuronDescription]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Fetch prices for all known tokens
@@ -1768,6 +1787,15 @@ function RLLInfo() {
             return denomFormatValue(0);
         }
         return denomFormatValue(value);
+    };
+
+    // A unit price in the user's denomination, with enough digits for a small token
+    const formatPrice = (usd) => {
+        if (usd == null || !isFinite(usd)) return '…';
+        const d = convertUSD(usd);
+        if (d == null) return '…';
+        const digits = Number(d).toLocaleString(undefined, { maximumSignificantDigits: 4 });
+        return currencySign ? `${currencySign}${digits}` : `${digits} ${denomTokenSymbol || ''}`.trim();
     };
 
     // Update the neuron balance fetching effect
@@ -2105,7 +2133,7 @@ function RLLInfo() {
         <div style={{
             marginTop: '8px',
             padding: '8px',
-            backgroundColor: 'rgba(255, 255, 255, 0.1)',
+            backgroundColor: theme.colors.tertiaryBg,
             borderRadius: '4px'
         }}>
             <div style={{ marginBottom: '4px' }}>Current Balances:</div>
@@ -2246,7 +2274,7 @@ function RLLInfo() {
             <div style={{
                 marginTop: '8px',
                 padding: '8px',
-                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                backgroundColor: theme.colors.tertiaryBg,
                 borderRadius: '4px'
             }}>
                 <div style={{ marginBottom: '4px' }}>Vector Status:</div>
@@ -2574,7 +2602,7 @@ function RLLInfo() {
                                             <div>All-Time Distributed: {(Number(reconciliation.total_distributed) / Math.pow(10, tokenInfo.decimals)).toFixed(8)} {tokenInfo.symbol}</div>
                                             <div>Currently Claimable: {(Number(reconciliation.local_total) / Math.pow(10, tokenInfo.decimals)).toFixed(8)} {tokenInfo.symbol}</div>
                                             <div>Server Balance: {(Number(reconciliation.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(8)} {tokenInfo.symbol}</div>
-                                            <div style={{ color: Number(reconciliation.remaining) > 0 ? '#2ecc71' : '#ffffff' }}>
+                                            <div style={{ color: Number(reconciliation.remaining) > 0 ? theme.colors.success : theme.colors.primaryText }}>
                                                 Remaining: {(Number(reconciliation.remaining) / Math.pow(10, tokenInfo.decimals)).toFixed(8)} {tokenInfo.symbol}
                                             </div>
                                         </div>
@@ -2596,8 +2624,8 @@ function RLLInfo() {
         return new Date(milliseconds).toLocaleString();
     };
 
-    // Update handleNodeMouseEnter to include vector info
-    const handleNodeMouseEnter = useCallback((event, node) => {
+    // What the card for a node says (hover and pinned alike)
+    const buildNodeContent = (node) => {
         const content = (
             <div>
                 <div style={{ fontWeight: 'bold', marginBottom: '8px', color: theme.colors.accent }}>{node.data.label}</div>
@@ -2614,7 +2642,7 @@ function RLLInfo() {
                 )}
                 {node.data.outputs && (
                     <div>
-                        <div style={{ color: '#e74c3c', marginBottom: '4px' }}>Outputs:</div>
+                        <div style={{ color: theme.colors.error, marginBottom: '4px' }}>Outputs:</div>
                         <ul style={{ margin: '0 0 8px 16px', padding: 0 }}>
                             {node.data.outputs.map((output, i) => (
                                 <li key={i}>{output}</li>
@@ -2626,7 +2654,7 @@ function RLLInfo() {
                     <div style={{ 
                         fontFamily: 'monospace', 
                         fontSize: '11px', 
-                        color: '#95a5a6',
+                        color: theme.colors.mutedText,
                         marginTop: '8px'
                     }}>
                         Canister ID: {node.data.canisterId}
@@ -2636,7 +2664,7 @@ function RLLInfo() {
                     <div style={{
                         marginTop: '8px',
                         padding: '8px',
-                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                        backgroundColor: theme.colors.tertiaryBg,
                         borderRadius: '4px'
                     }}>
                         <div style={{ marginBottom: '4px' }}>Current Status:</div>
@@ -2677,7 +2705,7 @@ function RLLInfo() {
                     <div style={{
                         marginTop: '8px',
                         padding: '8px',
-                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                        backgroundColor: theme.colors.tertiaryBg,
                         borderRadius: '4px'
                     }}>
                         <div style={{ marginBottom: '4px' }}>Exchange Status:</div>
@@ -2711,7 +2739,7 @@ function RLLInfo() {
                     <div style={{
                         marginTop: '8px',
                         padding: '8px',
-                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                        backgroundColor: theme.colors.tertiaryBg,
                         borderRadius: '4px'
                     }}>
                         <div style={{ marginBottom: '4px' }}>Total LP Position Status:</div>
@@ -2759,7 +2787,7 @@ function RLLInfo() {
                     <div style={{
                         marginTop: '8px',
                         padding: '8px',
-                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                        backgroundColor: theme.colors.tertiaryBg,
                         borderRadius: '4px'
                     }}>
                         <div style={{ marginBottom: '4px' }}>Current Balances:</div>
@@ -2788,14 +2816,10 @@ function RLLInfo() {
             </div>
         );
         
-        setTooltip({
-            content,
-            x: event.clientX,
-            y: event.clientY
-        });
-    }, [treasuryBalances, isLoadingBalances, neuronBalance, isLoadingNeuron, vectorInfo, isLoadingVectors, lpPositions, isLoadingLp, defiBalances, reconciliationData, knownTokens, isLoadingRllData]);
+        return content;
+    };
 
-    const handleEdgeMouseEnter = useCallback((event, edge) => {
+    const buildEdgeContent = (edge) => {
         const content = (
             <div>
                 <div style={{ marginBottom: '8px' }}>{edge.data?.description}</div>
@@ -2808,32 +2832,40 @@ function RLLInfo() {
             </div>
         );
         
-        setTooltip({
-            content,
-            x: event.clientX,
-            y: event.clientY
-        });
-    }, []);
+        return content;
+    };
 
-    const handleMouseLeave = useCallback(() => {
-        setTooltip(null);
-    }, []);
-
-    const handleMouseMove = useCallback((event) => {
-        if (tooltip) {
-            setTooltip(prev => ({
-                ...prev,
-                x: event.clientX,
-                y: event.clientY
-            }));
+    const handleNodeMouseEnter = (event, node) => {
+        if (tooltip?.pinned) return;
+        setTooltip({ content: buildNodeContent(node), x: event.clientX, y: event.clientY });
+    };
+    const handleEdgeMouseEnter = (event, edge) => {
+        if (tooltip?.pinned) return;
+        setTooltip({ content: buildEdgeContent(edge), x: event.clientX, y: event.clientY });
+    };
+    const handleMouseLeave = () => {
+        setTooltip((t) => (t && !t.pinned ? null : t));
+    };
+    const handleMouseMove = (event) => {
+        if (tooltip && !tooltip.pinned) {
+            setTooltip((prev) => ({ ...prev, x: event.clientX, y: event.clientY }));
         }
-    }, [tooltip]);
-
-    const handleNodeClick = useCallback((event, node) => {
-        if (node.data.link) {
-            window.open(node.data.link, '_blank');
-        }
-    }, []);
+    };
+    // A tap or a click pins the card so it can be read and its link followed (hover never fires on a phone)
+    const handleNodeClick = (event, node) => {
+        setTooltip({ content: buildNodeContent(node), x: event.clientX, y: event.clientY, pinned: true, link: node.data.link, id: node.id });
+    };
+    const handleEdgeClick = (event, edge) => {
+        setTooltip({ content: buildEdgeContent(edge), x: event.clientX, y: event.clientY, pinned: true, id: edge.id });
+    };
+    const closeTooltip = useCallback(() => setTooltip(null), []);
+    // From the hero: jump to the diagram with that stage's card open
+    const openStage = (nodeId) => {
+        const node = liveNodes.find((n) => n.id === nodeId);
+        if (!node) return;
+        setActiveTab('rll');
+        setTooltip({ content: buildNodeContent(node), x: null, y: null, pinned: true, link: node.data.link, id: node.id });
+    };
 
     const toggleSection = (section) => {
         setExpandedSections(prev => ({
@@ -3120,315 +3152,102 @@ function RLLInfo() {
     };
 
     return (
-        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
-            <style>{customAnimations}</style>
+        <div className='page-container rll-page' style={{
+            background: theme.colors.primaryGradient, minHeight: '100vh',
+            '--rll-border': theme.colors.border, '--rll-card-bg': theme.colors.secondaryBg, '--rll-muted': theme.colors.mutedText,
+            '--rll-secondary-bg': theme.colors.secondaryBg, '--rll-primary-bg': theme.colors.primaryBg, '--rll-tertiary-bg': theme.colors.tertiaryBg,
+            '--rll-text': theme.colors.primaryText, '--rll-secondary-text': theme.colors.secondaryText, '--rll-popover-bg': theme.colors.secondaryBg,
+            '--rll-shadow': theme.colors.cardShadow, '--rll-icp-color': theme.colors.accent, '--rll-sneed-color': theme.colors.success, '--rll-burn-color': theme.colors.error,
+            '--rll-amber': theme.name === 'bright' ? '#b45309' : rllPrimary,
+        }}>
             <Header />
             
-            {/* Hero Banner */}
-            <div style={{
-                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${rllPrimary}12 50%, ${rllSecondary}08 100%)`,
-                borderBottom: `1px solid ${theme.colors.border}`,
-                padding: '2rem 1rem',
-                position: 'relative',
-                overflow: 'hidden',
-                width: '100%',
-                boxSizing: 'border-box'
-            }}>
-                {/* Background decorations */}
-                <div style={{
-                    position: 'absolute',
-                    top: '-30%',
-                    right: '-5%',
-                    width: '300px',
-                    height: '300px',
-                    background: `radial-gradient(circle, ${rllPrimary}15 0%, transparent 70%)`,
-                    pointerEvents: 'none'
-                }} />
-                <div style={{
-                    position: 'absolute',
-                    bottom: '-50%',
-                    left: '10%',
-                    width: '200px',
-                    height: '200px',
-                    background: `radial-gradient(circle, ${rllSecondary}10 0%, transparent 70%)`,
-                    pointerEvents: 'none'
-                }} />
-                
-                <div className="rll-fade-in" style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
-                    <div className="rll-float" style={{
-                        width: '72px',
-                        height: '72px',
-                        borderRadius: '18px',
-                        background: `linear-gradient(135deg, ${rllPrimary}, ${rllSecondary})`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        margin: '0 auto 1rem',
-                        boxShadow: `0 12px 40px ${rllPrimary}50`,
-                    }}>
-                        <FaCoins size={32} style={{ color: '#fff' }} />
-                    </div>
-                    
-                    <h1 style={{
-                        fontSize: '1.75rem',
-                        fontWeight: '700',
-                        color: theme.colors.primaryText,
-                        margin: '0 0 0.5rem',
-                        letterSpacing: '-0.5px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '8px'
-                    }}>
-                        Tokenomics
-                        <span 
-                            style={styles.infoIcon} 
-                            title="A comprehensive system for managing DAO treasury assets, automating token distributions, and maintaining liquidity across multiple protocols"
-                        >
-                            i
-                        </span>
-                    </h1>
-                    <p style={{
-                        fontSize: '0.95rem',
-                        color: theme.colors.secondaryText,
-                        margin: 0
-                    }}>
-                        DAO treasury, token distributions, and liquidity management
-                    </p>
-                </div>
-            </div>
-            
-            <main className="rllinfo-container" style={{
-                width: '100%',
-                maxWidth: '100%',
-                margin: '0 auto',
-                padding: '1.25rem',
-                overflow: 'hidden'
-            }}>
-                {/* Price Section */}
-                <section className="rll-fade-in" style={{
-                    ...styles.section,
-                    width: '100%',
-                    maxWidth: '800px',
-                    margin: '0 auto 20px',
-                    marginTop: 0
-                }}>
-                    <div style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '10px', 
-                        marginBottom: '16px',
-                        justifyContent: 'center'
-                    }}>
-                        <div style={styles.sectionIcon}>
-                            <FaDollarSign size={16} style={{ color: rllPrimary }} />
+            {/* The loop, stage by stage, with the splits the vectors report right now */}
+            {(() => {
+                const icp = liveSplits['3']?.dests || null;
+                const sneed = liveSplits['5']?.dests || null;
+                const pctTo = (dests, target) => dests?.find((d) => d.target === target)?.pct;
+                const shortName = { '2': 'the neuron', '6': 'treasury', '4': 'buyback', '8': 'burn', '9': 'member rewards', '7': 'DeFi canister' };
+                const fanName = { '8': 'Burned', '6': 'Treasury', '9': 'Member rewards' };
+                const fanOrder = ['8', '6', '9'];
+                const fan = sneed ? [...sneed].filter((d) => d.target).sort((a, b) => (fanOrder.indexOf(a.target) + 1 || 99) - (fanOrder.indexOf(b.target) + 1 || 99)) : null;
+                const icpRest = icp ? icp.filter((d) => d.target && d.target !== '4').map((d) => `${d.pct}% to ${shortName[d.target] || d.owner}`).join(', ') : null;
+                const buyback = vectorInfo['SNEED Buyback Vector']?.[0]?.[0];
+                const buyAmount = buyback?.custom?.[0]?.exchange?.variables?.buy_for_amount;
+                const reading = 'reading the vector…';
+                const stage = (id, name, fact) => (
+                    <button type="button" className="rll-stage" onClick={() => openStage(id)} aria-label={`${name}: open details`}>
+                        <span className="rll-stage-name">{name}</span>
+                        <span className="rll-stage-fact">{fact}</span>
+                    </button>
+                );
+                return (
+                    <div className="rll-hero" style={{ background: theme.colors.primaryBg, '--rll-border': theme.colors.border }}>
+                        <div className="rll-hero-inner">
+                            <h1 style={{ color: theme.colors.primaryText }}>Recursive Liquidity Loop</h1>
+                            <p className="rll-hero-lede" style={{ color: theme.colors.secondaryText }}>
+                                Maturity from the DAO's 2-year ICP neuron and revenue from Sneed products buy SNEED on the open market.
+                                That SNEED is burned, kept in the treasury, and paid out to voters. The splits below are read live from the vectors that run the loop.
+                            </p>
+                            <ol className="rll-loop" aria-label="The loop, stage by stage">
+                                <li>
+                                    {stage('1', '2-year ICP neuron', isLoadingNeuron ? 'reading the neuron…' : neuronBalance ? `${(Number(neuronBalance.stake_e8s) / 1e8).toLocaleString(undefined, { maximumFractionDigits: 0 })} ICP staked` : 'neuron not readable')}
+                                    <span className="rll-arrow rll-arrow-icp">maturity</span>
+                                </li>
+                                <li>
+                                    {stage('3', 'ICP splitter', icp ? (icpRest ? `also ${icpRest}` : 'all to buyback') : reading)}
+                                    <span className="rll-arrow rll-arrow-icp">{icp ? `${pctTo(icp, '4') ?? 0}%` : '…'}</span>
+                                </li>
+                                <li>
+                                    {stage('4', 'SNEED buyback', buyAmount != null ? `${(Number(buyAmount) / 1e8).toLocaleString(undefined, { maximumFractionDigits: 2 })} ICP per buy` : reading)}
+                                    <span className="rll-arrow rll-arrow-sneed">SNEED</span>
+                                </li>
+                                <li>
+                                    {stage('5', 'SNEED splitter', sneed ? `${sneed.length} destinations` : reading)}
+                                    {fan ? (
+                                        <ul className="rll-fan" aria-label="Where the SNEED goes">
+                                            {fan.map((d) => (
+                                                <li key={d.target}>
+                                                    <span className={`rll-arrow ${d.target === '8' ? 'rll-arrow-burn' : 'rll-arrow-sneed'}`}>{d.pct}%</span>
+                                                    <button type="button" className="rll-stage" onClick={() => openStage(d.target)}>
+                                                        <span className="rll-stage-name">{fanName[d.target] || NODE_LABELS[d.target]}</span>
+                                                    </button>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <span className="rll-arrow rll-arrow-sneed">…</span>
+                                    )}
+                                </li>
+                            </ol>
                         </div>
-                        <h2 style={{ 
-                            color: theme.colors.primaryText, 
-                            margin: 0,
-                            fontSize: '1.15rem',
-                            fontWeight: '700'
-                        }}>
-                            Current Prices
-                        </h2>
                     </div>
-                    <div style={{
-                        textAlign: 'center',
-                        fontSize: '0.8rem',
-                        color: theme.colors.mutedText,
-                        marginBottom: '12px'
-                    }}>
-                        All prices from <a 
-                            href="https://icpswap.com" 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            style={{
-                                color: rllPrimary,
-                                textDecoration: 'none',
-                                fontWeight: '500'
-                            }}
-                        >
-                            ICPSwap
-                        </a>
-                    </div>
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                        gap: '12px'
-                    }}>
-                        {/* SNEED Price in ICP */}
-                        <div style={styles.priceCard}>
-                            <div style={{ 
-                                color: theme.colors.mutedText, 
-                                fontSize: '0.8rem',
-                                marginBottom: '6px',
-                                fontWeight: '500'
-                            }}>
-                                SNEED Price (ICP)
-                            </div>
-                            <div style={{ 
-                                color: rllPrimary, 
-                                fontSize: '1.2rem',
-                                fontWeight: '700',
-                                fontFamily: 'monospace'
-                            }}>
-                                {conversionRates['ICP'] && conversionRates['SNEED'] 
-                                    ? (conversionRates['SNEED'] / conversionRates['ICP']).toFixed(8)
-                                    : '...'
-                                } ICP
-                            </div>
-                        </div>
+                );
+            })()}
 
-                        {/* SNEED Price in USD */}
-                        <div style={styles.priceCard}>
-                            <div style={{ 
-                                color: theme.colors.mutedText, 
-                                fontSize: '0.8rem',
-                                marginBottom: '6px',
-                                fontWeight: '500'
-                            }}>
-                                SNEED Price (USD)
-                            </div>
-                            <div style={{ 
-                                color: rllPrimary, 
-                                fontSize: '1.2rem',
-                                fontWeight: '700',
-                                fontFamily: 'monospace'
-                            }}>
-                                ${conversionRates['SNEED'] 
-                                    ? conversionRates['SNEED'].toFixed(6)
-                                    : '...'
-                                }
-                            </div>
-                        </div>
-
-                        {/* ICP Price in USD */}
-                        <div style={styles.priceCard}>
-                            <div style={{ 
-                                color: theme.colors.mutedText, 
-                                fontSize: '0.8rem',
-                                marginBottom: '6px',
-                                fontWeight: '500'
-                            }}>
-                                ICP Price (USD)
-                            </div>
-                            <div style={{ 
-                                color: rllPrimary, 
-                                fontSize: '1.2rem',
-                                fontWeight: '700',
-                                fontFamily: 'monospace'
-                            }}>
-                                ${conversionRates['ICP'] 
-                                    ? conversionRates['ICP'].toFixed(2)
-                                    : '...'
-                                }
-                            </div>
-                        </div>
-                    </div>
-                </section>
-                
-                {/* Tab Navigation */}
-                <div style={{
-                    display: 'flex',
-                    gap: '8px',
-                    marginBottom: '20px',
-                    width: '100%',
-                    maxWidth: '800px',
-                    margin: '0 auto 20px',
-                    padding: '4px',
-                    background: theme.colors.secondaryBg,
-                    borderRadius: '14px',
-                    border: `1px solid ${theme.colors.border}`,
-                }}>
-                    <button
-                        onClick={() => setActiveTab('assets')}
-                        style={{
-                            flex: 1,
-                            padding: '12px 16px',
-                            background: activeTab === 'assets' 
-                                ? `linear-gradient(135deg, ${rllPrimary}20, ${rllPrimary}10)` 
-                                : 'transparent',
-                            border: activeTab === 'assets' 
-                                ? `1px solid ${rllPrimary}40` 
-                                : '1px solid transparent',
-                            borderRadius: '10px',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '8px',
-                            color: activeTab === 'assets' ? rllPrimary : theme.colors.secondaryText,
-                            fontWeight: activeTab === 'assets' ? '600' : '500',
-                            fontSize: '0.9rem',
-                            transition: 'all 0.2s ease',
-                        }}
-                    >
-                        <FaWallet size={14} />
-                        <span>Total Assets</span>
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('rll')}
-                        style={{
-                            flex: 1,
-                            padding: '12px 16px',
-                            background: activeTab === 'rll' 
-                                ? `linear-gradient(135deg, ${rllPrimary}20, ${rllPrimary}10)` 
-                                : 'transparent',
-                            border: activeTab === 'rll' 
-                                ? `1px solid ${rllPrimary}40` 
-                                : '1px solid transparent',
-                            borderRadius: '10px',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '8px',
-                            color: activeTab === 'rll' ? rllPrimary : theme.colors.secondaryText,
-                            fontWeight: activeTab === 'rll' ? '600' : '500',
-                            fontSize: '0.9rem',
-                            transition: 'all 0.2s ease',
-                        }}
-                    >
-                        <FaChartLine size={14} />
-                        <span>RLL Diagram</span>
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('components')}
-                        style={{
-                            flex: 1,
-                            padding: '12px 16px',
-                            background: activeTab === 'components' 
-                                ? `linear-gradient(135deg, ${rllPrimary}20, ${rllPrimary}10)` 
-                                : 'transparent',
-                            border: activeTab === 'components' 
-                                ? `1px solid ${rllPrimary}40` 
-                                : '1px solid transparent',
-                            borderRadius: '10px',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '8px',
-                            color: activeTab === 'components' ? rllPrimary : theme.colors.secondaryText,
-                            fontWeight: activeTab === 'components' ? '600' : '500',
-                            fontSize: '0.9rem',
-                            transition: 'all 0.2s ease',
-                        }}
-                    >
-                        <FaCubes size={14} />
-                        <span>Components</span>
-                    </button>
+            <main className="rllinfo-container">
+                <div className="rll-column">
+                {/* Prices, in the user's denomination like everything else on the site */}
+                <div className="rll-prices" style={{ color: theme.colors.secondaryText }}>
+                    <span className="rll-price">SNEED <b className="rll-num" style={{ color: theme.colors.primaryText }}>{conversionRates['ICP'] && conversionRates['SNEED'] ? `${(conversionRates['SNEED'] / conversionRates['ICP']).toLocaleString(undefined, { maximumSignificantDigits: 4 })} ICP` : '…'}</b></span>
+                    <span className="rll-price">SNEED <b className="rll-num" style={{ color: theme.colors.primaryText }}>{formatPrice(conversionRates['SNEED'])}</b></span>
+                    <span className="rll-price">ICP <b className="rll-num" style={{ color: theme.colors.primaryText }}>{formatPrice(conversionRates['ICP'])}</b></span>
+                    <span className="rll-price-source" style={{ color: theme.colors.mutedText }}>Prices from <a href="https://icpswap.com" target="_blank" rel="noopener noreferrer">ICPSwap</a></span>
                 </div>
 
-                {/* Tab Content */}
-                <div className="rll-tab-content" style={{
-                    width: '100%',
-                    maxWidth: '800px',
-                    margin: '0 auto',
-                }}>
+                <div className="rll-tabs" role="tablist" aria-label="Sections">
+                    {[['assets', 'Total assets', FaWallet], ['rll', 'Diagram', FaChartLine], ['components', 'Components', FaCubes]].map(([id, label, Icon]) => (
+                        <button key={id} type="button" role="tab" aria-selected={activeTab === id} onClick={() => { setActiveTab(id); setTooltip(null); }}>
+                            <Icon size={14} />
+                            <span>{label}</span>
+                        </button>
+                    ))}
+                </div>
+
+                <div className="rll-tab-content" style={{ width: '100%' }}>
                     {/* Total Assets Tab */}
                     {activeTab === 'assets' && (
-                    <section className="rll-fade-in" style={{
+                    <section style={{
                         ...styles.section, 
                         width: '100%',
                         marginTop: 0,
@@ -3450,74 +3269,27 @@ function RLLInfo() {
                                     </div>
                                     <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.1rem', fontWeight: '700' }}>
                                         Total Assets Overview
-                                        <span 
-                                            style={styles.infoIcon} 
-                                            title="Comprehensive overview of all DAO assets across different protocols, including treasury holdings, staked positions, LP positions, and tokens pending distribution"
-                                            onClick={(e) => e.stopPropagation()}
-                                        >
-                                            i
-                                        </span>
+                                        <InfoTip text={"Comprehensive overview of all DAO assets across different protocols, including treasury holdings, staked positions, LP positions, and tokens pending distribution"} />
                                     </h2>
                                 </div>
-                                <button style={styles.expandButton}>
-                                    {expandedSections.totalAssets ? '▼' : '▶'}
+                                <button type="button" style={styles.expandButton} aria-label={expandedSections.totalAssets ? 'Hide the breakdown' : 'Show the breakdown'} aria-expanded={expandedSections.totalAssets}>
+                                    {expandedSections.totalAssets ? '▾' : '▸'}
                                 </button>
                             </div>
                             
-                            {/* Key Metrics Grid */}
-                            <div style={{ 
-                                display: 'grid',
-                                gridTemplateColumns: 'repeat(4, 1fr)',
-                                gap: '10px',
-                            }}>
-                                <div style={{
-                                    background: `${theme.colors.success}10`,
-                                    border: `1px solid ${theme.colors.success}30`,
-                                    borderRadius: '10px',
-                                    padding: '12px',
-                                    textAlign: 'center',
-                                }}>
-                                    <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px', fontWeight: '500' }}>FDV</div>
-                                    <div style={{ fontSize: '0.95rem', fontWeight: '700', color: theme.colors.success, fontFamily: 'monospace' }}>
-                                        {formatUSD(getUSDValue(getTotalSupply(), 8, 'SNEED'))}
+                            {/* The four headline numbers */}
+                            <div className="rll-stat-grid">
+                                {[
+                                    ['FDV', formatUSD(getUSDValue(getTotalSupply(), 8, 'SNEED')), 'Fully diluted valuation: total SNEED supply at the current price'],
+                                    ['Circulating market cap', formatUSD(getUSDValue(getCirculatingSupply(), 8, 'SNEED')), 'SNEED outside the treasury and the DAO\'s own LP positions, at the current price'],
+                                    ['NAV', formatUSD(getNAVUSDValue()), 'Net asset value: what the DAO holds, not counting the SNEED in its own treasury'],
+                                    ['TVL', formatUSD(getTVL()), 'Value of SNEED staked in neurons plus SNEED in the DAO\'s LP positions'],
+                                ].map(([label, value, why]) => (
+                                    <div key={label} className="rll-stat" style={{ background: theme.colors.primaryBg }}>
+                                        <div className="rll-stat-label" style={{ display: 'flex', alignItems: 'center' }}>{label}<InfoTip text={why} /></div>
+                                        <div className="rll-stat-value rll-num" style={{ color: theme.colors.primaryText }}>{value}</div>
                                     </div>
-                                </div>
-                                <div style={{
-                                    background: `${theme.colors.accent}10`,
-                                    border: `1px solid ${theme.colors.accent}30`,
-                                    borderRadius: '10px',
-                                    padding: '12px',
-                                    textAlign: 'center',
-                                }}>
-                                    <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px', fontWeight: '500' }}>Circ. MC</div>
-                                    <div style={{ fontSize: '0.95rem', fontWeight: '700', color: theme.colors.accent, fontFamily: 'monospace' }}>
-                                        {formatUSD(getUSDValue(getCirculatingSupply(), 8, 'SNEED'))}
-                                    </div>
-                                </div>
-                                <div style={{
-                                    background: `${theme.colors.warning}10`,
-                                    border: `1px solid ${theme.colors.warning}30`,
-                                    borderRadius: '10px',
-                                    padding: '12px',
-                                    textAlign: 'center',
-                                }}>
-                                    <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px', fontWeight: '500' }}>NAV</div>
-                                    <div style={{ fontSize: '0.95rem', fontWeight: '700', color: theme.colors.warning, fontFamily: 'monospace' }}>
-                                        {formatUSD(getNAVUSDValue())}
-                                    </div>
-                                </div>
-                                <div style={{
-                                    background: `${rllPrimary}10`,
-                                    border: `1px solid ${rllPrimary}30`,
-                                    borderRadius: '10px',
-                                    padding: '12px',
-                                    textAlign: 'center',
-                                }}>
-                                    <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px', fontWeight: '500' }}>TVL</div>
-                                    <div style={{ fontSize: '0.95rem', fontWeight: '700', color: rllPrimary, fontFamily: 'monospace' }}>
-                                        {formatUSD(getTVL())}
-                                    </div>
-                                </div>
+                                ))}
                             </div>
                         </div>
                         {expandedSections.totalAssets && <div style={{
@@ -3532,7 +3304,7 @@ function RLLInfo() {
                         }}>
                             {/* Grand Total in USD */}
                             <div style={{
-                                background: `linear-gradient(135deg, ${theme.colors.warning}08, ${theme.colors.warning}03)`, 
+                                background: `${theme.colors.warning}0a`, 
                                 padding: '1.25rem',
                                 borderRadius: '12px',
                                 border: `1px solid ${theme.colors.warning}30`,
@@ -3547,7 +3319,7 @@ function RLLInfo() {
                                         width: '36px',
                                         height: '36px',
                                         borderRadius: '10px',
-                                        background: `linear-gradient(135deg, ${theme.colors.warning}20, ${theme.colors.warning}10)`,
+                                        background: `${theme.colors.warning}18`,
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
@@ -3557,12 +3329,7 @@ function RLLInfo() {
                                     <h3 style={{ color: theme.colors.warning, margin: 0, fontSize: '1rem', fontWeight: '700' }}>
                                         Total Value
                                     </h3>
-                                    <span 
-                                        style={styles.infoIcon} 
-                                        title="Total value of all DAO assets. GAV includes SNEED holdings in treasury, while NAV excludes them to avoid circular valuation."
-                                    >
-                                        i
-                                    </span>
+                                    <InfoTip text={"Total value of all DAO assets. GAV includes SNEED holdings in treasury, while NAV excludes them to avoid circular valuation."} />
                                 </div>
                                 
                                 {/* GAV and NAV Side by Side */}
@@ -3588,17 +3355,12 @@ function RLLInfo() {
                                             <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText, fontWeight: '500' }}>
                                                 Gross Asset Value (GAV)
                                             </span>
-                                            <span 
-                                                style={styles.infoIcon} 
-                                                title="Gross Asset Value: total market-value of every treasury asset—including self-held tokens—before netting out liabilities. Reveals the full scale of the DAO's resource pool."
-                                            >
-                                                i
-                                            </span>
+                                            <InfoTip text={"Gross Asset Value: total market-value of every treasury asset—including self-held tokens—before netting out liabilities. Reveals the full scale of the DAO's resource pool."} />
                                         </div>
-                                        <div style={{ fontSize: '1.25rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
+                                        <div style={{ fontSize: '1.25rem', fontWeight: '700', color: theme.colors.primaryText }} className="rll-num">
                                             {formatUSD(getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal())}
                                         </div>
-                                        <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, marginTop: '6px', fontFamily: 'monospace' }}>
+                                        <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, marginTop: '6px' }} className="rll-num">
                                             {((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal()) / (conversionRates['ICP'] || 1)).toFixed(2)} ICP
                                         </div>
                                         <div style={{ 
@@ -3614,12 +3376,7 @@ function RLLInfo() {
                                                 <span style={{ fontSize: '0.9rem', fontWeight: '600', color: theme.colors.primaryText }}>
                                                     {(getUSDValue(getTotalSupply(), 8, 'SNEED') / ((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal()) || 1)).toFixed(2)}x
                                                 </span>
-                                                <span 
-                                                    style={styles.infoIcon} 
-                                                    title="FDV/GAV: fully-diluted valuation divided by gross asset value. > 1 means premium, < 1 means discount to assets."
-                                                >
-                                                    i
-                                                </span>
+                                                <InfoTip text={"FDV/GAV: fully-diluted valuation divided by gross asset value. > 1 means premium, < 1 means discount to assets."} />
                                             </div>
                                         </div>
                                     </div>
@@ -3640,17 +3397,12 @@ function RLLInfo() {
                                             <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText, fontWeight: '500' }}>
                                                 Net Asset Value (NAV)
                                             </span>
-                                            <span 
-                                                style={styles.infoIcon} 
-                                                title="Net Asset Value: fair-value of on-chain treasury assets minus liabilities, excluding self-held tokens. Shows the true external backing per token."
-                                            >
-                                                i
-                                            </span>
+                                            <InfoTip text={"Net Asset Value: fair-value of on-chain treasury assets minus liabilities, excluding self-held tokens. Shows the true external backing per token."} />
                                         </div>
-                                        <div style={{ fontSize: '1.25rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
+                                        <div style={{ fontSize: '1.25rem', fontWeight: '700', color: theme.colors.primaryText }} className="rll-num">
                                             {formatUSD(getNAVUSDValue())}
                                         </div>
-                                        <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, marginTop: '6px', fontFamily: 'monospace' }}>
+                                        <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, marginTop: '6px' }} className="rll-num">
                                             {(getNAVUSDValue() / (conversionRates['ICP'] || 1)).toFixed(2)} ICP
                                         </div>
                                         <div style={{ 
@@ -3666,12 +3418,7 @@ function RLLInfo() {
                                                 <span style={{ fontSize: '0.9rem', fontWeight: '600', color: theme.colors.primaryText }}>
                                                     {(getUSDValue(getCirculatingSupply(), 8, 'SNEED') / (getNAVUSDValue() || 1)).toFixed(2)}x
                                                 </span>
-                                                <span 
-                                                    style={styles.infoIcon} 
-                                                    title="Price-to-NAV: circulating market cap divided by DAO NAV. < 1 suggests undervalued, > 1 shows premium."
-                                                >
-                                                    i
-                                                </span>
+                                                <InfoTip text={"Price-to-NAV: circulating market cap divided by DAO NAV. < 1 suggests undervalued, > 1 shows premium."} />
                                             </div>
                                         </div>
                                     </div>
@@ -3695,18 +3442,13 @@ function RLLInfo() {
                                         {((getUSDValue(getCirculatingSupply(), 8, 'SNEED') / (getNAVUSDValue() || 1)) / 
                                           (getUSDValue(getTotalSupply(), 8, 'SNEED') / ((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal()) || 1))).toFixed(2)}x
                                     </span>
-                                    <span 
-                                        style={styles.infoIcon} 
-                                        title="NGAR: (P/NAV) ÷ (FDV/GAV). Measures valuation alignment. Near 1 = aligned, < 1 = untapped upside, > 1 = dilution warning."
-                                    >
-                                        i
-                                    </span>
+                                    <InfoTip text={"NGAR: (P/NAV) ÷ (FDV/GAV). Measures valuation alignment. Near 1 = aligned, < 1 = untapped upside, > 1 = dilution warning."} />
                                 </div>
                             </div>
 
                             {/* Market Cap Card */}
                             <div style={{
-                                background: `linear-gradient(135deg, ${theme.colors.success}08, ${theme.colors.success}03)`,
+                                background: `${theme.colors.success}0a`,
                                 padding: '1.25rem',
                                 borderRadius: '12px',
                                 border: `1px solid ${theme.colors.success}30`,
@@ -3721,7 +3463,7 @@ function RLLInfo() {
                                         width: '36px',
                                         height: '36px',
                                         borderRadius: '10px',
-                                        background: `linear-gradient(135deg, ${theme.colors.success}20, ${theme.colors.success}10)`,
+                                        background: `${theme.colors.success}18`,
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
@@ -3731,12 +3473,7 @@ function RLLInfo() {
                                     <h3 style={{ color: theme.colors.success, margin: 0, fontSize: '1rem', fontWeight: '700' }}>
                                         Market Cap & Supply
                                     </h3>
-                                    <span 
-                                        style={styles.infoIcon} 
-                                        title="Overview of SNEED token supply, market metrics, and total value locked (TVL)"
-                                    >
-                                        i
-                                    </span>
+                                    <InfoTip text={"Overview of SNEED token supply, market metrics, and total value locked (TVL)"} />
                                 </div>
                                 {isLoadingBalances || isLoadingStakingStats || isLoadingLp ? (
                                     <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
@@ -3760,7 +3497,7 @@ function RLLInfo() {
                                                 textAlign: 'center',
                                             }}>
                                                 <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px', fontWeight: '500' }}>FDV</div>
-                                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.success, fontFamily: 'monospace' }}>
+                                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.success }} className="rll-num">
                                                     {formatUSD(getUSDValue(getTotalSupply(), 8, 'SNEED'))}
                                                 </div>
                                             </div>
@@ -3773,7 +3510,7 @@ function RLLInfo() {
                                                 textAlign: 'center',
                                             }}>
                                                 <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px', fontWeight: '500' }}>Circ. Market Cap</div>
-                                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.success, fontFamily: 'monospace' }}>
+                                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.success }} className="rll-num">
                                                     {formatUSD(getUSDValue(getCirculatingSupply(), 8, 'SNEED'))}
                                                 </div>
                                             </div>
@@ -3786,7 +3523,7 @@ function RLLInfo() {
                                                 textAlign: 'center',
                                             }}>
                                                 <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px', fontWeight: '500' }}>TVL</div>
-                                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.success, fontFamily: 'monospace' }}>
+                                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.success }} className="rll-num">
                                                     {formatUSD(getTVL())}
                                                 </div>
                                             </div>
@@ -3799,7 +3536,7 @@ function RLLInfo() {
                                                 textAlign: 'center',
                                             }}>
                                                 <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px', fontWeight: '500' }}>TVL/MCap</div>
-                                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.success, fontFamily: 'monospace' }}>
+                                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.success }} className="rll-num">
                                                     {(getTVL() / (getUSDValue(getCirculatingSupply(), 8, 'SNEED') || 1)).toFixed(2)}x
                                                 </div>
                                             </div>
@@ -3872,7 +3609,7 @@ function RLLInfo() {
 
                             {/* ICP Assets */}
                             <div style={{
-                                background: `linear-gradient(135deg, ${theme.colors.accent}08, ${theme.colors.accent}03)`,
+                                background: `${theme.colors.accent}0a`,
                                 padding: '1.25rem',
                                 borderRadius: '12px',
                                 border: `1px solid ${theme.colors.accent}30`,
@@ -3892,7 +3629,7 @@ function RLLInfo() {
                                             width: '36px',
                                             height: '36px',
                                             borderRadius: '10px',
-                                            background: `linear-gradient(135deg, ${theme.colors.accent}20, ${theme.colors.accent}10)`,
+                                            background: `${theme.colors.accent}18`,
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
@@ -3902,13 +3639,7 @@ function RLLInfo() {
                                         <h3 style={{ color: theme.colors.accent, margin: 0, fontSize: '1rem', fontWeight: '700' }}>
                                             ICP Assets
                                         </h3>
-                                        <span 
-                                            style={styles.infoIcon} 
-                                            title="Overview of ICP holdings across treasury wallets and investment positions"
-                                            onClick={e => e.stopPropagation()}
-                                        >
-                                            i
-                                        </span>
+                                        <InfoTip text={"Overview of ICP holdings across treasury wallets and investment positions"} />
                                     </div>
                                     <span style={{
                                         display: 'inline-flex',
@@ -4061,7 +3792,7 @@ function RLLInfo() {
                                                             <div style={styles.spinner} />
                                                         </div>
                                                     ) : otherLpPositions['ICP/CLOWN'].error ? (
-                                                        <div style={{ color: '#e74c3c' }}>Error loading ICP/CLOWN position</div>
+                                                        <div style={{ color: theme.colors.error }}>Error loading ICP/CLOWN position</div>
                                                     ) : otherLpPositions['ICP/CLOWN'].position ? (
                                                         <div style={{ marginLeft: '15px' }}>
                                                             <div style={{ marginBottom: '8px' }}>
@@ -4108,7 +3839,7 @@ function RLLInfo() {
                                 <div style={{
                                     marginTop: '15px',
                                     paddingTop: '15px',
-                                    borderTop: '1px solid #3498db'
+                                    borderTop: `1px solid ${theme.colors.accent}`
                                 }}>
                                     <div style={{ color: theme.colors.accent, marginBottom: '5px' }}>Total ICP:</div>
                                     <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
@@ -4138,7 +3869,7 @@ function RLLInfo() {
 
                             {/* SNEED Assets */}
                             <div style={{
-                                background: `linear-gradient(135deg, ${theme.colors.success}08, ${theme.colors.success}03)`,
+                                background: `${theme.colors.success}0a`,
                                 padding: '1.25rem',
                                 borderRadius: '12px',
                                 border: `1px solid ${theme.colors.success}30`,
@@ -4158,7 +3889,7 @@ function RLLInfo() {
                                             width: '36px',
                                             height: '36px',
                                             borderRadius: '10px',
-                                            background: `linear-gradient(135deg, ${theme.colors.success}20, ${theme.colors.success}10)`,
+                                            background: `${theme.colors.success}18`,
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
@@ -4168,13 +3899,7 @@ function RLLInfo() {
                                         <h3 style={{ color: theme.colors.success, margin: 0, fontSize: '1rem', fontWeight: '700' }}>
                                             SNEED Assets
                                         </h3>
-                                        <span 
-                                            style={styles.infoIcon} 
-                                            title="Overview of SNEED token holdings across treasury wallets and investment positions"
-                                            onClick={e => e.stopPropagation()}
-                                        >
-                                            i
-                                        </span>
+                                        <InfoTip text={"Overview of SNEED token holdings across treasury wallets and investment positions"} />
                                     </div>
                                     <span style={{
                                         display: 'inline-flex',
@@ -4291,7 +4016,7 @@ function RLLInfo() {
                                 <div style={{
                                     marginTop: '15px',
                                     paddingTop: '15px',
-                                    borderTop: '1px solid #2ecc71'
+                                    borderTop: `1px solid ${theme.colors.success}`
                                 }}>
                                     <div style={{ color: theme.colors.success, marginBottom: '5px' }}>Total SNEED:</div>
                                     <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
@@ -4315,10 +4040,10 @@ function RLLInfo() {
 
                             {/* Other Tokens */}
                             <div style={{
-                                background: `linear-gradient(135deg, #e67e2208, #e67e2203)`,
+                                background: theme.colors.secondaryBg,
                                 padding: '1.25rem',
                                 borderRadius: '12px',
-                                border: `1px solid #e67e2230`,
+                                border: `1px solid ${theme.colors.border}`,
                             }}>
                                 <div 
                                     onClick={() => toggleSection('otherTokens')}
@@ -4335,23 +4060,17 @@ function RLLInfo() {
                                             width: '36px',
                                             height: '36px',
                                             borderRadius: '10px',
-                                            background: `linear-gradient(135deg, #e67e2220, #e67e2210)`,
+                                            background: `${theme.colors.mutedText}18`,
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
                                         }}>
-                                            <FaLayerGroup size={16} style={{ color: '#e67e22' }} />
+                                            <FaLayerGroup size={16} style={{ color: theme.colors.secondaryText }} />
                                         </div>
-                                        <h3 style={{ color: '#e67e22', margin: 0, fontSize: '1rem', fontWeight: '700' }}>
+                                        <h3 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '1rem', fontWeight: '700' }}>
                                             Other Tokens
                                         </h3>
-                                        <span 
-                                            style={styles.infoIcon} 
-                                            title="Overview of other token holdings in the treasury"
-                                            onClick={e => e.stopPropagation()}
-                                        >
-                                            i
-                                        </span>
+                                        <InfoTip text={"Overview of other token holdings in the treasury"} />
                                     </div>
                                     <span style={{
                                         display: 'inline-flex',
@@ -4383,7 +4102,7 @@ function RLLInfo() {
                                                         fontSize: '1.1em', 
                                                         fontWeight: 'bold',
                                                         marginBottom: '15px',
-                                                        borderBottom: '1px solid #3498db',
+                                                        borderBottom: `1px solid ${theme.colors.border}`,
                                                         paddingBottom: '5px'
                                                     }}>
                                                         DeFi Canister Balances
@@ -4424,7 +4143,7 @@ function RLLInfo() {
                                                         fontSize: '1.1em', 
                                                         fontWeight: 'bold',
                                                         marginBottom: '15px',
-                                                        borderBottom: '1px solid #9b59b6',
+                                                        borderBottom: `1px solid ${theme.colors.border}`,
                                                         paddingBottom: '5px'
                                                     }}>
                                                         RLL Distribution Balances
@@ -4476,10 +4195,10 @@ function RLLInfo() {
 
                             {/* Other Positions */}
                             <div style={{
-                                background: `linear-gradient(135deg, #9b59b608, #9b59b603)`,
+                                background: theme.colors.secondaryBg,
                                 padding: '1.25rem',
                                 borderRadius: '12px',
-                                border: `1px solid #9b59b630`,
+                                border: `1px solid ${theme.colors.border}`,
                             }}>
                                 <div 
                                     onClick={() => toggleSection('otherPositions')}
@@ -4496,23 +4215,17 @@ function RLLInfo() {
                                             width: '36px',
                                             height: '36px',
                                             borderRadius: '10px',
-                                            background: `linear-gradient(135deg, #9b59b620, #9b59b610)`,
+                                            background: `${theme.colors.mutedText}18`,
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
                                         }}>
-                                            <FaCubes size={16} style={{ color: '#9b59b6' }} />
+                                            <FaCubes size={16} style={{ color: theme.colors.secondaryText }} />
                                         </div>
-                                        <h3 style={{ color: '#9b59b6', margin: 0, fontSize: '1rem', fontWeight: '700' }}>
+                                        <h3 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '1rem', fontWeight: '700' }}>
                                             Other Positions
                                         </h3>
-                                        <span 
-                                            style={styles.infoIcon} 
-                                            title="Overview of other investment positions and holdings"
-                                            onClick={e => e.stopPropagation()}
-                                        >
-                                            i
-                                        </span>
+                                        <InfoTip text={"Overview of other investment positions and holdings"} />
                                     </div>
                                     <span style={{
                                         display: 'inline-flex',
@@ -4537,7 +4250,7 @@ function RLLInfo() {
                                                 <div style={styles.spinner} />
                                             </div>
                                         ) : otherLpPositions['ICP/CLOWN'].error ? (
-                                            <div style={{ color: '#e74c3c' }}>Error loading ICP/CLOWN position: {otherLpPositions['ICP/CLOWN'].error}</div>
+                                            <div style={{ color: theme.colors.error }}>Error loading ICP/CLOWN position: {otherLpPositions['ICP/CLOWN'].error}</div>
                                         ) : otherLpPositions['ICP/CLOWN'].position && (
                                             <div style={{
                                                 marginBottom: '15px',
@@ -4593,87 +4306,74 @@ function RLLInfo() {
                     </section>
                     )}
 
-                    {/* RLL Diagram Tab */}
+                    {/* Diagram tab */}
                     {activeTab === 'rll' && (
-                    <section className="rll-fade-in" style={{
-                        ...styles.section, 
+                    <section className="rll-diagram-section" style={{
+                        ...styles.section,
                         width: '100%',
-                        height: '800px',
                         marginTop: 0,
-                        overflow: 'hidden'
                     }}>
-                        <div 
-                            style={styles.sectionHeader}
-                        >
+                        <div style={{ ...styles.sectionHeader, marginBottom: '12px', cursor: 'default' }}>
                             <div style={{ display: 'flex', alignItems: 'center' }}>
                                 <div style={styles.sectionIcon}>
                                     <FaChartLine size={16} style={{ color: rllPrimary }} />
                                 </div>
                                 <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', fontSize: '1.1rem', fontWeight: '700' }}>
-                                    Recursive Liquidity Loop (RLL)
-                                    <span 
-                                        style={styles.infoIcon} 
-                                        title="Interactive visualization of token flows between different system components. Hover over nodes and edges for detailed information. Click nodes to visit relevant external links."
-                                        onClick={(e) => e.stopPropagation()}
-                                    >
-                                        i
-                                    </span>
+                                    The loop as a diagram
+                                    <InfoTip text={"Every box is a canister or an account; every arrow is a flow of tokens. Hover or tap a box or an arrow for what it holds and where it sends things. The split percentages are read from the vectors, not typed in."} />
                                 </h2>
                             </div>
                         </div>
-                        <div style={{
-                            position: 'relative',
-                            width: '100%',
-                            height: 'calc(800px - 60px)',
-                            background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
-                            borderRadius: '8px',
-                            overflow: 'hidden'
-                        }}>
+                        <div className="rll-legend">
+                            <span><i style={{ background: theme.colors.accent }} />ICP</span>
+                            <span><i style={{ background: theme.colors.success }} />SNEED</span>
+                            <span><i style={{ background: rllPrimary }} />mixed revenue</span>
+                            <span className="rll-hint">{isLoadingVectors ? 'Reading the vectors…' : 'Tap a box for details. Pinch or use the buttons to zoom.'}</span>
+                        </div>
+                        <div className="rll-diagram-box">
                             <ReactFlow
                                 nodes={liveNodes}
                                 edges={liveEdges}
                                 fitView
-                                defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
+                                fitViewOptions={{ padding: 0.15 }}
+                                minZoom={0.2}
+                                zoomOnScroll={false}
+                                preventScrolling={false}
+                                nodesConnectable={false}
                                 onNodeMouseEnter={handleNodeMouseEnter}
                                 onNodeMouseLeave={handleMouseLeave}
                                 onEdgeMouseEnter={handleEdgeMouseEnter}
                                 onEdgeMouseLeave={handleMouseLeave}
                                 onMouseMove={handleMouseMove}
                                 onNodeClick={handleNodeClick}
+                                onEdgeClick={handleEdgeClick}
+                                onPaneClick={closeTooltip}
                                 style={{ width: '100%', height: '100%' }}
                             >
                                 <Background color={theme.colors.border} gap={16} />
-                                <Controls />
+                                <Controls showInteractive={false} />
                                 <TokenAnimationManager edges={liveEdges} nodes={liveNodes} />
-                                <TooltipOverlay tooltip={tooltip} theme={theme} />
                             </ReactFlow>
                         </div>
+                        <TooltipOverlay tooltip={tooltip} onClose={closeTooltip} />
                     </section>
                     )}
 
                     {/* System Components Tab */}
                     {activeTab === 'components' && (
-                    <section className="rll-fade-in" style={{
+                    <section style={{
                         ...styles.section, 
                         width: '100%',
                         marginTop: 0,
                     }}>
-                        <div 
-                            style={styles.sectionHeader}
-                        >
+                        <div style={{ ...styles.sectionHeader, marginBottom: '12px', cursor: 'default' }}>
                             <div style={{ display: 'flex', alignItems: 'center' }}>
                                 <div style={styles.sectionIcon}>
                                     <FaCubes size={16} style={{ color: rllPrimary }} />
                                 </div>
                                 <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', fontSize: '1.1rem', fontWeight: '700' }}>
-                                    System Components
-                                    <span 
-                                        style={styles.infoIcon} 
-                                        title="Detailed information about each component in the system, including infrastructure nodes, token management canisters, and revenue sources"
-                                        onClick={(e) => e.stopPropagation()}
-                                    >
-                                        i
-                                    </span>
+                                    Components
+                                    <InfoTip text={"Every canister and account that takes part in the loop, with what goes in, what comes out, and the ids to check on chain. Splits are read from the vectors."} />
                                 </h2>
                             </div>
                         </div>
@@ -4687,13 +4387,7 @@ function RLLInfo() {
                                         <span>{section.title}</span>
                                     </div>
                                     <div style={styles.headerRight}>
-                                        <span 
-                                            style={styles.infoIcon} 
-                                            title={section.description || `Details about ${section.title} components and their functions in the system`}
-                                            onClick={e => e.stopPropagation()}
-                                        >
-                                            i
-                                        </span>
+                                        <InfoTip text={section.description || `Details about ${section.title} components and their functions in the system`} />
                                         <span style={{
                                             display: 'inline-block',
                                             transform: `rotate(${expandedSections[key] ? '90deg' : '0deg'})`,
@@ -4728,13 +4422,7 @@ function RLLInfo() {
                                                                 </svg>
                                                             </a>
                                                         )}
-                                                        <span 
-                                                            style={styles.infoIcon} 
-                                                            title={item.description}
-                                                            onClick={e => e.stopPropagation()}
-                                                        >
-                                                            i
-                                                        </span>
+                                                        <InfoTip text={item.description} />
                                                         <span style={{
                                                             display: 'inline-block',
                                                             transform: `rotate(${expandedItems[item.id] ? '90deg' : '0deg'})`,
@@ -4750,21 +4438,13 @@ function RLLInfo() {
                             </div>
                         ))}
 
-                        <h2 style={{ marginTop: '40px', ...styles.heading }}>
+                        <h2 style={{ marginTop: '32px', fontSize: '1.05rem', ...styles.heading }}>
                             <div style={styles.headingLeft}>
-                                <span>Token Flows</span>
-                            </div>
-                            <div style={styles.headingRight}>
-                                <span 
-                                    style={styles.infoIcon} 
-                                    title="Detailed breakdown of token movement paths between system components, including percentages and token types"
-                                >
-                                    i
-                                </span>
-                                <span style={{ width: '20px' }}></span>
+                                <span>Token flows</span>
+                                <InfoTip text={"Each arrow of the diagram as a line: which token, from where, to where, and what share. Shares from the two splitters are read live from the vectors."} />
                             </div>
                         </h2>
-                        {Object.entries(edges).map(([key, section]) => (
+                        {Object.entries(liveFlowSections).map(([key, section]) => (
                             <div key={key}>
                                 <div 
                                     style={styles.expandableHeader}
@@ -4774,13 +4454,7 @@ function RLLInfo() {
                                         <span>{section.title}</span>
                                     </div>
                                     <div style={styles.headerRight}>
-                                        <span 
-                                            style={styles.infoIcon} 
-                                            title={`Token flow paths for ${section.title}, showing how tokens move between components`}
-                                            onClick={e => e.stopPropagation()}
-                                        >
-                                            i
-                                        </span>
+                                        <InfoTip text={`${section.title}: ${section.items.length} flows`} />
                                         <span style={{
                                             display: 'inline-block',
                                             transform: `rotate(${expandedSections[key + '_edges'] ? '90deg' : '0deg'})`,
@@ -4798,15 +4472,10 @@ function RLLInfo() {
                                                 >
                                                     <div style={styles.headerLeft}>
                                                         <span>{item.description}</span>
+                                                        {item.live && <span style={{ marginLeft: 8, fontSize: '0.72rem', fontWeight: 500, color: theme.colors.mutedText }}>live</span>}
                                                     </div>
                                                     <div style={styles.headerRight}>
-                                                        <span 
-                                                            style={styles.infoIcon} 
-                                                            title={`Token flow from ${item.source} to ${item.target} (${item.percentage} of ${item.token})`}
-                                                            onClick={e => e.stopPropagation()}
-                                                        >
-                                                            i
-                                                        </span>
+                                                        <InfoTip text={`${item.percentage} of the ${item.token} leaving ${nodeTitle(item.source)} goes to ${nodeTitle(item.target)}`} />
                                                         <span style={{
                                                             display: 'inline-block',
                                                             transform: `rotate(${expandedItems[item.id] ? '90deg' : '0deg'})`,
@@ -4816,16 +4485,10 @@ function RLLInfo() {
                                                 </div>
                                                 {expandedItems[item.id] && (
                                                     <div style={styles.itemContent}>
-                                                        <p>Token: {item.token}</p>
-                                                        <p>From: {liveSections.infrastructure.items.concat(
-                                                            liveSections.tokenManagement.items,
-                                                            nodes.revenue.items
-                                                        ).find(n => n.id === item.source)?.title}</p>
-                                                        <p>To: {liveSections.infrastructure.items.concat(
-                                                            liveSections.tokenManagement.items,
-                                                            nodes.revenue.items
-                                                        ).find(n => n.id === item.target)?.title}</p>
-                                                        <p>Percentage: {item.percentage}</p>
+                                                        <p style={{ margin: '4px 0' }}>Token: {item.token}</p>
+                                                        <p style={{ margin: '4px 0' }}>From: {nodeTitle(item.source)}</p>
+                                                        <p style={{ margin: '4px 0' }}>To: {nodeTitle(item.target)}</p>
+                                                        <p style={{ margin: '4px 0' }}>Share: {item.percentage}{item.live ? ' (read from the vector)' : ''}</p>
                                                     </div>
                                                 )}
                                             </div>
@@ -4838,75 +4501,10 @@ function RLLInfo() {
                     )}
                 </div>
 
-                <style>
-                    {`
-                        .long-account-string {
-                            display: inline-block;
-                            max-width: 100%;
-                            word-break: break-all;
-                            font-family: monospace;
-                            font-size: 0.9em;
-                            background-color: rgba(0, 0, 0, 0.2);
-                            padding: 2px 4px;
-                            border-radius: 3px;
-                            margin: 2px 0;
-                        }
-
-                        @media (min-width: 1200px) {
-                            .rll-tab-content {
-                                max-width: 1000px !important;
-                            }
-                        }
-
-                        /* Mobile responsive tabs */
-                        @media (max-width: 600px) {
-                            .rll-tab-content section {
-                                padding: 1rem !important;
-                            }
-                        }
-                    `}
-                </style>
+                </div>
             </main>
         </div>
     );
 }
 
-export default RLLInfo; 
-
-// Add this to the style tag at the bottom
-<style>
-    {`
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        @keyframes pop-in {
-            0% {
-                transform: scale(0);
-                opacity: 0;
-            }
-            50% {
-                transform: scale(1.2);
-                opacity: 0.7;
-            }
-            100% {
-                transform: scale(1);
-                opacity: 1;
-            }
-        }
-        @keyframes burn-effect {
-            0% {
-                transform: translate(-50%, -50%) scale(0.5);
-                opacity: 1;
-            }
-            50% {
-                transform: translate(-50%, -60%) scale(2);
-                opacity: 0.8;
-            }
-            100% {
-                transform: translate(-50%, -70%) scale(0.1);
-                opacity: 0;
-            }
-        }
-    `}
-</style> 
+export default RLLInfo;

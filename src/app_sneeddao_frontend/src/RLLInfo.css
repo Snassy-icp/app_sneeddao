@@ -1,0 +1,379 @@
+/* /rll_info: the Recursive Liquidity Loop page.
+   Colour is information here: blue = ICP, green = SNEED, red = burn,
+   amber = the loop itself. Everything else stays in the theme's neutrals. */
+
+.rll-page {
+    --rll-amber: #f59e0b;
+    --rll-icp: var(--rll-icp-color, #4a90e2);
+    --rll-sneed: var(--rll-sneed-color, #2ecc71);
+    --rll-burn: var(--rll-burn-color, #e74c3c);
+    --rll-radius-section: 16px;
+    --rll-radius-card: 10px;
+    --rll-radius-chip: 6px;
+    font-variant-numeric: tabular-nums;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+.rll-page .rll-spin { animation: spin 1s linear infinite; }
+
+/* ---------- hero: title, one sentence, and the loop itself ---------- */
+.rll-hero {
+    border-bottom: 1px solid var(--rll-border);
+    padding: 1.75rem 1rem 1.5rem;
+    width: 100%;
+    box-sizing: border-box;
+}
+.rll-hero-inner {
+    max-width: 880px;
+    margin: 0 auto;
+}
+.rll-hero h1 {
+    font-size: 1.75rem;
+    line-height: 1.15;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 0.5rem;
+}
+.rll-hero-lede {
+    font-size: 0.95rem;
+    line-height: 1.5;
+    max-width: 62ch;
+    margin: 0 0 1.25rem;
+}
+
+/* The loop as a sentence of stages. Arrows carry the live split read from the vectors. */
+.rll-loop {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 0;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.rll-loop li {
+    display: flex;
+    align-items: center;
+}
+.rll-stage {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 7px 11px;
+    border: 1px solid var(--rll-border);
+    border-radius: var(--rll-radius-chip);
+    background: var(--rll-card-bg);
+    color: inherit;
+    text-decoration: none;
+    min-width: 0;
+    cursor: pointer;
+}
+.rll-stage:hover, .rll-stage:focus-visible { border-color: var(--rll-amber); outline: none; }
+.rll-stage-name { font-size: 0.82rem; font-weight: 600; line-height: 1.2; white-space: nowrap; }
+.rll-stage-fact { font-size: 0.72rem; line-height: 1.2; color: var(--rll-muted); white-space: nowrap; }
+.rll-arrow {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1;
+    padding: 0 10px 9px;
+    min-width: 48px;
+    white-space: nowrap;
+}
+.rll-arrow::after {
+    content: '';
+    position: absolute;
+    left: 4px;
+    right: 8px;
+    bottom: 3px;
+    height: 1px;
+    background: currentColor;
+}
+.rll-arrow::before {
+    content: '';
+    position: absolute;
+    right: 4px;
+    bottom: 0;
+    width: 0;
+    height: 0;
+    border-left: 5px solid currentColor;
+    border-top: 3.5px solid transparent;
+    border-bottom: 3.5px solid transparent;
+}
+.rll-arrow-icp { color: var(--rll-icp); }
+.rll-arrow-sneed { color: var(--rll-sneed); }
+.rll-arrow-burn { color: var(--rll-burn); }
+.rll-fan {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.rll-fan li { display: flex; align-items: center; }
+.rll-fan .rll-arrow { min-width: 40px; }
+
+/* ---------- main column ---------- */
+.rllinfo-container {
+    width: 100%;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 1.25rem 1rem 2rem;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+.rll-column { max-width: 880px; margin: 0 auto; }
+@media (min-width: 1200px) { .rll-column { max-width: 1000px; } }
+
+/* prices: one quiet row, denominated like the rest of the app */
+.rll-prices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 24px;
+    align-items: baseline;
+    padding: 0 4px;
+    margin: 0 0 1rem;
+    font-size: 0.85rem;
+}
+.rll-prices .rll-price { display: inline-flex; gap: 6px; align-items: baseline; }
+.rll-prices .rll-price b { font-weight: 650; }
+.rll-prices .rll-price-source { margin-left: auto; font-size: 0.75rem; }
+.rll-prices a { color: var(--rll-amber); text-decoration: none; }
+.rll-prices a:hover { text-decoration: underline; }
+
+/* segmented tabs */
+.rll-tabs {
+    display: flex;
+    gap: 4px;
+    margin: 0 0 1rem;
+    padding: 4px;
+    border-radius: var(--rll-radius-card);
+    border: 1px solid var(--rll-border);
+    background: var(--rll-secondary-bg);
+}
+.rll-tabs button {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: var(--rll-radius-chip);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--rll-secondary-text);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    min-width: 0;
+}
+.rll-tabs button[aria-selected="true"] {
+    background: var(--rll-primary-bg);
+    border-color: var(--rll-border);
+    color: var(--rll-amber);
+    font-weight: 600;
+}
+.rll-tabs button:focus-visible { outline: 2px solid var(--rll-amber); outline-offset: -2px; }
+
+/* stat rows: one card, hairline dividers, numbers that line up */
+.rll-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+}
+.rll-stat {
+    border: 1px solid var(--rll-border);
+    border-radius: var(--rll-radius-card);
+    padding: 10px 12px;
+    min-width: 0;
+    text-align: left;
+}
+.rll-stat-label { font-size: 0.72rem; color: var(--rll-muted); margin-bottom: 3px; }
+.rll-stat-value { font-size: 1rem; font-weight: 650; line-height: 1.2; overflow-wrap: anywhere; }
+.rll-stat-sub { font-size: 0.75rem; color: var(--rll-muted); margin-top: 3px; }
+.rll-num { font-variant-numeric: tabular-nums; }
+
+/* ---------- info tips: hover on a pointer, tap on a finger ---------- */
+.rll-infotip {
+    color: var(--rll-amber);
+    cursor: help;
+    font-size: 11px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1px solid var(--rll-amber);
+    margin-left: 6px;
+    font-weight: 600;
+    font-style: normal;
+    line-height: 1;
+    vertical-align: middle;
+    background: transparent;
+    padding: 0;
+    flex-shrink: 0;
+}
+.rll-infotip:focus-visible { outline: 2px solid var(--rll-amber); outline-offset: 2px; }
+.rll-popover {
+    position: fixed;
+    z-index: 1200;
+    max-width: min(320px, calc(100vw - 24px));
+    padding: 10px 14px;
+    border-radius: var(--rll-radius-card);
+    border: 1px solid var(--rll-border);
+    background: var(--rll-popover-bg);
+    color: var(--rll-text);
+    box-shadow: var(--rll-shadow);
+    font-size: 13px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+.rll-popover.rll-popover-hover { pointer-events: none; }
+.rll-popover ul { margin: 0 0 8px 16px; padding: 0; }
+.rll-popover-close {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1px solid var(--rll-border);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+}
+.rll-popover-actions { display: flex; gap: 8px; margin-top: 10px; }
+.rll-popover-actions a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: var(--rll-radius-chip);
+    border: 1px solid var(--rll-amber);
+    color: var(--rll-amber);
+    text-decoration: none;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+/* ---------- the diagram ---------- */
+.rll-diagram-section { display: flex; flex-direction: column; }
+.rll-diagram-box {
+    position: relative;
+    width: 100%;
+    height: min(720px, 78vh);
+    min-height: 360px;
+    border: 1px solid var(--rll-border);
+    border-radius: var(--rll-radius-card);
+    background: var(--rll-secondary-bg);
+    overflow: hidden;
+}
+.rll-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    align-items: center;
+    font-size: 0.78rem;
+    color: var(--rll-muted);
+    margin: 0 0 10px;
+}
+.rll-legend i {
+    display: inline-block;
+    width: 18px;
+    height: 2px;
+    margin-right: 6px;
+    vertical-align: middle;
+    border-radius: 1px;
+}
+.rll-legend .rll-hint { margin-left: auto; }
+
+.rll-page .react-flow__node-default {
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.25;
+    padding: 9px 10px;
+    border-radius: var(--rll-radius-chip);
+    box-shadow: none;
+    cursor: pointer;
+}
+.rll-page .react-flow__node-default.selected,
+.rll-page .react-flow__node-default:focus,
+.rll-page .react-flow__node-default:focus-visible {
+    box-shadow: 0 0 0 2px var(--rll-amber);
+}
+.rll-page .react-flow__edge-text { font-size: 10px; font-weight: 600; fill: var(--rll-text); }
+.rll-page .react-flow__edge-textbg { fill: var(--rll-secondary-bg); }
+.rll-page .react-flow__edge-path { cursor: pointer; }
+.rll-page .react-flow__controls {
+    box-shadow: none;
+    border: 1px solid var(--rll-border);
+    border-radius: var(--rll-radius-chip);
+    overflow: hidden;
+}
+.rll-page .react-flow__controls-button {
+    background: var(--rll-primary-bg);
+    border-bottom: 1px solid var(--rll-border);
+    width: 30px;
+    height: 30px;
+}
+.rll-page .react-flow__controls-button svg { fill: var(--rll-text); }
+.rll-page .react-flow__controls-button:hover { background: var(--rll-secondary-bg); }
+.rll-page .react-flow__attribution { background: transparent; color: var(--rll-muted); }
+
+/* ---------- component lists ---------- */
+.rll-status-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 5px;
+}
+.rll-status-item > span:last-child { text-align: right; overflow-wrap: anywhere; }
+.long-account-string {
+    display: inline-block;
+    max-width: 100%;
+    word-break: break-all;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85em;
+    background: var(--rll-tertiary-bg);
+    padding: 2px 5px;
+    border-radius: 3px;
+    margin: 2px 0;
+}
+
+/* ---------- narrow screens ---------- */
+@media (max-width: 600px) {
+    .rll-hero { padding: 1.25rem 1rem 1.1rem; }
+    .rll-hero h1 { font-size: 1.45rem; }
+    .rllinfo-container { padding: 1rem 1rem 1.5rem; }
+    .rll-column section { padding: 1rem !important; }
+    .rll-tabs button { padding: 10px 6px; font-size: 0.82rem; gap: 6px; }
+    .rll-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .rll-stat-value { font-size: 0.95rem; }
+    .rll-loop { flex-direction: column; align-items: stretch; gap: 4px; }
+    .rll-loop > li { flex-direction: column; align-items: stretch; }
+    .rll-loop > li > .rll-stage { width: 100%; box-sizing: border-box; }
+    .rll-loop > li > .rll-arrow { padding: 6px 0 6px 16px; min-width: 0; align-self: flex-start; }
+    .rll-loop > li > .rll-arrow::after { left: 6px; right: auto; top: 0; bottom: 0; width: 1px; height: auto; }
+    .rll-loop > li > .rll-arrow::before { display: none; }
+    .rll-fan { padding-left: 12px; border-left: 1px solid var(--rll-border); }
+    .rll-fan .rll-arrow { min-width: 34px; }
+    .rll-diagram-box { height: 62vh; }
+    .rll-legend .rll-hint { margin-left: 0; width: 100%; }
+    .rll-prices .rll-price-source { margin-left: 0; width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rll-page * { transition: none !important; }
+    .rll-page .react-flow__edge.animated path { animation: none !important; }
+}
