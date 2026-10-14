@@ -488,20 +488,33 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             };
         };
         
+        // Check the rate limit again: claims by the same caller can interleave at the awaits above.
+        switch (getLastVpClaimTime(caller)) {
+            case (?lastClaim) {
+                if (now - lastClaim < config.minClaimIntervalNs) {
+                    return #err(#AlreadyClaimedRecently({
+                        lastClaimTime = lastClaim;
+                        intervalNs = config.minClaimIntervalNs;
+                        nextClaimTime = lastClaim + config.minClaimIntervalNs;
+                    }));
+                };
+            };
+            case null {};
+        };
+
         // Update last claim time
         setLastVpClaimTime(caller, now);
         
-        // For VP claims: set to now + duration, but only if it extends past current expiration
-        // This is different from ICP purchases which are additive
+        // VP claims are NOT additive: they set the expiration to now + tier duration, and only
+        // when that is later than the current one. Holding voting power keeps a membership
+        // topped up; it cannot be banked. (Additive claims with a short claim interval would let
+        // a holder stack a tier's whole duration on every claim.) ICP purchases and promo codes
+        // are additive.
         let currentExpiration = switch (getMembership(caller)) {
             case (?m) { m.expiration };
             case null { 0 };
         };
-        
-        // VP claim sets expiration to now + tier duration (not additive)
         let vpExpiration = now + tier.durationNs;
-        
-        // Only update if VP-based expiration is later than current
         let newExpiration = if (vpExpiration > currentExpiration) { vpExpiration } else { currentExpiration };
         
         let newMembership : T.Membership = {
@@ -534,6 +547,9 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
     
     /// Claim a promo code to get free premium membership
     public shared ({ caller }) func claimPromoCode(code : Text) : async T.PromoCodeResult {
+        if (Principal.isAnonymous(caller)) {
+            return #err(#NotAuthorized);
+        };
         let now = Time.now();
         
         // Find the promo code
