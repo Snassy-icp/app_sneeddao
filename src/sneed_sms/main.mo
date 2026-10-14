@@ -10,6 +10,7 @@ import Time "mo:base/Time";
 import Result "mo:base/Result";
 import Buffer "mo:base/Buffer";
 import Array "mo:base/Array";
+import PremiumClient "../PremiumClient";
 
 persistent actor SneedSMS {
     // Types
@@ -114,6 +115,13 @@ persistent actor SneedSMS {
     // System notification config - authorized canisters that can send system notifications
     var stable_authorized_senders : [Principal] = [];
     var stable_system_sender_principal : ?Principal = null; // Principal shown as "sender" for system messages
+
+    // Messages whose sender has removed themselves (message_id -> true). The message keeps the
+    // original sender index, but the sender no longer has access and is shown as the anonymous principal.
+    var stable_sender_removed = Map.new<Nat, Bool>();
+
+    // Premium membership cache (principal -> expiration)
+    var stable_premium_cache = PremiumClient.emptyCache();
     
     // Runtime config (mutable wrapper around stable values)
     transient var runtime_config : SMSConfig = {
@@ -187,7 +195,7 @@ persistent actor SneedSMS {
         false
     };
 
-    private func check_rate_limit(caller: Principal) : Result<(), SMSError> {
+    private func check_rate_limit(caller: Principal, rate_limit_minutes: Nat) : Result<(), SMSError> {
         if (is_admin(caller)) {
             return #ok(); // Admins bypass rate limits
         };
@@ -201,9 +209,9 @@ persistent actor SneedSMS {
                 let time_diff_minutes = if (time_diff_ns >= 0) { 
                     Int.abs(time_diff_ns) / (60 * 1_000_000_000) 
                 } else { 0 }; // Convert nanoseconds to minutes
-                if (time_diff_minutes < state.config.rate_limit_minutes) {
-                    let remaining_minutes = if (state.config.rate_limit_minutes >= time_diff_minutes) {
-                        state.config.rate_limit_minutes - time_diff_minutes
+                if (time_diff_minutes < rate_limit_minutes) {
+                    let remaining_minutes = if (rate_limit_minutes >= time_diff_minutes) {
+                        rate_limit_minutes - time_diff_minutes
                     } else { 0 };
                     return #err(#RateLimited("Must wait " # Nat.toText(remaining_minutes) # " more minutes before sending another message"));
                 };
@@ -219,11 +227,23 @@ persistent actor SneedSMS {
         Map.set(state.user_last_message_time, Map.n32hash, caller_index, Time.now());
     };
 
+    private func is_sender_removed(message_id: Nat) : Bool {
+        switch (Map.get(stable_sender_removed, Map.nhash, message_id)) {
+            case (?removed) removed;
+            case null false;
+        }
+    };
+
+    // True if the caller is the message's sender and has not removed themselves from it
+    private func is_active_sender(caller_index: Nat32, message: Message) : Bool {
+        message.sender == caller_index and not is_sender_removed(message.id)
+    };
+
     private func can_access_message(caller: Principal, message: Message) : Bool {
         let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
         
-        // Check if caller is sender
-        if (message.sender == caller_index) {
+        // Check if caller is sender (and has not removed themselves)
+        if (is_active_sender(caller_index, message)) {
             return true;
         };
         
@@ -238,10 +258,14 @@ persistent actor SneedSMS {
     };
 
     private func convert_message_to_response(caller: Principal, message: Message) : ?MessageResponse {
-        // Get sender principal
-        let sender_principal = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, message.sender)) {
-            case (?p) p;
-            case null return null; // Invalid sender index
+        // Get sender principal (the anonymous principal marks a sender who removed themselves)
+        let sender_principal = if (is_sender_removed(message.id)) {
+            Principal.fromText("2vxsx-fae")
+        } else {
+            switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, message.sender)) {
+                case (?p) p;
+                case null return null; // Invalid sender index
+            };
         };
 
         // Get recipient principals
@@ -254,7 +278,7 @@ persistent actor SneedSMS {
         };
 
         let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
-        let can_remove_self = (message.sender == caller_index) or 
+        let can_remove_self = is_active_sender(caller_index, message) or 
                              (Array.find<Nat32>(message.recipients, func(idx) = idx == caller_index) != null);
 
         ?{
@@ -295,7 +319,11 @@ persistent actor SneedSMS {
     };
 
     private func remove_from_indexes(message_id: Nat, sender_index: Nat32, recipient_indices: [Nat32]) {
-        // Remove from sender index
+        remove_from_sender_index(message_id, sender_index);
+        remove_from_recipient_indexes(message_id, recipient_indices);
+    };
+
+    private func remove_from_sender_index(message_id: Nat, sender_index: Nat32) {
         switch (Map.get(state.sender_messages, Map.n32hash, sender_index)) {
             case (?vector) {
                 let new_vector = Vector.new<Nat>();
@@ -308,8 +336,9 @@ persistent actor SneedSMS {
             };
             case null {};
         };
+    };
 
-        // Remove from recipient indexes
+    private func remove_from_recipient_indexes(message_id: Nat, recipient_indices: [Nat32]) {
         for (recipient_index in recipient_indices.vals()) {
             switch (Map.get(state.recipient_messages, Map.n32hash, recipient_index)) {
                 case (?vector) {
@@ -632,18 +661,34 @@ persistent actor SneedSMS {
             return #err(#Unauthorized("Anonymous callers cannot send messages"));
         };
 
+        // Premium members get the premium limits (checked before any state is read, since it may await)
+        let is_premium = switch (stable_sneed_premium_canister_id) {
+            case null false; // No premium canister configured
+            case (?canisterId) {
+                try {
+                    await* PremiumClient.isPremium(stable_premium_cache, canisterId, caller)
+                } catch (_) {
+                    false // Premium canister unavailable: plain limits
+                };
+            };
+        };
+        let rate_limit_minutes = if (is_premium) stable_premium_rate_limit_minutes else state.config.rate_limit_minutes;
+        let max_subject_length = if (is_premium) stable_premium_max_subject_length else state.config.max_subject_length;
+        let max_body_length = if (is_premium) stable_premium_max_body_length else state.config.max_body_length;
+        let max_recipients = if (is_premium) stable_premium_max_recipients else state.config.max_recipients;
+
         // Check rate limit
-        switch (check_rate_limit(caller)) {
+        switch (check_rate_limit(caller, rate_limit_minutes)) {
             case (#err(e)) return #err(e);
             case (#ok()) {};
         };
 
         // Validate input
-        switch (validate_text(input.subject, "Subject", state.config.max_subject_length)) {
+        switch (validate_text(input.subject, "Subject", max_subject_length)) {
             case (#err(e)) return #err(e);
             case (#ok()) {};
         };
-        switch (validate_text(input.body, "Body", state.config.max_body_length)) {
+        switch (validate_text(input.body, "Body", max_body_length)) {
             case (#err(e)) return #err(e);
             case (#ok()) {};
         };
@@ -651,8 +696,8 @@ persistent actor SneedSMS {
         if (input.recipients.size() == 0) {
             return #err(#InvalidInput("At least one recipient is required"));
         };
-        if (input.recipients.size() > state.config.max_recipients) {
-            return #err(#InvalidInput("Too many recipients. Maximum is " # Nat.toText(state.config.max_recipients)));
+        if (input.recipients.size() > max_recipients) {
+            return #err(#InvalidInput("Too many recipients. Maximum is " # Nat.toText(max_recipients)));
         };
 
         // Validate reply_to messages exist and caller has access to them
@@ -825,7 +870,8 @@ persistent actor SneedSMS {
                 let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
                 var new_recipients = Buffer.Buffer<Nat32>(message.recipients.size());
                 var was_recipient = false;
-                var is_sender = message.sender == caller_index;
+                let sender_already_removed = is_sender_removed(message_id);
+                let is_sender = message.sender == caller_index and not sender_already_removed;
 
                 // Remove caller from recipients if present
                 for (recipient_index in message.recipients.vals()) {
@@ -841,30 +887,29 @@ persistent actor SneedSMS {
                 };
 
                 let new_recipients_array = Buffer.toArray(new_recipients);
+                // Does the sender remain on the message after the caller leaves?
+                let sender_remains = not sender_already_removed and not is_sender;
 
-                // If caller is sender and there are still recipients, just remove from sender index
-                if (is_sender and new_recipients_array.size() > 0) {
-                    // Remove from sender index only
-                    remove_from_indexes(message_id, caller_index, []);
-                    
-                    // Update message to remove sender (set to anonymous-like index)
-                    let updated_message : Message = {
-                        id = message.id;
-                        sender = 0; // Use 0 as "removed sender" marker
-                        recipients = new_recipients_array;
-                        subject = message.subject;
-                        body = message.body;
-                        reply_to = message.reply_to;
-                        created_at = message.created_at;
-                        updated_at = Time.now();
+                if (not sender_remains and new_recipients_array.size() == 0) {
+                    // No one left: delete the message
+                    if (not sender_already_removed) {
+                        remove_from_sender_index(message_id, message.sender);
                     };
-                    Map.set(state.messages, Map.nhash, message_id, updated_message);
-                }
-                // If caller was recipient, update message
-                else if (was_recipient and (not is_sender or new_recipients_array.size() > 0)) {
-                    // Remove from recipient index only
-                    remove_from_indexes(message_id, 0, [caller_index]);
-                    
+                    remove_from_recipient_indexes(message_id, message.recipients);
+                    Map.delete(state.messages, Map.nhash, message_id);
+                    Map.delete(stable_sender_removed, Map.nhash, message_id);
+                } else {
+                    // Remove only the caller's own index entries
+                    if (is_sender) {
+                        remove_from_sender_index(message_id, caller_index);
+                        // Keep the stored sender index, but mark the sender as removed: they lose access
+                        // and are shown as the anonymous principal. Never hand the slot to another user.
+                        Map.set(stable_sender_removed, Map.nhash, message_id, true);
+                    };
+                    if (was_recipient) {
+                        remove_from_recipient_indexes(message_id, [caller_index]);
+                    };
+
                     let updated_message : Message = {
                         id = message.id;
                         sender = message.sender;
@@ -876,11 +921,6 @@ persistent actor SneedSMS {
                         updated_at = Time.now();
                     };
                     Map.set(state.messages, Map.nhash, message_id, updated_message);
-                }
-                // If no one left (sender removed and no recipients, or sender was only recipient), delete message
-                else {
-                    remove_from_indexes(message_id, message.sender, message.recipients);
-                    Map.delete(state.messages, Map.nhash, message_id);
                 };
 
                 #ok()
