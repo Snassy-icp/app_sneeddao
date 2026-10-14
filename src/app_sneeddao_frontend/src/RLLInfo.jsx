@@ -3188,6 +3188,7 @@ function RLLInfo() {
                             <p className="rll-hero-lede" style={{ color: theme.colors.secondaryText }}>
                                 Maturity from the DAO's 2-year ICP neuron and revenue from Sneed products buy SNEED on the open market.
                                 That SNEED is burned, kept in the treasury, and paid out to voters. The splits below are read live from the vectors that run the loop.
+                             <Link to="/rll_ledger" style={{ color: 'inherit', textDecoration: 'underline' }}>See what actually moved: the loop ledger.</Link>
                             </p>
                             <ol className="rll-loop" aria-label="The loop, stage by stage">
                                 <li>
