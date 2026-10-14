@@ -254,22 +254,23 @@ module {
         #ok(snapshot);
     };
     
-    /// Restore hotkeys to a neuron
+    /// Restore hotkeys to a neuron: each principal gets back the given permissions
+    /// (what it held before escrow), then Sneedex removes itself.
     public func releaseNeuron(
         governanceCanisterId : Principal,
         neuronId : T.NeuronId,
         sneedex : Principal,
-        originalOwners : [Principal]
+        restore : [(Principal, [Int32])]
     ) : async* T.Result<()> {
         let governance = getSNSGovernance(governanceCanisterId);
         
-        // Re-add all original owner hotkeys
-        for (owner in originalOwners.vals()) {
+        // Re-add each original principal with its own permissions
+        for ((owner, permissions) in restore.vals()) {
             try {
                 let response = await governance.manage_neuron({
                     subaccount = neuronId.id;
                     command = ?#AddNeuronPermissions({
-                        permissions_to_add = ?{ permissions = T.FULL_OWNER_PERMISSIONS };
+                        permissions_to_add = ?{ permissions = permissions };
                         principal_id = ?owner;
                     });
                 });

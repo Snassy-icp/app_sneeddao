@@ -154,6 +154,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // so they can be restored on seller reclaim (but NOT on delivery to buyer).
     // Keyed by canister principal ID.
     var neuronManagerEscrowSnapshots : [(Principal, T.NeuronManagerEscrowSnapshot)] = [];
+
+    // Permissions each principal held on an escrowed SNS neuron before escrow stripped them,
+    // keyed by (offer id, asset index). A cancelled/expired offer gives every principal back
+    // exactly these (the hotkeys_snapshot inside the offer only keeps the principals).
+    // Escrows from before this map existed have no entry; see neuronRestorePermissions.
+    var snsNeuronEscrowPermissions : [(T.OfferId, Nat, [T.NeuronPermission])] = [];
     
     // ============================================
     // PRIVATE HELPERS
@@ -660,6 +666,47 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
     
+    func recordSnsNeuronEscrowPermissions(offerId : T.OfferId, assetIndex : Nat, perms : [T.NeuronPermission]) {
+        let others = Array.filter<(T.OfferId, Nat, [T.NeuronPermission])>(
+            snsNeuronEscrowPermissions,
+            func((o, i, _)) { not (o == offerId and i == assetIndex) }
+        );
+        snsNeuronEscrowPermissions := Array.append(others, [(offerId, assetIndex, perms)]);
+    };
+
+    /// What each principal of an escrowed neuron gets back when the seller reclaims it.
+    /// With permissions stored at escrow: exactly what the principal had (less the
+    /// "Unspecified" permission 0, which cannot be granted). For escrows made before
+    /// permissions were stored, only the principal list is known: the offer creator was
+    /// verified as a full owner at escrow and gets full owner permissions back; every other
+    /// principal gets hotkey permissions only (submit proposal and vote), never more than a
+    /// hotkey, so no principal can end up with more control than it may have had.
+    func neuronRestorePermissions(offer : T.Offer, assetIndex : Nat, snapshot : [Principal]) : [(Principal, [Int32])] {
+        let stored = Array.find<(T.OfferId, Nat, [T.NeuronPermission])>(
+            snsNeuronEscrowPermissions,
+            func((o, i, _)) { o == offer.id and i == assetIndex }
+        );
+        switch (stored) {
+            case (?(_, _, perms)) {
+                Array.mapFilter<T.NeuronPermission, (Principal, [Int32])>(perms, func(np) {
+                    switch (np.principal) {
+                        case null { null };
+                        case (?p) {
+                            let grantable = Array.filter<Int32>(np.permission_type, func(x) { x != T.SNS_NEURON_PERMISSION_UNSPECIFIED });
+                            if (grantable.size() == 0) { null } else { ?(p, grantable) };
+                        };
+                    };
+                });
+            };
+            case null {
+                Array.map<Principal, (Principal, [Int32])>(snapshot, func(p) {
+                    if (Principal.equal(p, offer.creator)) { (p, T.FULL_OWNER_PERMISSIONS) }
+                    else { (p, [T.SNS_NEURON_PERMISSION_SUBMIT_PROPOSAL, T.SNS_NEURON_PERMISSION_VOTE]) };
+                });
+            };
+        };
+    };
+    
     // Get the fee recipient for a specific ledger (checks overrides first, then falls back to default)
     func getFeeRecipientForLedger(ledger : Principal) : T.Account {
         for ((l, account) in ledgerFeeRecipients.vals()) {
@@ -874,112 +921,114 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
     
+    /// The winning bid of a Completed or Claimed offer, whatever its payout state.
+    /// A Completed offer names it; once the assets are claimed the offer state no longer
+    /// does, so the bid of the offer that won (Won, or ClaimedBySeller once paid) is used.
+    func findWinningBid(offer : T.Offer) : ?T.Bid {
+        switch (offer.state) {
+            case (#Completed(completion)) { getBid(completion.winning_bid_id) };
+            case (#Claimed) {
+                for (b in getBidsForOffer(offer.id).vals()) {
+                    if (b.state == #Won or b.state == #ClaimedBySeller) { return ?b };
+                };
+                null;
+            };
+            case (_) { null };
+        };
+    };
+
+    /// Pay a Won bid out of its escrow: the marketplace cut (rate locked at offer creation)
+    /// to the fee recipient of the price ledger, the rest less one ledger fee to the seller.
+    /// A cut no bigger than one ledger fee could not be sent, so it is not taken at all.
+    /// Shared by claimWinningBid and the auto-delivery timer; serialized per bid.
+    func payWinningBidToSeller(offer : T.Offer, bid : T.Bid) : async* T.Result<()> {
+        if (bid.state != #Won) {
+            return #err(#InvalidState("Bid is not in won state"));
+        };
+        // Serialize with any other payout from this escrow (the auto-delivery timer or a
+        // concurrent manual claim) so the seller payout cannot run twice across the awaits.
+        if (isBidEscrowLocked(bid.id)) {
+            return #err(#InvalidState("An escrow operation is already in progress for this bid"));
+        };
+        lockBidEscrow(bid.id);
+        try {
+            let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
+            let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
+
+            let rawCut = bid.amount * offer.fee_rate_bps / 10000;
+            let marketplaceFee = if (rawCut > fee) { rawCut } else { 0 };
+
+            if (marketplaceFee > 0) {
+                // The escrow pays the cut less one fee, plus that ledger fee: marketplaceFee in all.
+                let feeTransferResult = await* AssetHandlers.transferTokens(
+                    offer.price_token_ledger,
+                    ?subaccount,
+                    getFeeRecipientForLedger(offer.price_token_ledger),
+                    marketplaceFee - fee
+                );
+                switch (feeTransferResult) {
+                    case (#err(e)) { return #err(e) };
+                    case (#ok(txId)) {
+                        recordCutPayment(
+                            offer.id,
+                            bid.id,
+                            offer.creator,
+                            bid.bidder,
+                            offer.price_token_ledger,
+                            marketplaceFee,
+                            txId,
+                            bid.amount,
+                            offer.fee_rate_bps
+                        );
+                    };
+                };
+            };
+
+            let amountAfterFee = bid.amount - marketplaceFee;
+            let sellerTransferAmount = if (amountAfterFee > fee) { amountAfterFee - fee } else { 0 };
+            if (sellerTransferAmount == 0) {
+                return #err(#InsufficientFunds({ available = amountAfterFee; required = fee }));
+            };
+
+            let transferResult = await* AssetHandlers.transferTokens(
+                offer.price_token_ledger,
+                ?subaccount,
+                { owner = offer.creator; subaccount = null },
+                sellerTransferAmount
+            );
+            switch (transferResult) {
+                case (#err(e)) { #err(e) };
+                case (#ok(_)) {
+                    let updatedBid : T.Bid = {
+                        id = bid.id;
+                        offer_id = bid.offer_id;
+                        bidder = bid.bidder;
+                        amount = bid.amount;
+                        state = #ClaimedBySeller;
+                        created_at = bid.created_at;
+                        tokens_escrowed = bid.tokens_escrowed;
+                    };
+                    updateBid(bid.id, updatedBid);
+                    #ok();
+                };
+            };
+        } finally {
+            unlockBidEscrow(bid.id);
+        };
+    };
+
     /// Auto-deliver payment to seller (called via Timer)
     /// Best effort - if it fails, seller can manually claim from GUI
     func autoDeliverPayment(offerId : T.OfferId) : async () {
         switch (getOffer(offerId)) {
             case null { /* Offer not found, ignore */ };
             case (?offer) {
-                // Check if state is Completed or Claimed
-                let winningBidId : ?T.BidId = switch (offer.state) {
-                    case (#Completed(completion)) { ?completion.winning_bid_id };
-                    case (#Claimed) {
-                        // Find winning bid
-                        var found : ?T.BidId = null;
-                        for (b in getBidsForOffer(offerId).vals()) {
-                            if (b.state == #Won) { found := ?b.id };
-                        };
-                        found;
-                    };
-                    case (_) { null };
-                };
-                
-                switch (winningBidId) {
+                switch (findWinningBid(offer)) {
                     case null { /* No winning bid, ignore */ };
-                    case (?bidId) {
-                        switch (getBid(bidId)) {
-                            case null { /* Bid not found, ignore */ };
-                            case (?bid) {
-                                if (bid.state != #Won) { return }; // Already claimed
-
-                                // Serialize with any other payout from this escrow (a
-                                // concurrent manual claimWinningBid). Skip if one is
-                                // already running — the seller can always claim manually.
-                                if (isBidEscrowLocked(bid.id)) { return };
-                                lockBidEscrow(bid.id);
-
-                                try {
-                                let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
-                                let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
-                                
-                                // Calculate marketplace fee using the rate locked at offer creation
-                                let marketplaceFee = bid.amount * offer.fee_rate_bps / 10000;
-                                
-                                // If there's a marketplace fee, transfer it first (best effort)
-                                if (marketplaceFee > 0) {
-                                    let feeTransferAmount = if (marketplaceFee > fee) { marketplaceFee - fee } else { 0 };
-                                    if (feeTransferAmount > 0) {
-                                        let feeTransferResult = await* AssetHandlers.transferTokens(
-                                            offer.price_token_ledger,
-                                            ?subaccount,
-                                            getFeeRecipientForLedger(offer.price_token_ledger),
-                                            feeTransferAmount
-                                        );
-                                        switch (feeTransferResult) {
-                                            case (#err(_e)) { return }; // Fee transfer failed, abort
-                                            case (#ok(txId)) {
-                                                // Record the cut payment
-                                                recordCutPayment(
-                                                    offer.id,
-                                                    bid.id,
-                                                    offer.creator,
-                                                    bid.bidder,
-                                                    offer.price_token_ledger,
-                                                    marketplaceFee,
-                                                    txId,
-                                                    bid.amount,
-                                                    offer.fee_rate_bps
-                                                );
-                                            };
-                                        };
-                                    };
-                                };
-                                
-                                // Calculate and transfer seller amount
-                                let amountAfterFee = bid.amount - marketplaceFee;
-                                let sellerTransferAmount = if (amountAfterFee > fee) { amountAfterFee - fee } else { 0 };
-                                
-                                if (sellerTransferAmount == 0) { return };
-                                
-                                // Transfer tokens to seller
-                                let transferResult = await* AssetHandlers.transferTokens(
-                                    offer.price_token_ledger,
-                                    ?subaccount,
-                                    { owner = offer.creator; subaccount = null },
-                                    sellerTransferAmount
-                                );
-                                
-                                switch (transferResult) {
-                                    case (#err(_e)) { /* Transfer failed, user can manually claim */ };
-                                    case (#ok(_)) {
-                                        // Update bid state to ClaimedBySeller
-                                        let updatedBid : T.Bid = {
-                                            id = bid.id;
-                                            offer_id = bid.offer_id;
-                                            bidder = bid.bidder;
-                                            amount = bid.amount;
-                                            state = #ClaimedBySeller;
-                                            created_at = bid.created_at;
-                                            tokens_escrowed = bid.tokens_escrowed;
-                                        };
-                                        updateBid(bid.id, updatedBid);
-                                    };
-                                };
-                                } finally {
-                                    unlockBidEscrow(bid.id);
-                                };
-                            };
-                        };
+                    case (?bid) {
+                        if (bid.state != #Won) { return }; // Already claimed
+                        // Errors (a payout in flight, a failed transfer) leave the seller to claim by hand.
+                        ignore await* payWinningBidToSeller(offer, bid);
                     };
                 };
             };
@@ -997,7 +1046,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 };
                 
                 // Transfer all escrowed assets back to creator
-                for (entry in offer.assets.vals()) {
+                for (assetIndex in offer.assets.keys()) {
+                    let entry = offer.assets[assetIndex];
                     if (entry.escrowed) {
                         switch (entry.asset) {
                             case (#Canister(asset)) {
@@ -1031,7 +1081,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             asset.governance_canister_id,
                                             asset.neuron_id,
                                             self(),
-                                            snapshot
+                                            neuronRestorePermissions(offer, assetIndex, snapshot)
                                         );
                                     };
                                     case null {
@@ -1479,6 +1529,30 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         #ok();
     };
     
+    /// Reactivate an asset type that was deactivated (admin only)
+    public shared ({ caller }) func reactivateAssetType(assetTypeId : T.AssetTypeId) : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        if (Array.find<T.AssetType>(assetTypes, func(t) { t.id == assetTypeId }) == null) {
+            return #err(#InvalidAsset("Unknown asset type"));
+        };
+        assetTypes := Array.map<T.AssetType, T.AssetType>(assetTypes, func(t : T.AssetType) : T.AssetType {
+            if (t.id == assetTypeId) {
+                { id = t.id; name = t.name; description = t.description; active = true };
+            } else { t };
+        });
+        #ok();
+    };
+
+    /// Whether the registry lists the type as active (a type missing from the registry is not)
+    func isAssetTypeActive(assetTypeId : T.AssetTypeId) : Bool {
+        switch (Array.find<T.AssetType>(assetTypes, func(t) { t.id == assetTypeId })) {
+            case (?t) { t.active };
+            case null { false };
+        };
+    };
+    
     /// Get all asset types
     public query func getAssetTypes() : async [T.AssetType] {
         assetTypes;
@@ -1836,6 +1910,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     
     /// Add an asset to an offer (must be in Draft state)
     public shared ({ caller }) func addAsset(request : T.AddAssetRequest) : async T.Result<()> {
+        // A deactivated asset type cannot be listed any more (offers already holding one are unaffected)
+        if (not isAssetTypeActive(getAssetTypeId(request.asset))) {
+            return #err(#InvalidAsset("This asset type is not currently accepted"));
+        };
         // A Sneed Lock is checked against Sneed Lock itself before anything is recorded: it must
         // exist, be the caller's, and be the kind the caller says. The stored snapshot is the live one.
         var asset = request.asset;
@@ -2170,6 +2248,17 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 switch (escrowResult) {
                                     case (#err(e)) { return #err(e) };
                                     case (#ok(snapshot)) {
+                                        // Keep each other principal's exact permissions for a reclaim
+                                        recordSnsNeuronEscrowPermissions(
+                                            offerId,
+                                            assetIndex,
+                                            Array.filter<T.NeuronPermission>(allPermissions, func(np) {
+                                                switch (np.principal) {
+                                                    case (?p) { not Principal.equal(p, self()) };
+                                                    case null { false };
+                                                };
+                                            })
+                                        );
                                         // Update asset with snapshot
                                         let updatedAsset : T.Asset = #SNSNeuron({
                                             governance_canister_id = neuronAsset.governance_canister_id;
@@ -3217,199 +3306,15 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 if (not Principal.equal(caller, offer.creator)) {
                     return #err(#NotAuthorized);
                 };
-                
                 switch (offer.state) {
-                    case (#Completed(completion)) {
-                        switch (getBid(completion.winning_bid_id)) {
-                            case null { return #err(#BidNotFound) };
-                            case (?bid) {
-                                if (bid.state != #Won) {
-                                    return #err(#InvalidState("Bid is not in won state"));
-                                };
-
-                                // Serialize with any other payout from this escrow (the
-                                // auto-delivery timer or a concurrent manual claim) so the
-                                // seller payout cannot run twice across the transfer awaits.
-                                if (isBidEscrowLocked(bid.id)) {
-                                    return #err(#InvalidState("An escrow operation is already in progress for this bid"));
-                                };
-                                lockBidEscrow(bid.id);
-
-                                try {
-                                let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
-                                let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
-
-                                // Calculate marketplace fee using the rate locked at offer creation
-                                let marketplaceFee = bid.amount * offer.fee_rate_bps / 10000;
-
-                                // If there's a marketplace fee to collect, transfer it first
-                                if (marketplaceFee > 0) {
-                                    // Transfer marketplace fee to fee recipient
-                                    let feeTransferAmount = if (marketplaceFee > fee) { marketplaceFee - fee } else { 0 };
-                                    if (feeTransferAmount > 0) {
-                                        let feeTransferResult = await* AssetHandlers.transferTokens(
-                                            offer.price_token_ledger,
-                                            ?subaccount,
-                                            getFeeRecipientForLedger(offer.price_token_ledger),
-                                            feeTransferAmount
-                                        );
-                                        switch (feeTransferResult) {
-                                            case (#err(e)) { return #err(e) };
-                                            case (#ok(txId)) {
-                                                // Record the cut payment
-                                                recordCutPayment(
-                                                    offer.id,
-                                                    bid.id,
-                                                    offer.creator,
-                                                    bid.bidder,
-                                                    offer.price_token_ledger,
-                                                    marketplaceFee,
-                                                    txId,
-                                                    bid.amount,
-                                                    offer.fee_rate_bps
-                                                );
-                                            };
-                                        };
-                                    };
-                                };
-                                
-                                // Calculate seller amount: bid - marketplace fee - transfer fees
-                                // If marketplace fee was paid, we already deducted (marketplaceFee) from escrow
-                                // Seller gets remaining minus one more transfer fee
-                                let amountAfterFee = bid.amount - marketplaceFee;
-                                let sellerTransferAmount = if (amountAfterFee > fee) { amountAfterFee - fee } else { 0 };
-                                
-                                if (sellerTransferAmount == 0) {
-                                    return #err(#InsufficientFunds({ available = amountAfterFee; required = fee }));
-                                };
-                                
-                                // Transfer remaining tokens to seller
-                                let transferResult = await* AssetHandlers.transferTokens(
-                                    offer.price_token_ledger,
-                                    ?subaccount,
-                                    { owner = caller; subaccount = null },
-                                    sellerTransferAmount
-                                );
-                                
-                                switch (transferResult) {
-                                    case (#err(e)) { return #err(e) };
-                                    case (#ok(_)) {
-                                        // Update bid state
-                                        let updatedBid : T.Bid = {
-                                            id = bid.id;
-                                            offer_id = bid.offer_id;
-                                            bidder = bid.bidder;
-                                            amount = bid.amount;
-                                            state = #ClaimedBySeller;
-                                            created_at = bid.created_at;
-                                            tokens_escrowed = bid.tokens_escrowed;
-                                        };
-                                        
-                                        updateBid(bid.id, updatedBid);
-                                        #ok();
-                                    };
-                                };
-                                } finally {
-                                    unlockBidEscrow(bid.id);
-                                };
-                            };
-                        };
-                    };
-                    case (#Claimed) {
-                        // Also allow claiming after assets claimed
-                        switch (getHighestBid(offerId)) {
-                            case null { return #err(#BidNotFound) };
-                            case (?_bid) {
-                                let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
-                                
-                                // Find the winning bid from completed state
-                                for (b in getBidsForOffer(offerId).vals()) {
-                                    if (b.state == #Won) {
-                                        // Serialize with any other payout from this escrow.
-                                        if (isBidEscrowLocked(b.id)) {
-                                            return #err(#InvalidState("An escrow operation is already in progress for this bid"));
-                                        };
-                                        lockBidEscrow(b.id);
-
-                                        try {
-                                        let subaccount = Utils.bidEscrowSubaccount(b.bidder, b.id);
-                                        
-                                        // Calculate marketplace fee using the rate locked at offer creation
-                                        let marketplaceFee = b.amount * offer.fee_rate_bps / 10000;
-                                        
-                                        // If there's a marketplace fee, transfer it first
-                                        if (marketplaceFee > 0) {
-                                            let feeTransferAmount = if (marketplaceFee > fee) { marketplaceFee - fee } else { 0 };
-                                            if (feeTransferAmount > 0) {
-                                                let feeTransferResult = await* AssetHandlers.transferTokens(
-                                                    offer.price_token_ledger,
-                                                    ?subaccount,
-                                                    feeRecipient,
-                                                    feeTransferAmount
-                                                );
-                                                switch (feeTransferResult) {
-                                                    case (#err(e)) { return #err(e) };
-                                                    case (#ok(txId)) {
-                                                        // Record the cut payment
-                                                        recordCutPayment(
-                                                            offer.id,
-                                                            b.id,
-                                                            offer.creator,
-                                                            b.bidder,
-                                                            offer.price_token_ledger,
-                                                            marketplaceFee,
-                                                            txId,
-                                                            b.amount,
-                                                            offer.fee_rate_bps
-                                                        );
-                                                    };
-                                                };
-                                            };
-                                        };
-                                        
-                                        // Calculate and transfer seller amount
-                                        let amountAfterFee = b.amount - marketplaceFee;
-                                        let sellerTransferAmount = if (amountAfterFee > fee) { amountAfterFee - fee } else { 0 };
-                                        
-                                        if (sellerTransferAmount == 0) {
-                                            return #err(#InsufficientFunds({ available = amountAfterFee; required = fee }));
-                                        };
-                                        
-                                        let transferResult = await* AssetHandlers.transferTokens(
-                                            offer.price_token_ledger,
-                                            ?subaccount,
-                                            { owner = caller; subaccount = null },
-                                            sellerTransferAmount
-                                        );
-                                        
-                                        switch (transferResult) {
-                                            case (#err(e)) { return #err(e) };
-                                            case (#ok(_)) {
-                                                let updatedBid : T.Bid = {
-                                                    id = b.id;
-                                                    offer_id = b.offer_id;
-                                                    bidder = b.bidder;
-                                                    amount = b.amount;
-                                                    state = #ClaimedBySeller;
-                                                    created_at = b.created_at;
-                                                    tokens_escrowed = b.tokens_escrowed;
-                                                };
-                                                
-                                                updateBid(b.id, updatedBid);
-                                                return #ok();
-                                            };
-                                        };
-                                        } finally {
-                                            unlockBidEscrow(b.id);
-                                        };
-                                    };
-                                };
-                                return #err(#BidNotFound);
-                            };
+                    case (#Completed(_) or #Claimed) {
+                        switch (findWinningBid(offer)) {
+                            case null { #err(#BidNotFound) };
+                            case (?bid) { await* payWinningBidToSeller(offer, bid) };
                         };
                     };
                     case (_) {
-                        return #err(#InvalidState("Offer is not completed"));
+                        #err(#InvalidState("Offer is not completed"));
                     };
                 };
             };
@@ -3430,7 +3335,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 };
                 
                 // Transfer all assets back to creator
-                for (entry in offer.assets.vals()) {
+                for (assetIndex in offer.assets.keys()) {
+                    let entry = offer.assets[assetIndex];
                     if (entry.escrowed) {
                         switch (entry.asset) {
                             case (#Canister(asset)) {
@@ -3464,7 +3370,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             asset.governance_canister_id,
                                             asset.neuron_id,
                                             self(),
-                                            snapshot
+                                            neuronRestorePermissions(offer, assetIndex, snapshot)
                                         );
                                     };
                                     case null {
@@ -3726,9 +3632,52 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         Utils.offerEscrowSubaccount(creator, offerId);
     };
     
-    /// Get offer by ID
-    public query func queryOffer(offerId : T.OfferId) : async ?T.Offer {
-        getOffer(offerId);
+    /// Get offer by ID (note_to_buyer only for the creator and, once won, the winning bidder)
+    public shared query ({ caller }) func queryOffer(offerId : T.OfferId) : async ?T.Offer {
+        switch (getOffer(offerId)) {
+            case null { null };
+            case (?offer) { ?offerAsSeenBy(caller, offer) };
+        };
+    };
+
+    /// note_to_buyer is for the creator and, once the offer is Completed/Claimed, the winning bidder.
+    func canSeeNoteToBuyer(caller : Principal, offer : T.Offer) : Bool {
+        if (Principal.equal(caller, offer.creator)) { return true };
+        switch (offer.state) {
+            case (#Completed(_) or #Claimed) {
+                switch (findWinningBid(offer)) {
+                    case (?bid) { Principal.equal(caller, bid.bidder) };
+                    case null { false };
+                };
+            };
+            case (_) { false };
+        };
+    };
+
+    /// The offer as `caller` may see it: note_to_buyer removed unless canSeeNoteToBuyer.
+    func offerAsSeenBy(caller : Principal, offer : T.Offer) : T.Offer {
+        if (offer.note_to_buyer == null or canSeeNoteToBuyer(caller, offer)) { return offer };
+        {
+            id = offer.id;
+            creator = offer.creator;
+            min_bid_price = offer.min_bid_price;
+            buyout_price = offer.buyout_price;
+            expiration = offer.expiration;
+            price_token_ledger = offer.price_token_ledger;
+            min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
+            assets = offer.assets;
+            state = offer.state;
+            approved_bidders = offer.approved_bidders;
+            fee_rate_bps = offer.fee_rate_bps;
+            public_note = offer.public_note;
+            note_to_buyer = null; // Hide private note
+            created_at = offer.created_at;
+            activated_at = offer.activated_at;
+        };
+    };
+
+    func offersAsSeenBy(caller : Principal, list : [T.Offer]) : [T.Offer] {
+        Array.map<T.Offer, T.Offer>(list, func(o) { offerAsSeenBy(caller, o) });
     };
     
     /// Get offer with bids
@@ -3740,48 +3689,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 let offerBids = getConfirmedBidsForOffer(offerId);
                 let highestBid = getHighestBid(offerId);
                 
-                // Determine if caller can see the private note
-                // Creator can always see it
-                // Winning bidder can see it (highest bid that is Won or Confirmed)
-                var canSeePrivateNote = Principal.equal(caller, offer.creator);
-                
-                if (not canSeePrivateNote) {
-                    switch (highestBid) {
-                        case (?bid) {
-                            if (Principal.equal(caller, bid.bidder)) {
-                                switch (bid.state) {
-                                    case (#Won) { canSeePrivateNote := true };
-                                    case (#Confirmed) { canSeePrivateNote := true };
-                                    case (_) {};
-                                };
-                            };
-                        };
-                        case null {};
-                    };
-                };
-                
-                // Return offer with or without the private note
-                let filteredOffer : T.Offer = if (canSeePrivateNote) {
-                    offer;
-                } else {
-                    {
-                        id = offer.id;
-                        creator = offer.creator;
-                        min_bid_price = offer.min_bid_price;
-                        buyout_price = offer.buyout_price;
-                        expiration = offer.expiration;
-                        price_token_ledger = offer.price_token_ledger;
-                        min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
-                        assets = offer.assets;
-                        state = offer.state;
-                        approved_bidders = offer.approved_bidders;
-                        fee_rate_bps = offer.fee_rate_bps;
-                        public_note = offer.public_note;
-                        note_to_buyer = null; // Hide private note
-                        created_at = offer.created_at;
-                        activated_at = offer.activated_at;
-                    };
-                };
+                // The private note goes to the creator, and to the winning bidder once the offer is won
+                let filteredOffer : T.Offer = offerAsSeenBy(caller, offer);
                 
                 ?{
                     offer = filteredOffer;
@@ -3842,25 +3751,25 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     };
     
     /// Get all active offers
-    public query func getActiveOffers() : async [T.Offer] {
-        Array.filter<T.Offer>(offers, func(o : T.Offer) : Bool {
+    public shared query ({ caller }) func getActiveOffers() : async [T.Offer] {
+        offersAsSeenBy(caller, Array.filter<T.Offer>(offers, func(o : T.Offer) : Bool {
             o.state == #Active;
-        });
+        }));
     };
     
     /// Get all active public offers (no approved_bidders list)
-    public query func getPublicOffers() : async [T.Offer] {
-        Array.filter<T.Offer>(offers, func(o : T.Offer) : Bool {
+    public shared query ({ caller }) func getPublicOffers() : async [T.Offer] {
+        offersAsSeenBy(caller, Array.filter<T.Offer>(offers, func(o : T.Offer) : Bool {
             o.state == #Active and o.approved_bidders == null;
-        });
+        }));
     };
     
     /// Get all private offers visible to a specific principal
     /// (offers where the principal is the creator or in the approved_bidders list)
     /// For creators: shows all states (including Draft, PendingEscrow for management)
     /// For approved bidders: shows all states except Draft/PendingEscrow (so they can see completed/expired auctions)
-    public query func getPrivateOffersFor(viewer : Principal) : async [T.Offer] {
-        Array.filter<T.Offer>(offers, func(o : T.Offer) : Bool {
+    public shared query ({ caller }) func getPrivateOffersFor(viewer : Principal) : async [T.Offer] {
+        offersAsSeenBy(caller, Array.filter<T.Offer>(offers, func(o : T.Offer) : Bool {
             switch (o.approved_bidders) {
                 case null { false }; // Public offer, not included
                 case (?approvedList) {
@@ -3879,18 +3788,18 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     };
                 };
             };
-        });
+        }));
     };
     
     /// Get offers by creator
-    public query func getOffersByCreator(creator : Principal) : async [T.Offer] {
-        Array.filter<T.Offer>(offers, func(o : T.Offer) : Bool {
+    public shared query ({ caller }) func getOffersByCreator(creator : Principal) : async [T.Offer] {
+        offersAsSeenBy(caller, Array.filter<T.Offer>(offers, func(o : T.Offer) : Bool {
             Principal.equal(o.creator, creator);
-        });
+        }));
     };
     
     /// Get paginated offer feed (sorted by ID descending = newest first)
-    public query func getOfferFeed(input : T.GetOfferFeedInput) : async T.GetOfferFeedResponse {
+    public shared query ({ caller }) func getOfferFeed(input : T.GetOfferFeedInput) : async T.GetOfferFeedResponse {
         // Determine starting ID (default to highest offer ID)
         let startId : Nat = switch (input.start_id) {
             case (?id) id;
@@ -3916,7 +3825,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 // Check if offer matches filter
                 if (matchesOfferFilter(offer, input.filter)) {
                     if (resultBuffer.size() < input.length) {
-                        resultBuffer.add(offer);
+                        resultBuffer.add(offerAsSeenBy(caller, offer));
                         lastMatchedId := ?offer.id;
                     } else {
                         // We have enough, but there are more
@@ -4694,7 +4603,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             case (?offer) {
                 var message = "Results for offer #" # Nat.toText(offerId) # ":\n";
                 
-                for (entry in offer.assets.vals()) {
+                for (assetIndex in offer.assets.keys()) {
+                    let entry = offer.assets[assetIndex];
                     if (entry.escrowed) {
                         switch (entry.asset) {
                             case (#ICRC1Token(asset)) {
@@ -4780,7 +4690,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             asset.governance_canister_id,
                                             asset.neuron_id,
                                             self(),
-                                            snapshot
+                                            neuronRestorePermissions(offer, assetIndex, snapshot)
                                         );
                                         switch (result) {
                                             case (#ok(_)) { message := message # "Neuron released successfully\n"; };
@@ -5006,5 +4916,20 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         );
         #ok();
     };
-};
 
+    // ============================================
+    // TIMERS AFTER AN UPGRADE
+    // ============================================
+    // Timers do not survive an upgrade, but the stored timer id and worker flag do. The actor
+    // body runs on every install and upgrade, so put the timers back here (as sneed_pad does):
+    // a periodic expiration timer that was on is started again, and a worker that was scheduled
+    // when the upgrade came is scheduled again, so the flag never claims a worker that is gone.
+    // On a fresh install both are off and nothing happens.
+    if (expirationTimerId != null) {
+        expirationTimerId := null; // the old id means nothing to the new timer runtime: do not cancel it
+        startExpirationTimerInternal<system>();
+    };
+    if (expirationWorkerRunning) {
+        scheduleExpirationWorker<system>();
+    };
+};
