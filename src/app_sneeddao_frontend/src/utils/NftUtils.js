@@ -237,9 +237,10 @@ export async function loadNftCollection(canisterId, account, identity, agent) {
         for (let page = 0; page < 200; page++) {
             const chunk = await actor.icrc7_tokens_of(account, prev, [take]);
             if (chunk.length === 0) break;
-            tokenIds.push(...chunk);
-            if (BigInt(chunk.length) < take) break;
-            prev = [chunk[chunk.length - 1]];
+            for (const id of chunk) if (!tokenIds.some((x) => x === id)) tokenIds.push(id);
+            if (BigInt(chunk.length) < take) break; // a short page is the last page
+            // the spec pages by the last id of an ascending page; use the largest id in case the ledger did not sort
+            prev = [chunk.reduce((m, x) => (x > m ? x : m), chunk[0])];
         }
         
         // Fetch metadata for user's tokens (in batches to avoid limits)
@@ -260,8 +261,8 @@ export async function loadNftCollection(canisterId, account, identity, agent) {
             collectionSymbol: symbol
         }));
         await Promise.allSettled(nfts.map(async (n) => { const j = await fetchIcrc97(n.metadata); if (j) n.icrc97 = j; }));
-        const standards = await actor.icrc10_supported_standards().catch(() => []);
-        const supportsIcrc37 = standards.some((st) => st.name === 'ICRC-37');
+        const std = await detectStandards(canisterId, agent);
+        const supportsIcrc37 = std.icrc37;
         let approvals = { supported: false, byToken: new Map(), collection: [] };
         if (supportsIcrc37) approvals = await fetchApprovals(canisterId, account, tokenIds, agent);
         for (const n of nfts) n.approvals = approvals.byToken.get(n.tokenId.toString()) || [];
@@ -276,6 +277,7 @@ export async function loadNftCollection(canisterId, account, identity, agent) {
             nfts,
             userTokenCount: tokenIds.length,
             supportsIcrc37,
+            supportsIcrc10: std.icrc10,
             collectionApprovals: approvals.collection
         };
     } catch (error) {
@@ -349,16 +351,33 @@ export async function transferNft(canisterId, tokenId, toAccount, fromSubaccount
 /**
  * Verify if a canister implements ICRC-7
  */
+/// ICRC-7 asks ledgers to announce themselves through icrc10_supported_standards, but
+/// collections exist that answer every ICRC-7 query and lack that one method. So: the
+/// announcement when it is there, otherwise the queries themselves.
 export async function verifyIcrc7Support(canisterId, agent) {
+    const actor = createIcrc7Actor(canisterId, { agent });
     try {
-        const actor = createIcrc7Actor(canisterId, { agent });
         const standards = await actor.icrc10_supported_standards();
-        
-        return standards.some(s => s.name === 'ICRC-7');
+        if (standards.some(s => s.name === 'ICRC-7')) return true;
+    } catch { /* no ICRC-10: fall through to the queries */ }
+    try {
+        await Promise.all([actor.icrc7_name(), actor.icrc7_total_supply(), actor.icrc7_tokens([], [1n])]);
+        return true;
     } catch (error) {
         console.error('Error verifying ICRC-7 support:', error);
         return false;
     }
+}
+/// Which standards a collection speaks, announced or probed: { icrc7, icrc37, icrc10 }.
+export async function detectStandards(canisterId, agent) {
+    const actor = createIcrc7Actor(canisterId, { agent });
+    let announced = null;
+    try { announced = (await actor.icrc10_supported_standards()).map(s => s.name); } catch { announced = null; }
+    if (announced) return { icrc10: true, icrc7: announced.includes('ICRC-7'), icrc37: announced.includes('ICRC-37'), announced };
+    const icrc7 = await verifyIcrc7Support(canisterId, agent);
+    let icrc37 = false;
+    try { await actor.icrc37_max_approvals_per_token_or_collection(); icrc37 = true; } catch { icrc37 = false; }
+    return { icrc10: false, icrc7, icrc37, announced: [] };
 }
 
 /**
@@ -368,13 +387,13 @@ export async function fetchCollectionInfo(canisterId, agent) {
     try {
         const actor = createIcrc7Actor(canisterId, { agent });
         
-        const [name, symbol, logo, totalSupply, description, isIcrc7] = await Promise.all([
+        const [name, symbol, logo, totalSupply, description, std] = await Promise.all([
             actor.icrc7_name().catch(() => 'Unknown'),
             actor.icrc7_symbol().catch(() => '???'),
             actor.icrc7_logo().catch(() => []),
             actor.icrc7_total_supply().catch(() => 0n),
             actor.icrc7_description().catch(() => []),
-            verifyIcrc7Support(canisterId, agent)
+            detectStandards(canisterId, agent)
         ]);
         
         return {
@@ -383,7 +402,8 @@ export async function fetchCollectionInfo(canisterId, agent) {
             logo: logo.length > 0 ? logo[0] : null,
             totalSupply,
             description: description.length > 0 ? description[0] : null,
-            isIcrc7
+            isIcrc7: std.icrc7,
+            standards: std
         };
     } catch (error) {
         console.error('Error fetching collection info:', error);

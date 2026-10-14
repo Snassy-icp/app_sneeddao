@@ -42,7 +42,7 @@ const AddNftCollectionModal = ({ isOpen, onClose, onAdd, agent }) => {
             const info = await fetchCollectionInfo(canisterId, agent);
             
             if (!info.isIcrc7) {
-                setError('This canister does not implement ICRC-7 standard');
+                setError('This canister does not answer the ICRC-7 queries (icrc7_name, icrc7_total_supply, icrc7_tokens), so it is not an ICRC-7 collection');
                 return;
             }
             
@@ -274,6 +274,11 @@ const AddNftCollectionModal = ({ isOpen, onClose, onAdd, agent }) => {
                                     {collectionInfo.totalSupply.toString()}
                                 </span>
                             </div>
+                            {collectionInfo.standards && (
+                                <div style={{ padding: '6px 12px', fontSize: '12px', color: theme.colors.mutedText }}>
+                                    Standards: ICRC-7{collectionInfo.standards.icrc37 ? ', ICRC-37 approvals' : ''}{collectionInfo.standards.icrc10 ? '' : ' (answers the queries but does not announce itself through ICRC-10, which the standard asks for; marketplaces and wallets that only check the announcement will not see it)'}
+                                </div>
+                            )}
                             
                             <div style={{
                                 display: 'flex',
