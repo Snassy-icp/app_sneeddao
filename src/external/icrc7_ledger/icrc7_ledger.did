@@ -62,5 +62,23 @@ service : {
     icrc7_tokens_of : (account : Account, prev : opt nat, take : opt nat) -> (vec nat) query;
     icrc7_transfer : (vec TransferArg) -> (vec opt TransferResult);
     icrc10_supported_standards : () -> (vec Standard) query;
+    // ICRC-37 (approvals); absent on collections that do not implement it
+    icrc37_max_approvals_per_token_or_collection : () -> (opt nat) query;
+    icrc37_max_revoke_approvals : () -> (opt nat) query;
+    icrc37_is_approved : (vec record { spender : Account; from_subaccount : opt blob; token_id : nat }) -> (vec bool) query;
+    icrc37_get_token_approvals : (vec nat, opt TokenApproval, opt nat) -> (vec TokenApproval) query;
+    icrc37_get_collection_approvals : (Account, opt ApprovalInfo, opt nat) -> (vec ApprovalInfo) query;
+    icrc37_approve_tokens : (vec TokenApproval) -> (vec opt variant { Ok : nat; Err : ApproveTokenError });
+    icrc37_approve_collection : (vec record { approval_info : ApprovalInfo }) -> (vec opt variant { Ok : nat; Err : ApproveCollectionError });
+    icrc37_revoke_token_approvals : (vec record { spender : opt Account; from_subaccount : opt blob; token_id : nat; memo : opt blob; created_at_time : opt nat64 }) -> (vec opt variant { Ok : nat; Err : RevokeTokenApprovalError });
+    icrc37_revoke_collection_approvals : (vec record { spender : opt Account; from_subaccount : opt blob; memo : opt blob; created_at_time : opt nat64 }) -> (vec opt variant { Ok : nat; Err : RevokeCollectionApprovalError });
+    icrc37_transfer_from : (vec record { spender_subaccount : opt blob; from : Account; to : Account; token_id : nat; memo : opt blob; created_at_time : opt nat64 }) -> (vec opt variant { Ok : nat; Err : TransferFromError });
 }
+type ApprovalInfo = record { spender : Account; from_subaccount : opt blob; expires_at : opt nat64; memo : opt blob; created_at_time : nat64 };
+type TokenApproval = record { token_id : nat; approval_info : ApprovalInfo };
+type ApproveTokenError = variant { InvalidSpender; Unauthorized; NonExistingTokenId; TooOld; CreatedInFuture : record { ledger_time : nat64 }; GenericError : record { error_code : nat; message : text }; GenericBatchError : record { error_code : nat; message : text } };
+type ApproveCollectionError = variant { InvalidSpender; TooOld; CreatedInFuture : record { ledger_time : nat64 }; GenericError : record { error_code : nat; message : text }; GenericBatchError : record { error_code : nat; message : text } };
+type RevokeTokenApprovalError = variant { ApprovalDoesNotExist; TooOld; CreatedInFuture : record { ledger_time : nat64 }; NonExistingTokenId; Unauthorized; GenericError : record { error_code : nat; message : text }; GenericBatchError : record { error_code : nat; message : text } };
+type RevokeCollectionApprovalError = variant { ApprovalDoesNotExist; TooOld; CreatedInFuture : record { ledger_time : nat64 }; GenericError : record { error_code : nat; message : text }; GenericBatchError : record { error_code : nat; message : text } };
+type TransferFromError = variant { InvalidRecipient; Unauthorized; NonExistingTokenId; TooOld; CreatedInFuture : record { ledger_time : nat64 }; Duplicate : record { duplicate_of : nat }; GenericError : record { error_code : nat; message : text }; GenericBatchError : record { error_code : nat; message : text } };
 

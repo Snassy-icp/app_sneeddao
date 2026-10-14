@@ -28,6 +28,49 @@ export async function mintNft(canisterId, toPrincipalText, fields, agent) {
     return r.Ok;
 }
 
+// ---- ICRC-37 approvals ----
+const errOfResult = (r) => { const x = r?.[0]?.[0]; if (!x) throw new Error('no answer'); if ('Err' in x) { const k = Object.keys(x.Err)[0]; const v = x.Err[k]; throw new Error(v && typeof v === 'object' && v.message ? v.message : k); } return x.Ok; };
+const nowNs = () => BigInt(Date.now()) * 1_000_000n;
+/// Approvals on the user's tokens and on the whole collection; empty when the collection has no ICRC-37.
+export async function fetchApprovals(canisterId, account, tokenIds, agent) {
+    const actor = createIcrc7Actor(canisterId, { agent });
+    const byToken = new Map();
+    let collection = [];
+    try {
+        for (let i = 0; i < tokenIds.length; i += 50) {
+            let prev = [];
+            for (let page = 0; page < 50; page++) {
+                const chunk = await actor.icrc37_get_token_approvals(tokenIds.slice(i, i + 50), prev, [100n]);
+                for (const a of chunk) { const k = a.token_id.toString(); if (!byToken.has(k)) byToken.set(k, []); byToken.get(k).push(a.approval_info); }
+                if (chunk.length < 100) break;
+                prev = [chunk[chunk.length - 1]];
+            }
+        }
+        collection = await actor.icrc37_get_collection_approvals(account, [], [100n]);
+    } catch { return { supported: false, byToken, collection: [] }; }
+    return { supported: true, byToken, collection };
+}
+export async function approveToken(canisterId, tokenId, spenderText, expiresAtMs, agent) {
+    const actor = createIcrc7Actor(canisterId, { agent });
+    const r = await actor.icrc37_approve_tokens([{ token_id: tokenId, approval_info: { spender: { owner: Principal.fromText(spenderText), subaccount: [] }, from_subaccount: [], expires_at: expiresAtMs ? [BigInt(expiresAtMs) * 1_000_000n] : [], memo: [], created_at_time: nowNs() } }]);
+    return errOfResult(r);
+}
+export async function revokeTokenApproval(canisterId, tokenId, spenderText, agent) {
+    const actor = createIcrc7Actor(canisterId, { agent });
+    const r = await actor.icrc37_revoke_token_approvals([{ spender: spenderText ? [{ owner: Principal.fromText(spenderText), subaccount: [] }] : [], from_subaccount: [], token_id: tokenId, memo: [], created_at_time: [] }]);
+    return errOfResult(r);
+}
+export async function approveCollection(canisterId, spenderText, expiresAtMs, agent) {
+    const actor = createIcrc7Actor(canisterId, { agent });
+    const r = await actor.icrc37_approve_collection([{ approval_info: { spender: { owner: Principal.fromText(spenderText), subaccount: [] }, from_subaccount: [], expires_at: expiresAtMs ? [BigInt(expiresAtMs) * 1_000_000n] : [], memo: [], created_at_time: nowNs() } }]);
+    return errOfResult(r);
+}
+export async function revokeCollectionApproval(canisterId, spenderText, agent) {
+    const actor = createIcrc7Actor(canisterId, { agent });
+    const r = await actor.icrc37_revoke_collection_approvals([{ spender: spenderText ? [{ owner: Principal.fromText(spenderText), subaccount: [] }] : [], from_subaccount: [], memo: [], created_at_time: [] }]);
+    return errOfResult(r);
+}
+
 /// ICRC-97: a token may point at a JSON document (or carry it inline) with name,
 /// description, image and attributes. Returns the parsed object or null.
 export async function fetchIcrc97(metadata) {
@@ -217,6 +260,11 @@ export async function loadNftCollection(canisterId, account, identity, agent) {
             collectionSymbol: symbol
         }));
         await Promise.allSettled(nfts.map(async (n) => { const j = await fetchIcrc97(n.metadata); if (j) n.icrc97 = j; }));
+        const standards = await actor.icrc10_supported_standards().catch(() => []);
+        const supportsIcrc37 = standards.some((st) => st.name === 'ICRC-37');
+        let approvals = { supported: false, byToken: new Map(), collection: [] };
+        if (supportsIcrc37) approvals = await fetchApprovals(canisterId, account, tokenIds, agent);
+        for (const n of nfts) n.approvals = approvals.byToken.get(n.tokenId.toString()) || [];
         
         return {
             canisterId,
@@ -226,7 +274,9 @@ export async function loadNftCollection(canisterId, account, identity, agent) {
             totalSupply,
             description: description.length > 0 ? description[0] : null,
             nfts,
-            userTokenCount: tokenIds.length
+            userTokenCount: tokenIds.length,
+            supportsIcrc37,
+            collectionApprovals: approvals.collection
         };
     } catch (error) {
         console.error(`Error loading NFT collection ${canisterId}:`, error);

@@ -1,7 +1,9 @@
-/// A small, spec-shaped ICRC-7 collection: enough to test wallets against,
-/// and the seed of an NFT launchpad. The installer (and any admin) mints;
-/// owners transfer. No approvals (ICRC-37) yet, no block log (ICRC-3) yet.
-/// Standard: https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-7/ICRC-7.md
+/// A small, spec-shaped ICRC-7 collection with ICRC-37 approvals: enough to
+/// test wallets and marketplaces against, and the seed of an NFT launchpad.
+/// The installer (and any admin) mints; owners transfer and approve; approved
+/// spenders transfer_from. No block log (ICRC-3) yet.
+/// Standards: https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-7/ICRC-7.md
+///            https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-37/ICRC-37.md
 import Array "mo:base/Array";
 import Blob "mo:base/Blob";
 import Buffer "mo:base/Buffer";
@@ -22,6 +24,24 @@ shared ({ caller = installer }) persistent actor class Icrc7Demo(init : { name :
   };
   public type TransferResult = { #Ok : Nat; #Err : TransferError };
   type Token = { id : Nat; owner : Account; metadata : [(Text, Value)]; minted_at : Int };
+  // ---- ICRC-37 types ----
+  public type ApprovalInfo = { spender : Account; from_subaccount : ?Blob; expires_at : ?Nat64; memo : ?Blob; created_at_time : Nat64 };
+  public type ApproveTokenArg = { token_id : Nat; approval_info : ApprovalInfo };
+  public type ApproveTokenError = { #InvalidSpender; #Unauthorized; #NonExistingTokenId; #TooOld; #CreatedInFuture : { ledger_time : Nat64 }; #GenericError : { error_code : Nat; message : Text }; #GenericBatchError : { error_code : Nat; message : Text } };
+  public type ApproveCollectionArg = { approval_info : ApprovalInfo };
+  public type ApproveCollectionError = { #InvalidSpender; #TooOld; #CreatedInFuture : { ledger_time : Nat64 }; #GenericError : { error_code : Nat; message : Text }; #GenericBatchError : { error_code : Nat; message : Text } };
+  public type RevokeTokenApprovalArg = { spender : ?Account; from_subaccount : ?Blob; token_id : Nat; memo : ?Blob; created_at_time : ?Nat64 };
+  public type RevokeTokenApprovalError = { #ApprovalDoesNotExist; #TooOld; #CreatedInFuture : { ledger_time : Nat64 }; #NonExistingTokenId; #Unauthorized; #GenericError : { error_code : Nat; message : Text }; #GenericBatchError : { error_code : Nat; message : Text } };
+  public type RevokeCollectionApprovalArg = { spender : ?Account; from_subaccount : ?Blob; memo : ?Blob; created_at_time : ?Nat64 };
+  public type RevokeCollectionApprovalError = { #ApprovalDoesNotExist; #TooOld; #CreatedInFuture : { ledger_time : Nat64 }; #GenericError : { error_code : Nat; message : Text }; #GenericBatchError : { error_code : Nat; message : Text } };
+  public type IsApprovedArg = { spender : Account; from_subaccount : ?Blob; token_id : Nat };
+  public type TokenApproval = { token_id : Nat; approval_info : ApprovalInfo };
+  public type CollectionApproval = ApprovalInfo;
+  public type TransferFromArg = { spender_subaccount : ?Blob; from : Account; to : Account; token_id : Nat; memo : ?Blob; created_at_time : ?Nat64 };
+  public type TransferFromError = { #InvalidRecipient; #Unauthorized; #NonExistingTokenId; #TooOld; #CreatedInFuture : { ledger_time : Nat64 }; #Duplicate : { duplicate_of : Nat }; #GenericError : { error_code : Nat; message : Text }; #GenericBatchError : { error_code : Nat; message : Text } };
+  // token-level approvals keyed by token id; collection-level by the approving account
+  type TokenApprovalEntry = { token_id : Nat; owner : Account; info : ApprovalInfo };
+  type CollectionApprovalEntry = { owner : Account; info : ApprovalInfo };
 
   stable var name : Text = init.name;
   stable var symbol : Text = init.symbol;
@@ -32,6 +52,10 @@ shared ({ caller = installer }) persistent actor class Icrc7Demo(init : { name :
   stable var tokens : [Token] = []; // sorted by id
   stable var next_id : Nat = 1;
   stable var tx_count : Nat = 0;
+  stable var token_approvals : [TokenApprovalEntry] = [];
+  stable var collection_approvals : [CollectionApprovalEntry] = [];
+  transient let MAX_APPROVALS : Nat = 100; // per token, and per account for the collection
+  transient let MAX_REVOKE : Nat = 100;
 
   transient let MAX_QUERY_BATCH : Nat = 100;
   transient let MAX_UPDATE_BATCH : Nat = 20;
@@ -47,6 +71,19 @@ shared ({ caller = installer }) persistent actor class Icrc7Demo(init : { name :
   };
   func defaultSub() : Blob { Blob.fromArray(Array.tabulate<Nat8>(32, func(_) { 0 })) };
   func find(id : Nat) : ?Token { Array.find<Token>(tokens, func(t) { t.id == id }) };
+  func nowNs() : Nat64 { Nat64.fromNat(Int.abs(Time.now())) };
+  func notExpired(i : ApprovalInfo) : Bool { switch (i.expires_at) { case (?e) { e > nowNs() }; case null { true } } };
+  /// Is `spender` allowed to move `token` out of `owner`'s account? Token approval or collection approval, unexpired.
+  func isApproved(spender : Account, owner : Account, token_id : Nat) : Bool {
+    let byToken = Array.find<TokenApprovalEntry>(token_approvals, func(e) { e.token_id == token_id and sameAccount(e.owner, owner) and sameAccount(e.info.spender, spender) and notExpired(e.info) }) != null;
+    if (byToken) { return true };
+    Array.find<CollectionApprovalEntry>(collection_approvals, func(e) { sameAccount(e.owner, owner) and sameAccount(e.info.spender, spender) and notExpired(e.info) }) != null;
+  };
+  func clearTokenApprovals(token_id : Nat) { token_approvals := Array.filter<TokenApprovalEntry>(token_approvals, func(e) { e.token_id != token_id }) };
+  func checkTime(t : ?Nat64) : ?{ #TooOld; #CreatedInFuture : { ledger_time : Nat64 } } {
+    let now = nowNs();
+    switch (t) { case (?x) { if (x + TX_WINDOW_NS + DRIFT_NS < now) { return ?#TooOld }; if (x > now + DRIFT_NS) { return ?#CreatedInFuture({ ledger_time = now }) }; null }; case null { null } };
+  };
 
   // ---- ICRC-7 collection queries ----
   public query func icrc7_collection_metadata() : async [(Text, Value)] {
@@ -59,6 +96,7 @@ shared ({ caller = installer }) persistent actor class Icrc7Demo(init : { name :
     b.add(("icrc7:max_query_batch_size", #Nat(MAX_QUERY_BATCH))); b.add(("icrc7:max_update_batch_size", #Nat(MAX_UPDATE_BATCH)));
     b.add(("icrc7:default_take_value", #Nat(DEFAULT_TAKE))); b.add(("icrc7:max_take_value", #Nat(MAX_TAKE))); b.add(("icrc7:max_memo_size", #Nat(MAX_MEMO)));
     b.add(("icrc7:atomic_batch_transfers", #Nat(0)));
+    b.add(("icrc37:max_approvals_per_token_or_collection", #Nat(MAX_APPROVALS))); b.add(("icrc37:max_revoke_approvals", #Nat(MAX_REVOKE)));
     Buffer.toArray(b);
   };
   public query func icrc7_symbol() : async Text { symbol };
@@ -76,7 +114,7 @@ shared ({ caller = installer }) persistent actor class Icrc7Demo(init : { name :
   public query func icrc7_tx_window() : async ?Nat { ?Nat64.toNat(TX_WINDOW_NS / 1_000_000_000) };
   public query func icrc7_permitted_drift() : async ?Nat { ?Nat64.toNat(DRIFT_NS / 1_000_000_000) };
   public query func icrc10_supported_standards() : async [{ name : Text; url : Text }] {
-    [{ name = "ICRC-7"; url = "https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-7/ICRC-7.md" }, { name = "ICRC-10"; url = "https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-10/ICRC-10.md" }];
+    [{ name = "ICRC-7"; url = "https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-7/ICRC-7.md" }, { name = "ICRC-37"; url = "https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-37/ICRC-37.md" }, { name = "ICRC-10"; url = "https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-10/ICRC-10.md" }];
   };
 
   // ---- ICRC-7 token queries ----
@@ -120,6 +158,121 @@ shared ({ caller = installer }) persistent actor class Icrc7Demo(init : { name :
           if (not sameAccount(t.owner, from)) { return ?#Err(#Unauthorized) };
           if (sameAccount(t.owner, a.to)) { return ?#Err(#InvalidRecipient) };
           tokens := Array.map<Token, Token>(tokens, func(x) { if (x.id == a.token_id) { { x with owner = a.to } } else { x } });
+          clearTokenApprovals(a.token_id);
+          tx_count += 1;
+          ?#Ok(tx_count);
+        };
+      };
+    });
+  };
+
+  // ---- ICRC-37: approvals ----
+  public query func icrc37_max_approvals_per_token_or_collection() : async ?Nat { ?MAX_APPROVALS };
+  public query func icrc37_max_revoke_approvals() : async ?Nat { ?MAX_REVOKE };
+  public query func icrc37_is_approved(args : [IsApprovedArg]) : async [Bool] {
+    assert args.size() <= MAX_QUERY_BATCH;
+    Array.map<IsApprovedArg, Bool>(args, func(a) {
+      switch (find(a.token_id)) {
+        case (?t) { if (Option.get(t.owner.subaccount, defaultSub()) != Option.get(a.from_subaccount, defaultSub())) { false } else { isApproved(a.spender, t.owner, a.token_id) } };
+        case null { false };
+      };
+    });
+  };
+  public query func icrc37_get_token_approvals(token_ids : [Nat], prev : ?TokenApproval, take : ?Nat) : async [TokenApproval] {
+    let n = Nat.min(Option.get(take, DEFAULT_TAKE), MAX_TAKE);
+    let all = Array.map<TokenApprovalEntry, TokenApproval>(Array.filter<TokenApprovalEntry>(token_approvals, func(e) { notExpired(e.info) and Array.find<Nat>(token_ids, func(id) { id == e.token_id }) != null }), func(e) { { token_id = e.token_id; approval_info = e.info } });
+    // ordered by token id then spender text; `prev` continues after a given entry
+    let sorted = Array.sort<TokenApproval>(all, func(a, b) { if (a.token_id != b.token_id) { Nat.compare(a.token_id, b.token_id) } else { Principal.compare(a.approval_info.spender.owner, b.approval_info.spender.owner) } });
+    let after = switch (prev) { case (?p) { Array.filter<TokenApproval>(sorted, func(x) { x.token_id > p.token_id or (x.token_id == p.token_id and Principal.compare(x.approval_info.spender.owner, p.approval_info.spender.owner) == #greater) }) }; case null { sorted } };
+    if (after.size() <= n) { after } else { Array.tabulate<TokenApproval>(n, func(i) { after[i] }) };
+  };
+  public query func icrc37_get_collection_approvals(owner : Account, prev : ?CollectionApproval, take : ?Nat) : async [CollectionApproval] {
+    let n = Nat.min(Option.get(take, DEFAULT_TAKE), MAX_TAKE);
+    let all = Array.map<CollectionApprovalEntry, CollectionApproval>(Array.filter<CollectionApprovalEntry>(collection_approvals, func(e) { sameAccount(e.owner, owner) and notExpired(e.info) }), func(e) { e.info });
+    let sorted = Array.sort<CollectionApproval>(all, func(a, b) { Principal.compare(a.spender.owner, b.spender.owner) });
+    let after = switch (prev) { case (?p) { Array.filter<CollectionApproval>(sorted, func(x) { Principal.compare(x.spender.owner, p.spender.owner) == #greater }) }; case null { sorted } };
+    if (after.size() <= n) { after } else { Array.tabulate<CollectionApproval>(n, func(i) { after[i] }) };
+  };
+  public shared ({ caller }) func icrc37_approve_tokens(args : [ApproveTokenArg]) : async [?{ #Ok : Nat; #Err : ApproveTokenError }] {
+    if (args.size() > MAX_UPDATE_BATCH) { return [?#Err(#GenericBatchError({ error_code = 1; message = "batch too large" }))] };
+    Array.map<ApproveTokenArg, ?{ #Ok : Nat; #Err : ApproveTokenError }>(args, func(a) {
+      let owner : Account = { owner = caller; subaccount = a.approval_info.from_subaccount };
+      if (sameAccount(a.approval_info.spender, owner)) { return ?#Err(#InvalidSpender) };
+      switch (checkTime(?a.approval_info.created_at_time)) { case (?#TooOld) { return ?#Err(#TooOld) }; case (?#CreatedInFuture(x)) { return ?#Err(#CreatedInFuture(x)) }; case null {} };
+      switch (find(a.token_id)) {
+        case null { ?#Err(#NonExistingTokenId) };
+        case (?t) {
+          if (not sameAccount(t.owner, owner)) { return ?#Err(#Unauthorized) };
+          let others = Array.filter<TokenApprovalEntry>(token_approvals, func(e) { not (e.token_id == a.token_id and sameAccount(e.info.spender, a.approval_info.spender)) });
+          let count = Array.foldLeft<TokenApprovalEntry, Nat>(others, 0, func(n, e) { if (e.token_id == a.token_id) { n + 1 } else { n } });
+          if (count >= MAX_APPROVALS) { return ?#Err(#GenericError({ error_code = 3; message = "too many approvals on this token" })) };
+          token_approvals := Array.append(others, [{ token_id = a.token_id; owner = t.owner; info = a.approval_info }]);
+          tx_count += 1;
+          ?#Ok(tx_count);
+        };
+      };
+    });
+  };
+  public shared ({ caller }) func icrc37_approve_collection(args : [ApproveCollectionArg]) : async [?{ #Ok : Nat; #Err : ApproveCollectionError }] {
+    if (args.size() > MAX_UPDATE_BATCH) { return [?#Err(#GenericBatchError({ error_code = 1; message = "batch too large" }))] };
+    Array.map<ApproveCollectionArg, ?{ #Ok : Nat; #Err : ApproveCollectionError }>(args, func(a) {
+      let owner : Account = { owner = caller; subaccount = a.approval_info.from_subaccount };
+      if (sameAccount(a.approval_info.spender, owner)) { return ?#Err(#InvalidSpender) };
+      switch (checkTime(?a.approval_info.created_at_time)) { case (?#TooOld) { return ?#Err(#TooOld) }; case (?#CreatedInFuture(x)) { return ?#Err(#CreatedInFuture(x)) }; case null {} };
+      let others = Array.filter<CollectionApprovalEntry>(collection_approvals, func(e) { not (sameAccount(e.owner, owner) and sameAccount(e.info.spender, a.approval_info.spender)) });
+      let count = Array.foldLeft<CollectionApprovalEntry, Nat>(others, 0, func(n, e) { if (sameAccount(e.owner, owner)) { n + 1 } else { n } });
+      if (count >= MAX_APPROVALS) { return ?#Err(#GenericError({ error_code = 3; message = "too many collection approvals for this account" })) };
+      collection_approvals := Array.append(others, [{ owner; info = a.approval_info }]);
+      tx_count += 1;
+      ?#Ok(tx_count);
+    });
+  };
+  public shared ({ caller }) func icrc37_revoke_token_approvals(args : [RevokeTokenApprovalArg]) : async [?{ #Ok : Nat; #Err : RevokeTokenApprovalError }] {
+    if (args.size() > MAX_REVOKE) { return [?#Err(#GenericBatchError({ error_code = 1; message = "batch too large" }))] };
+    Array.map<RevokeTokenApprovalArg, ?{ #Ok : Nat; #Err : RevokeTokenApprovalError }>(args, func(a) {
+      let owner : Account = { owner = caller; subaccount = a.from_subaccount };
+      switch (checkTime(a.created_at_time)) { case (?#TooOld) { return ?#Err(#TooOld) }; case (?#CreatedInFuture(x)) { return ?#Err(#CreatedInFuture(x)) }; case null {} };
+      switch (find(a.token_id)) {
+        case null { ?#Err(#NonExistingTokenId) };
+        case (?t) {
+          if (not sameAccount(t.owner, owner)) { return ?#Err(#Unauthorized) };
+          token_approvals := Array.filter<TokenApprovalEntry>(token_approvals, func(e) { notExpired(e.info) }); // expired ones are gone, not revocable
+          let before = token_approvals.size();
+          token_approvals := Array.filter<TokenApprovalEntry>(token_approvals, func(e) { not (e.token_id == a.token_id and sameAccount(e.owner, owner) and (switch (a.spender) { case (?s) { sameAccount(e.info.spender, s) }; case null { true } })) });
+          if (token_approvals.size() == before) { return ?#Err(#ApprovalDoesNotExist) };
+          tx_count += 1;
+          ?#Ok(tx_count);
+        };
+      };
+    });
+  };
+  public shared ({ caller }) func icrc37_revoke_collection_approvals(args : [RevokeCollectionApprovalArg]) : async [?{ #Ok : Nat; #Err : RevokeCollectionApprovalError }] {
+    if (args.size() > MAX_REVOKE) { return [?#Err(#GenericBatchError({ error_code = 1; message = "batch too large" }))] };
+    Array.map<RevokeCollectionApprovalArg, ?{ #Ok : Nat; #Err : RevokeCollectionApprovalError }>(args, func(a) {
+      let owner : Account = { owner = caller; subaccount = a.from_subaccount };
+      switch (checkTime(a.created_at_time)) { case (?#TooOld) { return ?#Err(#TooOld) }; case (?#CreatedInFuture(x)) { return ?#Err(#CreatedInFuture(x)) }; case null {} };
+      collection_approvals := Array.filter<CollectionApprovalEntry>(collection_approvals, func(e) { notExpired(e.info) }); // expired ones are gone, not revocable
+      let before = collection_approvals.size();
+      collection_approvals := Array.filter<CollectionApprovalEntry>(collection_approvals, func(e) { not (sameAccount(e.owner, owner) and (switch (a.spender) { case (?s) { sameAccount(e.info.spender, s) }; case null { true } })) });
+      if (collection_approvals.size() == before) { return ?#Err(#ApprovalDoesNotExist) };
+      tx_count += 1;
+      ?#Ok(tx_count);
+    });
+  };
+  public shared ({ caller }) func icrc37_transfer_from(args : [TransferFromArg]) : async [?{ #Ok : Nat; #Err : TransferFromError }] {
+    if (args.size() > MAX_UPDATE_BATCH) { return [?#Err(#GenericBatchError({ error_code = 1; message = "batch too large" }))] };
+    Array.map<TransferFromArg, ?{ #Ok : Nat; #Err : TransferFromError }>(args, func(a) {
+      let spender : Account = { owner = caller; subaccount = a.spender_subaccount };
+      switch (checkTime(a.created_at_time)) { case (?#TooOld) { return ?#Err(#TooOld) }; case (?#CreatedInFuture(x)) { return ?#Err(#CreatedInFuture(x)) }; case null {} };
+      if (Principal.isAnonymous(a.to.owner)) { return ?#Err(#InvalidRecipient) };
+      switch (find(a.token_id)) {
+        case null { ?#Err(#NonExistingTokenId) };
+        case (?t) {
+          if (not sameAccount(t.owner, a.from)) { return ?#Err(#Unauthorized) };
+          if (not isApproved(spender, a.from, a.token_id)) { return ?#Err(#Unauthorized) };
+          if (sameAccount(t.owner, a.to)) { return ?#Err(#InvalidRecipient) };
+          tokens := Array.map<Token, Token>(tokens, func(x) { if (x.id == a.token_id) { { x with owner = a.to } } else { x } });
+          clearTokenApprovals(a.token_id);
           tx_count += 1;
           ?#Ok(tx_count);
         };

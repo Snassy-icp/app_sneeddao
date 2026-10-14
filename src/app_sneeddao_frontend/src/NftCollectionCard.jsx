@@ -4,7 +4,7 @@ import { useTheme } from './contexts/ThemeContext';
 import NftCard from './NftCard';
 import './NftCollectionCard.css';
 
-const NftCollectionCard = ({ collection, onSendNft, onRemove, onRefresh, isRefreshing, isAdmin = false, onMint, myPrincipal }) => {
+const NftCollectionCard = ({ collection, onSendNft, onRemove, onRefresh, isRefreshing, isAdmin = false, onMint, myPrincipal, onApproveToken, onRevokeToken, onApproveCollection, onRevokeCollection }) => {
     const { theme } = useTheme();
     const [isExpanded, setIsExpanded] = useState(true);
     const [showMint, setShowMint] = useState(false);
@@ -20,6 +20,8 @@ const NftCollectionCard = ({ collection, onSendNft, onRemove, onRefresh, isRefre
         catch (e) { setMint((m) => ({ ...m, busy: false, error: e?.message || String(e) })); }
     };
     const inputStyle = { width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${theme.colors.border}`, background: theme.colors.secondaryBg, color: theme.colors.primaryText, fontSize: '0.88rem', boxSizing: 'border-box' };
+    const [collApprove, setCollApprove] = useState({ open: false, spender: '', days: '', busy: false, error: '' });
+    const fmtExpiry = (e) => (e && e.length ? new Date(Number(e[0] / 1_000_000n)).toLocaleString() : 'never');
     
     const handleHeaderClick = () => {
         setIsExpanded(!isExpanded);
@@ -292,6 +294,32 @@ const NftCollectionCard = ({ collection, onSendNft, onRemove, onRefresh, isRefre
                         </div>
                     )}
 
+                    {collection.supportsIcrc37 && (
+                        <div style={{ marginBottom: 16, padding: 12, borderRadius: 10, border: `1px solid ${theme.colors.border}`, background: theme.colors.secondaryBg }}>
+                            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: theme.colors.primaryText, marginBottom: 4 }}>Collection approvals (ICRC-37)</div>
+                            <div style={{ fontSize: '0.78rem', color: theme.colors.mutedText, marginBottom: 6 }}>A collection approval lets a spender move any token you hold here, which is how a marketplace lists without taking custody. Per-token approvals are on each card.</div>
+                            {(collection.collectionApprovals || []).length === 0 && <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>None.</div>}
+                            {(collection.collectionApprovals || []).map((a, i) => (
+                                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: '0.8rem', color: theme.colors.primaryText, marginBottom: 4, flexWrap: 'wrap' }}>
+                                    <span style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{a.spender.owner.toText()}</span><span style={{ color: theme.colors.mutedText }}>until {fmtExpiry(a.expires_at)}</span>
+                                    {onRevokeCollection && <button type="button" onClick={() => onRevokeCollection(collection, a.spender.owner.toText())} style={{ border: `1px solid ${theme.colors.border}`, background: 'transparent', color: '#ef4444', borderRadius: 6, padding: '2px 8px', cursor: 'pointer', fontSize: '0.75rem' }}>Revoke</button>}
+                                </div>
+                            ))}
+                            {onApproveCollection && !collApprove.open && <button type="button" onClick={() => setCollApprove((f) => ({ ...f, open: true }))} style={{ border: `1px solid ${theme.colors.border}`, background: 'transparent', color: theme.colors.accent, borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: '0.8rem', marginTop: 4 }}>Approve a spender for the whole collection</button>}
+                            {onApproveCollection && collApprove.open && (
+                                <div style={{ display: 'grid', gap: 6, marginTop: 6, maxWidth: 520 }}>
+                                    <PrincipalInput value={collApprove.spender} onChange={(v) => setCollApprove((f) => ({ ...f, spender: v }))} placeholder="Spender principal" defaultTab="all" style={{ width: '100%' }} inputStyle={inputStyle} />
+                                    <input style={inputStyle} value={collApprove.days} onChange={(e) => setCollApprove((f) => ({ ...f, days: e.target.value }))} placeholder="Expires in days (empty: never)" />
+                                    <div style={{ display: 'flex', gap: 6 }}>
+                                        <button type="button" disabled={collApprove.busy || !collApprove.spender} onClick={async () => { setCollApprove((f) => ({ ...f, busy: true, error: '' })); try { await onApproveCollection(collection, collApprove.spender, collApprove.days ? Date.now() + Number(collApprove.days) * 86400e3 : null); setCollApprove({ open: false, spender: '', days: '', busy: false, error: '' }); } catch (err) { setCollApprove((f) => ({ ...f, busy: false, error: err?.message || String(err) })); } }} style={{ border: 'none', background: theme.colors.accent, color: theme.colors.primaryBg, borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>{collApprove.busy ? 'Approving…' : 'Approve'}</button>
+                                        <button type="button" onClick={() => setCollApprove({ open: false, spender: '', days: '', busy: false, error: '' })} style={{ border: `1px solid ${theme.colors.border}`, background: 'transparent', color: theme.colors.mutedText, borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: '0.8rem' }}>Cancel</button>
+                                    </div>
+                                    {collApprove.error && <div style={{ color: '#ef4444', fontSize: '0.8rem' }}>{collApprove.error}</div>}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* NFT Grid */}
                     {collection.nfts.length > 0 ? (
                         <div className="nft-grid" style={{
@@ -306,6 +334,9 @@ const NftCollectionCard = ({ collection, onSendNft, onRemove, onRefresh, isRefre
                                     collectionName={collection.name}
                                     collectionSymbol={collection.symbol}
                                     onSend={(nft) => onSendNft(collection, nft)}
+                                    supportsIcrc37={!!collection.supportsIcrc37}
+                                    onApprove={onApproveToken ? (nft, spender, exp) => onApproveToken(collection, nft, spender, exp) : undefined}
+                                    onRevoke={onRevokeToken ? (nft, spender) => onRevokeToken(collection, nft, spender) : undefined}
                                 />
                             ))}
                         </div>

@@ -40,8 +40,26 @@ export const idlFactory = ({ IDL }) => {
     'TooOld' : IDL.Null,
   });
   const TransferResult = IDL.Variant({ 'Ok' : IDL.Nat, 'Err' : TransferError });
+  const ApprovalInfo = IDL.Record({ 'spender' : Account, 'from_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)), 'expires_at' : IDL.Opt(IDL.Nat64), 'memo' : IDL.Opt(IDL.Vec(IDL.Nat8)), 'created_at_time' : IDL.Nat64 });
+  const TokenApproval = IDL.Record({ 'token_id' : IDL.Nat, 'approval_info' : ApprovalInfo });
+  const GenericErr = IDL.Record({ 'error_code' : IDL.Nat, 'message' : IDL.Text });
+  const ApproveTokenError = IDL.Variant({ 'InvalidSpender' : IDL.Null, 'Unauthorized' : IDL.Null, 'NonExistingTokenId' : IDL.Null, 'TooOld' : IDL.Null, 'CreatedInFuture' : IDL.Record({ 'ledger_time' : IDL.Nat64 }), 'GenericError' : GenericErr, 'GenericBatchError' : GenericErr });
+  const ApproveCollectionError = IDL.Variant({ 'InvalidSpender' : IDL.Null, 'TooOld' : IDL.Null, 'CreatedInFuture' : IDL.Record({ 'ledger_time' : IDL.Nat64 }), 'GenericError' : GenericErr, 'GenericBatchError' : GenericErr });
+  const RevokeTokenApprovalError = IDL.Variant({ 'ApprovalDoesNotExist' : IDL.Null, 'TooOld' : IDL.Null, 'CreatedInFuture' : IDL.Record({ 'ledger_time' : IDL.Nat64 }), 'NonExistingTokenId' : IDL.Null, 'Unauthorized' : IDL.Null, 'GenericError' : GenericErr, 'GenericBatchError' : GenericErr });
+  const RevokeCollectionApprovalError = IDL.Variant({ 'ApprovalDoesNotExist' : IDL.Null, 'TooOld' : IDL.Null, 'CreatedInFuture' : IDL.Record({ 'ledger_time' : IDL.Nat64 }), 'GenericError' : GenericErr, 'GenericBatchError' : GenericErr });
+  const TransferFromError = IDL.Variant({ 'InvalidRecipient' : IDL.Null, 'Unauthorized' : IDL.Null, 'NonExistingTokenId' : IDL.Null, 'TooOld' : IDL.Null, 'CreatedInFuture' : IDL.Record({ 'ledger_time' : IDL.Nat64 }), 'Duplicate' : IDL.Record({ 'duplicate_of' : IDL.Nat }), 'GenericError' : GenericErr, 'GenericBatchError' : GenericErr });
   return IDL.Service({
     'icrc10_supported_standards' : IDL.Func([], [IDL.Vec(Standard)], ['query']),
+    'icrc37_max_approvals_per_token_or_collection' : IDL.Func([], [IDL.Opt(IDL.Nat)], ['query']),
+    'icrc37_max_revoke_approvals' : IDL.Func([], [IDL.Opt(IDL.Nat)], ['query']),
+    'icrc37_is_approved' : IDL.Func([IDL.Vec(IDL.Record({ 'spender' : Account, 'from_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)), 'token_id' : IDL.Nat }))], [IDL.Vec(IDL.Bool)], ['query']),
+    'icrc37_get_token_approvals' : IDL.Func([IDL.Vec(IDL.Nat), IDL.Opt(TokenApproval), IDL.Opt(IDL.Nat)], [IDL.Vec(TokenApproval)], ['query']),
+    'icrc37_get_collection_approvals' : IDL.Func([Account, IDL.Opt(ApprovalInfo), IDL.Opt(IDL.Nat)], [IDL.Vec(ApprovalInfo)], ['query']),
+    'icrc37_approve_tokens' : IDL.Func([IDL.Vec(TokenApproval)], [IDL.Vec(IDL.Opt(IDL.Variant({ 'Ok' : IDL.Nat, 'Err' : ApproveTokenError })))], []),
+    'icrc37_approve_collection' : IDL.Func([IDL.Vec(IDL.Record({ 'approval_info' : ApprovalInfo }))], [IDL.Vec(IDL.Opt(IDL.Variant({ 'Ok' : IDL.Nat, 'Err' : ApproveCollectionError })))], []),
+    'icrc37_revoke_token_approvals' : IDL.Func([IDL.Vec(IDL.Record({ 'spender' : IDL.Opt(Account), 'from_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)), 'token_id' : IDL.Nat, 'memo' : IDL.Opt(IDL.Vec(IDL.Nat8)), 'created_at_time' : IDL.Opt(IDL.Nat64) }))], [IDL.Vec(IDL.Opt(IDL.Variant({ 'Ok' : IDL.Nat, 'Err' : RevokeTokenApprovalError })))], []),
+    'icrc37_revoke_collection_approvals' : IDL.Func([IDL.Vec(IDL.Record({ 'spender' : IDL.Opt(Account), 'from_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)), 'memo' : IDL.Opt(IDL.Vec(IDL.Nat8)), 'created_at_time' : IDL.Opt(IDL.Nat64) }))], [IDL.Vec(IDL.Opt(IDL.Variant({ 'Ok' : IDL.Nat, 'Err' : RevokeCollectionApprovalError })))], []),
+    'icrc37_transfer_from' : IDL.Func([IDL.Vec(IDL.Record({ 'spender_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)), 'from' : Account, 'to' : Account, 'token_id' : IDL.Nat, 'memo' : IDL.Opt(IDL.Vec(IDL.Nat8)), 'created_at_time' : IDL.Opt(IDL.Nat64) }))], [IDL.Vec(IDL.Opt(IDL.Variant({ 'Ok' : IDL.Nat, 'Err' : TransferFromError })))], []),
     'icrc7_atomic_batch_transfers' : IDL.Func(
         [],
         [IDL.Opt(IDL.Bool)],

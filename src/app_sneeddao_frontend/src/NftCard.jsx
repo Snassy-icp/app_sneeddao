@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useTheme } from './contexts/ThemeContext';
 import { getNftImage, getNftName, getNftDescription, formatNftMetadata, getNftAttributes, getNftLinks } from './utils/NftUtils';
+import PrincipalInput from './components/PrincipalInput';
 import './NftCard.css';
 
-const NftCard = ({ nft, collectionName, collectionSymbol, onSend }) => {
+const NftCard = ({ nft, collectionName, collectionSymbol, onSend , supportsIcrc37 = false, onApprove, onRevoke }) => {
     const { theme } = useTheme();
     const [isExpanded, setIsExpanded] = useState(false);
     const [imageError, setImageError] = useState(false);
@@ -14,6 +15,8 @@ const NftCard = ({ nft, collectionName, collectionSymbol, onSend }) => {
     const formattedMetadata = formatNftMetadata(nft.metadata);
     const attributes = getNftAttributes(nft);
     const links = getNftLinks(nft);
+    const [approveForm, setApproveForm] = useState({ open: false, spender: '', days: '', busy: false, error: '' });
+    const fmtExpiry = (e) => (e && e.length ? new Date(Number(e[0] / 1_000_000n)).toLocaleString() : 'never');
     
     const handleHeaderClick = () => {
         setIsExpanded(!isExpanded);
@@ -162,6 +165,34 @@ const NftCard = ({ nft, collectionName, collectionSymbol, onSend }) => {
                             </div>
                         )}
                         
+                        {/* ICRC-37 approvals: who may move this token */}
+                        {supportsIcrc37 && (
+                            <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: `1px solid ${theme.colors.border}` }}>
+                                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: theme.colors.mutedText, marginBottom: 6 }}>Approvals</div>
+                                {(nft.approvals || []).length === 0 && <div style={{ fontSize: '0.78rem', color: theme.colors.mutedText }}>Nobody else may move this token.</div>}
+                                {(nft.approvals || []).map((a, i) => (
+                                    <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: '0.78rem', color: theme.colors.primaryText, marginBottom: 4, flexWrap: 'wrap' }}>
+                                        <span style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{a.spender.owner.toText()}</span>
+                                        <span style={{ color: theme.colors.mutedText }}>until {fmtExpiry(a.expires_at)}</span>
+                                        {onRevoke && <button type="button" onClick={(e) => { e.stopPropagation(); onRevoke(nft, a.spender.owner.toText()); }} style={{ border: `1px solid ${theme.colors.border}`, background: 'transparent', color: theme.colors.error || '#ef4444', borderRadius: 6, padding: '2px 8px', cursor: 'pointer', fontSize: '0.75rem' }}>Revoke</button>}
+                                    </div>
+                                ))}
+                                {onApprove && !approveForm.open && <button type="button" onClick={(e) => { e.stopPropagation(); setApproveForm((f) => ({ ...f, open: true })); }} style={{ border: `1px solid ${theme.colors.border}`, background: 'transparent', color: theme.colors.accent, borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: '0.78rem', marginTop: 4 }}>Approve a spender</button>}
+                                {onApprove && approveForm.open && (
+                                    <div style={{ display: 'grid', gap: 6, marginTop: 6 }} onClick={(e) => e.stopPropagation()}>
+                                        <PrincipalInput value={approveForm.spender} onChange={(v) => setApproveForm((f) => ({ ...f, spender: v }))} placeholder="Spender principal (a marketplace, a wallet)" defaultTab="all" style={{ width: '100%' }} inputStyle={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: `1px solid ${theme.colors.border}`, background: theme.colors.secondaryBg, color: theme.colors.primaryText, fontSize: '0.8rem', boxSizing: 'border-box' }} />
+                                        <input value={approveForm.days} onChange={(e) => setApproveForm((f) => ({ ...f, days: e.target.value }))} placeholder="Expires in days (empty: never)" style={{ padding: '6px 8px', borderRadius: 6, border: `1px solid ${theme.colors.border}`, background: theme.colors.secondaryBg, color: theme.colors.primaryText, fontSize: '0.8rem' }} />
+                                        <div style={{ display: 'flex', gap: 6 }}>
+                                            <button type="button" disabled={approveForm.busy || !approveForm.spender} onClick={async () => { setApproveForm((f) => ({ ...f, busy: true, error: '' })); try { await onApprove(nft, approveForm.spender, approveForm.days ? Date.now() + Number(approveForm.days) * 86400e3 : null); setApproveForm({ open: false, spender: '', days: '', busy: false, error: '' }); } catch (err) { setApproveForm((f) => ({ ...f, busy: false, error: err?.message || String(err) })); } }} style={{ border: 'none', background: theme.colors.accent, color: theme.colors.primaryBg, borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}>{approveForm.busy ? 'Approving…' : 'Approve'}</button>
+                                            <button type="button" onClick={() => setApproveForm({ open: false, spender: '', days: '', busy: false, error: '' })} style={{ border: `1px solid ${theme.colors.border}`, background: 'transparent', color: theme.colors.mutedText, borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: '0.78rem' }}>Cancel</button>
+                                        </div>
+                                        {approveForm.error && <div style={{ color: '#ef4444', fontSize: '0.78rem' }}>{approveForm.error}</div>}
+                                        <div style={{ fontSize: '0.72rem', color: theme.colors.mutedText }}>An approved spender can transfer this token out of your account until the approval expires, is revoked, or the token moves.</div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {/* Action button */}
                         <div style={{
                             paddingTop: '12px',

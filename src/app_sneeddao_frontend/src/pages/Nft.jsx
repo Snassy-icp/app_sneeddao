@@ -6,7 +6,7 @@ import Header from '../components/Header';
 import NftCollectionCard from '../NftCollectionCard';
 import SendNftModal from '../SendNftModal';
 import AddNftCollectionModal from '../AddNftCollectionModal';
-import { loadNftCollection, transferNft, fetchCollectionAdmins, mintNft } from '../utils/NftUtils';
+import { loadNftCollection, transferNft, fetchCollectionAdmins, mintNft, approveToken, revokeTokenApproval, approveCollection, revokeCollectionApproval } from '../utils/NftUtils';
 import { app_sneeddao_backend } from 'declarations/app_sneeddao_backend';
 import './Nft.css';
 
@@ -159,6 +159,10 @@ const Nft = () => {
         // The saved-ids effect reloads the list; appending here as well showed the collection twice.
     };
 
+    const handleApproveToken = async (collection, nft, spender, expiresAtMs) => { await approveToken(collection.canisterId, nft.tokenId, spender, expiresAtMs, agent); await handleRefreshCollection(collection); };
+    const handleRevokeToken = async (collection, nft, spender) => { try { await revokeTokenApproval(collection.canisterId, nft.tokenId, spender, agent); } catch (e) { alert(`Revoke failed: ${e?.message || e}`); } await handleRefreshCollection(collection); };
+    const handleApproveCollection = async (collection, spender, expiresAtMs) => { await approveCollection(collection.canisterId, spender, expiresAtMs, agent); await handleRefreshCollection(collection); };
+    const handleRevokeCollection = async (collection, spender) => { try { await revokeCollectionApproval(collection.canisterId, spender, agent); } catch (e) { alert(`Revoke failed: ${e?.message || e}`); } await handleRefreshCollection(collection); };
     const handleMint = async (collection, to, fields) => {
         const id = await mintNft(collection.canisterId, to, fields, agent);
         await handleRefreshCollection(collection);
@@ -379,6 +383,10 @@ const Nft = () => {
                                 isAdmin={!!collection.isAdmin}
                                 onMint={handleMint}
                                 myPrincipal={identity?.getPrincipal?.().toText?.() || ''}
+                                onApproveToken={handleApproveToken}
+                                onRevokeToken={handleRevokeToken}
+                                onApproveCollection={handleApproveCollection}
+                                onRevokeCollection={handleRevokeCollection}
                             />
                         ))}
                     </div>
