@@ -276,6 +276,40 @@ transfer plus an escrow call.
 
 ---
 
+### As built (v2b, 2026-10-15)
+
+`src/sneed_lock/Nft.mo` holds the types and pure helpers; the state and endpoints are in
+`main.mo`. Where the build settles details the sections above left open:
+
+- **Owner = the only claimant.** A token's owner is the principal holding the position's claim,
+  and only when exactly one principal does (see the stale-claim fix: claims are exclusive now).
+  The label is kept per token; a zero subaccount is the same as none.
+- **Mint:** on a position's first lock (`7mint`, `meta.sneedlock:minted_by = "lock"`); a re-lock
+  after expiry keeps the token. **Activation:** once, after the ICRC-3 history import, every
+  position that is claimed and has any lock record (active or archived) gets a token whose id is
+  the lowest such lock id (`minted_by = "activation"`).
+- **Burn:** when `transfer_position` withdraws the position (`7burn`). A later deposit and lock
+  mints a new token with the new lock id; ids are never reused.
+- **Transfers:** `icrc7_transfer` and `icrc37_transfer_from` move the claim and the lock record
+  (logged as `sneedlock_position_transfer`, as before) and the label, clear the token's
+  approvals, and log `7xfer` / `37xfer`. The answer is that block's index. A move between two
+  accounts of one principal only changes the label. `transfer_position_ownership` takes the NFT
+  along to the recipient's default account and logs `7xfer` too.
+- **Refused while busy** (`GenericError` 3): a withdrawal of the position, or a fee claim or
+  liquidity addition on its pool, is awaiting the pool.
+- **Dedup:** requests with `created_at_time` are remembered for the transaction window (24 h +
+  2 min drift) and answered `Duplicate` with the first block index.
+- **Limits:** 10 updates per call, 100 per query, take 100 by default and 500 at most, memo 32
+  bytes, 10 approvals per token and per account for the collection.
+- **Metadata:** `icrc7:name` ("AAA/BBB LP lock"), `icrc7:description`, `icrc7:image` (an SVG
+  data URL card), and `sneedlock:*` fields (kind, swap, position_id, token0/1, lock_id, dex,
+  lock_end, dissolve_delay, dissolving_until, earliest_unlock, locked, minted_at). Symbols come
+  from a cache filled by a timer (`icrc1_symbol`, once per ledger).
+- `get_position_nft(swap, position_id)` answers a position's token id. `LockState.owner_subaccount`
+  carries the label for position locks.
+
+---
+
 ## 4 · Token locks as NFTs (phase 2): today's layout, the lock pays its own fee
 
 **Decided 2026-10-14: keep the layout.** A token lock's tokens sit in Sneed Lock's subaccount for

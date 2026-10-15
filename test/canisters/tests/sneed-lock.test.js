@@ -84,8 +84,9 @@ describe('fresh install', () => {
     const types = (await lock.icrc3_supported_block_types()).map((t) => t.block_type);
     expect(types).toContain('sneedlock_token_lock_create');
     expect(types).toContain('sneedlock_config_update');
-    expect(types.every((t) => t.startsWith('sneedlock_'))).toBe(true);
-    expect((await lock.icrc10_supported_standards()).map((s) => s.name)).toEqual(['ICRC-3', 'ICRC-10']);
+    // its own block types, plus the ICRC-7 / ICRC-37 ones of the LP-lock NFTs
+    expect(types.every((t) => t.startsWith('sneedlock_') || t.startsWith('7') || t.startsWith('37'))).toBe(true);
+    expect((await lock.icrc10_supported_standards()).map((s) => s.name)).toEqual(['ICRC-3', 'ICRC-10', 'ICRC-7', 'ICRC-37']);
   });
 });
 
@@ -322,8 +323,9 @@ describe('positions', () => {
     expect(await lock.get_lock_by_id(5n)).toEqual([{ PositionLock: [alice, poolId, active[0][2]] }]);
     expect((await lock.get_swap_position_locks(poolId))).toHaveLength(1);
     expect((await lock.get_token_position_locks(tokenBId))).toHaveLength(1);
-    const block = await lastBlock();
+    const [block, mint] = await lastBlocks(2); // the lock, then its NFT
     expect(btype(block)).toBe('sneedlock_position_lock_create');
+    expect(btype(mint)).toBe('7mint');
     expect(txField(block, 'lock_id')).toEqual({ Nat: 5n });
     expect(principalOf(txField(block, 'token0'))).toBe(tokenAId.toText());
     expect(txField(block, 'dex')).toEqual({ Nat: 1n });
@@ -356,8 +358,9 @@ describe('positions', () => {
     expect(claimed).toHaveLength(1);
     expect(claimed[0].position_lock[0].lock_id).toBe(5n);
     expect((await lock.get_active_position_locks())[0][0].toText()).toBe(bob.toText());
-    const block = await lastBlock();
+    const [block, xfer] = await lastBlocks(2); // the transfer, then the NFT's
     expect(btype(block)).toBe('sneedlock_position_transfer');
+    expect(btype(xfer)).toBe('7xfer');
     expect(principalOf(txField(block, 'from'))).toBe(alice.toText());
     expect(principalOf(txField(block, 'to'))).toBe(bob.toText());
     expect(txField(block, 'lock_id')).toEqual({ Nat: 5n });
@@ -510,7 +513,8 @@ describe('ICRC-3 log of sneed_lock', () => {
     expect(counts.sneedlock_liquidity_add).toBe(3);
     expect(counts.sneedlock_position_withdraw).toBe(1);
     expect(counts.sneedlock_admin_token_rescue).toBe(1);
-    expect(blocks.every((b) => btype(b) === 'sneedlock_log_start' || txField(b, 'cid') !== undefined)).toBe(true);
+    // every block of its own carries a correlation id; the ICRC-7 / ICRC-37 blocks follow their standards
+    expect(blocks.every((b) => btype(b) === 'sneedlock_log_start' || !btype(b).startsWith('sneedlock_') || txField(b, 'cid') !== undefined)).toBe(true);
   });
 
   it('spills into archives and still verifies', async () => {
@@ -731,7 +735,7 @@ describe('dissolve delays', () => {
     const now = await nowNs();
     const id = unwrap(await lockCarol.create_position_lock(poolId, 1n, POS2, now + HOUR, tokenAId, tokenBId, [HOUR]));
     expect(await state(id)).toMatchObject({ kind: { PositionLock: null }, position_id: [POS2], lock_end: now + HOUR, dissolve_delay: HOUR, expiry: NEVER, locked: true });
-    expect(btype(await lastBlock())).toBe('sneedlock_position_lock_create');
+    expect((await lastBlocks(2)).map(btype)).toEqual(['sneedlock_position_lock_create', '7mint']);
     // the old update path extends the lock period, not the effective expiry
     expect(unwrap(await lockCarol.update_position_lock(poolId, POS2, now + 2n * HOUR))).toBe(id);
     expect(await state(id)).toMatchObject({ lock_end: now + 2n * HOUR, expiry: NEVER });
