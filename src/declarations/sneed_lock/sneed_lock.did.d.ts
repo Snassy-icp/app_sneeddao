@@ -2,6 +2,10 @@ import type { Principal } from '@dfinity/principal';
 import type { ActorMethod } from '@dfinity/agent';
 import type { IDL } from '@dfinity/candid';
 
+export interface Account {
+  'owner' : Principal,
+  'subaccount' : [] | [Uint8Array | number[]],
+}
 export type AddLiquidityResult = {
     'Ok' : {
       'returned0' : bigint,
@@ -15,6 +19,38 @@ export type AddLiquidityResult = {
     }
   } |
   { 'Err' : string };
+export interface ApprovalInfo {
+  'memo' : [] | [Uint8Array | number[]],
+  'from_subaccount' : [] | [Uint8Array | number[]],
+  'created_at_time' : bigint,
+  'expires_at' : [] | [bigint],
+  'spender' : Account,
+}
+export interface ApproveCollectionArg { 'approval_info' : ApprovalInfo }
+export type ApproveCollectionError = {
+    'GenericError' : { 'message' : string, 'error_code' : bigint }
+  } |
+  { 'InvalidSpender' : null } |
+  { 'CreatedInFuture' : { 'ledger_time' : bigint } } |
+  { 'GenericBatchError' : { 'message' : string, 'error_code' : bigint } } |
+  { 'TooOld' : null };
+export type ApproveCollectionResult = { 'Ok' : bigint } |
+  { 'Err' : ApproveCollectionError };
+export interface ApproveTokenArg {
+  'token_id' : bigint,
+  'approval_info' : ApprovalInfo,
+}
+export type ApproveTokenError = {
+    'GenericError' : { 'message' : string, 'error_code' : bigint }
+  } |
+  { 'InvalidSpender' : null } |
+  { 'NonExistingTokenId' : null } |
+  { 'Unauthorized' : null } |
+  { 'CreatedInFuture' : { 'ledger_time' : bigint } } |
+  { 'GenericBatchError' : { 'message' : string, 'error_code' : bigint } } |
+  { 'TooOld' : null };
+export type ApproveTokenResult = { 'Ok' : bigint } |
+  { 'Err' : ApproveTokenError };
 export interface ArchiveInfo {
   'canister_id' : Principal,
   'start' : bigint,
@@ -31,7 +67,7 @@ export interface ArchivedBlocks {
   'callback' : [Principal, string],
 }
 export type Balance = bigint;
-export interface Block { 'id' : bigint, 'block' : Value }
+export interface Block { 'id' : bigint, 'block' : Value__1 }
 export interface BlockRange { 'start' : bigint, 'length' : bigint }
 export interface BlockType { 'url' : string, 'block_type' : string }
 export interface BufferEntry {
@@ -112,6 +148,13 @@ export interface ClaimedPosition {
   'position_lock' : [] | [PositionLock],
   'position_id' : PositionId,
 }
+export interface CollectionApproval {
+  'memo' : [] | [Uint8Array | number[]],
+  'from_subaccount' : [] | [Uint8Array | number[]],
+  'created_at_time' : bigint,
+  'expires_at' : [] | [bigint],
+  'spender' : Account,
+}
 export interface CreateLockError {
   'transfer_error' : [] | [TransferError],
   'message' : string,
@@ -137,6 +180,11 @@ export interface GetBlocksResult {
   'log_length' : bigint,
   'blocks' : Array<Block>,
   'archived_blocks' : Array<ArchivedBlocks>,
+}
+export interface IsApprovedArg {
+  'token_id' : bigint,
+  'from_subaccount' : [] | [Uint8Array | number[]],
+  'spender' : Account,
 }
 export interface Lock {
   'lock_id' : LockId,
@@ -222,6 +270,39 @@ export interface Registration {
   'start' : bigint,
   'proposal_id' : [] | [bigint],
 }
+export interface RevokeCollectionApprovalArg {
+  'memo' : [] | [Uint8Array | number[]],
+  'from_subaccount' : [] | [Uint8Array | number[]],
+  'created_at_time' : [] | [bigint],
+  'spender' : [] | [Account],
+}
+export type RevokeCollectionApprovalError = {
+    'GenericError' : { 'message' : string, 'error_code' : bigint }
+  } |
+  { 'CreatedInFuture' : { 'ledger_time' : bigint } } |
+  { 'ApprovalDoesNotExist' : null } |
+  { 'GenericBatchError' : { 'message' : string, 'error_code' : bigint } } |
+  { 'TooOld' : null };
+export type RevokeCollectionApprovalResult = { 'Ok' : bigint } |
+  { 'Err' : RevokeCollectionApprovalError };
+export interface RevokeTokenApprovalArg {
+  'token_id' : bigint,
+  'memo' : [] | [Uint8Array | number[]],
+  'from_subaccount' : [] | [Uint8Array | number[]],
+  'created_at_time' : [] | [bigint],
+  'spender' : [] | [Account],
+}
+export type RevokeTokenApprovalError = {
+    'GenericError' : { 'message' : string, 'error_code' : bigint }
+  } |
+  { 'NonExistingTokenId' : null } |
+  { 'Unauthorized' : null } |
+  { 'CreatedInFuture' : { 'ledger_time' : bigint } } |
+  { 'ApprovalDoesNotExist' : null } |
+  { 'GenericBatchError' : { 'message' : string, 'error_code' : bigint } } |
+  { 'TooOld' : null };
+export type RevokeTokenApprovalResult = { 'Ok' : bigint } |
+  { 'Err' : RevokeTokenApprovalError };
 export interface Settings {
   'archive_top_up_threshold' : bigint,
   'archive_max_blocks' : bigint,
@@ -441,6 +522,7 @@ export interface SneedLock {
     [LockId],
     [] | [FullyQualifiedPositionLock]
   >,
+  'get_position_nft' : ActorMethod<[SwapCanisterId, PositionId], [] | [bigint]>,
   'get_position_ownerships' : ActorMethod<
     [],
     Array<[SwapCanisterId, PositionId]>
@@ -462,12 +544,77 @@ export interface SneedLock {
   'has_expired_locks' : ActorMethod<[], boolean>,
   'has_expired_position_locks' : ActorMethod<[], boolean>,
   'icrc10_supported_standards' : ActorMethod<[], Array<SupportedStandard>>,
+  'icrc37_approve_collection' : ActorMethod<
+    [Array<ApproveCollectionArg>],
+    Array<[] | [ApproveCollectionResult]>
+  >,
+  'icrc37_approve_tokens' : ActorMethod<
+    [Array<ApproveTokenArg>],
+    Array<[] | [ApproveTokenResult]>
+  >,
+  'icrc37_get_collection_approvals' : ActorMethod<
+    [Account, [] | [CollectionApproval], [] | [bigint]],
+    Array<CollectionApproval>
+  >,
+  'icrc37_get_token_approvals' : ActorMethod<
+    [Array<bigint>, [] | [TokenApproval], [] | [bigint]],
+    Array<TokenApproval>
+  >,
+  'icrc37_is_approved' : ActorMethod<[Array<IsApprovedArg>], Array<boolean>>,
+  'icrc37_max_approvals_per_token_or_collection' : ActorMethod<
+    [],
+    [] | [bigint]
+  >,
+  'icrc37_max_revoke_approvals' : ActorMethod<[], [] | [bigint]>,
+  'icrc37_metadata' : ActorMethod<[], Array<[string, Value]>>,
+  'icrc37_revoke_collection_approvals' : ActorMethod<
+    [Array<RevokeCollectionApprovalArg>],
+    Array<[] | [RevokeCollectionApprovalResult]>
+  >,
+  'icrc37_revoke_token_approvals' : ActorMethod<
+    [Array<RevokeTokenApprovalArg>],
+    Array<[] | [RevokeTokenApprovalResult]>
+  >,
+  'icrc37_transfer_from' : ActorMethod<
+    [Array<TransferFromArg>],
+    Array<[] | [TransferFromResult]>
+  >,
   'icrc3_get_archives' : ActorMethod<[GetArchivesArgs], GetArchivesResult>,
   'icrc3_get_blocks' : ActorMethod<[GetBlocksArgs], GetBlocksResult>,
   'icrc3_get_tip_certificate' : ActorMethod<[], [] | [DataCertificate]>,
   'icrc3_log_status' : ActorMethod<[], LogStatus>,
   'icrc3_registration_status' : ActorMethod<[], Status>,
   'icrc3_supported_block_types' : ActorMethod<[], Array<BlockType>>,
+  'icrc7_atomic_batch_transfers' : ActorMethod<[], [] | [boolean]>,
+  'icrc7_balance_of' : ActorMethod<[Array<Account>], Array<bigint>>,
+  'icrc7_collection_metadata' : ActorMethod<[], Array<[string, Value]>>,
+  'icrc7_default_take_value' : ActorMethod<[], [] | [bigint]>,
+  'icrc7_description' : ActorMethod<[], [] | [string]>,
+  'icrc7_logo' : ActorMethod<[], [] | [string]>,
+  'icrc7_max_memo_size' : ActorMethod<[], [] | [bigint]>,
+  'icrc7_max_query_batch_size' : ActorMethod<[], [] | [bigint]>,
+  'icrc7_max_take_value' : ActorMethod<[], [] | [bigint]>,
+  'icrc7_max_update_batch_size' : ActorMethod<[], [] | [bigint]>,
+  'icrc7_name' : ActorMethod<[], string>,
+  'icrc7_owner_of' : ActorMethod<[Array<bigint>], Array<[] | [Account]>>,
+  'icrc7_permitted_drift' : ActorMethod<[], [] | [bigint]>,
+  'icrc7_supply_cap' : ActorMethod<[], [] | [bigint]>,
+  'icrc7_symbol' : ActorMethod<[], string>,
+  'icrc7_token_metadata' : ActorMethod<
+    [Array<bigint>],
+    Array<[] | [Array<[string, Value]>]>
+  >,
+  'icrc7_tokens' : ActorMethod<[[] | [bigint], [] | [bigint]], Array<bigint>>,
+  'icrc7_tokens_of' : ActorMethod<
+    [Account, [] | [bigint], [] | [bigint]],
+    Array<bigint>
+  >,
+  'icrc7_total_supply' : ActorMethod<[], bigint>,
+  'icrc7_transfer' : ActorMethod<
+    [Array<TransferArg>],
+    Array<[] | [TransferResult__1]>
+  >,
+  'icrc7_tx_window' : ActorMethod<[], [] | [bigint]>,
   'increase_dissolve_delay' : ActorMethod<[LockId, bigint], LockOpResult>,
   'request_claim_and_withdraw' : ActorMethod<
     [SwapCanisterId, PositionId],
@@ -506,7 +653,18 @@ export type Subaccount = Uint8Array | number[];
 export interface SupportedStandard { 'url' : string, 'name' : string }
 export type SwapCanisterId = Principal;
 export type Timestamp = bigint;
+export interface TokenApproval {
+  'token_id' : bigint,
+  'approval_info' : ApprovalInfo,
+}
 export type TokenType = Principal;
+export interface TransferArg {
+  'to' : Account,
+  'token_id' : bigint,
+  'memo' : [] | [Uint8Array | number[]],
+  'from_subaccount' : [] | [Uint8Array | number[]],
+  'created_at_time' : [] | [bigint],
+}
 export type TransferError = {
     'GenericError' : { 'message' : string, 'error_code' : bigint }
   } |
@@ -517,6 +675,36 @@ export type TransferError = {
   { 'CreatedInFuture' : { 'ledger_time' : Timestamp } } |
   { 'TooOld' : null } |
   { 'InsufficientFunds' : { 'balance' : Balance } };
+export type TransferError__1 = {
+    'GenericError' : { 'message' : string, 'error_code' : bigint }
+  } |
+  { 'Duplicate' : { 'duplicate_of' : bigint } } |
+  { 'NonExistingTokenId' : null } |
+  { 'Unauthorized' : null } |
+  { 'CreatedInFuture' : { 'ledger_time' : bigint } } |
+  { 'InvalidRecipient' : null } |
+  { 'GenericBatchError' : { 'message' : string, 'error_code' : bigint } } |
+  { 'TooOld' : null };
+export interface TransferFromArg {
+  'to' : Account,
+  'spender_subaccount' : [] | [Uint8Array | number[]],
+  'token_id' : bigint,
+  'from' : Account,
+  'memo' : [] | [Uint8Array | number[]],
+  'created_at_time' : [] | [bigint],
+}
+export type TransferFromError = {
+    'GenericError' : { 'message' : string, 'error_code' : bigint }
+  } |
+  { 'Duplicate' : { 'duplicate_of' : bigint } } |
+  { 'NonExistingTokenId' : null } |
+  { 'Unauthorized' : null } |
+  { 'CreatedInFuture' : { 'ledger_time' : bigint } } |
+  { 'InvalidRecipient' : null } |
+  { 'GenericBatchError' : { 'message' : string, 'error_code' : bigint } } |
+  { 'TooOld' : null };
+export type TransferFromResult = { 'Ok' : bigint } |
+  { 'Err' : TransferFromError };
 export type TransferPositionError = { 'CommonError' : null } |
   { 'InternalError' : string } |
   { 'UnsupportedToken' : string } |
@@ -528,6 +716,8 @@ export type TransferPositionResult = { 'ok' : boolean } |
   { 'err' : TransferPositionError };
 export type TransferResult = { 'Ok' : TxIndex } |
   { 'Err' : TransferError };
+export type TransferResult__1 = { 'Ok' : bigint } |
+  { 'Err' : TransferError__1 };
 export interface TransferTokenLockOwnershipError {
   'transfer_error' : [] | [TransferError],
   'message' : string,
@@ -541,6 +731,12 @@ export type Value = { 'Int' : bigint } |
   { 'Blob' : Uint8Array | number[] } |
   { 'Text' : string } |
   { 'Array' : Array<Value> };
+export type Value__1 = { 'Int' : bigint } |
+  { 'Map' : Array<[string, Value__1]> } |
+  { 'Nat' : bigint } |
+  { 'Blob' : Uint8Array | number[] } |
+  { 'Text' : string } |
+  { 'Array' : Array<Value__1> };
 export interface _SERVICE extends SneedLock {}
 export declare const idlFactory: IDL.InterfaceFactory;
 export declare const init: (args: { IDL: typeof IDL }) => IDL.Type[];

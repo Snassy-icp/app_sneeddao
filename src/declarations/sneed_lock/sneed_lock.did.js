@@ -1,6 +1,7 @@
 export const idlFactory = ({ IDL }) => {
   const GetBlocksResult = IDL.Rec();
   const Value = IDL.Rec();
+  const Value__1 = IDL.Rec();
   const SwapCanisterId = IDL.Principal;
   const PositionId = IDL.Nat;
   const AddLiquidityResult = IDL.Variant({
@@ -209,15 +210,74 @@ export const idlFactory = ({ IDL }) => {
     'include_archived' : IDL.Bool,
   });
   const SupportedStandard = IDL.Record({ 'url' : IDL.Text, 'name' : IDL.Text });
-  const GetArchivesArgs = IDL.Record({ 'from' : IDL.Opt(IDL.Principal) });
-  const ArchiveRange = IDL.Record({
-    'end' : IDL.Nat,
-    'canister_id' : IDL.Principal,
-    'start' : IDL.Nat,
+  const Account = IDL.Record({
+    'owner' : IDL.Principal,
+    'subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
   });
-  const GetArchivesResult = IDL.Vec(ArchiveRange);
-  const BlockRange = IDL.Record({ 'start' : IDL.Nat, 'length' : IDL.Nat });
-  const GetBlocksArgs = IDL.Vec(BlockRange);
+  const ApprovalInfo = IDL.Record({
+    'memo' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'from_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'created_at_time' : IDL.Nat64,
+    'expires_at' : IDL.Opt(IDL.Nat64),
+    'spender' : Account,
+  });
+  const ApproveCollectionArg = IDL.Record({ 'approval_info' : ApprovalInfo });
+  const ApproveCollectionError = IDL.Variant({
+    'GenericError' : IDL.Record({
+      'message' : IDL.Text,
+      'error_code' : IDL.Nat,
+    }),
+    'InvalidSpender' : IDL.Null,
+    'CreatedInFuture' : IDL.Record({ 'ledger_time' : IDL.Nat64 }),
+    'GenericBatchError' : IDL.Record({
+      'message' : IDL.Text,
+      'error_code' : IDL.Nat,
+    }),
+    'TooOld' : IDL.Null,
+  });
+  const ApproveCollectionResult = IDL.Variant({
+    'Ok' : IDL.Nat,
+    'Err' : ApproveCollectionError,
+  });
+  const ApproveTokenArg = IDL.Record({
+    'token_id' : IDL.Nat,
+    'approval_info' : ApprovalInfo,
+  });
+  const ApproveTokenError = IDL.Variant({
+    'GenericError' : IDL.Record({
+      'message' : IDL.Text,
+      'error_code' : IDL.Nat,
+    }),
+    'InvalidSpender' : IDL.Null,
+    'NonExistingTokenId' : IDL.Null,
+    'Unauthorized' : IDL.Null,
+    'CreatedInFuture' : IDL.Record({ 'ledger_time' : IDL.Nat64 }),
+    'GenericBatchError' : IDL.Record({
+      'message' : IDL.Text,
+      'error_code' : IDL.Nat,
+    }),
+    'TooOld' : IDL.Null,
+  });
+  const ApproveTokenResult = IDL.Variant({
+    'Ok' : IDL.Nat,
+    'Err' : ApproveTokenError,
+  });
+  const CollectionApproval = IDL.Record({
+    'memo' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'from_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'created_at_time' : IDL.Nat64,
+    'expires_at' : IDL.Opt(IDL.Nat64),
+    'spender' : Account,
+  });
+  const TokenApproval = IDL.Record({
+    'token_id' : IDL.Nat,
+    'approval_info' : ApprovalInfo,
+  });
+  const IsApprovedArg = IDL.Record({
+    'token_id' : IDL.Nat,
+    'from_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'spender' : Account,
+  });
   Value.fill(
     IDL.Variant({
       'Int' : IDL.Int,
@@ -228,7 +288,103 @@ export const idlFactory = ({ IDL }) => {
       'Array' : IDL.Vec(Value),
     })
   );
-  const Block = IDL.Record({ 'id' : IDL.Nat, 'block' : Value });
+  const RevokeCollectionApprovalArg = IDL.Record({
+    'memo' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'from_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'created_at_time' : IDL.Opt(IDL.Nat64),
+    'spender' : IDL.Opt(Account),
+  });
+  const RevokeCollectionApprovalError = IDL.Variant({
+    'GenericError' : IDL.Record({
+      'message' : IDL.Text,
+      'error_code' : IDL.Nat,
+    }),
+    'CreatedInFuture' : IDL.Record({ 'ledger_time' : IDL.Nat64 }),
+    'ApprovalDoesNotExist' : IDL.Null,
+    'GenericBatchError' : IDL.Record({
+      'message' : IDL.Text,
+      'error_code' : IDL.Nat,
+    }),
+    'TooOld' : IDL.Null,
+  });
+  const RevokeCollectionApprovalResult = IDL.Variant({
+    'Ok' : IDL.Nat,
+    'Err' : RevokeCollectionApprovalError,
+  });
+  const RevokeTokenApprovalArg = IDL.Record({
+    'token_id' : IDL.Nat,
+    'memo' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'from_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'created_at_time' : IDL.Opt(IDL.Nat64),
+    'spender' : IDL.Opt(Account),
+  });
+  const RevokeTokenApprovalError = IDL.Variant({
+    'GenericError' : IDL.Record({
+      'message' : IDL.Text,
+      'error_code' : IDL.Nat,
+    }),
+    'NonExistingTokenId' : IDL.Null,
+    'Unauthorized' : IDL.Null,
+    'CreatedInFuture' : IDL.Record({ 'ledger_time' : IDL.Nat64 }),
+    'ApprovalDoesNotExist' : IDL.Null,
+    'GenericBatchError' : IDL.Record({
+      'message' : IDL.Text,
+      'error_code' : IDL.Nat,
+    }),
+    'TooOld' : IDL.Null,
+  });
+  const RevokeTokenApprovalResult = IDL.Variant({
+    'Ok' : IDL.Nat,
+    'Err' : RevokeTokenApprovalError,
+  });
+  const TransferFromArg = IDL.Record({
+    'to' : Account,
+    'spender_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'token_id' : IDL.Nat,
+    'from' : Account,
+    'memo' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'created_at_time' : IDL.Opt(IDL.Nat64),
+  });
+  const TransferFromError = IDL.Variant({
+    'GenericError' : IDL.Record({
+      'message' : IDL.Text,
+      'error_code' : IDL.Nat,
+    }),
+    'Duplicate' : IDL.Record({ 'duplicate_of' : IDL.Nat }),
+    'NonExistingTokenId' : IDL.Null,
+    'Unauthorized' : IDL.Null,
+    'CreatedInFuture' : IDL.Record({ 'ledger_time' : IDL.Nat64 }),
+    'InvalidRecipient' : IDL.Null,
+    'GenericBatchError' : IDL.Record({
+      'message' : IDL.Text,
+      'error_code' : IDL.Nat,
+    }),
+    'TooOld' : IDL.Null,
+  });
+  const TransferFromResult = IDL.Variant({
+    'Ok' : IDL.Nat,
+    'Err' : TransferFromError,
+  });
+  const GetArchivesArgs = IDL.Record({ 'from' : IDL.Opt(IDL.Principal) });
+  const ArchiveRange = IDL.Record({
+    'end' : IDL.Nat,
+    'canister_id' : IDL.Principal,
+    'start' : IDL.Nat,
+  });
+  const GetArchivesResult = IDL.Vec(ArchiveRange);
+  const BlockRange = IDL.Record({ 'start' : IDL.Nat, 'length' : IDL.Nat });
+  const GetBlocksArgs = IDL.Vec(BlockRange);
+  Value__1.fill(
+    IDL.Variant({
+      'Int' : IDL.Int,
+      'Map' : IDL.Vec(IDL.Tuple(IDL.Text, Value__1)),
+      'Nat' : IDL.Nat,
+      'Blob' : IDL.Vec(IDL.Nat8),
+      'Text' : IDL.Text,
+      'Array' : IDL.Vec(Value__1),
+    })
+  );
+  const Block = IDL.Record({ 'id' : IDL.Nat, 'block' : Value__1 });
   const ArchivedBlocks = IDL.Record({
     'args' : GetBlocksArgs,
     'callback' : IDL.Func([GetBlocksArgs], [GetBlocksResult], ['query']),
@@ -273,6 +429,33 @@ export const idlFactory = ({ IDL }) => {
     'governance' : IDL.Principal,
   });
   const BlockType = IDL.Record({ 'url' : IDL.Text, 'block_type' : IDL.Text });
+  const TransferArg = IDL.Record({
+    'to' : Account,
+    'token_id' : IDL.Nat,
+    'memo' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'from_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'created_at_time' : IDL.Opt(IDL.Nat64),
+  });
+  const TransferError__1 = IDL.Variant({
+    'GenericError' : IDL.Record({
+      'message' : IDL.Text,
+      'error_code' : IDL.Nat,
+    }),
+    'Duplicate' : IDL.Record({ 'duplicate_of' : IDL.Nat }),
+    'NonExistingTokenId' : IDL.Null,
+    'Unauthorized' : IDL.Null,
+    'CreatedInFuture' : IDL.Record({ 'ledger_time' : IDL.Nat64 }),
+    'InvalidRecipient' : IDL.Null,
+    'GenericBatchError' : IDL.Record({
+      'message' : IDL.Text,
+      'error_code' : IDL.Nat,
+    }),
+    'TooOld' : IDL.Null,
+  });
+  const TransferResult__1 = IDL.Variant({
+    'Ok' : IDL.Nat,
+    'Err' : TransferError__1,
+  });
   const ClaimAndWithdrawResult = IDL.Variant({
     'Ok' : ClaimRequestId,
     'Err' : IDL.Text,
@@ -611,6 +794,11 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Opt(FullyQualifiedPositionLock)],
         ['query'],
       ),
+    'get_position_nft' : IDL.Func(
+        [SwapCanisterId, PositionId],
+        [IDL.Opt(IDL.Nat)],
+        ['query'],
+      ),
     'get_position_ownerships' : IDL.Func(
         [],
         [IDL.Vec(IDL.Tuple(SwapCanisterId, PositionId))],
@@ -648,6 +836,57 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(SupportedStandard)],
         ['query'],
       ),
+    'icrc37_approve_collection' : IDL.Func(
+        [IDL.Vec(ApproveCollectionArg)],
+        [IDL.Vec(IDL.Opt(ApproveCollectionResult))],
+        [],
+      ),
+    'icrc37_approve_tokens' : IDL.Func(
+        [IDL.Vec(ApproveTokenArg)],
+        [IDL.Vec(IDL.Opt(ApproveTokenResult))],
+        [],
+      ),
+    'icrc37_get_collection_approvals' : IDL.Func(
+        [Account, IDL.Opt(CollectionApproval), IDL.Opt(IDL.Nat)],
+        [IDL.Vec(CollectionApproval)],
+        ['query'],
+      ),
+    'icrc37_get_token_approvals' : IDL.Func(
+        [IDL.Vec(IDL.Nat), IDL.Opt(TokenApproval), IDL.Opt(IDL.Nat)],
+        [IDL.Vec(TokenApproval)],
+        ['query'],
+      ),
+    'icrc37_is_approved' : IDL.Func(
+        [IDL.Vec(IsApprovedArg)],
+        [IDL.Vec(IDL.Bool)],
+        ['query'],
+      ),
+    'icrc37_max_approvals_per_token_or_collection' : IDL.Func(
+        [],
+        [IDL.Opt(IDL.Nat)],
+        ['query'],
+      ),
+    'icrc37_max_revoke_approvals' : IDL.Func([], [IDL.Opt(IDL.Nat)], ['query']),
+    'icrc37_metadata' : IDL.Func(
+        [],
+        [IDL.Vec(IDL.Tuple(IDL.Text, Value))],
+        ['query'],
+      ),
+    'icrc37_revoke_collection_approvals' : IDL.Func(
+        [IDL.Vec(RevokeCollectionApprovalArg)],
+        [IDL.Vec(IDL.Opt(RevokeCollectionApprovalResult))],
+        [],
+      ),
+    'icrc37_revoke_token_approvals' : IDL.Func(
+        [IDL.Vec(RevokeTokenApprovalArg)],
+        [IDL.Vec(IDL.Opt(RevokeTokenApprovalResult))],
+        [],
+      ),
+    'icrc37_transfer_from' : IDL.Func(
+        [IDL.Vec(TransferFromArg)],
+        [IDL.Vec(IDL.Opt(TransferFromResult))],
+        [],
+      ),
     'icrc3_get_archives' : IDL.Func(
         [GetArchivesArgs],
         [GetArchivesResult],
@@ -670,6 +909,59 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(BlockType)],
         ['query'],
       ),
+    'icrc7_atomic_batch_transfers' : IDL.Func(
+        [],
+        [IDL.Opt(IDL.Bool)],
+        ['query'],
+      ),
+    'icrc7_balance_of' : IDL.Func(
+        [IDL.Vec(Account)],
+        [IDL.Vec(IDL.Nat)],
+        ['query'],
+      ),
+    'icrc7_collection_metadata' : IDL.Func(
+        [],
+        [IDL.Vec(IDL.Tuple(IDL.Text, Value))],
+        ['query'],
+      ),
+    'icrc7_default_take_value' : IDL.Func([], [IDL.Opt(IDL.Nat)], ['query']),
+    'icrc7_description' : IDL.Func([], [IDL.Opt(IDL.Text)], ['query']),
+    'icrc7_logo' : IDL.Func([], [IDL.Opt(IDL.Text)], ['query']),
+    'icrc7_max_memo_size' : IDL.Func([], [IDL.Opt(IDL.Nat)], ['query']),
+    'icrc7_max_query_batch_size' : IDL.Func([], [IDL.Opt(IDL.Nat)], ['query']),
+    'icrc7_max_take_value' : IDL.Func([], [IDL.Opt(IDL.Nat)], ['query']),
+    'icrc7_max_update_batch_size' : IDL.Func([], [IDL.Opt(IDL.Nat)], ['query']),
+    'icrc7_name' : IDL.Func([], [IDL.Text], ['query']),
+    'icrc7_owner_of' : IDL.Func(
+        [IDL.Vec(IDL.Nat)],
+        [IDL.Vec(IDL.Opt(Account))],
+        ['query'],
+      ),
+    'icrc7_permitted_drift' : IDL.Func([], [IDL.Opt(IDL.Nat)], ['query']),
+    'icrc7_supply_cap' : IDL.Func([], [IDL.Opt(IDL.Nat)], ['query']),
+    'icrc7_symbol' : IDL.Func([], [IDL.Text], ['query']),
+    'icrc7_token_metadata' : IDL.Func(
+        [IDL.Vec(IDL.Nat)],
+        [IDL.Vec(IDL.Opt(IDL.Vec(IDL.Tuple(IDL.Text, Value))))],
+        ['query'],
+      ),
+    'icrc7_tokens' : IDL.Func(
+        [IDL.Opt(IDL.Nat), IDL.Opt(IDL.Nat)],
+        [IDL.Vec(IDL.Nat)],
+        ['query'],
+      ),
+    'icrc7_tokens_of' : IDL.Func(
+        [Account, IDL.Opt(IDL.Nat), IDL.Opt(IDL.Nat)],
+        [IDL.Vec(IDL.Nat)],
+        ['query'],
+      ),
+    'icrc7_total_supply' : IDL.Func([], [IDL.Nat], ['query']),
+    'icrc7_transfer' : IDL.Func(
+        [IDL.Vec(TransferArg)],
+        [IDL.Vec(IDL.Opt(TransferResult__1))],
+        [],
+      ),
+    'icrc7_tx_window' : IDL.Func([], [IDL.Opt(IDL.Nat)], ['query']),
     'increase_dissolve_delay' : IDL.Func(
         [LockId, IDL.Nat64],
         [LockOpResult],

@@ -1,3 +1,15 @@
+type Value__1 = 
+ variant {
+   Array: vec Value__1;
+   Blob: blob;
+   Int: int;
+   Map: vec record {
+              text;
+              Value__1;
+            };
+   Nat: nat;
+   Text: text;
+ };
 type Value = 
  variant {
    Array: vec Value;
@@ -20,6 +32,11 @@ type TransferTokenLockOwnershipError =
  record {
    message: text;
    transfer_error: opt TransferError;
+ };
+type TransferResult__1 = 
+ variant {
+   Err: TransferError__1;
+   Ok: nat;
  };
 type TransferResult = 
  variant {
@@ -44,6 +61,54 @@ type TransferPositionError =
    InternalError: text;
    UnsupportedToken: text;
  };
+type TransferFromResult = 
+ variant {
+   Err: TransferFromError;
+   Ok: nat;
+ };
+type TransferFromError = 
+ variant {
+   CreatedInFuture: record {ledger_time: nat64;};
+   Duplicate: record {duplicate_of: nat;};
+   GenericBatchError: record {
+                        error_code: nat;
+                        message: text;
+                      };
+   GenericError: record {
+                   error_code: nat;
+                   message: text;
+                 };
+   InvalidRecipient;
+   NonExistingTokenId;
+   TooOld;
+   Unauthorized;
+ };
+type TransferFromArg = 
+ record {
+   created_at_time: opt nat64;
+   from: Account;
+   memo: opt blob;
+   spender_subaccount: opt blob;
+   to: Account;
+   token_id: nat;
+ };
+type TransferError__1 = 
+ variant {
+   CreatedInFuture: record {ledger_time: nat64;};
+   Duplicate: record {duplicate_of: nat;};
+   GenericBatchError: record {
+                        error_code: nat;
+                        message: text;
+                      };
+   GenericError: record {
+                   error_code: nat;
+                   message: text;
+                 };
+   InvalidRecipient;
+   NonExistingTokenId;
+   TooOld;
+   Unauthorized;
+ };
 type TransferError = 
  variant {
    BadBurn: record {min_burn_amount: Balance;};
@@ -58,7 +123,20 @@ type TransferError =
    TemporarilyUnavailable;
    TooOld;
  };
+type TransferArg = 
+ record {
+   created_at_time: opt nat64;
+   from_subaccount: opt blob;
+   memo: opt blob;
+   to: Account;
+   token_id: nat;
+ };
 type TokenType = principal;
+type TokenApproval = 
+ record {
+   approval_info: ApprovalInfo;
+   token_id: nat;
+ };
 type Timestamp = nat64;
 type SwapCanisterId = principal;
 type SupportedStandard = 
@@ -276,6 +354,9 @@ type SneedLock =
    get_my_claim_history: () -> (vec ClaimRequest) query;
    get_position_lock_by_id: (lock_id: LockId) ->
     (opt FullyQualifiedPositionLock) query;
+   /// The NFT of a position, if it has one.
+   get_position_nft: (swap_canister_id: SwapCanisterId, position_id:
+    PositionId) -> (opt nat) query;
    get_position_ownerships: () ->
     (vec record {
            SwapCanisterId;
@@ -300,6 +381,28 @@ type SneedLock =
    has_expired_locks: () -> (bool) query;
    has_expired_position_locks: () -> (bool) query;
    icrc10_supported_standards: () -> (vec SupportedStandard) query;
+   icrc37_approve_collection: (args: vec ApproveCollectionArg) ->
+    (vec opt ApproveCollectionResult);
+   icrc37_approve_tokens: (args: vec ApproveTokenArg) ->
+    (vec opt ApproveTokenResult);
+   icrc37_get_collection_approvals: (owner: Account, prev:
+    opt CollectionApproval, take: opt nat) -> (vec CollectionApproval) query;
+   icrc37_get_token_approvals: (token_ids: vec nat, prev: opt TokenApproval,
+    take: opt nat) -> (vec TokenApproval) query;
+   icrc37_is_approved: (args: vec IsApprovedArg) -> (vec bool) query;
+   icrc37_max_approvals_per_token_or_collection: () -> (opt nat) query;
+   icrc37_max_revoke_approvals: () -> (opt nat) query;
+   icrc37_metadata: () -> (vec record {
+                                 text;
+                                 Value;
+                               }) query;
+   icrc37_revoke_collection_approvals: (args:
+    vec RevokeCollectionApprovalArg) ->
+    (vec opt RevokeCollectionApprovalResult);
+   icrc37_revoke_token_approvals: (args: vec RevokeTokenApprovalArg) ->
+    (vec opt RevokeTokenApprovalResult);
+   icrc37_transfer_from: (args: vec TransferFromArg) ->
+    (vec opt TransferFromResult);
    icrc3_get_archives: (args: GetArchivesArgs) -> (GetArchivesResult) query;
    icrc3_get_blocks: (args: GetBlocksArgs) -> (GetBlocksResult) query;
    icrc3_get_tip_certificate: () -> (opt DataCertificate) query;
@@ -307,6 +410,35 @@ type SneedLock =
    /// Where each archive stands with its RegisterDappCanisters proposal.
    icrc3_registration_status: () -> (Status) query;
    icrc3_supported_block_types: () -> (vec BlockType) query;
+   icrc7_atomic_batch_transfers: () -> (opt bool) query;
+   icrc7_balance_of: (accounts: vec Account) -> (vec nat) query;
+   icrc7_collection_metadata: () -> (vec record {
+                                           text;
+                                           Value;
+                                         }) query;
+   icrc7_default_take_value: () -> (opt nat) query;
+   icrc7_description: () -> (opt text) query;
+   icrc7_logo: () -> (opt text) query;
+   icrc7_max_memo_size: () -> (opt nat) query;
+   icrc7_max_query_batch_size: () -> (opt nat) query;
+   icrc7_max_take_value: () -> (opt nat) query;
+   icrc7_max_update_batch_size: () -> (opt nat) query;
+   icrc7_name: () -> (text) query;
+   icrc7_owner_of: (ids: vec nat) -> (vec opt Account) query;
+   icrc7_permitted_drift: () -> (opt nat) query;
+   icrc7_supply_cap: () -> (opt nat) query;
+   icrc7_symbol: () -> (text) query;
+   icrc7_token_metadata: (ids: vec nat) ->
+    (vec opt vec record {
+                   text;
+                   Value;
+                 }) query;
+   icrc7_tokens: (prev: opt nat, take: opt nat) -> (vec nat) query;
+   icrc7_tokens_of: (account: Account, prev: opt nat, take: opt nat) ->
+    (vec nat) query;
+   icrc7_total_supply: () -> (nat) query;
+   icrc7_transfer: (args: vec TransferArg) -> (vec opt TransferResult__1);
+   icrc7_tx_window: () -> (opt nat) query;
    /// Add to the dissolve delay (a lock without one gets one). While dissolving, the end moves
    /// out by the same amount. Lock period + delay stay within the max lock length.
    increase_dissolve_delay: (lock_id: LockId, additional_ns: nat64) ->
@@ -350,6 +482,61 @@ type Settings =
    archive_top_up_threshold: nat;
    max_live_blocks: nat;
    spill_batch_size: nat;
+ };
+type RevokeTokenApprovalResult = 
+ variant {
+   Err: RevokeTokenApprovalError;
+   Ok: nat;
+ };
+type RevokeTokenApprovalError = 
+ variant {
+   ApprovalDoesNotExist;
+   CreatedInFuture: record {ledger_time: nat64;};
+   GenericBatchError: record {
+                        error_code: nat;
+                        message: text;
+                      };
+   GenericError: record {
+                   error_code: nat;
+                   message: text;
+                 };
+   NonExistingTokenId;
+   TooOld;
+   Unauthorized;
+ };
+type RevokeTokenApprovalArg = 
+ record {
+   created_at_time: opt nat64;
+   from_subaccount: opt blob;
+   memo: opt blob;
+   spender: opt Account;
+   token_id: nat;
+ };
+type RevokeCollectionApprovalResult = 
+ variant {
+   Err: RevokeCollectionApprovalError;
+   Ok: nat;
+ };
+type RevokeCollectionApprovalError = 
+ variant {
+   ApprovalDoesNotExist;
+   CreatedInFuture: record {ledger_time: nat64;};
+   GenericBatchError: record {
+                        error_code: nat;
+                        message: text;
+                      };
+   GenericError: record {
+                   error_code: nat;
+                   message: text;
+                 };
+   TooOld;
+ };
+type RevokeCollectionApprovalArg = 
+ record {
+   created_at_time: opt nat64;
+   from_subaccount: opt blob;
+   memo: opt blob;
+   spender: opt Account;
  };
 type Registration = 
  record {
@@ -455,6 +642,12 @@ type Lock =
    expiry: Expiry;
    lock_id: LockId;
  };
+type IsApprovedArg = 
+ record {
+   from_subaccount: opt blob;
+   spender: Account;
+   token_id: nat;
+ };
 type GetBlocksResult = 
  record {
    archived_blocks: vec ArchivedBlocks;
@@ -492,6 +685,14 @@ type CreateLockError =
  record {
    message: text;
    transfer_error: opt TransferError;
+ };
+type CollectionApproval = 
+ record {
+   created_at_time: nat64;
+   expires_at: opt nat64;
+   from_subaccount: opt blob;
+   memo: opt blob;
+   spender: Account;
  };
 type ClaimedPosition = 
  record {
@@ -591,7 +792,7 @@ type BlockRange =
  };
 type Block = 
  record {
-   block: Value;
+   block: Value__1;
    id: nat;
  };
 type Balance = nat;
@@ -613,6 +814,60 @@ type ArchiveInfo =
    max_blocks: nat;
    start: nat;
  };
+type ApproveTokenResult = 
+ variant {
+   Err: ApproveTokenError;
+   Ok: nat;
+ };
+type ApproveTokenError = 
+ variant {
+   CreatedInFuture: record {ledger_time: nat64;};
+   GenericBatchError: record {
+                        error_code: nat;
+                        message: text;
+                      };
+   GenericError: record {
+                   error_code: nat;
+                   message: text;
+                 };
+   InvalidSpender;
+   NonExistingTokenId;
+   TooOld;
+   Unauthorized;
+ };
+type ApproveTokenArg = 
+ record {
+   approval_info: ApprovalInfo;
+   token_id: nat;
+ };
+type ApproveCollectionResult = 
+ variant {
+   Err: ApproveCollectionError;
+   Ok: nat;
+ };
+type ApproveCollectionError = 
+ variant {
+   CreatedInFuture: record {ledger_time: nat64;};
+   GenericBatchError: record {
+                        error_code: nat;
+                        message: text;
+                      };
+   GenericError: record {
+                   error_code: nat;
+                   message: text;
+                 };
+   InvalidSpender;
+   TooOld;
+ };
+type ApproveCollectionArg = record {approval_info: ApprovalInfo;};
+type ApprovalInfo = 
+ record {
+   created_at_time: nat64;
+   expires_at: opt nat64;
+   from_subaccount: opt blob;
+   memo: opt blob;
+   spender: Account;
+ };
 type AddLiquidityResult = 
  variant {
    Err: text;
@@ -627,5 +882,10 @@ type AddLiquidityResult =
       used0: nat;
       used1: nat;
     };
+ };
+type Account = 
+ record {
+   owner: principal;
+   subaccount: opt blob;
  };
 service : () -> SneedLock
