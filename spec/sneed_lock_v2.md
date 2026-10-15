@@ -341,6 +341,20 @@ fee `F` to the sending account. The lock's amount never changes: whatever counts
 - **Funding:** a plain ICRC-1 transfer by anyone: the sender when listing or sending (the
   frontend offers "add gas for about N transfers"), the recipient, a marketplace. No call to
   Sneed Lock is needed, and no state: the balance lives on the ledger.
+- **Permissionless, like topping up a canister's cycles:** anyone can fund any lock's tank,
+  owner or not, so an NFT held in a wallet that knows nothing about gas is never stuck: someone
+  (the holder from another wallet, a buyer, a friend, the seller) tops it up from Sneed Hub.
+- **Top-up in Sneed Hub** (decided 2026-10-15), one shared "Add gas" dialog (lock id → its
+  ledger, fee, gas account, current tank balance and "about N transfers"; amount presets of
+  1, 5 and 20 transfers at `2F` each, or a free amount; pays from the user's wallet balance of
+  that token with a plain `icrc1_transfer` to the gas account), offered for **every** token lock,
+  whoever owns it, on:
+  - the wallet's lock rows (the user's own locks);
+  - `/lock/:id`;
+  - `/tokenlock` (every lock of a token, anyone's);
+  - the lock's NFT page.
+  Each place shows the tank balance and "about N transfers left" next to the button. Gas is a
+  gift to the lock's current owner; the dialog says so.
 - **Whose it is:** the lock's current owner's, whoever funded it. Gas travels with the lock.
 - **Taking it back:** `withdraw_lock_gas(lock_id, to : Account)`, the lock's owner only (the last
   owner once the lock is archived), sends the tank's balance minus one fee. Serialised by the
