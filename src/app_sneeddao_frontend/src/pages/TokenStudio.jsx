@@ -15,6 +15,7 @@ import { LaunchPanel } from './SneedPad.jsx';
 import { HandoverPanel } from './studio/HandoverPanel.jsx';
 import { IndexPanel } from './studio/IndexPanel.jsx';
 import { useSearchParams } from 'react-router-dom';
+import { ComingSoonGate } from '../components/LaunchGate';
 
 const BLACKHOLE = 'e3mmv-5qaaa-aaaah-aadma-cai';
 
@@ -167,10 +168,11 @@ function TokenStudio({ intent = null }) {
                     </div>
                 )}
                 {ledgerId && tab === 'harden' && <HardenPanel ledgerId={ledgerId} header={header} theme={theme} />}
-                {ledgerId && tab === 'handover' && <HandoverPanel ledgerId={ledgerId} header={header} />}
-                {tab === 'index' && <IndexPanel ledgerId={ledgerId} header={header} />}
-                {!ledgerId && tab === 'handover' && <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Pick the ledger you control above to hand it to Sneed custody.</div>}
-                {tab === 'launch' && <LaunchPanel />}
+                {/* Launch, index and hand-over open once the custody canisters are live (admins preview them) */}
+                {ledgerId && tab === 'handover' && <ComingSoonGate title="Hand over to Sneed custody"><HandoverPanel ledgerId={ledgerId} header={header} /></ComingSoonGate>}
+                {tab === 'index' && <ComingSoonGate title="Index launcher"><IndexPanel ledgerId={ledgerId} header={header} /></ComingSoonGate>}
+                {!ledgerId && tab === 'handover' && <ComingSoonGate title="Hand over to Sneed custody"><div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Pick the ledger you control above to hand it to Sneed custody.</div></ComingSoonGate>}
+                {tab === 'launch' && <ComingSoonGate title="Token launcher"><LaunchPanel /></ComingSoonGate>}
             </main>
         </div>
     );

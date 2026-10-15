@@ -11,6 +11,7 @@ import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { FaDatabase, FaRocket, FaCubes, FaExternalLinkAlt, FaStore, FaSpinner, FaChevronDown, FaChevronUp, FaPlus, FaEye, FaCog, FaTag, FaCheckCircle, FaBrain, FaChartLine, FaBox, FaRobot } from 'react-icons/fa';
 import BotIcon from '../components/BotIcon';
 import { padIdl, PAD_CANISTER_ID } from '../tokensafety/padIdl.js';
+import { ComingSoonRibbon } from '../components/LaunchGate';
 
 const studioPrimary = '#10b981';
 const studioSecondary = '#34d399';
@@ -356,12 +357,14 @@ export default function SneedApp() {
                                 background: theme.colors.cardGradient, borderRadius: 12,
                                 border: `1px solid ${studioPrimary}30`,
                                 padding: 20, display: 'flex', flexDirection: 'column', gap: 12,
-                                transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer'
+                                transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer',
+                                position: 'relative', overflow: 'hidden'
                             }}
                                 onClick={() => navigate('/studio/launch')}
                                 onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 8px 24px ${studioPrimary}20`; }}
                                 onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}
                             >
+                                <ComingSoonRibbon />
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                                     <div style={{ width: 40, height: 40, borderRadius: 8, background: `linear-gradient(135deg, ${studioPrimary}, ${studioSecondary})`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                         <FaRocket size={20} color="#fff" />
@@ -393,12 +396,14 @@ export default function SneedApp() {
                                 background: theme.colors.cardGradient, borderRadius: 12,
                                 border: '1px solid #6366f130',
                                 padding: 20, display: 'flex', flexDirection: 'column', gap: 12,
-                                transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer'
+                                transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer',
+                                position: 'relative', overflow: 'hidden'
                             }}
                                 onClick={() => navigate('/studio/index')}
                                 onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px #6366f120'; }}
                                 onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}
                             >
+                                <ComingSoonRibbon />
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                                     <div style={{ width: 40, height: 40, borderRadius: 8, background: 'linear-gradient(135deg, #6366f1, #818cf8)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                         <FaDatabase size={20} color="#fff" />

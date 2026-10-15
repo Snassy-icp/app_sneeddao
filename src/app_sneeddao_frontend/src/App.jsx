@@ -120,6 +120,7 @@ import ToolsIcrc3 from './pages/ToolsIcrc3';
 import TokenSafety from './pages/TokenSafety';
 import FollowMoney from './pages/FollowMoney';
 import SneedPad from './pages/SneedPad';
+import { ComingSoonPage } from './components/LaunchGate';
 
 // Sneedex pages
 import Sneedex from './pages/Sneedex';
@@ -201,7 +202,7 @@ function App() {
                     <Route path="/rll" element={<RLL />} />
                     <Route path="/rll_info" element={<RLLInfo />} />
                     <Route path="/rll_ledger" element={<RllLedger />} />
-                    <Route path="/guardian" element={<Guardian />} />
+                    <Route path="/guardian" element={<ComingSoonPage title="Sneed custody"><Guardian /></ComingSoonPage>} />
                     <Route path="/scan_wallet" element={<ScanWallet />} />
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/tokenlock" element={<TokenLock />} />
@@ -291,7 +292,7 @@ function App() {
                     <Route path="/tools/token_safety" element={<TokenSafety />} />
                     <Route path="/tools/token_safety/:ledgerId" element={<TokenSafety />} />
                     <Route path="/tools/money" element={<FollowMoney />} />
-                    <Route path="/tools/pad" element={<SneedPad />} />
+                    <Route path="/tools/pad" element={<ComingSoonPage title="Token launcher"><SneedPad /></ComingSoonPage>} />
                     <Route path="/tools/escrow" element={<ToolsEscrow />} />
                     <Route path="/tools/escrow/swap" element={<EscrowSwap />} />
                     <Route path="/tools/sns_jailbreak" element={<SnsJailbreak />} />
