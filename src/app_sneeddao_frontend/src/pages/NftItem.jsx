@@ -14,6 +14,8 @@ import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { fetchApprovals, getNftImage, getNftName, getNftDescription, getNftAttributes, getNftLinks, formatNftMetadata, getSavedNftCollections, NFT_COLLECTIONS_STORAGE_KEY } from '../utils/NftUtils';
 import { loadCollectionInfoCached, loadTokensCached, nftCollectionUrl } from '../components/NftAssetView';
 import { customStyles } from '../health/TreeView.jsx';
+import LockGas from '../components/LockGas';
+import { canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 
 const primary = '#a18cd1';
 const getHost = () => (process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943');
@@ -137,6 +139,14 @@ function NftItem() {
                                 )}
                                 {!mine && isAuthenticated && !inWallet && <div style={{ marginTop: 10 }}><button type="button" onClick={addToWallet} style={btn()}>Add collection to my wallet</button></div>}
                             </div>
+
+                            {collection === sneedLockCanisterId && (
+                                <div style={card}>
+                                    <div style={label}>Gas (Sneed Lock token lock)</div>
+                                    <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, marginBottom: 8, lineHeight: 1.5 }}>Sending this lock costs one ledger fee. Anyone can add gas to it, so it can always be moved, even from a wallet that does not know about gas.</div>
+                                    <LockGas lockId={idText} />
+                                </div>
+                            )}
 
                             {mine && info?.standards?.icrc37 && (
                                 <div style={card}>

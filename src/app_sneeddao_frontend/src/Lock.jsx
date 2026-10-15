@@ -366,6 +366,9 @@ function Lock() {
                     <LockDissolvePanel lockId={id} onChanged={() => fetchLockById(id)} />
                 )}
 
+                {!loading && !error && lockType === 'token' && (
+                    <LockNftPanel tokenId={id} onChanged={() => fetchLockById(id)} />
+                )}
                 {!loading && !error && lockType === 'position' && position && positionDetails && (
                     <LockNftPanel swapCanisterId={position.swap_canister_id} positionId={positionDetails.positionId} onChanged={() => fetchLockById(id)} />
                 )}

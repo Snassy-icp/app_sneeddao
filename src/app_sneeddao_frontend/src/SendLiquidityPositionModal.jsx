@@ -4,6 +4,7 @@ import { Principal } from "@dfinity/principal";
 import ConfirmationModal from './ConfirmationModal';
 import { useTheme } from './contexts/ThemeContext';
 import PrincipalInput from './components/PrincipalInput';
+import { parseSubaccountHex } from './utils/lockNft';
 
 // Accent colors
 const walletPrimary = '#10b981';
@@ -19,6 +20,7 @@ function SendLiquidityPositionModal({ show, onClose, onSend, liquidityPosition }
   const [confirmMessage, setConfirmMessage] = useState('');
   
   const isBackendTransfer = liquidityPosition?.isBackendTransfer || false;
+  const [recipientSub, setRecipientSub] = useState('');
 
   useEffect(() => {
     if (show) {
@@ -41,12 +43,16 @@ function SendLiquidityPositionModal({ show, onClose, onSend, liquidityPosition }
       setErrorText("Invalid recipient address! Please enter a valid recipient address.");
       return;
     }
+    if (isBackendTransfer && parseSubaccountHex(recipientSub) === null) {
+      setErrorText("A subaccount is 64 hex characters (or leave it empty).");
+      return;
+    }
 
     setConfirmAction(() => async () => {   
       try {
         setIsLoading(true);
         setErrorText('');
-        await onSend(liquidityPosition, trimmedRecipient);
+        await onSend(liquidityPosition, trimmedRecipient, isBackendTransfer ? parseSubaccountHex(recipientSub) : undefined);
         // Only close on success
         setIsLoading(false);
         onClose();
@@ -160,7 +166,7 @@ function SendLiquidityPositionModal({ show, onClose, onSend, liquidityPosition }
               fontSize: '0.85rem',
               lineHeight: '1.5'
             }}>
-              Only transfer locked positions to Sneed Wallet principals that support Sneed Lock! 
+              The locked position is sent as an ICRC-7 NFT: only send it to a wallet that supports ICRC-7 NFTs (the Sneed wallet does). 
               Transferring to incompatible wallets (exchanges, other wallet types) may result in permanent loss of access.
             </div>
           </div>
@@ -190,6 +196,15 @@ function SendLiquidityPositionModal({ show, onClose, onSend, liquidityPosition }
               boxSizing: 'border-box'
             }}
           />
+          {isBackendTransfer && (
+            <input
+              value={recipientSub}
+              onChange={(e) => setRecipientSub(e.target.value)}
+              placeholder="Recipient subaccount (optional, 64 hex characters)"
+              aria-label="Recipient subaccount"
+              style={{ width: '100%', marginTop: '8px', padding: '10px 12px', background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, borderRadius: '8px', color: theme.colors.primaryText, fontSize: '0.8rem', fontFamily: 'monospace', boxSizing: 'border-box' }}
+            />
+          )}
         </div>
 
         {errorText && (

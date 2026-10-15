@@ -86,10 +86,10 @@ type TransferFromError =
 type TransferFromArg = 
  record {
    created_at_time: opt nat64;
-   from: Account;
+   from: Account__1;
    memo: opt blob;
    spender_subaccount: opt blob;
-   to: Account;
+   to: Account__1;
    token_id: nat;
  };
 type TransferError__1 = 
@@ -128,7 +128,7 @@ type TransferArg =
    created_at_time: opt nat64;
    from_subaccount: opt blob;
    memo: opt blob;
-   to: Account;
+   to: Account__1;
    token_id: nat;
  };
 type TokenType = principal;
@@ -335,6 +335,14 @@ type SneedLock =
        sneed_premium_canister_id: opt principal;
        token_lock_fee_icp_e8s: nat64;
      }) query;
+   /// A token lock's gas tank: the account anyone can fund, its ledger and the last seen fee.
+   /// Null for ids that are not token locks (live or archived).
+   get_lock_gas: (lock_id: LockId) ->
+    (opt record {
+           account: Account;
+           ledger: principal;
+           transfer_fee: opt nat;
+         }) query;
    get_lock_limits: () -> (LockLimits) query;
    get_lock_state: (lock_id: LockId) -> (opt LockState) query;
    get_lock_states: (lock_ids: vec LockId) -> (vec opt LockState) query;
@@ -372,7 +380,7 @@ type SneedLock =
     (vec opt ApproveCollectionResult);
    icrc37_approve_tokens: (args: vec ApproveTokenArg) ->
     (vec opt ApproveTokenResult);
-   icrc37_get_collection_approvals: (owner: Account, prev:
+   icrc37_get_collection_approvals: (owner: Account__1, prev:
     opt CollectionApproval, take: opt nat) -> (vec CollectionApproval) query;
    icrc37_get_token_approvals: (token_ids: vec nat, prev: opt TokenApproval,
     take: opt nat) -> (vec TokenApproval) query;
@@ -398,7 +406,7 @@ type SneedLock =
    icrc3_registration_status: () -> (Status) query;
    icrc3_supported_block_types: () -> (vec BlockType) query;
    icrc7_atomic_batch_transfers: () -> (opt bool) query;
-   icrc7_balance_of: (accounts: vec Account) -> (vec nat) query;
+   icrc7_balance_of: (accounts: vec Account__1) -> (vec nat) query;
    icrc7_collection_metadata: () -> (vec record {
                                            text;
                                            Value;
@@ -411,7 +419,7 @@ type SneedLock =
    icrc7_max_take_value: () -> (opt nat) query;
    icrc7_max_update_batch_size: () -> (opt nat) query;
    icrc7_name: () -> (text) query;
-   icrc7_owner_of: (ids: vec nat) -> (vec opt Account) query;
+   icrc7_owner_of: (ids: vec nat) -> (vec opt Account__1) query;
    icrc7_permitted_drift: () -> (opt nat) query;
    icrc7_supply_cap: () -> (opt nat) query;
    icrc7_symbol: () -> (text) query;
@@ -421,7 +429,7 @@ type SneedLock =
                    Value;
                  }) query;
    icrc7_tokens: (prev: opt nat, take: opt nat) -> (vec nat) query;
-   icrc7_tokens_of: (account: Account, prev: opt nat, take: opt nat) ->
+   icrc7_tokens_of: (account: Account__1, prev: opt nat, take: opt nat) ->
     (vec nat) query;
    icrc7_total_supply: () -> (nat) query;
    icrc7_transfer: (args: vec TransferArg) -> (vec opt TransferResult__1);
@@ -451,6 +459,13 @@ type SneedLock =
     icrc1_ledger_canister_id: principal, amount: Balance) -> (TransferResult);
    update_position_lock: (swap_canister_id: principal, position_id:
     PositionId, expires_at: Expiry) -> (CreateLockResult);
+   /// The lock's owner (the last owner once archived) takes the gas back: the tank's balance less
+   /// one ledger fee goes to `to`. Answers the ledger block index.
+   withdraw_lock_gas: (lock_id: LockId, to: Account) ->
+    (variant {
+       Err: text;
+       Ok: nat;
+     });
  };
 type SettingsUpdate = 
  record {
@@ -496,7 +511,7 @@ type RevokeTokenApprovalArg =
    created_at_time: opt nat64;
    from_subaccount: opt blob;
    memo: opt blob;
-   spender: opt Account;
+   spender: opt Account__1;
    token_id: nat;
  };
 type RevokeCollectionApprovalResult = 
@@ -523,7 +538,7 @@ type RevokeCollectionApprovalArg =
    created_at_time: opt nat64;
    from_subaccount: opt blob;
    memo: opt blob;
-   spender: opt Account;
+   spender: opt Account__1;
  };
 type Registration = 
  record {
@@ -640,7 +655,7 @@ type Lock =
 type IsApprovedArg = 
  record {
    from_subaccount: opt blob;
-   spender: Account;
+   spender: Account__1;
    token_id: nat;
  };
 type GetBlocksResult = 
@@ -687,7 +702,7 @@ type CollectionApproval =
    expires_at: opt nat64;
    from_subaccount: opt blob;
    memo: opt blob;
-   spender: Account;
+   spender: Account__1;
  };
 type ClaimedPosition = 
  record {
@@ -867,7 +882,7 @@ type ApprovalInfo =
    expires_at: opt nat64;
    from_subaccount: opt blob;
    memo: opt blob;
-   spender: Account;
+   spender: Account__1;
  };
 type AddLiquidityResult = 
  variant {
@@ -884,9 +899,14 @@ type AddLiquidityResult =
       used1: nat;
     };
  };
-type Account = 
+type Account__1 = 
  record {
    owner: principal;
    subaccount: opt blob;
+ };
+type Account = 
+ record {
+   owner: principal;
+   subaccount: opt Subaccount;
  };
 service : () -> SneedLock

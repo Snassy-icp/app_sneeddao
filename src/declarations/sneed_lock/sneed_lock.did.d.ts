@@ -4,6 +4,10 @@ import type { IDL } from '@dfinity/candid';
 
 export interface Account {
   'owner' : Principal,
+  'subaccount' : [] | [Subaccount],
+}
+export interface Account__1 {
+  'owner' : Principal,
   'subaccount' : [] | [Uint8Array | number[]],
 }
 export type AddLiquidityResult = {
@@ -24,7 +28,7 @@ export interface ApprovalInfo {
   'from_subaccount' : [] | [Uint8Array | number[]],
   'created_at_time' : bigint,
   'expires_at' : [] | [bigint],
-  'spender' : Account,
+  'spender' : Account__1,
 }
 export interface ApproveCollectionArg { 'approval_info' : ApprovalInfo }
 export type ApproveCollectionError = {
@@ -158,7 +162,7 @@ export interface CollectionApproval {
   'from_subaccount' : [] | [Uint8Array | number[]],
   'created_at_time' : bigint,
   'expires_at' : [] | [bigint],
-  'spender' : Account,
+  'spender' : Account__1,
 }
 export interface CreateLockError {
   'transfer_error' : [] | [TransferError],
@@ -189,7 +193,7 @@ export interface GetBlocksResult {
 export interface IsApprovedArg {
   'token_id' : bigint,
   'from_subaccount' : [] | [Uint8Array | number[]],
-  'spender' : Account,
+  'spender' : Account__1,
 }
 export interface Lock {
   'lock_id' : LockId,
@@ -284,7 +288,7 @@ export interface RevokeCollectionApprovalArg {
   'memo' : [] | [Uint8Array | number[]],
   'from_subaccount' : [] | [Uint8Array | number[]],
   'created_at_time' : [] | [bigint],
-  'spender' : [] | [Account],
+  'spender' : [] | [Account__1],
 }
 export type RevokeCollectionApprovalError = {
     'GenericError' : { 'message' : string, 'error_code' : bigint }
@@ -300,7 +304,7 @@ export interface RevokeTokenApprovalArg {
   'memo' : [] | [Uint8Array | number[]],
   'from_subaccount' : [] | [Uint8Array | number[]],
   'created_at_time' : [] | [bigint],
-  'spender' : [] | [Account],
+  'spender' : [] | [Account__1],
 }
 export type RevokeTokenApprovalError = {
     'GenericError' : { 'message' : string, 'error_code' : bigint }
@@ -507,6 +511,16 @@ export interface SneedLock {
       'fee_recipient_subaccount' : [] | [Uint8Array | number[]],
     }
   >,
+  'get_lock_gas' : ActorMethod<
+    [LockId],
+    [] | [
+      {
+        'transfer_fee' : [] | [bigint],
+        'ledger' : Principal,
+        'account' : Account,
+      }
+    ]
+  >,
   'get_lock_limits' : ActorMethod<[], LockLimits>,
   'get_lock_state' : ActorMethod<[LockId], [] | [LockState]>,
   'get_lock_states' : ActorMethod<[Array<LockId>], Array<[] | [LockState]>>,
@@ -540,7 +554,7 @@ export interface SneedLock {
     Array<[] | [ApproveTokenResult]>
   >,
   'icrc37_get_collection_approvals' : ActorMethod<
-    [Account, [] | [CollectionApproval], [] | [bigint]],
+    [Account__1, [] | [CollectionApproval], [] | [bigint]],
     Array<CollectionApproval>
   >,
   'icrc37_get_token_approvals' : ActorMethod<
@@ -573,7 +587,7 @@ export interface SneedLock {
   'icrc3_registration_status' : ActorMethod<[], Status>,
   'icrc3_supported_block_types' : ActorMethod<[], Array<BlockType>>,
   'icrc7_atomic_batch_transfers' : ActorMethod<[], [] | [boolean]>,
-  'icrc7_balance_of' : ActorMethod<[Array<Account>], Array<bigint>>,
+  'icrc7_balance_of' : ActorMethod<[Array<Account__1>], Array<bigint>>,
   'icrc7_collection_metadata' : ActorMethod<[], Array<[string, Value]>>,
   'icrc7_default_take_value' : ActorMethod<[], [] | [bigint]>,
   'icrc7_description' : ActorMethod<[], [] | [string]>,
@@ -583,7 +597,7 @@ export interface SneedLock {
   'icrc7_max_take_value' : ActorMethod<[], [] | [bigint]>,
   'icrc7_max_update_batch_size' : ActorMethod<[], [] | [bigint]>,
   'icrc7_name' : ActorMethod<[], string>,
-  'icrc7_owner_of' : ActorMethod<[Array<bigint>], Array<[] | [Account]>>,
+  'icrc7_owner_of' : ActorMethod<[Array<bigint>], Array<[] | [Account__1]>>,
   'icrc7_permitted_drift' : ActorMethod<[], [] | [bigint]>,
   'icrc7_supply_cap' : ActorMethod<[], [] | [bigint]>,
   'icrc7_symbol' : ActorMethod<[], string>,
@@ -593,7 +607,7 @@ export interface SneedLock {
   >,
   'icrc7_tokens' : ActorMethod<[[] | [bigint], [] | [bigint]], Array<bigint>>,
   'icrc7_tokens_of' : ActorMethod<
-    [Account, [] | [bigint], [] | [bigint]],
+    [Account__1, [] | [bigint], [] | [bigint]],
     Array<bigint>
   >,
   'icrc7_total_supply' : ActorMethod<[], bigint>,
@@ -630,6 +644,11 @@ export interface SneedLock {
     [Principal, PositionId, Expiry],
     CreateLockResult
   >,
+  'withdraw_lock_gas' : ActorMethod<
+    [LockId, Account],
+    { 'Ok' : bigint } |
+      { 'Err' : string }
+  >,
 }
 export interface Status {
   'neuron' : [] | [Uint8Array | number[]],
@@ -646,7 +665,7 @@ export interface TokenApproval {
 }
 export type TokenType = Principal;
 export interface TransferArg {
-  'to' : Account,
+  'to' : Account__1,
   'token_id' : bigint,
   'memo' : [] | [Uint8Array | number[]],
   'from_subaccount' : [] | [Uint8Array | number[]],
@@ -673,10 +692,10 @@ export type TransferError__1 = {
   { 'GenericBatchError' : { 'message' : string, 'error_code' : bigint } } |
   { 'TooOld' : null };
 export interface TransferFromArg {
-  'to' : Account,
+  'to' : Account__1,
   'spender_subaccount' : [] | [Uint8Array | number[]],
   'token_id' : bigint,
-  'from' : Account,
+  'from' : Account__1,
   'memo' : [] | [Uint8Array | number[]],
   'created_at_time' : [] | [bigint],
 }

@@ -29,6 +29,7 @@ import { FaDollarSign, FaLock, FaBrain, FaInfoCircle, FaTint, FaSeedling, FaHour
 import SwapModal from './components/SwapModal';
 import { isUntilDissolved } from './utils/lockTime';
 import { LockUntil, LockTimeLeftAtLeast, LockAge } from './components/LockUntil';
+import LockGas from './components/LockGas';
 
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
@@ -2413,6 +2414,12 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                     {isUntilDissolved(lock.expiry) ? <LockTimeLeftAtLeast lockId={lock.lock_id} /> : <LockCountdown expiry={lock.expiry} />}
                                                 </span>
                                             </div>
+                                            {lock.lock_id !== undefined && lock.lock_id !== null && <LockGas lockId={lock.lock_id} wrap={(v) => (
+                                                <div className="lock-details">
+                                                    <span className="lock-label">Gas:</span>
+                                                    <span className="lock-value">{v}</span>
+                                                </div>
+                                            )} />}
                                             {lock.lock_id !== undefined && lock.lock_id !== null && <LockAge lockId={lock.lock_id} wrap={(v) => (
                                                 <div className="lock-details">
                                                     <span className="lock-label">Age:</span>

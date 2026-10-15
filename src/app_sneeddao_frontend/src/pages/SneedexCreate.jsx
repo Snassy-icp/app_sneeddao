@@ -757,7 +757,10 @@ function SneedexCreate() {
     useEffect(() => {
         const q = new URLSearchParams(location.search).get('lock');
         if (!q || !identity) return;
-        setShowAddAsset(true); setNewAssetType('lock'); setNewAssetLockId(q);
+        // a lock is listed as its NFT in the Sneed Lock collection
+        setShowAddAsset(true); setNewAssetType('nft'); setNewAssetNftCollection(sneedLockCanisterId);
+        setNewAssetNftTokens([q]);
+        loadNftsFor(sneedLockCanisterId);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [location.search, identity]);
     // The collections the user added to the NFT wallet, offered as one-click choices (names read lazily)
@@ -3643,7 +3646,9 @@ function SneedexCreate() {
                                         { type: 'neuron', icon: FaBrain, label: 'SNS Neuron', gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
                                         { type: 'nft', icon: FaImage, label: 'NFT', gradient: 'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)' },
                                         { type: 'token', icon: FaCoins, label: 'ICRC1 Token', gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
-                                        { type: 'lock', icon: FaLock, label: 'Sneed Lock', gradient: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)' },
+                                        // Sneed Locks are listed as NFTs of the Sneed Lock collection (ICRC-7). The separate
+                                        // "Sneed Lock" asset type stays supported by Sneedex but is hidden for now.
+                                        // { type: 'lock', icon: FaLock, label: 'Sneed Lock', gradient: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)' },
                                     ].map(({ type, icon: Icon, label, gradient }) => {
                                         const isSelected = newAssetType === type;
                                         const isDisabled = editingAssetIndex !== null; // Can't change type when editing

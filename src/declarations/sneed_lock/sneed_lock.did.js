@@ -202,6 +202,11 @@ export const idlFactory = ({ IDL }) => {
     'PositionLock' : FullyQualifiedPositionLock,
     'TokenLock' : FullyQualifiedLock,
   });
+  const Subaccount = IDL.Vec(IDL.Nat8);
+  const Account = IDL.Record({
+    'owner' : IDL.Principal,
+    'subaccount' : IDL.Opt(Subaccount),
+  });
   const LockLimits = IDL.Record({
     'min_lock_length_ns' : IDL.Nat64,
     'max_lock_length_ns' : IDL.Nat64,
@@ -222,7 +227,7 @@ export const idlFactory = ({ IDL }) => {
     'include_archived' : IDL.Bool,
   });
   const SupportedStandard = IDL.Record({ 'url' : IDL.Text, 'name' : IDL.Text });
-  const Account = IDL.Record({
+  const Account__1 = IDL.Record({
     'owner' : IDL.Principal,
     'subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
   });
@@ -231,7 +236,7 @@ export const idlFactory = ({ IDL }) => {
     'from_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
     'created_at_time' : IDL.Nat64,
     'expires_at' : IDL.Opt(IDL.Nat64),
-    'spender' : Account,
+    'spender' : Account__1,
   });
   const ApproveCollectionArg = IDL.Record({ 'approval_info' : ApprovalInfo });
   const ApproveCollectionError = IDL.Variant({
@@ -279,7 +284,7 @@ export const idlFactory = ({ IDL }) => {
     'from_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
     'created_at_time' : IDL.Nat64,
     'expires_at' : IDL.Opt(IDL.Nat64),
-    'spender' : Account,
+    'spender' : Account__1,
   });
   const TokenApproval = IDL.Record({
     'token_id' : IDL.Nat,
@@ -288,7 +293,7 @@ export const idlFactory = ({ IDL }) => {
   const IsApprovedArg = IDL.Record({
     'token_id' : IDL.Nat,
     'from_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
-    'spender' : Account,
+    'spender' : Account__1,
   });
   Value.fill(
     IDL.Variant({
@@ -304,7 +309,7 @@ export const idlFactory = ({ IDL }) => {
     'memo' : IDL.Opt(IDL.Vec(IDL.Nat8)),
     'from_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
     'created_at_time' : IDL.Opt(IDL.Nat64),
-    'spender' : IDL.Opt(Account),
+    'spender' : IDL.Opt(Account__1),
   });
   const RevokeCollectionApprovalError = IDL.Variant({
     'GenericError' : IDL.Record({
@@ -328,7 +333,7 @@ export const idlFactory = ({ IDL }) => {
     'memo' : IDL.Opt(IDL.Vec(IDL.Nat8)),
     'from_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
     'created_at_time' : IDL.Opt(IDL.Nat64),
-    'spender' : IDL.Opt(Account),
+    'spender' : IDL.Opt(Account__1),
   });
   const RevokeTokenApprovalError = IDL.Variant({
     'GenericError' : IDL.Record({
@@ -350,10 +355,10 @@ export const idlFactory = ({ IDL }) => {
     'Err' : RevokeTokenApprovalError,
   });
   const TransferFromArg = IDL.Record({
-    'to' : Account,
+    'to' : Account__1,
     'spender_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
     'token_id' : IDL.Nat,
-    'from' : Account,
+    'from' : Account__1,
     'memo' : IDL.Opt(IDL.Vec(IDL.Nat8)),
     'created_at_time' : IDL.Opt(IDL.Nat64),
   });
@@ -442,7 +447,7 @@ export const idlFactory = ({ IDL }) => {
   });
   const BlockType = IDL.Record({ 'url' : IDL.Text, 'block_type' : IDL.Text });
   const TransferArg = IDL.Record({
-    'to' : Account,
+    'to' : Account__1,
     'token_id' : IDL.Nat,
     'memo' : IDL.Opt(IDL.Vec(IDL.Nat8)),
     'from_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
@@ -495,7 +500,6 @@ export const idlFactory = ({ IDL }) => {
     'Ok' : IDL.Null,
     'Err' : TransferTokenLockOwnershipError,
   });
-  const Subaccount = IDL.Vec(IDL.Nat8);
   const SneedLock = IDL.Service({
     'add_liquidity_to_locked_position' : IDL.Func(
         [SwapCanisterId, PositionId, IDL.Nat, IDL.Nat],
@@ -742,6 +746,19 @@ export const idlFactory = ({ IDL }) => {
         ],
         ['query'],
       ),
+    'get_lock_gas' : IDL.Func(
+        [LockId],
+        [
+          IDL.Opt(
+            IDL.Record({
+              'transfer_fee' : IDL.Opt(IDL.Nat),
+              'ledger' : IDL.Principal,
+              'account' : Account,
+            })
+          ),
+        ],
+        ['query'],
+      ),
     'get_lock_limits' : IDL.Func([], [LockLimits], ['query']),
     'get_lock_state' : IDL.Func([LockId], [IDL.Opt(LockState)], ['query']),
     'get_lock_states' : IDL.Func(
@@ -804,7 +821,7 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'icrc37_get_collection_approvals' : IDL.Func(
-        [Account, IDL.Opt(CollectionApproval), IDL.Opt(IDL.Nat)],
+        [Account__1, IDL.Opt(CollectionApproval), IDL.Opt(IDL.Nat)],
         [IDL.Vec(CollectionApproval)],
         ['query'],
       ),
@@ -872,7 +889,7 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'icrc7_balance_of' : IDL.Func(
-        [IDL.Vec(Account)],
+        [IDL.Vec(Account__1)],
         [IDL.Vec(IDL.Nat)],
         ['query'],
       ),
@@ -891,7 +908,7 @@ export const idlFactory = ({ IDL }) => {
     'icrc7_name' : IDL.Func([], [IDL.Text], ['query']),
     'icrc7_owner_of' : IDL.Func(
         [IDL.Vec(IDL.Nat)],
-        [IDL.Vec(IDL.Opt(Account))],
+        [IDL.Vec(IDL.Opt(Account__1))],
         ['query'],
       ),
     'icrc7_permitted_drift' : IDL.Func([], [IDL.Opt(IDL.Nat)], ['query']),
@@ -908,7 +925,7 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'icrc7_tokens_of' : IDL.Func(
-        [Account, IDL.Opt(IDL.Nat), IDL.Opt(IDL.Nat)],
+        [Account__1, IDL.Opt(IDL.Nat), IDL.Opt(IDL.Nat)],
         [IDL.Vec(IDL.Nat)],
         ['query'],
       ),
@@ -955,6 +972,11 @@ export const idlFactory = ({ IDL }) => {
     'update_position_lock' : IDL.Func(
         [IDL.Principal, PositionId, Expiry],
         [CreateLockResult],
+        [],
+      ),
+    'withdraw_lock_gas' : IDL.Func(
+        [LockId, Account],
+        [IDL.Variant({ 'Ok' : IDL.Nat, 'Err' : IDL.Text })],
         [],
       ),
   });

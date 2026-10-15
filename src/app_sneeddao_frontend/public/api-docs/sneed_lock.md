@@ -69,9 +69,13 @@ A lock may have a **dissolve delay**, like an NNS neuron. Its **lock period** (`
 
 A lock with a delay that is not dissolving has no unlock time of its own: its record's `expiry` (the **effective expiry**, what every "is it locked?" check compares) is `18446744073709551615` (the largest `nat64`) until dissolving starts, and the dissolve end after. Show `earliest_unlock` from `get_lock_state` instead: the soonest the lock can be free (`max(lock_end, now) + delay` while not dissolving).
 
-### 1.6 Locked positions are NFTs (ICRC-7, ICRC-37)
+### 1.6 Locks are NFTs (ICRC-7, ICRC-37)
 
-Every position Sneed Lock holds that has been locked at least once is an NFT in the Sneed Lock collection, on this same canister. Its token id is the lock id of the position's first lock (re-locking keeps it). Its owner is the principal that owns the position in Sneed Lock, plus a subaccount label, so NFT wallets and marketplaces can hold it in any account. Transferring the NFT transfers the position, its lock and its unclaimed fees. Section 3.8 has the details.
+Every lock is an NFT in the Sneed Lock collection, on this same canister:
+- **Position locks:** one NFT per position Sneed Lock holds that has been locked at least once; its token id is the lock id of the position's first lock (re-locking keeps it). Transferring it transfers the position, its lock and its unclaimed fees.
+- **Token locks:** every live token lock; its token id is its lock id. Transferring it moves the locked tokens between Sneed wallets, which costs one ledger fee: from the owner's free balance in Sneed Lock, else from the lock's **gas tank**, an account anyone can top up (section 3.9).
+
+The owner is the principal that owns the lock in Sneed Lock, plus a subaccount label, so NFT wallets and marketplaces can hold it in any account. Section 3.8 has the details.
 
 ### 1.7 Permissionless, but not anonymous
 
@@ -310,16 +314,24 @@ For positions it calls `get_claimed_positions_for_principal(P)`, then asks each 
 
 ### 3.8 Locked positions as NFTs (ICRC-7, ICRC-37)
 
-The canister implements [ICRC-7](https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-7/ICRC-7.md) and [ICRC-37](https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-37/ICRC-37.md) for locked positions (`icrc10_supported_standards` lists both). Token locks are not in the collection yet.
+The canister implements [ICRC-7](https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-7/ICRC-7.md) and [ICRC-37](https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-37/ICRC-37.md) for locks of both kinds (`icrc10_supported_standards` lists both).
 
-- **Which tokens:** one per position held that has been locked at least once; id = the position's first lock id. Minted on the first lock (`7mint`), burned when the position is withdrawn (`7burn`). `get_position_nft(pool, position_id)` answers a position's token id.
+- **Which tokens:** positions: one per position held that has been locked at least once; id = the position's first lock id; minted on the first lock (`7mint`), burned when the position is withdrawn (`7burn`); `get_position_nft(pool, position_id)` answers a position's token id. Token locks: every live token lock, id = its lock id; minted by `create_lock`, burned when the lock is archived after it unlocks (an unlocked lock that is not yet archived still has an owner but refuses to move, `GenericError` code 8).
 - **Owner:** the position's claimant, plus a subaccount label. `icrc7_owner_of`, `icrc7_balance_of` and `icrc7_tokens_of` are per account. Every other method (claim fees, add liquidity, dissolve, withdraw) acts for the principal, whichever of its accounts holds the NFT.
 - **Transfer:** `icrc7_transfer` from the holding account (`from_subaccount` must match the label). The position, its lock, its dissolve state and its **unclaimed fees** go with it. Free. Answers the ICRC-3 block index.
 - **Approvals:** `icrc37_approve_tokens`, `icrc37_approve_collection`, the revokes, `icrc37_is_approved`, `icrc37_get_token_approvals`, `icrc37_get_collection_approvals`, `icrc37_transfer_from`. Token approvals are cleared by every transfer. A marketplace can be approved and pull the NFT into an escrow subaccount of its own in one call.
-- **Refused while busy** (`GenericError`, code 3): a withdrawal of the position, or a fee claim or liquidity addition on its pool, is in flight.
+- **Refused while busy** (`GenericError`, code 3): a withdrawal of the position, or a fee claim or liquidity addition on its pool, is in flight; for a token lock, another token operation of its owner.
+- **Token locks need gas** (`GenericError`, code 7, when neither the owner's free balance nor the lock's gas tank covers the ledger fee; nothing moves). A move between two accounts of one principal only changes the label and needs no gas. `transfer_token_lock_ownership` uses the same rules.
 - **`created_at_time`:** within 24 h (+ 2 min drift); repeats within the window answer `Duplicate`.
 - **Limits:** 10 updates per call, 100 ids per query, `take` up to 500, memo up to 32 bytes, 10 approvals per token and per account.
-- **Metadata:** `icrc7:name` (`AAA/BBB LP lock`), `icrc7:description`, `icrc7:image` (an SVG data URL), and `sneedlock:*` fields: `kind`, `swap`, `position_id`, `token0`, `token1`, `lock_id`, `dex`, `lock_end`, `dissolve_delay`, `dissolving_until`, `earliest_unlock`, `locked`, `minted_at`.
+- **Metadata:** `icrc7:name` (`AAA/BBB LP lock`, or `1,000 SNEED lock`), `icrc7:description`, `icrc7:image` (an SVG data URL drawn on the fly), and `sneedlock:*` fields: `kind` (`position` or `token`), then `swap`, `position_id`, `token0`, `token1`, `dex`, `minted_at` for positions, or `ledger`, `amount`, `gas_owner`, `gas_subaccount`, `transfer_fee` for token locks, and for both `lock_id`, `lock_end`, `dissolve_delay`, `dissolving_until`, `earliest_unlock`, `locked`.
+
+### 3.9 Gas for token-lock NFTs
+
+- **The fee:** moving a token lock to another principal is a ledger transfer of its amount between Sneed wallets; the ledger charges one fee to the sender. Sneed Lock takes it from the owner's **free balance** (Sneed wallet beyond everything locked there), else from the lock's **gas tank**, which first sends one fee to the owner's wallet (so the tank pays two fees per transfer). With neither the transfer is refused. The locked amount never changes.
+- **The gas tank** is `{ owner = sneed_lock; subaccount = gas_subaccount(lock_id) }`: byte 0 = `0xFE`, bytes 1-3 = `"GAS"`, bytes 24-31 = the lock id big-endian, zero elsewhere. `get_lock_gas(lock_id)` answers `{ account; ledger; transfer_fee }`.
+- **Anyone can top it up**, owner or not, with a plain `icrc1_transfer` of the lock's token to that account, like topping up a canister's cycles. Gas is a gift to the lock's current owner; it travels with the lock.
+- **Taking it back:** `withdraw_lock_gas(lock_id, to)`, the owner only (the last owner once the lock is archived), sends the tank's balance less one fee.
 
 ---
 
@@ -386,6 +398,7 @@ Types are in section 7. "Caller" means the principal signing the call. Methods m
 | `get_lock_type(lock_id)` | `opt LockType` | `TokenLock` or `PositionLock`. |
 | `get_claimed_positions_for_principal(owner)` | `vec ClaimedPosition` | Positions `owner` has a claim on, each with `position_lock` (`[]` when not locked; an expired lock stays until archived). |
 | `get_position_nft(pool, position_id)` | `opt nat` | The position's NFT id. |
+| `get_lock_gas(lock_id)` | `opt record { account; ledger; transfer_fee : opt nat }` | A token lock's gas tank (3.9). |
 
 `FullyQualifiedLock` is the tuple `(owner, ledger, Lock)`; `FullyQualifiedPositionLock` is `(owner, pool, PositionLock)`. In JavaScript these arrive as arrays `[owner, ledger, lock]`.
 
@@ -622,7 +635,7 @@ Token locks:
 | `btype` | When | `tx` fields |
 |---|---|---|
 | `sneedlock_token_lock_create` | `create_lock` succeeded. | `cid`, `caller`, `owner`, `ledger`, `lock_id`, `amount`, `expiry` (the lock period's end as given); `dissolve_delay` when it has one |
-| `sneedlock_token_lock_transfer` | `transfer_token_lock_ownership` moved the lock and its tokens. | `cid`, `caller`, `from`, `to`, `ledger`, `lock_id`, `amount`, `expiry`, `ledger_tx` (ledger block index), `outcome` = `ok`. When the ledger call threw with an ambiguous code the block has `outcome` = `uncertain` and no `ledger_tx`: the lock is then held for both parties until reconciled. |
+| `sneedlock_token_lock_transfer` | `transfer_token_lock_ownership` or an NFT transfer moved the lock and its tokens. | `cid`, `caller`, `from`, `to`, `ledger`, `lock_id`, `amount`, `expiry`, `ledger_tx` (ledger block index), `outcome` = `ok`, `gas_source` (`owner` or `tank`), `fee`. When the ledger call threw with an ambiguous code the block has `outcome` = `uncertain` and no `ledger_tx`: the lock is then held for both parties until reconciled. |
 | `sneedlock_token_withdraw` | `transfer_tokens` moved tokens out of the caller's Sneed wallet. | `cid`, `caller`, `ledger`, `amount`, `to` (account), `ledger_tx` |
 
 Positions:
@@ -645,6 +658,7 @@ Dissolve delays (one block per change, logged by the canister):
 | `sneedlock_dissolve_stop` | `stop_dissolving` | same fields |
 | `sneedlock_dissolve_delay_increase` | `increase_dissolve_delay` | same fields |
 | `sneedlock_token_lock_extend` | `extend_lock` on a token lock | same fields (`extend_lock` on a position lock logs `sneedlock_position_lock_extend`) |
+| `sneedlock_gas_withdraw` | `withdraw_lock_gas` | `cid`, `caller`, `lock_id`, `ledger`, `amount`, `to` (account), `ledger_tx` |
 
 Fees:
 
@@ -668,9 +682,9 @@ NFTs (the standard block types of [ICRC-7](https://github.com/dfinity/ICRC/blob/
 
 | `btype` | When | `tx` fields |
 |---|---|---|
-| `7mint` | A position's NFT was created: on its first lock, or once for every locked position when NFTs were introduced. | `tid`, `to`, `meta` (`sneedlock:kind`, `sneedlock:swap`, `sneedlock:position_id`, `sneedlock:minted_by` = `lock` or `activation`) |
-| `7burn` | The position was withdrawn. | `tid`, `from` |
-| `7xfer` | `icrc7_transfer`, or `transfer_position_ownership` of a position with an NFT (which also logs `sneedlock_position_transfer`). | `tid`, `from`, `to`; `memo`, `ts` when given |
+| `7mint` | A lock's NFT was created: a position's first lock or a new token lock, or once for every lock when NFTs were introduced. | `tid`, `to`, `meta` (`sneedlock:kind`, `sneedlock:swap` and `sneedlock:position_id` or `sneedlock:ledger`, `sneedlock:minted_by` = `lock` or `activation`) |
+| `7burn` | The position was withdrawn, or the token lock was archived after unlocking. | `tid`, `from` |
+| `7xfer` | `icrc7_transfer`, or `transfer_position_ownership` / `transfer_token_lock_ownership` of a lock (which also log their own `sneedlock_*` block first). | `tid`, `from`, `to`; `memo`, `ts` when given |
 | `37approve` / `37approve_coll` | A token / collection approval. | `tid` (token only), `from`, `spender`, `ts`; `exp` when given |
 | `37revoke` / `37revoke_coll` | A revocation. | `tid` (token only), `from`; `spender` when one was named |
 | `37xfer` | `icrc37_transfer_from`. | `tid`, `spender`, `from`, `to`; `memo`, `ts` when given |

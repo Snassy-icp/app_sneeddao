@@ -7,6 +7,7 @@ import PrincipalInput from './components/PrincipalInput';
 import { formatAmount } from './utils/StringUtils';
 import { dateToReadable } from './utils/DateUtils';
 import { isUntilDissolved } from './utils/lockTime';
+import { parseSubaccountHex } from './utils/lockNft';
 import { LockUntil } from './components/LockUntil';
 import { get_available_backend } from './utils/TokenUtils';
 
@@ -17,6 +18,7 @@ const walletSecondary = '#059669';
 function TransferTokenLockModal({ show, onClose, onTransfer, tokenLock, token }) {
   const { theme } = useTheme();
   const [recipient, setRecipient] = useState('');
+  const [recipientSub, setRecipientSub] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorText, setErrorText] = useState('');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -60,6 +62,10 @@ function TransferTokenLockModal({ show, onClose, onTransfer, tokenLock, token })
       setErrorText("Invalid recipient address! Please enter a valid recipient address.");
       return;
     }
+    if (parseSubaccountHex(recipientSub) === null) {
+      setErrorText("A subaccount is 64 hex characters (or leave it empty).");
+      return;
+    }
 
     // Check if user has enough liquid balance on frontend if pre-send is needed
     if (feeInfo.needsPreSend && !feeInfo.hasEnoughFrontend) {
@@ -71,7 +77,7 @@ function TransferTokenLockModal({ show, onClose, onTransfer, tokenLock, token })
       try {
         setIsLoading(true);
         setErrorText('');
-        await onTransfer(tokenLock, trimmedRecipient);
+        await onTransfer(tokenLock, trimmedRecipient, parseSubaccountHex(recipientSub));
         // Only close on success
         setIsLoading(false);
         onClose();
@@ -253,8 +259,8 @@ function TransferTokenLockModal({ show, onClose, onTransfer, tokenLock, token })
             fontSize: '0.85rem',
             lineHeight: '1.5'
           }}>
-            Only transfer locked tokens to Sneed Wallet principals that support Sneed Lock! 
-            Transferring to incompatible wallets (exchanges, other wallet types) may result in permanent loss of access.
+            The lock is sent as an ICRC-7 NFT: only send it to a wallet that supports ICRC-7 NFTs (the Sneed wallet does).
+            An exchange or a wallet without ICRC-7 support may be unable to show it or send it on.
           </div>
         </div>
 
@@ -281,6 +287,13 @@ function TransferTokenLockModal({ show, onClose, onTransfer, tokenLock, token })
               fontSize: '0.9rem',
               boxSizing: 'border-box'
             }}
+          />
+          <input
+            value={recipientSub}
+            onChange={(e) => setRecipientSub(e.target.value)}
+            placeholder="Recipient subaccount (optional, 64 hex characters)"
+            aria-label="Recipient subaccount"
+            style={{ width: '100%', marginTop: '8px', padding: '10px 12px', background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, borderRadius: '8px', color: theme.colors.primaryText, fontSize: '0.8rem', fontFamily: 'monospace', boxSizing: 'border-box' }}
           />
         </div>
 

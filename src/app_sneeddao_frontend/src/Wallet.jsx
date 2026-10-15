@@ -80,6 +80,7 @@ import { PERM } from './utils/NeuronPermissionUtils.jsx';
 import { IDL } from '@dfinity/candid';
 import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt, FaSearch, FaArrowUp, FaBolt, FaSpinner, FaChartLine, FaStore, FaChartPie } from 'react-icons/fa';
 import BotIcon from './components/BotIcon';
+import { sendLockNft, positionNftId, isMissingMethod } from './utils/lockNft';
 
 // Custom CSS for Wallet page animations
 const walletCustomStyles = `
@@ -4213,7 +4214,7 @@ function Wallet() {
         }
     };
 
-    const handleSendLiquidityPosition = async (liquidityPosition, recipient) => {
+    const handleSendLiquidityPosition = async (liquidityPosition, recipient, recipientSubaccount) => {
         const isBackendTransfer = liquidityPosition.isBackendTransfer || false;
         console.log('=== handleSendLiquidityPosition ===');
         console.log('isBackendTransfer:', isBackendTransfer);
@@ -4246,16 +4247,23 @@ function Wallet() {
                     // Transfer backend ownership only (for locked positions)
                     console.log('=== Transferring backend ownership ===');
                     console.log('Position:', liquidityPosition.symbols, 'ID:', liquidityPosition.id, 'To:', recipient);
-                    const result = await sneedLockActor.transfer_position_ownership(
-                        Principal.fromText(recipient), 
-                        liquidityPosition.swapCanisterId, 
-                        liquidityPosition.id
-                    );
-                    console.log('Backend ownership transfer result:', toJsonString(result));
-                    
-                    // Check for error in result
-                    if (result.Err) {
-                        throw new Error(result.Err.message || 'Transfer failed');
+                    // As its ICRC-7 NFT (any account, subaccount included); the native call against a
+                    // Sneed Lock without NFTs, or for a position that has none.
+                    let nftId = null;
+                    try { nftId = await positionNftId(Principal.fromText(String(liquidityPosition.swapCanisterId)), liquidityPosition.id); } catch (e) { if (!isMissingMethod(e)) throw e; }
+                    if (nftId !== null) {
+                        await sendLockNft(identity, nftId, Principal.fromText(recipient), recipientSubaccount);
+                    } else {
+                        if (recipientSubaccount) throw new Error('This Sneed Lock cannot send to a subaccount yet.');
+                        const result = await sneedLockActor.transfer_position_ownership(
+                            Principal.fromText(recipient), 
+                            liquidityPosition.swapCanisterId, 
+                            liquidityPosition.id
+                        );
+                        console.log('Backend ownership transfer result:', toJsonString(result));
+                        if (result.Err) {
+                            throw new Error(result.Err.message || 'Transfer failed');
+                        }
                     }
                 } else {
                     // Full transfer (actual position transfer on ICPSwap)
@@ -4386,7 +4394,7 @@ function Wallet() {
         setShowTransferTokenLockModal(true);
     };
 
-    const handleTransferTokenLock = async (tokenLock, recipient) => {
+    const handleTransferTokenLock = async (tokenLock, recipient, recipientSubaccount) => {
         console.log('=== handleTransferTokenLock ===');
         console.log('Lock ID:', tokenLock.lock_id);
         console.log('Token:', tokenLock.token.symbol);
@@ -4395,7 +4403,8 @@ function Wallet() {
         try {
             const token = tokenLock.token;
             const liquidBackend = get_available_backend(token);
-            const needsPreSend = liquidBackend < BigInt(token.fee);
+            // moving it between accounts of one's own principal costs no fee
+            const needsPreSend = liquidBackend < BigInt(token.fee) && recipient.trim() !== identity.getPrincipal().toText();
 
             console.log('Liquid backend balance:', liquidBackend.toString());
             console.log('Token fee:', token.fee.toString());
@@ -4464,17 +4473,22 @@ function Wallet() {
                 agentOptions: { identity } 
             });
 
-            const result = await sneedLockActor.transfer_token_lock_ownership(
-                Principal.fromText(recipient),
-                tokenLock.token.ledger_canister_id,
-                tokenLock.lock_id
-            );
-
-            console.log('Transfer token lock result:', toJsonString(result));
-
-            // Check for error in result
-            if (result.Err) {
-                throw new Error(result.Err.message || 'Transfer failed');
+            // As its ICRC-7 NFT (any account, subaccount included); the native call against a
+            // Sneed Lock without NFTs.
+            try {
+                await sendLockNft(identity, tokenLock.lock_id, Principal.fromText(recipient), recipientSubaccount);
+            } catch (e) {
+                if (!isMissingMethod(e)) throw e;
+                if (recipientSubaccount) throw new Error('This Sneed Lock cannot send to a subaccount yet.');
+                const result = await sneedLockActor.transfer_token_lock_ownership(
+                    Principal.fromText(recipient),
+                    tokenLock.token.ledger_canister_id,
+                    tokenLock.lock_id
+                );
+                console.log('Transfer token lock result:', toJsonString(result));
+                if (result.Err) {
+                    throw new Error(result.Err.message || 'Transfer failed');
+                }
             }
 
             // Refresh token balances and locks
