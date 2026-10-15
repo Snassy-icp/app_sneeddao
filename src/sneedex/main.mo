@@ -1933,6 +1933,16 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     };
                 };
             };
+            // NFTs of Sneed Lock's collection are locks: the same expiry rule as the Sneed Lock type
+            case (#ICRC7NFT(nft)) {
+                if (Principal.equal(nft.collection_canister_id, sneedLockCanisterId)) {
+                    let expiration = switch (getOffer(request.offer_id)) { case (?o) o.expiration; case null { return #err(#OfferNotFound) } };
+                    switch (await* AssetHandlers.checkSneedLockNfts(sneedLockCanisterId, self(), nft.token_ids, expiration, false)) {
+                        case (#err(e)) { return #err(e) };
+                        case (#ok(_)) {};
+                    };
+                };
+            };
             case (_) {};
         };
         addAssetSync(caller, { offer_id = request.offer_id; asset = asset });
@@ -2479,6 +2489,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 if (assetEntry.escrowed) { return #err(#InvalidAsset("Asset already escrowed")) };
                 switch (assetEntry.asset) {
                     case (#ICRC7NFT(nft)) {
+                        let listedExpiration = offer.expiration;
                         let subaccount = Utils.offerEscrowSubaccount(caller, offerId);
                         if (pull) {
                             switch (await* AssetHandlers.pullNfts(nft.collection_canister_id, { owner = caller; subaccount = null }, self(), subaccount, nft.token_ids)) {
@@ -2489,6 +2500,16 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         switch (await* AssetHandlers.verifyNftEscrow(nft.collection_canister_id, self(), subaccount, nft.token_ids)) {
                             case (#err(e)) { return #err(e) };
                             case (#ok(_)) {
+                                // Sneed Lock NFTs: still locked past the offer, and a token lock can pay its delivery
+                                if (Principal.equal(nft.collection_canister_id, sneedLockCanisterId)) {
+                                    switch (await* AssetHandlers.checkSneedLockNfts(sneedLockCanisterId, self(), nft.token_ids, listedExpiration, true)) {
+                                        case (#err(e)) { return #err(e) };
+                                        case (#ok(_)) {};
+                                    };
+                                };
+                                // re-read: the offer may have changed across the awaits
+                                let offer = switch (getOffer(offerId)) { case (?o) o; case null { return #err(#OfferNotFound) } };
+                                if (offer.state != #PendingEscrow or assetIndex >= offer.assets.size() or offer.assets[assetIndex].escrowed) { return #err(#InvalidState("Offer changed while escrowing")) };
                                 let updatedEntry : T.AssetEntry = { asset = assetEntry.asset; escrowed = true };
                                 let updatedAssets = Utils.updateAt(offer.assets, assetIndex, updatedEntry);
                                 let updatedOffer : T.Offer = {

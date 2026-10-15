@@ -7,6 +7,9 @@ import Utils "Utils";
 import Array "mo:base/Array";
 import Nat "mo:base/Nat";
 import Nat8 "mo:base/Nat8";
+import Nat64 "mo:base/Nat64";
+import Int "mo:base/Int";
+import Time "mo:base/Time";
 
 module {
     // ============================================
@@ -755,6 +758,61 @@ module {
         } catch (_e) { #err(#TransferFailed("Failed to call Sneed Lock")) };
     };
     
+    /// NFTs of Sneed Lock's own collection are locks, and get the rules of the Sneed Lock asset type:
+    /// every lock must still be locked and outlive the offer (`offerExpiration`, ns), checked when
+    /// listed and again at escrow (a seller can start dissolving a lock until Sneedex holds it).
+    /// With `checkGas`, a token lock must also be able to pay the ledger fee of its delivery: two
+    /// fees in its gas tank, or one free fee in Sneedex's own Sneed Lock wallet.
+    public func checkSneedLockNfts(sneedLockId : Principal, sneedex : Principal, tokenIds : [Nat], offerExpiration : ?Int, checkGas : Bool) : async* T.Result<()> {
+        let nfts : T.SneedLockNftActor = actor (Principal.toText(sneedLockId));
+        try {
+            let metas = await nfts.icrc7_token_metadata(tokenIds);
+            var i = 0;
+            for (m in metas.vals()) {
+                let tid = tokenIds[i];
+                i += 1;
+                let fields = switch (m) { case (?f) f; case null { return #err(#InvalidAsset("Sneed Lock NFT " # Nat.toText(tid) # " does not exist (an unlocked lock is no longer an NFT)")) } };
+                var kind = ""; var lockId : ?Nat = null;
+                for ((k, v) in fields.vals()) {
+                    switch (k, v) {
+                        case ("sneedlock:kind", #Text(t)) { kind := t };
+                        case ("sneedlock:lock_id", #Nat(n)) { lockId := ?n };
+                        case _ {};
+                    };
+                };
+                // a position's NFT keeps its first lock id; its current lock is named in the metadata
+                let current = switch (lockId) { case (?n) n; case null { return #err(#InvalidAsset("Sneed Lock NFT " # Nat.toText(tid) # " has no current lock")) } };
+                let expiry = switch (await sneedLock(sneedLockId).get_lock_by_id(current)) {
+                    case (?#TokenLock(_, _, l)) l.expiry;
+                    case (?#PositionLock(_, _, l)) l.expiry;
+                    case null { return #err(#InvalidAsset("Lock " # Nat.toText(current) # " does not exist in Sneed Lock")) };
+                };
+                if (Nat64.toNat(expiry) <= Int.abs(Time.now())) { return #err(#InvalidAsset("Lock " # Nat.toText(current) # " has expired")) };
+                switch (offerExpiration) {
+                    case (?e) { if (Nat64.toNat(expiry) <= Int.abs(e)) { return #err(#InvalidAsset("Lock " # Nat.toText(current) # " unlocks before the offer ends; a lock must outlive the offer")) } };
+                    case null {};
+                };
+                if (checkGas and kind == "token") {
+                    let gas = switch (await nfts.get_lock_gas(tid)) { case (?g) g; case null { return #err(#InvalidAsset("Lock " # Nat.toText(tid) # " has no gas account")) } };
+                    let l : T.ICRC1Actor = actor (Principal.toText(gas.ledger));
+                    let fee = await l.icrc1_fee();
+                    let tank = await l.icrc1_balance_of(gas.account);
+                    if (tank < 2 * fee) {
+                        switch (await* sneedexFreeBalanceInSneedLock(sneedLockId, sneedex, gas.ledger)) {
+                            case (#ok((free, _))) {
+                                if (free < fee) {
+                                    return #err(#InvalidAsset("Lock " # Nat.toText(tid) # " needs gas to be delivered: add at least " # Nat.toText(2 * fee - tank) # " more of its token to its gas account (anyone can, from the lock or NFT page)"));
+                                };
+                            };
+                            case (#err(e)) { return #err(e) };
+                        };
+                    };
+                };
+            };
+            #ok();
+        } catch (_e) { #err(#TransferFailed("Failed to read the lock NFTs from Sneed Lock")) };
+    };
+
     /// ICRC-37 listing: the seller approved Sneedex; pull the tokens into the escrow subaccount.
     public func pullNfts(
         collectionCanisterId : Principal,

@@ -401,6 +401,13 @@ module {
         #TokenLock : (Principal, Principal, SneedLockTokenLock);
         #PositionLock : (Principal, Principal, SneedLockPositionLock);
     };
+    /// ICRC-7 metadata values, and what Sneedex reads from Sneed Lock's NFT collection.
+    public type ICRC7Value = { #Blob : Blob; #Text : Text; #Nat : Nat; #Int : Int; #Array : [ICRC7Value]; #Map : [(Text, ICRC7Value)] };
+    public type SneedLockNftActor = actor {
+        icrc7_token_metadata : shared query ([Nat]) -> async [?[(Text, ICRC7Value)]];
+        get_lock_gas : shared query (Nat) -> async ?{ account : Account; ledger : Principal; transfer_fee : ?Nat };
+    };
+
     public type SneedLockActor = actor {
         get_lock_by_id : shared query (Nat) -> async ?SneedLockInfo;
         get_token_locks : shared query () -> async [(Nat, Principal, Nat, Nat64)];
