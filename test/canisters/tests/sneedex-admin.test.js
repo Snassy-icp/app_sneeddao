@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { IDL } from '@icp-sdk/core/candid';
 import { Principal } from '@icp-sdk/core/principal';
-import { createPic, install, actorAs, wasm, account, admin, alice, bob, carol, user, ICP_LEDGER_ID, T, unwrap, errOf, paymentSubaccount } from '../lib/pic.js';
+import { createPic, install, actorAs, wasm, account, admin, alice, bob, carol, user, ICP_LEDGER_ID, T, unwrap, errOf, paymentSubaccount, refusedAtIngress } from '../lib/pic.js';
 import { ledgerIdl, ledgerInit, premiumIdl } from '../lib/idl.js';
 import { idlFactory as sneedexIdl, init as sneedexInit } from '../build/sneedex.did.js';
 
@@ -78,7 +78,7 @@ describe('admin guards', () => {
   it('refuses every admin update method to a non-admin and leaves the settings as they were', async () => {
     const cfg = await dexBob.getConfig();
     const calls = [
-      () => dexBob.addAssetType('x', 'y'), () => dexBob.deactivateAssetType(0n), () => dexBob.reactivateAssetType(0n), () => dexBob.updateConfig(cfg),
+      () => dexBob.deactivateAssetType(0n), () => dexBob.reactivateAssetType(0n),
       () => dexBob.addAdmin(bob), () => dexBob.removeAdmin(admin), () => dexBob.setMinIncrementSettings(1n, 3n, 2n, 5n),
       () => dexBob.setMarketplaceFeeRate(1n), () => dexBob.setFeeRecipient(account(bob)), () => dexBob.setLedgerFeeRecipient(icpId, account(bob)),
       () => dexBob.removeLedgerFeeRecipient(icpId), () => dexBob.setOfferCreationFee(1n), () => dexBob.setPremiumOfferCreationFee(1n),
@@ -89,6 +89,8 @@ describe('admin guards', () => {
       () => dexBob.setNeuronInfoCacheStaleness(1n), () => dexBob.clearNeuronInfoCache(), () => dexBob.clearNeuronInfoCacheFor(bob),
     ];
     for (const call of calls) expect(errOf(await call())).toHaveProperty('NotAuthorized');
+    // the admin tools with free-form content are refused at ingress
+    for (const call of [() => dexBob.addAssetType('x', 'y'), () => dexBob.updateConfig(cfg)]) expect(await refusedAtIngress(call())).toBe(true);
     expect(await dexBob.getConfig()).toEqual(cfg);
     expect(await dexBob.getMarketplaceFeeRate()).toBe(0n);
     expect((await dexBob.getFeeRecipient()).owner.toText()).toBe('aaaaa-aa'); // the default: transfers to it would fail on a real ledger

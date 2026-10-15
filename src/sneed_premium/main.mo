@@ -6,6 +6,7 @@ import Int "mo:base/Int";
 
 import T "Types";
 import Utils "Utils";
+import IngressGuard "../IngressGuard";
 
 shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = this {
     // ============================================
@@ -1132,5 +1133,85 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         assert(isAdmin(caller));
         icpPaymentLog.size();
     };
+
+    // Limit of the ingress guard below
+    transient let MAX_PROMO_CODE : Nat = 64;
+
+    // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
+    // would go through consensus at our cost, and arguments are capped in size.
+    system func inspect({ caller : Principal; arg : Blob; msg : {
+        #addAdmin : Any;
+        #addIcpTier : Any;
+        #addVpTier : Any;
+        #checkMembership : Any;
+        #claimPromoCode : () -> Text;
+        #claimWithVotingPower : Any;
+        #createPromoCode : Any;
+        #deactivatePromoCode : Any;
+        #deletePromoCode : Any;
+        #extendMembershipAdmin : Any;
+        #getActivePremiumMembers : Any;
+        #getAllIcpTiers : Any;
+        #getAllMemberships : Any;
+        #getAllVotingPowerTiers : Any;
+        #getCanisterId : Any;
+        #getClaimLog : Any;
+        #getClaimLogCount : Any;
+        #getConfig : Any;
+        #getDepositAccount : Any;
+        #getIcpPaymentLog : Any;
+        #getIcpPaymentLogCount : Any;
+        #getIcpTiers : Any;
+        #getMembershipDetails : Any;
+        #getPaymentStats : Any;
+        #getPromoCodeClaims : Any;
+        #getPromoCodes : Any;
+        #getVotingPowerTiers : Any;
+        #isCallerAdmin : Any;
+        #purchaseWithIcp : Any;
+        #reactivatePromoCode : Any;
+        #removeAdmin : Any;
+        #removeIcpTier : Any;
+        #removeVpTier : Any;
+        #revokeMembership : Any;
+        #setIcpLedgerId : Any;
+        #setMembershipAdmin : Any;
+        #setMinClaimInterval : Any;
+        #setPaymentRecipient : Any;
+        #setSneedGovernanceId : Any;
+        #updateConfig : Any;
+        #updateIcpTier : Any;
+        #updateVpTier : Any;
+    } }) : Bool {
+        switch (msg) {
+            case (
+                #checkMembership _
+                or #getActivePremiumMembers _
+                or #getAllIcpTiers _
+                or #getAllMemberships _
+                or #getAllVotingPowerTiers _
+                or #getCanisterId _
+                or #getClaimLog _
+                or #getClaimLogCount _
+                or #getConfig _
+                or #getDepositAccount _
+                or #getIcpPaymentLog _
+                or #getIcpPaymentLogCount _
+                or #getIcpTiers _
+                or #getMembershipDetails _
+                or #getPaymentStats _
+                or #getPromoCodeClaims _
+                or #getPromoCodes _
+                or #getVotingPowerTiers _
+                or #isCallerAdmin _
+            ) false;
+            // codes are 8 letters; leave room for what people paste
+            case (#claimPromoCode f) arg.size() <= IngressGuard.textArg(MAX_PROMO_CODE) and IngressGuard.text(f(), MAX_PROMO_CODE);
+            // admin tools with free-form content
+            case (#addIcpTier _ or #addVpTier _ or #updateIcpTier _ or #updateVpTier _ or #createPromoCode _ or #deactivatePromoCode _ or #reactivatePromoCode _ or #deletePromoCode _ or #updateConfig _) isAdmin(caller);
+            case _ arg.size() <= IngressGuard.SMALL_ARG;
+        };
+    };
+
 };
 

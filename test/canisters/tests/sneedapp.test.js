@@ -10,7 +10,7 @@ import { Principal } from '@icp-sdk/core/principal';
 import { IDL } from '@icp-sdk/core/candid';
 import { createHash } from 'node:crypto';
 import {
-  createPic, install, actorAs, account, admin, alice, bob, carol, user, ICP_LEDGER_ID, T, unwrap, errOf, wasm,
+  createPic, install, actorAs, account, admin, alice, bob, carol, user, ICP_LEDGER_ID, T, unwrap, errOf, wasm, refusedAtIngress,
 } from '../lib/pic.js';
 import { ledgerIdl, ledgerInit, cmcIdl, premiumIdl } from '../lib/idl.js';
 import { idlFactory as factoryIdl } from '../build/sneedapp.did.js';
@@ -148,7 +148,7 @@ describe('sneedapp catalogue, publishers, wallet and admin', () => {
   });
 
   it('anyone but anonymous creates a publisher: unverified, 10% DAO cut, the creator its only owner', async () => {
-    expect(errOf(await fAnon.createPublisher(publisherInput()))).toMatch(/Anonymous/);
+    expect(await refusedAtIngress(fAnon.createPublisher(publisherInput()))).toBe(true); // refused at ingress (was /Anonymous/)
     expect(unwrap(await fAlice.createPublisher(publisherInput()))).toBe(1n);
     const pub = (await f.getPublisher(1n))[0];
     expect(pub.name).toBe('Alice Labs');
@@ -166,8 +166,8 @@ describe('sneedapp catalogue, publishers, wallet and admin', () => {
   });
 
   it('publisher owners edit the profile, owners and families; strangers are refused; the last owner stays', async () => {
-    expect(errOf(await fBob.updatePublisher(1n, publisherInput({ name: 'Bob' })))).toBe('Not authorized');
-    expect(errOf(await fAlice.updatePublisher(9n, publisherInput()))).toBe('Publisher not found');
+    expect(await refusedAtIngress(fBob.updatePublisher(1n, publisherInput({ name: 'Bob' })))).toBe(true); // refused at ingress (was 'Not authorized')
+    expect(await refusedAtIngress(fAlice.updatePublisher(9n, publisherInput()))).toBe(true); // refused at ingress (was 'Publisher not found')
     unwrap(await fAlice.updatePublisher(1n, publisherInput({ name: 'Alice Labs 2', defaultPaymentAccount: account(dave) })));
     let pub = (await f.getPublisher(1n))[0];
     expect(pub.name).toBe('Alice Labs 2');
@@ -181,12 +181,12 @@ describe('sneedapp catalogue, publishers, wallet and admin', () => {
     expect(errOf(await fBob.removePublisherOwner(1n, carol))).toBe('Principal is not an owner');
     unwrap(await fBob.removePublisherOwner(1n, bob));
     expect(errOf(await fAlice.removePublisherOwner(1n, alice))).toBe('Cannot remove the last owner');
-    expect(errOf(await fBob.updatePublisher(1n, publisherInput()))).toBe('Not authorized');
+    expect(await refusedAtIngress(fBob.updatePublisher(1n, publisherInput()))).toBe(true); // refused at ingress (was 'Not authorized')
     // admins may too
     unwrap(await f.addPublisherOwner(1n, bob));
     unwrap(await f.removePublisherOwner(1n, bob));
     // families
-    expect(errOf(await fBob.addPublisherFamily(1n, 'bots'))).toBe('Not authorized');
+    expect(await refusedAtIngress(fBob.addPublisherFamily(1n, 'bots'))).toBe(true); // refused at ingress (was 'Not authorized')
     unwrap(await fAlice.addPublisherFamily(1n, 'bots'));
     expect(errOf(await fAlice.addPublisherFamily(1n, 'bots'))).toBe('Family already exists');
     unwrap(await fAlice.addPublisherFamily(1n, 'tools'));
@@ -212,9 +212,9 @@ describe('sneedapp catalogue, publishers, wallet and admin', () => {
   });
 
   it('apps: owners add apps under their own publisher, families must be the publisher\'s, ids are unique, minting starts disabled', async () => {
-    expect(errOf(await fAlice.addApp(0n, appInput()))).toBe('Not authorized'); // not an owner of Sneed DAO
+    expect(await refusedAtIngress(fAlice.addApp(0n, appInput()))).toBe(true); // refused at ingress (was 'Not authorized'); not an owner of Sneed DAO
     expect(errOf(await fAlice.addApp(1n, appInput({ families: ['nope'] })))).toBe("Family 'nope' not in publisher's families");
-    expect(errOf(await f.addApp(7n, appInput()))).toBe('Publisher not found');
+    expect(errOf(await f.addApp(7n, appInput()))).toBe('Publisher not found'); // an admin gets past the ingress guard
     expect(unwrap(await fAlice.addApp(1n, appInput({ families: ['bots'] })))).toBe(0n);
     expect(errOf(await fAlice.addApp(1n, appInput()))).toBe('App ID already exists');
     const app = (await f.getApp('demo'))[0];
@@ -239,8 +239,8 @@ describe('sneedapp catalogue, publishers, wallet and admin', () => {
   });
 
   it('app settings: owners update, enable, price, set the payment account and families; the DAO cut and removal are admin only', async () => {
-    expect(errOf(await fBob.updateApp(0n, updateInput()))).toBe('Not authorized');
-    expect(errOf(await fAlice.updateApp(9n, updateInput()))).toBe('App not found');
+    expect(await refusedAtIngress(fBob.updateApp(0n, updateInput()))).toBe(true); // refused at ingress (was 'Not authorized')
+    expect(await refusedAtIngress(fAlice.updateApp(9n, updateInput()))).toBe(true); // refused at ingress (was 'App not found')
     expect(errOf(await fAlice.updateApp(0n, updateInput({ families: ['other'] })))).toBe("Family 'other' not in publisher's families");
     unwrap(await fAlice.updateApp(0n, updateInput({ name: 'Demo Bot v2', mintPriceE8s: 1n, families: ['tools'] })));
     let app = (await f.getApp('demo'))[0];

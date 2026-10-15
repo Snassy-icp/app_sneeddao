@@ -9,7 +9,7 @@ import { Principal } from '@icp-sdk/core/principal';
 import { IDL } from '@icp-sdk/core/candid';
 import {
   createPic, install, actorAs, account, principalToSubaccount,
-  admin, alice, bob, carol, user, ICP_LEDGER_ID, SNEED_GOVERNANCE, T, unwrap, errOf, wasm,
+  admin, alice, bob, carol, user, ICP_LEDGER_ID, SNEED_GOVERNANCE, T, unwrap, errOf, wasm, refusedAtIngress,
 } from '../lib/pic.js';
 import { ledgerIdl, ledgerInit } from '../lib/idl.js';
 import { rllGovernanceIdl, neuronSpec } from '../lib/idl-rll.js';
@@ -110,15 +110,18 @@ describe('admin guards', () => {
   const vpTier = { name: 'x', minVotingPowerE8s: 1n, durationNs: MONTH, active: true };
   it('refuse every mutation from a non-admin', async () => {
     const calls = [
-      premiumAlice.addIcpTier(tier), premiumAlice.updateIcpTier(0n, tier), premiumAlice.removeIcpTier(0n),
-      premiumAlice.addVpTier(vpTier), premiumAlice.updateVpTier(0n, vpTier), premiumAlice.removeVpTier(0n),
+      premiumAlice.removeIcpTier(0n), premiumAlice.removeVpTier(0n),
       premiumAlice.setMembershipAdmin(alice, 1n), premiumAlice.extendMembershipAdmin(alice, 1n), premiumAlice.revokeMembership(bob),
-      premiumAlice.addAdmin(alice), premiumAlice.removeAdmin(bob), premiumAlice.updateConfig(initConfig()),
+      premiumAlice.addAdmin(alice), premiumAlice.removeAdmin(bob),
       premiumAlice.setIcpLedgerId(alice), premiumAlice.setSneedGovernanceId(alice), premiumAlice.setPaymentRecipient(account(alice)), premiumAlice.setMinClaimInterval(1n),
-      premiumAlice.createPromoCode({ durationNs: DAY, maxClaims: 1n, expiration: [], notes: [] }),
-      premiumAlice.deactivatePromoCode('X'), premiumAlice.reactivatePromoCode('X'), premiumAlice.deletePromoCode('X'),
     ];
     for (const r of await Promise.all(calls)) expect(errOf(r)).toEqual({ NotAuthorized: null });
+    // the admin tools with free-form content are refused at ingress
+    for (const call of [
+      () => premiumAlice.addIcpTier(tier), () => premiumAlice.updateIcpTier(0n, tier), () => premiumAlice.addVpTier(vpTier), () => premiumAlice.updateVpTier(0n, vpTier),
+      () => premiumAlice.updateConfig(initConfig()), () => premiumAlice.createPromoCode({ durationNs: DAY, maxClaims: 1n, expiration: [], notes: [] }),
+      () => premiumAlice.deactivatePromoCode('X'), () => premiumAlice.reactivatePromoCode('X'), () => premiumAlice.deletePromoCode('X'),
+    ]) expect(await refusedAtIngress(call())).toBe(true);
     expect(await premium.getAllIcpTiers()).toEqual([]);
     expect(await premium.getAllVotingPowerTiers()).toEqual([]);
     expect((await premium.getConfig()).admins.map((p) => p.toText())).toEqual([bob.toText()]);

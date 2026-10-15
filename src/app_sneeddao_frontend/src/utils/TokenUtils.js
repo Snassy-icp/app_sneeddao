@@ -125,8 +125,13 @@ async function getTokenMetaForSwap(swapActor, backendActor, swapCanisterId) {
         console.log("TOKENMETA!!!", tokenMeta);
 
         // Cache the result only when both sides are real
+        // (best effort: the backend refuses writes from logged-out browsers)
         if (token0Result.ok && token1Result.ok) {
-            await backendActor.set_cached_token_meta(canisterPrincipal, tokenMeta);
+            try {
+                await backendActor.set_cached_token_meta(canisterPrincipal, tokenMeta);
+            } catch (e) {
+                console.warn("Could not cache swap token metadata:", e);
+            }
         }
         return tokenMeta;
     } catch (error) {

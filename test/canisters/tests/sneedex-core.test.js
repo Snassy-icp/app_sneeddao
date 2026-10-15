@@ -12,7 +12,7 @@
 // Fees and admin functions are in sneedex-admin.test.js.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { IDL } from '@icp-sdk/core/candid';
-import { createPic, install, actorAs, wasm, account, principalToSubaccount, admin, alice, bob, carol, ICP_LEDGER_ID, T, unwrap, errOf } from '../lib/pic.js';
+import { createPic, install, actorAs, wasm, account, principalToSubaccount, admin, alice, bob, carol, ICP_LEDGER_ID, T, unwrap, errOf, refusedAtIngress } from '../lib/pic.js';
 import { ledgerIdl, ledgerInit } from '../lib/idl.js';
 import { idlFactory as sneedexIdl, init as sneedexInit } from '../build/sneedex.did.js';
 
@@ -122,10 +122,10 @@ describe('offer creation and validation', () => {
     expect(errOf(await dexAlice.createOffer(offerReq({ min_bid_price: [2n * E8], buyout_price: [E8] })))).toHaveProperty('InvalidPrice');
   });
 
-  it('refuses notes over 4000 characters', async () => {
+  it('refuses notes over 4000 characters (at ingress)', async () => {
     const long = 'x'.repeat(4001);
-    expect(errOf(await dexAlice.createOffer(offerReq({ buyout_price: [E8], public_note: [long] })))).toHaveProperty('InvalidInput');
-    expect(errOf(await dexAlice.createOffer(offerReq({ buyout_price: [E8], note_to_buyer: [long] })))).toHaveProperty('InvalidInput');
+    expect(await refusedAtIngress(dexAlice.createOffer(offerReq({ buyout_price: [E8], public_note: [long] })))).toBe(true);
+    expect(await refusedAtIngress(dexAlice.createOffer(offerReq({ buyout_price: [E8], note_to_buyer: [long] })))).toBe(true);
     expect(await dexAny.getNextOfferId()).toBe(0n); // nothing was created so far
   });
 
@@ -201,8 +201,8 @@ describe('drafts and the state machine', () => {
 
   it('bounds the title and description of a canister asset', async () => {
     const id = await newOffer();
-    expect(errOf(await dexAlice.addAsset({ offer_id: id, asset: canisterAsset(canA, { title: ['t'.repeat(101)] }) }))).toHaveProperty('InvalidAsset');
-    expect(errOf(await dexAlice.addAsset({ offer_id: id, asset: canisterAsset(canA, { description: ['d'.repeat(4001)] }) }))).toHaveProperty('InvalidAsset');
+    expect(await refusedAtIngress(dexAlice.addAsset({ offer_id: id, asset: canisterAsset(canA, { title: ['t'.repeat(101)] }) }))).toBe(true);
+    expect(await refusedAtIngress(dexAlice.addAsset({ offer_id: id, asset: canisterAsset(canA, { description: ['d'.repeat(4001)] }) }))).toBe(true);
     unwrap(await dexAlice.addAsset({ offer_id: id, asset: canisterAsset(canA, { title: ['My bot'], description: ['d'.repeat(4000)], canister_kind: [0n] }) }));
     const a = (await offer(id)).assets[0].asset.Canister;
     expect(a.title).toEqual(['My bot']);

@@ -81,6 +81,15 @@ The owner is the principal that owns the lock in Sneed Lock, plus a subaccount l
 
 The canister identifies users only by the principal that signs the call. Any front end that can produce a signed call for the user, Internet Identity, Plug, OISY, NFID, a hardware wallet, a dfx identity, is a first-class client. The caveat for integrators is the flip side: a lock belongs to the principal that created it, so a user who logs into your product with a different principal than they use elsewhere will see different locks.
 
+### 1.8 Calls the canister refuses at ingress
+
+Before it accepts an update call from outside the IC, the canister checks it (its `inspect_message`), and a refused call costs nobody anything:
+
+- **Query methods only answer query calls.** Calling one as an update call (for example `dfx canister call` with `--update`, or an IDL without the `query` annotation) is refused. Use the generated declarations, or `--query` with dfx.
+- **Arguments are capped in size.** An update call's whole argument may be at most 4 KiB, far more than any real call needs. The ICRC-7/37 batch methods instead take at most `icrc7_max_update_batch_size` items (a canister calling with more gets `GenericBatchError`, as the standard says).
+
+Canisters calling Sneed Lock are not affected: the check only applies to calls from outside the IC.
+
 ---
 
 ## 2. Quick start

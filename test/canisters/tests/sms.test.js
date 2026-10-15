@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Principal } from '@icp-sdk/core/principal';
 import { IDL } from '@icp-sdk/core/candid';
-import { createPic, install, actorAs, wasm, admin, alice, bob, carol, user, SNEED_GOVERNANCE, unwrap, errOf, nowNs } from '../lib/pic.js';
+import { createPic, install, actorAs, wasm, admin, alice, bob, carol, user, SNEED_GOVERNANCE, unwrap, errOf, nowNs, refusedAtIngress } from '../lib/pic.js';
 import { premiumIdl } from '../lib/idl.js';
 import { idlFactory as smsIdl } from '../build/sneed_sms.did.js';
 
@@ -75,11 +75,11 @@ describe('sneed_sms', () => {
   it('refuses anonymous senders, validates subject, body, recipients and reply targets', async () => {
     expect(err(await sAnon.send_message(msg([bob])))).toMatch(/Unauthorized: Anonymous/);
     expect(err(await sBob.send_message(msg([alice], '')))).toMatch(/InvalidInput: Subject cannot be empty/);
-    expect(err(await sBob.send_message(msg([alice], 'x'.repeat(201))))).toMatch(/InvalidInput: Subject exceeds maximum length of 200/);
+    expect(await refusedAtIngress(sBob.send_message(msg([alice], 'x'.repeat(201))))).toBe(true); // refused at ingress (InvalidInput: Subject exceeds maximum length of 200)
     expect(err(await sBob.send_message(msg([alice], 'ok', '')))).toMatch(/InvalidInput: Body cannot be empty/);
-    expect(err(await sBob.send_message(msg([alice], 'ok', 'x'.repeat(5001))))).toMatch(/InvalidInput: Body exceeds maximum length of 5000/);
+    expect(await refusedAtIngress(sBob.send_message(msg([alice], 'ok', 'x'.repeat(5001))))).toBe(true); // refused at ingress (InvalidInput: Body exceeds maximum length of 5000)
     expect(err(await sBob.send_message(msg([])))).toMatch(/InvalidInput: At least one recipient/);
-    expect(err(await sBob.send_message(msg(Array.from({ length: 21 }, (_, i) => user(`r${i}`)))))).toMatch(/InvalidInput: Too many recipients. Maximum is 20/);
+    expect(await refusedAtIngress(sBob.send_message(msg(Array.from({ length: 21 }, (_, i) => user(`r${i}`)))))).toBe(true); // refused at ingress (InvalidInput: Too many recipients. Maximum is 20)
     expect(err(await sBob.send_message(msg([alice], 'ok', 'ok', [[999n]])))).toMatch(/NotFound: Reply message 999 not found/);
     expect(err(await sDave.send_message(msg([alice], 're', 'me too', [[m1]])))).toMatch(/Unauthorized: Cannot reply to message 1 - access denied/);
     // the refusals above did not count as sends: bob's first real message goes through, as a reply to m1
@@ -105,9 +105,9 @@ describe('sneed_sms', () => {
     expect(err(await sAlice.update_config([0n], [], [], []))).toMatch(/Unauthorized: Only admins/);
     unwrap(await s.update_config([0n], [10n], [20n], [2n]));
     expect(await s.get_config()).toEqual({ rate_limit_minutes: 0n, max_subject_length: 10n, max_body_length: 20n, max_recipients: 2n });
-    expect(err(await sAlice.send_message(msg([bob], 'x'.repeat(11))))).toMatch(/Subject exceeds maximum length of 10/);
-    expect(err(await sAlice.send_message(msg([bob], 'short', 'x'.repeat(21))))).toMatch(/Body exceeds maximum length of 20/);
-    expect(err(await sAlice.send_message(msg([bob, carol, dave], 'short', 'ok')))).toMatch(/Too many recipients. Maximum is 2/);
+    expect(await refusedAtIngress(sAlice.send_message(msg([bob], 'x'.repeat(11))))).toBe(true); // refused at ingress (Subject exceeds maximum length of 10)
+    expect(await refusedAtIngress(sAlice.send_message(msg([bob], 'short', 'x'.repeat(21))))).toBe(true); // refused at ingress (Body exceeds maximum length of 20)
+    expect(await refusedAtIngress(sAlice.send_message(msg([bob, carol, dave], 'short', 'ok')))).toBe(true); // refused at ingress (Too many recipients. Maximum is 2)
     unwrap(await sAlice.send_message(msg([bob, carol], 'short', 'ok')));
     unwrap(await sAlice.send_message(msg([bob], 'short', 'ok'))); // rate limit 0: back to back is fine
     unwrap(await s.update_config([], [200n], [5000n], [20n]));
@@ -119,16 +119,16 @@ describe('sneed_sms', () => {
     unwrap(await s.update_config([10n], [], [], [])); // a plain rate limit again
     unwrap(await sAlice.send_message(msg(Array.from({ length: 21 }, (_, i) => user(`p${i}`)), 'x'.repeat(300), 'x'.repeat(5001))));
     unwrap(await sAlice.send_message(msg([bob], 'member', 'again at once'))); // premium rate limit 0
-    expect(err(await sAlice.send_message(msg([bob], 'x'.repeat(601))))).toMatch(/Subject exceeds maximum length of 600/);
-    expect(err(await sAlice.send_message(msg([bob], 'ok', 'x'.repeat(30001))))).toMatch(/Body exceeds maximum length of 30000/);
-    expect(err(await sAlice.send_message(msg(Array.from({ length: 61 }, (_, i) => user(`p${i}`)))))).toMatch(/Too many recipients. Maximum is 60/);
+    expect(await refusedAtIngress(sAlice.send_message(msg([bob], 'x'.repeat(601))))).toBe(true); // refused at ingress (Subject exceeds maximum length of 600)
+    expect(await refusedAtIngress(sAlice.send_message(msg([bob], 'ok', 'x'.repeat(30001))))).toBe(true); // refused at ingress (Body exceeds maximum length of 30000)
+    expect(await refusedAtIngress(sAlice.send_message(msg(Array.from({ length: 61 }, (_, i) => user(`p${i}`)))))).toBe(true); // refused at ingress (Too many recipients. Maximum is 60)
     // a non-member keeps the plain limits
     expect(err(await sBob.send_message(msg([alice], 'ok', 'x'.repeat(5001))))).toMatch(/Body exceeds maximum length of 5000/);
     unwrap(await sBob.send_message(msg([alice], 'plain', 'ok')));
     expect(err(await sBob.send_message(msg([alice], 'plain', 'again')))).toMatch(/RateLimited: Must wait 10 more minutes/);
     unwrap(await s.update_config([0n], [], [], []));
     unwrap(await s.update_premium_config([[]], [], [], [], [])); // ?null clears
-    expect(err(await sAlice.send_message(msg([bob], 'member', 'x'.repeat(5001))))).toMatch(/Body exceeds maximum length of 5000/); // no premium canister: plain limits
+    expect(await refusedAtIngress(sAlice.send_message(msg([bob], 'member', 'x'.repeat(5001))))).toBe(true); // refused at ingress (Body exceeds maximum length of 5000); no premium canister: plain limits
     expect((await s.get_premium_config()).sneed_premium_canister_id).toEqual([]);
     unwrap(await s.update_premium_config([], [500n], [20000n], [1n], [50n]));
   });
@@ -164,9 +164,9 @@ describe('sneed_sms', () => {
     expect(err(await sAlice.send_system_notification({ recipients: [bob], subject: 'x', body: 'y' }))).toMatch(/Unauthorized: Caller is not authorized/);
     expect(err(await s.send_system_notification({ recipients: [bob], subject: 'x', body: 'y' }))).toMatch(/Unauthorized/); // admins are not senders
     expect(err(await sBot.send_system_notification({ recipients: [], subject: 'x', body: 'y' }))).toMatch(/InvalidInput: At least one recipient/);
-    expect(err(await sBot.send_system_notification({ recipients: Array.from({ length: 51 }, (_, i) => user(`n${i}`)), subject: 'x', body: 'y' }))).toMatch(/InvalidInput: Too many recipients. Maximum is 50/);
-    expect(err(await sBot.send_system_notification({ recipients: [bob], subject: 'x'.repeat(501), body: 'y' }))).toMatch(/InvalidInput: Subject too long. Maximum is 500/);
-    expect(err(await sBot.send_system_notification({ recipients: [bob], subject: 'x', body: 'y'.repeat(20001) }))).toMatch(/InvalidInput: Body too long. Maximum is 20000/);
+    expect(await refusedAtIngress(sBot.send_system_notification({ recipients: Array.from({ length: 51 }, (_, i) => user(`n${i}`)), subject: 'x', body: 'y' }))).toBe(true); // refused at ingress (InvalidInput: Too many recipients. Maximum is 50)
+    expect(await refusedAtIngress(sBot.send_system_notification({ recipients: [bob], subject: 'x'.repeat(501), body: 'y' }))).toBe(true); // refused at ingress (InvalidInput: Subject too long. Maximum is 500)
+    expect(await refusedAtIngress(sBot.send_system_notification({ recipients: [bob], subject: 'x', body: 'y'.repeat(20001) }))).toBe(true); // refused at ingress (InvalidInput: Body too long. Maximum is 20000)
     // 30 recipients and a long body: more than a user may send
     const n1 = unwrap(await sBot.send_system_notification({ recipients: [bob, ...Array.from({ length: 29 }, (_, i) => user(`n${i}`))], subject: 'x'.repeat(300), body: 'y'.repeat(10000) }));
     const n2 = unwrap(await sBot.send_system_notification({ recipients: [bob], subject: 'again', body: 'no rate limit' }));
@@ -293,9 +293,9 @@ describe('sneed_sms', () => {
     const all = await s.get_all_messages_admin();
     expect(all.length).toBe(Number((await s.get_stats()).total_messages));
     expect(ids(await sCarol.get_all_messages_admin()).length).toBe(all.length); // listed admin
-    expect(err(await sAlice.import_admins([]))).toMatch(/Unauthorized: Only controllers can import/);
-    expect(err(await sGov.import_admins([]))).toMatch(/Unauthorized: Only controllers/); // governance is admin but not a controller
-    expect(err(await sCarol.import_messages([]))).toMatch(/Unauthorized: Only controllers/);
+    expect(await refusedAtIngress(sAlice.import_admins([]))).toBe(true); // refused at ingress (Unauthorized: Only controllers can import)
+    expect(await refusedAtIngress(sGov.import_admins([]))).toBe(true); // refused at ingress (Unauthorized: Only controllers); governance is admin but not a controller
+    expect(await refusedAtIngress(sCarol.import_messages([]))).toBe(true); // refused at ingress (Unauthorized: Only controllers)
     expect(unwrap(await s.import_admins([{ principal: dave, added_by: 0, added_at: 1n }, { principal: carol, added_by: 0, added_at: 1n }]))).toBe(1n); // carol already is one
     expect(await s.is_admin_query(dave)).toBe(true);
     unwrap(await s.remove_admin(dave));

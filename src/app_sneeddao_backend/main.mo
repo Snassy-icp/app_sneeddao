@@ -16,6 +16,7 @@ import Timer "mo:base/Timer";
 
 import T "Types";
 import PremiumClient "../PremiumClient";
+import IngressGuard "../IngressGuard";
 
 shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
@@ -4024,5 +4025,209 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
   // On a fresh install, start the daily token list job.
   ensure_token_refresh_timer<system>();
+
+  // Limits of the ingress guard below
+  transient let MAX_NAME_LENGTH : Nat = 32;
+  transient let MAX_SETTING_TEXT : Nat = 256;
+  transient let MAX_NEURON_ID_HEX : Nat = 128;
+  transient let MAX_LAYOUT_ENTRIES : Nat = 2_000;
+  transient let MAX_PRINCIPAL_BYTES : Nat = 32;
+  transient let MAX_GROUP_BYTES : Nat = 1_024; // a folder's id, name and record
+  func nameOk(arg : Blob, name : Text) : Bool = arg.size() <= IngressGuard.textArg(MAX_NAME_LENGTH) and IngressGuard.text(name, MAX_NAME_LENGTH);
+
+  // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
+  // would go through consensus at our cost, and arguments are capped in size.
+  system func inspect({ caller : Principal; arg : Blob; msg : {
+    #add_admin : Any;
+    #add_authorized_for_caller : Any;
+    #add_blacklisted_word : Any;
+    #add_partner : Any;
+    #add_project : Any;
+    #add_whitelisted_token : Any;
+    #admin_clear_avatar : Any;
+    #ban_user : Any;
+    #caller_is_admin : Any;
+    #check_ban_status : Any;
+    #clear_my_avatar : Any;
+    #delete_canister_groups : Any;
+    #delete_jailbreak_config : Any;
+    #get_admins : Any;
+    #get_all_jailbreak_configs_count : Any;
+    #get_all_last_seen_log_ids : Any;
+    #get_all_neuron_names : Any;
+    #get_all_neuron_nicknames : Any;
+    #get_all_principal_names : Any;
+    #get_all_principal_nicknames : Any;
+    #get_authorized_for_callers : Any;
+    #get_avatar : Any;
+    #get_avatar_count : Any;
+    #get_avatars : Any;
+    #get_ban_log : Any;
+    #get_banned_users : Any;
+    #get_blacklisted_words : Any;
+    #get_cached_token_meta : Any;
+    #get_canister_groups : Any;
+    #get_canister_groups_limits_config : Any;
+    #get_canister_info : Any;
+    #get_jailbreak_fee_settings : Any;
+    #get_jailbreak_payment_balance : Any;
+    #get_jailbreak_payment_logs : Any;
+    #get_jailbreak_payment_stats : Any;
+    #get_jailbreak_payment_subaccount : Any;
+    #get_last_seen_log_id : Any;
+    #get_ledger_canister_ids : Any;
+    #get_my_canister_groups_usage : Any;
+    #get_my_jailbreak_configs : Any;
+    #get_my_jailbreak_fee : Any;
+    #get_my_nickname_usage : Any;
+    #get_my_settings : Any;
+    #get_neuron_name : Any;
+    #get_neuron_nickname : Any;
+    #get_nickname_limits_config : Any;
+    #get_partner : Any;
+    #get_partners : Any;
+    #get_principal_name : Any;
+    #get_principal_nickname : Any;
+    #get_project : Any;
+    #get_projects : Any;
+    #get_refresh_all_progress : Any;
+    #get_swap_canister_ids : Any;
+    #get_token_list_status : Any;
+    #get_tracked_canisters : Any;
+    #get_user_ban_history : Any;
+    #get_user_neurons : Any;
+    #get_user_tokens : Any;
+    #get_wallet_layout : Any;
+    #get_whitelisted_tokens : Any;
+    #import_whitelist_from_icpswap : Any;
+    #import_whitelist_from_swaprunner : Any;
+    #is_token_whitelisted : Any;
+    #mark_logs_seen : Any;
+    #refresh_token_metadata : Any;
+    #register_ledger_canister_id : Any;
+    #register_swap_canister_id : Any;
+    #register_tracked_canister : Any;
+    #register_tracked_canister_for : Any;
+    #register_user_token : Any;
+    #register_user_token_for : Any;
+    #remove_admin : Any;
+    #remove_authorized_for_caller : Any;
+    #remove_blacklisted_word : Any;
+    #remove_partner : Any;
+    #remove_project : Any;
+    #remove_whitelisted_token : Any;
+    #run_token_list_maintenance_now : Any;
+    #save_jailbreak_config : () -> (Principal, Text, Principal);
+    #send_tokens : Any;
+    #set_cached_token_meta : Any;
+    #set_canister_groups : () -> CanisterGroupsRoot;
+    #set_canister_name : () -> (Principal, Text);
+    #set_jailbreak_fee_settings : Any;
+    #set_my_avatar : () -> Text;
+    #set_my_settings : () -> UserSettingsUpdate;
+    #set_neuron_name : () -> (Principal, NeuronId, Text);
+    #set_neuron_nickname : () -> (Principal, NeuronId, Text);
+    #set_nickname_premium_canister : Any;
+    #set_principal_name : () -> Text;
+    #set_principal_name_for : () -> (Principal, Text, ?Principal);
+    #set_principal_nickname : () -> (Principal, Text);
+    #set_wallet_layout : () -> WalletLayout;
+    #start_refresh_all_token_metadata : Any;
+    #stop_refresh_all_token_metadata : Any;
+    #test_calculate_ban_duration : Any;
+    #transfer_position : Any;
+    #unban_user : Any;
+    #unregister_ledger_canister_id : Any;
+    #unregister_swap_canister_id : Any;
+    #unregister_tracked_canister : Any;
+    #unregister_tracked_canister_for : Any;
+    #unregister_user_token : Any;
+    #unregister_user_token_for : Any;
+    #unverify_neuron_name : Any;
+    #unverify_principal_name : Any;
+    #update_canister_groups_limits : Any;
+    #update_nickname_limits : Any;
+    #update_partner : Any;
+    #update_project : Any;
+    #verify_neuron_name : Any;
+    #verify_principal_name : Any;
+    #withdraw_jailbreak_payment : Any;
+  } }) : Bool {
+    switch (msg) {
+      case (
+        #caller_is_admin _
+        or #check_ban_status _
+        or #get_admins _
+        or #get_all_jailbreak_configs_count _
+        or #get_all_last_seen_log_ids _
+        or #get_all_neuron_names _
+        or #get_all_neuron_nicknames _
+        or #get_all_principal_names _
+        or #get_all_principal_nicknames _
+        or #get_authorized_for_callers _
+        or #get_avatar _
+        or #get_avatar_count _
+        or #get_avatars _
+        or #get_ban_log _
+        or #get_banned_users _
+        or #get_blacklisted_words _
+        or #get_cached_token_meta _
+        or #get_canister_groups _
+        or #get_canister_groups_limits_config _
+        or #get_jailbreak_fee_settings _
+        or #get_jailbreak_payment_logs _
+        or #get_jailbreak_payment_stats _
+        or #get_jailbreak_payment_subaccount _
+        or #get_last_seen_log_id _
+        or #get_ledger_canister_ids _
+        or #get_my_jailbreak_configs _
+        or #get_my_settings _
+        or #get_neuron_name _
+        or #get_neuron_nickname _
+        or #get_nickname_limits_config _
+        or #get_partner _
+        or #get_partners _
+        or #get_principal_name _
+        or #get_principal_nickname _
+        or #get_project _
+        or #get_projects _
+        or #get_refresh_all_progress _
+        or #get_swap_canister_ids _
+        or #get_token_list_status _
+        or #get_tracked_canisters _
+        or #get_user_ban_history _
+        or #get_user_tokens _
+        or #get_wallet_layout _
+        or #get_whitelisted_tokens _
+        or #is_token_whitelisted _
+      ) false;
+      // names and nicknames: at most 32 characters (validate_name_text, set_canister_name)
+      case (#set_principal_name f) nameOk(arg, f());
+      case (#set_principal_name_for f) nameOk(arg, f().1);
+      case (#set_principal_nickname f) nameOk(arg, f().1);
+      case (#set_canister_name f) nameOk(arg, f().1);
+      case (#set_neuron_name f) nameOk(arg, f().2);
+      case (#set_neuron_nickname f) nameOk(arg, f().2);
+      case (#set_my_avatar f) arg.size() <= IngressGuard.textArg(AVATAR_MAX_DATA_LENGTH) and IngressGuard.text(f(), AVATAR_MAX_DATA_LENGTH);
+      case (#set_my_settings f) arg.size() <= IngressGuard.textArg(MAX_SETTING_TEXT) and IngressGuard.optText(f().denomination_token, MAX_SETTING_TEXT);
+      case (#save_jailbreak_config f) arg.size() <= IngressGuard.textArg(MAX_NEURON_ID_HEX) and IngressGuard.text(f().1, MAX_NEURON_ID_HEX);
+      // folders: as many as the premium limits allow (the method applies the caller's own limits)
+      case (#set_canister_groups _) {
+        let groups = Nat.max(stable_max_canister_groups, stable_premium_max_canister_groups);
+        let canisters = Nat.max(stable_max_total_grouped_canisters, stable_premium_max_total_grouped_canisters);
+        arg.size() <= IngressGuard.SMALL_ARG + groups * MAX_GROUP_BYTES + canisters * MAX_PRINCIPAL_BYTES
+      };
+      case (#set_wallet_layout f) {
+        let l = f();
+        l.tokens.size() + l.positions.size() + l.apps.size() + l.sneedapp.size() <= MAX_LAYOUT_ENTRIES
+        and arg.size() <= IngressGuard.SMALL_ARG + MAX_LAYOUT_ENTRIES * MAX_PRINCIPAL_BYTES
+      };
+      // token metadata (logos included) for the shared cache: any signed-in user, any size
+      case (#set_cached_token_meta _) not Principal.isAnonymous(caller);
+      // admin tools with free-form content
+      case (#add_blacklisted_word _ or #remove_blacklisted_word _ or #add_partner _ or #update_partner _ or #add_project _ or #update_project _ or #add_whitelisted_token _ or #ban_user _) is_admin(caller);
+      case _ arg.size() <= IngressGuard.SMALL_ARG;
+    };
+  };
 
 };

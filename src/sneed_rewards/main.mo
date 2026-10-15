@@ -23,6 +23,7 @@ import Result "mo:base/Result";
 import Hash "mo:base/Hash";
 
 import T "Types";
+import IngressGuard "../IngressGuard";
 
 shared (deployer) persistent actor class SneedRLL() = this {
 
@@ -3692,4 +3693,162 @@ shared (deployer) persistent actor class SneedRLL() = this {
     
     Iter.toArray(claimed_amounts.entries())
   };
+
+  // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
+  // would go through consensus at our cost, and arguments are capped in size.
+  system func inspect({ arg : Blob; msg : {
+    #acceptsVote : Any;
+    #add_admin : Any;
+    #add_known_token : Any;
+    #all_token_balances : Any;
+    #balance_of : Any;
+    #balance_reconciliation : Any;
+    #balance_reconciliation_from_balances : Any;
+    #balances_count : Any;
+    #balances_of_hotkey : Any;
+    #balances_of_hotkey_neurons : Any;
+    #caller_is_admin : Any;
+    #check_wallet_token_balances : Any;
+    #check_whitelisted_token_balances : Any;
+    #claim_full_balance_of_hotkey : Any;
+    #clear_all_balances_and_distributions : Any;
+    #clear_balances : Any;
+    #clear_claim_events : Any;
+    #clear_distribution_events : Any;
+    #clear_imported_neurons : Any;
+    #clear_imported_owners : Any;
+    #clear_imported_props : Any;
+    #clear_known_tokens : Any;
+    #clear_total_distributions : Any;
+    #clear_user_distribution_events : Any;
+    #clear_user_distributions : Any;
+    #clear_whitelisted_tokens : Any;
+    #get_all_token_max_distributions : Any;
+    #get_all_token_min_distributions : Any;
+    #get_all_user_balances : Any;
+    #get_claim_events : Any;
+    #get_claim_events_for_hotkey : Any;
+    #get_distribution_events : Any;
+    #get_empty_ballot_proposals : Any;
+    #get_error_claim_events : Any;
+    #get_event_statistics : Any;
+    #get_highest_closed_proposal_id : Any;
+    #get_hotkey_claimed_amounts : Any;
+    #get_hotkey_voting_power : Any;
+    #get_import_next_neuron_id : Any;
+    #get_import_stage : Any;
+    #get_imported_proposal_max : Any;
+    #get_known_tokens : Any;
+    #get_main_loop_status : Any;
+    #get_neuron_import_status : Any;
+    #get_neuron_statistics : Any;
+    #get_neuron_voting_history : Any;
+    #get_proposal_ballots : Any;
+    #get_proposal_import_status : Any;
+    #get_token_balance_check_status : Any;
+    #get_token_distribution_events : Any;
+    #get_token_max_distribution : Any;
+    #get_token_metadata : Any;
+    #get_token_min_distribution : Any;
+    #get_token_total_distribution : Any;
+    #get_total_distributions : Any;
+    #get_unmatched_pending_claims : Any;
+    #get_user_distribution_events : Any;
+    #get_user_distributions : Any;
+    #get_user_specific_distribution_events : Any;
+    #get_user_token_distribution : Any;
+    #get_user_token_distribution_events : Any;
+    #get_user_voting_history : Any;
+    #get_wallet_known_tokens : Any;
+    #get_wallet_token_check_status : Any;
+    #get_whitelisted_tokens : Any;
+    #import_all_neurons : Any;
+    #import_all_new_neurons : Any;
+    #import_all_new_proposals : Any;
+    #import_all_proposals : Any;
+    #import_whitelisted_tokens_from_icpswap : Any;
+    #import_whitelisted_tokens_from_swaprunner : Any;
+    #imported_neurons_count : Any;
+    #imported_owners_count : Any;
+    #imported_props_count : Any;
+    #list_admins : Any;
+    #list_claim_incidents : Any;
+    #principal_is_admin : Any;
+    #remove_admin : Any;
+    #remove_known_token : Any;
+    #remove_token_max_distribution : Any;
+    #remove_token_min_distribution : Any;
+    #resolve_claim_incident : Any;
+    #set_token_max_distribution : Any;
+    #set_token_min_distribution : Any;
+    #start_distribution_cycle : Any;
+    #start_rll_main_loop : Any;
+    #stop_distribution_cycle : Any;
+    #stop_neuron_import : Any;
+    #stop_proposal_import : Any;
+    #stop_rll_main_loop : Any;
+    #stop_token_balance_check : Any;
+    #stop_wallet_token_check : Any;
+    #total_balance : Any;
+  } }) : Bool {
+    switch (msg) {
+      case (
+        #acceptsVote _
+        or #all_token_balances _
+        or #balance_of _
+        or #balance_reconciliation_from_balances _
+        or #balances_count _
+        or #balances_of_hotkey_neurons _
+        or #caller_is_admin _
+        or #get_all_token_max_distributions _
+        or #get_all_token_min_distributions _
+        or #get_all_user_balances _
+        or #get_claim_events _
+        or #get_claim_events_for_hotkey _
+        or #get_distribution_events _
+        or #get_empty_ballot_proposals _
+        or #get_error_claim_events _
+        or #get_event_statistics _
+        or #get_highest_closed_proposal_id _
+        or #get_hotkey_claimed_amounts _
+        or #get_hotkey_voting_power _
+        or #get_import_next_neuron_id _
+        or #get_import_stage _
+        or #get_imported_proposal_max _
+        or #get_known_tokens _
+        or #get_main_loop_status _
+        or #get_neuron_import_status _
+        or #get_neuron_statistics _
+        or #get_neuron_voting_history _
+        or #get_proposal_ballots _
+        or #get_proposal_import_status _
+        or #get_token_balance_check_status _
+        or #get_token_distribution_events _
+        or #get_token_max_distribution _
+        or #get_token_metadata _
+        or #get_token_min_distribution _
+        or #get_token_total_distribution _
+        or #get_total_distributions _
+        or #get_unmatched_pending_claims _
+        or #get_user_distribution_events _
+        or #get_user_distributions _
+        or #get_user_specific_distribution_events _
+        or #get_user_token_distribution _
+        or #get_user_token_distribution_events _
+        or #get_user_voting_history _
+        or #get_wallet_known_tokens _
+        or #get_wallet_token_check_status _
+        or #get_whitelisted_tokens _
+        or #imported_neurons_count _
+        or #imported_owners_count _
+        or #imported_props_count _
+        or #list_admins _
+        or #list_claim_incidents _
+        or #principal_is_admin _
+        or #total_balance _
+      ) false;
+      case _ arg.size() <= IngressGuard.SMALL_ARG;
+    };
+  };
+
 };

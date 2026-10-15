@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Principal } from '@icp-sdk/core/principal';
 import { IDL } from '@icp-sdk/core/candid';
-import { createPic, install, actorAs, wasm, admin, alice, bob, carol, user, SNEED_GOVERNANCE, SNEED_SNS_ROOT, unwrap, errOf, nowNs } from '../lib/pic.js';
+import { createPic, install, actorAs, wasm, admin, alice, bob, carol, user, SNEED_GOVERNANCE, SNEED_SNS_ROOT, unwrap, errOf, nowNs, refusedAtIngress } from '../lib/pic.js';
 import { premiumIdl } from '../lib/idl.js';
 import { idlFactory as forumIdl } from '../build/sneed_sns_forum.did.js';
 
@@ -105,9 +105,9 @@ describe('sneed_sns_forum', () => {
     const input = (over = {}) => ({ title: 'Sneed', description: 'The Sneed DAO forum', sns_root_canister_id: [], ...over });
     expect(err(await fAlice.create_forum(input()))).toMatch(/Unauthorized: Admin access required/);
     expect(err(await f.create_forum(input({ title: '' })))).toMatch(/InvalidInput: Title cannot be empty/);
-    expect(err(await f.create_forum(input({ title: 'x'.repeat(101) })))).toMatch(/InvalidInput: Title cannot exceed 100 characters/);
+    expect(await refusedAtIngress(f.create_forum(input({ title: 'x'.repeat(101) })))).toBe(true); // InvalidInput: Title cannot exceed 100 characters: refused at ingress
     expect(err(await f.create_forum(input({ description: '' })))).toMatch(/Description cannot be empty/);
-    expect(err(await f.create_forum(input({ description: 'x'.repeat(1001) })))).toMatch(/Description cannot exceed 1000/);
+    expect(await refusedAtIngress(f.create_forum(input({ description: 'x'.repeat(1001) })))).toBe(true); // Description cannot exceed 1000: refused at ingress
     F3 = unwrap(await f.create_forum(input({ title: 'x'.repeat(100), description: 'y'.repeat(1000), sns_root_canister_id: [rootX] }))); // limits are inclusive
     expect(F3).toBe(1n);
     F1 = unwrap(await fCarol.create_forum(input()));
@@ -137,7 +137,7 @@ describe('sneed_sns_forum', () => {
   it('topics: admins create nested topics inside one forum, validated', async () => {
     const input = (over = {}) => ({ forum_id: F1, parent_topic_id: [], title: 'General', description: 'Talk', ...over });
     expect(err(await fAlice.create_topic(input()))).toMatch(/Unauthorized: Admin access required/);
-    expect(err(await f.create_topic(input({ title: 'x'.repeat(101) })))).toMatch(/Title cannot exceed 100/);
+    expect(await refusedAtIngress(f.create_topic(input({ title: 'x'.repeat(101) })))).toBe(true); // Title cannot exceed 100: refused at ingress
     expect(err(await f.create_topic(input({ description: '' })))).toMatch(/Description cannot be empty/);
     expect(err(await f.create_topic(input({ forum_id: 99n })))).toMatch(/NotFound: Forum not found/);
     expect(err(await f.create_topic(input({ parent_topic_id: [99n] })))).toMatch(/NotFound: Parent topic not found/);
@@ -191,10 +191,10 @@ describe('sneed_sns_forum', () => {
   it('threads: any signed-in user starts one in an existing topic; authors and admins edit it', async () => {
     const input = (over = {}) => ({ topic_id: T1, title: ['Hello'], body: 'First thread', ...over });
     expect(err(await fAnon.create_thread(input()))).toMatch(/Unauthorized: Authentication required to create threads/);
-    expect(err(await fAlice.create_thread(input({ title: ['x'.repeat(201)] })))).toMatch(/Title cannot exceed 200/);
+    expect(await refusedAtIngress(fAlice.create_thread(input({ title: ['x'.repeat(201)] })))).toBe(true); // Title cannot exceed 200: refused at ingress
     expect(err(await fAlice.create_thread(input({ title: [''] })))).toMatch(/Title cannot be empty/);
     expect(err(await fAlice.create_thread(input({ body: '' })))).toMatch(/Body cannot be empty/);
-    expect(err(await fAlice.create_thread(input({ body: 'x'.repeat(10001) })))).toMatch(/Body cannot exceed 10000/);
+    expect(await refusedAtIngress(fAlice.create_thread(input({ body: 'x'.repeat(10001) })))).toBe(true); // Body cannot exceed 10000: refused at ingress
     expect(err(await fAlice.create_thread(input({ topic_id: 99n })))).toMatch(/NotFound: Topic not found/);
     const before = await f.get_current_counter();
     TH1 = unwrap(await fAlice.create_thread(input({ body: 'x'.repeat(10000) })));
@@ -223,9 +223,9 @@ describe('sneed_sns_forum', () => {
 
   it('posts: any signed-in user replies in a thread whose SNS governance is known; authors and admins edit', async () => {
     expect(err(await fAnon.create_post(TH1, [], [], 'hi'))).toMatch(/Unauthorized: Authentication required to create posts/);
-    expect(err(await fAlice.create_post(TH1, [], ['x'.repeat(201)], 'hi'))).toMatch(/Title cannot exceed 200/);
+    expect(await refusedAtIngress(fAlice.create_post(TH1, [], ['x'.repeat(201)], 'hi'))).toBe(true); // Title cannot exceed 200: refused at ingress
     expect(err(await fAlice.create_post(TH1, [], [], ''))).toMatch(/Body cannot be empty/);
-    expect(err(await fAlice.create_post(TH1, [], [], 'x'.repeat(10001)))).toMatch(/Body cannot exceed 10000/);
+    expect(await refusedAtIngress(fAlice.create_post(TH1, [], [], 'x'.repeat(10001)))).toBe(true); // Body cannot exceed 10000: refused at ingress
     // the SNS lookup comes first: an unknown thread reads as "no governance"
     expect(err(await fAlice.create_post(99n, [], [], 'hi'))).toMatch(/InternalError: No SNS governance canister found/);
     expect(err(await fAlice.create_post(TH1, [99n], [], 'hi'))).toMatch(/NotFound: Reply target post not found/);
@@ -259,11 +259,11 @@ describe('sneed_sns_forum', () => {
     unwrap(await f.update_text_limits(limits({ post_body_max_length: [5n], thread_title_max_length: [3n], forum_title_max_length: [4n], topic_description_max_length: [2n] })));
     const l = await f.get_text_limits();
     expect(l.post_body_max_length).toBe(5n); expect(l.thread_title_max_length).toBe(3n); expect(l.post_title_max_length).toBe(200n); // untouched
-    expect(err(await fAlice.create_post(TH1, [], [], 'sixsix'))).toMatch(/Body cannot exceed 5 characters/);
-    expect(err(await fAlice.create_thread({ topic_id: T1, title: ['four'], body: 'x' }))).toMatch(/Title cannot exceed 3/);
-    expect(err(await f.create_forum({ title: 'fives', description: 'x', sns_root_canister_id: [] }))).toMatch(/Title cannot exceed 4/);
-    expect(err(await f.create_topic({ forum_id: F1, parent_topic_id: [], title: 'T', description: 'abc' }))).toMatch(/Description cannot exceed 2/);
-    expect(err(await fBob.update_post(P2, [], 'sixsix'))).toMatch(/Body cannot exceed 5/); // edits too
+    expect(await refusedAtIngress(fAlice.create_post(TH1, [], [], 'sixsix'))).toBe(true); // Body cannot exceed 5 characters: refused at ingress
+    expect(await refusedAtIngress(fAlice.create_thread({ topic_id: T1, title: ['four'], body: 'x' }))).toBe(true); // Title cannot exceed 3: refused at ingress
+    expect(await refusedAtIngress(f.create_forum({ title: 'fives', description: 'x', sns_root_canister_id: [] }))).toBe(true); // Title cannot exceed 4: refused at ingress
+    expect(await refusedAtIngress(f.create_topic({ forum_id: F1, parent_topic_id: [], title: 'T', description: 'abc' }))).toBe(true); // Description cannot exceed 2: refused at ingress
+    expect(await refusedAtIngress(fBob.update_post(P2, [], 'sixsix'))).toBe(true); // edits too // Body cannot exceed 5: refused at ingress
     unwrap(await fCarol.update_text_limits(limits({ post_body_max_length: [10000n], thread_title_max_length: [200n], forum_title_max_length: [100n], topic_description_max_length: [1000n] })));
   });
 
@@ -281,8 +281,8 @@ describe('sneed_sns_forum', () => {
     expect(await f.check_user_premium_status(alice)).toBe(true);
     const lp = unwrap(await fAlice.create_post(TH1, [], [], long));
     const lt = unwrap(await fAlice.create_thread({ topic_id: T1, title: ['Long'], body: long }));
-    expect(err(await fAlice.create_thread({ topic_id: T1, title: [], body: 'x'.repeat(16001) }))).toMatch(/Body cannot exceed 16000/);
-    expect(err(await fAlice.create_post(TH1, [], [], 'x'.repeat(20001)))).toMatch(/Body cannot exceed 20000/);
+    expect(await refusedAtIngress(fAlice.create_thread({ topic_id: T1, title: [], body: 'x'.repeat(16001) }))).toBe(true); // Body cannot exceed 16000: refused at ingress
+    expect(await refusedAtIngress(fAlice.create_post(TH1, [], [], 'x'.repeat(20001)))).toBe(true); // Body cannot exceed 20000: refused at ingress
     unwrap(await fAlice.update_post(lp, [], 'y'.repeat(20000)));
     unwrap(await fAlice.update_thread(lt, ['Long'], 'y'.repeat(16000)));
     expect(err(await fBob.create_post(TH1, [], [], long))).toMatch(/cannot exceed 10000/); // bob is not a member
@@ -299,7 +299,7 @@ describe('sneed_sns_forum', () => {
     // switched off: nobody is premium
     unwrap(await f.update_premium_config({ sneed_premium_canister_id: [[]], premium_post_body_max_length: [], premium_thread_body_max_length: [] }));
     expect((await f.get_premium_config()).sneed_premium_canister_id).toEqual([]);
-    expect(err(await fAlice.update_post(lp, [], long))).toMatch(/cannot exceed 10000/);
+    expect(await refusedAtIngress(fAlice.update_post(lp, [], long))).toBe(true); // cannot exceed 10000: refused at ingress
     expect(await f.check_user_premium_status(alice)).toBe(false);
     unwrap(await f.delete_post(lp)); unwrap(await f.delete_thread(lt));
   });
@@ -380,7 +380,7 @@ describe('sneed_sns_forum', () => {
     const ok = (over) => pollInput({ thread_id: TH1, end_timestamp: end, ...over });
     expect(err(await fBob.create_poll(ok()))).toMatch(/Unauthorized: Only the thread creator/);
     expect(err(await fAlice.create_poll(ok({ title: '' })))).toMatch(/Title cannot be empty/);
-    expect(err(await fAlice.create_poll(ok({ body: 'x'.repeat(10001) })))).toMatch(/Body cannot exceed 10000/);
+    expect(await refusedAtIngress(fAlice.create_poll(ok({ body: 'x'.repeat(10001) })))).toBe(true); // Body cannot exceed 10000: refused at ingress
     expect(err(await fAlice.create_poll(ok({ options: [{ title: 'only', body: [] }] })))).toMatch(/InvalidInput: Poll must have at least 2 options/);
     expect(err(await fAlice.create_poll(ok({ options: [{ title: 'A', body: [] }, { title: '', body: [] }] })))).toMatch(/Option title cannot be empty/);
     expect(err(await fAlice.create_poll(ok({ options: [{ title: 'A', body: [''] }, { title: 'B', body: [] }] })))).toMatch(/Option body cannot be empty/);

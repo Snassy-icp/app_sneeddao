@@ -35,7 +35,7 @@ cp .dfx/local/canisters/sneed_guardian/sneed_guardian.wasm "$OUT/sneed_guardian.
 cp .dfx/local/canisters/sneed_guardian/service.did.js "$OUT/sneed_guardian.did.js"
 
 # every other canister under test: a check build with the release toolchain (no canister id needed)
-for c in app_sneeddao_backend sneedapp sneed_sns_forum sneed_sms sneed_premium rll sneed_icp_staking_bot sneed_trading_bot; do
+for c in app_sneeddao_backend sneedapp sneed_sns_forum sneed_sms sneed_premium rll sneed_pad sneed_icp_staking_bot sneed_trading_bot; do
   echo "== $c (dfx +$DFX_VERSION build --check)"
   dfx +"$DFX_VERSION" build --check "$c" 2>&1 | grep -iv "warning\|^ *$\|^\s*[0-9]* |\|^  \^\|Nat$\|bespoke\|does not cover\|#Err\|#Ok" | tail -1
   cp ".dfx/local/canisters/$c/$c.wasm" "$OUT/$c.wasm"
@@ -58,9 +58,6 @@ for c in MockLedger MockLedgerV2 MockLedgerFaulty MockRejectLedger MockSwapPool 
   test -s "$OUT/$c.wasm"
 done
 # the archive actor class on its own, as a DAO proposal would upgrade it
-echo "== sneed_pad"
-"$MOC" -c $PKGS -o "$OUT/sneed_pad.wasm" "$ROOT/src/sneed_pad/main.mo" 2>&1 | grep -i "error" -A5 || true
-test -s "$OUT/sneed_pad.wasm"
 echo "== icrc7_demo"
 "$MOC" -c $PKGS -o "$OUT/Icrc7Demo.wasm" "$ROOT/src/icrc7_demo/main.mo" 2>&1 | grep -i "error" -A5 || true
 test -s "$OUT/Icrc7Demo.wasm"

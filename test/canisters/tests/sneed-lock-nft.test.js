@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { IDL } from '@icp-sdk/core/candid';
 import { Principal } from '@icp-sdk/core/principal';
-import { createPic, install, actorAs, admin, alice, bob, carol, ICP_LEDGER_ID, T, unwrap, errOf, wasm } from '../lib/pic.js';
+import { createPic, install, actorAs, admin, alice, bob, carol, ICP_LEDGER_ID, T, unwrap, errOf, wasm, refusedAtIngress } from '../lib/pic.js';
 import { ledgerInit, poolIdl, poolInit } from '../lib/idl.js';
 import { btype, txField } from '../lib/icrc3.js';
 import { idlFactory as sneedLockIdl } from '../build/sneed_lock.did.js';
@@ -111,7 +111,8 @@ describe('minting, metadata and transfers', () => {
     expect((await t(lockAlice, { to: acc(Principal.anonymous()) }))[0][0]).toEqual({ Err: { InvalidRecipient: null } });
     expect((await t(lockAlice, { token_id: 999_999n }))[0][0]).toEqual({ Err: { NonExistingTokenId: null } });
     expect((await t(lockAlice, { memo: [new Uint8Array(33)] }))[0][0].Err).toHaveProperty('GenericError');
-    expect((await lockAlice.icrc7_transfer(Array(11).fill({ from_subaccount: [], to: acc(bob), token_id: tid, memo: [], created_at_time: [] })))[0][0].Err).toHaveProperty('GenericBatchError');
+    // more than icrc7_max_update_batch_size items: refused at ingress (a canister calling us gets GenericBatchError)
+    expect(await refusedAtIngress(lockAlice.icrc7_transfer(Array(11).fill({ from_subaccount: [], to: acc(bob), token_id: tid, memo: [], created_at_time: [] })))).toBe(true);
   });
 
   it('a transfer moves the position, its lock and the label; the old owner can do nothing more', async () => {

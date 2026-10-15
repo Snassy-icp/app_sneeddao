@@ -28,6 +28,7 @@ import Timer "mo:base/Timer";
 import Char "mo:base/Char";
 import Sha256 "mo:sha2/Sha256";
 import PremiumClient "../PremiumClient";
+import IngressGuard "../IngressGuard";
 
 import T "Types";
 import Icrc3Log "../icrc3/Log";
@@ -829,4 +830,89 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   system func postupgrade() { ensure_icrc3_timer<system>(); ensure_wasm_timer<system>() };
   ensure_icrc3_timer<system>();
   ensure_wasm_timer<system>();
+
+  // Checks of the ingress guard below, with the limits of validate and validateControl
+  transient let MAX_NAME = 64;
+  transient let MAX_SYMBOL = 12;
+  transient let MAX_LOGO = 200_000;
+  transient let MAX_ALLOCATIONS = 1_000;
+  transient let ALLOCATION_BYTES = 128; // an account and an amount
+  private func controlOk(c : T.ControlChoice) : Bool = switch (c) {
+    case (#keep_with(ps)) ps.size() <= 10;
+    case (#guardian(g)) g.policy.guardians.size() <= 20;
+    case _ true;
+  };
+  private func tokenConfigOk(arg : Blob, c : T.TokenConfig) : Bool =
+    arg.size() <= IngressGuard.textArg(MAX_NAME + MAX_SYMBOL + MAX_LOGO) + MAX_ALLOCATIONS * ALLOCATION_BYTES
+    and IngressGuard.text(c.name, MAX_NAME) and IngressGuard.text(c.symbol, MAX_SYMBOL) and IngressGuard.optText(c.logo, MAX_LOGO)
+    and c.allocations.size() <= MAX_ALLOCATIONS and controlOk(c.control);
+
+  // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
+  // would go through consensus at our cost, and arguments are capped in size.
+  system func inspect({ arg : Blob; msg : {
+    #admin_add_admin : Any;
+    #admin_fetch_wasms : Any;
+    #admin_remove_admin : Any;
+    #admin_set_canister_controllers : Any;
+    #admin_set_canisters : Any;
+    #admin_set_config : Any;
+    #admin_set_registration_neuron : Any;
+    #admin_set_wasm_hashes : Any;
+    #admin_withdraw_icp : Any;
+    #create_index : () -> T.IndexConfig;
+    #create_token : () -> T.TokenConfig;
+    #get_admins : Any;
+    #get_config : Any;
+    #get_cycle_balance : Any;
+    #get_index_launches_by_creator : Any;
+    #get_index_quote : () -> T.IndexConfig;
+    #get_indexes_of_ledger : Any;
+    #get_launch : Any;
+    #get_launch_by_ledger : Any;
+    #get_launches_by_creator : Any;
+    #get_ledger_registration_status : Any;
+    #get_quote : () -> T.TokenConfig;
+    #get_text_log : Any;
+    #icrc10_supported_standards : Any;
+    #icrc3_get_archives : Any;
+    #icrc3_get_blocks : Any;
+    #icrc3_get_tip_certificate : Any;
+    #icrc3_log_status : Any;
+    #icrc3_registration_status : Any;
+    #icrc3_supported_block_types : Any;
+    #list_index_launches : Any;
+    #list_launches : Any;
+    #refresh_wasms : Any;
+  } }) : Bool {
+    switch (msg) {
+      case (
+        #get_admins _
+        or #get_config _
+        or #get_cycle_balance _
+        or #get_index_launches_by_creator _
+        or #get_indexes_of_ledger _
+        or #get_launch _
+        or #get_launch_by_ledger _
+        or #get_launches_by_creator _
+        or #get_ledger_registration_status _
+        or #get_text_log _
+        or #icrc10_supported_standards _
+        or #icrc3_get_archives _
+        or #icrc3_get_blocks _
+        or #icrc3_get_tip_certificate _
+        or #icrc3_log_status _
+        or #icrc3_registration_status _
+        or #icrc3_supported_block_types _
+        or #list_index_launches _
+        or #list_launches _
+      ) false;
+      // the limits of validate / validateControl
+      case (#create_token f) tokenConfigOk(arg, f());
+      case (#get_quote f) tokenConfigOk(arg, f());
+      case (#create_index f) arg.size() <= IngressGuard.SMALL_ARG and controlOk(f().control);
+      case (#get_index_quote f) arg.size() <= IngressGuard.SMALL_ARG and controlOk(f().control);
+      case _ arg.size() <= IngressGuard.SMALL_ARG;
+    };
+  };
+
 };

@@ -17,6 +17,7 @@ import Sha256 "mo:sha2/Sha256";
 
 import T "../sneed_bots/sneed_icp_staking_bot/Types";
 import PremiumClient "../PremiumClient";
+import IngressGuard "../IngressGuard";
 
 shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
@@ -3621,5 +3622,241 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         0xbdbdf21c, 0xcabac28a, 0x53b39330, 0x24b4a3a6, 0xbad03605, 0xcdd706b3, 0x54de5729, 0x23d967bf,
         0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94, 0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d
     ];
+
+    // Checks of the ingress guard below
+    transient let MAX_APP_ID : Nat = 256;
+    func appIdOk(arg : Blob, appId : Text) : Bool = arg.size() <= IngressGuard.textArg(MAX_APP_ID) and IngressGuard.text(appId, MAX_APP_ID);
+    func appOwnerOrAdmin(caller : Principal, numericAppId : Nat) : Bool = switch (appByNumericId.get(numericAppId)) {
+        case null false;
+        case (?app) isPublisherOwnerOrAdmin(caller, app.publisherId);
+    };
+    func versionAuthOk(caller : Principal, appId : Text) : Bool = IngressGuard.text(appId, MAX_APP_ID) and (switch (getAppById(appId)) {
+        case null false;
+        case (?app) isPublisherOwnerOrAdmin(caller, app.publisherId);
+    });
+
+    // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
+    // would go through consensus at our cost, and arguments are capped in size.
+    system func inspect({ caller : Principal; arg : Blob; msg : {
+        #addAdmin : Any;
+        #addApp : () -> (Nat, AddAppInput);
+        #addAppVersion : () -> (Text, AppVersionInput);
+        #addAuthorizedForCaller : Any;
+        #addOfficialVersion : Any;
+        #addPublisherFamily : () -> (Nat, Text);
+        #addPublisherOwner : Any;
+        #adminBulkRegisterCanisters : Any;
+        #adminRegisterCanister : Any;
+        #adminTopUpCycles : Any;
+        #adminWithdrawIcp : Any;
+        #calculateIcpForCycles : Any;
+        #clearAppVersionWasm : () -> (Text, Nat, Nat, Nat);
+        #clearManagerWasm : Any;
+        #createNeuronManager : Any;
+        #createPublisher : Any;
+        #deregisterCanister : Any;
+        #deregisterCanisterFor : Any;
+        #deregisterManager : Any;
+        #deregisterManagerFor : Any;
+        #getAdmins : Any;
+        #getAllAppRevenueStats : Any;
+        #getAllPublisherStats : Any;
+        #getAllRegistrations : Any;
+        #getAllWallets : Any;
+        #getApp : Any;
+        #getAppByNumericId : Any;
+        #getAppMintPrice : () -> (Text, Principal);
+        #getAppRevenueBalance : Any;
+        #getAppRevenueStats : Any;
+        #getAppRevenueSubaccount : Any;
+        #getAppVersion : Any;
+        #getAppVersions : Any;
+        #getApps : Any;
+        #getAppsByFamily : Any;
+        #getAppsByPublisher : Any;
+        #getAuthorizedForCallers : Any;
+        #getCanisterCreationCycles : Any;
+        #getCanisterId : Any;
+        #getConversionRate : Any;
+        #getCreationLog : Any;
+        #getCreationLogCount : Any;
+        #getCurrentVersion : Any;
+        #getCyclesBalance : Any;
+        #getDaoRevenueStats : Any;
+        #getEffectiveDaoCutForApp : Any;
+        #getFactoryAggregates : Any;
+        #getFinancialLog : Any;
+        #getFinancialLogCount : Any;
+        #getIcpBalance : Any;
+        #getLatestAppVersion : Any;
+        #getManagerByCanisterId : Any;
+        #getManagerCount : Any;
+        #getManagerWasmSize : Any;
+        #getManagersByOwner : Any;
+        #getMergedLog : Any;
+        #getMintLog : Any;
+        #getMintLogCount : Any;
+        #getMintLogCountForApp : Any;
+        #getMintLogEntry : Any;
+        #getMyManagers : Any;
+        #getMyWallet : Any;
+        #getMyWalletForApp : Any;
+        #getOfficialVersionByHash : Any;
+        #getOfficialVersions : Any;
+        #getOrphanCanisters : Any;
+        #getPaymentConfig : Any;
+        #getPaymentSubaccount : Any;
+        #getPremiumCreationFee : Any;
+        #getPublisher : Any;
+        #getPublisherRevenueBalance : Any;
+        #getPublisherRevenueSubaccount : Any;
+        #getPublisherStats : Any;
+        #getPublishers : Any;
+        #getPublishersByOwner : Any;
+        #getRecentCreations : Any;
+        #getRegisteredUserCount : Any;
+        #getSneedGovernance : Any;
+        #getSneedPremiumCanisterId : Any;
+        #getTotalRegistrationCount : Any;
+        #getUserPaymentBalance : Any;
+        #getUserWallet : Any;
+        #getVerifiedPublishers : Any;
+        #hasAppVersionWasm : Any;
+        #hasManagerWasm : Any;
+        #lookupMintedCanister : Any;
+        #mintCanister : () -> (Text, ?Nat, ?Nat, ?Nat);
+        #registerCanister : () -> (Principal, Text);
+        #registerCanisterFor : () -> (Principal, Principal, Text);
+        #registerManager : Any;
+        #registerManagerFor : Any;
+        #removeAdmin : Any;
+        #removeApp : Any;
+        #removeAppVersion : () -> (Text, Nat, Nat, Nat);
+        #removeAuthorizedForCaller : Any;
+        #removeOfficialVersion : Any;
+        #removePublisherFamily : () -> (Nat, Text);
+        #removePublisherOwner : Any;
+        #setAppDaoCut : Any;
+        #setAppEnabled : Any;
+        #setAppFamilies : () -> (Nat, [Text]);
+        #setAppPaymentAccount : Any;
+        #setAppPricing : Any;
+        #setCanisterCreationCycles : Any;
+        #setCreationFee : Any;
+        #setCurrentVersion : Any;
+        #setFeeDestination : Any;
+        #setManagerWasm : Any;
+        #setOfficialVersions : Any;
+        #setPaymentConfig : Any;
+        #setPaymentRequired : Any;
+        #setPremiumCreationFee : Any;
+        #setPublisherDaoCut : Any;
+        #setSneedGovernance : Any;
+        #setSneedPremiumCanisterId : Any;
+        #setTargetCycles : Any;
+        #transferManager : Any;
+        #unverifyPublisher : Any;
+        #updateApp : () -> (Nat, UpdateAppInput);
+        #updateAppVersion : () -> (Text, Nat, Nat, Nat, AppVersionInput);
+        #updateManagerNeuronId : Any;
+        #updateOfficialVersion : Any;
+        #updatePublisher : () -> (Nat, UpdatePublisherInput);
+        #uploadAppVersionWasm : () -> (Text, Nat, Nat, Nat, Blob);
+        #verifyPublisher : Any;
+        #wasMintedByUs : Any;
+        #withdrawAppFunds : Any;
+        #withdrawPublisherFunds : Any;
+        #withdrawUserPayment : Any;
+    } }) : Bool {
+        switch (msg) {
+            case (
+                #getAdmins _
+                or #getAllAppRevenueStats _
+                or #getAllPublisherStats _
+                or #getAllRegistrations _
+                or #getAllWallets _
+                or #getApp _
+                or #getAppByNumericId _
+                or #getAppRevenueStats _
+                or #getAppRevenueSubaccount _
+                or #getAppVersion _
+                or #getAppVersions _
+                or #getApps _
+                or #getAppsByFamily _
+                or #getAppsByPublisher _
+                or #getAuthorizedForCallers _
+                or #getCanisterCreationCycles _
+                or #getCanisterId _
+                or #getCreationLog _
+                or #getCreationLogCount _
+                or #getCurrentVersion _
+                or #getCyclesBalance _
+                or #getDaoRevenueStats _
+                or #getEffectiveDaoCutForApp _
+                or #getFactoryAggregates _
+                or #getFinancialLog _
+                or #getFinancialLogCount _
+                or #getLatestAppVersion _
+                or #getManagerByCanisterId _
+                or #getManagerCount _
+                or #getManagerWasmSize _
+                or #getManagersByOwner _
+                or #getMergedLog _
+                or #getMintLog _
+                or #getMintLogCount _
+                or #getMintLogCountForApp _
+                or #getMintLogEntry _
+                or #getMyManagers _
+                or #getMyWallet _
+                or #getMyWalletForApp _
+                or #getOfficialVersionByHash _
+                or #getOfficialVersions _
+                or #getOrphanCanisters _
+                or #getPaymentConfig _
+                or #getPaymentSubaccount _
+                or #getPremiumCreationFee _
+                or #getPublisher _
+                or #getPublisherRevenueSubaccount _
+                or #getPublisherStats _
+                or #getPublishers _
+                or #getPublishersByOwner _
+                or #getRecentCreations _
+                or #getRegisteredUserCount _
+                or #getSneedGovernance _
+                or #getSneedPremiumCanisterId _
+                or #getTotalRegistrationCount _
+                or #getUserWallet _
+                or #getVerifiedPublishers _
+                or #hasAppVersionWasm _
+                or #hasManagerWasm _
+                or #lookupMintedCanister _
+                or #wasMintedByUs _
+            ) false;
+            // a publisher's own content (wasms included): its owners and admins only
+            case (#addApp f) isPublisherOwnerOrAdmin(caller, f().0);
+            case (#updatePublisher f) isPublisherOwnerOrAdmin(caller, f().0);
+            case (#addPublisherFamily f) isPublisherOwnerOrAdmin(caller, f().0);
+            case (#removePublisherFamily f) isPublisherOwnerOrAdmin(caller, f().0);
+            case (#updateApp f) appOwnerOrAdmin(caller, f().0);
+            case (#setAppFamilies f) appOwnerOrAdmin(caller, f().0);
+            case (#addAppVersion f) versionAuthOk(caller, f().0);
+            case (#updateAppVersion f) versionAuthOk(caller, f().0);
+            case (#uploadAppVersionWasm f) versionAuthOk(caller, f().0);
+            case (#clearAppVersionWasm f) versionAuthOk(caller, f().0);
+            case (#removeAppVersion f) versionAuthOk(caller, f().0);
+            // admin tools with free-form content
+            case (#addOfficialVersion _ or #updateOfficialVersion _ or #removeOfficialVersion _ or #setOfficialVersions _ or #adminBulkRegisterCanisters _ or #adminRegisterCanister _) isAdmin(caller);
+            case (#setManagerWasm _) isAdminOrGovernance(caller);
+            // anyone signed in may start a publisher
+            case (#createPublisher _) not Principal.isAnonymous(caller) and (arg.size() <= IngressGuard.MEDIUM_ARG or isAdmin(caller));
+            // an app id
+            case (#registerCanister f) appIdOk(arg, f().1);
+            case (#registerCanisterFor f) appIdOk(arg, f().2);
+            case (#mintCanister f) appIdOk(arg, f().0);
+            case (#getAppMintPrice f) appIdOk(arg, f().0);
+            case _ arg.size() <= IngressGuard.SMALL_ARG;
+        };
+    };
+
 };
 

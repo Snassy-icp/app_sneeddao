@@ -87,3 +87,24 @@ export const errOf = (result) => {
   if ('err' in result) return result.err;
   throw new Error(`expected Err, got ${JSON.stringify(result, (_, v) => (typeof v === 'bigint' ? v.toString() : v))}`);
 };
+
+/// Resolves when the call was refused by the canister's ingress guard (system func inspect),
+/// before it cost the canister anything.
+export const refusedAtIngress = async (promise) => {
+  try { await promise; } catch (e) {
+    if (/canister_inspect_message .*refused/.test(String(e?.message || e))) return true;
+    throw e;
+  }
+  throw new Error('expected the ingress guard to refuse the call, but it was accepted');
+};
+
+/// The same actor, but every query method declared as an update call (as an attacker would
+/// call them, to make the canister pay for consensus).
+export function asUpdates(idlFactory) {
+  return ({ IDL }) => {
+    const svc = idlFactory({ IDL });
+    const fields = {};
+    for (const [name, func] of svc._fields) fields[name] = IDL.Func(func.argTypes, func.retTypes, []);
+    return IDL.Service(fields);
+  };
+}

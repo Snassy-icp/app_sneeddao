@@ -9,6 +9,7 @@ import Time "mo:base/Time";
 import T "Types";
 import Lib "lib";
 import PremiumClient "../PremiumClient";
+import IngressGuard "../IngressGuard";
 
 persistent actor SneedSNSForum {
     // NNS SNS-W canister interface for getting deployed SNS instances
@@ -773,4 +774,235 @@ persistent actor SneedSNSForum {
         // State is already initialized with stable values
         // This ensures any post-upgrade initialization if needed
     };
+
+    // Limits of the ingress guard below
+    transient let MAX_POLL_OPTIONS : Nat = 100;
+    transient let MAX_NEURONS : Nat = 1_000;
+    transient let NEURONS_ARG : Nat = 64 * 1024;
+
+    // the longest body anyone may post: the premium limit when premium is on
+    private func longestBody(normal : Nat, premium : Nat) : Nat {
+        switch (state.premium_config.sneed_premium_canister_id) {
+            case null normal;
+            case (?_) Nat.max(normal, premium);
+        }
+    };
+    private func postChars(premium : Bool) : Nat {
+        let l = state.text_limits;
+        l.post_title_max_length + (if premium longestBody(l.post_body_max_length, state.premium_config.premium_post_body_max_length) else l.post_body_max_length)
+    };
+    private func forumOk(arg : Blob, title : Text, description : Text) : Bool {
+        let l = state.text_limits;
+        arg.size() <= IngressGuard.textArg(l.forum_title_max_length + l.forum_description_max_length)
+        and IngressGuard.text(title, l.forum_title_max_length) and IngressGuard.text(description, l.forum_description_max_length)
+    };
+    private func topicOk(arg : Blob, title : Text, description : Text) : Bool {
+        let l = state.text_limits;
+        arg.size() <= IngressGuard.textArg(l.topic_title_max_length + l.topic_description_max_length)
+        and IngressGuard.text(title, l.topic_title_max_length) and IngressGuard.text(description, l.topic_description_max_length)
+    };
+    private func threadOk(arg : Blob, title : ?Text, body : Text) : Bool {
+        let l = state.text_limits;
+        let maxBody = longestBody(l.thread_body_max_length, state.premium_config.premium_thread_body_max_length);
+        arg.size() <= IngressGuard.textArg(l.thread_title_max_length + maxBody)
+        and IngressGuard.optText(title, l.thread_title_max_length) and IngressGuard.text(body, maxBody)
+    };
+    private func postOk(arg : Blob, title : ?Text, body : Text, premium : Bool) : Bool {
+        let l = state.text_limits;
+        let maxBody = if premium longestBody(l.post_body_max_length, state.premium_config.premium_post_body_max_length) else l.post_body_max_length;
+        arg.size() <= IngressGuard.textArg(postChars(premium))
+        and IngressGuard.optText(title, l.post_title_max_length) and IngressGuard.text(body, maxBody)
+    };
+
+    // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
+    // would go through consensus at our cost, and arguments are capped in size.
+    system func inspect({ arg : Blob; msg : {
+        #add_admin : Any;
+        #check_user_premium_status : Any;
+        #create_forum : () -> T.CreateForumInput;
+        #create_poll : () -> T.CreatePollInput;
+        #create_post : () -> (Nat, ?Nat, ?Text, Text);
+        #create_proposal_thread : Any;
+        #create_proposal_thread_with_auto_setup : Any;
+        #create_sns_forum_setup : Any;
+        #create_special_topic : Any;
+        #create_thread : () -> T.CreateThreadInput;
+        #create_tip : Any;
+        #create_topic : () -> T.CreateTopicInput;
+        #delete_forum : Any;
+        #delete_post : Any;
+        #delete_thread : Any;
+        #delete_topic : Any;
+        #get_admins : Any;
+        #get_current_counter : Any;
+        #get_feed : Any;
+        #get_forum : Any;
+        #get_forum_admin : Any;
+        #get_forum_by_sns_root : Any;
+        #get_forums : Any;
+        #get_forums_admin : Any;
+        #get_last_read_post : Any;
+        #get_last_seen_replies_timestamp : Any;
+        #get_last_seen_tip_timestamp : Any;
+        #get_poll : Any;
+        #get_poll_votes : Any;
+        #get_polls_by_post : Any;
+        #get_polls_by_thread : Any;
+        #get_post : Any;
+        #get_post_admin : Any;
+        #get_post_replies : Any;
+        #get_post_replies_admin : Any;
+        #get_post_votes : Any;
+        #get_post_votes_for_neurons : Any;
+        #get_posts_by_thread : Any;
+        #get_posts_by_thread_admin : Any;
+        #get_posts_by_user : Any;
+        #get_premium_config : Any;
+        #get_proposal_thread : Any;
+        #get_proposals_topic : Any;
+        #get_proposals_topic_by_sns_root : Any;
+        #get_recent_replies_count : Any;
+        #get_recent_tips_count : Any;
+        #get_recent_tips_received : Any;
+        #get_replies_to_user : Any;
+        #get_stats : Any;
+        #get_subtopics : Any;
+        #get_text_limits : Any;
+        #get_thread : Any;
+        #get_thread_admin : Any;
+        #get_thread_context : Any;
+        #get_thread_proposal_id : Any;
+        #get_thread_votes_for_neurons : Any;
+        #get_threads_by_activity : Any;
+        #get_threads_by_activity_with_unread_counts : Any;
+        #get_threads_by_topic : Any;
+        #get_threads_by_topic_admin : Any;
+        #get_threads_by_topic_with_unread_counts : Any;
+        #get_threads_by_user : Any;
+        #get_tip : Any;
+        #get_tip_stats : Any;
+        #get_tip_tokens_received_by_user : Any;
+        #get_tips_by_post : Any;
+        #get_tips_by_thread : Any;
+        #get_tips_given_by_user : Any;
+        #get_tips_received_by_user : Any;
+        #get_tips_received_since : Any;
+        #get_topic : Any;
+        #get_topic_admin : Any;
+        #get_topic_statistics : Any;
+        #get_topics_by_forum : Any;
+        #get_topics_by_forum_admin : Any;
+        #get_user_thread_reads_for_topic : Any;
+        #health_check : Any;
+        #is_admin : Any;
+        #mark_replies_seen_up_to : Any;
+        #mark_tips_seen_up_to : Any;
+        #remove_admin : Any;
+        #remove_proposals_topic : Any;
+        #retract_vote : Any;
+        #retract_vote_with_neurons : () -> (Nat, [T.NeuronId]);
+        #set_last_read_post : Any;
+        #set_proposals_topic : Any;
+        #undelete_forum : Any;
+        #undelete_post : Any;
+        #undelete_thread : Any;
+        #undelete_topic : Any;
+        #update_forum : () -> (Nat, T.CreateForumInput);
+        #update_post : () -> (Nat, ?Text, Text);
+        #update_premium_config : Any;
+        #update_text_limits : Any;
+        #update_thread : () -> (Nat, ?Text, Text);
+        #update_topic : () -> (Nat, T.CreateTopicInput);
+        #vote_on_poll_with_neurons : () -> (Nat, Nat, [T.NeuronId]);
+        #vote_on_post : Any;
+        #vote_on_post_with_neurons : () -> (Nat, T.VoteType, [T.NeuronId]);
+    } }) : Bool {
+        switch (msg) {
+            case (
+                #get_admins _
+                or #get_current_counter _
+                or #get_feed _
+                or #get_forum _
+                or #get_forum_admin _
+                or #get_forum_by_sns_root _
+                or #get_forums _
+                or #get_forums_admin _
+                or #get_last_read_post _
+                or #get_last_seen_replies_timestamp _
+                or #get_last_seen_tip_timestamp _
+                or #get_poll _
+                or #get_poll_votes _
+                or #get_polls_by_post _
+                or #get_polls_by_thread _
+                or #get_post _
+                or #get_post_admin _
+                or #get_post_replies _
+                or #get_post_replies_admin _
+                or #get_post_votes _
+                or #get_post_votes_for_neurons _
+                or #get_posts_by_thread _
+                or #get_posts_by_thread_admin _
+                or #get_posts_by_user _
+                or #get_premium_config _
+                or #get_proposal_thread _
+                or #get_proposals_topic _
+                or #get_proposals_topic_by_sns_root _
+                or #get_recent_replies_count _
+                or #get_recent_tips_count _
+                or #get_recent_tips_received _
+                or #get_replies_to_user _
+                or #get_stats _
+                or #get_subtopics _
+                or #get_text_limits _
+                or #get_thread _
+                or #get_thread_admin _
+                or #get_thread_context _
+                or #get_thread_proposal_id _
+                or #get_thread_votes_for_neurons _
+                or #get_threads_by_activity _
+                or #get_threads_by_activity_with_unread_counts _
+                or #get_threads_by_topic _
+                or #get_threads_by_topic_admin _
+                or #get_threads_by_topic_with_unread_counts _
+                or #get_threads_by_user _
+                or #get_tip _
+                or #get_tip_stats _
+                or #get_tip_tokens_received_by_user _
+                or #get_tips_by_post _
+                or #get_tips_by_thread _
+                or #get_tips_given_by_user _
+                or #get_tips_received_by_user _
+                or #get_tips_received_since _
+                or #get_topic _
+                or #get_topic_admin _
+                or #get_topic_statistics _
+                or #get_topics_by_forum _
+                or #get_topics_by_forum_admin _
+                or #get_user_thread_reads_for_topic _
+                or #health_check _
+                or #is_admin _
+            ) false;
+            // texts against the forum's text limits; a body may be as long as the premium limit, the
+            // method itself decides whether the caller is premium
+            case (#create_forum f) { let i = f(); forumOk(arg, i.title, i.description) };
+            case (#update_forum f) { let (_, i) = f(); forumOk(arg, i.title, i.description) };
+            case (#create_topic f) { let i = f(); topicOk(arg, i.title, i.description) };
+            case (#update_topic f) { let (_, i) = f(); topicOk(arg, i.title, i.description) };
+            case (#create_thread f) { let i = f(); threadOk(arg, i.title, i.body) };
+            case (#update_thread f) { let (_, title, body) = f(); threadOk(arg, title, body) };
+            case (#create_post f) { let (_, _, title, body) = f(); postOk(arg, title, body, true) };
+            case (#update_post f) { let (_, title, body) = f(); postOk(arg, title, body, true) };
+            case (#create_poll f) {
+                let i = f();
+                i.options.size() <= MAX_POLL_OPTIONS and arg.size() <= IngressGuard.textArg((i.options.size() + 1) * postChars(false))
+                and postOk(arg, ?i.title, i.body, false)
+                and IngressGuard.all<T.CreatePollOptionInput>(i.options, MAX_POLL_OPTIONS, func(o) = IngressGuard.text(o.title, state.text_limits.post_title_max_length) and IngressGuard.optText(o.body, state.text_limits.post_body_max_length))
+            };
+            case (#vote_on_post_with_neurons f) arg.size() <= NEURONS_ARG and f().2.size() <= MAX_NEURONS;
+            case (#retract_vote_with_neurons f) arg.size() <= NEURONS_ARG and f().1.size() <= MAX_NEURONS;
+            case (#vote_on_poll_with_neurons f) arg.size() <= NEURONS_ARG and f().2.size() <= MAX_NEURONS;
+            case _ arg.size() <= IngressGuard.SMALL_ARG;
+        };
+    };
+
 }

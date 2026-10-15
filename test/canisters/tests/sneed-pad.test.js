@@ -9,7 +9,7 @@ import { resolve } from 'node:path';
 import { Principal } from '@icp-sdk/core/principal';
 import { IDL } from '@icp-sdk/core/candid';
 import {
-  createPic, install, actorAs, account, admin, alice, bob, carol, ICP_LEDGER_ID, SNEED_GOVERNANCE, SNEED_SNS_ROOT, T, unwrap, errOf, BUILD,
+  createPic, install, actorAs, account, admin, alice, bob, carol, ICP_LEDGER_ID, SNEED_GOVERNANCE, SNEED_SNS_ROOT, T, unwrap, errOf, BUILD, refusedAtIngress,
 } from '../lib/pic.js';
 import { ledgerIdl, ledgerInit, cmcIdl, snsWasmIdl, premiumIdl, sneedAppIdl, padIdl, mintedLedgerIdl, mintedIndexIdl, governanceIdl } from '../lib/idl.js';
 import { fetchBlocks, btype, txField, archiveIdl } from '../lib/icrc3.js';
@@ -249,7 +249,7 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
     expect(handed.controllers.map((p) => p.toText())).toEqual([carol.toText()]);
     const kept = unwrap(await padAlice.create_token(config({ control: { keep_with: [bob, alice] }, symbol: 'MULTI' })));
     expect(kept.controllers.map((p) => p.toText())).toEqual([alice.toText(), bob.toText()]);
-    expect(errOf(await padAlice.get_quote(config({ control: { keep_with: Array(11).fill(bob) } })))).toMatch(/at most 10/);
+    expect(await refusedAtIngress(padAlice.get_quote(config({ control: { keep_with: Array(11).fill(bob) } })))).toBe(true); // at most 10: refused at ingress
   }, 180_000);
 
   it('still launches when the CMC refuses the top-up, and says so in its log', async () => {

@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Principal } from '@icp-sdk/core/principal';
 import {
-  createPic, install, actorAs, account, admin, alice, bob, carol, user, ICP_LEDGER_ID, T, unwrap, errOf, wasm, nowNs, principalToSubaccount,
+  createPic, install, actorAs, account, admin, alice, bob, carol, user, ICP_LEDGER_ID, T, unwrap, errOf, wasm, nowNs, principalToSubaccount, refusedAtIngress,
 } from '../lib/pic.js';
 import { ledgerIdl, ledgerInit, poolIdl, poolInit, premiumIdl } from '../lib/idl.js';
 import { ICPSWAP_LIST_ID, icpSwapListIdl, ser, sorted, upgradeHub } from '../lib/hub.js';
@@ -78,14 +78,19 @@ describe('app_sneeddao_backend admin and tokens', () => {
       () => hubAlice.import_whitelist_from_swaprunner(), () => hubAlice.refresh_token_metadata(aaaId), () => hubAlice.start_refresh_all_token_metadata(),
       () => hubAlice.stop_refresh_all_token_metadata(), () => hubAlice.run_token_list_maintenance_now(), () => hubAlice.send_tokens(aaaId, 1n, alice),
       () => hubAlice.transfer_position(poolId, alice, 1n), () => hubAlice.add_authorized_for_caller(alice), () => hubAnon.add_whitelisted_token(ok),
-    ]) await expect(call()).rejects.toThrow(/assertion failed/);
-    // and every Result-guarded one answers "Not authorized"
+    ]) await expect(call()).rejects.toThrow(/assertion failed|canister_inspect_message .*refused/); // the ingress guard refuses admin tools with free-form content
+    // admin tools with free-form content are refused at ingress for anyone else
+    for (const call of [
+      () => hubAlice.add_partner('p', 'https://l', 'd', [], []), () => hubAlice.update_partner(1n, 'p', 'https://l', 'd', [], []),
+      () => hubAlice.add_project('p', [], 'd', { product: null }, [], []), () => hubAlice.update_project(1n, 'p', [], 'd', { product: null }, [], []),
+      () => hubAlice.ban_user(bob, 1n, ''), () => hubAlice.add_blacklisted_word('w'), () => hubAlice.remove_blacklisted_word('w'),
+    ]) expect(await refusedAtIngress(call())).toBe(true);
+    // and every other Result-guarded one answers "Not authorized"
     for (const r of [
-      await hubAlice.add_partner('p', 'https://l', 'd', [], []), await hubAlice.update_partner(1n, 'p', 'https://l', 'd', [], []), await hubAlice.remove_partner(1n),
-      await hubAlice.add_project('p', [], 'd', { product: null }, [], []), await hubAlice.update_project(1n, 'p', [], 'd', { product: null }, [], []), await hubAlice.remove_project(1n),
+      await hubAlice.remove_partner(1n), await hubAlice.remove_project(1n),
       await hubAlice.set_jailbreak_fee_settings([1n], [], [], []), await hubAlice.get_jailbreak_payment_stats(), await hubAlice.get_jailbreak_payment_logs(0n, 10n),
-      await hubAlice.get_all_jailbreak_configs_count(), await hubAlice.admin_clear_avatar(bob), await hubAlice.ban_user(bob, 1n, ''), await hubAlice.unban_user(bob),
-      await hubAlice.add_blacklisted_word('w'), await hubAlice.remove_blacklisted_word('w'), await hubAlice.set_nickname_premium_canister([]),
+      await hubAlice.get_all_jailbreak_configs_count(), await hubAlice.admin_clear_avatar(bob), await hubAlice.unban_user(bob),
+      await hubAlice.set_nickname_premium_canister([]),
       await hubAlice.update_nickname_limits([], [], [], []), await hubAlice.update_canister_groups_limits([], [], [], [], [], []),
       await hubAlice.get_ban_log(), await hubAlice.get_banned_users(), await hubAlice.get_user_ban_history(bob),
       await hubAlice.verify_principal_name(bob), await hubAlice.unverify_principal_name(bob),
@@ -224,12 +229,12 @@ describe('app_sneeddao_backend admin and tokens', () => {
     await settle();
   });
 
-  it('the token meta cache: signed-in users fill an empty entry, only admins overwrite it, anonymous writes are ignored', async () => {
+  it('the token meta cache: signed-in users fill an empty entry, only admins overwrite it, anonymous writes are refused', async () => {
     const meta = { token0: [['symbol', { Text: 'AAA' }], ['decimals', { Nat: 6n }]], token1: [['fee', { Int: -1n }], ['logo', { Blob: Uint8Array.from([1, 2]) }]] };
     const empty = { token0: [], token1: [] };
     expect(await hub.get_cached_token_meta(poolId)).toEqual([]);
-    // anonymous: ignored (no trap, so logged-out browsers still get their metadata)
-    await hubAnon.set_cached_token_meta(poolId, meta);
+    // anonymous: refused at ingress (the frontend's write is best effort, so logged-out browsers still get their metadata)
+    expect(await refusedAtIngress(hubAnon.set_cached_token_meta(poolId, meta))).toBe(true);
     expect(await hub.get_cached_token_meta(poolId)).toEqual([]);
     // first signed-in writer fills the entry
     await hubAlice.set_cached_token_meta(poolId, meta);

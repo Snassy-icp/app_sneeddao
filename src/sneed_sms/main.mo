@@ -11,6 +11,7 @@ import Result "mo:base/Result";
 import Buffer "mo:base/Buffer";
 import Array "mo:base/Array";
 import PremiumClient "../PremiumClient";
+import IngressGuard "../IngressGuard";
 
 persistent actor SneedSMS {
     // Types
@@ -1088,4 +1089,80 @@ persistent actor SneedSMS {
 
         Map.get(state.user_last_seen_messages_timestamp, Map.n32hash, user_index)
     };
+
+    // Limit of the ingress guard below: a reply names the message(s) it answers
+    transient let MAX_REPLY_TO : Nat = 100;
+
+    // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
+    // would go through consensus at our cost, and arguments are capped in size.
+    system func inspect({ caller : Principal; arg : Blob; msg : {
+        #add_admin : Any;
+        #add_authorized_sender : Any;
+        #get_admins : Any;
+        #get_all_messages : Any;
+        #get_all_messages_admin : Any;
+        #get_authorized_senders : Any;
+        #get_config : Any;
+        #get_last_seen_messages_timestamp : Any;
+        #get_message : Any;
+        #get_premium_config : Any;
+        #get_received_messages : Any;
+        #get_recent_messages_count : Any;
+        #get_sent_messages : Any;
+        #get_stats : Any;
+        #get_system_sender_principal : Any;
+        #import_admins : Any;
+        #import_messages : Any;
+        #is_admin_query : Any;
+        #mark_messages_seen_up_to : Any;
+        #remove_admin : Any;
+        #remove_authorized_sender : Any;
+        #remove_self_from_message : Any;
+        #send_message : () -> CreateMessageInput;
+        #send_system_notification : () -> SystemNotificationInput;
+        #set_system_sender_principal : Any;
+        #update_config : Any;
+        #update_premium_config : Any;
+    } }) : Bool {
+        switch (msg) {
+            case (
+                #get_admins _
+                or #get_all_messages _
+                or #get_all_messages_admin _
+                or #get_authorized_senders _
+                or #get_config _
+                or #get_last_seen_messages_timestamp _
+                or #get_message _
+                or #get_premium_config _
+                or #get_received_messages _
+                or #get_recent_messages_count _
+                or #get_sent_messages _
+                or #get_stats _
+                or #get_system_sender_principal _
+                or #is_admin_query _
+            ) false;
+            // against the configured limits; a member may use the premium ones (the method decides)
+            case (#send_message f) {
+                let i = f();
+                let premium = stable_sneed_premium_canister_id != null;
+                let maxSubject = if premium Nat.max(state.config.max_subject_length, stable_premium_max_subject_length) else state.config.max_subject_length;
+                let maxBody = if premium Nat.max(state.config.max_body_length, stable_premium_max_body_length) else state.config.max_body_length;
+                let maxRecipients = if premium Nat.max(state.config.max_recipients, stable_premium_max_recipients) else state.config.max_recipients;
+                let replies = switch (i.reply_to) { case null 0; case (?ids) ids.size() };
+                replies <= MAX_REPLY_TO and i.recipients.size() <= maxRecipients
+                and arg.size() <= IngressGuard.textArg(maxSubject + maxBody) + 32 * (maxRecipients + replies)
+                and IngressGuard.text(i.subject, maxSubject) and IngressGuard.text(i.body, maxBody)
+            };
+            case (#send_system_notification f) {
+                let i = f();
+                i.recipients.size() <= stable_premium_max_recipients
+                and arg.size() <= IngressGuard.textArg(stable_premium_max_subject_length + stable_premium_max_body_length) + 32 * stable_premium_max_recipients
+                and IngressGuard.text(i.subject, stable_premium_max_subject_length) and IngressGuard.text(i.body, stable_premium_max_body_length)
+            };
+            // data migration by controllers: as large as an ingress message may be
+            case (#import_admins _ or #import_messages _) Principal.isController(caller);
+            case _ arg.size() <= IngressGuard.SMALL_ARG;
+        };
+    };
+
 }

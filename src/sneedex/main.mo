@@ -18,6 +18,7 @@ import T "Types";
 import Utils "Utils";
 import AssetHandlers "AssetHandlers";
 import PremiumClient "../PremiumClient";
+import IngressGuard "../IngressGuard";
 
 shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this {
     // ============================================
@@ -4953,4 +4954,183 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     if (expirationWorkerRunning) {
         scheduleExpirationWorker<system>();
     };
+
+    // Limits of the ingress guard below (the notes and NFT limits are createOffer's and addAsset's own)
+    transient let MAX_OFFER_NOTE : Nat = 4_000;
+    transient let MAX_NFTS_PER_ASSET : Nat = 50;
+    transient let MAX_APPROVED_BIDDERS : Nat = 200;
+    transient let MAX_ASSET_LIST : Nat = 100; // token ids, or controllers / hotkeys in a snapshot
+    transient let MAX_PRINCIPAL_BYTES : Nat = 32;
+
+    // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
+    // would go through consensus at our cost, and arguments are capped in size.
+    system func inspect({ caller : Principal; arg : Blob; msg : {
+        #acceptBid : Any;
+        #activateOffer : Any;
+        #addAdmin : Any;
+        #addAsset : () -> T.AddAssetRequest;
+        #addAssetType : Any;
+        #adminReclaimStuckTokens : Any;
+        #adminReturnMisplacedNft : Any;
+        #cancelOffer : Any;
+        #claimAssets : Any;
+        #claimWinningBid : Any;
+        #clearNeuronInfoCache : Any;
+        #clearNeuronInfoCacheFor : Any;
+        #confirmBid : Any;
+        #createOffer : () -> T.CreateOfferRequest;
+        #deactivateAssetType : Any;
+        #debugGetAllOffers : Any;
+        #escrowCanister : Any;
+        #escrowICRC1Tokens : Any;
+        #escrowICRC7NFTs : Any;
+        #escrowICRC7NFTsByApproval : Any;
+        #escrowSNSNeuron : Any;
+        #escrowSneedLock : Any;
+        #finalizeAssets : Any;
+        #getActiveOffers : Any;
+        #getAssetTypes : Any;
+        #getBackendCanisterId : Any;
+        #getBidEscrowBalance : Any;
+        #getBidEscrowSubaccount : Any;
+        #getBidsByBidder : Any;
+        #getCachedNeuronManagerInfoQuery : Any;
+        #getCanisterInfo : Any;
+        #getCanisterKinds : Any;
+        #getConfig : Any;
+        #getCreationFeePaymentLog : Any;
+        #getCreationFeePaymentLogCount : Any;
+        #getCutPaymentLog : Any;
+        #getCutPaymentLogCount : Any;
+        #getEffectiveOfferCreationFee : Any;
+        #getExpirationCheckInterval : Any;
+        #getFeeConfig : Any;
+        #getFeeRecipient : Any;
+        #getLedgerFeeRecipients : Any;
+        #getMarketStats : Any;
+        #getMarketplaceFeeRate : Any;
+        #getMinIncrementSettings : Any;
+        #getMyNotificationSettings : Any;
+        #getNeuronInfoCacheStaleness : Any;
+        #getNeuronManagerFactoryCanisterId : Any;
+        #getNeuronManagerInfo : Any;
+        #getNextBidId : Any;
+        #getNextOfferId : Any;
+        #getOfferCreationFee : Any;
+        #getOfferCreationPaymentSubaccount : Any;
+        #getOfferEscrowSubaccount : Any;
+        #getOfferFeed : Any;
+        #getOfferView : Any;
+        #getOffersByCreator : Any;
+        #getPaymentStats : Any;
+        #getPremiumAuctionCutBps : Any;
+        #getPremiumOfferCreationFee : Any;
+        #getPrivateOffersFor : Any;
+        #getPublicOffers : Any;
+        #getSneedLockCanisterId : Any;
+        #getSneedPremiumCanisterId : Any;
+        #getSneedSmsCanisterId : Any;
+        #getUserOfferCreationBalance : Any;
+        #isExpirationTimerRunning : Any;
+        #isExpirationWorkerRunning : Any;
+        #processExpiration : Any;
+        #queryBid : Any;
+        #queryOffer : Any;
+        #reactivateAssetType : Any;
+        #reclaimAssets : Any;
+        #refundBid : Any;
+        #removeAdmin : Any;
+        #removeLedgerFeeRecipient : Any;
+        #reserveBid : Any;
+        #setBackendCanisterId : Any;
+        #setExpirationCheckInterval : Any;
+        #setFeeRecipient : Any;
+        #setLedgerFeeRecipient : Any;
+        #setMarketplaceFeeRate : Any;
+        #setMinIncrementSettings : Any;
+        #setMyNotificationSettings : Any;
+        #setNeuronInfoCacheStaleness : Any;
+        #setNeuronManagerFactoryCanisterId : Any;
+        #setOfferCreationFee : Any;
+        #setPremiumAuctionCutBps : Any;
+        #setPremiumOfferCreationFee : Any;
+        #setSneedLockCanisterId : Any;
+        #setSneedPremiumCanisterId : Any;
+        #setSneedSmsCanisterId : Any;
+        #startExpirationTimer : Any;
+        #stopExpirationTimer : Any;
+        #triggerExpirationCheck : Any;
+        #updateConfig : Any;
+        #verifyICPNeuronManager : Any;
+        #verifyTradingBot : Any;
+        #withdrawBidEscrow : Any;
+        #withdrawOfferCreationPayment : Any;
+    } }) : Bool {
+        switch (msg) {
+            case (
+                #debugGetAllOffers _
+                or #getActiveOffers _
+                or #getAssetTypes _
+                or #getBackendCanisterId _
+                or #getBidEscrowSubaccount _
+                or #getBidsByBidder _
+                or #getCachedNeuronManagerInfoQuery _
+                or #getCanisterKinds _
+                or #getConfig _
+                or #getCreationFeePaymentLog _
+                or #getCreationFeePaymentLogCount _
+                or #getCutPaymentLog _
+                or #getCutPaymentLogCount _
+                or #getExpirationCheckInterval _
+                or #getFeeConfig _
+                or #getFeeRecipient _
+                or #getLedgerFeeRecipients _
+                or #getMarketStats _
+                or #getMarketplaceFeeRate _
+                or #getMinIncrementSettings _
+                or #getMyNotificationSettings _
+                or #getNeuronInfoCacheStaleness _
+                or #getNeuronManagerFactoryCanisterId _
+                or #getNextBidId _
+                or #getNextOfferId _
+                or #getOfferCreationFee _
+                or #getOfferCreationPaymentSubaccount _
+                or #getOfferEscrowSubaccount _
+                or #getOfferFeed _
+                or #getOfferView _
+                or #getOffersByCreator _
+                or #getPaymentStats _
+                or #getPremiumAuctionCutBps _
+                or #getPremiumOfferCreationFee _
+                or #getPrivateOffersFor _
+                or #getPublicOffers _
+                or #getSneedLockCanisterId _
+                or #getSneedPremiumCanisterId _
+                or #getSneedSmsCanisterId _
+                or #isExpirationTimerRunning _
+                or #isExpirationWorkerRunning _
+                or #queryBid _
+                or #queryOffer _
+            ) false;
+            case (#createOffer f) {
+                let r = f();
+                let bidders = switch (r.approved_bidders) { case null 0; case (?b) b.size() };
+                bidders <= MAX_APPROVED_BIDDERS
+                and arg.size() <= IngressGuard.textArg(2 * MAX_OFFER_NOTE) + MAX_APPROVED_BIDDERS * MAX_PRINCIPAL_BYTES
+                and IngressGuard.optText(r.public_note, MAX_OFFER_NOTE) and IngressGuard.optText(r.note_to_buyer, MAX_OFFER_NOTE)
+            };
+            case (#addAsset f) {
+                arg.size() <= IngressGuard.textArg(T.MAX_CANISTER_TITLE_LENGTH + T.MAX_CANISTER_DESCRIPTION_LENGTH) + MAX_ASSET_LIST * MAX_PRINCIPAL_BYTES
+                and (switch (f().asset) {
+                    case (#Canister c) IngressGuard.optText(c.title, T.MAX_CANISTER_TITLE_LENGTH) and IngressGuard.optText(c.description, T.MAX_CANISTER_DESCRIPTION_LENGTH);
+                    case (#ICRC7NFT n) n.token_ids.size() <= MAX_NFTS_PER_ASSET;
+                    case _ true;
+                })
+            };
+            // admin tools with free-form content
+            case (#addAssetType _ or #updateConfig _) isAdmin(caller);
+            case _ arg.size() <= IngressGuard.SMALL_ARG;
+        };
+    };
+
 };

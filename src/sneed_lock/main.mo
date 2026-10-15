@@ -27,6 +27,7 @@ import T "Types";
 
 import CircularBuffer "CircularBuffer";
 import PremiumClient "../PremiumClient";
+import IngressGuard "../IngressGuard";
 import Timer "mo:base/Timer";
 
 import Icrc3Log "../icrc3/Log";
@@ -4589,4 +4590,199 @@ shared (deployer) persistent actor class SneedLock() = this {
   // first (log start) block; after an upgrade postupgrade does the same.
   ensure_icrc3_timer<system>();
   schedule_icrc3_import<system>();
+
+  // An NFT batch of the ingress guard below: a few accounts, ids and a memo per item
+  func nftBatchOk(arg : Blob, items : Nat) : Bool =
+    items <= N.MAX_UPDATE_BATCH and arg.size() <= IngressGuard.SMALL_ARG + N.MAX_UPDATE_BATCH * (N.MAX_MEMO + 512);
+
+  // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
+  // would go through consensus at our cost, and arguments are capped in size.
+  system func inspect({ arg : Blob; msg : {
+    #add_liquidity_to_locked_position : Any;
+    #admin_add_admin : Any;
+    #admin_clear_completed_claim_requests : Any;
+    #admin_clear_failed_claim_requests : Any;
+    #admin_get_payment_log : Any;
+    #admin_get_payment_log_count : Any;
+    #admin_get_pool_unused_balance : Any;
+    #admin_icrc3_import_history : Any;
+    #admin_icrc3_register_archives_now : Any;
+    #admin_icrc3_repair_archive_controllers : Any;
+    #admin_icrc3_reset_archive_registration : Any;
+    #admin_icrc3_spill_now : Any;
+    #admin_pool_deposit : Any;
+    #admin_remove_admin : Any;
+    #admin_rescue_stuck_tokens : Any;
+    #admin_return_token : Any;
+    #admin_return_token_from_failed_request : Any;
+    #admin_set_icp_fee_recipient : Any;
+    #admin_set_icrc3_proposal_neuron : Any;
+    #admin_set_icrc3_settings : Any;
+    #admin_set_lock_fees_icp : Any;
+    #admin_set_sneed_premium_canister_id : Any;
+    #admin_withdraw_pool_balance_to_user : Any;
+    #claim_position : Any;
+    #claim_position_fees : Any;
+    #clear_expired_locks : Any;
+    #clear_expired_position_locks : Any;
+    #create_lock : Any;
+    #create_position_lock : Any;
+    #extend_lock : Any;
+    #getEffectiveLockFee : Any;
+    #getPaymentBalance : Any;
+    #getPaymentSubaccount : Any;
+    #get_admin_list : Any;
+    #get_claim_request_status : Any;
+    #get_claim_requests_page : Any;
+    #get_claimed_positions_for_principal : Any;
+    #get_completed_claim_request : Any;
+    #get_error_entries : Any;
+    #get_error_id_range : Any;
+    #get_failed_claim_request : Any;
+    #get_info_entries : Any;
+    #get_info_id_range : Any;
+    #get_lock_by_id : Any;
+    #get_lock_fee_stats : Any;
+    #get_lock_fees_icp : Any;
+    #get_lock_gas : Any;
+    #get_lock_limits : Any;
+    #get_lock_state : Any;
+    #get_lock_states : Any;
+    #get_lock_states_page : Any;
+    #get_lock_type : Any;
+    #get_my_claim_history : Any;
+    #get_position_lock_by_id : Any;
+    #get_position_nft : Any;
+    #get_position_ownerships : Any;
+    #get_summed_locks : Any;
+    #get_token_lock_by_id : Any;
+    #get_token_locks : Any;
+    #has_expired_locks : Any;
+    #has_expired_position_locks : Any;
+    #icrc10_supported_standards : Any;
+    #icrc37_approve_collection : () -> [N.ApproveCollectionArg];
+    #icrc37_approve_tokens : () -> [N.ApproveTokenArg];
+    #icrc37_get_collection_approvals : Any;
+    #icrc37_get_token_approvals : Any;
+    #icrc37_is_approved : Any;
+    #icrc37_max_approvals_per_token_or_collection : Any;
+    #icrc37_max_revoke_approvals : Any;
+    #icrc37_metadata : Any;
+    #icrc37_revoke_collection_approvals : () -> [N.RevokeCollectionApprovalArg];
+    #icrc37_revoke_token_approvals : () -> [N.RevokeTokenApprovalArg];
+    #icrc37_transfer_from : () -> [N.TransferFromArg];
+    #icrc3_get_archives : Any;
+    #icrc3_get_blocks : Any;
+    #icrc3_get_tip_certificate : Any;
+    #icrc3_log_status : Any;
+    #icrc3_registration_status : Any;
+    #icrc3_supported_block_types : Any;
+    #icrc7_atomic_batch_transfers : Any;
+    #icrc7_balance_of : Any;
+    #icrc7_collection_metadata : Any;
+    #icrc7_default_take_value : Any;
+    #icrc7_description : Any;
+    #icrc7_logo : Any;
+    #icrc7_max_memo_size : Any;
+    #icrc7_max_query_batch_size : Any;
+    #icrc7_max_take_value : Any;
+    #icrc7_max_update_batch_size : Any;
+    #icrc7_name : Any;
+    #icrc7_owner_of : Any;
+    #icrc7_permitted_drift : Any;
+    #icrc7_supply_cap : Any;
+    #icrc7_symbol : Any;
+    #icrc7_token_metadata : Any;
+    #icrc7_tokens : Any;
+    #icrc7_tokens_of : Any;
+    #icrc7_total_supply : Any;
+    #icrc7_transfer : () -> [N.TransferArg];
+    #icrc7_tx_window : Any;
+    #increase_dissolve_delay : Any;
+    #request_claim_and_withdraw : Any;
+    #set_max_lock_length_days : Any;
+    #start_dissolving : Any;
+    #stop_dissolving : Any;
+    #transfer_position : Any;
+    #transfer_position_ownership : Any;
+    #transfer_token_lock_ownership : Any;
+    #transfer_tokens : Any;
+    #update_position_lock : Any;
+    #withdraw_lock_gas : Any;
+  } }) : Bool {
+    switch (msg) {
+      case (
+        #admin_get_payment_log _
+        or #admin_get_payment_log_count _
+        or #getPaymentSubaccount _
+        or #get_admin_list _
+        or #get_claim_request_status _
+        or #get_claim_requests_page _
+        or #get_claimed_positions_for_principal _
+        or #get_completed_claim_request _
+        or #get_failed_claim_request _
+        or #get_lock_by_id _
+        or #get_lock_fee_stats _
+        or #get_lock_fees_icp _
+        or #get_lock_gas _
+        or #get_lock_limits _
+        or #get_lock_state _
+        or #get_lock_states _
+        or #get_lock_states_page _
+        or #get_lock_type _
+        or #get_my_claim_history _
+        or #get_position_lock_by_id _
+        or #get_position_nft _
+        or #get_position_ownerships _
+        or #get_summed_locks _
+        or #get_token_lock_by_id _
+        or #get_token_locks _
+        or #has_expired_locks _
+        or #has_expired_position_locks _
+        or #icrc10_supported_standards _
+        or #icrc37_get_collection_approvals _
+        or #icrc37_get_token_approvals _
+        or #icrc37_is_approved _
+        or #icrc37_max_approvals_per_token_or_collection _
+        or #icrc37_max_revoke_approvals _
+        or #icrc37_metadata _
+        or #icrc3_get_archives _
+        or #icrc3_get_blocks _
+        or #icrc3_get_tip_certificate _
+        or #icrc3_log_status _
+        or #icrc3_registration_status _
+        or #icrc3_supported_block_types _
+        or #icrc7_atomic_batch_transfers _
+        or #icrc7_balance_of _
+        or #icrc7_collection_metadata _
+        or #icrc7_default_take_value _
+        or #icrc7_description _
+        or #icrc7_logo _
+        or #icrc7_max_memo_size _
+        or #icrc7_max_query_batch_size _
+        or #icrc7_max_take_value _
+        or #icrc7_max_update_batch_size _
+        or #icrc7_name _
+        or #icrc7_owner_of _
+        or #icrc7_permitted_drift _
+        or #icrc7_supply_cap _
+        or #icrc7_symbol _
+        or #icrc7_token_metadata _
+        or #icrc7_tokens _
+        or #icrc7_tokens_of _
+        or #icrc7_total_supply _
+        or #icrc7_tx_window _
+      ) false;
+      // ICRC-7/37 batches: at most icrc7_max_update_batch_size items (the memos inside are checked
+      // per item by the method, against icrc7_max_memo_size)
+      case (#icrc7_transfer f) nftBatchOk(arg, f().size());
+      case (#icrc37_approve_tokens f) nftBatchOk(arg, f().size());
+      case (#icrc37_approve_collection f) nftBatchOk(arg, f().size());
+      case (#icrc37_revoke_token_approvals f) nftBatchOk(arg, f().size());
+      case (#icrc37_revoke_collection_approvals f) nftBatchOk(arg, f().size());
+      case (#icrc37_transfer_from f) nftBatchOk(arg, f().size());
+      case _ arg.size() <= IngressGuard.SMALL_ARG;
+    };
+  };
+
 };

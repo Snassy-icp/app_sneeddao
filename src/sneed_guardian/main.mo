@@ -31,6 +31,7 @@ import Time "mo:base/Time";
 import Timer "mo:base/Timer";
 import Sha256 "mo:sha2/Sha256";
 import PremiumClient "../PremiumClient";
+import IngressGuard "../IngressGuard";
 
 import T "Types";
 import Icrc3Log "../icrc3/Log";
@@ -757,4 +758,78 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
   system func postupgrade() { ensureTimers<system>() };
   ensureTimers<system>();
   ignore installer;
+
+  // Limits of the ingress guard below
+  transient let MAX_TITLE = 64;
+  transient let MAX_MEMO = 500;
+  transient let MAX_STAGE_ARG = 1_048_576;
+
+  // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
+  // would go through consensus at our cost, and arguments are capped in size.
+  system func inspect({ arg : Blob; msg : {
+    #admin_add_admin : Any;
+    #admin_remove_admin : Any;
+    #admin_run_auto_upgrade : Any;
+    #admin_run_status : Any;
+    #admin_set_approve_function_id : Any;
+    #admin_set_canisters : Any;
+    #approve_op : Any;
+    #cancel_op : Any;
+    #execute_op : Any;
+    #get_admins : Any;
+    #get_child : Any;
+    #get_config : Any;
+    #get_cycles_report : Any;
+    #get_op : Any;
+    #get_op_payment : Any;
+    #get_suite : Any;
+    #get_text_log : Any;
+    #icrc10_supported_standards : Any;
+    #icrc3_get_archives : Any;
+    #icrc3_get_blocks : Any;
+    #icrc3_get_tip_certificate : Any;
+    #icrc3_log_status : Any;
+    #icrc3_supported_block_types : Any;
+    #is_approver : Any;
+    #list_children : Any;
+    #list_ops : Any;
+    #list_ops_for : Any;
+    #list_upgradable : Any;
+    #ok_op : Any;
+    #refresh_blessed : Any;
+    #refresh_status : Any;
+    #refund_op : Any;
+    #register : () -> (Principal, T.Kind, T.Policy, ?Principal, Text);
+    #stage_op : () -> (Principal, T.OpKind, Text, ?Principal);
+    #validate_approve_op : Any;
+    #veto_op : Any;
+  } }) : Bool {
+    switch (msg) {
+      case (
+        #get_admins _
+        or #get_child _
+        or #get_config _
+        or #get_cycles_report _
+        or #get_op _
+        or #get_suite _
+        or #get_text_log _
+        or #icrc10_supported_standards _
+        or #icrc3_get_archives _
+        or #icrc3_get_blocks _
+        or #icrc3_get_tip_certificate _
+        or #icrc3_log_status _
+        or #icrc3_supported_block_types _
+        or #is_approver _
+        or #list_children _
+        or #list_ops _
+        or #list_ops_for _
+        or #list_upgradable _
+      ) false;
+      // the limits of register and stage_op; an install may carry an upgrade argument
+      case (#register f) arg.size() <= IngressGuard.textArg(MAX_TITLE) and IngressGuard.text(f().4, MAX_TITLE);
+      case (#stage_op f) arg.size() <= MAX_STAGE_ARG and IngressGuard.text(f().2, MAX_MEMO);
+      case _ arg.size() <= IngressGuard.SMALL_ARG;
+    };
+  };
+
 };
