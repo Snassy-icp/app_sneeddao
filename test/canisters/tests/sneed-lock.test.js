@@ -141,8 +141,9 @@ describe('token locks', () => {
     expect(await lock.get_lock_type(1n)).toEqual([{ TokenLock: null }]);
     const summed = await lockAlice.get_summed_locks();
     expect(summed).toEqual([[tokenAId, 60_000n]]);
-    const block = await lastBlock();
+    const [block, mint] = await lastBlocks(2); // the lock, then its NFT
     expect(btype(block)).toBe('sneedlock_token_lock_create');
+    expect(btype(mint)).toBe('7mint');
     expect(txField(block, 'lock_id')).toEqual({ Nat: 1n });
     expect(txField(block, 'amount')).toEqual({ Nat: 60_000n });
     expect(txField(block, 'expiry')).toEqual({ Nat: expiry });
@@ -213,7 +214,7 @@ describe('liquid locking of token locks', () => {
   it('needs the lock to exist and one free ledger fee', async () => {
     expect(errOf(await lockAlice.transfer_token_lock_ownership(bob, tokenAId, 999n)).message).toMatch(/not found/);
     expect(errOf(await lockAlice.transfer_token_lock_ownership(bob, tokenAId, 1n)).message).toMatch(/not found/); // archived
-    expect(errOf(await lockAlice.transfer_token_lock_ownership(bob, tokenAId, 2n)).message).toMatch(/Insufficient unlocked balance to cover transfer fee/);
+    expect(errOf(await lockAlice.transfer_token_lock_ownership(bob, tokenAId, 2n)).message).toMatch(/needs gas/); // no free balance and an empty gas tank (v2: section 4)
     expect(await activeTokenLocks()).toHaveLength(1);
   });
 
@@ -229,8 +230,10 @@ describe('liquid locking of token locks', () => {
     expect(await lockBob.get_summed_locks()).toEqual([[tokenAId, 50_000n]]);
     // bob cannot withdraw the locked tokens
     expect(errOf(await lockBob.transfer_tokens(bob, [], tokenAId, 1n))).toHaveProperty('GenericError');
-    const block = await lastBlock();
+    const [block, xfer] = await lastBlocks(2); // the transfer, then the NFT's
     expect(btype(block)).toBe('sneedlock_token_lock_transfer');
+    expect(btype(xfer)).toBe('7xfer');
+    expect(txField(block, 'gas_source')).toEqual({ Text: 'owner' });
     expect(principalOf(txField(block, 'from'))).toBe(alice.toText());
     expect(principalOf(txField(block, 'to'))).toBe(bob.toText());
     expect(txField(block, 'outcome')).toEqual({ Text: 'ok' });
@@ -293,8 +296,9 @@ describe('ICP lock fees', () => {
     expect(log.has_more).toBe(false);
     expect(log.payments[0].payer.toText()).toBe(alice.toText());
     expect(log.payments[0].amount_e8s).toBe(50_000_000n);
-    const [create, pay] = await lastBlocks(2);
+    const [create, mint, pay] = await lastBlocks(3); // the lock, its NFT, then the fee
     expect(btype(create)).toBe('sneedlock_token_lock_create');
+    expect(btype(mint)).toBe('7mint');
     expect(btype(pay)).toBe('sneedlock_fee_pay');
     expect(txField(pay, 'fee_e8s')).toEqual({ Nat: 50_000_000n });
     expect(txField(pay, 'amount_e8s')).toEqual({ Nat: 50_000_000n - ICP_FEE });
@@ -609,7 +613,11 @@ describe('ICRC-3 log of sneed_lock', () => {
     // still operational after the upgrade
     await tokenA.mint(sneedWallet(alice), 2_000n);
     unwrap(await lockAlice.create_lock(1_000n, tokenAId, await expiryIn(3600), []));
-    expect((await lock.icrc3_log_status()).log_length).toBe(before.log_length + 1n);
+    // the caller's expired locks are archived first (their NFTs burned), then the lock and its NFT
+    const added = Number((await lock.icrc3_log_status()).log_length - before.log_length);
+    const types = (await lastBlocks(added)).map(btype);
+    expect(types.slice(-2)).toEqual(['sneedlock_token_lock_create', '7mint']);
+    expect(types.slice(0, -2).every((t) => t === '7burn')).toBe(true);
   });
 });
 
@@ -639,8 +647,9 @@ describe('dissolve delays', () => {
     expect(s).toMatchObject({ kind: { TokenLock: null }, amount: [40_000n], dissolve_delay: DAY_NS, dissolving_until: [], expiry: NEVER, locked: true, archived: false });
     expect(s.lock_end).toBeGreaterThanOrEqual(now); // clamped to the moment the call ran
     expect((await lock.get_lock_by_id(neuronId))[0].TokenLock[2].expiry).toBe(NEVER); // old readers see it locked
-    const block = await lastBlock();
+    const [block, mint] = await lastBlocks(2); // the lock, then its NFT
     expect(btype(block)).toBe('sneedlock_token_lock_create');
+    expect(btype(mint)).toBe('7mint');
     expect(txField(block, 'dissolve_delay')).toEqual({ Nat: DAY_NS });
     // two days later it is still held: it has not started dissolving
     await advance(2n * DAY_NS);

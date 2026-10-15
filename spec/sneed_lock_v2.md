@@ -392,6 +392,28 @@ fee `F` to the sending account. The lock's amount never changes: whatever counts
   `sneedlock:kind = token`, `sneedlock:ledger`, `sneedlock:amount`, the lock fields as for
   positions, `sneedlock:gas_account`, `sneedlock:transfer_fee`.
 
+### As built (v2c, 2026-10-15)
+
+- `token_lock_move` in main.mo is the one money path for token-lock ownership changes:
+  `transfer_token_lock_ownership` (Sneedex escrow) and the NFT transfers both run it. It is the
+  previous `transfer_token_lock_ownership` body with the fee step above added; error codes 3
+  busy, 7 needs gas, 8 unlocked, 9 other.
+- NFT ownership of a token lock is read from its lock record (exactly one record; two means a
+  transfer awaiting reconciliation, and the NFT then answers no owner). No mint map is kept: a
+  flag `token_nfts_activated` marks that every live lock was minted once (after the ICRC-3
+  history import); from then on `create_lock` mints and archiving burns.
+- `icrc7_transfer` and `icrc37_transfer_from` run a batch item by item, re-checking each just
+  before it runs (an earlier item may have awaited the ledger).
+- Metadata names use cached `icrc1_symbol` / `icrc1_decimals` / `icrc1_fee` per ledger (filled
+  by timer); amounts are rounded down to 4 decimals so a name never overstates.
+- Queries: `get_lock_gas(lock_id)`; update: `withdraw_lock_gas(lock_id, to)`, logged as
+  `sneedlock_gas_withdraw`.
+- Sneed Hub: the wallet sends locks with `icrc7_transfer` (optional recipient subaccount; the
+  native call is the fallback against an older canister); a shared `components/LockGas.jsx`
+  (balance, "about N transfers", Add gas dialog) is on the wallet's lock rows, `/lock/:id`,
+  `/tokenlock` and the NFT page; Sneedex lists locks as NFTs of the Sneed Lock collection and
+  the separate "Sneed Lock" asset type is hidden (still supported by the canister).
+
 ### Why not the alternatives
 
 - **The lock pays its own fee (amount shrinks per transfer):** never stuck, but the amount drifts,

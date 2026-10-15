@@ -119,14 +119,15 @@ module {
     r;
   };
 
-  /// The card wallets show: the pair, the lock state line and the lock id, as an SVG data URL.
-  public func card(pair : Text, status : Text, token_id : Nat, position_id : Nat) : Text {
+  /// The card wallets show: a title (the pair, or the amount), a subtitle, the lock state line
+  /// and the lock id, as an SVG data URL.
+  public func card(title : Text, subtitle : Text, status : Text, token_id : Nat) : Text {
     let svg = "<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400' viewBox='0 0 400 400'>"
       # "<defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#1e293b'/><stop offset='1' stop-color='#4c1d95'/></linearGradient></defs>"
       # "<rect width='400' height='400' rx='24' fill='url(#g)'/>"
       # "<text x='32' y='64' font-family='sans-serif' font-size='20' fill='#c4b5fd'>SNEED LOCK</text>"
-      # "<text x='32' y='170' font-family='sans-serif' font-size='40' font-weight='bold' fill='#ffffff'>" # esc(pair) # "</text>"
-      # "<text x='32' y='210' font-family='sans-serif' font-size='20' fill='#e2e8f0'>LP position #" # Nat.toText(position_id) # "</text>"
+      # "<text x='32' y='170' font-family='sans-serif' font-size='40' font-weight='bold' fill='#ffffff'>" # esc(title) # "</text>"
+      # "<text x='32' y='210' font-family='sans-serif' font-size='20' fill='#e2e8f0'>" # esc(subtitle) # "</text>"
       # "<text x='32' y='300' font-family='sans-serif' font-size='18' fill='#fbbf24'>" # esc(status) # "</text>"
       # "<text x='32' y='360' font-family='monospace' font-size='16' fill='#94a3b8'>lock #" # Nat.toText(token_id) # "</text>"
       # "</svg>";

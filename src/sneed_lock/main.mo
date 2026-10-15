@@ -1,4 +1,5 @@
 import Principal "mo:base/Principal";
+import Result "mo:base/Result";
 import Buffer "mo:base/Buffer";
 import Option "mo:base/Option";
 import Text "mo:base/Text";
@@ -170,6 +171,17 @@ shared (deployer) persistent actor class SneedLock() = this {
   private func position_key(swap_canister_id : Principal, position_id : T.PositionId) : Text {
     Principal.toText(swap_canister_id) # ":" # Nat.toText(position_id)
   };
+  /// A token lock's gas tank (spec section 4): byte 0 = 0xFE, bytes 1-3 = "GAS", bytes 24-31 =
+  /// the lock id big-endian. A Sneed wallet subaccount starts with the principal's length (at
+  /// most 29), so no tank is anyone's wallet. Anyone may fund it; only the lock pays from it.
+  private func gas_subaccount(lock_id : T.LockId) : Blob {
+    let a = Array.init<Nat8>(32, 0);
+    a[0] := 0xFE; a[1] := 0x47; a[2] := 0x41; a[3] := 0x53;
+    var n = lock_id;
+    var i = 31;
+    while (i >= 24) { a[i] := Nat8.fromNat(n % 256); n := n / 256; i -= 1 };
+    Blob.fromArray(Array.freeze(a));
+  };
   // When each lock was created (lock id -> ns). Locks created before this was kept get
   // their time once from the ICRC-3 log's create blocks (postupgrade); locks older than
   // the log have none. Kept after a lock is archived.
@@ -189,6 +201,10 @@ shared (deployer) persistent actor class SneedLock() = this {
   stable var nft_recent = Map.new<Text, (Nat64, Nat)>();            // dedup: request -> (created_at_time, block)
   stable var nft_activated : Bool = false;                          // existing positions minted once
   stable var ledger_symbols = Map.new<Principal, Text>();           // for NFT names and cards
+  // Token locks as NFTs (spec section 4): every live token lock is one, id = its lock id.
+  stable var token_nfts_activated : Bool = false;                   // live token locks minted once
+  stable var ledger_decimals = Map.new<Principal, Nat8>();          // for token-lock NFT names
+  stable var ledger_fees = Map.new<Principal, Nat>();               // the ledger fee when last seen
 
   // ICRC-3 activity log: hash-chained, certified blocks of every action, with
   // archive canisters for old blocks. Library: src/icrc3; design and the block
@@ -1065,29 +1081,51 @@ shared (deployer) persistent actor class SneedLock() = this {
   ) : async TransferTokenLockOwnershipResult {
     let correlation_id = get_next_correlation_id();
     log_info(caller, correlation_id, "Transferring token lock " # debug_show(lock_id) # " from " # debug_show(caller) # " to " # debug_show(to_principal) # " for token " # debug_show(token_type));
+    let from_label = nft_label(lock_id);
+    switch (await* token_lock_move(caller, caller, to_principal, token_type, lock_id, correlation_id, true)) {
+      case (#err(e)) { #Err({ message = e.message; transfer_error = e.transfer_error }) };
+      case (#ok(_)) {
+        // The NFT goes along, to the recipient's default account (this call names no subaccount).
+        if (token_nfts_activated and not (caller == to_principal and from_label == null)) {
+          ignore nft_after_move(lock_id, { owner = caller; subaccount = from_label }, { owner = to_principal; subaccount = null }, null, null, null);
+        };
+        #Ok;
+      };
+    };
+  };
 
+  type MoveError = { code : Nat; message : Text; transfer_error : ?T.TransferError };
+
+  /// Moves token lock `lock_id` of `owner` to `to_principal`: the lock record first, then the
+  /// locked amount from the owner's Sneed wallet to the recipient's, the ledger fee from the
+  /// owner's free balance or (with `use_tank`) the lock's gas tank. `caller` is who asked (the
+  /// owner, or an approved spender), for the logs. Error codes: 3 busy, 7 no gas, 8 expired,
+  /// 9 other. Shared by transfer_token_lock_ownership and the NFT transfers.
+  private func token_lock_move(caller : Principal, owner : Principal, to_principal : Principal, token_type : T.TokenType, lock_id : T.LockId, correlation_id : Nat, use_tank : Bool) : async* Result.Result<Text, MoveError> {
     // Serialize with any other token operation on this caller's subaccount so a
     // concurrent transfer_tokens / ownership transfer can't race this one and
     // double-spend the tokens or duplicate the lock across the ledger awaits below.
-    if (is_token_op_locked(caller)) {
-      let error = #Err({
-        message = "A token operation is already in progress for caller: " # debug_show(caller);
+    if (is_token_op_locked(owner) or Map.has(lock_ids_in_flight, nhash, lock_id)) {
+      let error = #err({
+        code = 3;
+        message = "A token operation is already in progress for " # debug_show(owner);
         transfer_error = null;
       });
       log_error(caller, correlation_id, debug_show(error));
       return error;
     };
-    lock_token_op(caller);
+    lock_token_op(owner);
     Map.set(lock_ids_in_flight, nhash, lock_id, ());
 
     try {
     // Find the lock (without removing it yet)
-    let lock = find_token_lock(caller, token_type, lock_id);
+    let lock = find_token_lock(owner, token_type, lock_id);
 
     switch (lock) {
       case null {
-        let error = #Err({
-          message = "Lock " # debug_show(lock_id) # " not found for caller " # debug_show(caller) # " and token " # debug_show(token_type);
+        let error = #err({
+          code = 9;
+          message = "Lock " # debug_show(lock_id) # " not found for " # debug_show(owner) # " and token " # debug_show(token_type);
           transfer_error = null;
         });
         log_error(caller, correlation_id, debug_show(error));
@@ -1097,7 +1135,8 @@ shared (deployer) persistent actor class SneedLock() = this {
         // Verify the lock hasn't expired
         let now = NowAsNat64();
         if (found_lock.expiry <= now) {
-          let error = #Err({
+          let error = #err({
+            code = 8;
             message = "Lock " # debug_show(lock_id) # " has expired. Expiry: " # debug_show(found_lock.expiry) # ", Now: " # debug_show(now);
             transfer_error = null;
           });
@@ -1106,7 +1145,7 @@ shared (deployer) persistent actor class SneedLock() = this {
         };
 
         // Clean up any expired locks first
-        clear_expired_locks_for_principal(caller, correlation_id);
+        clear_expired_locks_for_principal(owner, correlation_id);
 
         // Verify the caller's subaccount has the locked balance BEFORE making any mutations
         let icrc1_ledger_canister = actor (Principal.toText(token_type)) : actor {
@@ -1115,20 +1154,22 @@ shared (deployer) persistent actor class SneedLock() = this {
           icrc1_fee() : async T.Balance;
         };
 
-        let caller_subaccount = PrincipalToSubaccount(caller);
+        let caller_subaccount = PrincipalToSubaccount(owner);
         let caller_account : T.Account = { owner = this_canister_id(); subaccount = ?Blob.fromArray(caller_subaccount); };
-        let caller_balance = await icrc1_ledger_canister.icrc1_balance_of(caller_account);
+        var caller_balance = await icrc1_ledger_canister.icrc1_balance_of(caller_account);
 
         // Get the transfer fee
         let token_fee = await icrc1_ledger_canister.icrc1_fee();
+        Map.set(ledger_fees, phash, token_type, token_fee);
 
         // Calculate total locked balance for this token (this includes the lock being transferred)
-        let sum_locked = get_summed_locks_from_principal_and_token(caller, token_type);
+        let sum_locked = get_summed_locks_from_principal_and_token(owner, token_type);
 
         // Check 1: Verify the locked balance is >= the amount being transferred
         // This ensures the lock is legitimate and they actually have this amount locked
         if (sum_locked < found_lock.amount) {
-          let error = #Err({
+          let error = #err({
+            code = 9;
             message = "Inconsistent lock state. Total locked: " # Nat.toText(sum_locked) # ", Lock amount: " # Nat.toText(found_lock.amount);
             transfer_error = null;
           });
@@ -1136,18 +1177,38 @@ shared (deployer) persistent actor class SneedLock() = this {
           return error;
         };
 
-        // Check 2: Verify the free (unlocked) balance is >= one tx fee
-        // Free balance = total balance - total locked
-        // We need: caller_balance - sum_locked >= token_fee
-        // Which means: caller_balance >= sum_locked + token_fee
+        // The fee (spec/sneed_lock_v2.md section 4): the owner's free balance (balance beyond
+        // everything locked there), else the lock's gas tank, which first sends one fee to the
+        // owner's wallet (that hop costs the tank a second fee). With neither: refused, nothing moved.
+        var gas_source = "owner";
         if (caller_balance < sum_locked + token_fee) {
           let free_balance = if (caller_balance >= sum_locked) { caller_balance - sum_locked } else { 0 };
-          let error = #Err({
-            message = "Insufficient unlocked balance to cover transfer fee. Free balance: " # Nat.toText(free_balance) # ", Required fee: " # Nat.toText(token_fee) # " (Total: " # Nat.toText(caller_balance) # ", Locked: " # Nat.toText(sum_locked) # ")";
-            transfer_error = null;
-          });
-          log_error(caller, correlation_id, debug_show(error));
-          return error;
+          let tank : T.Account = { owner = this_canister_id(); subaccount = ?gas_subaccount(lock_id) };
+          let tank_balance = await icrc1_ledger_canister.icrc1_balance_of(tank);
+          if (not use_tank or tank_balance < 2 * token_fee) {
+            let error = #err({
+              code = 7;
+              message = "This lock needs gas: its transfer costs one ledger fee (" # Nat.toText(token_fee) # "), and neither the owner's free balance (" # Nat.toText(free_balance) # ") nor the lock's gas tank (" # Nat.toText(tank_balance) # ", needs " # Nat.toText(2 * token_fee) # ") covers it. Anyone can add gas: send tokens of this ledger to the account " # Principal.toText(this_canister_id()) # " with subaccount " # N.hex(gas_subaccount(lock_id)) # " (get_lock_gas).";
+              transfer_error = null;
+            });
+            log_error(caller, correlation_id, debug_show(error));
+            return error;
+          };
+          let hop = try {
+            await icrc1_ledger_canister.icrc1_transfer({ from_subaccount = ?gas_subaccount(lock_id); to = caller_account; amount = token_fee; fee = null; memo = null; created_at_time = null });
+          } catch (e) {
+            let error = #err({ code = 9; message = "The gas tank's fee transfer failed: " # Error.message(e); transfer_error = null });
+            log_error(caller, correlation_id, debug_show(error));
+            return error;
+          };
+          switch (hop) {
+            case (#Err(te)) {
+              let error = #err({ code = 9; message = "The gas tank's fee transfer was refused by the ledger"; transfer_error = ?te });
+              log_error(caller, correlation_id, debug_show(error));
+              return error;
+            };
+            case (#Ok(_)) { gas_source := "tank"; caller_balance += token_fee };
+          };
         };
 
         // All validations passed. Move the lock from the caller to the recipient
@@ -1156,9 +1217,9 @@ shared (deployer) persistent actor class SneedLock() = this {
         // is already a lock covering them, so the recipient can never observe the
         // incoming tokens as unlocked (and withdraw them) in the window between the
         // transfer settling and the lock being recorded.
-        remove_token_lock(caller, token_type, lock_id);
+        remove_token_lock(owner, token_type, lock_id);
         add_lock_for_principal(to_principal, token_type, found_lock);
-        log_info(caller, correlation_id, "Moved lock " # debug_show(lock_id) # " from " # debug_show(caller) # " to " # debug_show(to_principal) # " (pending token transfer)");
+        log_info(caller, correlation_id, "Moved lock " # debug_show(lock_id) # " from " # debug_show(owner) # " to " # debug_show(to_principal) # " (pending token transfer)");
 
         // Transfer the tokens from caller's subaccount to recipient's subaccount
         let recipient_subaccount = PrincipalToSubaccount(to_principal);
@@ -1195,13 +1256,14 @@ shared (deployer) persistent actor class SneedLock() = this {
             // The transfer may have landed: the lock is now held for both
             // parties until reconciled, and the log says so.
             icrc3_add("sneedlock_token_lock_transfer", [
-              ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("from", Icrc3Log.principal(caller)), ("to", Icrc3Log.principal(to_principal)),
+              ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("from", Icrc3Log.principal(owner)), ("to", Icrc3Log.principal(to_principal)),
               ("ledger", Icrc3Log.principal(token_type)), ("lock_id", #Nat(lock_id)), ("amount", #Nat(found_lock.amount)),
               ("expiry", Icrc3Log.nat64(found_lock.expiry)), ("outcome", #Text("uncertain")),
             ]);
           };
-          add_lock_for_principal(caller, token_type, found_lock);
-          let error = #Err({
+          add_lock_for_principal(owner, token_type, found_lock);
+          let error = #err({
+            code = 9;
             message = if (not_executed) {
               "Ledger call failed (not executed); lock restored to caller: " # Error.message(e);
             } else {
@@ -1218,9 +1280,10 @@ shared (deployer) persistent actor class SneedLock() = this {
             // Roll back the optimistic lock move: the transfer failed, so remove
             // the lock we added to the recipient and restore it to the caller.
             remove_token_lock(to_principal, token_type, lock_id);
-            add_lock_for_principal(caller, token_type, found_lock);
-            let error = #Err({
-              message = "Failed to transfer tokens from caller's subaccount to recipient's subaccount";
+            add_lock_for_principal(owner, token_type, found_lock);
+            let error = #err({
+              code = 9;
+              message = "Failed to transfer tokens from the owner's subaccount to the recipient's subaccount";
               transfer_error = ?transfer_error;
             });
             log_error(caller, correlation_id, "Token transfer failed: " # debug_show(error));
@@ -1231,18 +1294,19 @@ shared (deployer) persistent actor class SneedLock() = this {
             log_info(caller, correlation_id, "Transferred " # Nat.toText(found_lock.amount) # " tokens from " # debug_show(caller) # " to " # debug_show(to_principal) # " with tx_index: " # debug_show(tx_index));
 
             icrc3_add("sneedlock_token_lock_transfer", [
-              ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("from", Icrc3Log.principal(caller)), ("to", Icrc3Log.principal(to_principal)),
+              ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("from", Icrc3Log.principal(owner)), ("to", Icrc3Log.principal(to_principal)),
               ("ledger", Icrc3Log.principal(token_type)), ("lock_id", #Nat(lock_id)), ("amount", #Nat(found_lock.amount)),
               ("expiry", Icrc3Log.nat64(found_lock.expiry)), ("ledger_tx", #Nat(tx_index)), ("outcome", #Text("ok")),
+              ("gas_source", #Text(gas_source)), ("fee", #Nat(token_fee)),
             ]);
-            log_info(caller, correlation_id, "Successfully transferred token lock ownership from " # debug_show(caller) # " to " # debug_show(to_principal) # " for lock " # debug_show(lock_id));
-            #Ok;
+            log_info(caller, correlation_id, "Successfully transferred token lock ownership from " # debug_show(owner) # " to " # debug_show(to_principal) # " for lock " # debug_show(lock_id));
+            #ok(gas_source);
           };
         };
       };
     };
     } finally {
-      unlock_token_op(caller);
+      unlock_token_op(owner);
       Map.delete(lock_ids_in_flight, nhash, lock_id);
     };
   };
@@ -1389,6 +1453,9 @@ shared (deployer) persistent actor class SneedLock() = this {
         ("ledger", Icrc3Log.principal(icrc1_ledger_canister_id)), ("lock_id", #Nat(lock.lock_id)),
         ("amount", #Nat(amount)), ("expiry", Icrc3Log.nat64(expires_at)),
       ], if (delay > 0) { [("dissolve_delay", Icrc3Log.nat64(delay))] } else { [] }));
+      // its NFT, logged after the lock it stands for
+      if (token_nfts_activated) { token_nft_mint(lock.lock_id, caller, icrc1_ledger_canister_id, "lock") };
+      schedule_symbol_fill<system>([icrc1_ledger_canister_id]);
 
       // Step 3: Charge the ICP fee (only after lock is successfully created)
       if (fee_to_charge > 0) {
@@ -1766,6 +1833,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     };
 
     var cnt_archived : Nat = 0;
+    var archived_ids = List.nil<Nat>();
     let tokenIter : Iter.Iter<TokenType> = allLocks.keys();
     for (token in tokenIter) {
       let locks = switch (allLocks.get(token)) {
@@ -1797,6 +1865,7 @@ shared (deployer) persistent actor class SneedLock() = this {
           archived_at = now;
         };
         archived_token_locks.put(lock.lock_id, archived_lock);
+        archived_ids := List.push(lock.lock_id, archived_ids);
         cnt_archived += 1;
       };
 
@@ -1804,6 +1873,18 @@ shared (deployer) persistent actor class SneedLock() = this {
     };
 
     state.principal_token_locks.put(principal, allLocks);
+    // Their NFTs are burned, unless a record of the lock remains elsewhere (an ownership transfer
+    // with an unknown outcome keeps it on both parties until reconciled).
+    if (token_nfts_activated) {
+      for (id in List.toIter(archived_ids)) {
+        if (token_lock_records(id).size() == 0) {
+          let label_ = nft_label(id);
+          Map.delete(nft_labels, nhash, id);
+          Map.delete(nft_token_approvals, nhash, id);
+          ignore icrc3_add_i("7burn", [("tid", #Nat(id)), ("from", acct({ owner = principal; subaccount = label_ }))]);
+        };
+      };
+    };
     log_info(principal, correlation_id, "Archived " # debug_show(cnt_archived) # " expired token locks for " # debug_show(principal));
   };
 
@@ -1923,7 +2004,8 @@ shared (deployer) persistent actor class SneedLock() = this {
   private func token_lock_state(owner : Principal, ledger : TokenType, lock : Lock, archived : Bool) : T.LockState {
     let info = Map.get(dissolve_infos, nhash, lock.lock_id);
     {
-      lock_id = lock.lock_id; kind = #TokenLock; owner; owner_subaccount = null;
+      lock_id = lock.lock_id; kind = #TokenLock; owner;
+      owner_subaccount = if (archived) { null } else { nft_label(lock.lock_id) };
       ledger = ?ledger; amount = ?lock.amount;
       swap_canister_id = null; position_id = null; dex = null; token0 = null; token1 = null;
       lock_end = switch (info) { case (?i) i.lock_end; case null lock.expiry };
@@ -2156,7 +2238,13 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// token does not exist (or, defensively, when the position has no single claimant).
   private func nft_owner(tid : Nat) : ?N.Account {
     switch (Map.get(nft_tokens, nhash, tid)) {
-      case null null;
+      case null {
+        // a live token lock (exactly one record: none = archived or never, two = a transfer
+        // with an unknown outcome awaiting reconciliation)
+        if (not token_nfts_activated) { return null };
+        let r = token_lock_records(tid);
+        if (r.size() == 1) ?{ owner = r[0].0; subaccount = nft_label(tid) } else null;
+      };
       case (?p) {
         let c = position_claimants(p.swap, p.position_id);
         if (c.size() == 1) ?{ owner = c[0]; subaccount = nft_label(tid) } else null;
@@ -2245,9 +2333,15 @@ shared (deployer) persistent actor class SneedLock() = this {
       for (l in missing.vals()) {
         if (not Map.has(ledger_symbols, phash, l)) {
           try {
-            let ledger = actor (Principal.toText(l)) : actor { icrc1_symbol : shared query () -> async Text };
+            let ledger = actor (Principal.toText(l)) : actor {
+              icrc1_symbol : shared query () -> async Text;
+              icrc1_decimals : shared query () -> async Nat8;
+              icrc1_fee : shared query () -> async Nat;
+            };
             let sym = await ledger.icrc1_symbol();
             if (sym.size() > 0 and sym.size() <= 32) { Map.set(ledger_symbols, phash, l, sym) };
+            Map.set(ledger_decimals, phash, l, await ledger.icrc1_decimals());
+            Map.set(ledger_fees, phash, l, await ledger.icrc1_fee());
           } catch (_) {};
         };
       };
@@ -2273,7 +2367,7 @@ shared (deployer) persistent actor class SneedLock() = this {
   };
 
   private func nft_metadata(tid : Nat) : ?[(Text, N.Value)] {
-    let p = switch (Map.get(nft_tokens, nhash, tid)) { case (?p) p; case null { return null } };
+    let p = switch (Map.get(nft_tokens, nhash, tid)) { case (?p) p; case null { return token_nft_metadata(tid) } };
     let lock = current_position_lock(p.swap, p.position_id);
     let (t0, t1) = switch (lock) {
       case (?l) (?l.token0, ?l.token1);
@@ -2301,7 +2395,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     let b = Buffer.Buffer<(Text, N.Value)>(20);
     b.add(("icrc7:name", #Text(name)));
     b.add(("icrc7:description", #Text("An ICPSwap " # pair # " liquidity position (#" # Nat.toText(p.position_id) # ") held by Sneed Lock. Whoever holds this NFT owns the position and its lock, and collects the position's fees, including any not yet claimed.")));
-    b.add(("icrc7:image", #Text(N.card(pair, status, tid, p.position_id))));
+    b.add(("icrc7:image", #Text(N.card(pair, "LP position #" # Nat.toText(p.position_id), status, tid))));
     b.add(("sneedlock:kind", #Text("position")));
     b.add(("sneedlock:swap", #Text(Principal.toText(p.swap))));
     b.add(("sneedlock:position_id", #Nat(p.position_id)));
@@ -2385,15 +2479,186 @@ shared (deployer) persistent actor class SneedLock() = this {
     nft_after_move(tid, from, to, spender, memo, ts);
   };
 
+  // ---- token locks as NFTs (spec section 4) ----
+
+  private func token_nft_mint(lock_id : Nat, owner : Principal, ledger : Principal, why : Text) {
+    ignore icrc3_add_i("7mint", [
+      ("tid", #Nat(lock_id)), ("to", Icrc3Log.account(owner, null)),
+      ("meta", #Map([("sneedlock:kind", #Text("token")), ("sneedlock:ledger", Icrc3Log.principal(ledger)), ("sneedlock:minted_by", #Text(why))])),
+    ]);
+  };
+
+  /// Once: an NFT for every live token lock. Runs after the ICRC-3 history import.
+  private func activate_token_nfts<system>() {
+    if (token_nfts_activated or not icrc3.history_imported) { return };
+    token_nfts_activated := true;
+    let seen = Map.new<Nat, ()>();
+    let ledgers = Map.new<Principal, ()>();
+    let all = Array.sort<T.FullyQualifiedLock>(get_fully_qualified_locks(), func(a, b) { Nat.compare(a.2.lock_id, b.2.lock_id) });
+    for ((owner, ledger, lock) in all.vals()) {
+      if (not Map.has(seen, nhash, lock.lock_id) and token_lock_records(lock.lock_id).size() == 1) {
+        token_nft_mint(lock.lock_id, owner, ledger, "activation");
+        Map.set(seen, nhash, lock.lock_id, ());
+      };
+      Map.set(ledgers, phash, ledger, ());
+    };
+    schedule_symbol_fill<system>(Iter.toArray(Map.keys(ledgers)));
+  };
+
+  /// "1,234.5" for an amount in base units.
+  private func amount_text(amount : Nat, decimals : Nat) : Text {
+    var unit = 1;
+    var i = 0;
+    while (i < decimals) { unit *= 10; i += 1 };
+    let whole = amount / unit;
+    var frac = amount % unit;
+    // whole part with thousands separators
+    let w = Nat.toText(whole);
+    var grouped = "";
+    var n = 0;
+    let chars = Iter.toArray(w.chars());
+    var k = chars.size();
+    while (k > 0) {
+      k -= 1;
+      grouped := Text.fromChar(chars[k]) # grouped;
+      n += 1;
+      if (n % 3 == 0 and k > 0) { grouped := "," # grouped };
+    };
+    if (frac == 0 or decimals == 0) { return grouped };
+    // up to 4 decimals, trailing zeros trimmed
+    var digits = decimals;
+    while (digits > 4) { frac /= 10; digits -= 1 };
+    if (frac == 0) { return grouped };
+    var f = Nat.toText(frac);
+    while (f.size() < digits) { f := "0" # f };
+    var trimmed = Iter.toArray(f.chars());
+    var len = trimmed.size();
+    while (len > 0 and trimmed[len - 1] == '0') { len -= 1 };
+    grouped # "." # Text.fromIter(Iter.fromArray(Array.tabulate<Char>(len, func(j) { trimmed[j] })));
+  };
+
+  private func token_nft_metadata(tid : Nat) : ?[(Text, N.Value)] {
+    if (not token_nfts_activated) { return null };
+    let r = token_lock_records(tid);
+    if (r.size() != 1) { return null };
+    let (owner, ledger, lock) = r[0];
+    let st = token_lock_state(owner, ledger, lock, false);
+    let sym = symbol_of(ledger);
+    let amount = switch (Map.get(ledger_decimals, phash, ledger)) {
+      case (?d) amount_text(lock.amount, Nat8.toNat(d)) # " " # sym;
+      case null Nat.toText(lock.amount) # " base units of " # sym;
+    };
+    let status = if (not st.locked) "Unlocked"
+      else if (st.dissolve_delay > 0 and st.dissolving_until == null) "Locked until dissolved"
+      else "Locked until " # dateText(st.expiry);
+    let b = Buffer.Buffer<(Text, N.Value)>(20);
+    b.add(("icrc7:name", #Text(amount # " lock")));
+    b.add(("icrc7:description", #Text(amount # " locked in Sneed Lock. Whoever holds this NFT owns the lock and receives the tokens once it unlocks. Moving it costs one ledger fee, paid from the owner's free balance in Sneed Lock or from the lock's gas account, which anyone can top up.")));
+    b.add(("icrc7:image", #Text(N.card(amount, "Token lock", status, tid))));
+    b.add(("sneedlock:kind", #Text("token")));
+    b.add(("sneedlock:ledger", #Text(Principal.toText(ledger))));
+    b.add(("sneedlock:amount", #Nat(lock.amount)));
+    b.add(("sneedlock:lock_id", #Nat(tid)));
+    b.add(("sneedlock:lock_end", #Nat(Nat64.toNat(st.lock_end))));
+    b.add(("sneedlock:dissolve_delay", #Nat(Nat64.toNat(st.dissolve_delay))));
+    switch (st.dissolving_until) { case (?u) b.add(("sneedlock:dissolving_until", #Nat(Nat64.toNat(u)))); case null {} };
+    b.add(("sneedlock:earliest_unlock", #Nat(Nat64.toNat(st.earliest_unlock))));
+    b.add(("sneedlock:locked", #Text(if (st.locked) "true" else "false")));
+    b.add(("sneedlock:gas_owner", #Text(Principal.toText(this_canister_id()))));
+    b.add(("sneedlock:gas_subaccount", #Blob(gas_subaccount(tid))));
+    switch (Map.get(ledger_fees, phash, ledger)) { case (?f) b.add(("sneedlock:transfer_fee", #Nat(f))); case null {} };
+    ?Buffer.toArray(b);
+  };
+
+  /// A token lock's gas tank: the account anyone can fund, its ledger and the last seen fee.
+  /// Null for ids that are not token locks (live or archived).
+  public query func get_lock_gas(lock_id : T.LockId) : async ?{ account : T.Account; ledger : Principal; transfer_fee : ?Nat } {
+    let ledger = switch (token_lock_records(lock_id)) {
+      case (r) {
+        if (r.size() > 0) r[0].1 else switch (archived_token_locks.get(lock_id)) { case (?a) a.token_type; case null { return null } };
+      };
+    };
+    ?{ account = { owner = this_canister_id(); subaccount = ?gas_subaccount(lock_id) }; ledger; transfer_fee = Map.get(ledger_fees, phash, ledger) };
+  };
+
+  /// The lock's owner (the last owner once archived) takes the gas back: the tank's balance less
+  /// one ledger fee goes to `to`. Answers the ledger block index.
+  public shared ({ caller }) func withdraw_lock_gas(lock_id : T.LockId, to : T.Account) : async { #Ok : Nat; #Err : Text } {
+    let correlation_id = get_next_correlation_id();
+    let (owner, ledger) = switch (token_lock_records(lock_id)) {
+      case (r) {
+        if (r.size() == 1) (r[0].0, r[0].1)
+        else if (r.size() > 1) { return #Err("A transfer of this lock is awaiting reconciliation") }
+        else switch (archived_token_locks.get(lock_id)) { case (?a) (a.owner, a.token_type); case null { return #Err("No such token lock") } };
+      };
+    };
+    if (owner != caller) { return #Err("Only the lock's owner can take its gas back") };
+    if (is_token_op_locked(owner) or Map.has(lock_ids_in_flight, nhash, lock_id)) { return #Err("A token operation is in progress; try again shortly") };
+    lock_token_op(owner);
+    try {
+      let l = actor (Principal.toText(ledger)) : actor {
+        icrc1_balance_of : shared query (T.Account) -> async Nat;
+        icrc1_fee : shared query () -> async Nat;
+        icrc1_transfer : shared (TransferArgs) -> async T.TransferResult;
+      };
+      let tank : T.Account = { owner = this_canister_id(); subaccount = ?gas_subaccount(lock_id) };
+      let balance = await l.icrc1_balance_of(tank);
+      let fee = await l.icrc1_fee();
+      Map.set(ledger_fees, phash, ledger, fee);
+      if (balance <= fee) { return #Err("The gas tank holds " # Nat.toText(balance) # ", not more than one ledger fee (" # Nat.toText(fee) # ")") };
+      switch (await l.icrc1_transfer({ from_subaccount = ?gas_subaccount(lock_id); to; amount = balance - fee; fee = ?fee; memo = null; created_at_time = null })) {
+        case (#Ok(i)) {
+          icrc3_add("sneedlock_gas_withdraw", [
+            ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("lock_id", #Nat(lock_id)), ("ledger", Icrc3Log.principal(ledger)),
+            ("amount", #Nat(balance - fee)), ("to", Icrc3Log.account(to.owner, to.subaccount)), ("ledger_tx", #Nat(i)),
+          ]);
+          #Ok(i);
+        };
+        case (#Err(e)) { #Err("The ledger refused: " # debug_show(e)) };
+      };
+    } catch (e) {
+      #Err("The ledger call failed: " # Error.message(e));
+    } finally {
+      unlock_token_op(owner);
+    };
+  };
+
+  /// One NFT move whose authorisation has been checked (the owner, or an approved spender):
+  /// positions synchronously, token locks through token_lock_move (a ledger transfer, gas).
+  private func nft_move_one(caller : Principal, tid : Nat, owner : N.Account, to : N.Account, spender : ?N.Account, memo : ?Blob, ts : ?Nat64) : async* N.TransferResult {
+    switch (Map.get(nft_tokens, nhash, tid)) {
+      case (?_) {
+        switch (nft_busy(tid)) { case (?why) { return #Err(#GenericError({ error_code = 3; message = why })) }; case null {} };
+        #Ok(nft_transfer_now(caller, tid, owner, to, spender, memo, ts));
+      };
+      case null {
+        let r = token_lock_records(tid);
+        if (r.size() != 1) { return #Err(#NonExistingTokenId) };
+        let (_, ledger, lock) = r[0];
+        if (lock.expiry <= NowAsNat64()) { return #Err(#GenericError({ error_code = 8; message = "The lock has unlocked; it can no longer be transferred" })) };
+        if (is_token_op_locked(owner.owner) or Map.has(lock_ids_in_flight, nhash, tid)) {
+          return #Err(#GenericError({ error_code = 3; message = "A token operation of the owner is in progress; try again shortly" }));
+        };
+        // Between two accounts of one principal only the label changes: no ledger call, no gas.
+        if (owner.owner == to.owner) { return #Ok(nft_after_move(tid, owner, to, spender, memo, ts)) };
+        switch (await* token_lock_move(caller, owner.owner, to.owner, ledger, tid, get_next_correlation_id(), true)) {
+          case (#ok(_)) { #Ok(nft_after_move(tid, owner, to, spender, memo, ts)) };
+          case (#err(e)) { #Err(#GenericError({ error_code = e.code; message = e.message })) };
+        };
+      };
+    };
+  };
+
   // ---- ICRC-7: collection ----
   transient let NFT_NAME = "Sneed Lock";
   transient let NFT_SYMBOL = "SLOCK";
-  transient let NFT_DESCRIPTION = "Locked ICPSwap liquidity positions held by Sneed Lock. Each NFT is one position with its lock; whoever holds it owns both.";
+  transient let NFT_DESCRIPTION = "Locks held by Sneed Lock: locked ICPSwap liquidity positions and locked tokens. Each NFT is one lock; whoever holds it owns the lock and what it holds.";
 
   public query func icrc7_collection_metadata() : async [(Text, N.Value)] {
+    let supply = nft_ids_sorted().size();
     [
       ("icrc7:name", #Text(NFT_NAME)), ("icrc7:symbol", #Text(NFT_SYMBOL)), ("icrc7:description", #Text(NFT_DESCRIPTION)),
-      ("icrc7:total_supply", #Nat(Map.size(nft_tokens))),
+      ("icrc7:total_supply", #Nat(supply)),
       ("icrc7:max_query_batch_size", #Nat(N.MAX_QUERY_BATCH)), ("icrc7:max_update_batch_size", #Nat(N.MAX_UPDATE_BATCH)),
       ("icrc7:default_take_value", #Nat(N.DEFAULT_TAKE)), ("icrc7:max_take_value", #Nat(N.MAX_TAKE)), ("icrc7:max_memo_size", #Nat(N.MAX_MEMO)),
       ("icrc7:atomic_batch_transfers", #Text("false")),
@@ -2405,7 +2670,7 @@ shared (deployer) persistent actor class SneedLock() = this {
   public query func icrc7_symbol() : async Text { NFT_SYMBOL };
   public query func icrc7_description() : async ?Text { ?NFT_DESCRIPTION };
   public query func icrc7_logo() : async ?Text { null };
-  public query func icrc7_total_supply() : async Nat { Map.size(nft_tokens) };
+  public query func icrc7_total_supply() : async Nat { nft_ids_sorted().size() };
   public query func icrc7_supply_cap() : async ?Nat { null };
   public query func icrc7_max_query_batch_size() : async ?Nat { ?N.MAX_QUERY_BATCH };
   public query func icrc7_max_update_batch_size() : async ?Nat { ?N.MAX_UPDATE_BATCH };
@@ -2425,7 +2690,16 @@ shared (deployer) persistent actor class SneedLock() = this {
     if (ids.size() > N.MAX_QUERY_BATCH) { Debug.trap("too many token ids") };
     Array.map<Nat, ?N.Account>(ids, nft_owner);
   };
-  private func nft_ids_sorted() : [Nat] { Array.sort<Nat>(Iter.toArray(Map.keys(nft_tokens)), Nat.compare) };
+  private func nft_ids_sorted() : [Nat] {
+    let ids = Map.new<Nat, ()>();
+    for (k in Map.keys(nft_tokens)) Map.set(ids, nhash, k, ());
+    if (token_nfts_activated) {
+      for ((_, m) in state.principal_token_locks.entries()) {
+        for ((_, locks) in m.entries()) { for (l in List.toIter(locks)) Map.set(ids, nhash, l.lock_id, ()) };
+      };
+    };
+    Array.sort<Nat>(Iter.toArray(Map.keys(ids)), Nat.compare);
+  };
   private func nft_ids_of(a : N.Account) : [Nat] {
     Array.filter<Nat>(nft_ids_sorted(), func(tid) { switch (nft_owner(tid)) { case (?o) N.sameAccount(o, a); case null false } });
   };
@@ -2439,28 +2713,34 @@ shared (deployer) persistent actor class SneedLock() = this {
   // ---- ICRC-7: transfer ----
   public shared ({ caller }) func icrc7_transfer(args : [N.TransferArg]) : async [?N.TransferResult] {
     if (args.size() > N.MAX_UPDATE_BATCH) { return [?#Err(#GenericBatchError({ error_code = 1; message = "At most " # Nat.toText(N.MAX_UPDATE_BATCH) # " transfers per call" }))] };
-    let now = NowAsNat64();
-    prune_recent(now);
-    Array.map<N.TransferArg, ?N.TransferResult>(args, func(a) {
-      switch (a.memo) { case (?m) { if (m.size() > N.MAX_MEMO) { return ?#Err(#GenericError({ error_code = 2; message = "Memo longer than " # Nat.toText(N.MAX_MEMO) # " bytes" })) } }; case null {} };
-      switch (N.checkTime(a.created_at_time, now)) { case (?#TooOld) { return ?#Err(#TooOld) }; case (?#CreatedInFuture(x)) { return ?#Err(#CreatedInFuture(x)) }; case null {} };
-      if (not N.validSub(a.from_subaccount)) { return ?#Err(#Unauthorized) };
-      if (Principal.isAnonymous(a.to.owner) or not N.validSub(a.to.subaccount)) { return ?#Err(#InvalidRecipient) };
-      let owner = switch (nft_owner(a.token_id)) { case (?o) o; case null { return ?#Err(#NonExistingTokenId) } };
-      let from : N.Account = { owner = caller; subaccount = a.from_subaccount };
-      if (not N.sameAccount(owner, from)) { return ?#Err(#Unauthorized) };
-      if (N.sameAccount(owner, a.to)) { return ?#Err(#InvalidRecipient) };
-      let key = "7xfer|" # Principal.toText(caller) # "|" # debug_show(a);
-      switch (a.created_at_time) {
-        case (?_) { switch (Map.get(nft_recent, thash, key)) { case (?(_, i)) { return ?#Err(#Duplicate({ duplicate_of = i })) }; case null {} } };
-        case null {};
+    let out = Buffer.Buffer<?N.TransferResult>(args.size());
+    for (a in args.vals()) {
+      // each item is checked just before it runs: an earlier item of the batch may have awaited a ledger
+      let now = NowAsNat64();
+      prune_recent(now);
+      let res : N.TransferResult = label item : N.TransferResult {
+        switch (a.memo) { case (?m) { if (m.size() > N.MAX_MEMO) { break item(#Err(#GenericError({ error_code = 2; message = "Memo longer than " # Nat.toText(N.MAX_MEMO) # " bytes" }))) } }; case null {} };
+        switch (N.checkTime(a.created_at_time, now)) { case (?#TooOld) { break item(#Err(#TooOld)) }; case (?#CreatedInFuture(x)) { break item(#Err(#CreatedInFuture(x))) }; case null {} };
+        if (not N.validSub(a.from_subaccount)) { break item(#Err(#Unauthorized)) };
+        if (Principal.isAnonymous(a.to.owner) or not N.validSub(a.to.subaccount)) { break item(#Err(#InvalidRecipient)) };
+        let owner = switch (nft_owner(a.token_id)) { case (?o) o; case null { break item(#Err(#NonExistingTokenId)) } };
+        let from : N.Account = { owner = caller; subaccount = a.from_subaccount };
+        if (not N.sameAccount(owner, from)) { break item(#Err(#Unauthorized)) };
+        if (N.sameAccount(owner, a.to)) { break item(#Err(#InvalidRecipient)) };
+        let key = "7xfer|" # Principal.toText(caller) # "|" # debug_show(a);
+        switch (a.created_at_time) {
+          case (?_) { switch (Map.get(nft_recent, thash, key)) { case (?(_, i)) { break item(#Err(#Duplicate({ duplicate_of = i }))) }; case null {} } };
+          case null {};
+        };
+        let r = await* nft_move_one(caller, a.token_id, owner, a.to, null, a.memo, a.created_at_time);
+        switch (r, a.created_at_time) { case (#Ok(i), ?t) Map.set(nft_recent, thash, key, (t, i)); case _ {} };
+        r;
       };
-      switch (nft_busy(a.token_id)) { case (?why) { return ?#Err(#GenericError({ error_code = 3; message = why })) }; case null {} };
-      let i = nft_transfer_now(caller, a.token_id, owner, a.to, null, a.memo, a.created_at_time);
-      switch (a.created_at_time) { case (?t) Map.set(nft_recent, thash, key, (t, i)); case null {} };
-      ?#Ok(i);
-    });
+      out.add(?res);
+    };
+    Buffer.toArray(out);
   };
+
 
   // ---- ICRC-37: approvals ----
   public query func icrc37_metadata() : async [(Text, N.Value)] {
@@ -2584,29 +2864,34 @@ shared (deployer) persistent actor class SneedLock() = this {
 
   public shared ({ caller }) func icrc37_transfer_from(args : [N.TransferFromArg]) : async [?N.TransferFromResult] {
     if (args.size() > N.MAX_UPDATE_BATCH) { return [?#Err(#GenericBatchError({ error_code = 1; message = "At most " # Nat.toText(N.MAX_UPDATE_BATCH) # " transfers per call" }))] };
-    let now = NowAsNat64();
-    prune_recent(now);
-    Array.map<N.TransferFromArg, ?N.TransferFromResult>(args, func(a) {
-      switch (a.memo) { case (?m) { if (m.size() > N.MAX_MEMO) { return ?#Err(#GenericError({ error_code = 2; message = "Memo longer than " # Nat.toText(N.MAX_MEMO) # " bytes" })) } }; case null {} };
-      switch (N.checkTime(a.created_at_time, now)) { case (?#TooOld) { return ?#Err(#TooOld) }; case (?#CreatedInFuture(x)) { return ?#Err(#CreatedInFuture(x)) }; case null {} };
-      if (not N.validSub(a.spender_subaccount) or not N.validSub(a.from.subaccount)) { return ?#Err(#Unauthorized) };
-      if (Principal.isAnonymous(a.to.owner) or not N.validSub(a.to.subaccount)) { return ?#Err(#InvalidRecipient) };
-      let owner = switch (nft_owner(a.token_id)) { case (?o) o; case null { return ?#Err(#NonExistingTokenId) } };
-      if (not N.sameAccount(owner, a.from)) { return ?#Err(#Unauthorized) };
-      let spender : N.Account = { owner = caller; subaccount = a.spender_subaccount };
-      if (not token_approved(spender, owner, a.token_id, now)) { return ?#Err(#Unauthorized) };
-      if (N.sameAccount(owner, a.to)) { return ?#Err(#InvalidRecipient) };
-      let key = "37xfer|" # Principal.toText(caller) # "|" # debug_show(a);
-      switch (a.created_at_time) {
-        case (?_) { switch (Map.get(nft_recent, thash, key)) { case (?(_, i)) { return ?#Err(#Duplicate({ duplicate_of = i })) }; case null {} } };
-        case null {};
+    let out = Buffer.Buffer<?N.TransferFromResult>(args.size());
+    for (a in args.vals()) {
+      let now = NowAsNat64();
+      prune_recent(now);
+      let res : N.TransferFromResult = label item : N.TransferFromResult {
+        switch (a.memo) { case (?m) { if (m.size() > N.MAX_MEMO) { break item(#Err(#GenericError({ error_code = 2; message = "Memo longer than " # Nat.toText(N.MAX_MEMO) # " bytes" }))) } }; case null {} };
+        switch (N.checkTime(a.created_at_time, now)) { case (?#TooOld) { break item(#Err(#TooOld)) }; case (?#CreatedInFuture(x)) { break item(#Err(#CreatedInFuture(x))) }; case null {} };
+        if (not N.validSub(a.spender_subaccount) or not N.validSub(a.from.subaccount)) { break item(#Err(#Unauthorized)) };
+        if (Principal.isAnonymous(a.to.owner) or not N.validSub(a.to.subaccount)) { break item(#Err(#InvalidRecipient)) };
+        let owner = switch (nft_owner(a.token_id)) { case (?o) o; case null { break item(#Err(#NonExistingTokenId)) } };
+        if (not N.sameAccount(owner, a.from)) { break item(#Err(#Unauthorized)) };
+        let spender : N.Account = { owner = caller; subaccount = a.spender_subaccount };
+        if (not token_approved(spender, owner, a.token_id, now)) { break item(#Err(#Unauthorized)) };
+        if (N.sameAccount(owner, a.to)) { break item(#Err(#InvalidRecipient)) };
+        let key = "37xfer|" # Principal.toText(caller) # "|" # debug_show(a);
+        switch (a.created_at_time) {
+          case (?_) { switch (Map.get(nft_recent, thash, key)) { case (?(_, i)) { break item(#Err(#Duplicate({ duplicate_of = i }))) }; case null {} } };
+          case null {};
+        };
+        let r = await* nft_move_one(caller, a.token_id, owner, a.to, ?spender, a.memo, a.created_at_time);
+        switch (r, a.created_at_time) { case (#Ok(i), ?t) Map.set(nft_recent, thash, key, (t, i)); case _ {} };
+        r;
       };
-      switch (nft_busy(a.token_id)) { case (?why) { return ?#Err(#GenericError({ error_code = 3; message = why })) }; case null {} };
-      let i = nft_transfer_now(caller, a.token_id, owner, a.to, ?spender, a.memo, a.created_at_time);
-      switch (a.created_at_time) { case (?t) Map.set(nft_recent, thash, key, (t, i)); case null {} };
-      ?#Ok(i);
-    });
+      out.add(?res);
+    };
+    Buffer.toArray(out);
   };
+
 
   /// The NFT of a position, if it has one.
   public query func get_position_nft(swap_canister_id : T.SwapCanisterId, position_id : T.PositionId) : async ?Nat {
@@ -2645,6 +2930,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       "sneedlock_dissolve_stop",
       "sneedlock_dissolve_delay_increase",
       "sneedlock_token_lock_extend",
+      "sneedlock_gas_withdraw",
     ];
   };
 
@@ -2815,7 +3101,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
   private func schedule_icrc3_import<system>() {
     if (icrc3.history_imported) { return };
-    ignore Timer.setTimer<system>(#seconds 0, func() : async () { ignore icrc3_import_history(); activate_nfts<system>() });
+    ignore Timer.setTimer<system>(#seconds 0, func() : async () { ignore icrc3_import_history(); activate_nfts<system>(); activate_token_nfts<system>() });
   };
 
   // ---- one-time import of the state that existed before the log ----
@@ -4292,6 +4578,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       /// import the pre-log history once.
       Icrc3Log.certify(icrc3);
       activate_nfts<system>();
+      activate_token_nfts<system>();
       ensure_icrc3_timer<system>();
       schedule_icrc3_import<system>();
   };
