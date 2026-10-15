@@ -13,7 +13,7 @@ layout, the lock lifecycle, the read API and the log. Features that only *use* l
 | Dissolve delay | Optional per lock. Dissolving can start only after the lock period ends. Start, stop and increase; never decrease except by dissolving. The min and max lock length apply to lock period + delay. |
 | How old code stays safe | The stored `expiry` becomes the **effective unlock time**: unchanged for a lock without a delay, "never" (`Nat64` max) while a delay lock is not dissolving, the dissolve end while it is. Every existing `expiry <= now` check stays correct without being touched. |
 | ICRC-7, phase 1 | **LP (position) locks** are NFTs. An ownership transfer is bookkeeping: no ledger call, no fee. |
-| ICRC-7, phase 2 | **Token locks** become NFTs on today's layout (tokens in the owner's subaccount). An NFT transfer is paid by the lock itself: the lock shrinks by one ledger fee. Decided 2026-10-14. |
+| ICRC-7, phase 2 | **Token locks** become NFTs on today's layout (tokens in the owner's subaccount). The ledger fee of a transfer comes from the owner's free balance, else from the lock's own gas tank (a subaccount anyone can fund); with neither, the transfer is refused. The amount never changes. Decided 2026-10-15 (replacing "the lock pays", 2026-10-14). |
 | Token id | For an LP NFT, the position's first lock id, kept for as long as Sneed Lock holds the position, through extensions, expiry and re-locks. For a token lock, its lock id. One id space; ids are never reused. |
 | Subaccounts | A **label** per NFT (owner principal + subaccount). The principal stays the internal owner. Sufficient for ICRC-7 and ICRC-37: see "The subaccount question". |
 | ICRC-37 | Phase 1 with the LP NFTs: token and collection approvals, `transfer_from`. Approvals are cleared on every transfer. |
@@ -310,37 +310,89 @@ transfer plus an escrow call.
 
 ---
 
-## 4 · Token locks as NFTs (phase 2): today's layout, the lock pays its own fee
+## 4 · Token locks as NFTs (phase 2): today's layout, gas from the owner or the lock's tank
 
 **Decided 2026-10-14: keep the layout.** A token lock's tokens sit in Sneed Lock's subaccount for
-the owner principal, shared by that owner's locks of the ledger, with the locks reserving amounts
-in it. The accounting needs no state kept by Sneed Lock: the owner's tokens are in the owner's
-subaccount. If the lock records were ever lost, the failure would be that funds unlock, never that
-they are stranded. A per-lock vault subaccount would give that up, since its owner would exist only
-in Sneed Lock's state.
+the owner principal (the Sneed wallet), shared by that owner's locks of the ledger, with the locks
+reserving amounts in it. The accounting needs no state kept by Sneed Lock: the owner's tokens are
+in the owner's subaccount. If the lock records were ever lost, the failure would be that funds
+unlock, never that they are stranded.
 
-The cost is that an ownership change is a ledger transfer from the old owner's subaccount to the
-new one's, which costs one ledger fee. ICRC-7 transfers are expected to just work, so **the lock
-pays its own fee**:
+**Decided 2026-10-15: gas, and refuse without it.** An ownership change is a ledger transfer of the
+locked amount `A` from the old owner's Sneed wallet to the new owner's, and the ledger charges its
+fee `F` to the sending account. The lock's amount never changes: whatever counts locked amounts
+(a buyer, `sneed_gov` voting power, a vesting schedule) can rely on it. The fee comes from, in order:
 
-- An NFT transfer (`icrc7_transfer`, `icrc37_transfer_from`) of a token lock of amount `A` sends
-  `A − fee` from the old owner's subaccount to the new owner's. The ledger debits `A` in all
-  (`A − fee` plus the fee).
-- The lock continues for the new owner with amount `A − fee`, same id, same lock and dissolve
-  state.
-- **The old owner's free balance is untouched:** their subaccount loses `A` and their locked
-  total loses `A`. Nobody has to pre-fund anything.
-- A lock with `A ≤ fee` cannot be transferred (`GenericError`).
-- Each transfer makes the lock one fee smaller. The NFT card shows the live amount, and the
-  metadata says so.
-- The existing `transfer_token_lock_ownership`, where the sender pays the fee from free balance,
-  stays as it is for existing callers (Sneedex's lock escrow).
-- Fee changes on the ledger are read at transfer time (`icrc1_fee`). `BadFee` is retried once
-  with the fee the ledger names.
+1. **The owner's free balance:** the old owner's Sneed wallet beyond everything locked there
+   (`balance − sum(locks) ≥ F`). One fee. This is what `transfer_token_lock_ownership` does today.
+2. **The lock's gas tank:** a Sneed Lock subaccount of its own per lock, in the lock's token. The
+   tank first sends `F` to the old owner's Sneed wallet (that hop costs the tank another `F`), then
+   the move runs as in 1. Two fees from the tank per transfer.
+3. **Neither:** the transfer is refused, `GenericError` code 7, with a message that names the gas
+   account and the amount needed (`2F` into the tank, or `F` of free balance). No partial effect.
 
-The ledger transfer is an await, so the lock is held by the existing per-principal
-`token_op_locks` for both the sender and the recipient while it runs, exactly as
-`transfer_token_lock_ownership` does today.
+### The gas tank
+
+- **Account:** `{ owner = sneed_lock; subaccount = gas_subaccount(lock_id) }`, 32 bytes: byte 0 =
+  `0xFE`, bytes 1–3 = `"GAS"`, bytes 24–31 = the lock id big-endian, zero elsewhere. Byte 0 of a
+  Sneed wallet subaccount is the principal's length (at most 29) and the payment subaccount keeps
+  that layout, so no gas account can be anyone's wallet. A query `get_lock_gas_account(lock_id)`
+  answers it, and clients may also derive it.
+- **Funding:** a plain ICRC-1 transfer by anyone: the sender when listing or sending (the
+  frontend offers "add gas for about N transfers"), the recipient, a marketplace. No call to
+  Sneed Lock is needed, and no state: the balance lives on the ledger.
+- **Whose it is:** the lock's current owner's, whoever funded it. Gas travels with the lock.
+- **Taking it back:** `withdraw_lock_gas(lock_id, to : Account)`, the lock's owner only (the last
+  owner once the lock is archived), sends the tank's balance minus one fee. Serialised by the
+  owner's token-op guard. Logged as `sneedlock_gas_withdraw`.
+- **Read:** NFT metadata is served by a query, which cannot read the ledger, so the metadata
+  carries `sneedlock:gas_account` (the account) and `sneedlock:transfer_fee` (the ledger fee when
+  last seen), and wallets read the balance themselves. The Sneed frontend shows "gas for about
+  N transfers" (`floor(balance / 2F)`) plus whether the owner's free balance covers one.
+
+### The NFT
+
+- **Which tokens:** every live (not archived) token lock; token id = its lock id. Minted by
+  `create_lock` (`7mint`), and once for every live token lock at activation, as for positions.
+- **Owner:** the lock record's owner principal plus a label, exactly as for LP NFTs.
+- **Burn:** when the lock is archived after it has unlocked (`7burn`). Archiving is lazy, so an
+  expired lock keeps answering `icrc7_owner_of` until then, but a transfer of it is refused
+  (`GenericError` code 8, "the lock has unlocked").
+- **Transfer** (`icrc7_transfer`, `icrc37_transfer_from`, and `transfer_token_lock_ownership`):
+  - between two accounts of one principal: the label only, no ledger call, no gas;
+  - otherwise: the fee source as above, then today's move. The lock is recorded on the recipient
+    before the ledger transfer, so the recipient never sees the tokens arrive unlocked; a refusal
+    or a definite ledger failure rolls back; an ambiguous outcome keeps the lock on both parties
+    until reconciled, and the NFT then answers no owner and refuses to move.
+  - Serialised: the old owner's token-op guard and the lock's in-flight mark, as today; dissolve
+    changes are refused meanwhile (`InProgress`).
+  - Logged: `sneedlock_token_lock_transfer` (now with `gas_source` = `owner` or `tank` and `fee`)
+    followed by `7xfer` / `37xfer`.
+- **Dissolving locks** transfer like any other (decided 2026-10-14); escrow in Sneedex stays a
+  separate call.
+- **`transfer_token_lock_ownership`** keeps its signature and gains the tank as a second fee source
+  (it refused before), so Sneedex's escrow keeps working and cannot get stuck for want of gas.
+- **Batches:** each token-lock transfer awaits the ledger, so a batch runs them one after the other
+  and answers each separately (`icrc7_atomic_batch_transfers` stays `false`).
+- **Metadata:** `icrc7:name` ("1,000 SNEED lock"), `icrc7:image` (the same on-the-fly SVG card),
+  `sneedlock:kind = token`, `sneedlock:ledger`, `sneedlock:amount`, the lock fields as for
+  positions, `sneedlock:gas_account`, `sneedlock:transfer_fee`.
+
+### Why not the alternatives
+
+- **The lock pays its own fee (amount shrinks per transfer):** never stuck, but the amount drifts,
+  which breaks "this lock is exactly X" for buyers, vesting and voting power.
+- **A vault subaccount per lock holding the locked tokens:** gas-free moves, but the owner of the
+  funds would exist only in Sneed Lock's state, giving up the "lost state only unlocks" property.
+
+### Tests to write with it
+
+Owner-paid and tank-paid transfers (balances to the e8s, both fee hops); refusal with no gas and
+no effect; a ledger refusal on the second hop (the fee stays in the old owner's free balance,
+the lock does not move); an ambiguous outcome; label-only moves cost nothing; gas withdrawal by
+the owner only; a dissolving lock transfers; an expired lock refuses and burns on archive;
+activation mints every live token lock once; Sneedex escrow with the owner's free balance empty
+but a funded tank.
 
 ---
 
@@ -488,7 +540,8 @@ Each Sneed Lock phase:
 
 - Lock limits: the min (5 s) and max (about 10 years, set by the DAO) apply to lock period +
   delay.
-- Token locks keep today's layout; an NFT transfer is paid by the lock (section 4).
+- Token locks keep today's layout (section 4). The fee rule was settled on 2026-10-15: owner's free
+  balance, then the lock's gas tank, else refuse; the amount never shrinks.
 - Dissolving locks can be transferred. While Sneedex holds a lock in escrow, only Sneedex could
   change its dissolve state and it never does, so a listing cannot change under a buyer. Time
   still runs, so a dissolving lock keeps dissolving while listed and the offer page shows the
