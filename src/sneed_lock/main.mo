@@ -288,103 +288,9 @@ shared (deployer) persistent actor class SneedLock() = this {
     icrc1_transfer : (args : TransferArgs) -> async T.TransferResult;
   };
 
-  public query func get_all_token_locks() : async [T.FullyQualifiedLock] {
-    get_fully_qualified_locks();
-  };
-
-  // Get only active (non-expired) token locks
-  public query func get_active_token_locks() : async [T.FullyQualifiedLock] {
-    let now = Nat64.fromIntWrap(Time.now());
-    let all_locks = get_fully_qualified_locks();
-    Array.filter<T.FullyQualifiedLock>(all_locks, func (lock) { lock.2.expiry > now; });
-  };
-
-  // Get only expired token locks (includes both active expired locks and archived locks)
-  public query func get_expired_token_locks() : async [T.FullyQualifiedLock] {
-    let now = Nat64.fromIntWrap(Time.now());
-    
-    // Get expired locks from active locks (not yet archived)
-    let all_locks = get_fully_qualified_locks();
-    let expired_active = Array.filter<T.FullyQualifiedLock>(all_locks, func (lock) { lock.2.expiry <= now; });
-    
-    // Get all archived locks (these are by definition expired)
-    var archived_list = List.nil<T.FullyQualifiedLock>();
-    for ((_lock_id, archived) in archived_token_locks.entries()) {
-      archived_list := List.push((archived.owner, archived.token_type, archived.lock), archived_list);
-    };
-    let archived_array = List.toArray(archived_list);
-    
-    // Combine both arrays
-    Array.append(expired_active, archived_array);
-  };
-
-  // Get all token locks for a specific ledger (includes both active and archived locks)
-  public query func get_ledger_token_locks(ledger_canister_id : T.TokenType) : async [T.FullyQualifiedLock] {
-    // Get active locks for this ledger
-    let all_locks = get_fully_qualified_locks();
-    let active_locks = Array.filter<T.FullyQualifiedLock>(all_locks, func (lock) { lock.1 == ledger_canister_id; });
-    
-    // Get archived locks for this ledger
-    var archived_list = List.nil<T.FullyQualifiedLock>();
-    for ((_lock_id, archived) in archived_token_locks.entries()) {
-      if (archived.token_type == ledger_canister_id) {
-        archived_list := List.push((archived.owner, archived.token_type, archived.lock), archived_list);
-      };
-    };
-    let archived_array = List.toArray(archived_list);
-    
-    // Combine both arrays
-    Array.append(active_locks, archived_array);
-  };
-
-  public query func get_all_position_locks() : async [T.FullyQualifiedPositionLock] {
-    get_fully_qualified_position_locks();
-  };
-
-  // Get only active (non-expired) position locks
-  public query func get_active_position_locks() : async [T.FullyQualifiedPositionLock] {
-    let now = Nat64.fromIntWrap(Time.now());
-    let all_position_locks = get_fully_qualified_position_locks();
-    Array.filter<T.FullyQualifiedPositionLock>(all_position_locks, func (lock) { lock.2.expiry > now; });
-  };
-
-  // Get only expired position locks (includes both active expired locks and archived locks)
-  public query func get_expired_position_locks() : async [T.FullyQualifiedPositionLock] {
-    let now = Nat64.fromIntWrap(Time.now());
-    
-    // Get expired locks from active locks (not yet archived)
-    let all_position_locks = get_fully_qualified_position_locks();
-    let expired_active = Array.filter<T.FullyQualifiedPositionLock>(all_position_locks, func (lock) { lock.2.expiry <= now; });
-    
-    // Get all archived position locks (these are by definition expired)
-    var archived_list = List.nil<T.FullyQualifiedPositionLock>();
-    for ((_lock_id, archived) in archived_position_locks.entries()) {
-      archived_list := List.push((archived.owner, archived.swap_canister_id, archived.lock), archived_list);
-    };
-    let archived_array = List.toArray(archived_list);
-    
-    // Combine both arrays
-    Array.append(expired_active, archived_array);
-  };
-
-  // Get all position locks for a specific swap canister (includes both active and archived locks)
-  public query func get_swap_position_locks(swap_canister_id : T.SwapCanisterId) : async [T.FullyQualifiedPositionLock] {
-    // Get active locks for this swap canister
-    let all_position_locks = get_fully_qualified_position_locks();
-    let active_locks = Array.filter<T.FullyQualifiedPositionLock>(all_position_locks, func (position_lock) { position_lock.1 == swap_canister_id; });
-    
-    // Get archived locks for this swap canister
-    var archived_list = List.nil<T.FullyQualifiedPositionLock>();
-    for ((_lock_id, archived) in archived_position_locks.entries()) {
-      if (archived.swap_canister_id == swap_canister_id) {
-        archived_list := List.push((archived.owner, archived.swap_canister_id, archived.lock), archived_list);
-      };
-    };
-    let archived_array = List.toArray(archived_list);
-    
-    // Combine both arrays
-    Array.append(active_locks, archived_array);
-  };
+  // The whole-store list queries (get_all_*, get_active_*, get_expired_*, get_ledger_token_locks,
+  // get_swap_position_locks, get_token_position_locks) were removed in v2: their replies grow
+  // with every lock. get_lock_states_page answers all of them, paged.
 
   // sum everything for each token and return an array of tuples for the amount locked for each token for this principal.
   public query ({ caller }) func get_summed_locks(): async [(TokenType, Balance)] {
@@ -2019,7 +1925,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     {
       lock_id = lock.lock_id; kind = #TokenLock; owner; owner_subaccount = null;
       ledger = ?ledger; amount = ?lock.amount;
-      swap_canister_id = null; position_id = null; token0 = null; token1 = null;
+      swap_canister_id = null; position_id = null; dex = null; token0 = null; token1 = null;
       lock_end = switch (info) { case (?i) i.lock_end; case null lock.expiry };
       dissolve_delay = switch (info) { case (?i) i.delay; case null 0 };
       dissolving_until = switch (info) { case (?i) i.dissolving_until; case null null };
@@ -2037,7 +1943,7 @@ shared (deployer) persistent actor class SneedLock() = this {
         switch (Map.get(nft_by_position, thash, position_key(swap, lock.position_id))) { case (?t) Map.get(nft_labels, nhash, t); case null null }
       };
       ledger = null; amount = null;
-      swap_canister_id = ?swap; position_id = ?lock.position_id; token0 = ?lock.token0; token1 = ?lock.token1;
+      swap_canister_id = ?swap; position_id = ?lock.position_id; dex = ?lock.dex; token0 = ?lock.token0; token1 = ?lock.token1;
       lock_end = switch (info) { case (?i) i.lock_end; case null lock.expiry };
       dissolve_delay = switch (info) { case (?i) i.delay; case null 0 };
       dissolving_until = switch (info) { case (?i) i.dissolving_until; case null null };
@@ -2188,6 +2094,15 @@ shared (deployer) persistent actor class SneedLock() = this {
     let after = func(id : T.LockId) : Bool { switch (q.prev) { case (?p) id > p; case null true } };
     let ownerOk = func(o : Principal) : Bool { switch (q.owner) { case (?x) x == o; case null true } };
     let want = func(k : T.LockType) : Bool { switch (q.kind) { case (?x) x == k; case null true } };
+    let statusOk = func(st : T.LockState) : Bool {
+      switch (q.status) { case (?#Active) (not st.archived and st.locked); case (?#Expired) (st.archived or not st.locked); case null true };
+    };
+    let tokenOk = func(st : T.LockState) : Bool {
+      switch (q.token) {
+        case (?t) { st.ledger == ?t or st.token0 == ?t or st.token1 == ?t };
+        case null true;
+      };
+    };
     var out = List.nil<T.LockState>();
     if (want(#TokenLock) and q.swap_canister_id == null) {
       let ledgerOk = func(l : TokenType) : Bool { switch (q.ledger) { case (?x) x == l; case null true } };
@@ -2223,7 +2138,7 @@ shared (deployer) persistent actor class SneedLock() = this {
         };
       };
     };
-    let sorted = Array.sort<T.LockState>(List.toArray(out), func(a, b) { Nat.compare(a.lock_id, b.lock_id) });
+    let sorted = Array.sort<T.LockState>(Array.filter<T.LockState>(List.toArray(out), func(st) { statusOk(st) and tokenOk(st) }), func(a, b) { Nat.compare(a.lock_id, b.lock_id) });
     if (sorted.size() <= take) { sorted } else { Array.tabulate<T.LockState>(take, func(i) { sorted[i] }) };
   };
 
@@ -2988,11 +2903,11 @@ shared (deployer) persistent actor class SneedLock() = this {
   };
 
   public shared func get_info_entries(start: Nat, length: Nat) : async [?BufferEntry] {
-    CircularBuffer.CircularBufferLogic.get_entries_by_id(info_log, start, length);
+    CircularBuffer.CircularBufferLogic.get_entries_by_id(info_log, start, Nat.min(length, 500)); // capped: a reply must fit
   };
 
   public shared func get_error_entries(start: Nat, length: Nat) : async [?BufferEntry] {
-    CircularBuffer.CircularBufferLogic.get_entries_by_id(error_log, start, length);
+    CircularBuffer.CircularBufferLogic.get_entries_by_id(error_log, start, Nat.min(length, 500)); // capped: a reply must fit
   };
 
   private func log_info(caller : Principal, correlation_id : Nat, message: Text) {
@@ -4001,19 +3916,13 @@ shared (deployer) persistent actor class SneedLock() = this {
     };
   };
 
-  // Query: contents of the retired request queue (read-only; should be empty)
-  public query func get_all_active_claim_requests() : async [ClaimRequest] {
-    stable_claim_requests;
-  };
-
-  // Query: Get all completed claim requests (as structured data)
-  public query func get_all_completed_claim_requests() : async [ClaimRequest] {
-    completed_claim_requests;
-  };
-
-  // Query: Get all failed claim requests (as structured data)
-  public query func get_all_failed_claim_requests() : async [ClaimRequest] {
-    failed_claim_requests;
+  // Claim history, paged (v2: the whole-history queries were removed, their replies grow).
+  public query func get_claim_requests_page(q : T.ClaimRequestPageQuery) : async [ClaimRequest] {
+    let take = switch (q.take) { case (?t) Nat.min(t, 500); case null 100 };
+    let src = if (q.failed) failed_claim_requests else completed_claim_requests;
+    let after = Array.filter<ClaimRequest>(src, func(r) { switch (q.prev) { case (?p) r.request_id > p; case null true } });
+    let sorted = Array.sort<ClaimRequest>(after, func(a, b) { Nat.compare(a.request_id, b.request_id) });
+    if (sorted.size() <= take) sorted else Array.tabulate<ClaimRequest>(take, func(i) { sorted[i] });
   };
 
   // Query: Get claim request status by ID (searches completed and failed history).
@@ -4387,12 +4296,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       schedule_icrc3_import<system>();
   };
 
-  public query func get_token_position_locks(token_canister_id : T.TokenType) : async [T.FullyQualifiedPositionLock] {
-    let all_position_locks = get_fully_qualified_position_locks();
-    Array.filter<T.FullyQualifiedPositionLock>(all_position_locks, func (position_lock) {
-      position_lock.2.token0 == token_canister_id or position_lock.2.token1 == token_canister_id
-    });
-  };
+
 
   // Start the ICRC-3 background work. On a fresh install this also writes the
   // first (log start) block; after an upgrade postupgrade does the same.

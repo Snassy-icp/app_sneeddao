@@ -378,8 +378,14 @@ always act directly.
   with stable field names.
 - The ICRC-3 log complete for every state change, including the new dissolve and NFT blocks.
   `sneed_gov` and indexers should be able to follow the log instead of scanning.
-- Paged versions of every list query. Several of today's `get_all_*` queries return whole
-  stores, which will not fit a reply as locks grow.
+- ~~Paged versions of every list query.~~ Done (2026-10-15): the whole-store queries
+  (`get_all_*`, `get_active_*`, `get_expired_*`, `get_ledger_token_locks`,
+  `get_swap_position_locks`, `get_token_position_locks`, the three claim-history lists) are
+  removed; `get_lock_states_page` gained `token` and `status` filters, `LockState` gained `dex`,
+  and `get_claim_requests_page` pages the claim history. The text-log readers answer at most
+  500 entries. Per-owner queries (`get_token_locks`, `get_claimed_positions_for_principal`,
+  `get_position_ownerships`, `get_summed_locks`) stay: Sneedex calls `get_token_locks`, and they
+  grow only with one owner's locks.
 - Stable error variants on the new methods (`#Err` with codes, not only text).
 - The token-lock money layout (section 4).
 - Admin retirement first (the hard-coded admin is already gone; the admin list is next): configuration (max lock

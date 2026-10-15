@@ -64,6 +64,7 @@ module {
         amount : ?Balance;                 // token locks
         swap_canister_id : ?SwapCanisterId; // position locks
         position_id : ?PositionId;
+        dex : ?Dex;                        // position locks
         token0 : ?TokenType;
         token1 : ?TokenType;
         lock_end : Expiry;                 // end of the lock period
@@ -95,9 +96,20 @@ module {
         owner : ?Principal;
         ledger : ?TokenType;
         swap_canister_id : ?SwapCanisterId;
+        token : ?TokenType;                // token locks of this ledger, position locks with it as token0 or token1
         kind : ?LockType;
-        include_archived : Bool;
+        status : ?LockStatusFilter;        // null = both
+        include_archived : Bool;           // archived locks are expired
         prev : ?LockId;                    // ascending lock ids after this one
+        take : ?Nat;                       // default 100, at most 500
+    };
+
+    /// Active = not archived and still locked; Expired = archived, or no longer locked.
+    public type LockStatusFilter = { #Active; #Expired };
+
+    public type ClaimRequestPageQuery = {
+        failed : Bool;                     // the failed history, else the completed one
+        prev : ?Nat;                       // ascending request ids after this one
         take : ?Nat;                       // default 100, at most 500
     };
 

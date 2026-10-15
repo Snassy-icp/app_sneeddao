@@ -37,6 +37,32 @@ const lastBlocks = async (n) => {
 const lastBlock = async () => (await lastBlocks(1))[0];
 const principalOf = (v) => Principal.fromUint8Array(new Uint8Array(v.Blob)).toText();
 
+// The whole-store list queries were removed in v2; these page get_lock_states_page and answer
+// the tuples the old queries did (same helpers as the frontend's utils/sneedLockLists.js).
+const pageAll = async (f) => {
+  const out = [];
+  let prev = [];
+  for (;;) {
+    const page = await lock.get_lock_states_page({
+      owner: [], ledger: f.ledger ? [f.ledger] : [], swap_canister_id: f.swap ? [f.swap] : [], token: f.token ? [f.token] : [],
+      kind: [{ [f.kind]: null }], status: f.status ? [{ [f.status]: null }] : [], include_archived: !!f.archived, prev, take: [2n],
+    });
+    out.push(...page);
+    if (page.length < 2) break;
+    prev = [page[page.length - 1].lock_id];
+  }
+  return out;
+};
+const tokenTuple = (s) => [s.owner, s.ledger[0], { lock_id: s.lock_id, amount: s.amount[0], expiry: s.expiry }];
+const posTuple = (s) => [s.owner, s.swap_canister_id[0], { dex: s.dex[0], lock_id: s.lock_id, position_id: s.position_id[0], expiry: s.expiry, token0: s.token0[0], token1: s.token1[0] }];
+const activeTokenLocks = async () => (await pageAll({ kind: 'TokenLock', status: 'Active' })).map(tokenTuple);
+const expiredTokenLocks = async () => (await pageAll({ kind: 'TokenLock', status: 'Expired', archived: true })).map(tokenTuple);
+const ledgerTokenLocks = async (ledger) => (await pageAll({ kind: 'TokenLock', ledger, archived: true })).map(tokenTuple);
+const activePositionLocks = async () => (await pageAll({ kind: 'PositionLock', status: 'Active' })).map(posTuple);
+const expiredPositionLocks = async () => (await pageAll({ kind: 'PositionLock', status: 'Expired', archived: true })).map(posTuple);
+const swapPositionLocks = async (swap) => (await pageAll({ kind: 'PositionLock', swap, archived: true })).map(posTuple);
+const tokenPositionLocks = async (token) => (await pageAll({ kind: 'PositionLock', token })).map(posTuple);
+
 beforeAll(async () => {
   ({ pic, rootKey, appSubnet } = await createPic());
   // mock ICP ledger at the real ICP ledger id (NNS subnet range)
@@ -66,8 +92,8 @@ afterAll(async () => { await pic?.tearDown(); });
 
 describe('fresh install', () => {
   it('has no locks, zero fees and an ICRC-3 log with just the start block', async () => {
-    expect(await lock.get_active_token_locks()).toEqual([]);
-    expect(await lock.get_active_position_locks()).toEqual([]);
+    expect(await activeTokenLocks()).toEqual([]);
+    expect(await activePositionLocks()).toEqual([]);
     const fees = await lock.get_lock_fees_icp();
     expect(fees.token_lock_fee_icp_e8s).toBe(0n);
     const s = await lock.icrc3_log_status();
@@ -105,7 +131,7 @@ describe('token locks', () => {
     const expiry = await expiryIn(3600);
     const lockIdNum = unwrap(await lockAlice.create_lock(60_000n, tokenAId, expiry, []));
     expect(lockIdNum).toBe(1n);
-    const active = await lock.get_active_token_locks();
+    const active = await activeTokenLocks();
     expect(active).toHaveLength(1);
     const [owner, ledger, l] = active[0];
     expect(owner.toText()).toBe(alice.toText());
@@ -163,12 +189,12 @@ describe('token locks', () => {
     await pic.advanceTime(3601 * 1000);
     await pic.tick();
     expect(await lockAlice.has_expired_locks()).toBe(true);
-    expect(await lock.get_active_token_locks()).toEqual([]); // filtered by expiry
+    expect(await activeTokenLocks()).toEqual([]); // filtered by expiry
     await lockAlice.clear_expired_locks();
     expect(await lockAlice.has_expired_locks()).toBe(false);
-    const expired = await lock.get_expired_token_locks();
+    const expired = await expiredTokenLocks();
     expect(expired.map(([, , l]) => l.lock_id)).toEqual([1n]);
-    expect((await lock.get_ledger_token_locks(tokenAId)).map(([, , l]) => l.lock_id)).toEqual([1n]);
+    expect((await ledgerTokenLocks(tokenAId)).map(([, , l]) => l.lock_id)).toEqual([1n]);
     expect(await lock.get_lock_by_id(1n)).toHaveLength(1); // still resolvable from the archive
     const ok = await lockAlice.transfer_tokens(alice, [], tokenAId, 59_000n);
     unwrap(ok);
@@ -188,13 +214,13 @@ describe('liquid locking of token locks', () => {
     expect(errOf(await lockAlice.transfer_token_lock_ownership(bob, tokenAId, 999n)).message).toMatch(/not found/);
     expect(errOf(await lockAlice.transfer_token_lock_ownership(bob, tokenAId, 1n)).message).toMatch(/not found/); // archived
     expect(errOf(await lockAlice.transfer_token_lock_ownership(bob, tokenAId, 2n)).message).toMatch(/Insufficient unlocked balance to cover transfer fee/);
-    expect(await lock.get_active_token_locks()).toHaveLength(1);
+    expect(await activeTokenLocks()).toHaveLength(1);
   });
 
   it('moves the lock and the tokens to the recipient', async () => {
     await tokenA.mint(sneedWallet(alice), FEE_A);
     unwrap(await lockAlice.transfer_token_lock_ownership(bob, tokenAId, 2n));
-    const active = await lock.get_active_token_locks();
+    const active = await activeTokenLocks();
     expect(active).toHaveLength(1);
     expect(active[0][0].toText()).toBe(bob.toText());
     expect(active[0][2]).toEqual({ lock_id: 2n, amount: 50_000n, expiry });
@@ -218,7 +244,7 @@ describe('liquid locking of token locks', () => {
     expect(errOf(r).message).toMatch(/Failed to transfer tokens/);
     expect(errOf(r).transfer_error).toEqual([{ TemporarilyUnavailable: null }]);
     await tokenA.set_paused(false);
-    const active = await lock.get_active_token_locks();
+    const active = await activeTokenLocks();
     expect(active[0][0].toText()).toBe(bob.toText());
     expect((await lockCarol.get_summed_locks()).every(([, n]) => n === 0n)).toBe(true);
   });
@@ -249,7 +275,7 @@ describe('ICP lock fees', () => {
     await tokenA.mint(sneedWallet(alice), 10_000n);
     const unpaid = await lockAlice.create_lock(10_000n, tokenAId, await expiryIn(3600), []);
     expect(errOf(unpaid).message).toMatch(/ICP payment verification failed: Insufficient ICP payment/);
-    expect(await lock.get_active_token_locks()).toHaveLength(1); // bob's only
+    expect(await activeTokenLocks()).toHaveLength(1); // bob's only
 
     const subaccount = await lock.getPaymentSubaccount(alice);
     expect(Buffer.from(subaccount)).toEqual(Buffer.from(paymentSubaccount(alice)));
@@ -316,13 +342,13 @@ describe('positions', () => {
     expect(errOf(await lockBob.create_position_lock(poolId, 1n, POS, expiry, tokenAId, tokenBId, [])).message).toBe('Position not claimed by caller.');
     const id = unwrap(await lockAlice.create_position_lock(poolId, 1n, POS, expiry, tokenAId, tokenBId, []));
     expect(id).toBe(5n);
-    const active = await lock.get_active_position_locks();
+    const active = await activePositionLocks();
     expect(active).toHaveLength(1);
     expect(active[0][0].toText()).toBe(alice.toText());
     expect(active[0][2]).toEqual({ dex: 1n, lock_id: 5n, position_id: POS, expiry, token0: tokenAId, token1: tokenBId });
     expect(await lock.get_lock_by_id(5n)).toEqual([{ PositionLock: [alice, poolId, active[0][2]] }]);
-    expect((await lock.get_swap_position_locks(poolId))).toHaveLength(1);
-    expect((await lock.get_token_position_locks(tokenBId))).toHaveLength(1);
+    expect((await swapPositionLocks(poolId))).toHaveLength(1);
+    expect((await tokenPositionLocks(tokenBId))).toHaveLength(1);
     const [block, mint] = await lastBlocks(2); // the lock, then its NFT
     expect(btype(block)).toBe('sneedlock_position_lock_create');
     expect(btype(mint)).toBe('7mint');
@@ -342,7 +368,7 @@ describe('positions', () => {
     expect(errOf(await lockAlice.update_position_lock(poolId, POS, expiry - 1n)).message).toBe('New expiry is before current expiry.');
     const later = expiry + DAY_NS;
     expect(unwrap(await lockAlice.update_position_lock(poolId, POS, later))).toBe(5n);
-    expect((await lock.get_active_position_locks())[0][2].expiry).toBe(later);
+    expect((await activePositionLocks())[0][2].expiry).toBe(later);
     const block = await lastBlock();
     expect(btype(block)).toBe('sneedlock_position_lock_extend');
     expect(txField(block, 'old_expiry')).toEqual({ Nat: expiry });
@@ -357,7 +383,7 @@ describe('positions', () => {
     const claimed = await lock.get_claimed_positions_for_principal(bob);
     expect(claimed).toHaveLength(1);
     expect(claimed[0].position_lock[0].lock_id).toBe(5n);
-    expect((await lock.get_active_position_locks())[0][0].toText()).toBe(bob.toText());
+    expect((await activePositionLocks())[0][0].toText()).toBe(bob.toText());
     const [block, xfer] = await lastBlocks(2); // the transfer, then the NFT's
     expect(btype(block)).toBe('sneedlock_position_transfer');
     expect(btype(xfer)).toBe('7xfer');
@@ -378,7 +404,7 @@ describe('positions', () => {
     expect((await balance(tokenA, sneedWallet(bob))) - walletA).toBe(50_000n - FEE_A); // delivered net of the ledger fee
     expect(await balance(tokenB, sneedWallet(bob))).toBe(0n);
     expect(unwrap(await pool.getUserUnusedBalance(lockId))).toEqual({ balance0: 0n, balance1: 300n });
-    const completed = await lock.get_all_completed_claim_requests();
+    const completed = await lock.get_claim_requests_page({ failed: false, prev: [], take: [] });
     expect(completed).toHaveLength(1);
     expect(completed[0].request_id).toBe(r.request_id);
     const block = await lastBlock();
@@ -448,11 +474,11 @@ describe('positions', () => {
     await pic.advanceTime(Number((expiry - (await nowNs())) / 1_000_000n) + 1000);
     await pic.tick();
     expect(await lockBob.has_expired_position_locks()).toBe(true);
-    expect(await lock.get_active_position_locks()).toEqual([]);
+    expect(await activePositionLocks()).toEqual([]);
     unwrap(await lockBob.transfer_position(bob, poolId, POS));
     expect((await pool.position_owner(POS))[0].toText()).toBe(bob.toText());
     expect(await lock.get_claimed_positions_for_principal(bob)).toEqual([]);
-    expect((await lock.get_expired_position_locks()).map(([, , l]) => l.lock_id)).toEqual([5n]);
+    expect((await expiredPositionLocks()).map(([, , l]) => l.lock_id)).toEqual([5n]);
     const block = await lastBlock();
     expect(btype(block)).toBe('sneedlock_position_withdraw');
     expect(principalOf(txField(block, 'to'))).toBe(bob.toText());
@@ -568,7 +594,7 @@ describe('ICRC-3 log of sneed_lock', () => {
   it('survives an upgrade with locks, archives and certificate intact', async () => {
     const regBefore = await lock.icrc3_registration_status();
     const before = await lock.icrc3_log_status();
-    const activeBefore = await lock.get_active_token_locks();
+    const activeBefore = await activeTokenLocks();
     await pic.upgradeCanister({ sender: admin, canisterId: lockId, wasm: wasm('sneed_lock'), arg: IDL.encode([], []) });
     await pic.tick(2);
     const after = await lock.icrc3_log_status();
@@ -576,8 +602,8 @@ describe('ICRC-3 log of sneed_lock', () => {
     expect(after.archives).toEqual(before.archives);
     expect(after.history_imported).toBe(true);
     expect(await lock.icrc3_registration_status()).toEqual(regBefore);
-    expect(await lock.get_active_token_locks()).toEqual(activeBefore);
-    expect((await lock.get_expired_position_locks()).map(([, , l]) => l.lock_id)).toEqual([5n]);
+    expect(await activeTokenLocks()).toEqual(activeBefore);
+    expect((await expiredPositionLocks()).map(([, , l]) => l.lock_id)).toEqual([5n]);
     expect(unwrap(await lock.admin_icrc3_import_history())).toBe(0n);
     await verifyLog(lock, lockId, rootKey, archiveActor);
     // still operational after the upgrade
@@ -750,17 +776,28 @@ describe('dissolve delays', () => {
   });
 
   it('pages lock states in id order, by owner, ledger and kind', async () => {
-    const mine = await lock.get_lock_states_page({ owner: [alice], ledger: [], swap_canister_id: [], kind: [{ TokenLock: null }], include_archived: true, prev: [], take: [] });
+    const mine = await lock.get_lock_states_page({ owner: [alice], ledger: [], swap_canister_id: [], token: [], kind: [{ TokenLock: null }], status: [], include_archived: true, prev: [], take: [] });
     const ids = mine.map((s) => s.lock_id);
     expect(ids).toEqual([...ids].sort((a, b) => (a < b ? -1 : 1)));
     expect(ids).toContain(neuronId); // archived, asked for
     expect(mine.every((s) => s.owner.toText() === alice.toText() && 'TokenLock' in s.kind)).toBe(true);
-    const page1 = await lock.get_lock_states_page({ owner: [alice], ledger: [tokenAId], swap_canister_id: [], kind: [], include_archived: true, prev: [], take: [2n] });
-    const page2 = await lock.get_lock_states_page({ owner: [alice], ledger: [tokenAId], swap_canister_id: [], kind: [], include_archived: true, prev: [page1[1].lock_id], take: [2n] });
+    const page1 = await lock.get_lock_states_page({ owner: [alice], ledger: [tokenAId], swap_canister_id: [], token: [], kind: [], status: [], include_archived: true, prev: [], take: [2n] });
+    const page2 = await lock.get_lock_states_page({ owner: [alice], ledger: [tokenAId], swap_canister_id: [], token: [], kind: [], status: [], include_archived: true, prev: [page1[1].lock_id], take: [2n] });
     expect(page1).toHaveLength(2);
     expect(page2[0].lock_id).toBeGreaterThan(page1[1].lock_id);
-    const activeOnly = await lock.get_lock_states_page({ owner: [], ledger: [], swap_canister_id: [], kind: [], include_archived: false, prev: [], take: [] });
-    expect(activeOnly.every((s) => !s.archived)).toBe(true);
+    const unarchived = await lock.get_lock_states_page({ owner: [], ledger: [], swap_canister_id: [], token: [], kind: [], status: [], include_archived: false, prev: [], take: [] });
+    expect(unarchived.every((s) => !s.archived)).toBe(true);
+    // status: active = held and not archived; expired = archived or no longer held
+    const q = (status) => lock.get_lock_states_page({ owner: [], ledger: [], swap_canister_id: [], token: [], kind: [], status: [{ [status]: null }], include_archived: true, prev: [], take: [500n] });
+    const [active, expired] = [await q('Active'), await q('Expired')];
+    expect(active.every((s) => s.locked && !s.archived)).toBe(true);
+    expect(expired.every((s) => s.archived || !s.locked)).toBe(true);
+    expect(active.length + expired.length).toBe((await lock.get_lock_states_page({ owner: [], ledger: [], swap_canister_id: [], token: [], kind: [], status: [], include_archived: true, prev: [], take: [500n] })).length);
+    // token: position locks with it as token0 or token1, token locks of that ledger
+    const withB = await lock.get_lock_states_page({ owner: [], ledger: [], swap_canister_id: [], token: [tokenBId], kind: [], status: [], include_archived: true, prev: [], take: [500n] });
+    expect(withB.length).toBeGreaterThan(0);
+    expect(withB.every((s) => s.ledger[0]?.toText() === tokenBId.toText() || s.token0[0]?.toText() === tokenBId.toText() || s.token1[0]?.toText() === tokenBId.toText())).toBe(true);
+    expect(withB.filter((s) => 'PositionLock' in s.kind).every((s) => s.dex[0] === 1n)).toBe(true);
     expect((await lock.get_lock_states([neuronId, 999_999n])).map((x) => x.length)).toEqual([1, 0]);
   });
 
