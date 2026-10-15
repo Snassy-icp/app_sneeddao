@@ -14,7 +14,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Principal } from '@icp-sdk/core/principal';
 import {
-  createPic, install, actorAs, account, principalToSubaccount,
+  createPic, install, actorAs, account, principalToSubaccount, refusedAtIngress,
   admin, alice, bob, carol, user, ICP_LEDGER_ID, T, wasm,
 } from '../lib/pic.js';
 import { ledgerIdl, ledgerInit } from '../lib/idl.js';
@@ -148,7 +148,7 @@ afterAll(async () => { await pic?.tearDown(); });
 describe('fresh install', () => {
   it('reports its version and principal and starts empty with defaults', async () => {
     const v = await bot.getVersion();
-    expect(v).toEqual({ major: 0n, minor: 9n, patch: 2n });
+    expect(v).toEqual({ major: 0n, minor: 9n, patch: 3n });
     expect((await bot.getCanisterPrincipal()).toText()).toBe(botId.toText());
     expect(await bot.getTokenRegistry()).toEqual([]);
     expect(await bot.getEnabledDexes()).toEqual([0n, 1n]);
@@ -257,12 +257,13 @@ describe('botkey permissions', () => {
   });
 
   it('lets a listener register for events only with the permissions those events need', async () => {
-    expect(await botAlice.registerEventListener({ eventTypeIds: [200n] })).toEqual({ Err: 'Insufficient permissions for requested event types' });
+    // alice holds no botkey: refused at ingress (a botkey without the view permission is refused by the method)
+    expect(await refusedAtIngress(botAlice.registerEventListener({ eventTypeIds: [200n] }))).toBe(true);
     const r = await botBob.registerEventListener({ eventTypeIds: [200n] }); // bob holds ViewPortfolio
     expect(r).toHaveProperty('Ok');
     expect(await botBob.registerEventListener({ eventTypeIds: [200n] })).toEqual({ Err: 'Listener already registered. Unregister first to update.' });
     expect(await botBob.updateEventListenerTypes(r.Ok, [0n])).toEqual({ Err: 'Insufficient permissions for requested event types' }); // ViewChores missing
-    await botAlice.unregisterEventListener(r.Ok); // not the owner: no effect
+    expect(await refusedAtIngress(botAlice.unregisterEventListener(r.Ok))).toBe(true); // not the owner
     expect(await bot.getEventListeners()).toHaveLength(1);
     await botBob.unregisterEventListener(r.Ok);
     expect(await bot.getEventListeners()).toEqual([]);

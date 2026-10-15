@@ -14,6 +14,7 @@ import Error "mo:base/Error";
 import Timer "mo:base/Timer";
 
 import T "Types";
+import IngressGuard "../../IngressGuard";
 import BotkeyPermissions "../BotkeyPermissions";
 import BotChoreTypes "../BotChoreTypes";
 import BotChoreEngine "../BotChoreEngine";
@@ -9839,4 +9840,240 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         await eventEngine.handleIncomingEvent(caller, event)
     };
 
+    // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
+    // would go through consensus at the bot's cost, and update calls are only accepted from
+    // the bot's controllers and botkey principals (every method checks its own permission
+    // again), with arguments capped in size. Calls from canisters do not pass through here.
+    func hasBotkey(p : Principal) : Bool {
+      for ((k, _) in hotkeyPermissions.vals()) { if (Principal.equal(k, p)) return true };
+      false
+    };
+
+    system func inspect({ caller : Principal; arg : Blob; msg : {
+      #addCircuitBreakerRule : Any;
+      #addDistributionList : Any;
+      #addEventReaction : Any;
+      #addEventSubscription : Any;
+      #addHotkeyPermissions : Any;
+      #addMoveFundsAction : Any;
+      #addToken : Any;
+      #addTradeAction : Any;
+      #adjustCapitalDeployed : Any;
+      #callerPermissions : Any;
+      #cancelOneOffTrade : Any;
+      #checkPermission : Any;
+      #clearCircuitBreakerLog : Any;
+      #clearLogs : Any;
+      #clearOneOffTradeHistory : Any;
+      #clearPortfolioSnapshots : Any;
+      #clearTradeLog : Any;
+      #createChoreInstance : Any;
+      #deleteChoreInstance : Any;
+      #deleteTradeLogEntries : Any;
+      #disablePurse : Any;
+      #enableCircuitBreakerRule : Any;
+      #enablePurse : Any;
+      #freezeToken : Any;
+      #fundPurse : Any;
+      #getAllPurseAllocations : Any;
+      #getAvailableReactionActions : Any;
+      #getBotkeySnapshot : Any;
+      #getCanisterPrincipal : Any;
+      #getCapitalFlows : Any;
+      #getChoreConfigs : Any;
+      #getChoreLoggingOverrides : Any;
+      #getChoreStatus : Any;
+      #getChoreStatuses : Any;
+      #getChoreTypes : Any;
+      #getCircuitBreakerEnabled : Any;
+      #getCircuitBreakerLog : Any;
+      #getCircuitBreakerRules : Any;
+      #getDailyPortfolioSummaries : Any;
+      #getDailyPriceCandles : Any;
+      #getDistributionLists : Any;
+      #getEnabledDexes : Any;
+      #getEventEmissionEnabled : Any;
+      #getEventListeners : Any;
+      #getEventLog : Any;
+      #getEventReactionLog : Any;
+      #getEventReactions : Any;
+      #getEventSubscriptions : Any;
+      #getEventTypes : Any;
+      #getFrozenTokens : Any;
+      #getHotkeyPermissions : Any;
+      #getLastKnownPrices : Any;
+      #getLogAlertSummary : Any;
+      #getLogConfig : Any;
+      #getLoggingSettings : Any;
+      #getLogs : Any;
+      #getMainPurseBalance : Any;
+      #getMainPurseBalances : Any;
+      #getMetadataStaleness : Any;
+      #getMoveFundsActions : Any;
+      #getOneOffTradeQueue : Any;
+      #getPausedTokens : Any;
+      #getPortfolioSnapshotStats : Any;
+      #getPortfolioSnapshots : Any;
+      #getPriceHistory : Any;
+      #getPriceHistoryMaxSize : Any;
+      #getPriceStaleness : Any;
+      #getPurseBalance : Any;
+      #getPurseBalances : Any;
+      #getPursePortfolioSnapshots : Any;
+      #getRebalanceSettings : Any;
+      #getRebalanceTargets : Any;
+      #getResolvedPurseId : Any;
+      #getSupportedDexes : Any;
+      #getTokenRegistry : Any;
+      #getTradeActions : Any;
+      #getTradeFallbackRouteTokens : Any;
+      #getTradeLog : Any;
+      #getTradeLogStats : Any;
+      #getTradingPurseId : Any;
+      #getVersion : Any;
+      #isPurseEnabled : Any;
+      #listChoreInstances : Any;
+      #listHotkeyPrincipals : Any;
+      #listPermissionTypes : Any;
+      #listPurseSnapshotPurses : Any;
+      #manualSend : Any;
+      #onBotEvent : Any;
+      #pauseChore : Any;
+      #pauseToken : Any;
+      #reclaimFromPurse : Any;
+      #recoverPoolFunds : Any;
+      #refreshTokenMetadata : Any;
+      #registerEventListener : Any;
+      #removeChoreLoggingOverride : Any;
+      #removeCircuitBreakerRule : Any;
+      #removeDistributionList : Any;
+      #removeEventReaction : Any;
+      #removeEventSubscription : Any;
+      #removeHotkeyPermissions : Any;
+      #removeHotkeyPrincipal : Any;
+      #removeMoveFundsAction : Any;
+      #removeToken : Any;
+      #removeTradeAction : Any;
+      #renameChoreInstance : Any;
+      #reorderTokenRegistry : Any;
+      #reorderTradeActions : Any;
+      #resetActionStats : Any;
+      #restoreBotkeySnapshot : Any;
+      #resumeChore : Any;
+      #scheduleStartChore : Any;
+      #setChoreInterval : Any;
+      #setChoreLoggingOverride : Any;
+      #setChoreMaxInterval : Any;
+      #setChoreNextRun : Any;
+      #setChoreTaskTimeout : Any;
+      #setCircuitBreakerEnabled : Any;
+      #setDefaultMaxPriceImpact : Any;
+      #setDefaultSlippage : Any;
+      #setDexEnabled : Any;
+      #setEnabledDexes : Any;
+      #setEventEmissionEnabled : Any;
+      #setLogLevel : Any;
+      #setLoggingSettings : Any;
+      #setMetadataStaleness : Any;
+      #setPriceHistoryMaxSize : Any;
+      #setPriceStaleness : Any;
+      #setRebalanceDenominationToken : Any;
+      #setRebalanceFallbackRouteTokens : Any;
+      #setRebalanceMaxPriceImpactBps : Any;
+      #setRebalanceMaxSlippageBps : Any;
+      #setRebalanceMaxTradeSize : Any;
+      #setRebalanceMinTradeSize : Any;
+      #setRebalanceTargets : Any;
+      #setRebalanceThresholdBps : Any;
+      #setTradeFallbackRouteTokens : Any;
+      #setTradingPurseId : Any;
+      #startChore : Any;
+      #stopAllChores : Any;
+      #stopChore : Any;
+      #submitOneOffTrade : Any;
+      #triggerChore : Any;
+      #unfreezeToken : Any;
+      #unpauseToken : Any;
+      #unregisterEventListener : Any;
+      #updateCircuitBreakerRule : Any;
+      #updateDistributionList : Any;
+      #updateEventListenerTypes : Any;
+      #updateEventReaction : Any;
+      #updateEventSubscription : Any;
+      #updateMoveFundsAction : Any;
+      #updateTradeAction : Any;
+      #withdrawIcp : Any;
+      #withdrawToken : Any;
+    } }) : Bool {
+      switch (msg) {
+        case (
+          #callerPermissions _
+          or #checkPermission _
+          or #getAllPurseAllocations _
+          or #getAvailableReactionActions _
+          or #getCanisterPrincipal _
+          or #getCapitalFlows _
+          or #getChoreConfigs _
+          or #getChoreLoggingOverrides _
+          or #getChoreStatus _
+          or #getChoreStatuses _
+          or #getChoreTypes _
+          or #getCircuitBreakerEnabled _
+          or #getCircuitBreakerLog _
+          or #getCircuitBreakerRules _
+          or #getDailyPortfolioSummaries _
+          or #getDailyPriceCandles _
+          or #getDistributionLists _
+          or #getEnabledDexes _
+          or #getEventEmissionEnabled _
+          or #getEventListeners _
+          or #getEventLog _
+          or #getEventReactionLog _
+          or #getEventReactions _
+          or #getEventSubscriptions _
+          or #getEventTypes _
+          or #getFrozenTokens _
+          or #getHotkeyPermissions _
+          or #getLastKnownPrices _
+          or #getLogAlertSummary _
+          or #getLogConfig _
+          or #getLoggingSettings _
+          or #getLogs _
+          or #getMetadataStaleness _
+          or #getMoveFundsActions _
+          or #getOneOffTradeQueue _
+          or #getPausedTokens _
+          or #getPortfolioSnapshotStats _
+          or #getPortfolioSnapshots _
+          or #getPriceHistory _
+          or #getPriceHistoryMaxSize _
+          or #getPriceStaleness _
+          or #getPurseBalance _
+          or #getPurseBalances _
+          or #getPursePortfolioSnapshots _
+          or #getRebalanceSettings _
+          or #getRebalanceTargets _
+          or #getResolvedPurseId _
+          or #getSupportedDexes _
+          or #getTokenRegistry _
+          or #getTradeActions _
+          or #getTradeFallbackRouteTokens _
+          or #getTradeLog _
+          or #getTradeLogStats _
+          or #getTradingPurseId _
+          or #getVersion _
+          or #isPurseEnabled _
+          or #listChoreInstances _
+          or #listHotkeyPrincipals _
+          or #listPermissionTypes _
+          or #listPurseSnapshotPurses _
+        ) false;
+        case _ {
+          if (not (Principal.isController(caller) or hasBotkey(caller))) return false;
+          switch (msg) {
+            case _ arg.size() <= IngressGuard.MEDIUM_ARG;
+          };
+        };
+      };
+    };
 };

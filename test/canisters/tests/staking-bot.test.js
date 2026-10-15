@@ -14,7 +14,7 @@ import { crc32 } from 'node:zlib';
 import { Principal } from '@icp-sdk/core/principal';
 import { IDL } from '@icp-sdk/core/candid';
 import {
-  createPic, install, actorAs, account, user, admin, alice, bob, carol, ICP_LEDGER_ID, T, wasm,
+  createPic, install, actorAs, account, user, admin, alice, bob, carol, ICP_LEDGER_ID, T, wasm, refusedAtIngress,
 } from '../lib/pic.js';
 import { ledgerIdl, ledgerInit } from '../lib/idl.js';
 import { idlFactory as botIdl } from '../build/sneed_icp_staking_bot.did.js';
@@ -127,7 +127,7 @@ afterAll(async () => { await pic?.tearDown(); });
 
 describe('identity and public queries', () => {
   it('reports its version, creation time and accounts', async () => {
-    expect(await botAlice.getVersion()).toEqual({ major: 0n, minor: 9n, patch: 3n });
+    expect(await botAlice.getVersion()).toEqual({ major: 0n, minor: 9n, patch: 4n });
     const created = await botAlice.getCreatedAt();
     const now = BigInt(Math.ceil(await pic.getTime())) * 1_000_000n; // getTime has millisecond precision
     expect(created <= now + 1_000_000n && created > now - 60n * 1_000_000_000n).toBe(true);
@@ -623,7 +623,10 @@ describe('disbursing neurons and withdrawing funds', () => {
 
   it('withdraws any ICRC-1 token at that ledger\'s fee', async () => {
     await token.mint(account(botId), 50_000n);
-    expect(await botAlice.getTokenBalance(tokenId)).toBe(50_000n); // open to anyone (no permission check)
+    expect(await bot.getTokenBalance(tokenId)).toBe(50_000n);
+    // the method has no permission check, but as an update call it is only accepted from the
+    // bot's controllers and botkeys (ingress guard)
+    expect(await refusedAtIngress(botAlice.getTokenBalance(tokenId))).toBe(true);
     expect(err(await bot.withdrawToken(tokenId, 49_001n, account(alice)))).toEqual({ TransferFailed: 'Insufficient token balance' });
     ok(await bot.withdrawToken(tokenId, 49_000n, account(alice)));
     expect(await token.icrc1_balance_of(account(alice))).toBe(49_000n);
@@ -880,9 +883,10 @@ describe('logs and events', () => {
     expect(log.entries).toHaveLength(1);
     expect(log.entries[0].reactionRuleId).toBe(rule);
     expect((await gov.get_calls()).some((c) => c.startsWith(`ClaimOrRefresh(neuron ${staked} by ${botId.toText()}`))).toBe(true);
-    // an event from a principal that is not the source is refused
+    // an event from a principal that is not the source is refused (from a stranger already at ingress)
     const forged = { sourceCanisterId: bot2Id, eventTypeId: 160n, timestamp: 0n, data: [], eventId: 0n };
-    expect(err(await botAlice.onBotEvent(forged))).toMatch(/does not match/);
+    expect(await refusedAtIngress(botAlice.onBotEvent(forged))).toBe(true);
+    expect(err(await bot.onBotEvent(forged))).toMatch(/does not match/);
     await bot.removeEventReaction(rule);
     await bot.removeEventSubscription(sub);
     expect(await bot.getEventSubscriptions()).toEqual([]);
@@ -928,7 +932,7 @@ describe('upgrade', () => {
   });
 
   it('keeps permissions, neurons, chores, settings, logs and events', async () => {
-    expect(await bot.getVersion()).toEqual({ major: 0n, minor: 9n, patch: 3n });
+    expect(await bot.getVersion()).toEqual({ major: 0n, minor: 9n, patch: 4n });
     expect(await bot.getCreatedAt()).toBe(before.createdAt);
     expect(await bot.getBotkeySnapshot()).toEqual(before.hotkeys);
     expect(await botCarol.getChoreStatuses()).toHaveLength(4);

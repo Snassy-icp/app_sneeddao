@@ -14,6 +14,7 @@ import Debug "mo:base/Debug";
 import Nat "mo:base/Nat";
 
 import T "Types";
+import IngressGuard "../../IngressGuard";
 import BotkeyPermissions "../BotkeyPermissions";
 import BotChoreTypes "../BotChoreTypes";
 import BotChoreEngine "../BotChoreEngine";
@@ -3264,6 +3265,164 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     public shared ({ caller }) func onBotEvent(event: BotEventTypes.BotEvent): async { #Ok; #Err: Text } {
         await eventEngine.handleIncomingEvent(caller, event)
+    };
+
+    // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
+    // would go through consensus at the bot's cost, and update calls are only accepted from
+    // the bot's controllers and botkey principals (every method checks its own permission
+    // again), with arguments capped in size. Calls from canisters do not pass through here.
+    func hasBotkey(p : Principal) : Bool {
+      for ((k, _) in hotkeyPermissions.vals()) { if (Principal.equal(k, p)) return true };
+      false
+    };
+
+    system func inspect({ caller : Principal; arg : Blob; msg : {
+      #addDistributionList : Any;
+      #addEventReaction : Any;
+      #addEventSubscription : Any;
+      #addHotKey : Any;
+      #addHotkeyPermissions : Any;
+      #callerPermissions : Any;
+      #checkPermission : Any;
+      #claimNeuronFromDeposit : Any;
+      #clearBotkeys : Any;
+      #clearLogs : Any;
+      #confirmFollowing : Any;
+      #createChoreInstance : Any;
+      #deleteChoreInstance : Any;
+      #disburse : Any;
+      #disburseMaturity : Any;
+      #generateMemo : Any;
+      #getAccount : Any;
+      #getAccountId : Any;
+      #getAllNeuronsInfo : Any;
+      #getAvailableReactionActions : Any;
+      #getBalance : Any;
+      #getBotkeySnapshot : Any;
+      #getChoreConfigs : Any;
+      #getChoreStatus : Any;
+      #getChoreStatuses : Any;
+      #getChoreTypes : Any;
+      #getCollectMaturitySettings : Any;
+      #getCreatedAt : Any;
+      #getDistributionLists : Any;
+      #getEventEmissionEnabled : Any;
+      #getEventListeners : Any;
+      #getEventLog : Any;
+      #getEventReactionLog : Any;
+      #getEventReactions : Any;
+      #getEventSubscriptions : Any;
+      #getEventTypes : Any;
+      #getFullNeuron : Any;
+      #getHotkeyPermissions : Any;
+      #getLogAlertSummary : Any;
+      #getLogConfig : Any;
+      #getLogs : Any;
+      #getNeuronAccount : Any;
+      #getNeuronCount : Any;
+      #getNeuronIds : Any;
+      #getNeuronInfo : Any;
+      #getStakeAccount : Any;
+      #getTokenBalance : Any;
+      #getVersion : Any;
+      #hasNeuron : Any;
+      #increaseStake : Any;
+      #listChoreInstances : Any;
+      #listHotkeyPrincipals : Any;
+      #listNeurons : Any;
+      #listPermissionTypes : Any;
+      #makeProposal : Any;
+      #mergeMaturity : Any;
+      #mergeNeurons : Any;
+      #onBotEvent : Any;
+      #pauseChore : Any;
+      #refreshStake : Any;
+      #refreshStakeFromDeposit : Any;
+      #refreshVotingPower : Any;
+      #registerEventListener : Any;
+      #removeDistributionList : Any;
+      #removeEventReaction : Any;
+      #removeEventSubscription : Any;
+      #removeHotKey : Any;
+      #removeHotkeyPermissions : Any;
+      #removeHotkeyPrincipal : Any;
+      #renameChoreInstance : Any;
+      #restoreBotkeySnapshot : Any;
+      #resumeChore : Any;
+      #scheduleStartChore : Any;
+      #setAutoStakeMaturity : Any;
+      #setChoreInterval : Any;
+      #setChoreMaxInterval : Any;
+      #setChoreNextRun : Any;
+      #setChoreTaskTimeout : Any;
+      #setCollectMaturityDestination : Any;
+      #setCollectMaturityThreshold : Any;
+      #setDissolveDelay : Any;
+      #setEventEmissionEnabled : Any;
+      #setFollowing : Any;
+      #setLogLevel : Any;
+      #setMaxLogEntries : Any;
+      #setVisibility : Any;
+      #spawnMaturity : Any;
+      #splitNeuron : Any;
+      #stakeMaturity : Any;
+      #stakeNeuron : Any;
+      #startChore : Any;
+      #startDissolving : Any;
+      #stopAllChores : Any;
+      #stopChore : Any;
+      #stopDissolving : Any;
+      #triggerChore : Any;
+      #unregisterEventListener : Any;
+      #updateDistributionList : Any;
+      #updateEventListenerTypes : Any;
+      #updateEventReaction : Any;
+      #updateEventSubscription : Any;
+      #vote : Any;
+      #withdrawIcp : Any;
+      #withdrawToken : Any;
+    } }) : Bool {
+      switch (msg) {
+        case (
+          #callerPermissions _
+          or #checkPermission _
+          or #generateMemo _
+          or #getAccount _
+          or #getAccountId _
+          or #getAvailableReactionActions _
+          or #getChoreConfigs _
+          or #getChoreStatus _
+          or #getChoreStatuses _
+          or #getChoreTypes _
+          or #getCollectMaturitySettings _
+          or #getCreatedAt _
+          or #getDistributionLists _
+          or #getEventEmissionEnabled _
+          or #getEventListeners _
+          or #getEventLog _
+          or #getEventReactionLog _
+          or #getEventReactions _
+          or #getEventSubscriptions _
+          or #getEventTypes _
+          or #getHotkeyPermissions _
+          or #getLogAlertSummary _
+          or #getLogConfig _
+          or #getLogs _
+          or #getStakeAccount _
+          or #getVersion _
+          or #listChoreInstances _
+          or #listHotkeyPrincipals _
+          or #listPermissionTypes _
+        ) false;
+        case _ {
+          if (not (Principal.isController(caller) or hasBotkey(caller))) return false;
+          switch (msg) {
+            // an NNS proposal may carry a large payload; the ingress message limit bounds it
+            case (#makeProposal _) true;
+            case _ arg.size() <= IngressGuard.MEDIUM_ARG;
+          };
+        };
+      };
     };
 };
 
