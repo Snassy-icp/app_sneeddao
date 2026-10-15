@@ -78,6 +78,12 @@ function liquidityFor(amount0, amount1, tickLower, tickUpper, sqrtP) {
 const fmtUnits = (v, d, max = 6) => (Number(v) / 10 ** d).toLocaleString('en-US', { maximumFractionDigits: Math.min(d, max) });
 const toUnits = (text, d) => { const t = String(text).trim(); if (!/^\d*(\.\d*)?$/.test(t) || t === '' || t === '.') return null; const [w, f = ''] = t.split('.'); return BigInt(w || '0') * 10n ** BigInt(d) + BigInt((f + '0'.repeat(d)).slice(0, d) || '0'); };
 const fmtPrice = (p) => (p >= 1000 ? p.toLocaleString('en-US', { maximumFractionDigits: 2 }) : p.toPrecision(6).replace(/\.?0+$/, ''));
+// A range at ICPSwap's tick limits (±887272, rounded to the tick spacing) is unbounded on that side.
+const TICK_EDGE = 887000;
+const rangeText = (lower, upper, toPrice, joiner = ' to ') => {
+    if (lower <= -TICK_EDGE && upper >= TICK_EDGE) return 'full range (0 to ∞)';
+    return `${lower <= -TICK_EDGE ? '0' : fmtPrice(toPrice(lower))}${joiner}${upper >= TICK_EDGE ? '∞' : fmtPrice(toPrice(upper))}`;
+};
 const errText = (e) => (e && typeof e === 'object' ? ('InternalError' in e ? e.InternalError : 'UnsupportedToken' in e ? `unsupported token ${e.UnsupportedToken}` : Object.keys(e)[0]) : String(e));
 
 function Position() {
@@ -469,7 +475,7 @@ function Position() {
                     <label style={label}>Upper price<input style={input} value={range.upper} onChange={(e) => setRange((r) => ({ ...r, upper: e.target.value }))} placeholder={priceHuman ? fmtPrice(priceHuman * 1.25) : ''} /></label>
                 </div>
             )}
-            {chosenTicks && <div style={{ fontSize: '0.8rem', color: theme.colors.secondaryText }}>Range {fmtPrice(tickToHuman(chosenTicks.lower))} to {fmtPrice(tickToHuman(chosenTicks.upper))} {sym1} per {sym0} (ticks {chosenTicks.lower} to {chosenTicks.upper}, spacing {tickSpacing}). {meta && (meta.tick < chosenTicks.lower || meta.tick >= chosenTicks.upper) ? 'The current price is outside it: only one token goes in until the price enters the range.' : 'The current price is inside it.'}</div>}
+            {chosenTicks && <div style={{ fontSize: '0.8rem', color: theme.colors.secondaryText }}>Range {rangeText(chosenTicks.lower, chosenTicks.upper, tickToHuman)} {sym1} per {sym0} (ticks {chosenTicks.lower} to {chosenTicks.upper}, spacing {tickSpacing}). {meta && (meta.tick < chosenTicks.lower || meta.tick >= chosenTicks.upper) ? 'The current price is outside it: only one token goes in until the price enters the range.' : 'The current price is inside it.'}</div>}
         </div>
     );
 
@@ -546,7 +552,7 @@ function Position() {
 
                                 {position && posAmounts && (
                                     <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, fontSize: '0.88rem', color: theme.colors.secondaryText }}>
-                                        <div><div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', textTransform: 'uppercase' }}>Range</div>{fmtPrice(tickToHuman(position.tickLower))} to {fmtPrice(tickToHuman(position.tickUpper))} {sym1} per {sym0}<div style={{ color: posAmounts.inRange ? '#22c55e' : '#f59e0b', fontWeight: 700 }}>{posAmounts.inRange ? 'in range, earning fees' : 'out of range, earning nothing'}</div></div>
+                                        <div><div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', textTransform: 'uppercase' }}>Range</div>{rangeText(position.tickLower, position.tickUpper, tickToHuman)} {sym1} per {sym0}<div style={{ color: posAmounts.inRange ? '#22c55e' : '#f59e0b', fontWeight: 700 }}>{posAmounts.inRange ? 'in range, earning fees' : 'out of range, earning nothing'}</div></div>
                                         <div><div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', textTransform: 'uppercase' }}>Holds</div>{fmtUnits(posAmounts.amount0, d0)} {sym0}<br />{fmtUnits(posAmounts.amount1, d1)} {sym1}{usd && (usd.p0 || usd.p1) && <div style={{ color: theme.colors.primaryText, fontWeight: 700 }}>{formatValue(posAmounts.amount0 / 10 ** d0 * (usd.p0 || 0) + posAmounts.amount1 / 10 ** d1 * (usd.p1 || 0))}</div>}</div>
                                         <div><div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', textTransform: 'uppercase' }}>Uncollected fees</div>{fmtUnits(position.tokensOwed0, d0)} {sym0}<br />{fmtUnits(position.tokensOwed1, d1)} {sym1}{usd && (usd.p0 || usd.p1) && <div style={{ color: theme.colors.primaryText, fontWeight: 700 }}>{formatValue(Number(position.tokensOwed0) / 10 ** d0 * (usd.p0 || 0) + Number(position.tokensOwed1) / 10 ** d1 * (usd.p1 || 0))}</div>}</div>
                                         <div><div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', textTransform: 'uppercase' }}>Owner</div>{owner === 'me' ? 'you (Sneed wallet)' : owner === 'sneedlock' ? <span><FaLock size={11} /> locked in Sneed Lock{lock?.expiry ? (isUntilDissolved(lock.expiry) ? <>, until <LockUntil lockId={lock.lock_id} expiry={lock.expiry} fmt={(d) => d.toLocaleDateString()} /></> : `, until ${new Date(Number(BigInt(lock.expiry) / 1000000n)).toLocaleDateString()}`) : ''}</span> : owner === 'other' ? 'someone else' : '…'}<br /><span style={{ color: theme.colors.mutedText }}>liquidity {position.liquidity.toString()}</span></div>

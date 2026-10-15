@@ -20,6 +20,13 @@ const primary = '#06b6d4';
 const fmtUnits = (v, d, max = 4) => (Number(v) / 10 ** d).toLocaleString('en-US', { maximumFractionDigits: Math.min(d, max) });
 const tickToHuman = (t, d0, d1) => 1.0001 ** t * 10 ** (d0 - d1);
 const fmtPrice = (p) => (p >= 1000 ? p.toLocaleString('en-US', { maximumFractionDigits: 2 }) : p.toPrecision(5).replace(/\.?0+$/, ''));
+// A range at ICPSwap's tick limits (±887272, rounded to the tick spacing) is unbounded on that
+// side: show 0 / ∞ rather than prices like 3e-39 and 3e38.
+const TICK_EDGE = 887000;
+const rangeText = (lower, upper, toPrice) => {
+    if (lower <= -TICK_EDGE && upper >= TICK_EDGE) return 'full range (0 – ∞)';
+    return `${lower <= -TICK_EDGE ? '0' : fmtPrice(toPrice(lower))} – ${upper >= TICK_EDGE ? '∞' : fmtPrice(toPrice(upper))}`;
+};
 const sqrtAtTick = (t) => 1.0001 ** (t / 2);
 function amountsFor(L, lo, hi, sqrtP) { const sl = sqrtAtTick(lo); const su = sqrtAtTick(hi); if (sqrtP <= sl) return [L * (su - sl) / (sl * su), 0]; if (sqrtP >= su) return [0, L * (su - sl)]; return [L * (su - sqrtP) / (sqrtP * su), L * (sqrtP - sl)]; }
 
@@ -187,7 +194,7 @@ function Positions() {
                                                 return (
                                                     <tr key={r.id.toString()} style={{ background: isMine ? `${primary}10` : 'transparent' }}>
                                                         <td style={td}><Link to={`/position?swap=${poolId}&id=${r.id}`} style={{ color: primary, fontWeight: 700 }}>#{r.id.toString()}</Link>{isMine && <span style={{ marginLeft: 6, fontSize: '0.72rem', color: primary, fontWeight: 700 }}>yours</span>}</td>
-                                                        <td style={td}>{pool ? `${fmtPrice(tickToHuman(r.tickLower, pool.token0.decimals, pool.token1.decimals))} – ${fmtPrice(tickToHuman(r.tickUpper, pool.token0.decimals, pool.token1.decimals))}` : `${r.tickLower} – ${r.tickUpper}`}</td>
+                                                        <td style={td}>{pool ? rangeText(r.tickLower, r.tickUpper, (t) => tickToHuman(t, pool.token0.decimals, pool.token1.decimals)) : `${r.tickLower} – ${r.tickUpper}`}</td>
                                                         <td style={td}>{pool ? `${fmtUnits(a0, pool.token0.decimals)} ${pool.token0.symbol} + ${fmtUnits(a1, pool.token1.decimals)} ${pool.token1.symbol}` : r.liquidity.toString()}</td>
                                                         <td style={td}>{valueOf(a0, a1) !== null ? formatValue(valueOf(a0, a1)) : ''}</td>
                                                         <td style={td}>{pool ? `${fmtUnits(r.owed0, pool.token0.decimals)} + ${fmtUnits(r.owed1, pool.token1.decimals)}${valueOf(Number(r.owed0), Number(r.owed1)) ? ` (${formatValue(valueOf(Number(r.owed0), Number(r.owed1)))})` : ''}` : ''}</td>
