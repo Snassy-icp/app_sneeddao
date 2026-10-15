@@ -292,14 +292,7 @@ type SneedLock =
      });
    getPaymentBalance: (user: principal) -> (nat);
    getPaymentSubaccount: (user: principal) -> (blob) query;
-   get_active_position_locks: () -> (vec FullyQualifiedPositionLock) query;
-   get_active_token_locks: () -> (vec FullyQualifiedLock) query;
    get_admin_list: () -> (vec principal) query;
-   get_all_active_claim_requests: () -> (vec ClaimRequest) query;
-   get_all_completed_claim_requests: () -> (vec ClaimRequest) query;
-   get_all_failed_claim_requests: () -> (vec ClaimRequest) query;
-   get_all_position_locks: () -> (vec FullyQualifiedPositionLock) query;
-   get_all_token_locks: () -> (vec FullyQualifiedLock) query;
    get_claim_request_status: (request_id: ClaimRequestId) ->
     (opt
       variant {
@@ -307,6 +300,8 @@ type SneedLock =
         Completed: ClaimRequest;
         Failed: ClaimRequest;
       }) query;
+   get_claim_requests_page: (q: ClaimRequestPageQuery) ->
+    (vec ClaimRequest) query;
    get_claimed_positions_for_principal: (owner: principal) ->
     (vec ClaimedPosition) query;
    get_completed_claim_request: (request_id: ClaimRequestId) ->
@@ -316,8 +311,6 @@ type SneedLock =
                                     nat;
                                     nat;
                                   });
-   get_expired_position_locks: () -> (vec FullyQualifiedPositionLock) query;
-   get_expired_token_locks: () -> (vec FullyQualifiedLock) query;
    get_failed_claim_request: (request_id: ClaimRequestId) ->
     (opt ClaimRequest) query;
    get_info_entries: (start: nat, length: nat) -> (vec opt BufferEntry);
@@ -325,8 +318,6 @@ type SneedLock =
                                    nat;
                                    nat;
                                  });
-   get_ledger_token_locks: (ledger_canister_id: TokenType) ->
-    (vec FullyQualifiedLock) query;
    get_lock_by_id: (lock_id: LockId) -> (opt LockInfo) query;
    get_lock_fee_stats: () ->
     (record {
@@ -366,8 +357,6 @@ type SneedLock =
                                   TokenType;
                                   Balance;
                                 }) query;
-   get_swap_position_locks: (swap_canister_id: SwapCanisterId) ->
-    (vec FullyQualifiedPositionLock) query;
    get_token_lock_by_id: (lock_id: LockId) -> (opt FullyQualifiedLock) query;
    get_token_locks: () ->
     (vec record {
@@ -376,8 +365,6 @@ type SneedLock =
            Balance;
            Expiry;
          }) query;
-   get_token_position_locks: (token_canister_id: TokenType) ->
-    (vec FullyQualifiedPositionLock) query;
    has_expired_locks: () -> (bool) query;
    has_expired_position_locks: () -> (bool) query;
    icrc10_supported_standards: () -> (vec SupportedStandard) query;
@@ -582,11 +569,17 @@ type LockType =
    PositionLock;
    TokenLock;
  };
+type LockStatusFilter = 
+ variant {
+   Active;
+   Expired;
+ };
 type LockState = 
  record {
    amount: opt Balance;
    archived: bool;
    created_at: opt nat64;
+   dex: opt Dex;
    dissolve_delay: nat64;
    dissolving_until: opt Expiry;
    earliest_unlock: Expiry;
@@ -610,8 +603,10 @@ type LockPageQuery =
    ledger: opt TokenType;
    owner: opt principal;
    prev: opt LockId;
+   status: opt LockStatusFilter;
    swap_canister_id: opt SwapCanisterId;
    take: opt nat;
+   token: opt TokenType;
  };
 type LockOpResult = 
  variant {
@@ -738,6 +733,12 @@ type ClaimRequestStatus =
                 amount0_claimed: Balance;
                 amount1_claimed: Balance;
               };
+ };
+type ClaimRequestPageQuery = 
+ record {
+   failed: bool;
+   prev: opt nat;
+   take: opt nat;
  };
 type ClaimRequestId = nat;
 type ClaimRequest = 

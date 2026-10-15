@@ -64,8 +64,6 @@ const Settings = IDL.Record({
 });
 export const sneedLockHealthIdl = ({ IDL }) => IDL.Service({
     get_admin_list: IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
-    get_active_token_locks: IDL.Func([], [IDL.Vec(IDL.Reserved)], ['query']),
-    get_active_position_locks: IDL.Func([], [IDL.Vec(IDL.Reserved)], ['query']),
     icrc3_log_status: IDL.Func([], [IDL.Record({
         log_length: IDL.Nat, live_blocks: IDL.Nat, live_first_index: IDL.Nat, last_block_hash: IDL.Opt(IDL.Vec(IDL.Nat8)),
         archives: IDL.Vec(ArchiveInfo), settings: Settings, history_imported: IDL.Bool, spilling: IDL.Bool,

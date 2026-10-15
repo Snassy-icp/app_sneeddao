@@ -9,6 +9,7 @@ import Header from './components/Header';
 import { Link } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { getAllPositionLocks, getAllTokenLocks } from './utils/sneedLockLists';
 
 function Dashboard() {
     const { identity } = useAuth();
@@ -85,7 +86,7 @@ function Dashboard() {
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
             
             // Fetch token locks
-            const allTokenLocks = await sneedLockActor.get_all_token_locks();
+            const allTokenLocks = await getAllTokenLocks(sneedLockActor);
             setTokenLocks(allTokenLocks);
 
             // Fetch token symbols
@@ -99,7 +100,7 @@ function Dashboard() {
             setTokenSymbols(symbols);
         
             // Fetch position locks
-            const allPositionLocks = await sneedLockActor.get_all_position_locks();
+            const allPositionLocks = await getAllPositionLocks(sneedLockActor);
             setPositionLocks(allPositionLocks);
         
             // Fetch position details for each locked position

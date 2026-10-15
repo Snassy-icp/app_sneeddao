@@ -21,6 +21,7 @@ import { scanLedgerOffThread } from './scanClient.js';
 import { idlFactory as governanceIdl } from 'external/sns_governance/sns_governance.did.js';
 import { guardianIdl, guardianById, policySummary } from './guardianIdl.js';
 import { NEVER_NS } from '../utils/lockTime';
+import { getLedgerTokenLocks, getTokenPositionLocks } from '../utils/sneedLockLists';
 const NEVER_MS = Number(NEVER_NS / 1_000_000n);
 
 export const IDS = {
@@ -223,13 +224,13 @@ const loaders = {
     },
     locks: (ledgerId) => async (ctx) => {
         const lock = await actor(sneedLockIdl, IDS.sneedLock);
-        const all = await ctx.call(lock.get_ledger_token_locks(Principal.fromText(ledgerId)), 'Sneed Lock token locks');
+        const all = await ctx.call(getLedgerTokenLocks(lock, Principal.fromText(ledgerId)), 'Sneed Lock token locks');
         const now = Date.now();
         return all.map(([owner, , l]) => ({ owner: owner.toText(), amount: BigInt(l.amount), expiryMs: nsToMs(l.expiry), lockId: Number(l.lock_id) })).filter((l) => l.expiryMs > now);
     },
     positionLocks: (ledgerId) => async (ctx) => {
         const lock = await actor(sneedLockIdl, IDS.sneedLock);
-        const all = await ctx.call(lock.get_token_position_locks(Principal.fromText(ledgerId)), 'Sneed Lock position locks');
+        const all = await ctx.call(getTokenPositionLocks(lock, Principal.fromText(ledgerId)), 'Sneed Lock position locks');
         const now = Date.now();
         return all.map(([owner, pool, p]) => ({ owner: owner.toText(), pool: pool.toText(), positionId: BigInt(p.position_id), expiryMs: nsToMs(p.expiry), lockId: Number(p.lock_id), token0: p.token0.toText(), token1: p.token1.toText() })).filter((l) => l.expiryMs > now);
     },

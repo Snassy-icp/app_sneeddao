@@ -13,6 +13,8 @@ import { idlFactory as rllIdl } from 'declarations/rll/rll.did.js';
 import { verifyTip } from '../utils/icrc3/client.js';
 import { actor, withTimeout, ledgerIdl, swapIdl, pingIdl, archiveStatusIdl, sneedLockHealthIdl, stakingBotIdl, backendTokenListIdl, icpIndexIdl, accountIdentifierHex, hex, isMissingMethod, IDL, Principal } from './agent.js';
 import { GUARDIANS, guardianIdl } from '../tokensafety/guardianIdl.js';
+import { idlFactory as sneedLockFullIdl } from 'declarations/sneed_lock/sneed_lock.did.js';
+import { getActiveTokenLocks, getActivePositionLocks } from '../utils/sneedLockLists';
 
 // ---- the DAO as the checks know it ----
 
@@ -710,7 +712,7 @@ export function buildTree(config) {
             const leaves = [
                 {
                     id: 'lock:locks', name: 'Lock state readable', link: '/sneedlock_info',
-                    run: async (ctx2) => { const lock = await actor(sneedLockHealthIdl, IDS.sneedLock); const [t, p] = await Promise.all([ctx2.call(lock.get_active_token_locks(), 'token locks'), ctx2.call(lock.get_active_position_locks(), 'position locks')]); return pass(`${t.length} active token lock(s), ${p.length} active position lock(s)`); },
+                    run: async (ctx2) => { const lock = await actor(sneedLockFullIdl, IDS.sneedLock); const [t, p] = await Promise.all([ctx2.call(getActiveTokenLocks(lock), 'token locks'), ctx2.call(getActivePositionLocks(lock), 'position locks')]); return pass(`${t.length} active token lock(s), ${p.length} active position lock(s)`); },
                 },
                 {
                     id: 'lock:tip', name: 'Activity log tip certified', link: `/tools/icrc3?canister=${IDS.sneedLock}`,

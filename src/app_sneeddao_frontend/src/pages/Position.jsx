@@ -32,6 +32,7 @@ import { customStyles } from '../health/TreeView.jsx';
 import { FaWater, FaSpinner, FaLock, FaArrowUp, FaCoins, FaPlus, FaMinus, FaExchangeAlt, FaExternalLinkAlt, FaSync, FaCheck } from 'react-icons/fa';
 import { isUntilDissolved } from '../utils/lockTime';
 import { LockUntil } from '../components/LockUntil';
+import { getSwapPositionLocks } from '../utils/sneedLockLists';
 
 const HOST = 'https://icp-api.io';
 const primary = '#06b6d4';
@@ -155,7 +156,7 @@ function Position() {
                 if (who !== 'me') {
                     try {
                         const sl = createSneedLockActor(sneedLockCanisterId, me ? { agentOptions: { identity } } : undefined);
-                        const locks = await sl.get_swap_position_locks(Principal.fromText(poolId));
+                        const locks = await getSwapPositionLocks(sl, Principal.fromText(poolId));
                         const found = lockFromLocks(positionId, locks);
                         if (found) { who = 'sneedlock'; lk = found[2]; } else who = 'other';
                         if (me) {

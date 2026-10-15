@@ -17,6 +17,7 @@ import { FaRocket, FaLock, FaExchangeAlt, FaUsers, FaDollarSign, FaArrowRight, F
 import { createSneedexActor } from '../utils/SneedexUtils';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import { useDenomination } from '../contexts/DenominationContext';
+import { getAllPositionLocks, getAllTokenLocks } from '../utils/sneedLockLists';
 
 // Custom CSS for animations
 const customAnimations = `
@@ -440,8 +441,8 @@ function Products() {
             // Fetch all locks (whitelisted tokens from shared cache)
             console.time('Fetch locks and tokens');
             const [tokenLocks, positionLocks] = await Promise.all([
-                sneedLockActor.get_all_token_locks(),
-                sneedLockActor.get_all_position_locks()
+                getAllTokenLocks(sneedLockActor),
+                getAllPositionLocks(sneedLockActor)
             ]);
             console.timeEnd('Fetch locks and tokens');
             console.log('Token locks count:', tokenLocks.length);

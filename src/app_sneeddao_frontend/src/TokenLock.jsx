@@ -12,6 +12,7 @@ import TokenCard from './TokenCard';
 import './Wallet.css';
 import Header from './components/Header';
 import { FaCoins, FaShieldAlt, FaSpinner } from 'react-icons/fa';
+import { getLedgerTokenLocks } from './utils/sneedLockLists';
 
 // Custom CSS for animations
 const customStyles = `
@@ -120,7 +121,7 @@ function TokenLock() {
 
             const logo = await resolveTokenLogo(ledgerCanisterId, metadata, symbol);
 
-            const tokenLocks = await sneedLockActor.get_ledger_token_locks(Principal.fromText(ledgerCanisterId));
+            const tokenLocks = await getLedgerTokenLocks(sneedLockActor, Principal.fromText(ledgerCanisterId));
             const filteredLocks = lockIds
                 ? tokenLocks.filter(lock => lockIds.includes(lock[2].lock_id.toString()))
                 : tokenLocks;

@@ -51,13 +51,29 @@ Anyone can deposit into either Sneed Lock account with a plain ICRC-1 transfer. 
 
 ### 1.3 Time
 
-Expiries are `nat64` nanoseconds since the Unix epoch, the same unit as `Time.now()` in Motoko and `BigInt(Date.now()) * 1_000_000n` in JavaScript. A lock must end at least 5 seconds in the future and no later than the maximum set by Sneed governance (the canister answers `Maximum lock time exceeded.` otherwise).
+Expiries are `nat64` nanoseconds since the Unix epoch, the same unit as `Time.now()` in Motoko and `BigInt(Date.now()) * 1_000_000n` in JavaScript. A lock must last at least the minimum and at most the maximum set by Sneed governance (`get_lock_limits()`; the canister answers `Minimum lock time not fulfilled.` or `Maximum lock time exceeded.` otherwise). For a lock with a dissolve delay the limits apply to lock period + delay.
 
 ### 1.4 Amounts
 
 All amounts are base units of the ledger (`e8s` for ICP) as `nat`. Nothing is scaled by decimals inside the canister.
 
-### 1.5 Permissionless, but not anonymous
+### 1.5 Dissolve delays
+
+A lock may have a **dissolve delay**, like an NNS neuron. Its **lock period** (`lock_end`) is the earliest moment dissolving can start; once it has passed, the owner calls `start_dissolving`, and the lock is free when the delay has run out. Dissolving can be stopped (the time left becomes the delay again) and the delay can only grow. Three shapes:
+
+| Lock period | Dissolve delay | Behaves like |
+|---|---|---|
+| y | 0 | A classic lock: free at `lock_end`. |
+| 0 | x | A neuron: free x after the owner starts dissolving. |
+| y | x | Vesting: no dissolving before `lock_end`, then x more. |
+
+A lock with a delay that is not dissolving has no unlock time of its own: its record's `expiry` (the **effective expiry**, what every "is it locked?" check compares) is `18446744073709551615` (the largest `nat64`) until dissolving starts, and the dissolve end after. Show `earliest_unlock` from `get_lock_state` instead: the soonest the lock can be free (`max(lock_end, now) + delay` while not dissolving).
+
+### 1.6 Locked positions are NFTs (ICRC-7, ICRC-37)
+
+Every position Sneed Lock holds that has been locked at least once is an NFT in the Sneed Lock collection, on this same canister. Its token id is the lock id of the position's first lock (re-locking keeps it). Its owner is the principal that owns the position in Sneed Lock, plus a subaccount label, so NFT wallets and marketplaces can hold it in any account. Transferring the NFT transfers the position, its lock and its unclaimed fees. Section 3.8 has the details.
+
+### 1.7 Permissionless, but not anonymous
 
 The canister identifies users only by the principal that signs the call. Any front end that can produce a signed call for the user, Internet Identity, Plug, OISY, NFID, a hardware wallet, a dfx identity, is a first-class client. The caveat for integrators is the flip side: a lock belongs to the principal that created it, so a user who logs into your product with a different principal than they use elsewhere will see different locks.
 
@@ -120,7 +136,7 @@ async function lockTokens({ identity, ledgerActor, ledgerId, amount, expiresAtNs
   }
 
   // 3. Lock. The fee (if any) is taken from the payment subaccount, see section 4.
-  const result = await sneedLock.create_lock(amount, Principal.fromText(ledgerId), expiresAtNs);
+  const result = await sneedLock.create_lock(amount, Principal.fromText(ledgerId), expiresAtNs, []); // [] = no dissolve delay
   if ('Err' in result) throw new Error(result.Err.message);
   return result.Ok; // lock_id
 }
@@ -154,7 +170,7 @@ async function lockPosition({ identity, poolActor, poolId, positionId, expiresAt
   if ('err' in t) throw new Error(`transferPosition failed: ${JSON.stringify(t.err)}`);
 
   // 3. Lock it.
-  const r = await sneedLock.create_position_lock(pool, DEX_ICPSWAP, positionId, expiresAtNs, token0, token1);
+  const r = await sneedLock.create_position_lock(pool, DEX_ICPSWAP, positionId, expiresAtNs, token0, token1, []);
   if ('Err' in r) throw new Error(r.Err.message);
   return r.Ok; // lock_id
 }
@@ -166,20 +182,39 @@ Reference: `executePositionLock` in [LockWizard.jsx](https://github.com/Snassy-i
 
 ### 2.4 Read locks
 
-```js
-// Everything that is currently locked, across all users (query, no identity needed)
-const tokenLocks = await sneedLock.get_active_token_locks();      // [(owner, ledger, { lock_id, amount, expiry })]
-const positionLocks = await sneedLock.get_active_position_locks(); // [(owner, pool, { lock_id, position_id, expiry, token0, token1, dex })]
+Lists are paged: `get_lock_states_page` answers one `LockState` per lock, in ascending lock id, filtered by any of owner, ledger, pool, token, kind and status, at most 500 per call. Continue with `prev` = the last id until a page comes back short.
 
-// One token's locks, active and archived
-const sneedLocks = await sneedLock.get_ledger_token_locks(Principal.fromText('hvgxa-wqaaa-aaaaq-aacia-cai'));
+```js
+// Every lock that is currently held, both kinds (query, no identity needed)
+async function allLocks(filter = {}) {
+  const out = [];
+  let prev = [];
+  for (;;) {
+    const page = await sneedLock.get_lock_states_page({
+      owner: [], ledger: [], swap_canister_id: [], token: [], kind: [], status: [{ Active: null }],
+      include_archived: false, prev, take: [500n], ...filter,
+    });
+    out.push(...page);
+    if (page.length < 500) return out;
+    prev = [page[page.length - 1].lock_id];
+  }
+}
+const held = await allLocks();
+
+// One token: token locks of that ledger and position locks with it on either side, including history
+const sneed = await allLocks({ token: [Principal.fromText('hvgxa-wqaaa-aaaaq-aacia-cai')], status: [], include_archived: true });
+
+// One lock
+const [state] = await sneedLock.get_lock_state(42n); // [] when there is no such lock
+// { lock_id, kind, owner, owner_subaccount, ledger, amount, swap_canister_id, position_id, dex, token0, token1,
+//   lock_end, dissolve_delay, dissolving_until, expiry, earliest_unlock, created_at, locked, archived }
 
 // One user's positions held by Sneed Lock, with their lock if any
 const mine = await sneedLock.get_claimed_positions_for_principal(me);
 // [{ owner, swap_canister_id, position_id, position_lock: [] | [lock] }]
 ```
 
-`get_active_*` queries are the right source for "is this still locked?": they compare expiry against the canister's clock at query time.
+`locked` and the `Active` filter compare the effective expiry with the canister's clock at query time: the right source for "is this still locked?".
 
 ---
 
@@ -189,11 +224,11 @@ const mine = await sneedLock.get_claimed_positions_for_principal(me);
 
 **Deposit.** Transfer to the Sneed wallet account. Any sender works, including another canister, an exchange withdrawal or a direct ledger call.
 
-**Lock.** `create_lock(amount, ledger, expires_at)` checks, in order: expiry within bounds; Sneed wallet balance ≥ `amount`; balance ≥ existing active locks on that ledger + `amount`; fee deposit sufficient (section 4). It then records the lock and finally charges the fee. A lock that was recorded but whose fee transfer failed stays valid (the failure is logged for the DAO).
+**Lock.** `create_lock(amount, ledger, expires_at, dissolve_delay)` checks, in order: expiry within bounds; Sneed wallet balance ≥ `amount`; balance ≥ existing active locks on that ledger + `amount`; fee deposit sufficient (section 4). It then records the lock and finally charges the fee. A lock that was recorded but whose fee transfer failed stays valid (the failure is logged for the DAO).
 
 **While locked.** The tokens stay in the user's subaccount. `transfer_tokens` lets the user move only `balance − sum(active locks) − ledger fee`. Nothing else in the canister can move them.
 
-**Expiry and housekeeping.** Expired locks are archived lazily: `create_lock`, `transfer_tokens`, `transfer_token_lock_ownership` and `clear_expired_locks` all archive the caller's expired token locks first. `has_expired_locks` tells a front end whether a `clear_expired_locks` call would do anything. Until archived, an expired lock still shows up in `get_all_token_locks` and `get_token_locks`, but it no longer blocks a transfer, because the transfer path archives it first. Archived locks remain readable through `get_token_lock_by_id`, `get_ledger_token_locks` and `get_expired_token_locks`.
+**Expiry and housekeeping.** Expired locks are archived lazily: `create_lock`, `transfer_tokens`, `transfer_token_lock_ownership` and `clear_expired_locks` all archive the caller's expired token locks first. `has_expired_locks` tells a front end whether a `clear_expired_locks` call would do anything. Until archived, an expired lock still shows up in `get_token_locks` and in `get_lock_states_page` without `include_archived` (with `locked = false`), but it no longer blocks a transfer, because the transfer path archives it first. Archived locks remain readable through `get_lock_state`, `get_token_lock_by_id` and `get_lock_states_page` with `include_archived = true`.
 
 **Withdraw.** `transfer_tokens(to_principal, to_subaccount, ledger, amount)` sends from the Sneed wallet to any account. The ledger fee is paid by the Sneed wallet on top of `amount`.
 
@@ -201,9 +236,11 @@ const mine = await sneedLock.get_claimed_positions_for_principal(me);
 
 **Prerequisite: the position is in the user's Sneed wallet.** For Sneed Lock, a position is "in the wallet" when the Sneed Lock canister owns it on ICPSwap **and** the user has a recorded claim on it. The claim is what maps the position back to its user; ICPSwap only sees the canister. The claim is recorded by `claim_position`, which asks the pool whether the caller owns the position at that moment. Hence the order in 2.3: claim, then transfer, then lock.
 
+A position has **one** claimant. A successful `claim_position` removes any claim another principal holds on the same position (the pool has just said the caller owns it, so such a claim is left over from an earlier owner), and every position method requires the caller to be the only claimant.
+
 What if a position is transferred to Sneed Lock without a claim? Nobody can act on it through the public API, because every position method requires the caller's claim. The DAO can recover it by proposal, but avoid the situation: claim first.
 
-**Lock.** `create_position_lock(pool, dex, position_id, expires_at, token0, token1)`:
+**Lock.** `create_position_lock(pool, dex, position_id, expires_at, token0, token1, dissolve_delay)`:
 - `dex` must be `1` (ICPSwap). No other DEX is supported.
 - The caller must have the claim and the pool must report Sneed Lock as the owner.
 - `token0` and `token1` are **not validated** against the pool. They are stored on the lock and used by `claim_position_fees` and `add_liquidity_to_locked_position` to talk to the right ledgers. Pass the pool's `metadata().token0.address` and `token1.address`, in that order.
@@ -212,7 +249,7 @@ What if a position is transferred to Sneed Lock without a claim? Nobody can act 
 
 **Extend.** `update_position_lock(pool, position_id, expires_at)` moves the expiry later. An earlier expiry is refused (`New expiry is before current expiry.`). No fee.
 
-**Withdraw after expiry.** `transfer_position(to, pool, position_id)` makes Sneed Lock call the pool's `transferPosition` to `to` and clears the claim. While the position's lock is active the call is refused with an `InternalError` that names the expiry. (This guard is part of the upgrade that accompanies this documentation; earlier builds relied on the front end alone.) `to` may be the user's own principal or anyone else's.
+**Withdraw after expiry.** `transfer_position(to, pool, position_id)` makes Sneed Lock call the pool's `transferPosition` to `to`, clears the claim and burns the position's NFT. While any lock on the position is active the call is refused with an `InternalError`. `to` may be the user's own principal or anyone else's.
 
 **Housekeeping.** `has_expired_position_locks` / `clear_expired_position_locks` mirror the token versions. `transfer_position` and the lock calls archive expired position locks for the caller first.
 
@@ -245,7 +282,9 @@ An out-of-range position accepts only one token; pass `0` for the other. The Sne
 A lock can change hands without ending. This lets locked positions and tokens be sold, gifted or used as collateral while the commitment stays intact.
 
 - `transfer_token_lock_ownership(to, ledger, lock_id)` moves the lock record to `to` and transfers the locked amount from the caller's Sneed wallet to `to`'s Sneed wallet. The caller's Sneed wallet must hold one ledger fee of free balance. The lock is recorded on the recipient before the ledger call, so the recipient can never see the tokens arrive unlocked.
-- `transfer_position_ownership(to, pool, position_id)` moves the claim and the lock (if any) to `to`. No ICPSwap call is made; the canister stays the owner on the pool.
+- `transfer_position_ownership(to, pool, position_id)` moves the claim and the lock (if any) to `to`, and the position's NFT to `to`'s default account. No ICPSwap call is made; the canister stays the owner on the pool. Refused while a withdrawal of the position is in flight.
+- A locked position can also move as an NFT, with `icrc7_transfer` or `icrc37_transfer_from` (3.8), to any account including a subaccount.
+- A lock's dissolve state (lock period, delay, dissolving) belongs to the lock and moves with it.
 
 The recipient does not need to have used Sneed Lock before.
 
@@ -260,6 +299,27 @@ For a token the Sneed wallet shows:
 - available to withdraw: Sneed wallet − locked − one fee
 
 For positions it calls `get_claimed_positions_for_principal(P)`, then asks each pool for the position's amounts. See `fetchBalancesAndLocks` in [Wallet.jsx](https://github.com/Snassy-icp/app_sneeddao/blob/main/src/app_sneeddao_frontend/src/Wallet.jsx) and the positions loader in [WalletContext.jsx](https://github.com/Snassy-icp/app_sneeddao/blob/main/src/app_sneeddao_frontend/src/contexts/WalletContext.jsx).
+
+### 3.7 Dissolve delays
+
+- **Create:** `create_lock` and `create_position_lock` take a last argument `dissolve_delay : opt nat64` (ns). With a delay, `expires_at` is the end of the lock period and may be `0` or in the past (no lock period). The limits apply to lock period + delay.
+- **Start / stop:** `start_dissolving(lock_id)` once the lock period has ended; `stop_dissolving(lock_id)` turns the time left back into the delay.
+- **Grow:** `increase_dissolve_delay(lock_id, additional_ns)` adds to the delay, also while dissolving (the end moves out); a plain lock can be given a delay this way. `extend_lock(lock_id, new_lock_end)` moves the lock period later, for token locks too; not while dissolving.
+- **Owner only.** Each returns `Ok(LockState)` or `Err(LockOpError)`: `NotFound`, `NotOwner`, `InProgress` (a transfer of the lock is waiting on the ledger; retry), `Invalid(text)`.
+- `update_position_lock` on a delay lock extends its lock period by the same rules.
+
+### 3.8 Locked positions as NFTs (ICRC-7, ICRC-37)
+
+The canister implements [ICRC-7](https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-7/ICRC-7.md) and [ICRC-37](https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-37/ICRC-37.md) for locked positions (`icrc10_supported_standards` lists both). Token locks are not in the collection yet.
+
+- **Which tokens:** one per position held that has been locked at least once; id = the position's first lock id. Minted on the first lock (`7mint`), burned when the position is withdrawn (`7burn`). `get_position_nft(pool, position_id)` answers a position's token id.
+- **Owner:** the position's claimant, plus a subaccount label. `icrc7_owner_of`, `icrc7_balance_of` and `icrc7_tokens_of` are per account. Every other method (claim fees, add liquidity, dissolve, withdraw) acts for the principal, whichever of its accounts holds the NFT.
+- **Transfer:** `icrc7_transfer` from the holding account (`from_subaccount` must match the label). The position, its lock, its dissolve state and its **unclaimed fees** go with it. Free. Answers the ICRC-3 block index.
+- **Approvals:** `icrc37_approve_tokens`, `icrc37_approve_collection`, the revokes, `icrc37_is_approved`, `icrc37_get_token_approvals`, `icrc37_get_collection_approvals`, `icrc37_transfer_from`. Token approvals are cleared by every transfer. A marketplace can be approved and pull the NFT into an escrow subaccount of its own in one call.
+- **Refused while busy** (`GenericError`, code 3): a withdrawal of the position, or a fee claim or liquidity addition on its pool, is in flight.
+- **`created_at_time`:** within 24 h (+ 2 min drift); repeats within the window answer `Duplicate`.
+- **Limits:** 10 updates per call, 100 ids per query, `take` up to 500, memo up to 32 bytes, 10 approvals per token and per account.
+- **Metadata:** `icrc7:name` (`AAA/BBB LP lock`), `icrc7:description`, `icrc7:image` (an SVG data URL), and `sneedlock:*` fields: `kind`, `swap`, `position_id`, `token0`, `token1`, `lock_id`, `dex`, `lock_end`, `dissolve_delay`, `dissolving_until`, `earliest_unlock`, `locked`, `minted_at`.
 
 ---
 
@@ -316,20 +376,16 @@ Types are in section 7. "Caller" means the principal signing the call. Methods m
 
 | Method | Returns | Notes |
 |---|---|---|
-| `get_all_token_locks()` | `vec FullyQualifiedLock` | Every token lock record in live state, including expired ones not yet archived. |
-| `get_active_token_locks()` | `vec FullyQualifiedLock` | Live records with `expiry > now`. Use this for "currently locked". |
-| `get_expired_token_locks()` | `vec FullyQualifiedLock` | Expired live records plus all archived token locks. |
-| `get_ledger_token_locks(ledger)` | `vec FullyQualifiedLock` | All records for one ledger, live and archived. Filter by expiry yourself. |
-| `get_all_position_locks()` | `vec FullyQualifiedPositionLock` | Every position lock record in live state. |
-| `get_active_position_locks()` | `vec FullyQualifiedPositionLock` | Live records with `expiry > now`. |
-| `get_expired_position_locks()` | `vec FullyQualifiedPositionLock` | Expired live records plus archived. |
-| `get_swap_position_locks(pool)` | `vec FullyQualifiedPositionLock` | All records for one pool, live and archived. |
-| `get_token_position_locks(ledger)` | `vec FullyQualifiedPositionLock` | Live position locks whose `token0` or `token1` is `ledger`. |
-| `get_lock_by_id(lock_id)` | `opt LockInfo` | Either kind, archived first then live. |
+| `get_lock_states_page(LockPageQuery)` | `vec LockState` | Every lock list, paged: filter by `owner`, `ledger`, `swap_canister_id`, `token` (a ledger: token locks of it, position locks with it as `token0` or `token1`), `kind`, `status` (`Active` = held and not archived; `Expired` = archived or no longer held), `include_archived`. Ascending lock id after `prev`, `take` 100 by default, 500 at most. |
+| `get_lock_state(lock_id)` | `opt LockState` | One lock, live or archived, with its dissolve state, `earliest_unlock` and `created_at`. |
+| `get_lock_states(vec lock_id)` | `vec opt LockState` | Up to 100 at once. |
+| `get_lock_limits()` | `LockLimits` | Minimum and maximum of lock period + delay, in ns. |
+| `get_lock_by_id(lock_id)` | `opt LockInfo` | Either kind, archived first then live (the record, without dissolve state). |
 | `get_token_lock_by_id(lock_id)` | `opt FullyQualifiedLock` | Archived first, then live. |
 | `get_position_lock_by_id(lock_id)` | `opt FullyQualifiedPositionLock` | Archived first, then live. |
 | `get_lock_type(lock_id)` | `opt LockType` | `TokenLock` or `PositionLock`. |
 | `get_claimed_positions_for_principal(owner)` | `vec ClaimedPosition` | Positions `owner` has a claim on, each with `position_lock` (`[]` when not locked; an expired lock stays until archived). |
+| `get_position_nft(pool, position_id)` | `opt nat` | The position's NFT id. |
 
 `FullyQualifiedLock` is the tuple `(owner, ledger, Lock)`; `FullyQualifiedPositionLock` is `(owner, pool, PositionLock)`. In JavaScript these arrive as arrays `[owner, ledger, lock]`.
 
@@ -346,8 +402,8 @@ Types are in section 7. "Caller" means the principal signing the call. Methods m
 
 ### 6.3 Token locks (updates)
 
-**`create_lock(amount : nat, icrc1_ledger_canister_id : principal, expires_at : Expiry) → CreateLockResult`**
-Locks `amount` of the token in the caller's Sneed wallet until `expires_at`. Returns `Ok(lock_id)`. Errors (`Err.message`): `Minimum lock time not fulfilled.`, `Maximum lock time exceeded.`, `Insufficient balance to lock ...`, `Insufficient unlocked balance to lock ...`, `ICP payment verification failed: ...`. Side effects: archives the caller's expired token locks; charges the fee from the payment subaccount after recording the lock.
+**`create_lock(amount : nat, icrc1_ledger_canister_id : principal, expires_at : Expiry, dissolve_delay : opt nat64) → CreateLockResult`**
+Locks `amount` of the token in the caller's Sneed wallet until `expires_at`, or with a dissolve delay (3.7). Returns `Ok(lock_id)`. Errors (`Err.message`): `Minimum lock time not fulfilled.`, `Maximum lock time exceeded.`, `Insufficient balance to lock ...`, `Insufficient unlocked balance to lock ...`, `ICP payment verification failed: ...`. Side effects: archives the caller's expired token locks; charges the fee from the payment subaccount after recording the lock.
 
 **`transfer_tokens(to_principal : principal, to_subaccount : opt blob, icrc1_ledger_canister_id : principal, amount : nat) → TransferResult`**
 Sends `amount` from the caller's Sneed wallet to `{ to_principal; to_subaccount }`; the Sneed wallet also pays the ledger fee. Refuses when `balance < amount + fee + sum(active locks)` (`GenericError`, `error_code = 1`) or when another token operation of the caller is running (`error_code = 2`). Returns the ledger block index on success. Also used to withdraw claimed fees and add-liquidity refunds, and to fund the payment subaccount from the Sneed wallet.
@@ -360,16 +416,16 @@ Liquid locking for tokens, see 3.5. Errors: lock not found, lock expired, incons
 ### 6.4 Positions (updates)
 
 **`claim_position(swap_canister_id : principal, position_id : nat) → bool`**
-Records that the caller owns `position_id` in `swap_canister_id`, after confirming it with the pool's `getUserPositionIdsByPrincipal(caller)`. Idempotent. `false` means the pool did not list the caller as owner (or could not be reached).
+Records that the caller owns `position_id` in `swap_canister_id`, after confirming it with the pool's `getUserPositionIdsByPrincipal(caller)`, and removes any other principal's claim on it (3.2). Idempotent. `false` means the pool did not list the caller as owner (or could not be reached).
 
-**`create_position_lock(swap_canister_id : principal, dex : nat, position_id : nat, expires_at : Expiry, token0 : principal, token1 : principal) → CreateLockResult`**
-See 3.2. `dex` must be `1`. Errors: lock time bounds, `Position not claimed by caller.`, `Position is not transferred to this canister.`, `Dex not supported.`, `ICP payment verification failed: ...`. If the position already has a lock, behaves as `update_position_lock`.
+**`create_position_lock(swap_canister_id : principal, dex : nat, position_id : nat, expires_at : Expiry, token0 : principal, token1 : principal, dissolve_delay : opt nat64) → CreateLockResult`**
+See 3.2 and 3.7. Mints the position's NFT on its first lock. `dex` must be `1`. Errors: lock time bounds, `Position not claimed by caller.`, `Position is not transferred to this canister.`, `Dex not supported.`, `ICP payment verification failed: ...`. If the position already has a lock, behaves as `update_position_lock`.
 
 **`update_position_lock(swap_canister_id : principal, position_id : nat, expires_at : Expiry) → CreateLockResult`**
 Extends an existing lock. Errors as above plus `New expiry is before current expiry.`. No fee. Returns the existing `lock_id`.
 
 **`transfer_position(to : principal, swap_canister_id : principal, position_id : nat) → TransferPositionResult`**
-Withdraws the position from Sneed Lock to `to` on ICPSwap and clears the caller's claim. Refused while the lock is active (`err.InternalError` naming the expiry). Also refused when the caller has no claim or the pool does not list Sneed Lock as the owner. The pool's own error is passed through on failure.
+Withdraws the position from Sneed Lock to `to` on ICPSwap, clears the caller's claim and burns its NFT. Refused while any lock on the position is active (`err.InternalError`). Also refused when the caller has no claim or the pool does not list Sneed Lock as the owner. The pool's own error is passed through on failure.
 
 **`transfer_position_ownership(to_principal : principal, swap_canister_id : principal, position_id : nat) → TransferPositionOwnershipResult`**
 Liquid locking for positions, see 3.5. Error: `Caller is not the owner of position ...`.
@@ -411,10 +467,11 @@ The fee-claim queue of earlier versions is gone; claims are synchronous now. The
 | `request_claim_and_withdraw(pool, position_id)` | Performs `claim_position_fees` and returns `Ok(request_id)`. |
 | `get_claim_request_status(request_id)` | `Completed` or `Failed` record for a request id, or null. Never `Active`. |
 | `get_completed_claim_request(id)`, `get_failed_claim_request(id)` | Lookups in the history. |
-| `get_all_completed_claim_requests()`, `get_all_failed_claim_requests()` | Whole history. |
-| `get_all_active_claim_requests()` | Always empty. |
+| `get_claim_requests_page({ failed; prev; take })` | The completed (or failed) history, paged by request id. |
 
 New integrations should use `claim_position_fees`.
+
+**Removed in v2** (their replies grew with every lock; there were no integrators yet): `get_all_token_locks`, `get_active_token_locks`, `get_expired_token_locks`, `get_ledger_token_locks`, `get_all_position_locks`, `get_active_position_locks`, `get_expired_position_locks`, `get_swap_position_locks`, `get_token_position_locks`, `get_all_active_claim_requests`, `get_all_completed_claim_requests`, `get_all_failed_claim_requests`. Use `get_lock_states_page` and `get_claim_requests_page`. `get_info_entries` / `get_error_entries` answer at most 500 entries per call.
 
 ### 6.10 Admin and governance
 
@@ -471,9 +528,35 @@ type AddLiquidityResult = variant {
   };
   Err : text;
 };
+
+// v2
+type LockState = record {
+  lock_id : LockId; kind : LockType; owner : principal;
+  owner_subaccount : opt blob;           // the NFT's label (position locks with an NFT)
+  ledger : opt TokenType; amount : opt Balance;                       // token locks
+  swap_canister_id : opt SwapCanisterId; position_id : opt PositionId; dex : opt Dex;
+  token0 : opt TokenType; token1 : opt TokenType;                     // position locks
+  lock_end : Expiry;                     // end of the lock period
+  dissolve_delay : nat64;                // 0 = none
+  dissolving_until : opt Expiry;         // set while dissolving or once dissolved
+  expiry : Expiry;                       // the effective expiry (max nat64 = until it dissolves)
+  earliest_unlock : Expiry;              // the soonest it can be free
+  created_at : opt nat64;                // null for locks older than the activity log
+  locked : bool; archived : bool;
+};
+type LockStatusFilter = variant { Active; Expired };
+type LockPageQuery = record {
+  owner : opt principal; ledger : opt TokenType; swap_canister_id : opt SwapCanisterId;
+  token : opt TokenType; kind : opt LockType; status : opt LockStatusFilter;
+  include_archived : bool; prev : opt LockId; take : opt nat;
+};
+type LockLimits = record { min_lock_length_ns : nat64; max_lock_length_ns : nat64 };
+type LockOpError = variant { NotFound; NotOwner; InProgress; Invalid : text };
+type LockOpResult = variant { Ok : LockState; Err : LockOpError };
+type ClaimRequestPageQuery = record { failed : bool; prev : opt nat; take : opt nat };
 ```
 
-The full interface, including admin and log types, is in [sneed_lock.did](/api-docs/sneed_lock.did).
+The ICRC-7 and ICRC-37 types are the standards' own. The full interface, including admin and log types, is in [sneed_lock.did](/api-docs/sneed_lock.did).
 
 ---
 
@@ -521,7 +604,7 @@ The hash of a block is the ICRC-3 representation-independent hash: `Nat` hashed 
 
 ### 8.3 Block types
 
-All types carry the `sneedlock_` prefix. ICRC numbers are reserved for ICRC standards, so a letter prefix cannot collide with any of them. Housekeeping (archiving expired locks) is not logged: expiry follows from the `expiry` field of the create block.
+Sneed Lock's own types carry the `sneedlock_` prefix. ICRC numbers are reserved for ICRC standards, so a letter prefix cannot collide with any of them. The NFT blocks use the standard ICRC-7 and ICRC-37 types (see the end of this section). Housekeeping (archiving expired locks) is not logged: expiry follows from the `expiry` field of the create block.
 
 Lifecycle of the log itself:
 
@@ -538,7 +621,7 @@ Token locks:
 
 | `btype` | When | `tx` fields |
 |---|---|---|
-| `sneedlock_token_lock_create` | `create_lock` succeeded. | `cid`, `caller`, `owner`, `ledger`, `lock_id`, `amount`, `expiry` |
+| `sneedlock_token_lock_create` | `create_lock` succeeded. | `cid`, `caller`, `owner`, `ledger`, `lock_id`, `amount`, `expiry` (the lock period's end as given); `dissolve_delay` when it has one |
 | `sneedlock_token_lock_transfer` | `transfer_token_lock_ownership` moved the lock and its tokens. | `cid`, `caller`, `from`, `to`, `ledger`, `lock_id`, `amount`, `expiry`, `ledger_tx` (ledger block index), `outcome` = `ok`. When the ledger call threw with an ambiguous code the block has `outcome` = `uncertain` and no `ledger_tx`: the lock is then held for both parties until reconciled. |
 | `sneedlock_token_withdraw` | `transfer_tokens` moved tokens out of the caller's Sneed wallet. | `cid`, `caller`, `ledger`, `amount`, `to` (account), `ledger_tx` |
 
@@ -546,13 +629,22 @@ Positions:
 
 | `btype` | When | `tx` fields |
 |---|---|---|
-| `sneedlock_position_claim` | `claim_position` verified ownership on ICPSwap and mapped the position to the caller. | `cid`, `caller`, `owner`, `pool`, `position_id` |
-| `sneedlock_position_lock_create` | `create_position_lock` succeeded. | `cid`, `caller`, `owner`, `pool`, `position_id`, `lock_id`, `expiry`, `token0`, `token1`, `dex` |
+| `sneedlock_position_claim` | `claim_position` verified ownership on ICPSwap and mapped the position to the caller. | `cid`, `caller`, `owner`, `pool`, `position_id`; `removed_claims` (array of principals) when it replaced claims left by earlier owners |
+| `sneedlock_position_lock_create` | `create_position_lock` succeeded. | `cid`, `caller`, `owner`, `pool`, `position_id`, `lock_id`, `expiry`, `token0`, `token1`, `dex`; `dissolve_delay` when it has one |
 | `sneedlock_position_lock_extend` | `update_position_lock` moved the expiry later. | `cid`, `caller`, `owner`, `pool`, `position_id`, `lock_id`, `old_expiry`, `expiry` |
 | `sneedlock_position_transfer` | `transfer_position_ownership` succeeded (liquid locking). | `cid`, `caller`, `from`, `to`, `pool`, `position_id`; plus `lock_id` and `expiry` when a lock moved with the position |
 | `sneedlock_position_withdraw` | `transfer_position` moved the position out to ICPSwap. | `cid`, `caller`, `owner`, `to`, `pool`, `position_id` |
 | `sneedlock_fees_claim` | `claim_position_fees` (or `request_claim_and_withdraw`) succeeded. | `cid`, `caller`, `owner`, `pool`, `position_id`, `token0`, `token1`, `amount0`, `amount1` (gross claimed), `delivered0`, `delivered1` (net of the ledger fee, what the pool delivers), `request_id` |
 | `sneedlock_liquidity_add` | `add_liquidity_to_locked_position` returned `Ok`. | `cid`, `caller`, `owner`, `pool`, `position_id`, `token0`, `token1`, `amount0`, `amount1` (requested), `credited0`, `credited1`, `used0`, `used1`, `returned0`, `returned1`; `increase_error` (Text) when the pool refused and everything was returned |
+
+Dissolve delays (one block per change, logged by the canister):
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `sneedlock_dissolve_start` | `start_dissolving` | `cid`, `caller`, `owner`, `lock_id`, `kind` (`token` or `position`), `ledger` or `pool`, `old_expiry` and `expiry` (the effective expiry before and after), `lock_end`, `dissolve_delay`; `dissolving_until` while dissolving |
+| `sneedlock_dissolve_stop` | `stop_dissolving` | same fields |
+| `sneedlock_dissolve_delay_increase` | `increase_dissolve_delay` | same fields |
+| `sneedlock_token_lock_extend` | `extend_lock` on a token lock | same fields (`extend_lock` on a position lock logs `sneedlock_position_lock_extend`) |
 
 Fees:
 
@@ -571,6 +663,17 @@ Admin and governance (only admins, governance or controllers can trigger these):
 | `sneedlock_config_update` | A setting changed. | `cid`, `caller`, `key`, `value` (Text or Nat), `old_value` when known |
 
 `sneedlock_config_update` keys: `max_lock_length_ns`, `token_lock_fee_icp_e8s`, `position_lock_fee_icp_e8s`, `premium_token_lock_fee_icp_e8s`, `premium_position_lock_fee_icp_e8s`, `icp_fee_recipient`, `sneed_premium_canister_id`, `admin_added`, `admin_removed`, `claim_history_cleared`, `failed_claim_history_cleared`, `icrc3_proposal_neuron` (the SNS neuron that submits archive registration proposals; value is its 32-byte id as a Blob, or the text `none`), and the log's own settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
+
+NFTs (the standard block types of [ICRC-7](https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-7/ICRC-7.md) and [ICRC-37](https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-37/ICRC-37.md); accounts as `[owner, subaccount?]`):
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `7mint` | A position's NFT was created: on its first lock, or once for every locked position when NFTs were introduced. | `tid`, `to`, `meta` (`sneedlock:kind`, `sneedlock:swap`, `sneedlock:position_id`, `sneedlock:minted_by` = `lock` or `activation`) |
+| `7burn` | The position was withdrawn. | `tid`, `from` |
+| `7xfer` | `icrc7_transfer`, or `transfer_position_ownership` of a position with an NFT (which also logs `sneedlock_position_transfer`). | `tid`, `from`, `to`; `memo`, `ts` when given |
+| `37approve` / `37approve_coll` | A token / collection approval. | `tid` (token only), `from`, `spender`, `ts`; `exp` when given |
+| `37revoke` / `37revoke_coll` | A revocation. | `tid` (token only), `from`; `spender` when one was named |
+| `37xfer` | `icrc37_transfer_from`. | `tid`, `spender`, `from`, `to`; `memo`, `ts` when given |
 
 ### 8.4 Verifying the log
 
@@ -674,7 +777,7 @@ The log starts with this release; nothing before it is reconstructed except the 
 - [ ] For positions: claim → transfer → lock, in that order, and pass the pool's `token0`/`token1`.
 - [ ] Check `getEffectiveLockFee` before a lock and fund the payment subaccount when needed; account for the 10_000 e8s ICP ledger fee on each transfer.
 - [ ] Treat `Busy:` and `error_code = 2` as retry-after-a-moment, not as failures.
-- [ ] Read lock state with `get_active_*` or `get_claimed_positions_for_principal`; never cache "locked" across the expiry.
+- [ ] Read lock state with `get_lock_state` / `get_lock_states_page` (paged) or `get_claimed_positions_for_principal`; never cache "locked" across the expiry, and show `earliest_unlock` for locks with a dissolve delay.
 - [ ] Link users to `https://app.sneeddao.com/lock/<lock_id>` for a public view of any lock, and to `https://app.sneeddao.com/sneedlock_info` for the overview.
 - [ ] For audits or proofs, read the ICRC-3 activity log (section 8) and verify it from the certified tip rather than trusting any single response.
 

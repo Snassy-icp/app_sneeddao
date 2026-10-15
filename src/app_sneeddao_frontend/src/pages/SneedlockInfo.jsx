@@ -19,6 +19,7 @@ import { FaLock, FaCoins, FaWater, FaChevronDown, FaChevronRight, FaFilter, FaSp
 import { useDenomination } from '../contexts/DenominationContext';
 import { isUntilDissolved, NEVER_NS } from '../utils/lockTime';
 import { LockUntil } from '../components/LockUntil';
+import { getActivePositionLocks, getActiveTokenLocks, getExpiredPositionLocks, getExpiredTokenLocks } from '../utils/sneedLockLists';
 
 // Custom CSS for animations
 const customStyles = `
@@ -527,8 +528,8 @@ function SneedlockInfo() {
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
             
             // Fetch only active (non-expired) locks for initial load
-            const allTokenLocks = await sneedLockActor.get_active_token_locks();
-            const allPositionLocks = await sneedLockActor.get_active_position_locks();
+            const allTokenLocks = await getActiveTokenLocks(sneedLockActor);
+            const allPositionLocks = await getActivePositionLocks(sneedLockActor);
 
             console.log("Active token locks fetched", allTokenLocks);
             console.log("Active position locks fetched", allPositionLocks);
@@ -759,8 +760,8 @@ function SneedlockInfo() {
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
             
             // Fetch only expired locks
-            const expiredTokenLocks = await sneedLockActor.get_expired_token_locks();
-            const expiredPositionLocks = await sneedLockActor.get_expired_position_locks();
+            const expiredTokenLocks = await getExpiredTokenLocks(sneedLockActor);
+            const expiredPositionLocks = await getExpiredPositionLocks(sneedLockActor);
 
             console.log("Expired token locks fetched", expiredTokenLocks);
             console.log("Expired position locks fetched", expiredPositionLocks);

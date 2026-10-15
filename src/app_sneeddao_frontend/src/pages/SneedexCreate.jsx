@@ -51,6 +51,7 @@ import { fetchUserNeuronsForSns, getNeuronId, uint8ArrayToHex } from '../utils/N
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import PrincipalInput from '../components/PrincipalInput';
 import NeuronDisplay from '../components/NeuronDisplay';
+import { getAllTokenLocks } from '../utils/sneedLockLists';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
@@ -2053,7 +2054,7 @@ function SneedexCreate() {
                     if ('Err' in r) throw new Error(`Could not fund the transfer fee in your Sneed Lock wallet: ${toJsonString(r.Err)}`);
                 }
                 // 2. Sneedex's free balance there must cover a fee too, for the delivery (and one spare for a reclaim)
-                const all = await sl.get_all_token_locks();
+                const all = await getAllTokenLocks(sl);
                 const dexLocked = all.filter(([o, l]) => o.toText() === sneedex.toText() && l.toString() === asset.ledger_id).reduce((a, [, , l]) => a + BigInt(l.amount), 0n);
                 const dexBal = BigInt(await ledger.icrc1_balance_of({ owner: sneedLock, subaccount: [lockSub(sneedex)] }));
                 const dexFree = dexBal - dexLocked;

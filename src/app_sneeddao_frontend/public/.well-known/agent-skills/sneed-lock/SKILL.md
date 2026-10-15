@@ -36,19 +36,20 @@ Canisters: production `pqsms-lqaaa-aaaal-ajjza-cai`, staging `25fsc-7yaaa-aaaal-
 1. `balance = ledger.icrc1_balance_of(sneedWallet)`, `locked = get_summed_locks()` entry for the ledger (caller-scoped query), `free = balance − locked`.
 2. If `amount > free`, `icrc1_transfer` the shortfall from the frontend wallet to `sneedWallet` (ledger fee on top).
 3. Ensure the fee (see fact 7).
-4. `create_lock(amount, ledger, expiresAtNs)` → `Ok(lock_id)` or `Err{message}`.
+4. `create_lock(amount, ledger, expiresAtNs, [])` → `Ok(lock_id)` or `Err{message}` (last argument: optional dissolve delay in ns; with one, `expiresAtNs` is the end of the lock period and may be 0).
 
 ### Lock an ICPSwap position
 1. `meta = pool.metadata()`; `token0/1 = Principal.fromText(meta.ok.token0.address / token1.address)`.
 2. `claim_position(pool, positionId)` must return `true` (checks the pool says P owns it).
 3. `pool.transferPosition(P, sneed_lock, positionId)` → `{ok: true}`.
-4. Ensure the fee; `create_position_lock(pool, 1n, positionId, expiresAtNs, token0, token1)` → `Ok(lock_id)`.
+4. Ensure the fee; `create_position_lock(pool, 1n, positionId, expiresAtNs, token0, token1, [])` → `Ok(lock_id)` (last argument: optional dissolve delay in ns). The position's NFT (ICRC-7, id = this lock id) is minted.
 If step 4 fails, the position is in Sneed Lock, claimed and unlocked: fix the cause and retry, or `transfer_position(P, pool, positionId)` to take it back.
 
 ### Read locks
-- All currently locked: `get_active_token_locks()` → `[owner, ledger, {lock_id, amount, expiry}]`; `get_active_position_locks()` → `[owner, pool, {lock_id, position_id, expiry, token0, token1, dex}]`.
-- One token: `get_ledger_token_locks(ledger)` (live + archived; filter expiry yourself). One pool: `get_swap_position_locks(pool)`. A pair member: `get_token_position_locks(ledger)`.
-- One lock: `get_lock_by_id(lock_id)` → `TokenLock(...)` | `PositionLock(...)`.
+- Lists are paged: `get_lock_states_page({owner, ledger, swap_canister_id, token, kind, status, include_archived, prev, take})` → `vec LockState`, ascending lock id, ≤ 500 per call; continue with `prev = [last.lock_id]` until a page is short. `status: [{Active: null}]` = currently locked; `token` = token locks of that ledger plus position locks with it on either side. (The old `get_all_*` / `get_active_*` / `get_expired_*` / `get_ledger_token_locks` / `get_swap_position_locks` / `get_token_position_locks` were removed.)
+- One lock: `get_lock_state(lock_id)` → `LockState` with `lock_end`, `dissolve_delay`, `dissolving_until`, `expiry` (effective; max nat64 = until it dissolves), `earliest_unlock`, `created_at`, `locked`, `archived`, `owner_subaccount` (NFT label). Also `get_lock_by_id(lock_id)` → the raw record.
+- Dissolve delays (owner only): `start_dissolving(id)`, `stop_dissolving(id)`, `increase_dissolve_delay(id, ns)`, `extend_lock(id, new_lock_end)` → `Ok(LockState)` | `Err(NotFound | NotOwner | InProgress | Invalid text)`.
+- Locked positions are ICRC-7 / ICRC-37 NFTs on this canister: `get_position_nft(pool, positionId)`, `icrc7_owner_of`, `icrc7_transfer`, `icrc37_approve_tokens`, `icrc37_transfer_from`. Transferring the NFT moves the position, its lock and unclaimed fees.
 - A user's positions in Sneed Lock: `get_claimed_positions_for_principal(P)` → `{owner, swap_canister_id, position_id, position_lock: [] | [lock]}`.
 - Caller's own: `get_token_locks()`, `get_summed_locks()`, `get_position_ownerships()`.
 - Public pages: `https://app.sneeddao.com/lock/<lock_id>`, `https://app.sneeddao.com/sneedlock_info`.
@@ -90,7 +91,7 @@ const sneedWallet = (p) => ({ owner: SNEED_LOCK, subaccount: [principalToSubAcco
 ## dfx examples
 
 ```bash
-dfx canister --network ic call pqsms-lqaaa-aaaal-ajjza-cai get_active_position_locks '()' --query
+dfx canister --network ic call pqsms-lqaaa-aaaal-ajjza-cai get_lock_states_page '(record { owner = null; ledger = null; swap_canister_id = null; token = null; kind = opt variant { PositionLock }; status = opt variant { Active }; include_archived = false; prev = null; take = opt (100 : nat) })' --query
 dfx canister --network ic call pqsms-lqaaa-aaaal-ajjza-cai get_lock_by_id '(413 : nat)' --query
 dfx canister --network ic call pqsms-lqaaa-aaaal-ajjza-cai getEffectiveLockFee '(principal "aaaaa-aa", true)'
 ```

@@ -5,6 +5,22 @@ import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId 
 import Header from '../../components/Header';
 import { Principal } from '@dfinity/principal';
 
+// Claim history, paged (Sneed Lock v2 removed the whole-history queries). Empty against an
+// older Sneed Lock without get_claim_requests_page.
+const fetchClaimHistory = async (actor, failed) => {
+  const out = [];
+  let prev = [];
+  try {
+    for (;;) {
+      const page = await actor.get_claim_requests_page({ failed, prev, take: [500n] });
+      out.push(...page);
+      if (page.length < 500) break;
+      prev = [page[page.length - 1].request_id];
+    }
+  } catch (e) { console.warn('claim history unavailable', e); }
+  return out;
+};
+
 export default function SneedLockAdmin() {
   const { isAuthenticated, identity } = useAuth();
   const [activeTab, setActiveTab] = useState('queue');
@@ -100,9 +116,9 @@ export default function SneedLockAdmin() {
       const [infoRangeResult, errorRangeResult, activeReqs, completedReqs, failedReqs, admins, icpFees, lockFeeStats] = await Promise.all([
         actor.get_info_id_range(),
         actor.get_error_id_range(),
-        actor.get_all_active_claim_requests(),
-        actor.get_all_completed_claim_requests(),
-        actor.get_all_failed_claim_requests(),
+        Promise.resolve([]), // the request queue is retired; claims are synchronous
+        fetchClaimHistory(actor, false),
+        fetchClaimHistory(actor, true),
         actor.get_admin_list(),
         actor.get_lock_fees_icp(),
         actor.get_lock_fee_stats()
@@ -491,9 +507,9 @@ export default function SneedLockAdmin() {
       if (!actor) return;
       
       const [activeReqs, completedReqs, failedReqs] = await Promise.all([
-        actor.get_all_active_claim_requests(),
-        actor.get_all_completed_claim_requests(),
-        actor.get_all_failed_claim_requests()
+        Promise.resolve([]),
+        fetchClaimHistory(actor, false),
+        fetchClaimHistory(actor, true)
       ]);
       
       setActiveClaimRequests(activeReqs);

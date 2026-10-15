@@ -104,6 +104,11 @@ export interface ClaimRequest {
   'position_id' : PositionId,
 }
 export type ClaimRequestId = bigint;
+export interface ClaimRequestPageQuery {
+  'prev' : [] | [bigint],
+  'take' : [] | [bigint],
+  'failed' : boolean,
+}
 export type ClaimRequestStatus = { 'Failed' : string } |
   {
     'ClaimVerified' : {
@@ -205,6 +210,8 @@ export type LockOpError = { 'Invalid' : string } |
 export type LockOpResult = { 'Ok' : LockState } |
   { 'Err' : LockOpError };
 export interface LockPageQuery {
+  'status' : [] | [LockStatusFilter],
+  'token' : [] | [TokenType],
   'owner' : [] | [Principal],
   'kind' : [] | [LockType],
   'prev' : [] | [LockId],
@@ -214,6 +221,7 @@ export interface LockPageQuery {
   'include_archived' : boolean,
 }
 export interface LockState {
+  'dex' : [] | [Dex],
   'dissolve_delay' : bigint,
   'lock_id' : LockId,
   'owner_subaccount' : [] | [Uint8Array | number[]],
@@ -233,6 +241,8 @@ export interface LockState {
   'archived' : boolean,
   'position_id' : [] | [PositionId],
 }
+export type LockStatusFilter = { 'Active' : null } |
+  { 'Expired' : null };
 export type LockType = { 'PositionLock' : null } |
   { 'TokenLock' : null };
 export interface LogStatus {
@@ -444,17 +454,7 @@ export interface SneedLock {
   >,
   'getPaymentBalance' : ActorMethod<[Principal], bigint>,
   'getPaymentSubaccount' : ActorMethod<[Principal], Uint8Array | number[]>,
-  'get_active_position_locks' : ActorMethod<
-    [],
-    Array<FullyQualifiedPositionLock>
-  >,
-  'get_active_token_locks' : ActorMethod<[], Array<FullyQualifiedLock>>,
   'get_admin_list' : ActorMethod<[], Array<Principal>>,
-  'get_all_active_claim_requests' : ActorMethod<[], Array<ClaimRequest>>,
-  'get_all_completed_claim_requests' : ActorMethod<[], Array<ClaimRequest>>,
-  'get_all_failed_claim_requests' : ActorMethod<[], Array<ClaimRequest>>,
-  'get_all_position_locks' : ActorMethod<[], Array<FullyQualifiedPositionLock>>,
-  'get_all_token_locks' : ActorMethod<[], Array<FullyQualifiedLock>>,
   'get_claim_request_status' : ActorMethod<
     [ClaimRequestId],
     [] | [
@@ -462,6 +462,10 @@ export interface SneedLock {
         { 'Active' : ClaimRequest } |
         { 'Completed' : ClaimRequest }
     ]
+  >,
+  'get_claim_requests_page' : ActorMethod<
+    [ClaimRequestPageQuery],
+    Array<ClaimRequest>
   >,
   'get_claimed_positions_for_principal' : ActorMethod<
     [Principal],
@@ -476,21 +480,12 @@ export interface SneedLock {
     Array<[] | [BufferEntry]>
   >,
   'get_error_id_range' : ActorMethod<[], [] | [[bigint, bigint]]>,
-  'get_expired_position_locks' : ActorMethod<
-    [],
-    Array<FullyQualifiedPositionLock>
-  >,
-  'get_expired_token_locks' : ActorMethod<[], Array<FullyQualifiedLock>>,
   'get_failed_claim_request' : ActorMethod<
     [ClaimRequestId],
     [] | [ClaimRequest]
   >,
   'get_info_entries' : ActorMethod<[bigint, bigint], Array<[] | [BufferEntry]>>,
   'get_info_id_range' : ActorMethod<[], [] | [[bigint, bigint]]>,
-  'get_ledger_token_locks' : ActorMethod<
-    [TokenType],
-    Array<FullyQualifiedLock>
-  >,
   'get_lock_by_id' : ActorMethod<[LockId], [] | [LockInfo]>,
   'get_lock_fee_stats' : ActorMethod<
     [],
@@ -528,18 +523,10 @@ export interface SneedLock {
     Array<[SwapCanisterId, PositionId]>
   >,
   'get_summed_locks' : ActorMethod<[], Array<[TokenType, Balance]>>,
-  'get_swap_position_locks' : ActorMethod<
-    [SwapCanisterId],
-    Array<FullyQualifiedPositionLock>
-  >,
   'get_token_lock_by_id' : ActorMethod<[LockId], [] | [FullyQualifiedLock]>,
   'get_token_locks' : ActorMethod<
     [],
     Array<[LockId, TokenType, Balance, Expiry]>
-  >,
-  'get_token_position_locks' : ActorMethod<
-    [TokenType],
-    Array<FullyQualifiedPositionLock>
   >,
   'has_expired_locks' : ActorMethod<[], boolean>,
   'has_expired_position_locks' : ActorMethod<[], boolean>,

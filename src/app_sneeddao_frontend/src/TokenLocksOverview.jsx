@@ -12,6 +12,7 @@ import TokenCard from './TokenCard';
 import PositionCard from './PositionCard';
 import './Wallet.css';
 import Header from './components/Header';
+import { getLedgerTokenLocks, getSwapPositionLocks, getTokenPositionLocks } from './utils/sneedLockLists';
 
 function TokenLocksOverview() {
     const [token, setToken] = useState(null);
@@ -97,7 +98,7 @@ function TokenLocksOverview() {
 
                 // Fetch token locks
                 try {
-                    const tokenLocks = await sneedLockActor.get_ledger_token_locks(ledgerPrincipal);
+                    const tokenLocks = await getLedgerTokenLocks(sneedLockActor, ledgerPrincipal);
                     const formattedTokenLocks = tokenLocks.map(lock => ({
                         lock_id: lock[2].lock_id,
                         amount: BigInt((lock[2].amount || 0).toString()),
@@ -136,7 +137,7 @@ function TokenLocksOverview() {
 
                     // Fetch position locks
                     try {
-                        const rawPositionLocks = await sneedLockActor.get_token_position_locks(ledgerPrincipal);
+                        const rawPositionLocks = await getTokenPositionLocks(sneedLockActor, ledgerPrincipal);
                         const positionLocksWithDetails = await Promise.all(
                             rawPositionLocks.map(async ([principal, swapCanisterId, positionLock]) => {
                                 try {
@@ -174,7 +175,7 @@ function TokenLocksOverview() {
                                     ]);
 
                                     // Get position locks for this swap canister
-                                    const position_locks = await sneedLockActor.get_swap_position_locks(swapCanisterId);
+                                    const position_locks = await getSwapPositionLocks(sneedLockActor, swapCanisterId);
 
                                     // Get all positions using pagination like PositionLock.jsx
                                     let offset = 0;
