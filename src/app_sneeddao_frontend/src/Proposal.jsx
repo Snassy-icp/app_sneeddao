@@ -1396,7 +1396,8 @@ function Proposal() {
                                                 proposalData={proposalData}
                                                 currentProposalId={currentProposalId}
                                                 onVoteSuccess={() => {
-                                                    fetchProposalData(true);
+                                                    // (snsRoot, silent): refresh in place, without the loading screen
+                                                    fetchProposalData(effectiveSnsRoot, true);
                                                     refreshNeurons(selectedSnsRoot);
                                                     window.dispatchEvent(new CustomEvent('votableProposalsRefresh'));
                                                 }}
