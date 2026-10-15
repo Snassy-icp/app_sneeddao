@@ -7,6 +7,8 @@ import { formatAmount, formatTimeRemaining } from '../utils/SneedexUtils';
 import TokenIcon from './TokenIcon';
 import MarkdownBody from './MarkdownBody';
 import Poll from './Poll';
+import { SneedLockAssetIcon, SneedLockAssetTitle } from './SneedLockAssetView';
+import { NftAssetIcon } from './NftAssetView';
 
 // Accent colors
 const feedPrimary = '#f97316';
@@ -835,6 +837,21 @@ function FeedItemCard({
                                                                 </>
                                                             );
                                                         })()}
+                                                    </>
+                                                )}
+                                                {/* Sneed Lock and ICRC-7 assets: the same compact views as the Sneedex offer list */}
+                                                {asset.type === 'SneedLock' && (
+                                                    <>
+                                                        <SneedLockAssetIcon details={asset} size={18} />
+                                                        <span style={{ color: theme.colors.primaryText }}><SneedLockAssetTitle details={asset} /></span>
+                                                    </>
+                                                )}
+                                                {asset.type === 'ICRC7NFT' && (
+                                                    <>
+                                                        <NftAssetIcon collectionId={asset.collection_id} tokenIds={asset.token_ids} size={18} radius={4} />
+                                                        <span style={{ color: theme.colors.primaryText }}>
+                                                            {asset.token_ids.length === 1 ? `NFT #${asset.token_ids[0]}` : `${asset.token_ids.length} NFTs`} <span style={{ color: theme.colors.mutedText, fontFamily: 'monospace', fontSize: '0.75rem' }}>{asset.collection_id.slice(0, 5)}…</span>
+                                                        </span>
                                                     </>
                                                 )}
                                             </div>

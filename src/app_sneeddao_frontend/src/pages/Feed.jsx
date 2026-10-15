@@ -18,6 +18,8 @@ import TokenIcon from '../components/TokenIcon';
 import FeedItemCard from '../components/FeedItemCard';
 import { FaRss, FaFilter, FaTimes, FaChevronDown, FaChevronUp, FaComments, FaLayerGroup, FaStream, FaReply, FaSearch, FaUser, FaList, FaGavel, FaBrain, FaRobot, FaCube, FaCoins, FaClock } from 'react-icons/fa';
 import { createSneedexActor, getAssetDetails, formatAmount, formatTimeRemaining, getOfferStateString } from '../utils/SneedexUtils';
+import { SneedLockAssetIcon, SneedLockAssetTitle } from '../components/SneedLockAssetView';
+import { NftAssetIcon } from '../components/NftAssetView';
 
 // Accent colors for Feed
 const feedPrimary = '#f97316'; // Warm orange
@@ -2286,6 +2288,21 @@ function Feed() {
                                                                     </>
                                                                 );
                                                             })()}
+                                                        </>
+                                                    )}
+                                                    {/* Sneed Lock and ICRC-7 assets: the same compact views as the Sneedex offer list */}
+                                                    {asset.type === 'SneedLock' && (
+                                                        <>
+                                                            <SneedLockAssetIcon details={asset} size={18} />
+                                                            <span style={{ color: theme.colors.primaryText }}><SneedLockAssetTitle details={asset} /></span>
+                                                        </>
+                                                    )}
+                                                    {asset.type === 'ICRC7NFT' && (
+                                                        <>
+                                                            <NftAssetIcon collectionId={asset.collection_id} tokenIds={asset.token_ids} size={18} radius={4} />
+                                                            <span style={{ color: theme.colors.primaryText }}>
+                                                                {asset.token_ids.length === 1 ? `NFT #${asset.token_ids[0]}` : `${asset.token_ids.length} NFTs`} <span style={{ color: theme.colors.mutedText, fontFamily: 'monospace', fontSize: '0.75rem' }}>{asset.collection_id.slice(0, 5)}…</span>
+                                                            </span>
                                                         </>
                                                     )}
                                                 </div>
