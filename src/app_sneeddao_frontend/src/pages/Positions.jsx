@@ -126,11 +126,14 @@ function Positions() {
                         {myPools.map((lp) => (
                             <div key={lp.swapCanisterId} style={{ borderTop: `1px solid ${theme.colors.border}`, padding: '8px 0' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: theme.colors.primaryText }}>
-                                    {lp.token0Logo && <img src={lp.token0Logo} alt="" style={{ width: 20, height: 20, borderRadius: 10 }} />}{lp.token1Logo && <img src={lp.token1Logo} alt="" style={{ width: 20, height: 20, borderRadius: 10, marginLeft: -8 }} />}
+                                    {/* margin 0: index.scss gives every img `margin: auto`, which in a flex row spreads them across it */}
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', flex: '0 0 auto' }}>
+                                        {lp.token0Logo && <img src={lp.token0Logo} alt="" style={{ width: 20, height: 20, borderRadius: 10, margin: 0 }} />}{lp.token1Logo && <img src={lp.token1Logo} alt="" style={{ width: 20, height: 20, borderRadius: 10, margin: '0 0 0 -8px' }} />}
+                                    </span>
                                     {lp.token0Symbol}/{lp.token1Symbol}
                                     <Link to={`/positions?swap=${lp.swapCanisterId}`} style={{ color: primary, fontSize: '0.78rem', fontWeight: 600, marginLeft: 6 }}>whole pool</Link>
                                 </div>
-                                {(lp.positions || []).length === 0 && <div style={{ color: theme.colors.mutedText, fontSize: '0.82rem' }}>no positions</div>}
+                                {(lp.positions || []).length === 0 && <div style={{ color: theme.colors.mutedText, fontSize: '0.82rem', padding: '4px 0 4px 28px' }}>no positions</div>}
                                 {(lp.positions || []).map((p) => {
                                     const inRange = Number.isFinite(lp.currentTick) && Number.isFinite(p.tickLower) ? (lp.currentTick >= p.tickLower && lp.currentTick < p.tickUpper) : null;
                                     const a0 = p.token0Amount ?? p.amount0 ?? 0n; const a1 = p.token1Amount ?? p.amount1 ?? 0n;
