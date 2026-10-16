@@ -763,11 +763,14 @@ function SneedexCreate() {
         loadNftsFor(sneedLockCanisterId);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [location.search, identity]);
-    // The collections the user added to the NFT wallet, offered as one-click choices (names read lazily)
+    // The collections the user added to the NFT wallet, offered as one-click choices (names read lazily).
+    // Sneed Lock comes first: every LP and token lock is an NFT in it, but the wallet shows locks in
+    // their own sections, so it is rarely a saved collection.
     const [myNftCollections, setMyNftCollections] = useState([]); // [{ id, name, symbol, logo }]
     useEffect(() => {
         if (newAssetType !== 'nft' || !identity) return;
-        const ids = getSavedNftCollections();
+        const lockId = sneedLockCanisterId ? String(sneedLockCanisterId) : null;
+        const ids = [...(lockId ? [lockId] : []), ...getSavedNftCollections().filter((id) => id !== lockId)];
         if (ids.length === 0) { setMyNftCollections([]); return; }
         setMyNftCollections(ids.map((id) => ({ id, name: null, symbol: null, logo: null })));
         let alive = true;
@@ -4583,7 +4586,7 @@ function SneedexCreate() {
                                                         );
                                                     })}
                                                 </div>
-                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: 6 }}>From your NFT wallet. Any other ICRC-7 collection can be typed below.</div>
+                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: 6 }}>Sneed Lock (your LP and token locks) and the collections in your NFT wallet. Any other ICRC-7 collection can be typed below.</div>
                                             </div>
                                         )}
                                         <div style={styles.formGroup}>
