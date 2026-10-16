@@ -3371,7 +3371,8 @@ function IcpNeuronManager() {
                                             setNamingError('');
                                             setNamingSuccess('');
                                             try {
-                                                await setPrincipalNameFor(identity, canisterId, publicNameInput.trim());
+                                                const named = await setPrincipalNameFor(identity, canisterId, publicNameInput.trim());
+                                                    if (named && 'err' in named) throw new Error(named.err);
                                                 setNamingSuccess('Public name saved! Everyone will see this name.');
                                                 setPublicNameInput('');
                                                 if (fetchAllNames) fetchAllNames();

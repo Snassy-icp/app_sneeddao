@@ -1,6 +1,7 @@
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { createActor, canisterId } from 'declarations/app_sneeddao_backend';
+import * as NS from './NamingService';
 
 // Create an actor for the backend canister using the established pattern
 export const createBackendActor = (identity) => {
@@ -82,6 +83,7 @@ const hexToUint8Array = (hex) => {
 // Set a public name for a neuron (only owner can do this)
 export const setNeuronName = async (identity, snsRootCanisterId, neuronId, name) => {
     if (!identity || !snsRootCanisterId || !neuronId || !name) return null;
+    if (NS.namingServiceEnabled) return NS.setNeuronName(identity, snsRootCanisterId, neuronId, name);
     
     try {
         const actor = createBackendActor(identity);
@@ -106,6 +108,7 @@ export const setNeuronName = async (identity, snsRootCanisterId, neuronId, name)
 export const setNeuronNickname = async (identity, snsRootCanisterId, neuronId, nickname) => {
     // nickname may be '' to remove a nickname, so only reject null/undefined
     if (!identity || !snsRootCanisterId || !neuronId || nickname === undefined || nickname === null) return null;
+    if (NS.namingServiceEnabled) return NS.setNeuronNickname(identity, snsRootCanisterId, neuronId, nickname);
     
     try {
         const actor = createBackendActor(identity);
@@ -129,6 +132,7 @@ export const setNeuronNickname = async (identity, snsRootCanisterId, neuronId, n
 // Get the public name of a neuron
 export const getNeuronName = async (identity, snsRootCanisterId, neuronId) => {
     if (!snsRootCanisterId || !neuronId) return null;
+    if (NS.namingServiceEnabled) return NS.getNeuronName(identity, snsRootCanisterId, neuronId).catch(() => null);
     
     try {
         const actor = createBackendActor(identity);
@@ -154,6 +158,7 @@ export const getNeuronName = async (identity, snsRootCanisterId, neuronId) => {
 // Get the private nickname of a neuron
 export const getNeuronNickname = async (identity, snsRootCanisterId, neuronId) => {
     if (!identity || !snsRootCanisterId || !neuronId) return null;
+    if (NS.namingServiceEnabled) return NS.getNeuronNickname(identity, snsRootCanisterId, neuronId).catch(() => null);
     
     try {
         const actor = createBackendActor(identity);
@@ -178,6 +183,7 @@ export const getNeuronNickname = async (identity, snsRootCanisterId, neuronId) =
 
 // Get all neuron names
 export const getAllNeuronNames = async (identity) => {
+    if (NS.namingServiceEnabled) return NS.getAllNeuronNames(identity).catch((e) => { console.error('Error getting all neuron names:', e); return null; });
     try {
         const actor = createBackendActor(identity);
         console.log('Getting all neuron names');
@@ -192,6 +198,7 @@ export const getAllNeuronNames = async (identity) => {
 // Get all neuron nicknames for the current user
 export const getAllNeuronNicknames = async (identity) => {
     if (!identity) return null;
+    if (NS.namingServiceEnabled) return NS.getAllNeuronNicknames(identity).catch((e) => { console.error('Error getting all neuron nicknames:', e); return null; });
     
     try {
         const actor = createBackendActor(identity);
@@ -211,6 +218,7 @@ const principalNicknameCache = new Map();
 // Set a public name for your principal
 export const setPrincipalName = async (identity, name) => {
     if (!identity || name === undefined) return null;
+    if (NS.namingServiceEnabled) return NS.setPrincipalName(identity, name);
     
     try {
         const actor = createBackendActor(identity);
@@ -229,11 +237,13 @@ export const setPrincipalName = async (identity, name) => {
 
 // ---- Avatars ----
 export const setMyAvatar = async (identity, url) => {
+    if (NS.namingServiceEnabled) return NS.setMyAvatar(identity, url);
     const actor = createBackendActor(identity);
     return actor.set_my_avatar(url || '');
 };
 
 export const getAvatar = async (identity, principal) => {
+    if (NS.namingServiceEnabled) return (await NS.getAvatars(identity, [principal])).get(principal.toString()) || null;
     const actor = createBackendActor(identity);
     const r = await actor.get_avatar(principal);
     return r && r.length ? r[0] : null;
@@ -241,6 +251,7 @@ export const getAvatar = async (identity, principal) => {
 
 /// Avatars for up to 50 principals: Map<principalText, url> (principals without one are absent).
 export const getAvatars = async (identity, principals) => {
+    if (NS.namingServiceEnabled) return NS.getAvatars(identity, principals);
     const actor = createBackendActor(identity);
     const r = await actor.get_avatars(principals.slice(0, 50));
     const out = new Map();
@@ -249,6 +260,7 @@ export const getAvatars = async (identity, principals) => {
 };
 
 export const adminClearAvatar = async (identity, principal) => {
+    if (NS.namingServiceEnabled) return NS.adminClearAvatar(identity, principal);
     const actor = createBackendActor(identity);
     return actor.admin_clear_avatar(principal);
 };
@@ -256,6 +268,7 @@ export const adminClearAvatar = async (identity, principal) => {
 // Set a private nickname for a principal
 export const setPrincipalNickname = async (identity, principal, nickname) => {
     if (!identity || !principal || nickname === undefined) return null;
+    if (NS.namingServiceEnabled) return NS.setPrincipalNickname(identity, principal, nickname);
     
     try {
         const actor = createBackendActor(identity);
@@ -288,6 +301,11 @@ export const getPrincipalName = async (identity, principal) => {
         return principalNameCache.get(cacheKey);
     }
     
+    if (NS.namingServiceEnabled) {
+        const r = await NS.getPrincipalName(identity, principal).catch(() => null);
+        if (r) principalNameCache.set(cacheKey, r);
+        return r;
+    }
     try {
         const actor = createBackendActor(identity);
         console.log('Getting principal name for:', {
@@ -318,6 +336,11 @@ export const getPrincipalNickname = async (identity, principal) => {
         return principalNicknameCache.get(cacheKey);
     }
     
+    if (NS.namingServiceEnabled) {
+        const r = await NS.getPrincipalNickname(identity, principal).catch(() => null);
+        if (r) principalNicknameCache.set(cacheKey, r);
+        return r;
+    }
     try {
         const actor = createBackendActor(identity);
         console.log('Getting principal nickname for:', {
@@ -338,6 +361,7 @@ export const getPrincipalNickname = async (identity, principal) => {
 
 // Get all principal names
 export const getAllPrincipalNames = async (identity) => {
+    if (NS.namingServiceEnabled) return NS.getAllPrincipalNames(identity).catch((e) => { console.error('Error getting all principal names:', e); return null; });
     try {
         const actor = createBackendActor(identity); // identity can be null for anonymous calls
         console.log('Getting all principal names with identity:', identity ? 'authenticated' : 'anonymous');
@@ -352,6 +376,7 @@ export const getAllPrincipalNames = async (identity) => {
 // Get all principal nicknames for the current user
 export const getAllPrincipalNicknames = async (identity) => {
     if (!identity) return null;
+    if (NS.namingServiceEnabled) return NS.getAllPrincipalNicknames(identity).catch((e) => { console.error('Error getting all principal nicknames:', e); return null; });
     
     try {
         const actor = createBackendActor(identity);
@@ -367,6 +392,7 @@ export const getAllPrincipalNicknames = async (identity) => {
 // Verify a neuron name (admin only)
 export const verifyNeuronName = async (identity, snsRootCanisterId, neuronId) => {
     if (!identity || !snsRootCanisterId || !neuronId) return null;
+    if (NS.namingServiceEnabled) return NS.verifyNeuronName(identity, snsRootCanisterId, neuronId);
     
     try {
         const actor = createBackendActor(identity);
@@ -389,6 +415,7 @@ export const verifyNeuronName = async (identity, snsRootCanisterId, neuronId) =>
 // Unverify a neuron name (admin only)
 export const unverifyNeuronName = async (identity, snsRootCanisterId, neuronId) => {
     if (!identity || !snsRootCanisterId || !neuronId) return null;
+    if (NS.namingServiceEnabled) return NS.unverifyNeuronName(identity, snsRootCanisterId, neuronId);
     
     try {
         const actor = createBackendActor(identity);
@@ -411,6 +438,7 @@ export const unverifyNeuronName = async (identity, snsRootCanisterId, neuronId) 
 // Verify a principal name (admin only)
 export const verifyPrincipalName = async (identity, principal) => {
     if (!identity || !principal) return null;
+    if (NS.namingServiceEnabled) return NS.verifyPrincipalName(identity, principal);
     
     try {
         const actor = createBackendActor(identity);
@@ -428,6 +456,7 @@ export const verifyPrincipalName = async (identity, principal) => {
 // Unverify a principal name (admin only)
 export const unverifyPrincipalName = async (identity, principal) => {
     if (!identity || !principal) return null;
+    if (NS.namingServiceEnabled) return NS.unverifyPrincipalName(identity, principal);
     
     try {
         const actor = createBackendActor(identity);
@@ -445,6 +474,7 @@ export const unverifyPrincipalName = async (identity, principal) => {
 // Admin function to set principal name for any principal
 export const setPrincipalNameFor = async (identity, principal, name, snsRootCanisterId = null) => {
     if (!identity || !principal || name === undefined) return null;
+    if (NS.namingServiceEnabled) return NS.setPrincipalNameFor(identity, principal, name);
     
     try {
         const actor = createBackendActor(identity);
@@ -990,6 +1020,7 @@ export const setWalletLayout = async (identity, layout) => {
 // Set a public name for a canister (caller must be a controller)
 export const setCanisterName = async (identity, canisterId, name) => {
     if (!identity || !canisterId) return null;
+    if (NS.namingServiceEnabled) return NS.setCanisterName(identity, canisterId, name);
     
     try {
         const actor = createBackendActor(identity);

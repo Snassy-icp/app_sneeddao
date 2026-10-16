@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { getAllNeuronNames, getAllNeuronNicknames, getAllPrincipalNames, getAllPrincipalNicknames, getAvatars } from './utils/BackendUtils';
+import { namingServiceEnabled } from './utils/NamingService';
 import { Principal } from '@dfinity/principal';
 import { uint8ArrayToHex } from './utils/NeuronUtils';
 import { getAllSnses, SNS_CACHE_UPDATED_EVENT } from './utils/SnsUtils';
@@ -46,8 +47,10 @@ const loadMapFromCache = (key) => {
     return new Map();
 };
 
-// Helper to merge maps (new values override old, but old values are kept if not in new)
+// Helper to merge maps (new values override old, but old values are kept if not in new).
+// The naming service answers complete lists (names can be removed there), so its answers replace.
 const mergeMaps = (oldMap, newMap) => {
+    if (namingServiceEnabled) return new Map(newMap);
     const merged = new Map(oldMap);
     newMap.forEach((value, key) => {
         merged.set(key, value);
@@ -186,30 +189,35 @@ export function NamingProvider({ children }) {
 
             // Merge with existing data (names can't be deleted, only changed)
             setNeuronNames(prev => {
+                if (!neuronNamesData) return prev; // a failed or logged-out fetch keeps what we have
                 const merged = mergeMaps(prev, newNeuronNamesMap);
                 saveMapToCache(CACHE_KEYS.NEURON_NAMES, merged);
                 return merged;
             });
             
             setNeuronNicknames(prev => {
+                if (!neuronNicknamesData) return prev; // a failed or logged-out fetch keeps what we have
                 const merged = mergeMaps(prev, newNeuronNicknamesMap);
                 saveMapToCache(CACHE_KEYS.NEURON_NICKNAMES, merged);
                 return merged;
             });
             
             setVerifiedNames(prev => {
+                if (!neuronNamesData || !principalNamesData) return prev;
                 const merged = mergeMaps(prev, newVerifiedMap);
                 saveMapToCache(CACHE_KEYS.VERIFIED_NAMES, merged);
                 return merged;
             });
             
             setPrincipalNames(prev => {
+                if (!principalNamesData) return prev; // a failed or logged-out fetch keeps what we have
                 const merged = mergeMaps(prev, newPrincipalNamesMap);
                 saveMapToCache(CACHE_KEYS.PRINCIPAL_NAMES, merged);
                 return merged;
             });
             
             setPrincipalNicknames(prev => {
+                if (!principalNicknamesData) return prev; // a failed or logged-out fetch keeps what we have
                 const merged = mergeMaps(prev, newPrincipalNicknamesMap);
                 saveMapToCache(CACHE_KEYS.PRINCIPAL_NICKNAMES, merged);
                 return merged;

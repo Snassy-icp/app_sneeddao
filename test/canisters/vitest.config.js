@@ -1,6 +1,11 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
+const src = (dir) => fileURLToPath(new URL(`../../src/${dir}`, import.meta.url));
+
 export default defineConfig({
+  // the frontend's Vite aliases, for tests that run frontend modules against PocketIC
+  resolve: { alias: { declarations: src('declarations'), external: src('external') } },
   test: {
     include: ['tests/**/*.test.js'],
     globalSetup: './lib/global-setup.js',

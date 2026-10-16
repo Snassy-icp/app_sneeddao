@@ -3,6 +3,8 @@ import { useAuth } from '../AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
+import AccountPanel from '../components/AccountPanel';
+import { namingServiceEnabled } from '../utils/NamingService';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, fetchSnsLogo } from '../utils/SnsUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
@@ -1810,6 +1812,8 @@ export default function Me() {
                                         </div>
                                     </div>
                                 )}
+
+                                {namingServiceEnabled && identity && <AccountPanel identity={identity} accent={mePrimary} />}
 
                                 {/* Activity Stats */}
                                 <div style={{
