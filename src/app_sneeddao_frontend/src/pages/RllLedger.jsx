@@ -12,16 +12,16 @@ import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { useDenomination } from '../contexts/DenominationContext';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
-import { get_token_conversion_rate } from '../utils/TokenUtils';
 import { customStyles } from '../health/TreeView.jsx';
-import { SECTIONS, ICP_LEDGER, SNEED_LEDGER, SNEED_ROOT, NEURON_2Y, fetchAccountRows, fetchNeuron, fetchSplits, summarizeLine, nameFor, isPylonMain } from '../utils/rllLedger';
+import { SECTIONS, ICP_LEDGER, SNEED_LEDGER, SNEED_ROOT, NEURON_2Y, PERIODS, DEFAULT_PERIOD, nameFor, isPylonMain, markStale } from '../utils/rllLedger';
+import { useStoreVersion } from '../utils/revenueStore';
+import { useSection, loadSection, loadPrice, priceOf, loadNeuron, peekNeuron, loadSplits, splitsEntry } from '../utils/revenueData';
 
 const ICP_COLOR = '#4a90e2';
 const SNEED_COLOR = '#2ecc71';
 const BURN_COLOR = '#e74c3c';
 const AMBER = '#f59e0b';
 const DEC = 8;
-const PERIODS = [{ key: '30', label: '30 days', ms: 30 * 86_400_000 }, { key: '90', label: '90 days', ms: 90 * 86_400_000 }, { key: '365', label: '1 year', ms: 365 * 86_400_000 }, { key: 'all', label: 'All time', ms: 0 }];
 const COLLAPSED_ROWS = 3;
 const fmt = (v, max = 4) => (Number(v) / 10 ** DEC).toLocaleString('en-US', { maximumFractionDigits: max });
 const fmtNum = (n, max = 2) => Number(n).toLocaleString('en-US', { maximumFractionDigits: max });
@@ -45,33 +45,19 @@ function Counterparty({ cp, theme }) {
     );
 }
 
-/// One section of the loop: loads every account its lines need, filters, sums, charts, lists.
-function Section({ section, sinceMs, prices, splits, children }) {
+/// One section of the loop: every account its lines need, filtered, summed, charted, listed. The
+/// lines come from the shared cache, so /rll_info and /revenue reuse what this page read.
+function Section({ section, period, prices, splits, children }) {
     const { theme } = useTheme();
     const { formatValue } = useDenomination();
-    const [data, setData] = useState(null); // { lines: [{ ...line, rows, sum }] }
-    const [progress, setProgress] = useState('');
-    const [error, setError] = useState('');
+    const entry = useSection(section.key, period.key);
+    const data = entry.value ? { lines: entry.value } : null;
+    const error = entry.error && !entry.loading ? entry.error : '';
+    const progress = entry.progress || '';
+    const sinceMs = period.ms ? Date.now() - period.ms : 0;
     const [showAll, setShowAll] = useState(false);
-    const [tick, setTick] = useState(0);
     const color = colorOf(section.token);
-
-    useEffect(() => {
-        let alive = true;
-        setData(null); setError(''); setProgress('');
-        (async () => {
-            try {
-                // one read per distinct account, shared by the lines that use it
-                const accounts = [...new Map(section.lines.map((l) => [l.account.key + l.account.ledger, l.account])).values()];
-                const reads = new Map();
-                await Promise.all(accounts.map(async (a) => { reads.set(a.key + a.ledger, await fetchAccountRows(a, sinceMs, (n) => { if (alive) setProgress(`${a.name}: ${n} rows…`); })); }));
-                if (!alive) return;
-                const lines = section.lines.map((l) => { const read = reads.get(l.account.key + l.account.ledger); const rows = read.rows.filter(l.keep); return { ...l, rows, cutAt: read.cutAt, sum: summarizeLine(rows, DEC) }; });
-                setData({ lines });
-            } catch (e) { if (alive) setError(e?.message || String(e)); }
-        })();
-        return () => { alive = false; };
-    }, [section, sinceMs, tick]);
+    const refresh = () => { markStale(section.lines.map((l) => l.account)); loadSection(section.key, period.key, { force: true }).catch(() => {}); };
 
     const price = (token) => prices[token];
     const money = (v, token) => { const p = price(token); return p == null ? null : formatValue((Number(v) / 10 ** DEC) * p); };
@@ -104,7 +90,7 @@ function Section({ section, sinceMs, prices, splits, children }) {
         let avg = null;
         if (second && !sinceMs && ![...ins, second].some((l) => l.cutAt) && totalIn > 0n && second.sum.total > 0n) avg = { price: Number(totalIn) / Number(second.sum.total) };
         return { ins, outs, totalIn, totalOut, series, allRows, spanDays, second, avg };
-    }, [data, section, sinceMs]);
+    }, [entry.value, section, period.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const splitFor = (line) => (line.dest && splits ? splits.find((s) => s.key === line.dest.key && s.ledger === line.dest.ledger) : null);
 
@@ -119,7 +105,7 @@ function Section({ section, sinceMs, prices, splits, children }) {
                         {section.dashboard && <a href={section.dashboard} target="_blank" rel="noopener noreferrer" style={{ color: theme.colors.accent, whiteSpace: 'nowrap' }}>the neuron <FaExternalLinkAlt size={9} /></a>}
                     </div>
                 </div>
-                <button type="button" onClick={() => setTick((t) => t + 1)} title="Re-read from the index" style={{ background: 'transparent', border: `1px solid ${theme.colors.border}`, borderRadius: 8, color: theme.colors.secondaryText, padding: '6px 10px', cursor: 'pointer' }}><FaSync className={!data && !error ? 'health-spin' : ''} /></button>
+                <button type="button" onClick={refresh} disabled={entry.loading} title="Re-read from the index" style={{ background: 'transparent', border: `1px solid ${theme.colors.border}`, borderRadius: 8, color: theme.colors.secondaryText, padding: '6px 10px', cursor: 'pointer' }}><FaSync className={entry.loading ? 'health-spin' : ''} /></button>
             </div>
             {children}
             {error && <div style={{ color: theme.colors.error, marginTop: 10 }}>Could not read the history: {error}</div>}
@@ -201,18 +187,20 @@ function RllLedger() {
     const { theme } = useTheme();
     const { formatValue } = useDenomination();
     const [params, setParams] = useSearchParams();
-    const period = PERIODS.find((p) => p.key === params.get('period')) || PERIODS[1];
-    const sinceMs = useMemo(() => (period.ms ? Date.now() - period.ms : 0), [period.key]); // eslint-disable-line react-hooks/exhaustive-deps
-    const [prices, setPrices] = useState({});
-    const [neuron, setNeuron] = useState(null);
-    const [neuronError, setNeuronError] = useState('');
-    const [splits, setSplits] = useState({});
+    const period = PERIODS.find((p) => p.key === params.get('period')) || PERIODS.find((p) => p.key === DEFAULT_PERIOD);
+    // prices, the neuron and the splits come from the shared cache (also used by /rll_info and /revenue)
+    useStoreVersion();
     useEffect(() => {
-        get_token_conversion_rate(ICP_LEDGER, 8).then((p) => setPrices((x) => ({ ...x, ICP: p ? Number(p) : null }))).catch(() => {});
-        get_token_conversion_rate(SNEED_LEDGER, 8).then((p) => setPrices((x) => ({ ...x, SNEED: p ? Number(p) : null }))).catch(() => {});
-        fetchNeuron().then(setNeuron).catch((e) => setNeuronError(e?.message || String(e)));
-        for (const s of SECTIONS) if (s.splitsNode) fetchSplits(s.splitsNode).then((r) => setSplits((x) => ({ ...x, [s.key]: r }))).catch(() => {});
+        loadPrice(ICP_LEDGER).catch(() => {});
+        loadPrice(SNEED_LEDGER).catch(() => {});
+        loadNeuron().catch(() => {});
+        for (const s of SECTIONS) if (s.splitsNode) loadSplits(s.splitsNode).catch(() => {});
     }, []);
+    const prices = { ICP: priceOf(ICP_LEDGER), SNEED: priceOf(SNEED_LEDGER) };
+    const neuronEntry = peekNeuron();
+    const neuron = neuronEntry.value || null;
+    const neuronError = !neuron && neuronEntry.error ? neuronEntry.error : '';
+    const splits = Object.fromEntries(SECTIONS.filter((s) => s.splitsNode && splitsEntry(s.splitsNode).value).map((s) => [s.key, splitsEntry(s.splitsNode).value]));
     const card = { background: theme.colors.cardBg, border: `1px solid ${theme.colors.border}`, borderRadius: 14, padding: '1rem', marginBottom: 16 };
     const stake = neuron ? Number(neuron.stake_e8s) / 1e8 : null;
     return (
@@ -238,7 +226,7 @@ function RllLedger() {
                 </nav>
 
                 {SECTIONS.map((s) => (
-                    <Section key={s.key} section={s} sinceMs={sinceMs} prices={prices} splits={splits[s.key] || null}>
+                    <Section key={s.key} section={s} period={period} prices={prices} splits={splits[s.key] || null}>
                         {s.key === 'neuron' && (
                             <div style={{ marginTop: 10 }}>
                                 {neuronError && <div style={{ color: theme.colors.error, fontSize: '0.85rem' }}>Could not read the neuron: {neuronError}</div>}

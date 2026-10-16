@@ -111,6 +111,7 @@ import Position from './pages/Position';
 import Positions from './pages/Positions';
 import NftBrowser from './pages/NftBrowser';
 import RllLedger from './pages/RllLedger';
+import Revenue from './pages/Revenue';
 import Guardian from './pages/Guardian';
 import NftItem from './pages/NftItem';
 import SnsJailbreak from './pages/SnsJailbreak';
@@ -202,6 +203,7 @@ function App() {
                     <Route path="/rll" element={<RLL />} />
                     <Route path="/rll_info" element={<RLLInfo />} />
                     <Route path="/rll_ledger" element={<RllLedger />} />
+                    <Route path="/revenue" element={<Revenue />} />
                     <Route path="/guardian" element={<ComingSoonPage title="Sneed custody"><Guardian /></ComingSoonPage>} />
                     <Route path="/scan_wallet" element={<ScanWallet />} />
                     <Route path="/dashboard" element={<Dashboard />} />

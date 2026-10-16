@@ -77,10 +77,84 @@ export const isPylonMain = (cp) => !!cp && (cp.hex ? [ACCOUNTS.pylonMainIcp.icpH
 const cpIs = (cp, acct) => !!cp && (cp.hex ? cp.hex === acct.icpHex : `${cp.owner}:${cp.sub || ''}` === acct.key);
 
 // ---- reading an account's history ----
-const cache = new Map();
+// Each account's rows are kept for the session and grown as needed: a longer period reads further
+// back from where the last read stopped, a later visit only reads what is new at the top (after
+// TTL), and two pages asking at once share one read. /rll_ledger, /rll_info and /revenue all use it.
+const accounts = new Map(); // ledger:key -> { rows (newest first), complete, topAt, chain }
 const TTL = 10 * 60 * 1000;
 const MAX_ROWS = 6000;
+const PAGE = 500n;
 const subHex = (s) => (s && s.length ? hex(Uint8Array.from(s)) : '');
+
+/// One page of an account's transactions, newest first, from `start` (an id, or [] for the newest).
+async function readPage(acct, start) {
+    const owner = Principal.fromText(acct.owner);
+    const account = { owner, subaccount: acct.sub ? [acct.sub] : [] };
+    if (acct.ledger === ICP_LEDGER) {
+        const index = await actor(icpIndexIdl, ICP_INDEX);
+        const r = await index.get_account_transactions({ account, start, max_results: PAGE });
+        if ('Err' in r) throw new Error(r.Err.message);
+        const txs = r.Ok.transactions.map(({ id, transaction: t }) => {
+            const k = Object.keys(t.operation)[0]; const op = t.operation[k];
+            const at = Number(t.timestamp?.[0]?.timestamp_nanos ?? 0n) / 1e6;
+            const from = op.from || null; const to = op.to || null;
+            const isOut = from === acct.icpHex; const isIn = to === acct.icpHex;
+            return { id: BigInt(id), at, kind: k.toLowerCase(), dir: isOut && isIn ? 'self' : isOut ? 'out' : 'in', amount: BigInt(op.amount?.e8s ?? 0n), fee: BigInt(op.fee?.e8s ?? 0n), cp: isOut ? (to ? { hex: to } : null) : (from ? { hex: from } : null) };
+        });
+        return { txs, oldest: r.Ok.oldest_tx_id?.[0] };
+    }
+    const index = await actor(indexIdl, SNEED_INDEX);
+    const r = await index.get_account_transactions({ account, start, max_results: PAGE });
+    if ('Err' in r) throw new Error(r.Err.message);
+    const txs = r.Ok.transactions.map(({ id, transaction: t }) => {
+        const x = t.transfer?.[0] || t.mint?.[0] || t.burn?.[0];
+        const key = (a) => (a ? `${a.owner.toText()}:${subHex(a.subaccount?.[0])}` : null);
+        const from = x?.from ? key(x.from) : null; const to = x?.to ? key(x.to) : null;
+        const isOut = from === acct.key; const isIn = to === acct.key;
+        const cpAcc = isOut ? x?.to : x?.from;
+        return { id: BigInt(id), at: Number(t.timestamp) / 1e6, kind: t.kind, dir: isOut && isIn ? 'self' : isOut ? 'out' : t.kind === 'burn' && isOut ? 'out' : 'in', amount: BigInt(x?.amount ?? 0n), fee: BigInt(x?.fee?.[0] ?? 0n), cp: cpAcc ? { owner: cpAcc.owner.toText(), sub: subHex(cpAcc.subaccount?.[0]) } : (t.kind === 'burn' ? { owner: GOVERNANCE, sub: '' } : null) };
+    });
+    return { txs, oldest: r.Ok.oldest_tx_id?.[0] };
+}
+
+const atEnd = (txs, oldest) => {
+    if (!txs.length) return true;
+    const minId = txs[txs.length - 1].id;
+    return oldest === undefined || oldest === null || BigInt(oldest) >= minId || minId === 0n;
+};
+
+async function fill(acct, st, sinceMs, onProgress) {
+    const max = acct.full ? Infinity : MAX_ROWS;
+    // what is new since the last read
+    if (st.rows.length && Date.now() - st.topAt > TTL) {
+        const newest = st.rows[0].id;
+        const fresh = [];
+        let start = [];
+        for (;;) {
+            const { txs, oldest } = await readPage(acct, start);
+            const stop = txs.findIndex((t) => t.id <= newest);
+            fresh.push(...(stop < 0 ? txs : txs.slice(0, stop)));
+            if (stop >= 0 || atEnd(txs, oldest)) break;
+            start = [txs[txs.length - 1].id - 1n];
+        }
+        st.rows = fresh.concat(st.rows);
+        st.topAt = Date.now();
+    }
+    // older rows, until the period is covered or it holds `max` rows
+    const inPeriod = () => (sinceMs ? st.rows.filter((r) => r.at >= sinceMs).length : st.rows.length);
+    while (!st.complete && (!st.rows.length || !sinceMs || st.rows[st.rows.length - 1].at >= sinceMs) && inPeriod() < max) {
+        if (!st.rows.length) st.topAt = Date.now();
+        const { txs, oldest } = await readPage(acct, st.rows.length ? [st.rows[st.rows.length - 1].id - 1n] : []);
+        st.rows.push(...txs);
+        onProgress?.(inPeriod());
+        if (atEnd(txs, oldest)) st.complete = true;
+    }
+}
+
+/// Makes the next read of these accounts look for new transactions, whatever their age (the refresh button).
+export function markStale(accts) {
+    for (const a of accts) { const st = accounts.get(`${a.ledger}:${a.key}`); if (st) st.topAt = 0; }
+}
 
 /// Every transaction of an account since `sinceMs` (0 = all), newest first:
 /// { rows: [{ id, at (ms), kind, dir ('in'|'out'|'self'), amount, fee, cp }], cutAt }.
@@ -88,53 +162,19 @@ const subHex = (s) => (s && s.length ? hex(Uint8Array.from(s)) : '');
 /// transactions in it (and is not marked `full`), the rows stop at the newest MAX_ROWS and
 /// `cutAt` is the time (ms) of the oldest row read.
 export async function fetchAccountRows(acct, sinceMs, onProgress) {
-    const ck = `${acct.key}:${acct.ledger}:${sinceMs}`;
-    const c = cache.get(ck);
-    if (c && Date.now() - c.at < TTL) return c.read;
-    const owner = Principal.fromText(acct.owner);
-    const rows = [];
-    let start = [];
-    const page = 500n;
-    let complete = false;
+    const k = `${acct.ledger}:${acct.key}`;
+    let st = accounts.get(k);
+    if (!st) { st = { rows: [], complete: false, topAt: 0, chain: Promise.resolve() }; accounts.set(k, st); }
+    // one read at a time per account: a second caller then finds the rows already there
+    const run = st.chain.then(() => fill(acct, st, sinceMs, onProgress));
+    st.chain = run.catch(() => {});
+    await run;
     const max = acct.full ? Infinity : MAX_ROWS;
-    while (rows.length < max) {
-        let txs; let oldest;
-        if (acct.ledger === ICP_LEDGER) {
-            const index = await actor(icpIndexIdl, ICP_INDEX);
-            const r = await index.get_account_transactions({ account: { owner, subaccount: acct.sub ? [acct.sub] : [] }, start, max_results: page });
-            if ('Err' in r) throw new Error(r.Err.message);
-            txs = r.Ok.transactions.map(({ id, transaction: t }) => {
-                const k = Object.keys(t.operation)[0]; const op = t.operation[k];
-                const at = Number(t.timestamp?.[0]?.timestamp_nanos ?? 0n) / 1e6;
-                const from = op.from || null; const to = op.to || null;
-                const isOut = from === acct.icpHex; const isIn = to === acct.icpHex;
-                return { id: BigInt(id), at, kind: k.toLowerCase(), dir: isOut && isIn ? 'self' : isOut ? 'out' : 'in', amount: BigInt(op.amount?.e8s ?? 0n), fee: BigInt(op.fee?.e8s ?? 0n), cp: isOut ? (to ? { hex: to } : null) : (from ? { hex: from } : null) };
-            }).filter((t) => t.kind !== 'approve');
-            oldest = r.Ok.oldest_tx_id?.[0];
-        } else {
-            const index = await actor(indexIdl, SNEED_INDEX);
-            const r = await index.get_account_transactions({ account: { owner, subaccount: acct.sub ? [acct.sub] : [] }, start, max_results: page });
-            if ('Err' in r) throw new Error(r.Err.message);
-            txs = r.Ok.transactions.map(({ id, transaction: t }) => {
-                const x = t.transfer?.[0] || t.mint?.[0] || t.burn?.[0];
-                const key = (a) => (a ? `${a.owner.toText()}:${subHex(a.subaccount?.[0])}` : null);
-                const from = x?.from ? key(x.from) : null; const to = x?.to ? key(x.to) : null;
-                const isOut = from === acct.key; const isIn = to === acct.key;
-                const cpAcc = isOut ? x?.to : x?.from;
-                return { id: BigInt(id), at: Number(t.timestamp) / 1e6, kind: t.kind, dir: isOut && isIn ? 'self' : isOut ? 'out' : t.kind === 'burn' && isOut ? 'out' : 'in', amount: BigInt(x?.amount ?? 0n), fee: BigInt(x?.fee?.[0] ?? 0n), cp: cpAcc ? { owner: cpAcc.owner.toText(), sub: subHex(cpAcc.subaccount?.[0]) } : (t.kind === 'burn' ? { owner: GOVERNANCE, sub: '' } : null) };
-            }).filter((t) => t.kind !== 'approve');
-            oldest = r.Ok.oldest_tx_id?.[0];
-        }
-        for (const t of txs) { if (sinceMs && t.at < sinceMs) { txs = null; break; } rows.push(t); }
-        onProgress?.(rows.length);
-        if (txs === null || txs.length === 0) { complete = true; break; }
-        const minId = rows[rows.length - 1].id;
-        if (oldest === undefined || oldest === null || BigInt(oldest) >= minId || minId === 0n) { complete = true; break; }
-        start = [minId - 1n];
-    }
-    const read = { rows, cutAt: complete || !rows.length ? null : rows[rows.length - 1].at };
-    cache.set(ck, { at: Date.now(), read });
-    return read;
+    const all = (sinceMs ? st.rows.filter((r) => r.at >= sinceMs) : st.rows).filter((t) => t.kind !== 'approve');
+    const covered = st.complete || (!!sinceMs && st.rows.length > 0 && st.rows[st.rows.length - 1].at < sinceMs);
+    const rows = all.slice(0, max);
+    const cut = rows.length > 0 && (rows.length < all.length || !covered);
+    return { rows, cutAt: cut ? rows[rows.length - 1].at : null };
 }
 
 // ---- the flows: what each station really receives and sends ----
@@ -185,6 +225,19 @@ export const SECTIONS = [
         note: 'The burns, treasury and RLL transfers are read from the Neutrinite pylon\'s main SNEED account; Sneed\'s splitter is the only node known to send SNEED to those three places.',
     },
 ];
+
+/// The periods the books are read over; `ms` 0 is all time.
+export const PERIODS = [{ key: '30', label: '30 days', ms: 30 * 86_400_000 }, { key: '90', label: '90 days', ms: 90 * 86_400_000 }, { key: '365', label: '1 year', ms: 365 * 86_400_000 }, { key: 'all', label: 'All time', ms: 0 }];
+export const DEFAULT_PERIOD = '90';
+
+/// Every line of a section, read over the period: [{ ...line, rows, cutAt, sum }]. Accounts shared
+/// by several lines are read once.
+export async function loadSectionLines(section, sinceMs, onProgress) {
+    const accts = [...new Map(section.lines.map((l) => [l.account.key + l.account.ledger, l.account])).values()];
+    const reads = new Map();
+    await Promise.all(accts.map(async (a) => { reads.set(a.key + a.ledger, await fetchAccountRows(a, sinceMs, (n) => onProgress?.(`${a.name}: ${n} rows…`))); }));
+    return section.lines.map((l) => { const read = reads.get(l.account.key + l.account.ledger); const rows = read.rows.filter(l.keep); return { ...l, rows, cutAt: read.cutAt, sum: summarizeLine(rows, 8) }; });
+}
 
 /// Totals and a per-day series for one line's rows.
 export function summarizeLine(rows, decimals) {

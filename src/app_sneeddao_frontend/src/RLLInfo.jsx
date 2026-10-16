@@ -29,6 +29,8 @@ import Header from './components/Header';
 import { useTheme } from './contexts/ThemeContext';
 import { FaCoins, FaChartLine, FaWallet, FaCubes, FaDollarSign, FaLayerGroup, FaLeaf, FaExternalLinkAlt } from 'react-icons/fa';
 import { useDenomination } from './contexts/DenominationContext';
+import { PRODUCTS, loadAllProducts } from './utils/revenueData';
+import { LedgerSummary, ProductSummary, ProductsSummary, ledgerLinesFor, ensureTooltipData } from './components/RevenueTooltips';
 
 
 // Page accent colors - gold/amber theme for tokenomics
@@ -389,7 +391,7 @@ const TokenAnimationManager = ({ edges, nodes }) => {
     const reactFlowInstance = useReactFlow();
 
     const isSourceNode = useCallback((nodeId) => {
-        return ['1', '11', '13', '14'].includes(nodeId); // 2y neuron, LP Rewards, SneedLock, Swaprunner
+        return ['1', '11', ...PRODUCT_NODES].includes(nodeId); // 2y neuron, LP Rewards, the products
     }, []);
 
     const createToken = useCallback((edge, percentage = 1, tokenType = null) => {
@@ -406,7 +408,7 @@ const TokenAnimationManager = ({ edges, nodes }) => {
             type = 'icp';
         } else if (edge.style === edgeStyles.sneed) {
             type = 'sneed';
-        } else if (['11', '13', '14'].includes(sourceNode.id)) {
+        } else if (['11', ...PRODUCT_NODES].includes(sourceNode.id)) {
             // For revenue sources that can generate both types, randomly choose
             type = Math.random() < 0.5 ? 'icp' : 'sneed';
         } else if (sourceNode.id === '1') {
@@ -606,6 +608,15 @@ const TokenAnimationManager = ({ edges, nodes }) => {
 const Popover = ({ x, y, hover, onClose, link, ignoreRef, children }) => {
     const ref = useRef(null);
     const [pos, setPos] = useState({ left: -9999, top: -9999 });
+    // re-placed when the content grows too (live numbers arriving), not only on a render
+    const [, bump] = useState(0);
+    useEffect(() => {
+        const el = ref.current;
+        if (!el || typeof ResizeObserver === 'undefined') return undefined;
+        const ro = new ResizeObserver(() => bump((n) => n + 1));
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
     useLayoutEffect(() => {
         const el = ref.current;
         if (!el) return;
@@ -672,6 +683,18 @@ const InfoTip = ({ text, label = 'What is this?' }) => {
     );
 };
 
+// The live numbers on a diagram card: a product's revenue, all products', and the ledger's lines
+const RevenueParts = ({ kind, target }) => {
+    const { lines, product, products, inside } = ledgerLinesFor(kind, target);
+    return (
+        <>
+            {product && <ProductSummary product={product} />}
+            {products && <ProductsSummary />}
+            <LedgerSummary lines={lines} inside={inside} />
+        </>
+    );
+};
+
 // Diagram card: hover follows the pointer; a tap or click pins it with a link.
 const TooltipOverlay = ({ tooltip, onClose }) => {
     if (!tooltip || !tooltip.content) return null;
@@ -694,6 +717,19 @@ const formatDurationStatic = (seconds) => {
     if (days > 0) parts.push(`${days} day${days > 1 ? 's' : ''}`);
     return parts.join(', ') || '< 1 day';
 };
+
+// The products that pay the DAO, as diagram nodes (the list lives in utils/revenueData.js)
+const PRODUCT_NODES = PRODUCTS.map((p) => p.node);
+const PRODUCT_POSITIONS = { apps: { x: 200, y: 760 }, lock: { x: 400, y: 760 }, sneedex: { x: 600, y: 760 }, premium: { x: 300, y: 860 }, jailbreak: { x: 500, y: 860 } };
+const productItem = (p) => ({
+    id: p.node,
+    title: p.name,
+    description: p.description,
+    inputs: ['Fees paid by its users'],
+    outputs: [p.token === 'ICP' ? 'ICP to Products' : 'ICP, SNEED and other tokens to Products'],
+    link: `https://app.sneeddao.com${p.link}`,
+    productId: p.id,
+});
 
 // Node definitions with their metadata (static text; the live vector data overrides splits and destinations)
 const nodes = {
@@ -827,22 +863,7 @@ const nodes = {
                 details: "Every SNEED/ICP position held by the Sneed DeFi canister",
                 link: "https://app.icpswap.com/info-swap/pool/details/osyzs-xiaaa-aaaag-qc76q-cai"
             },
-            {
-                id: "13",
-                title: "SneedLock",
-                description: "Token and LP position locking product",
-                inputs: ["User interactions"],
-                outputs: ["ICP and SNEED revenue to Products"],
-                link: "https://app.sneeddao.com/sneedlock"
-            },
-            {
-                id: "14",
-                title: "Swaprunner",
-                description: "Automated trading product",
-                inputs: ["User interactions"],
-                outputs: ["ICP and SNEED revenue to Products"],
-                link: "https://swaprunner.com"
-            }
+            ...PRODUCTS.map((p) => productItem(p))
         ]
     }
 };
@@ -1014,22 +1035,7 @@ const edges = {
                 token: "Various",
                 percentage: "100%"
             },
-            {
-                id: "e14",
-                source: "13",
-                target: "12",
-                description: "SneedLock Revenue",
-                token: "Various",
-                percentage: "100%"
-            },
-            {
-                id: "e15",
-                source: "14",
-                target: "12",
-                description: "Swaprunner Revenue",
-                token: "Various",
-                percentage: "100%"
-            }
+            ...PRODUCTS.map((p) => ({ id: `e-${p.id}`, source: p.node, target: '12', description: `${p.name} revenue`, token: p.token, percentage: '100%' }))
         ]
     }
 };
@@ -1253,36 +1259,11 @@ const initialNodes = [
         sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
     },
-    {
-        id: '13',
-        type: 'default',
-        data: { 
-            label: 'SneedLock',
-            description: "Token and LP position locking product",
-            inputs: ["User interactions"],
-            outputs: ["ICP and SNEED revenue to Products"],
-            link: "https://app.sneeddao.com/sneedlock"
-        },
-        position: { x: 400, y: 750 },
-        style: nodeStyles.revenue,
-        sourcePosition: Position.Bottom,
-        targetPosition: Position.Top,
-    },
-    {
-        id: '14',
-        type: 'default',
-        data: { 
-            label: 'Swaprunner',
-            description: "Automated trading product",
-            inputs: ["User interactions"],
-            outputs: ["ICP and SNEED revenue to Products"],
-            link: "https://swaprunner.com"
-        },
-        position: { x: 600, y: 750 },
-        style: nodeStyles.revenue,
-        sourcePosition: Position.Bottom,
-        targetPosition: Position.Top,
-    },
+    // The products, from utils/revenueData.js (the same list /revenue shows)
+    ...PRODUCTS.map((p) => {
+        const { title, ...data } = productItem(p);
+        return { id: p.node, type: 'default', data: { label: title, ...data }, position: PRODUCT_POSITIONS[p.id], style: nodeStyles.revenue, sourcePosition: Position.Bottom, targetPosition: Position.Top };
+    }),
 ];
 
 // Define the initial edges with styles
@@ -1502,34 +1483,11 @@ const initialEdges = [
             percentage: "100%"
         }
     },
-    {
-        id: 'e14',
-        source: '13',
-        target: '12',
-        label: 'fees',
-        type: 'smoothstep',
-        style: edgeStyles.various,
-        markerEnd: { type: MarkerType.ArrowClosed },
-        data: {
-            description: "SneedLock Revenue",
-            token: "Various",
-            percentage: "100%"
-        }
-    },
-    {
-        id: 'e15',
-        source: '14',
-        target: '12',
-        label: 'fees',
-        type: 'smoothstep',
-        style: edgeStyles.various,
-        markerEnd: { type: MarkerType.ArrowClosed },
-        data: {
-            description: "Swaprunner Revenue",
-            token: "Various",
-            percentage: "100%"
-        }
-    },
+    ...PRODUCTS.map((p) => ({
+        id: `e-${p.id}`, source: p.node, target: '12', label: 'fees', type: 'smoothstep',
+        style: p.token === 'ICP' ? edgeStyles.icp : edgeStyles.various, markerEnd: { type: MarkerType.ArrowClosed },
+        data: { description: `${p.name} revenue to Products`, token: p.token, percentage: '100%' },
+    })),
 ];
 
 function RLLInfo() {
@@ -2783,6 +2741,7 @@ function RLLInfo() {
                         )}
                     </div>
                 )}
+                <RevenueParts kind="node" target={node} />
                 {node.id === '9' && (
                     <div style={{
                         marginTop: '8px',
@@ -2829,19 +2788,30 @@ function RLLInfo() {
                 {edge.data?.percentage && (
                     <div style={{ color: theme.colors.accent }}>Percentage: {edge.data.percentage}</div>
                 )}
+                <RevenueParts kind="edge" target={edge} />
             </div>
         );
         
         return content;
     };
 
+    // The card is built from its node or edge at every render, so it shows at once and fills in as
+    // data arrives; hovering or tapping starts the loads it needs (shared with /revenue and /rll_ledger).
+    const tooltipContent = (t) => {
+        if (!t) return null;
+        if (t.kind === 'node') { const n = liveNodes.find((x) => x.id === t.id); return n ? buildNodeContent(n) : null; }
+        const e = liveEdges.find((x) => x.id === t.id);
+        return e ? buildEdgeContent(e) : null;
+    };
     const handleNodeMouseEnter = (event, node) => {
         if (tooltip?.pinned) return;
-        setTooltip({ content: buildNodeContent(node), x: event.clientX, y: event.clientY });
+        ensureTooltipData('node', node);
+        setTooltip({ kind: 'node', id: node.id, x: event.clientX, y: event.clientY });
     };
     const handleEdgeMouseEnter = (event, edge) => {
         if (tooltip?.pinned) return;
-        setTooltip({ content: buildEdgeContent(edge), x: event.clientX, y: event.clientY });
+        ensureTooltipData('edge', edge);
+        setTooltip({ kind: 'edge', id: edge.id, x: event.clientX, y: event.clientY });
     };
     const handleMouseLeave = () => {
         setTooltip((t) => (t && !t.pinned ? null : t));
@@ -2853,18 +2823,23 @@ function RLLInfo() {
     };
     // A tap or a click pins the card so it can be read and its link followed (hover never fires on a phone)
     const handleNodeClick = (event, node) => {
-        setTooltip({ content: buildNodeContent(node), x: event.clientX, y: event.clientY, pinned: true, link: node.data.link, id: node.id });
+        ensureTooltipData('node', node);
+        setTooltip({ kind: 'node', id: node.id, x: event.clientX, y: event.clientY, pinned: true, link: node.data.link });
     };
     const handleEdgeClick = (event, edge) => {
-        setTooltip({ content: buildEdgeContent(edge), x: event.clientX, y: event.clientY, pinned: true, id: edge.id });
+        ensureTooltipData('edge', edge);
+        setTooltip({ kind: 'edge', id: edge.id, x: event.clientX, y: event.clientY, pinned: true });
     };
     const closeTooltip = useCallback(() => setTooltip(null), []);
+    // the products' totals are a few queries: have them ready before a card asks
+    useEffect(() => { if (activeTab === 'rll') loadAllProducts(); }, [activeTab]);
     // From the hero: jump to the diagram with that stage's card open
     const openStage = (nodeId) => {
         const node = liveNodes.find((n) => n.id === nodeId);
         if (!node) return;
         setActiveTab('rll');
-        setTooltip({ content: buildNodeContent(node), x: null, y: null, pinned: true, link: node.data.link, id: node.id });
+        ensureTooltipData('node', node);
+        setTooltip({ kind: 'node', id: node.id, x: null, y: null, pinned: true, link: node.data.link });
     };
 
     const toggleSection = (section) => {
@@ -4356,7 +4331,7 @@ function RLLInfo() {
                                 <TokenAnimationManager edges={liveEdges} nodes={liveNodes} />
                             </ReactFlow>
                         </div>
-                        <TooltipOverlay tooltip={tooltip} onClose={closeTooltip} />
+                        <TooltipOverlay tooltip={tooltip && { ...tooltip, content: tooltipContent(tooltip) }} onClose={closeTooltip} />
                     </section>
                     )}
 
