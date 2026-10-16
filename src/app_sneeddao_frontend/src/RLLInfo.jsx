@@ -284,15 +284,15 @@ const AnimatedToken = ({ type, x, y, scale = 1 }) => {
                 top: transformedY,
                 width: size,
                 height: size,
-                borderRadius: '50%',
-                background: `url(${type === 'icp' ? 'icp_symbol.svg' : 'sneed_logo.png'})`,
-                backgroundSize: 'cover',
                 animation: 'pop-in 0.3s ease-out',
                 zIndex: 1000,
                 transform: `translate(-50%, -50%) scale(${viewport.zoom})`, // Scale with zoom to maintain relative size
                 pointerEvents: 'none'
             }}
-        />
+        >
+            {/* the logo turns gently on its own layer: the outer transform places and scales it */}
+            <div className="rll-token-logo" style={{ width: '100%', height: '100%', borderRadius: '50%', background: `url(${type === 'icp' ? 'icp_symbol.svg' : 'sneed_logo.png'})`, backgroundSize: 'cover' }} />
+        </div>
     );
 };
 
@@ -383,6 +383,11 @@ const DistributionEffect = ({ x, y, type, scale = 1 }) => {
     return <>{tokens}</>;
 };
 
+// Ids for tokens and effects: Date.now() repeats within a tick (several tokens arriving at one
+// node at once), and duplicate React keys left frozen tokens on the diagram.
+let animSeq = 0;
+const animId = (kind) => `${kind}-${++animSeq}`;
+
 // Token animation manager component
 const TokenAnimationManager = ({ edges, nodes }) => {
     const [tokens, setTokens] = useState([]);
@@ -425,7 +430,7 @@ const TokenAnimationManager = ({ edges, nodes }) => {
         const isDistributionDestination = targetNode.id === '9'; // RLL Distribution
 
         return {
-            id: `token-${edge.id}-${Date.now()}`,
+            id: animId(`token-${edge.id}`),
             type,
             edge: edge.id,
             scale,
@@ -461,7 +466,7 @@ const TokenAnimationManager = ({ edges, nodes }) => {
 
                     if (token.isBurnDestination) {
                         setBurnEffects(prev => [...prev, {
-                            id: `burn-${Date.now()}`,
+                            id: animId('burn'),
                             x: token.targetX,
                             y: token.targetY,
                             scale: token.scale,
@@ -469,7 +474,7 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                         }]);
                     } else if (token.isDistributionDestination) {
                         setDistributionEffects(prev => [...prev, {
-                            id: `distribute-${Date.now()}`,
+                            id: animId('distribute'),
                             x: token.targetX,
                             y: token.targetY,
                             type: token.type,
@@ -720,7 +725,9 @@ const formatDurationStatic = (seconds) => {
 
 // The products that pay the DAO, as diagram nodes (the list lives in utils/revenueData.js)
 const PRODUCT_NODES = PRODUCTS.map((p) => p.node);
-const PRODUCT_POSITIONS = { apps: { x: 200, y: 760 }, lock: { x: 400, y: 760 }, sneedex: { x: 600, y: 760 }, premium: { x: 300, y: 860 }, jailbreak: { x: 500, y: 860 } };
+// one row (a second row's edges ran up behind the first row's nodes), a little narrower than the other nodes
+const PRODUCT_WIDTH = 170;
+const PRODUCT_POSITIONS = { apps: { x: 40, y: 760 }, lock: { x: 225, y: 760 }, sneedex: { x: 410, y: 760 }, premium: { x: 595, y: 760 }, jailbreak: { x: 780, y: 760 } };
 const productItem = (p) => ({
     id: p.node,
     title: p.name,
@@ -1624,7 +1631,7 @@ function RLLInfo() {
         return out;
     };
     const nodeKind = (n) => (n.style === nodeStyles.infrastructure ? 'infrastructure' : n.style === nodeStyles.revenue ? 'revenue' : 'tokenManagement');
-    const liveNodes = useMemo(() => initialNodes.map((n) => ({ ...n, style: themedNodeStyles[nodeKind(n)], data: patchItem({ ...n.data, id: n.id }) })), [liveText, neuronDescription, theme]); // eslint-disable-line react-hooks/exhaustive-deps
+    const liveNodes = useMemo(() => initialNodes.map((n) => ({ ...n, style: PRODUCT_NODES.includes(n.id) ? { ...themedNodeStyles[nodeKind(n)], width: PRODUCT_WIDTH } : themedNodeStyles[nodeKind(n)], data: patchItem({ ...n.data, id: n.id }) })), [liveText, neuronDescription, theme]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // The Token Flows list says what the vectors say today, like the diagram does
     const liveFlowSections = useMemo(() => Object.fromEntries(Object.entries(edges).map(([key, section]) => {

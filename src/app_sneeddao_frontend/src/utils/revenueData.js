@@ -150,8 +150,8 @@ async function loadJailbreak() {
 /// The products that earn the DAO money. `node` is the product's node in the /rll_info diagram,
 /// `token` what its fees are paid in (Various: the token of the sale).
 export const PRODUCTS = [
-    { id: 'apps', token: 'ICP', node: '15', name: 'Sneed Apps', link: '/sneedapp', color: '#8b5cf6', load: loadApps,
-        description: 'Staking and trading bots minted from the Sneed App factory: the DAO earns the mint fee of every bot.' },
+    { id: 'apps', token: 'ICP', node: '15', name: 'Sneedapp', link: '/sneedapp', color: '#8b5cf6', load: loadApps,
+        description: 'Staking and trading bots minted from the Sneedapp factory: the DAO earns the mint fee of every bot.' },
     { id: 'lock', token: 'ICP', node: '13', name: 'Sneed Lock', link: '/sneedlock', color: '#10b981', load: loadLock,
         description: 'Token and LP position locking: a fee in ICP for each new lock.' },
     { id: 'sneedex', token: 'Various', node: '16', name: 'Sneedex', link: '/sneedex', color: '#3b82f6', load: loadSneedex,

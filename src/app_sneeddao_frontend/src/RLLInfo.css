@@ -377,3 +377,8 @@
     .rll-page * { transition: none !important; }
     .rll-page .react-flow__edge.animated path { animation: none !important; }
 }
+
+/* tokens travelling the diagram turn gently (not for people who asked for less motion) */
+@keyframes rll-token-spin { to { transform: rotate(360deg); } }
+.rll-token-logo { animation: rll-token-spin 4s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .rll-token-logo { animation: none; } }
