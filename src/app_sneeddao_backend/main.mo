@@ -9,6 +9,7 @@ import Array "mo:base/Array";
 import Blob "mo:base/Blob";
 import Result "mo:base/Result";
 import Buffer "mo:base/Buffer";
+import Debug "mo:base/Debug";
 import Error "mo:base/Error";
 import Time "mo:base/Time";
 import Int "mo:base/Int";
@@ -175,6 +176,11 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
   // Stable storage for avatars (a separate structure: the name records stay as they are)
   var stable_avatars : [(Principal, Text)] = [];
+
+  // The naming service (spec/sneed_names.md): its canisters may call names_moderate, and while
+  // names move there the naming writes here are refused (reads keep working).
+  var stable_names_canisters : [Principal] = [];
+  var stable_names_frozen : Bool = false;
 
   // Stable storage for principal names and nicknames
   var stable_principal_names : [(Principal, (Text, Bool))] = [];
@@ -1894,6 +1900,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
   // Neuron name management
   public shared ({ caller }) func set_neuron_name(sns_root_canister_id : Principal, neuron_id : NeuronId, name : Text) : async Result.Result<Text, Text> {
+    if (stable_names_frozen) { return #err(NAMES_MOVING) };
     if (Principal.isAnonymous(caller)) {
         return #err("Anonymous caller not allowed");
     };
@@ -1984,6 +1991,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   };
 
   public shared ({ caller }) func verify_neuron_name(sns_root_canister_id : Principal, neuron_id : NeuronId) : async Result.Result<Text, Text> {
+    if (stable_names_frozen) { return #err(NAMES_MOVING) };
     try {
       let authorized = await can_verify_names(caller, sns_root_canister_id);
       if (not authorized) {
@@ -2010,6 +2018,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   };
 
   public shared ({ caller }) func unverify_neuron_name(sns_root_canister_id : Principal, neuron_id : NeuronId) : async Result.Result<Text, Text> {
+    if (stable_names_frozen) { return #err(NAMES_MOVING) };
     try {
       let authorized = await can_verify_names(caller, sns_root_canister_id);
       if (not authorized) {
@@ -2037,6 +2046,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
   // Neuron nickname management
   public shared ({ caller }) func set_neuron_nickname(sns_root_canister_id : Principal, neuron_id : NeuronId, nickname : Text) : async Result.Result<Text, Text> {
+    if (stable_names_frozen) { return #err(NAMES_MOVING) };
     if (Principal.isAnonymous(caller)) {
         return #err("Anonymous caller not allowed");
     };
@@ -2230,6 +2240,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
   // Principal name management
   private func set_principal_name_impl(caller : Principal, principal : Principal, name : Text, sns_root_canister_id : ?Principal) : async Result.Result<Text, Text> {
+    if (stable_names_frozen) { return #err(NAMES_MOVING) };
       if (Principal.isAnonymous(caller)) {
           return #err("Anonymous caller not allowed");
       };
@@ -2342,6 +2353,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
   /// Set the caller's avatar. An empty string clears it.
   public shared ({ caller }) func set_my_avatar(url : Text) : async Result.Result<Text, Text> {
+    if (stable_names_frozen) { return #err(NAMES_MOVING) };
     if (Principal.isAnonymous(caller)) return #err("Anonymous caller not allowed");
     if (is_banned(caller)) return #err("You are banned");
     if (url == "") { avatars.delete(caller); return #ok("Avatar cleared") };
@@ -2352,6 +2364,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   };
 
   public shared ({ caller }) func clear_my_avatar() : async Result.Result<Text, Text> {
+    if (stable_names_frozen) { return #err(NAMES_MOVING) };
     if (Principal.isAnonymous(caller)) return #err("Anonymous caller not allowed");
     avatars.delete(caller);
     #ok("Avatar cleared")
@@ -2359,6 +2372,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
   /// Admins can drop an abusive avatar.
   public shared ({ caller }) func admin_clear_avatar(principal : Principal) : async Result.Result<Text, Text> {
+    if (stable_names_frozen) { return #err(NAMES_MOVING) };
     if (not is_admin(caller)) return #err("Not authorized");
     avatars.delete(principal);
     #ok("Avatar cleared")
@@ -2383,6 +2397,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   public query func get_avatar_count() : async Nat { avatars.size() };
 
   public shared ({ caller }) func verify_principal_name(principal : Principal) : async Result.Result<Text, Text> {
+    if (stable_names_frozen) { return #err(NAMES_MOVING) };
       if (not is_admin(caller)) {
           return #err("Caller is not authorized to verify names");
       };
@@ -2399,6 +2414,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   };
 
   public shared ({ caller }) func unverify_principal_name(principal : Principal) : async Result.Result<Text, Text> {
+    if (stable_names_frozen) { return #err(NAMES_MOVING) };
       if (not is_admin(caller)) {
           return #err("Caller is not authorized to unverify names");
       };
@@ -2416,6 +2432,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
   // Set a public name for a canister (caller must be a controller)
   public shared ({ caller }) func set_canister_name(canister_id : Principal, name : Text) : async Result.Result<Text, Text> {
+    if (stable_names_frozen) { return #err(NAMES_MOVING) };
       if (Principal.isAnonymous(caller)) {
           return #err("Anonymous caller not allowed");
       };
@@ -2498,8 +2515,97 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
       };
   };
 
+  // ---- The naming service (spec/sneed_names.md) ----
+
+  let NAMES_MOVING : Text = "Names are moving to the new naming service; please try again shortly";
+
+  /// The naming service's canisters, which may call names_moderate.
+  public shared ({ caller }) func admin_set_names_canisters(canisters : [Principal]) : async Result.Result<Text, Text> {
+    if (not is_admin(caller)) { return #err("Not authorized") };
+    if (canisters.size() > 20) { return #err("At most 20 canisters") };
+    stable_names_canisters := canisters;
+    #ok("Naming canisters set");
+  };
+
+  public query func get_names_canisters() : async [Principal] { stable_names_canisters };
+
+  /// Refuse (true) or allow (false) every naming write here while names move to the naming service.
+  public shared ({ caller }) func admin_set_names_frozen(frozen : Bool) : async Result.Result<Text, Text> {
+    if (not is_admin(caller)) { return #err("Not authorized") };
+    stable_names_frozen := frozen;
+    #ok(if (frozen) "Naming writes frozen" else "Naming writes allowed");
+  };
+
+  public query func get_names_frozen() : async Bool { stable_names_frozen };
+
+  /// For the naming service's canisters: is `user` banned, and does `text` contain a blacklisted
+  /// word? A blacklisted word in a public name bans the user, as setting a name here does.
+  public shared ({ caller }) func names_moderate(args : { user : Principal; text : Text; is_public : Bool }) : async { #ok; #banned : Text; #blacklisted : Text } {
+    if (Array.find<Principal>(stable_names_canisters, func(c) { Principal.equal(c, caller) }) == null) {
+      Debug.trap("Only the naming service's canisters");
+    };
+    if (is_banned(args.user)) {
+      switch (banned_users.get(args.user)) {
+        case (?expiry) {
+          let remaining = expiry - Time.now();
+          if (remaining > 0) {
+            return #banned("You are banned. Ban expires in " # format_duration(Int.abs(remaining) / 3600_000_000_000));
+          };
+        };
+        case null {};
+      };
+      return #banned("You are banned");
+    };
+    let lower = Text.toLowercase(args.text);
+    for ((word, _) in blacklisted_words.entries()) {
+      if (Text.contains(lower, #text (Text.toLowercase(word)))) {
+        if (args.is_public) {
+          let reason = "Attempted to set a name containing blacklisted word '" # word # "'. Full attempted name: '" # args.text # "'";
+          ignore await auto_ban_user(this_canister_id(), args.user, reason);
+          return #blacklisted("Name contains inappropriate content. You have been banned.");
+        };
+        return #blacklisted("Name contains inappropriate content");
+      };
+    };
+    #ok;
+  };
+
+  /// Every user's principal nicknames, a page at a time: (owner, principal, nickname). Admins only.
+  public query ({ caller }) func admin_export_principal_nicknames(start : Nat, limit : Nat) : async { items : [(Principal, Principal, Text)]; total : Nat } {
+    if (not is_admin(caller)) { Debug.trap("Not authorized") };
+    let all = Buffer.Buffer<(Principal, Principal, Text)>(100);
+    for ((owner, m) in principal_nicknames.entries()) {
+      for ((target, nickname) in m.entries()) { all.add((owner, target, nickname)) };
+    };
+    exportPage(Buffer.toArray(all), start, limit);
+  };
+
+  /// Every user's neuron nicknames, a page at a time: (owner, neuron, nickname). Admins only.
+  public query ({ caller }) func admin_export_neuron_nicknames(start : Nat, limit : Nat) : async { items : [(Principal, NeuronNameKey, Text)]; total : Nat } {
+    if (not is_admin(caller)) { Debug.trap("Not authorized") };
+    let all = Buffer.Buffer<(Principal, NeuronNameKey, Text)>(100);
+    for ((owner, m) in neuron_nicknames.entries()) {
+      for ((key, nickname) in m.entries()) { all.add((owner, key, nickname)) };
+    };
+    exportPage(Buffer.toArray(all), start, limit);
+  };
+
+  /// Every avatar, a page at a time. Admins only.
+  public query ({ caller }) func admin_export_avatars(start : Nat, limit : Nat) : async { items : [(Principal, Text)]; total : Nat } {
+    if (not is_admin(caller)) { Debug.trap("Not authorized") };
+    exportPage(Iter.toArray(avatars.entries()), start, Nat.min(limit, 50));
+  };
+
+  private func exportPage<X>(all : [X], start : Nat, limit : Nat) : { items : [X]; total : Nat } {
+    let n = all.size();
+    let from = Nat.min(start, n);
+    let len = Nat.min(Nat.min(limit, 1000), n - from);
+    { items = Array.subArray<X>(all, from, len); total = n };
+  };
+
   // Principal nickname management
   public shared ({ caller }) func set_principal_nickname(principal : Principal, nickname : Text) : async Result.Result<Text, Text> {
+    if (stable_names_frozen) { return #err(NAMES_MOVING) };
       if (Principal.isAnonymous(caller)) {
           return #err("Anonymous caller not allowed");
       };
@@ -4045,6 +4151,11 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     #add_project : Any;
     #add_whitelisted_token : Any;
     #admin_clear_avatar : Any;
+    #admin_export_avatars : Any;
+    #admin_export_neuron_nicknames : Any;
+    #admin_export_principal_nicknames : Any;
+    #admin_set_names_canisters : Any;
+    #admin_set_names_frozen : Any;
     #ban_user : Any;
     #caller_is_admin : Any;
     #check_ban_status : Any;
@@ -4058,6 +4169,8 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     #get_all_neuron_nicknames : Any;
     #get_all_principal_names : Any;
     #get_all_principal_nicknames : Any;
+    #get_names_canisters : Any;
+    #get_names_frozen : Any;
     #get_authorized_for_callers : Any;
     #get_avatar : Any;
     #get_avatar_count : Any;
@@ -4102,6 +4215,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     #import_whitelist_from_icpswap : Any;
     #import_whitelist_from_swaprunner : Any;
     #is_token_whitelisted : Any;
+    #names_moderate : Any;
     #mark_logs_seen : Any;
     #refresh_token_metadata : Any;
     #register_ledger_canister_id : Any;
@@ -4200,7 +4314,14 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
         or #get_wallet_layout _
         or #get_whitelisted_tokens _
         or #is_token_whitelisted _
+        or #admin_export_avatars _
+        or #admin_export_neuron_nicknames _
+        or #admin_export_principal_nicknames _
+        or #get_names_canisters _
+        or #get_names_frozen _
       ) false;
+      // the naming service's canisters call it, never by ingress
+      case (#names_moderate _) false;
       // names and nicknames: at most 32 characters (validate_name_text, set_canister_name)
       case (#set_principal_name f) nameOk(arg, f());
       case (#set_principal_name_for f) nameOk(arg, f().1);
@@ -4225,7 +4346,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
       // token metadata (logos included) for the shared cache: any signed-in user, any size
       case (#set_cached_token_meta _) not Principal.isAnonymous(caller);
       // admin tools with free-form content
-      case (#add_blacklisted_word _ or #remove_blacklisted_word _ or #add_partner _ or #update_partner _ or #add_project _ or #update_project _ or #add_whitelisted_token _ or #ban_user _) is_admin(caller);
+      case (#add_blacklisted_word _ or #remove_blacklisted_word _ or #add_partner _ or #update_partner _ or #add_project _ or #update_project _ or #add_whitelisted_token _ or #ban_user _ or #admin_set_names_canisters _ or #admin_set_names_frozen _) is_admin(caller);
       case _ arg.size() <= IngressGuard.SMALL_ARG;
     };
   };
