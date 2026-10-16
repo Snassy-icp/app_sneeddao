@@ -8,9 +8,16 @@ persistent actor MockSnsWasm {
   public shared func set_latest(entries : [(Text, Text)]) : async () { latest := entries };
   public query func get_latest_sns_version_pretty(_ : Null) : async [(Text, Text)] { latest };
   stable var deployed : [Principal] = []; // roots of "deployed" SNSes
+  stable var governances : [(Principal, Principal)] = []; // (root, governance), for the ones that have one
   public shared func set_deployed(roots : [Principal]) : async () { deployed := roots };
-  public query func list_deployed_snses(_ : {}) : async { instances : [{ root_canister_id : ?Principal }] } {
-    { instances = Array.map<Principal, { root_canister_id : ?Principal }>(deployed, func(r) { { root_canister_id = ?r } }) };
+  public shared func set_deployed_snses(snses : [(Principal, Principal)]) : async () {
+    deployed := Array.map<(Principal, Principal), Principal>(snses, func((r, _)) { r });
+    governances := snses;
+  };
+  public query func list_deployed_snses(_ : {}) : async { instances : [{ root_canister_id : ?Principal; governance_canister_id : ?Principal }] } {
+    { instances = Array.map<Principal, { root_canister_id : ?Principal; governance_canister_id : ?Principal }>(deployed, func(r) {
+      { root_canister_id = ?r; governance_canister_id = switch (Array.find<(Principal, Principal)>(governances, func((x, _)) { x == r })) { case (?(_, g)) ?g; case null null } };
+    }) };
   };
 
   // the blessed upgrade path, oldest first (what list_upgrade_steps answers)
