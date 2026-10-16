@@ -725,9 +725,12 @@ const formatDurationStatic = (seconds) => {
 
 // The products that pay the DAO, as diagram nodes (the list lives in utils/revenueData.js)
 const PRODUCT_NODES = PRODUCTS.map((p) => p.node);
-// one row (a second row's edges ran up behind the first row's nodes), a little narrower than the other nodes
+// The revenue part is a tree that flows up: the products feed Products, which with the LP rewards
+// feeds Other Revenue Sources, which feeds the splitters. The products are one row centred under
+// Products (a second row's edges ran up behind the first row's nodes), a little narrower than the
+// other nodes.
 const PRODUCT_WIDTH = 170;
-const PRODUCT_POSITIONS = { apps: { x: 40, y: 760 }, lock: { x: 225, y: 760 }, sneedex: { x: 410, y: 760 }, premium: { x: 595, y: 760 }, jailbreak: { x: 780, y: 760 } };
+const PRODUCT_POSITIONS = { apps: { x: -135, y: 870 }, lock: { x: 50, y: 870 }, sneedex: { x: 235, y: 870 }, premium: { x: 420, y: 870 }, jailbreak: { x: 605, y: 870 } };
 const productItem = (p) => ({
     id: p.node,
     title: p.name,
@@ -1233,8 +1236,8 @@ const initialNodes = [
         },
         position: { x: 100, y: 650 },
         style: nodeStyles.revenue,
-        sourcePosition: Position.Bottom,
-        targetPosition: Position.Top,
+        sourcePosition: Position.Left, // up the left margin to the splitters, clear of the middle column
+        targetPosition: Position.Bottom, // LP rewards and Products come up from below
     },
     {
         id: '11',
@@ -1247,9 +1250,9 @@ const initialNodes = [
             details: "Every SNEED/ICP position held by the Sneed DeFi canister",
             link: "https://app.icpswap.com/info-swap/pool/details/osyzs-xiaaa-aaaag-qc76q-cai"
         },
-        position: { x: 300, y: 650 },
+        position: { x: -30, y: 760 },
         style: nodeStyles.revenue,
-        sourcePosition: Position.Bottom,
+        sourcePosition: Position.Top,
         targetPosition: Position.Top,
     },
     {
@@ -1261,15 +1264,15 @@ const initialNodes = [
             inputs: ["ICP and SNEED revenue from products"],
             outputs: ["ICP and SNEED to Revenue Collector"]
         },
-        position: { x: 500, y: 650 },
+        position: { x: 230, y: 760 },
         style: nodeStyles.revenue,
-        sourcePosition: Position.Bottom,
-        targetPosition: Position.Top,
+        sourcePosition: Position.Top,
+        targetPosition: Position.Bottom, // the products come up from below
     },
     // The products, from utils/revenueData.js (the same list /revenue shows)
     ...PRODUCTS.map((p) => {
         const { title, ...data } = productItem(p);
-        return { id: p.node, type: 'default', data: { label: title, ...data }, position: PRODUCT_POSITIONS[p.id], style: nodeStyles.revenue, sourcePosition: Position.Bottom, targetPosition: Position.Top };
+        return { id: p.node, type: 'default', data: { label: title, ...data }, position: PRODUCT_POSITIONS[p.id], style: nodeStyles.revenue, sourcePosition: Position.Top, targetPosition: Position.Bottom };
     }),
 ];
 
@@ -1491,7 +1494,7 @@ const initialEdges = [
         }
     },
     ...PRODUCTS.map((p) => ({
-        id: `e-${p.id}`, source: p.node, target: '12', label: 'fees', type: 'smoothstep',
+        id: `e-${p.id}`, source: p.node, target: '12', type: 'smoothstep',
         style: p.token === 'ICP' ? edgeStyles.icp : edgeStyles.various, markerEnd: { type: MarkerType.ArrowClosed },
         data: { description: `${p.name} revenue to Products`, token: p.token, percentage: '100%' },
     })),
