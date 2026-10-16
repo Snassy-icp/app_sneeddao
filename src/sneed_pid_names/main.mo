@@ -1228,10 +1228,11 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     switch msg {
       // queries are free as queries; as updates the canister would pay for consensus
       case (#changes_since _ or #get_account _ or #get_account_of _ or #get_admins _ or #get_canister_name _ or #get_config _ or #get_log _ or #get_name _ or #get_names _ or #icrc10_supported_standards _ or #icrc3_get_archives _ or #icrc3_get_blocks _ or #icrc3_get_tip_certificate _ or #icrc3_log_status _ or #icrc3_supported_block_types _ or #list_names _ or #my_hotkey_accounts _ or #search _ or #stats _ or #validate_unverify_by_dao _ or #validate_verify_by_dao _) false;
-      // only the DAO's governance canister calls these, never by ingress
+      // only governance canisters call these, never by ingress
       case (#verify_by_dao _ or #unverify_by_dao _) false;
       case (#admin_import_names _) isAdmin(caller) and arg.size() <= 2_000_000;
-      case (#admin_set_config _ or #admin_set_icrc3_settings _) isAdmin(caller) and arg.size() <= IngressGuard.textArg(1_000);
+      case (#admin_set_config _) isAdmin(caller) and arg.size() <= IngressGuard.textArg(1_000);
+      case (#admin_set_icrc3_settings _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       case (#admin_add_admin _ or #admin_clear_avatar _ or #admin_finish_import _ or #admin_icrc3_repair_archive_controllers _ or #admin_icrc3_spill_now _ or #admin_remove_admin _ or #admin_set_name _ or #unverify _ or #verify _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       case (#set_my_avatar _ or #set_account_avatar _ or #set_canister_avatar _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.textArg(T.MAX_URL_LENGTH);
       case _ not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG;

@@ -61,6 +61,16 @@ persistent actor class MockHubSns() = this {
   public shared func call_set_canister_name(names : Principal, canister : Principal, name : Text) : async { #ok : Text; #err : Text } {
     await (actor (Principal.toText(names)) : Names).set_canister_name(canister, name);
   };
+  type NeuronNames = actor {
+    verify_by_sns : ({ sns_root : Principal; neuron_id : Blob }, Text) -> async { #ok : Text; #err : Text };
+    unverify_by_sns : ({ sns_root : Principal; neuron_id : Blob }) -> async { #ok : Text; #err : Text };
+  };
+  public shared func call_verify_by_sns(names : Principal, root : Principal, neuron_id : Blob, expected : Text) : async { #ok : Text; #err : Text } {
+    await (actor (Principal.toText(names)) : NeuronNames).verify_by_sns({ sns_root = root; neuron_id }, expected);
+  };
+  public shared func call_unverify_by_sns(names : Principal, root : Principal, neuron_id : Blob) : async { #ok : Text; #err : Text } {
+    await (actor (Principal.toText(names)) : NeuronNames).unverify_by_sns({ sns_root = root; neuron_id });
+  };
   public shared func call_verify_by_dao(names : Principal, p : Principal, expected : Text) : async { #ok; #err : Text } {
     try { await (actor (Principal.toText(names)) : Names).verify_by_dao(p, expected); #ok } catch (e) { #err(Error.message(e)) };
   };
