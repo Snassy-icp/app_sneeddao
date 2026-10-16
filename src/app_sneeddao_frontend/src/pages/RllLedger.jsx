@@ -28,6 +28,9 @@ const fmtNum = (n, max = 2) => Number(n).toLocaleString('en-US', { maximumFracti
 const txUrl = (ledger, id) => `/transaction?ledger=${ledger}&id=${id.toString()}${ledger === SNEED_LEDGER ? `&sns=${SNEED_ROOT}` : ''}`;
 const daysOf = (s) => Math.round(Number(s) / 86_400);
 const colorOf = (token) => (token === 'SNEED' ? SNEED_COLOR : ICP_COLOR);
+const dayOf = (ms) => new Date(ms).toISOString().slice(0, 10);
+// a line whose account was cut at its newest rows only covers the time since its oldest row read
+const cutNote = (l) => (l.cutAt ? ` · since ${dayOf(l.cutAt)} only` : '');
 
 function Counterparty({ cp, theme }) {
     if (!cp) return <span style={{ color: theme.colors.mutedText }}>—</span>;
@@ -63,7 +66,7 @@ function Section({ section, sinceMs, prices, splits, children }) {
                 const reads = new Map();
                 await Promise.all(accounts.map(async (a) => { reads.set(a.key + a.ledger, await fetchAccountRows(a, sinceMs, (n) => { if (alive) setProgress(`${a.name}: ${n} rows…`); })); }));
                 if (!alive) return;
-                const lines = section.lines.map((l) => { const rows = reads.get(l.account.key + l.account.ledger).filter(l.keep); return { ...l, rows, sum: summarizeLine(rows, DEC) }; });
+                const lines = section.lines.map((l) => { const read = reads.get(l.account.key + l.account.ledger); const rows = read.rows.filter(l.keep); return { ...l, rows, cutAt: read.cutAt, sum: summarizeLine(rows, DEC) }; });
                 setData({ lines });
             } catch (e) { if (alive) setError(e?.message || String(e)); }
         })();
@@ -95,7 +98,12 @@ function Section({ section, sinceMs, prices, splits, children }) {
         const oldest = allRows.length ? allRows[allRows.length - 1].at : Date.now();
         const spanDays = Math.max(1, Math.round((Date.now() - (sinceMs || oldest)) / 86_400_000));
         const second = data.lines.find((l) => l.token && l.token !== section.token);
-        return { ins, outs, totalIn, totalOut, series, allRows, spanDays, second };
+        // The vector spends what it receives gradually (a fixed amount per interval), so SNEED bought
+        // in a period was largely paid with ICP that arrived earlier: the average is only meaningful
+        // over the whole history, read in full on both sides.
+        let avg = null;
+        if (second && !sinceMs && ![...ins, second].some((l) => l.cutAt) && totalIn > 0n && second.sum.total > 0n) avg = { price: Number(totalIn) / Number(second.sum.total) };
+        return { ins, outs, totalIn, totalOut, series, allRows, spanDays, second, avg };
     }, [data, section, sinceMs]);
 
     const splitFor = (line) => (line.dest && splits ? splits.find((s) => s.key === line.dest.key && s.ledger === line.dest.ledger) : null);
@@ -119,14 +127,14 @@ function Section({ section, sinceMs, prices, splits, children }) {
             {view && (
                 <>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, marginTop: 12 }}>
-                        {view.ins.map((l) => tile(l.title, `${fmt(l.sum.total)} ${section.token}`, `${money(l.sum.total, section.token) || ''}${l.sum.n ? ` · ${l.sum.n} tx` : ''}`, color))}
-                        {view.outs.map((l) => tile(l.title, `${fmt(l.sum.total)} ${l.token || section.token}`, `${money(l.sum.total, l.token || section.token) || ''}${l.sum.n ? ` · ${l.sum.n} tx` : ''}`, l.burn ? BURN_COLOR : l.token ? colorOf(l.token) : undefined))}
+                        {view.ins.map((l) => tile(l.title, `${fmt(l.sum.total)} ${section.token}`, `${money(l.sum.total, section.token) || ''}${l.sum.n ? ` · ${l.sum.n} tx` : ''}${cutNote(l)}`, color))}
+                        {view.outs.map((l) => tile(l.title, `${fmt(l.sum.total)} ${l.token || section.token}`, `${money(l.sum.total, l.token || section.token) || ''}${l.sum.n ? ` · ${l.sum.n} tx` : ''}${cutNote(l)}`, l.burn ? BURN_COLOR : l.token ? colorOf(l.token) : undefined))}
                         {view.ins.length > 1 && tile(`${section.token} in, total`, `${fmt(view.totalIn)} ${section.token}`, money(view.totalIn, section.token), color)}
                         {view.outs.filter((l) => !l.token).length > 1 && tile(`${section.token} out, total`, `${fmt(view.totalOut)} ${section.token}`, money(view.totalOut, section.token))}
                         {tile('Per day', `${fmtNum(Number(view.totalIn) / 10 ** DEC / view.spanDays, 4)} ${section.token}`, `in, over ${view.spanDays} day${view.spanDays === 1 ? '' : 's'}`)}
-                        {view.second && view.second.sum.total > 0n && view.totalIn > 0n && (section.key === 'buyback'
-                            ? tile('Average price paid', `${fmtNum(Number(view.totalIn) / Number(view.second.sum.total), 6)} ICP / SNEED`, prices.SNEED && prices.ICP ? `market now ${fmtNum(prices.SNEED / prices.ICP, 6)}` : null)
-                            : null)}
+                        {view.second && section.key === 'buyback' && (view.avg
+                            ? tile('Average price paid', `${fmtNum(view.avg.price, 6)} ICP / SNEED`, `all time, counting ICP not yet spent${prices.SNEED && prices.ICP ? ` · market now ${fmtNum(prices.SNEED / prices.ICP, 6)}` : ''}`)
+                            : tile('Average price paid', '—', 'all time only: the vector spends its ICP gradually, so a shorter period does not match ICP to the SNEED it bought'))}
                     </div>
                     {section.virtual && section.virtual.map((v, i) => <div key={i} style={{ marginTop: 10, fontSize: '0.78rem', color: theme.colors.mutedText, display: 'flex', gap: 6, alignItems: 'flex-start' }}><FaInfoCircle style={{ marginTop: 2, flexShrink: 0 }} /> {v}</div>)}
                     {section.note && <div style={{ marginTop: 6, fontSize: '0.78rem', color: theme.colors.mutedText, display: 'flex', gap: 6, alignItems: 'flex-start' }}><FaInfoCircle style={{ marginTop: 2, flexShrink: 0 }} /> {section.note}</div>}
@@ -257,7 +265,7 @@ function RllLedger() {
                 ))}
 
                 <div style={{ ...card, fontSize: '0.8rem', color: theme.colors.mutedText, lineHeight: 1.5 }}>
-                    Each flow is read at the account where it is visible: the neuron's maturity account for the mints, the buyback's and the treasury's accounts for the ICP splitter's outputs, the SNEED splitter's account for what the buybacks bought, and the pylon's main SNEED account for the burns and the treasury and RLL transfers. Transfers between nodes of the same pylon never reach the ledger. An account with more than 6,000 transactions in the period is cut at the newest 6,000. Values in your chosen denomination use today's prices, not the price at the time of each transfer.
+                    Each flow is read at the account where it is visible: the neuron's maturity account for the mints, the buyback's and the treasury's accounts for the ICP splitter's outputs, the SNEED splitter's account for what the buybacks bought, and the pylon's main SNEED account for the burns and the treasury and RLL transfers. Transfers between nodes of the same pylon never reach the ledger. An account with more than 6,000 transactions in the period is cut at the newest 6,000: its totals then say "since" the oldest day read, and the SNEED splitter's deposit account is always read in full, and the buyback's average price is shown for all time only. Values in your chosen denomination use today's prices, not the price at the time of each transfer.
                 </div>
             </div>
         </>

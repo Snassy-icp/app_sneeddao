@@ -52,7 +52,9 @@ export const ACCOUNTS = {
     treasuryIcp: mk('DAO treasury (ICP)', ICP_LEDGER, GOVERNANCE, null),
     pylonMainIcp: mk('Neutrinite pylon main account', ICP_LEDGER, PYLON, null),
     buybackPylonMainIcp: mk('ICPCoins pylon main account', ICP_LEDGER, BUYBACK_PYLON, null),
-    sneedSplitterSource: mk('SNEED splitter: deposit account', SNEED_LEDGER, PYLON, nodeSub(45)),
+    // read in full (no row cap): only the loop uses it, two rows per buyback delivery, and the
+    // buyback's average price needs its whole history
+    sneedSplitterSource: { ...mk('SNEED splitter: deposit account', SNEED_LEDGER, PYLON, nodeSub(45)), full: true },
     pylonMainSneed: mk('Neutrinite pylon main account', SNEED_LEDGER, PYLON, null),
     buybackPylonMainSneed: mk('ICPCoins pylon main account', SNEED_LEDGER, BUYBACK_PYLON, null),
     treasurySneed: mk('DAO treasury (SNEED)', SNEED_LEDGER, GOVERNANCE, hexSub(TREASURY_SNEED_SUB)),
@@ -81,16 +83,21 @@ const MAX_ROWS = 6000;
 const subHex = (s) => (s && s.length ? hex(Uint8Array.from(s)) : '');
 
 /// Every transaction of an account since `sinceMs` (0 = all), newest first:
-/// { id, at (ms), kind, dir ('in'|'out'|'self'), amount, fee, cp }.
+/// { rows: [{ id, at (ms), kind, dir ('in'|'out'|'self'), amount, fee, cp }], cutAt }.
+/// `cutAt` is null when the period was read in full; when the account has more than MAX_ROWS
+/// transactions in it (and is not marked `full`), the rows stop at the newest MAX_ROWS and
+/// `cutAt` is the time (ms) of the oldest row read.
 export async function fetchAccountRows(acct, sinceMs, onProgress) {
     const ck = `${acct.key}:${acct.ledger}:${sinceMs}`;
     const c = cache.get(ck);
-    if (c && Date.now() - c.at < TTL) return c.rows;
+    if (c && Date.now() - c.at < TTL) return c.read;
     const owner = Principal.fromText(acct.owner);
     const rows = [];
     let start = [];
     const page = 500n;
-    while (rows.length < MAX_ROWS) {
+    let complete = false;
+    const max = acct.full ? Infinity : MAX_ROWS;
+    while (rows.length < max) {
         let txs; let oldest;
         if (acct.ledger === ICP_LEDGER) {
             const index = await actor(icpIndexIdl, ICP_INDEX);
@@ -120,13 +127,14 @@ export async function fetchAccountRows(acct, sinceMs, onProgress) {
         }
         for (const t of txs) { if (sinceMs && t.at < sinceMs) { txs = null; break; } rows.push(t); }
         onProgress?.(rows.length);
-        if (txs === null || txs.length === 0) break;
+        if (txs === null || txs.length === 0) { complete = true; break; }
         const minId = rows[rows.length - 1].id;
-        if (oldest === undefined || oldest === null || BigInt(oldest) >= minId || minId === 0n) break;
+        if (oldest === undefined || oldest === null || BigInt(oldest) >= minId || minId === 0n) { complete = true; break; }
         start = [minId - 1n];
     }
-    cache.set(ck, { at: Date.now(), rows });
-    return rows;
+    const read = { rows, cutAt: complete || !rows.length ? null : rows[rows.length - 1].at };
+    cache.set(ck, { at: Date.now(), read });
+    return read;
 }
 
 // ---- the flows: what each station really receives and sends ----
