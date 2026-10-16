@@ -386,7 +386,7 @@ export default function SneedApp() {
                                         {padInfo ? `${formatIcp(padInfo.fee)} ICP${padInfo.premiumFee !== padInfo.fee ? ` (${formatIcp(padInfo.premiumFee)} Premium)` : ''} + cycles` : 'fee + cycles'}
                                     </div>
                                     <Link to="/studio/launch" onClick={e => e.stopPropagation()} style={{ marginLeft: 'auto', padding: '8px 14px', borderRadius: 8, background: `linear-gradient(135deg, ${studioPrimary}, ${studioSecondary})`, color: '#fff', textDecoration: 'none', fontWeight: 600, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                                        <FaRocket size={12} /> Launch a token
+                                        <FaRocket size={12} /> Mint a token
                                     </Link>
                                 </div>
                             </div>
@@ -424,7 +424,7 @@ export default function SneedApp() {
                                         {padInfo?.indexFee !== undefined ? `${formatIcp(padInfo.indexFee)} ICP${padInfo.premiumIndexFee !== padInfo.indexFee ? ` (${formatIcp(padInfo.premiumIndexFee)} Premium)` : ''} + cycles` : 'fee + cycles'}
                                     </div>
                                     <Link to="/studio/index" onClick={e => e.stopPropagation()} style={{ marginLeft: 'auto', padding: '8px 14px', borderRadius: 8, background: 'linear-gradient(135deg, #6366f1, #818cf8)', color: '#fff', textDecoration: 'none', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                        <FaDatabase size={12} /> Create an index
+                                        <FaDatabase size={12} /> Mint an index
                                     </Link>
                                 </div>
                             </div>
