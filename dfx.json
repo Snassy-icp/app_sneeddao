@@ -182,6 +182,11 @@
       "type": "motoko",
       "args": "--enhanced-orthogonal-persistence"
     },
+    "sneed_avatars": {
+      "main": "src/sneed_avatars/main.mo",
+      "type": "motoko",
+      "args": "--enhanced-orthogonal-persistence"
+    },
     "icrc7_demo": {
       "main": "src/icrc7_demo/main.mo",
       "type": "motoko"
