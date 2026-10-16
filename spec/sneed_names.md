@@ -499,6 +499,14 @@ nicknames and avatars for a few users.
 
 ## 12. Build order
 
+Status 16 Oct 2026: steps 1–6 done (canisters, backend support, migration script rehearsed on a
+local replica, `scripts/configure_names.sh`), step 7 done for the data layer and the Me page's
+account panel (the frontend switches to the naming service when the canisters have ids for its
+network). Not deployed anywhere yet. Still open: an admin panel for the new canisters, search on
+the server in PrincipalInput (the frontend mirrors all names for now), the link-by-neuron UI (it
+searches the memo), certified avatar responses, the TACO PR.
+
+
 1. `src/sneed_names/`: shared modules (name rules, sorted index with lower-bound
    seek, search, paging), Motoko unit tests.
 2. `sneed_pid_names` with tests (PocketIC).
