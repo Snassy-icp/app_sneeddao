@@ -16,6 +16,7 @@ import Map "mo:map/Map";
 import IngressGuard "../IngressGuard";
 import Icrc3Log "../icrc3/Log";
 import T3 "../icrc3/Types";
+import Control "../sneed_names/Control";
 import Moderation "../sneed_names/Moderation";
 import NameIndex "../sneed_names/NameIndex";
 import NameRules "../sneed_names/NameRules";
@@ -173,9 +174,6 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   var icrc3 : Icrc3Log.State = Icrc3Log.init();
   transient let icrc3_rt : Icrc3Log.Runtime = Icrc3Log.runtime();
 
-  transient let IC : actor {
-    canister_info : shared { canister_id : Principal; num_requested_changes : ?Nat64 } -> async { controllers : [Principal] };
-  } = actor "aaaaa-aa";
 
   // ---------------------------------------------------------------------------------------------
   // Helpers
@@ -439,23 +437,8 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     if (Principal.isAnonymous(caller)) ?"Please sign in" else null;
   };
 
-  /// How `caller` controls `canister`: as a controller, or as the governance canister of an SNS whose
-  /// root controls it.
   func controls(caller : Principal, canister : Principal) : async* { #ok; #err : Text } {
-    let info = try {
-      await IC.canister_info({ canister_id = canister; num_requested_changes = null });
-    } catch (e) {
-      return #err("Could not read the canister's controllers: " # Error.message(e));
-    };
-    if (Array.find<Principal>(info.controllers, func(c) = c == caller) != null) return #ok;
-    if (T.isCanisterId(caller)) {
-      try { await* SnsDirectory.ensureFresh(sns, config.sns_wasm) } catch (_) {};
-      switch (SnsDirectory.rootOfGovernance(sns, caller)) {
-        case (?root) if (Array.find<Principal>(info.controllers, func(c) = c == root) != null) return #ok;
-        case null {};
-      };
-    };
-    #err("You are not a controller of this canister");
+    await* Control.controls(sns, config.sns_wasm, caller, canister);
   };
 
   // ---------------------------------------------------------------------------------------------
