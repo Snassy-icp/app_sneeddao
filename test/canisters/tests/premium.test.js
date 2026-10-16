@@ -134,9 +134,10 @@ describe('admin guards', () => {
     // these assert instead of returning an error: the query is rejected
     await expect(premiumAlice.getClaimLog(0n, 10n)).rejects.toThrow();
     await expect(premiumAlice.getIcpPaymentLog(0n, 10n)).rejects.toThrow();
-    await expect(premiumAlice.getPaymentStats()).rejects.toThrow();
     await expect(premiumAlice.getClaimLogCount()).rejects.toThrow();
     await expect(premiumAlice.getIcpPaymentLogCount()).rejects.toThrow();
+    // the payment totals are public (the /revenue page); the logs stay admin only
+    expect(await premiumAlice.getPaymentStats()).toHaveProperty('total_icp_collected_e8s');
     expect(await premiumAnon.getAllMemberships()).toEqual([]);
   });
 });

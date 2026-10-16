@@ -1099,8 +1099,8 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         };
     };
     
-    /// Get payment and claim statistics (admin only)
-    public shared query ({ caller }) func getPaymentStats() : async {
+    /// Get payment and claim statistics: public, for the revenue page (the logs themselves stay admin only)
+    public query func getPaymentStats() : async {
         total_icp_collected_e8s : Nat;
         total_icp_payments : Nat;
         total_vp_claims : Nat;
@@ -1109,8 +1109,6 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         claim_log_size : Nat;
         payment_log_size : Nat;
     } {
-        assert(isAdmin(caller));
-        
         {
             total_icp_collected_e8s = totalIcpCollectedE8s;
             total_icp_payments = totalIcpPayments;

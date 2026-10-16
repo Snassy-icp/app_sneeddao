@@ -3453,8 +3453,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   // JAILBREAK ADMIN STATS AND LOGS (Admin only)
   // ============================================
 
-  // Get jailbreak payment statistics (admin only)
-  public query ({ caller }) func get_jailbreak_payment_stats() : async Result.Result<{
+  // Get jailbreak payment statistics: public, for the revenue page (the logs themselves stay admin only).
+  // Still a Result, so callers written for the admin-only version keep working.
+  public query func get_jailbreak_payment_stats() : async Result.Result<{
     total_scripts_created: Nat;
     total_revenue_e8s: Nat;
     total_premium_payments: Nat;
@@ -3463,10 +3464,6 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     regular_revenue_e8s: Nat;
     unique_users: Nat;
   }, Text> {
-    if (not is_admin(caller)) {
-      return #err("Not authorized: admin access required");
-    };
-
     var totalScripts : Nat = 0;
     var totalRevenue : Nat = 0;
     var premiumPayments : Nat = 0;

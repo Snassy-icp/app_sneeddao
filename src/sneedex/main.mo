@@ -4832,15 +4832,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
     
-    /// Get payment statistics (admin only)
-    public shared query ({ caller }) func getPaymentStats() : async {
+    /// Get payment statistics: public, for the revenue page (the logs themselves stay admin only)
+    public query func getPaymentStats() : async {
         total_creation_fees_collected_e8s : Nat;
         total_creation_fee_payments : Nat;
         total_cut_payments : Nat;
         cuts_by_ledger : [(Principal, Nat)];
     } {
-        assert(isAdmin(caller));
-        
         {
             total_creation_fees_collected_e8s = totalCreationFeesCollectedE8s;
             total_creation_fee_payments = creationFeePaymentLog.size();

@@ -88,13 +88,15 @@ describe('app_sneeddao_backend admin and tokens', () => {
     // and every other Result-guarded one answers "Not authorized"
     for (const r of [
       await hubAlice.remove_partner(1n), await hubAlice.remove_project(1n),
-      await hubAlice.set_jailbreak_fee_settings([1n], [], [], []), await hubAlice.get_jailbreak_payment_stats(), await hubAlice.get_jailbreak_payment_logs(0n, 10n),
+      await hubAlice.set_jailbreak_fee_settings([1n], [], [], []), await hubAlice.get_jailbreak_payment_logs(0n, 10n),
       await hubAlice.get_all_jailbreak_configs_count(), await hubAlice.admin_clear_avatar(bob), await hubAlice.unban_user(bob),
       await hubAlice.set_nickname_premium_canister([]),
       await hubAlice.update_nickname_limits([], [], [], []), await hubAlice.update_canister_groups_limits([], [], [], [], [], []),
       await hubAlice.get_ban_log(), await hubAlice.get_banned_users(), await hubAlice.get_user_ban_history(bob),
       await hubAlice.verify_principal_name(bob), await hubAlice.unverify_principal_name(bob),
     ]) expect(errOf(r)).toMatch(/not authorized/i);
+    // the payment totals are public (the /revenue page); the logs stay admin only
+    expect(unwrap(await hubAlice.get_jailbreak_payment_stats())).toHaveProperty('total_revenue_e8s');
   });
 
   it('the whitelist by hand: add, replace, remove, query', async () => {

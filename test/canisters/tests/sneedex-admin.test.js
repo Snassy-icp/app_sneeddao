@@ -108,7 +108,8 @@ describe('admin guards', () => {
 
   it('refuses the admin payment-log queries to a non-admin (they trap)', async () => {
     for (const q of ['getCreationFeePaymentLogCount', 'getCutPaymentLogCount']) await expect(dexBob[q]()).rejects.toThrow();
-    await expect(dexBob.getPaymentStats()).rejects.toThrow();
+    // the totals are public (the /revenue page); the logs stay admin only
+    expect(await dexBob.getPaymentStats()).toHaveProperty('total_cut_payments');
     await expect(dexBob.getCreationFeePaymentLog(0n, 10n)).rejects.toThrow();
     await expect(dexBob.getCutPaymentLog(0n, 10n)).rejects.toThrow();
     expect(await dexAdmin.getCutPaymentLogCount()).toBe(0n);
