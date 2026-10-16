@@ -417,7 +417,7 @@ export function buildTree(config) {
             pingLeaf(IDS.sms, 'Sneed SMS', 'get_admins'),
             pingLeaf(IDS.premium, 'Sneed Premium', 'getCanisterId'),
             pingLeaf(IDS.sneedex, 'Sneedex', 'getConfig'),
-            ...GUARDIANS.map((g) => ({
+            ...GUARDIANS.filter((g) => g.live).map((g) => ({   // only deployments in production use (guardianIdl.js: live)
                 id: `custody:${g.id}`, name: `${g.name} (custody) and its children`, link: `/guardian?deployment=${g.key}`,
                 run: async (ctx) => {
                     const a = await actor(guardianIdl, g.id);

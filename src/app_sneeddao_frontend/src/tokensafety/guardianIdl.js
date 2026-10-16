@@ -66,6 +66,8 @@ export const guardianIdl = ({ IDL }) => IDL.Service({
 /// deployment that is not deployed on this network is simply absent.
 /// `functionId` is the id of the `approve_op` generic nervous system function
 /// once the DAO has registered it (null until then: approvals must be proposed by hand).
+/// `live`: in production use. Until then the /health page leaves it out (its canister may
+/// exist with nothing installed yet); set it to true when the deployment goes live.
 // The build substitutes these only when the key is spelled out (vite-plugin-environment),
 // so each one is read literally; a deployment missing from the build leaves its key undefined.
 const safe = (f) => { try { return f() || null; } catch { return null; } };
@@ -73,11 +75,11 @@ const GUARDIAN_ID = safe(() => process.env.CANISTER_ID_SNEED_GUARDIAN);
 const HOLE_ID = safe(() => process.env.CANISTER_ID_SNEED_HOLE);
 const ACCORD_ID = safe(() => process.env.CANISTER_ID_SNEED_ACCORD);
 export const GUARDIANS = [
-    { key: 'guardian', id: GUARDIAN_ID, name: 'Sneed Guardian', blackholed: false, functionId: null,
+    { key: 'guardian', id: GUARDIAN_ID, live: false, name: 'Sneed Guardian', blackholed: false, functionId: null,
       blurb: 'Custody under Sneed DAO. The DAO can also upgrade the guardian itself, so your veto council trusts Sneed DAO not to go around it. Upgradeable, so bugs can be fixed.' },
-    { key: 'hole', id: HOLE_ID, name: 'Sneed Hole', blackholed: true, functionId: null,
+    { key: 'hole', id: HOLE_ID, live: false, name: 'Sneed Hole', blackholed: true, functionId: null,
       blurb: 'Blackholed custody with Sneed DAO as the only approver. Nobody, not even the DAO, can change its code: your veto council is final. The code is frozen.' },
-    { key: 'accord', id: ACCORD_ID, name: 'Sneed Accord', blackholed: true, functionId: null,
+    { key: 'accord', id: ACCORD_ID, live: false, name: 'Sneed Accord', blackholed: true, functionId: null,
       blurb: 'Blackholed custody shared by several DAOs: changes need m-of-n of their governance canisters, plus your veto council.' },
 ].filter((g) => g.id);
 export const guardianById = (id) => GUARDIANS.find((g) => g.id === id) || null;
