@@ -1,6 +1,5 @@
 import Array "mo:base/Array";
 import Buffer "mo:base/Buffer";
-import Error "mo:base/Error";
 import Int "mo:base/Int";
 import Debug "mo:base/Debug";
 import Nat "mo:base/Nat";
@@ -1069,6 +1068,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
 
   /// Import names: self-authenticating principals become one-owner accounts, canister ids become
   /// canister names. A verified flag becomes an import verification of the name as imported.
+  /// An account may be imported with an avatar and an empty name.
   public shared ({ caller }) func admin_import_names(items : [ImportItem]) : async [ImportResult] {
     if (not isAdmin(caller)) Error_trap("Admins only");
     if (import_closed) Error_trap("Import is closed");
@@ -1079,7 +1079,9 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   func importOne(it : ImportItem, caller : Principal) : Result {
     if (Principal.isAnonymous(it.principal)) return #err("anonymous");
     let canister = T.isCanisterId(it.principal);
-    switch (NameRules.problem(it.name, if canister 2 else 1)) { case (?p) return #err(p); case null {} };
+    // an account may come with an avatar and no name (the backend kept avatars apart from names)
+    let avatarOnly = it.name == "" and not canister and it.avatar != null;
+    if (not avatarOnly) switch (NameRules.problem(it.name, if canister 2 else 1)) { case (?p) return #err(p); case null {} };
     switch (it.avatar) { case (?x) switch (T.avatarProblem(x)) { case (?p) return #err(p); case null {} }; case null {} };
     if (canister) {
       if (Map.has(canisters, Map.phash, it.principal)) return #err("already imported");
@@ -1094,11 +1096,11 @@ shared (deployer) persistent actor class SneedPidNames() = this {
       };
     } else {
       if (Option.isSome(accountOf(it.principal))) return #err("already imported");
-      if (not nameFree(it.name, #account(0))) return #err("name taken");
+      if (not avatarOnly and not nameFree(it.name, #account(0))) return #err("name taken");
       let a = newAccount(it.principal, #import_, caller);
-      applyAccountName(a, it.name, caller);
+      if (not avatarOnly) applyAccountName(a, it.name, caller);
       a.avatar := it.avatar;
-      if (it.verified) a.verification := ?{ name = it.name; source = #import_; at = now64() };
+      if (it.verified and not avatarOnly) a.verification := ?{ name = it.name; source = #import_; at = now64() };
     };
     block("import", caller, Array.flatten<(Text, T3.Value)>([[("principal", pv(it.principal)), ("name", #Text(it.name)), ("verified", #Nat(if (it.verified) 1 else 0))], optAvatar("avatar", it.avatar)]));
     touch(if canister #canister(it.principal) else #account(switch (accountOf(it.principal)) { case (?a) a.id; case null 0 }));

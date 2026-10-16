@@ -324,8 +324,11 @@ describe('sneed_pid_names', () => {
       { principal: i2, name: 'imported', verified: false, avatar: [] }, // collides by capitals
       { principal: sharedCanId, name: 'Imported Canister', verified: false, avatar: [{ url: 'https://x.y/z.png' }] },
       { principal: i1, name: 'Again', verified: false, avatar: [] },
+      { principal: user('imp-3'), name: '', verified: false, avatar: [{ url: 'https://x.y/only.png' }] }, // an avatar, no name
+      { principal: user('imp-4'), name: '', verified: false, avatar: [] },
     ]);
-    expect(res.map((r) => Object.values(r.result)[0])).toEqual(['imported', 'name taken', 'imported', 'already imported']);
+    expect(res.map((r) => Object.values(r.result)[0])).toEqual(['imported', 'name taken', 'imported', 'already imported', 'imported', 'Name must be at least 1 character']);
+    expect(await nameOf(user('imp-3'))).toMatchObject({ name: [], avatar: [{ url: 'https://x.y/only.png' }] });
     expect((await nameOf(i1)).verified).toBe(true);
     expect((await names.get_account_of(i1))[0].verification[0].source).toEqual({ import: null });
     expect((await names.get_account_of(i1))[0].members[0].via).toEqual({ import: null });

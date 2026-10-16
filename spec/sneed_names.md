@@ -463,18 +463,22 @@ nicknames and avatars for a few users.
      "Names are moving to the new naming service" (reads keep working);
    - the backend's stable naming state is kept, never removed.
 3. **Freeze** the backend's naming writes (admin call).
-4. **Import**: a script reads the backend exports and calls the new canisters'
+4. **Import**: `scripts/migrate_names.py` (dry run by default; `--apply`, `--verify`,
+   `--decisions FILE`, `--identity NAME`; rehearsed on a local replica) reads the backend
+   exports and calls the new canisters'
    `admin_import_*` methods in batches. Each new canister logs one `import` block
    per record, and `admin_finish_import` locks import forever. Verification: counts
    and a checksum per canister, compared with the backend.
    - Principal names: self-authenticating principals become one-owner accounts;
      opaque ids become canister names (`set_by` = the importing admin).
    - Verified flags are imported as `#admin` verifications of the current name.
-   - The "Diavolo"/"diavolo" collision: the older of the two keeps the name, the
-     other is imported as "diavolo 2" (or an admin picks before import).
-   - Names that break the new rules (leading/trailing/double spaces, no
-     letter or digit) are cleaned (spaces trimmed and collapsed); anything else is
-     listed for an admin decision before import.
+   - Collisions by capitals: a verified name wins; the other needs a decision
+     (`rename` or `drop` in the decisions file) before `--apply` runs. Prod today:
+     "Diavolo" (az6nt…, verified) and "diavolo" (r24bn…).
+   - Names that break the new rules: spaces are trimmed and collapsed
+     automatically (prod: "AwaisUllah ", "icpp-pro  onicai"); anything else needs a
+     decision (prod: ".." of 2yhmq…).
+   - Principals with an avatar and no name become accounts with only an avatar.
    - Avatars: data URLs are decoded and uploaded to `sneed_avatars` as held by
      their owner; links stay links.
 5. **Frontend** switches to the new canisters.
