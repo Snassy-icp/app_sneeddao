@@ -25,11 +25,12 @@ import {
     createNnsGovActor
 } from './utils/NnsUtils';
 import { Link } from 'react-router-dom';
-import { FaDollarSign, FaLock, FaBrain, FaInfoCircle, FaTint, FaSeedling, FaHourglassHalf, FaGift, FaExpandAlt, FaSync, FaQuestionCircle, FaPlus, FaBan, FaPlay, FaStop, FaWallet, FaExchangeAlt, FaArrowDown, FaArrowUp, FaChevronDown, FaChevronRight, FaExclamationTriangle, FaCog, FaClock, FaCut, FaPaperPlane, FaShoppingCart, FaTag } from 'react-icons/fa';
+import { FaDollarSign, FaLock, FaBrain, FaInfoCircle, FaTint, FaSeedling, FaHourglassHalf, FaGift, FaExpandAlt, FaSync, FaQuestionCircle, FaPlus, FaBan, FaPlay, FaStop, FaWallet, FaExchangeAlt, FaArrowDown, FaArrowUp, FaChevronDown, FaChevronRight, FaExclamationTriangle, FaCog, FaClock, FaCut, FaPaperPlane, FaShoppingCart, FaTag, FaCoins } from 'react-icons/fa';
 import SwapModal from './components/SwapModal';
 import { isUntilDissolved } from './utils/lockTime';
 import { LockUntil, LockTimeLeftAtLeast, LockAge } from './components/LockUntil';
 import LockGas from './components/LockGas';
+import MintTokenDialog, { useIsMinter } from './components/MintTokenDialog';
 
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
@@ -129,6 +130,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [swapOutput, setSwapOutput] = useState('');
     const tokenCanisterId = token?.ledger_canister_id ? normalizeId(token.ledger_canister_id) : '';
     const isICP = tokenCanisterId === ICP_CANISTER_ID;
+    // the logged-in principal mints this token: offer a Mint button
+    const isMinter = useIsMinter(hideButtons ? '' : tokenCanisterId);
+    const [mintOpen, setMintOpen] = useState(false);
 
     // Image loading state
     const [logoLoaded, setLogoLoaded] = useState(false);
@@ -1484,6 +1488,17 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     <FaExchangeAlt size={12} />
                                 </button>
                             )}
+                            {!hideButtons && !defaultExpanded && isMinter && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setMintOpen(true); }}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', color: theme.colors.mutedText, transition: 'color 0.2s ease' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.success}
+                                    onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.mutedText}
+                                    title={`Mint ${token.symbol}`}
+                                >
+                                    <FaCoins size={12} />
+                                </button>
+                            )}
                             {!hideButtons && !defaultExpanded && openSendModal && (
                                 <button
                                     onClick={(e) => {
@@ -1798,6 +1813,19 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         >
                             <FaTag size={12} />
                             Sell
+                        </button>
+                    )}
+
+                    {/* Mint: only for the token's minting account */}
+                    {isMinter && (
+                        <button
+                            onClick={() => setMintOpen(true)}
+                            style={{ background: theme.colors.success, color: theme.colors.primaryBg, border: 'none', borderRadius: '6px', padding: '6px 12px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s ease' }}
+                            onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(1.15)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.filter = 'none'; }}
+                        >
+                            <FaCoins size={12} />
+                            Mint
                         </button>
                     )}
 
@@ -5427,6 +5455,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 </div>
             )}
 
+            <MintTokenDialog isOpen={mintOpen} onClose={() => setMintOpen(false)} token={token} onMinted={() => handleRefreshToken?.(token)} />
             {/* Swap modal (Buy/Sell) */}
             <SwapModal
                 isOpen={swapOpen}

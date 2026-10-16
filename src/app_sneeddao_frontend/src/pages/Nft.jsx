@@ -5,8 +5,9 @@ import { HttpAgent } from '@dfinity/agent';
 import Header from '../components/Header';
 import NftCollectionCard from '../NftCollectionCard';
 import SendNftModal from '../SendNftModal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import AddNftCollectionModal from '../AddNftCollectionModal';
-import { getSavedNftCollections, NFT_COLLECTIONS_STORAGE_KEY, loadNftCollection, transferNft, fetchCollectionAdmins, mintNft, approveToken, revokeTokenApproval, approveCollection, revokeCollectionApproval } from '../utils/NftUtils';
+import { getSavedNftCollections, NFT_COLLECTIONS_STORAGE_KEY, loadNftCollection, transferNft, fetchCollectionAdmins, mintNft, getNftName, approveToken, revokeTokenApproval, approveCollection, revokeCollectionApproval } from '../utils/NftUtils';
 import { app_sneeddao_backend } from 'declarations/app_sneeddao_backend';
 import './Nft.css';
 
@@ -23,6 +24,9 @@ const Nft = () => {
     
     // Modal states
     const [isSendModalOpen, setIsSendModalOpen] = useState(false);
+    // the page's own dialogs (no browser popups): { title, message, type, onConfirm?, confirmText? }
+    const [dialog, setDialog] = useState(null);
+    const showError = (title, e) => setDialog({ title, message: e?.message || String(e), type: 'error' });
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [selectedNft, setSelectedNft] = useState(null);
     const [selectedCollection, setSelectedCollection] = useState(null);
@@ -123,7 +127,7 @@ const Nft = () => {
             );
         } catch (err) {
             console.error('Error refreshing collection:', err);
-            alert('Failed to refresh collection');
+            showError('Could not refresh the collection', err);
         } finally {
             setRefreshingCollections(prev => {
                 const next = new Set(prev);
@@ -143,9 +147,9 @@ const Nft = () => {
     };
 
     const handleApproveToken = async (collection, nft, spender, expiresAtMs) => { await approveToken(collection.canisterId, nft.tokenId, spender, expiresAtMs, agent); await handleRefreshCollection(collection); };
-    const handleRevokeToken = async (collection, nft, spender) => { try { await revokeTokenApproval(collection.canisterId, nft.tokenId, spender, agent); } catch (e) { alert(`Revoke failed: ${e?.message || e}`); } await handleRefreshCollection(collection); };
+    const handleRevokeToken = async (collection, nft, spender) => { try { await revokeTokenApproval(collection.canisterId, nft.tokenId, spender, agent); } catch (e) { showError('Revoke failed', e); } await handleRefreshCollection(collection); };
     const handleApproveCollection = async (collection, spender, expiresAtMs) => { await approveCollection(collection.canisterId, spender, expiresAtMs, agent); await handleRefreshCollection(collection); };
-    const handleRevokeCollection = async (collection, spender) => { try { await revokeCollectionApproval(collection.canisterId, spender, agent); } catch (e) { alert(`Revoke failed: ${e?.message || e}`); } await handleRefreshCollection(collection); };
+    const handleRevokeCollection = async (collection, spender) => { try { await revokeCollectionApproval(collection.canisterId, spender, agent); } catch (e) { showError('Revoke failed', e); } await handleRefreshCollection(collection); };
     const handleMint = async (collection, to, fields) => {
         const id = await mintNft(collection.canisterId, to, fields, agent);
         await handleRefreshCollection(collection);
@@ -153,15 +157,19 @@ const Nft = () => {
     };
     
     const handleRemoveCollection = (collection) => {
-        if (window.confirm(`Remove ${collection.name} from your collections?\n\nNote: This only removes it from your view. Your NFTs are still in your wallet.`)) {
-            // Remove from collections
-            setCollections(prev => prev.filter(c => c.canisterId !== collection.canisterId));
-            
-            // Remove from saved IDs
-            const updatedIds = savedCollectionIds.filter(id => id !== collection.canisterId);
-            setSavedCollectionIds(updatedIds);
-            localStorage.setItem(NFT_COLLECTIONS_STORAGE_KEY, JSON.stringify(updatedIds));
-        }
+        setDialog({
+            title: `Remove ${collection.name}?`,
+            message: 'This only removes it from your view. Your NFTs stay in your wallet, and you can add the collection again any time.',
+            type: 'warning', confirmText: 'Remove', confirmVariant: 'danger',
+            onConfirm: () => {
+                // Remove from collections
+                setCollections(prev => prev.filter(c => c.canisterId !== collection.canisterId));
+                // Remove from saved IDs
+                const updatedIds = savedCollectionIds.filter(id => id !== collection.canisterId);
+                setSavedCollectionIds(updatedIds);
+                localStorage.setItem(NFT_COLLECTIONS_STORAGE_KEY, JSON.stringify(updatedIds));
+            },
+        });
     };
     
     const handleSendNft = (collection, nft) => {
@@ -184,7 +192,7 @@ const Nft = () => {
                 agent
             );
             
-            alert(`NFT sent successfully!\nTransaction Index: ${result.transactionIndex}`);
+            setDialog({ title: 'NFT sent', message: `${getNftName(selectedNft.metadata, selectedNft.tokenId)} now belongs to its new owner. Transaction index: ${result.transactionIndex}.`, type: 'success', confirmText: 'Done' });
             
             // Refresh the collection
             await handleRefreshCollection(selectedCollection);
@@ -475,6 +483,18 @@ const Nft = () => {
                 onConfirm={handleConfirmSend}
             />
             
+            <ConfirmDialog
+                isOpen={!!dialog}
+                onClose={() => setDialog(null)}
+                onConfirm={dialog?.onConfirm}
+                title={dialog?.title}
+                message={dialog?.message}
+                type={dialog?.type}
+                confirmText={dialog?.confirmText || 'OK'}
+                confirmVariant={dialog?.confirmVariant || (dialog?.type === 'success' ? 'success' : 'primary')}
+                showCancel={!!dialog?.onConfirm}
+            />
+
             <AddNftCollectionModal
                 isOpen={isAddModalOpen}
                 onClose={() => setIsAddModalOpen(false)}

@@ -140,12 +140,15 @@ function NftItem() {
                                 {!mine && isAuthenticated && !inWallet && <div style={{ marginTop: 10 }}><button type="button" onClick={addToWallet} style={btn()}>Add collection to my wallet</button></div>}
                             </div>
 
+                            {/* token locks only: LockGas renders nothing for a position lock (no tank), so neither does the card */}
                             {collection === sneedLockCanisterId && (
-                                <div style={card}>
-                                    <div style={label}>Gas (Sneed Lock token lock)</div>
-                                    <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, marginBottom: 8, lineHeight: 1.5 }}>Sending this lock costs one ledger fee. Anyone can add gas to it, so it can always be moved, even from a wallet that does not know about gas.</div>
-                                    <LockGas lockId={idText} />
-                                </div>
+                                <LockGas lockId={idText} wrap={(node) => (
+                                    <div style={card}>
+                                        <div style={label}>Gas (Sneed Lock token lock)</div>
+                                        <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, marginBottom: 8, lineHeight: 1.5 }}>Sending this token lock to another principal costs one ledger fee of its token, because the locked tokens move on the ledger (between subaccounts of the same principal it is free). Anyone can add gas to it, so it can always be moved, even from a wallet that does not know about gas. LP position locks move without a fee.</div>
+                                        {node}
+                                    </div>
+                                )} />
                             )}
 
                             {mine && info?.standards?.icrc37 && (
