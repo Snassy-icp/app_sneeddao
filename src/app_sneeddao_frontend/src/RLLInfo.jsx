@@ -718,12 +718,12 @@ const InfoTip = ({ text, label = 'What is this?' }) => {
 
 // The live numbers on a diagram card: a product's revenue, all products', and the ledger's lines
 const RevenueParts = ({ kind, target }) => {
-    const { lines, product, products, inside } = ledgerLinesFor(kind, target);
+    const { lines, period, product, products, inside } = ledgerLinesFor(kind, target);
     return (
         <>
             {product && <ProductSummary product={product} />}
             {products && <ProductsSummary />}
-            <LedgerSummary lines={lines} inside={inside} />
+            <LedgerSummary lines={lines} inside={inside} period={period} />
         </>
     );
 };

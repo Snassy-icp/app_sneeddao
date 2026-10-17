@@ -12,7 +12,7 @@ import { ICP_LEDGER, SNEED_LEDGER, PERIODS, DEFAULT_PERIOD } from '../utils/rllL
 import { PRODUCTS, loadSection, sectionEntry, lineOf, loadAllProducts, productEntry, productTotals, loadPrice, priceOf, usdOf, fmtAmount } from '../utils/revenueData';
 
 const LEDGER_OF = { ICP: ICP_LEDGER, SNEED: SNEED_LEDGER };
-const PERIOD_LABEL = PERIODS.find((p) => p.key === DEFAULT_PERIOD).label;
+const periodLabel = (key) => PERIODS.find((p) => p.key === key).label;
 
 // What the loop ledger knows about each node, and about each edge by source-target.
 const NODE_LINES = {
@@ -25,6 +25,7 @@ const NODE_LINES = {
     '8': [['sneedSplitter', 'burn', 'SNEED burned']],
     '9': [['sneedSplitter', 'rll', 'SNEED for voters']],
     '10': [['icpSplitter', 'deposits', 'ICP deposited into the loop']],
+    '11': [['lpFees', 'icpSneedPool', 'ICP fees claimed'], ['lpFees', 'sneedSneedPool', 'SNEED fees claimed']],
 };
 const EDGE_LINES = {
     '1-2': [['neuron', 'maturity', 'Maturity minted']],
@@ -36,33 +37,37 @@ const EDGE_LINES = {
     '5-8': [['sneedSplitter', 'burn', 'SNEED burned']],
     '5-9': [['sneedSplitter', 'rll', 'SNEED to RLL rewards']],
     '10-3': [['icpSplitter', 'deposits', 'ICP deposited']],
+    '11-10': [['lpFees', 'toIcpSplitter', 'ICP to the ICP splitter (both pools)'], ['lpFees', 'toSneedSplitter', 'SNEED to the SNEED splitter']],
 };
+// cards that count from the start instead of the default period: what the LP has paid out so far
+const ALL_TIME = new Set(['node:11', 'edge:11-10']);
 // moves that stay inside a pylon and leave no transaction
 const INSIDE_PYLON = new Set(['3-2', '2-1']);
 const PRODUCT_BY_NODE = Object.fromEntries(PRODUCTS.map((p) => [p.node, p]));
 
-/// What a card shows besides its text: { lines, product, products, inside }.
+/// What a card shows besides its text: { lines, period, product, products, inside }.
 export function ledgerLinesFor(kind, target) {
     if (kind === 'node') {
-        return { lines: NODE_LINES[target.id] || [], product: PRODUCT_BY_NODE[target.id] || null, products: target.id === '12' || target.id === '10' };
+        return { lines: NODE_LINES[target.id] || [], period: ALL_TIME.has(`node:${target.id}`) ? 'all' : DEFAULT_PERIOD, product: PRODUCT_BY_NODE[target.id] || null, products: target.id === '12' || target.id === '10' };
     }
     const k = `${target.source}-${target.target}`;
-    return { lines: EDGE_LINES[k] || [], product: target.target === '12' ? PRODUCT_BY_NODE[target.source] || null : null, products: k === '12-10', inside: INSIDE_PYLON.has(k) };
+    return { lines: EDGE_LINES[k] || [], period: ALL_TIME.has(`edge:${k}`) ? 'all' : DEFAULT_PERIOD, product: target.target === '12' ? PRODUCT_BY_NODE[target.source] || null : null, products: k === '12-10', inside: INSIDE_PYLON.has(k) };
 }
 
 /// Starts loading what a card needs (a hover or a tap calls this; loads already done or running are reused).
 export function ensureTooltipData(kind, target) {
-    const { lines, product, products } = ledgerLinesFor(kind, target);
+    const { lines, period, product, products } = ledgerLinesFor(kind, target);
     if (lines.length || product || products) { loadPrice(ICP_LEDGER).catch(() => {}); loadPrice(SNEED_LEDGER).catch(() => {}); }
-    for (const s of new Set(lines.map(([section]) => section))) loadSection(s).catch(() => {});
+    for (const s of new Set(lines.map(([section]) => section))) loadSection(s, period).catch(() => {});
     if (product || products) loadAllProducts();
 }
 
 const box = (theme) => ({ marginTop: 8, padding: 8, background: theme.colors.tertiaryBg, borderRadius: 4, fontSize: '0.8rem' });
 const Pending = ({ text }) => <span style={{ opacity: 0.75, display: 'inline-flex', alignItems: 'center', gap: 5 }}><FaSpinner style={{ animation: 'spin 1s linear infinite' }} size={11} /> {text}</span>;
 
-/// The ledger's numbers for a card: each line's total over the default period, with its value today.
-export function LedgerSummary({ lines, inside }) {
+/// The ledger's numbers for a card: each line's total over the period (the default one unless the
+/// card counts from the start), with its value today.
+export function LedgerSummary({ lines, inside, period = DEFAULT_PERIOD }) {
     useStoreVersion();
     const { theme } = useTheme();
     const { formatValue } = useDenomination();
@@ -70,10 +75,10 @@ export function LedgerSummary({ lines, inside }) {
     if (!lines.length) return null;
     return (
         <div style={box(theme)}>
-            <div style={{ marginBottom: 4, color: theme.colors.mutedText }}>Last {PERIOD_LABEL}, from the loop ledger:</div>
+            <div style={{ marginBottom: 4, color: theme.colors.mutedText }}>{period === 'all' ? 'All time' : `Last ${periodLabel(period)}`}, from the loop ledger:</div>
             {lines.map(([section, line, label]) => {
-                const l = lineOf(section, line);
-                const e = sectionEntry(section);
+                const l = lineOf(section, line, period);
+                const e = sectionEntry(section, period);
                 const price = l ? priceOf(LEDGER_OF[l.token]) : null;
                 return (
                     <div key={`${section}:${line}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '2px 0' }}>

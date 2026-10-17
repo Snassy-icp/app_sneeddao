@@ -84,12 +84,13 @@ function Section({ section, period, prices, splits, children }) {
         const oldest = allRows.length ? allRows[allRows.length - 1].at : Date.now();
         const spanDays = Math.max(1, Math.round((Date.now() - (sinceMs || oldest)) / 86_400_000));
         const second = data.lines.find((l) => l.token && l.token !== section.token);
+        const others = data.lines.filter((l) => !l.aside && l.token && l.token !== section.token);   // lines in a second token
         // The vector spends what it receives gradually (a fixed amount per interval), so SNEED bought
         // in a period was largely paid with ICP that arrived earlier: the average is only meaningful
         // over the whole history, read in full on both sides.
         let avg = null;
         if (second && !sinceMs && ![...ins, second].some((l) => l.cutAt) && totalIn > 0n && second.sum.total > 0n) avg = { price: Number(totalIn) / Number(second.sum.total) };
-        return { ins, outs, totalIn, totalOut, series, allRows, spanDays, second, avg };
+        return { ins, outs, others, totalIn, totalOut, series, allRows, spanDays, second, avg };
     }, [entry.value, section, period.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const splitFor = (line) => (line.dest && splits ? splits.find((s) => s.key === line.dest.key && s.ledger === line.dest.ledger) : null);
@@ -101,7 +102,7 @@ function Section({ section, period, prices, splits, children }) {
                     <h2 style={{ margin: 0, fontSize: '1.2rem', color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: color, display: 'inline-block' }} />{section.title}</h2>
                     <p style={{ margin: '6px 0 0', fontSize: '0.85rem', color: theme.colors.secondaryText, lineHeight: 1.5 }}>{section.intro}</p>
                     <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: 6, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                        <a href={section.link} target="_blank" rel="noopener noreferrer" style={{ color: theme.colors.accent, whiteSpace: 'nowrap' }}>the vector <FaExternalLinkAlt size={9} /></a>
+                        <a href={section.link} target="_blank" rel="noopener noreferrer" style={{ color: theme.colors.accent, whiteSpace: 'nowrap' }}>{section.linkLabel || 'the vector'} <FaExternalLinkAlt size={9} /></a>
                         {section.dashboard && <a href={section.dashboard} target="_blank" rel="noopener noreferrer" style={{ color: theme.colors.accent, whiteSpace: 'nowrap' }}>the neuron <FaExternalLinkAlt size={9} /></a>}
                     </div>
                 </div>
@@ -115,6 +116,7 @@ function Section({ section, period, prices, splits, children }) {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, marginTop: 12 }}>
                         {view.ins.map((l) => tile(l.title, `${fmt(l.sum.total)} ${section.token}`, `${money(l.sum.total, section.token) || ''}${l.sum.n ? ` · ${l.sum.n} tx` : ''}${cutNote(l)}`, color))}
                         {view.outs.map((l) => tile(l.title, `${fmt(l.sum.total)} ${l.token || section.token}`, `${money(l.sum.total, l.token || section.token) || ''}${l.sum.n ? ` · ${l.sum.n} tx` : ''}${cutNote(l)}`, l.burn ? BURN_COLOR : l.token ? colorOf(l.token) : undefined))}
+                        {view.others.map((l) => tile(l.title, `${fmt(l.sum.total)} ${l.token}`, `${money(l.sum.total, l.token) || ''}${l.sum.n ? ` · ${l.sum.n} tx` : ''}${cutNote(l)}`, colorOf(l.token)))}
                         {view.ins.length > 1 && tile(`${section.token} in, total`, `${fmt(view.totalIn)} ${section.token}`, money(view.totalIn, section.token), color)}
                         {view.outs.filter((l) => !l.token).length > 1 && tile(`${section.token} out, total`, `${fmt(view.totalOut)} ${section.token}`, money(view.totalOut, section.token))}
                         {tile('Per day', `${fmtNum(Number(view.totalIn) / 10 ** DEC / view.spanDays, 4)} ${section.token}`, `in, over ${view.spanDays} day${view.spanDays === 1 ? '' : 's'}`)}

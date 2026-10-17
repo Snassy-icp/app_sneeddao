@@ -37,6 +37,7 @@ export const TREASURY_SNEED_SUB = '8b0805942c48b3420d6edffecbb685e8c39ef574612a5
 export const RLL = 'lvc4n-7aaaa-aaaam-adm6a-cai';
 export const DEFI = 'ok64y-uiaaa-aaaag-qdcbq-cai';
 export const SNEED_ICP_POOL = 'osyzs-xiaaa-aaaag-qc76q-cai';
+export const ICP_CLOWN_POOL = 'bdki3-ciaaa-aaaag-qj67a-cai';
 
 const nodeSub = (node, prefix = [1, 0]) => { const s = new Uint8Array(32); s[0] = prefix[0]; s[1] = prefix[1]; s[5] = node; return s; };
 const hexSub = (h) => Uint8Array.from(h.match(/../g).map((x) => parseInt(x, 16)));
@@ -61,10 +62,16 @@ export const ACCOUNTS = {
     mintingSneed: mk('SNEED minting account (burn)', SNEED_LEDGER, GOVERNANCE, null),
     rll: mk('RLL rewards (member rewards)', SNEED_LEDGER, RLL, null),
     defi: mk('Sneed DeFi canister', ICP_LEDGER, DEFI, null),
-    defiFees: mk('Sneed DeFi canister (its ICPSwap fee subaccount)', ICP_LEDGER, DEFI, principalSub(DEFI)),
+    // the DeFi canister claims its LP fees into this subaccount and forwards them to the splitters;
+    // read in full (a few rows a week) so the LP fee totals can go back to the first claim
+    defiFees: { ...mk('Sneed DeFi canister (its ICPSwap fee subaccount)', ICP_LEDGER, DEFI, principalSub(DEFI)), full: true },
+    defiFeesSneed: { ...mk('Sneed DeFi canister (its ICPSwap fee subaccount)', SNEED_LEDGER, DEFI, principalSub(DEFI)), full: true },
 };
 const byIcpHex = new Map(); const byKey = new Map();
 for (const a of Object.values(ACCOUNTS)) { byIcpHex.set(a.icpHex, a.name); byKey.set(a.key, a.name); }
+const POOL_ICP_HEX = { sneedIcp: accountIdentifierHex(SNEED_ICP_POOL, null), icpClown: accountIdentifierHex(ICP_CLOWN_POOL, null) };
+byIcpHex.set(POOL_ICP_HEX.sneedIcp, 'SNEED/ICP pool (ICPSwap)');
+byIcpHex.set(POOL_ICP_HEX.icpClown, 'ICP/CLOWN pool (ICPSwap)');
 const byOwner = new Map([[SNEED_ICP_POOL, 'SNEED/ICP pool (ICPSwap)'], [NNS_GOVERNANCE, 'NNS governance'], [PYLON, 'Neutrinite pylon (another node)'], [BUYBACK_PYLON, 'ICPCoins pylon (another node)'], [DEFI, 'Sneed DeFi canister (a subaccount)']]);
 
 /// Human name for a counterparty ({ hex } on ICP, { owner, sub } on SNEED), or null.
@@ -223,6 +230,19 @@ export const SECTIONS = [
             { key: 'rll', title: 'To RLL rewards', dir: 'out', account: ACCOUNTS.pylonMainSneed, keep: (r) => r.dir === 'out' && cpIs(r.cp, ACCOUNTS.rll), dest: ACCOUNTS.rll },
         ],
         note: 'The burns, treasury and RLL transfers are read from the Neutrinite pylon\'s main SNEED account; Sneed\'s splitter is the only node known to send SNEED to those three places.',
+    },
+    {
+        key: 'lpFees', title: '5 · LP fees', token: 'ICP',
+        intro: 'The Sneed DeFi canister\'s liquidity positions on ICPSwap earn trading fees. About once a week it claims them into its fee subaccount and forwards them into the loop: ICP to the ICP splitter, SNEED to the SNEED splitter. The fees from the SNEED/ICP positions come in both tokens; the ICP/CLOWN positions add ICP (their CLOWN is not shown here).',
+        account: ACCOUNTS.defiFees, link: `https://app.icpswap.com/info-swap/pool/details/${SNEED_ICP_POOL}`, linkLabel: 'the SNEED/ICP pool',
+        lines: [
+            { key: 'icpSneedPool', title: 'ICP fees claimed from the SNEED/ICP pool', dir: 'in', account: ACCOUNTS.defiFees, keep: (r) => r.dir === 'in' && r.cp?.hex === POOL_ICP_HEX.sneedIcp },
+            { key: 'icpClownPool', title: 'ICP fees claimed from the ICP/CLOWN pool', dir: 'in', account: ACCOUNTS.defiFees, keep: (r) => r.dir === 'in' && r.cp?.hex === POOL_ICP_HEX.icpClown },
+            { key: 'sneedSneedPool', title: 'SNEED fees claimed from the SNEED/ICP pool', dir: 'in', token: 'SNEED', account: ACCOUNTS.defiFeesSneed, keep: (r) => r.dir === 'in' && r.cp?.owner === SNEED_ICP_POOL },
+            { key: 'toIcpSplitter', title: 'ICP sent to the ICP splitter', dir: 'out', account: ACCOUNTS.defiFees, keep: (r) => r.dir === 'out' && cpIs(r.cp, ACCOUNTS.splitterSource), dest: ACCOUNTS.splitterSource },
+            { key: 'toSneedSplitter', title: 'SNEED sent to the SNEED splitter', dir: 'out', token: 'SNEED', account: ACCOUNTS.defiFeesSneed, keep: (r) => r.dir === 'out' && cpIs(r.cp, ACCOUNTS.sneedSplitterSource), dest: ACCOUNTS.sneedSplitterSource },
+        ],
+        note: 'Read from the DeFi canister\'s fee subaccount on the ICP and SNEED ledgers. What the splitters do with these deposits is in sections 2 and 4.',
     },
 ];
 
