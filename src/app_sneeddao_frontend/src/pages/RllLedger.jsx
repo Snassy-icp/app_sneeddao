@@ -4,7 +4,7 @@
 // chart, where the output went against the configured shares, and the rows,
 // collapsed to the latest few, each linking to the transaction browser.
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 import { FaExternalLinkAlt, FaSpinner, FaSync, FaArrowDown, FaArrowUp, FaFire, FaInfoCircle } from 'react-icons/fa';
@@ -61,7 +61,7 @@ function Section({ section, period, prices, splits, children }) {
 
     const price = (token) => prices[token];
     const money = (v, token) => { const p = price(token); return p == null ? null : formatValue((Number(v) / 10 ** DEC) * p); };
-    const card = { background: theme.colors.cardBg, border: `1px solid ${theme.colors.border}`, borderRadius: 14, padding: '1rem', marginBottom: 16 };
+    const card = { background: theme.colors.cardBg, border: `1px solid ${theme.colors.border}`, borderRadius: 14, padding: '1rem', marginBottom: 16, scrollMarginTop: 80 };
     const label = { fontSize: '0.7rem', color: theme.colors.mutedText, textTransform: 'uppercase', letterSpacing: '0.5px' };
     const tile = (k, value, sub, c) => (
         <div key={k} style={{ background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, borderRadius: 10, padding: '10px 12px', minWidth: 0 }}>
@@ -189,6 +189,19 @@ function RllLedger() {
     const { theme } = useTheme();
     const { formatValue } = useDenomination();
     const [params, setParams] = useSearchParams();
+    const { hash } = useLocation();
+    // A link to a section (/rll_ledger#lpFees): scroll to it, and again while the sections above it
+    // fill in and push it down, until the reader scrolls on their own.
+    useEffect(() => {
+        const id = decodeURIComponent(hash.replace(/^#/, ''));
+        if (!id) return undefined;
+        const go = () => document.getElementById(id)?.scrollIntoView({ block: 'start' });
+        const timers = [0, 400, 1200, 2500, 4000].map((ms) => setTimeout(go, ms));
+        const stop = () => timers.forEach(clearTimeout);
+        const events = ['wheel', 'touchstart', 'keydown', 'mousedown'];
+        events.forEach((e) => window.addEventListener(e, stop, { once: true, passive: true }));
+        return () => { stop(); events.forEach((e) => window.removeEventListener(e, stop)); };
+    }, [hash]);
     const period = PERIODS.find((p) => p.key === params.get('period')) || PERIODS.find((p) => p.key === DEFAULT_PERIOD);
     // prices, the neuron and the splits come from the shared cache (also used by /rll_info and /revenue)
     useStoreVersion();

@@ -11,7 +11,8 @@ import ReactFlow, {
     Position,
     useNodes,
     useEdges,
-    useReactFlow
+    useReactFlow,
+    Handle
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './RLLInfo.css';
@@ -522,14 +523,14 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                             if (newToken) updatedTokens.push(newToken);
                         }
                     } else if (edge.target === '12') {
-                        // When reaching Products, forward to Revenue Collector
+                        // When reaching Products, forward to Revenue
                         const nextEdge = edges.find(e => e.source === '12' && e.target === '10');
                         if (nextEdge) {
                             const newToken = createToken(nextEdge, token.scale, token.type);
                             if (newToken) updatedTokens.push(newToken);
                         }
                     } else if (edge.target === '10') {
-                        // When reaching the Revenue Collector, route to appropriate splitter based on token type
+                        // When reaching Revenue, route to the splitter for the token type
                         const nextEdge = token.type === 'icp' ? 
                             edges.find(e => e.id === 'e12') :  // To ICP Splitter
                             edges.find(e => e.id === 'e12b');  // To SNEED Splitter
@@ -754,12 +755,12 @@ const formatDurationStatic = (seconds) => {
 
 // The products that pay the DAO, as diagram nodes (the list lives in utils/revenueData.js)
 const PRODUCT_NODES = PRODUCTS.map((p) => p.node);
-// The revenue part is a tree that flows up: the products feed Products, which with the LP rewards
-// feeds Other Revenue Sources, which feeds the splitters. The products are one row centred under
-// Products (a second row's edges ran up behind the first row's nodes), a little narrower than the
-// other nodes.
+// The diagram flows down. At the top are Revenue's three sources side by side: the 2-year neuron
+// (through its vector), the ICPSwap LP and Products, with the products in one row above Products
+// (a second row's edges ran behind the first row's nodes), a little narrower than the other nodes.
+// Revenue feeds the two splitters, and the rest of the loop hangs below the ICP splitter.
 const PRODUCT_WIDTH = 170;
-const PRODUCT_POSITIONS = { apps: { x: -135, y: 870 }, lock: { x: 50, y: 870 }, sneedex: { x: 235, y: 870 }, premium: { x: 420, y: 870 }, jailbreak: { x: 605, y: 870 } };
+const PRODUCT_POSITIONS = { apps: { x: 155, y: 80 }, lock: { x: 340, y: 80 }, sneedex: { x: 525, y: 80 }, premium: { x: 710, y: 80 }, jailbreak: { x: 895, y: 80 } };
 const productItem = (p) => ({
     id: p.node,
     title: p.name,
@@ -769,6 +770,34 @@ const productItem = (p) => ({
     link: `https://app.sneeddao.com${p.link}`,
     productId: p.id,
 });
+
+const REVENUE_DESCRIPTION = "Everything the DAO earns: the 2-year neuron's maturity, the ICPSwap LP's fees and the products' fees. ICP goes on to the ICP splitter, SNEED to the SNEED splitter";
+const LP_DESCRIPTION = "The DAO's SNEED/ICP liquidity on ICPSwap, held by the Sneed DeFi canister. Its trading fees are claimed about once a week and sent into the loop";
+
+// The diagram's node: React Flow's default box (one target and one source handle), plus hidden
+// handles on every side that an edge can name, so a few edges can leave or arrive from the side
+// and stay clear of the boxes in between (EDGE_HANDLES).
+const HIDDEN_HANDLE = { opacity: 0, pointerEvents: 'none' };
+const SIDES = { t: Position.Top, b: Position.Bottom, l: Position.Left, r: Position.Right };
+const FlowNode = ({ data, sourcePosition = Position.Bottom, targetPosition = Position.Top, isConnectable }) => (
+    <>
+        <Handle type="target" position={targetPosition} isConnectable={isConnectable} />
+        {data?.label}
+        <Handle type="source" position={sourcePosition} isConnectable={isConnectable} />
+        {Object.entries(SIDES).map(([k, pos]) => (
+            <React.Fragment key={k}>
+                <Handle type="target" id={`in-${k}`} position={pos} style={HIDDEN_HANDLE} isConnectable={false} />
+                <Handle type="source" id={`out-${k}`} position={pos} style={HIDDEN_HANDLE} isConnectable={false} />
+            </React.Fragment>
+        ))}
+    </>
+);
+const NODE_TYPES = { default: FlowNode };
+// by source-target: the splitter's share back to the neuron runs up the left margin into the
+// vector's side, Revenue's SNEED leaves from its right, around the ICP splitter, and the maturity
+// comes into Revenue from the left, apart from the LP fees and the products above it
+const EDGE_HANDLES = { '3-2': { sourceHandle: 'out-l', targetHandle: 'in-l' }, '10-5': { sourceHandle: 'out-r' }, '2-10': { targetHandle: 'in-l' } };
+const withHandles = (e) => ({ ...e, ...EDGE_HANDLES[`${e.source}-${e.target}`] });
 
 // Node definitions with their metadata (static text; the live vector data overrides splits and destinations)
 const nodes = {
@@ -790,7 +819,7 @@ const nodes = {
                 title: "ICP Neuron Vector",
                 description: "Controls the NNS neuron: collects its maturity and compounds ICP back into it",
                 inputs: ["ICP from Splitter (25%)", "Maturity from NNS Neuron"],
-                outputs: ["ICP to NNS Neuron"],
+                outputs: ["ICP to NNS Neuron", "Maturity to Revenue"],
                 canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-wu6phoy.100000000010000000000000000000000000000000000000000000000000000",
                 details: "Vector ID: 1 on Neuronpool",
                 link: "https://vectors.neuronpool.com/vectors/fi3zi-fyaaa-aaaaq-aachq-cai/1"
@@ -800,8 +829,7 @@ const nodes = {
                 title: "ICP Splitter Vector",
                 description: "Splits the ICP it receives between its destinations in the proportions set on the vector (read live below)",
                 inputs: [
-                    "ICP from Neuron Vector",
-                    "ICP from Other Revenue Sources"
+                    "ICP from Revenue (neuron maturity, LP fees, product revenue)"
                 ],
                 outputs: [
                     "25% ICP to Treasury",
@@ -890,15 +918,22 @@ const nodes = {
         ]
     },
     revenue: {
-        title: "Revenue Sources",
-        description: "Where ICP and SNEED enter the loop besides neuron maturity: LP fees and product revenue",
+        title: "Revenue",
+        description: "What the DAO earns, from three sources: the 2-year neuron's maturity, the ICPSwap LP's fees and the products' fees",
         items: [
             {
+                id: "10",
+                title: "Revenue",
+                description: REVENUE_DESCRIPTION,
+                inputs: ["Maturity from the 2-year neuron (through its vector)", "LP fees from the ICPSwap LP", "Product revenue from Products"],
+                outputs: ["ICP to ICP Splitter Vector", "SNEED to SNEED Splitter Vector"]
+            },
+            {
                 id: "11",
-                title: "SNEED/ICP LP Rewards",
-                description: "Liquidity provision rewards from ICPSwap",
-                inputs: ["LP rewards"],
-                outputs: ["ICP and SNEED rewards to Revenue Collector"],
+                title: "ICPSwap LP",
+                description: LP_DESCRIPTION,
+                inputs: ["Trading fees on the SNEED/ICP pool"],
+                outputs: ["ICP and SNEED fees to Revenue"],
                 details: "Every SNEED/ICP position held by the Sneed DeFi canister",
                 link: "https://app.icpswap.com/info-swap/pool/details/osyzs-xiaaa-aaaag-qc76q-cai"
             },
@@ -947,15 +982,15 @@ const edges = {
             {
                 id: "e2",
                 source: "2",
-                target: "3",
-                description: "Maturity Distribution",
+                target: "10",
+                description: "Maturity to Revenue",
                 token: "ICP",
                 percentage: "100%",
                 type: "smoothstep",
                 style: edgeStyles.icp,
                 markerEnd: { type: MarkerType.ArrowClosed },
                 data: {
-                    description: "Maturity to ICP Splitter for distribution",
+                    description: "Maturity to Revenue, on to the ICP Splitter",
                     token: "ICP",
                     percentage: "100%"
                 }
@@ -1038,7 +1073,7 @@ const edges = {
                 id: "e10",
                 source: "11",
                 target: "10",
-                description: "LP Rewards to Revenue Collector",
+                description: "LP fees to Revenue",
                 token: "Various",
                 percentage: "100%"
             },
@@ -1046,7 +1081,7 @@ const edges = {
                 id: "e11",
                 source: "12",
                 target: "10",
-                description: "Product Revenue to Collector",
+                description: "Product revenue to Revenue",
                 token: "Various",
                 percentage: "100%"
             },
@@ -1093,7 +1128,7 @@ const initialNodes = [
             details: "Controlled by ICP Neuron Vector for maturity collection and compounding",
             link: "https://dashboard.internetcomputer.org/neuron/4000934039483276792"
         },
-        position: { x: 300, y: 50 },
+        position: { x: -150, y: 100 },
         style: nodeStyles.infrastructure,
         sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
@@ -1105,12 +1140,12 @@ const initialNodes = [
             label: 'ICP Neuron Vector',
             description: "Controls the NNS neuron: collects its maturity and compounds ICP back into it",
             inputs: ["ICP from Splitter (25%)", "Maturity from NNS Neuron"],
-            outputs: ["ICP to NNS Neuron"],
+            outputs: ["ICP to NNS Neuron", "Maturity to Revenue"],
             canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-wu6phoy.100000000010000000000000000000000000000000000000000000000000000",
             details: "Vector ID: 1 on Neuronpool",
             link: "https://vectors.neuronpool.com/vectors/fi3zi-fyaaa-aaaaq-aachq-cai/1"
         },
-        position: { x: 300, y: 150 },
+        position: { x: -150, y: 220 },
         style: nodeStyles.infrastructure,
         sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
@@ -1122,8 +1157,7 @@ const initialNodes = [
             label: 'ICP Splitter Vector',
             description: "Splits the ICP it receives between its destinations in the proportions set on the vector (read live below)",
             inputs: [
-                "ICP from Neuron Vector",
-                "ICP from Other Revenue Sources"
+                "ICP from Revenue (neuron maturity, LP fees, product revenue)"
             ],
             outputs: [
                 "25% ICP to Treasury",
@@ -1134,7 +1168,7 @@ const initialNodes = [
             details: "Vector ID: 6 on Neuronpool",
             link: "https://vectors.neuronpool.com/vectors/fi3zi-fyaaa-aaaaq-aachq-cai/6"
         },
-        position: { x: 300, y: 250 },
+        position: { x: 300, y: 450 },
         style: nodeStyles.infrastructure,
         sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
@@ -1154,7 +1188,7 @@ const initialNodes = [
             details: "Vector ID: 18 on ICPCoins",
             link: "https://beta.icpcoins.com/#/vector/modify/togwv-zqaaa-aaaal-qr7aa-cai/exchange/18"
         },
-        position: { x: 100, y: 350 },
+        position: { x: 100, y: 560 },
         style: nodeStyles.tokenManagement,
         sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
@@ -1175,7 +1209,7 @@ const initialNodes = [
             details: "Vector ID: 45 on Neuronpool",
             link: "https://vectors.neuronpool.com/vectors/fi3zi-fyaaa-aaaaq-aachq-cai/45"
         },
-        position: { x: 300, y: 350 },
+        position: { x: 300, y: 560 },
         style: nodeStyles.tokenManagement,
         sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
@@ -1195,7 +1229,7 @@ const initialNodes = [
             details: "ICP Treasury: ICRC1 Account fi3zi-fyaaa-aaaaq-aachq-cai, ICP Account 580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9\n\nSNEED Treasury: ICRC1 Account fi3zi-fyaaa-aaaaq-aachq-cai-laerbmy.8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de",
             link: "https://dashboard.internetcomputer.org/account/580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9"
         },
-        position: { x: 500, y: 350 },
+        position: { x: 530, y: 560 },
         style: nodeStyles.tokenManagement,
         sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
@@ -1216,7 +1250,7 @@ const initialNodes = [
             canisterId: "ok64y-uiaaa-aaaag-qdcbq-cai",
             link: "https://dashboard.internetcomputer.org/canister/ok64y-uiaaa-aaaag-qdcbq-cai"
         },
-        position: { x: 300, y: 450 },
+        position: { x: 300, y: 670 },
         style: nodeStyles.tokenManagement,
         sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
@@ -1231,7 +1265,7 @@ const initialNodes = [
             outputs: [],
             canisterId: "fi3zi-fyaaa-aaaaq-aachq-cai"
         },
-        position: { x: 500, y: 450 },
+        position: { x: 530, y: 670 },
         style: nodeStyles.tokenManagement,
         sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
@@ -1247,7 +1281,7 @@ const initialNodes = [
             canisterId: "lvc4n-7aaaa-aaaam-adm6a-cai",
             link: "https://app.sneeddao.com/rll"
         },
-        position: { x: 300, y: 550 },
+        position: { x: 300, y: 780 },
         style: nodeStyles.tokenManagement,
         sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
@@ -1258,30 +1292,30 @@ const initialNodes = [
         id: '10',
         type: 'default',
         data: { 
-            label: 'Other Revenue Sources',
-            description: "Virtual collector for various revenue streams",
-            inputs: ["Various token streams"],
+            label: 'Revenue',
+            description: REVENUE_DESCRIPTION,
+            inputs: ["Maturity from the 2-year neuron (through its vector)", "LP fees from the ICPSwap LP", "Product revenue from Products"],
             outputs: ["ICP to ICP Splitter Vector", "SNEED to SNEED Splitter Vector"]
         },
-        position: { x: 100, y: 650 },
+        position: { x: 300, y: 340 },
         style: nodeStyles.revenue,
-        sourcePosition: Position.Left, // up the left margin to the splitters, clear of the middle column
-        targetPosition: Position.Bottom, // LP rewards and Products come up from below
+        sourcePosition: Position.Bottom, // ICP straight down to the ICP splitter; SNEED leaves from the right (EDGE_HANDLES)
+        targetPosition: Position.Top, // its three sources sit above it
     },
     {
         id: '11',
         type: 'default',
         data: { 
-            label: 'SNEED/ICP LP Rewards',
-            description: "Liquidity provision rewards from ICPSwap",
-            inputs: ["LP rewards"],
-            outputs: ["ICP and SNEED rewards to Revenue Collector"],
+            label: 'ICPSwap LP',
+            description: LP_DESCRIPTION,
+            inputs: ["Trading fees on the SNEED/ICP pool"],
+            outputs: ["ICP and SNEED fees to Revenue"],
             details: "Every SNEED/ICP position held by the Sneed DeFi canister",
             link: "https://app.icpswap.com/info-swap/pool/details/osyzs-xiaaa-aaaag-qc76q-cai"
         },
-        position: { x: -30, y: 760 },
+        position: { x: 70, y: 220 },
         style: nodeStyles.revenue,
-        sourcePosition: Position.Top,
+        sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
     },
     {
@@ -1289,19 +1323,19 @@ const initialNodes = [
         type: 'default',
         data: { 
             label: 'Products',
-            description: "Virtual collector for product revenue",
+            description: "What the products earn, together",
             inputs: ["ICP and SNEED revenue from products"],
-            outputs: ["ICP and SNEED to Revenue Collector"]
+            outputs: ["ICP and SNEED to Revenue"]
         },
-        position: { x: 230, y: 760 },
+        position: { x: 520, y: 220 },
         style: nodeStyles.revenue,
-        sourcePosition: Position.Top,
-        targetPosition: Position.Bottom, // the products come up from below
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top, // the products sit above it
     },
     // The products, from utils/revenueData.js (the same list /revenue shows)
     ...PRODUCTS.map((p) => {
         const { title, ...data } = productItem(p);
-        return { id: p.node, type: 'default', data: { label: title, ...data }, position: PRODUCT_POSITIONS[p.id], style: nodeStyles.revenue, sourcePosition: Position.Top, targetPosition: Position.Bottom };
+        return { id: p.node, type: 'default', data: { label: title, ...data }, position: PRODUCT_POSITIONS[p.id], style: nodeStyles.revenue, sourcePosition: Position.Bottom, targetPosition: Position.Top };
     }),
 ];
 
@@ -1339,13 +1373,13 @@ const initialEdges = [
     {
         id: 'e2',
         source: '2',
-        target: '3',
-        label: '100%',
+        target: '10',
+        label: 'maturity',
         type: 'smoothstep',
         style: edgeStyles.icp,
         markerEnd: { type: MarkerType.ArrowClosed },
         data: {
-            description: "Maturity to ICP Splitter",
+            description: "Maturity to Revenue, on to the ICP Splitter",
             token: "ICP",
             percentage: "100%"
         }
@@ -1461,7 +1495,7 @@ const initialEdges = [
         style: edgeStyles.various,
         markerEnd: { type: MarkerType.ArrowClosed },
         data: {
-            description: "LP Rewards to Revenue Collector",
+            description: "LP fees to Revenue",
             token: "Various",
             percentage: "100%"
         }
@@ -1475,7 +1509,7 @@ const initialEdges = [
         style: edgeStyles.various,
         markerEnd: { type: MarkerType.ArrowClosed },
         data: {
-            description: "Product Revenue to Collector",
+            description: "Product revenue to Revenue",
             token: "Various",
             percentage: "100%"
         }
@@ -1543,7 +1577,8 @@ function RLLInfo() {
         rllDiagram: true,    // Expanded by default
         systemComponents: true  // Expanded by default
     });
-    const [activeTab, setActiveTab] = useState('assets'); // 'assets', 'rll', 'components'
+    // ?tab=diagram (or components) opens that tab, so a link can point at the diagram
+    const [activeTab, setActiveTab] = useState(() => ({ diagram: 'rll', components: 'components' })[new URLSearchParams(window.location.search).get('tab')] || 'assets'); // 'assets', 'rll', 'components'
     const [expandedItems, setExpandedItems] = useState({});
     const [tooltip, setTooltip] = useState(null);
     const [treasuryBalances, setTreasuryBalances] = useState({
@@ -1637,7 +1672,7 @@ function RLLInfo() {
                 });
             });
         }
-        return [...kept, ...added];
+        return [...kept, ...added].map(withHandles);
     }, [liveSplits]);
 
     const liveText = useMemo(() => {
@@ -2854,7 +2889,8 @@ function RLLInfo() {
         setTooltip({ kind: 'node', id: node.id, x: event.clientX, y: event.clientY });
     };
     const handleEdgeMouseEnter = (event, edge) => {
-        if (tooltip?.pinned || tooltip?.held === 'inside') return;
+        // while a card waits for the pointer, edges it crosses on the way don't take the card over
+        if (tooltip?.pinned || tooltip?.held) return;
         cancelLeave();
         ensureTooltipData('edge', edge);
         setTooltip({ kind: 'edge', id: edge.id, x: event.clientX, y: event.clientY });
@@ -4367,6 +4403,7 @@ function RLLInfo() {
                             <ReactFlow
                                 nodes={liveNodes}
                                 edges={liveEdges}
+                                nodeTypes={NODE_TYPES}
                                 fitView
                                 fitViewOptions={{ padding: 0.15 }}
                                 minZoom={0.2}

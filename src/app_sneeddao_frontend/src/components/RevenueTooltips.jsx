@@ -24,19 +24,20 @@ const NODE_LINES = {
     '6': [['icpSplitter', 'toTreasury', 'ICP from the splitter'], ['sneedSplitter', 'treasury', 'SNEED from the splitter']],
     '8': [['sneedSplitter', 'burn', 'SNEED burned']],
     '9': [['sneedSplitter', 'rll', 'SNEED for voters']],
-    '10': [['icpSplitter', 'deposits', 'ICP deposited into the loop']],
+    '10': [['neuron', 'maturity', 'Maturity from the neuron'], ['icpSplitter', 'deposits', 'ICP deposited (LP fees, products)'], ['lpFees', 'toSneedSplitter', 'SNEED from LP fees']],
     '11': [['lpFees', 'icpSneedPool', 'ICP fees claimed'], ['lpFees', 'sneedSneedPool', 'SNEED fees claimed']],
 };
 const EDGE_LINES = {
     '1-2': [['neuron', 'maturity', 'Maturity minted']],
-    '2-3': [['icpSplitter', 'maturity', 'Maturity to the splitter']],
+    '2-10': [['icpSplitter', 'maturity', 'Maturity to the splitter']],
     '3-4': [['icpSplitter', 'toBuyback', 'ICP to the buyback']],
     '3-6': [['icpSplitter', 'toTreasury', 'ICP to the treasury']],
     '4-5': [['buyback', 'sneedOut', 'SNEED bought']],
     '5-6': [['sneedSplitter', 'treasury', 'SNEED to the treasury']],
     '5-8': [['sneedSplitter', 'burn', 'SNEED burned']],
     '5-9': [['sneedSplitter', 'rll', 'SNEED to RLL rewards']],
-    '10-3': [['icpSplitter', 'deposits', 'ICP deposited']],
+    '10-3': [['icpSplitter', 'maturity', 'Maturity (inside the pylon)'], ['icpSplitter', 'deposits', 'ICP deposited']],
+    '10-5': [['lpFees', 'toSneedSplitter', 'SNEED from LP fees']],
     '11-10': [['lpFees', 'toIcpSplitter', 'ICP to the ICP splitter (both pools)'], ['lpFees', 'toSneedSplitter', 'SNEED to the SNEED splitter']],
 };
 // cards that count from the start instead of the default period: what the LP has paid out so far
