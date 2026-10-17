@@ -5,6 +5,7 @@ import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
 import PrincipalBox from '../PrincipalBox';
+import DonateButton from './DonateButton';
 import SnsDropdown from './SnsDropdown';
 import ThemeToggle from './ThemeToggle';
 import { useAdminCheck } from '../hooks/useAdminCheck';
@@ -1522,6 +1523,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         </div>
                     )}
                 </div>
+
+                <DonateButton />
 
                 {isAuthenticated ? (
                     <PrincipalBox 

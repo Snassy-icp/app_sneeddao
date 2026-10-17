@@ -520,6 +520,29 @@ function Admin() {
                         <h2 style={{ margin: 0 }}>Rewards (RLL)</h2>
                         <p style={{ color: '#d4af37', margin: 0 }}>Manage rewards distribution, neuron balances, and claim history</p>
                     </Link>
+
+                    <Link 
+                        to="/admin/donations"
+                        style={{
+                            backgroundColor: '#3a1a24',
+                            padding: '20px',
+                            borderRadius: '8px',
+                            textDecoration: 'none',
+                            color: '#ffffff',
+                            textAlign: 'center',
+                            border: '1px solid #f43f5e',
+                            transition: 'transform 0.2s ease',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '10px'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
+                        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                    >
+                        <h2 style={{ margin: 0 }}>Donations</h2>
+                        <p style={{ color: '#fda4af', margin: 0 }}>Set where donations go and moderate the thank-you wall</p>
+                    </Link>
                 </div>
             </main>
         </div>
