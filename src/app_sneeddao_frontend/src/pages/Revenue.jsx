@@ -10,7 +10,7 @@ import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { useDenomination } from '../contexts/DenominationContext';
 import { useStoreVersion } from '../utils/revenueStore';
-import { PRODUCTS, PERIODS, DEFAULT_PERIOD, loadAllProducts, loadProduct, productEntry, productTotals, usdOf, fmtAmount, priceOf, useSection, lineOf, loadSection } from '../utils/revenueData';
+import { PRODUCTS, SOURCES, PERIODS, DEFAULT_PERIOD, loadAllProducts, loadProduct, productEntry, productTotals, revenueTotals, loadAllSources, loadSource, sourceEntry, usdOf, fmtAmount, priceOf, useSection, lineOf, loadSection } from '../utils/revenueData';
 import { ICP_LEDGER } from '../utils/rllLedger';
 
 const AMBER = '#f59e0b';
@@ -30,11 +30,13 @@ function Amounts({ amounts, max = 2 }) {
     return <>{shown.map((a, i) => <React.Fragment key={a.ledger}>{i > 0 && '\u00a0· '}<span style={{ whiteSpace: 'nowrap' }}>{fmtAmount(a.amount, a.ledger, max)}</span></React.Fragment>)}</>;
 }
 
-function ProductCard({ product }) {
+/// One source of revenue: a product (read from its canister) or the neuron or the LP (read from
+/// the ledger). `item` is { id, name, link, color, description }, `e` its cache entry and `s` its
+/// summary ({ amounts, parts, stats, hidden? }, null while it loads).
+function RevenueCard({ item, e, s, retry, reading }) {
     const { theme } = useTheme();
     const { formatValue } = useDenomination();
-    const e = productEntry(product.id);
-    const s = e.value;
+    const product = item;
     const value = s ? usdOf(s.amounts) : null;
     return (
         <section id={product.id} style={{ background: theme.colors.cardBg, border: `1px solid ${theme.colors.border}`, borderTop: `3px solid ${product.color}`, borderRadius: 14, padding: '1rem', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -48,10 +50,10 @@ function ProductCard({ product }) {
                 )}
             </div>
             <div style={{ fontSize: '0.82rem', color: theme.colors.secondaryText, lineHeight: 1.5 }}>{product.description}</div>
-            {!s && !e.error && <Spinner text="Reading its canister…" />}
+            {!s && !(e.error && !e.loading) && <Spinner text={e.progress || reading} />}
             {!s && e.error && !e.loading && (
                 <div style={{ fontSize: '0.8rem', color: theme.colors.error }}>
-                    Could not read it: {e.error} <button type="button" onClick={() => loadProduct(product, { force: true }).catch(() => {})} style={{ background: 'none', border: 'none', color: theme.colors.accent, cursor: 'pointer', fontSize: '0.8rem' }}>Try again</button>
+                    Could not read it: {e.error} <button type="button" onClick={retry} style={{ background: 'none', border: 'none', color: theme.colors.accent, cursor: 'pointer', fontSize: '0.8rem' }}>Try again</button>
                 </div>
             )}
             {s?.hidden && (
@@ -82,11 +84,20 @@ function ProductCard({ product }) {
     );
 }
 
-/// What each product contributed, as one bar (by today's value, or ICP when prices are missing).
-function ShareBar() {
+const ProductCard = ({ product }) => {
+    const e = productEntry(product.id);
+    return <RevenueCard item={product} e={e} s={e.value} retry={() => loadProduct(product, { force: true }).catch(() => {})} reading="Reading its canister…" />;
+};
+const SourceCard = ({ src }) => (
+    <RevenueCard item={src} e={sourceEntry(src)} s={src.summary()} retry={() => loadSource(src, { force: true }).catch(() => {})} reading="Reading the ledger…" />
+);
+const PRODUCTS_SOURCE = { id: 'products', name: 'Products', color: AMBER };
+
+/// What each part contributed, as one bar (by today's value, or ICP when prices are missing).
+/// `parts` is [{ p: { id, name, color }, s: summary or null }].
+function ShareBar({ parts }) {
     const { theme } = useTheme();
-    const rows = PRODUCTS.map((p) => {
-        const s = productEntry(p.id).value;
+    const rows = parts.map(({ p, s }) => {
         if (!s || s.hidden) return null;
         const v = usdOf(s.amounts);
         const icp = s.amounts.find((a) => a.ledger === ICP_LEDGER)?.amount || 0n;
@@ -174,10 +185,16 @@ export default function Revenue() {
     const [params, setParams] = useSearchParams();
     const period = PERIODS.find((p) => p.key === params.get('period')) || PERIODS.find((p) => p.key === DEFAULT_PERIOD);
     useStoreVersion();
-    useEffect(() => { loadAllProducts(); }, []);
+    useEffect(() => { loadAllProducts(); loadAllSources(); }, []);
     const totals = productTotals();
     const value = usdOf(totals.amounts);
-    const loading = PRODUCTS.some((p) => productEntry(p.id).loading);
+    const revenue = revenueTotals();
+    const revenueValue = usdOf(revenue.amounts);
+    const sourcesRead = revenue.sources.every((x) => x.summary);
+    const loading = PRODUCTS.some((p) => productEntry(p.id).loading) || SOURCES.some((src) => sourceEntry(src).loading);
+    const refresh = () => { loadAllProducts({ force: true }); loadAllSources({ force: true }); };
+    const productShares = PRODUCTS.map((p) => ({ p, s: productEntry(p.id).value }));
+    const sourceShares = [...revenue.sources.map(({ src, summary }) => ({ p: src, s: summary })), { p: PRODUCTS_SOURCE, s: totals.loaded ? { amounts: totals.amounts } : null }];
     const card = { background: theme.colors.cardBg, border: `1px solid ${theme.colors.border}`, borderRadius: 14, padding: '1rem', marginBottom: 16 };
     return (
         <>
@@ -187,20 +204,37 @@ export default function Revenue() {
                 <div style={{ marginBottom: 12 }}>
                     <h1 style={{ margin: 0, fontSize: '1.6rem', color: theme.colors.primaryText }}>Revenue</h1>
                     <p style={{ margin: '4px 0 0', color: theme.colors.secondaryText, fontSize: '0.9rem', maxWidth: 680, lineHeight: 1.5 }}>
-                        What Sneed DAO's products have earned, read live from each product's canister, and what reached the <Link to="/rll_info" style={{ color: theme.colors.accent }}>Recursive Liquidity Loop</Link>, read from the ledger. The loop turns it into SNEED buybacks, burns, treasury and rewards for SNEED voters.
+                        What Sneed DAO earns, from three sources: the maturity of its 2-year ICP neuron and the trading fees of its ICPSwap liquidity, read from the ledger, and the fees of its products, read live from each product's canister. All of it goes into the <Link to="/rll_info" style={{ color: theme.colors.accent }}>Recursive Liquidity Loop</Link>, which turns it into SNEED buybacks, burns, treasury and rewards for SNEED voters.
                     </p>
                 </div>
 
                 <section style={card}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                        <div>
+                        <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Revenue, all time</div>
+                            <div style={{ fontSize: '1.7rem', fontWeight: 800, color: theme.colors.primaryText, fontVariantNumeric: 'tabular-nums' }}>
+                                {totals.loaded === totals.total && sourcesRead ? <Amounts amounts={revenue.amounts} /> : <Spinner text="Reading the ledger and the products…" />}
+                            </div>
+                            {totals.loaded === totals.total && sourcesRead && revenueValue.usd > 0 && <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>{formatValue(revenueValue.usd)}{revenueValue.complete ? '' : ' +'} at today's prices</div>}
+                        </div>
+                        <button type="button" disabled={loading} onClick={refresh} title="Read the ledger and the products again" style={{ background: 'transparent', border: `1px solid ${theme.colors.border}`, borderRadius: 8, color: theme.colors.secondaryText, padding: '6px 10px', cursor: 'pointer' }}><FaSync className={loading ? 'rev-spin' : ''} /></button>
+                    </div>
+                    {totals.loaded === totals.total && sourcesRead && <div style={{ marginTop: 12 }}><ShareBar parts={sourceShares} /></div>}
+                </section>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: 12, marginBottom: 16 }}>
+                    {SOURCES.map((src) => <SourceCard key={src.id} src={src} />)}
+                </div>
+
+                <section id="products" style={card}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                        <div style={{ minWidth: 0 }}>
                             <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Earned by the products, all time</div>
                             <div style={{ fontSize: '1.7rem', fontWeight: 800, color: AMBER, fontVariantNumeric: 'tabular-nums' }}>
                                 {totals.loaded ? <Amounts amounts={totals.amounts} /> : <Spinner text="Reading the products…" />}
                             </div>
                             {value.usd > 0 && <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>{formatValue(value.usd)}{value.complete ? '' : ' +'} at today's prices</div>}
                         </div>
-                        <button type="button" disabled={loading} onClick={() => loadAllProducts({ force: true })} title="Read the products again" style={{ background: 'transparent', border: `1px solid ${theme.colors.border}`, borderRadius: 8, color: theme.colors.secondaryText, padding: '6px 10px', cursor: 'pointer' }}><FaSync className={loading ? 'rev-spin' : ''} /></button>
                     </div>
                     {(totals.loaded < totals.total || totals.hidden.length > 0) && (
                         <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: 6 }}>
@@ -208,7 +242,7 @@ export default function Revenue() {
                             {totals.hidden.length > 0 && `Not counted yet: ${totals.hidden.map((p) => p.name).join(', ')} (totals still admin only).`}
                         </div>
                     )}
-                    <div style={{ marginTop: 12 }}><ShareBar /></div>
+                    <div style={{ marginTop: 12 }}><ShareBar parts={productShares} /></div>
                 </section>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: 12, marginBottom: 16 }}>
@@ -225,7 +259,7 @@ export default function Revenue() {
                 <div style={{ ...card, fontSize: '0.8rem', color: theme.colors.mutedText, lineHeight: 1.5, display: 'flex', gap: 8 }}>
                     <FaInfoCircle style={{ marginTop: 3, flexShrink: 0 }} />
                     <div>
-                        Product totals are each canister's own lifetime counters of the fees it charged, so they match no single period. Most fees are paid by the user straight into the loop, so the ledger cannot tell the products apart; it shows their sum among the deposits above. Sneedex's cut of a sale is paid in the token of the sale: ICP goes to the ICP splitter, SNEED to the SNEED splitter, other tokens to the Sneed DeFi canister. Values in your chosen denomination use today's prices, not the price on the day of each payment.
+                        The neuron's maturity and the LP's fees are read from the ledger, from their first transfer on. Product totals are each canister's own lifetime counters of the fees it charged, so they match no single period. Most fees are paid by the user straight into the loop, so the ledger cannot tell the products apart; it shows their sum among the deposits above. Sneedex's cut of a sale is paid in the token of the sale: ICP goes to the ICP splitter, SNEED to the SNEED splitter, other tokens to the Sneed DeFi canister. Values in your chosen denomination use today's prices, not the price on the day of each payment.
                         See the flows in the <Link to="/rll_info" style={{ color: theme.colors.accent }}>tokenomics diagram</Link> and every transfer in the <Link to="/rll_ledger" style={{ color: theme.colors.accent }}>loop ledger</Link>.
                     </div>
                 </div>

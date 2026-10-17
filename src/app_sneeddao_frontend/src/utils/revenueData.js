@@ -202,6 +202,58 @@ export function lineOf(sectionKeyName, lineKey, period = DEFAULT_PERIOD) {
     return { total: l.sum.total, n: l.sum.n, cutAt: l.cutAt, token: l.token || section.token, byDay: l.sum.byDay };
 }
 
+// ---- Revenue's three sources ----
+// Revenue comes from the 2-year neuron's maturity, the ICPSwap LP's fees and the products. The
+// first two are read from the loop ledger over all time and summarised like a product
+// ({ amounts, parts, stats }), so the revenue page shows all three alike.
+const dayOf = (ms) => new Date(ms).toISOString().slice(0, 10);
+const firstDay = (...lines) => lines.flatMap((l) => [...l.byDay.keys()]).sort()[0];
+const lastDay = (...lines) => lines.flatMap((l) => [...l.byDay.keys()]).sort().pop();
+export const SOURCES = [
+    { id: 'neuron', section: 'neuron', name: '2-year ICP neuron', link: '/rll_ledger?period=all#neuron', color: '#2ecc71',
+        description: 'The DAO\'s NNS neuron, locked for 2 years: the NNS pays it maturity for voting, about once a day. A quarter is staked back into the neuron, the rest goes on into the loop.',
+        summary: () => {
+            const m = lineOf('neuron', 'maturity', 'all');
+            if (!m) return null;
+            // the first payout the ledger shows (the vector's maturity account), or where a capped read stopped
+            const since = m.n ? (m.cutAt ? dayOf(m.cutAt) : firstDay(m)) : null;
+            return { amounts: [{ ledger: ICP_LEDGER, amount: m.total }], parts: [], stats: [{ label: 'Maturity payouts', value: m.n.toLocaleString() }, ...(since ? [{ label: m.cutAt ? 'Counted since' : 'Since', value: since }] : [])] };
+        } },
+    { id: 'lp', section: 'lpFees', name: 'ICPSwap LP', link: '/rll_ledger?period=all#lpFees', color: '#06b6d4',
+        description: 'The DAO\'s liquidity on ICPSwap, held by the Sneed DeFi canister: the trading fees it earns are claimed about once a week and sent into the loop.',
+        summary: () => {
+            const [icp, clown, sneed] = ['icpSneedPool', 'icpClownPool', 'sneedSneedPool'].map((k) => lineOf('lpFees', k, 'all'));
+            if (!icp || !clown || !sneed) return null;
+            const any = [icp, clown, sneed].filter((l) => l.n);
+            return {
+                amounts: [{ ledger: ICP_LEDGER, amount: icp.total + clown.total }, { ledger: SNEED_LEDGER, amount: sneed.total }],
+                parts: [
+                    { label: 'SNEED/ICP pool', amounts: [{ ledger: ICP_LEDGER, amount: icp.total }, { ledger: SNEED_LEDGER, amount: sneed.total }] },
+                    { label: 'ICP/CLOWN pool', amounts: [{ ledger: ICP_LEDGER, amount: clown.total }], note: 'its CLOWN not counted' },
+                ],
+                stats: any.length ? [{ label: 'First claim', value: firstDay(...any) }, { label: 'Last claim', value: lastDay(...any) }] : [],
+            };
+        } },
+];
+export const loadSource = (src, opts) => loadSection(src.section, 'all', opts);
+export const sourceEntry = (src) => sectionEntry(src.section, 'all');
+export function loadAllSources(opts) {
+    loadPrice(ICP_LEDGER).catch(() => {});
+    loadPrice(SNEED_LEDGER).catch(() => {});
+    return Promise.all(SOURCES.map((src) => loadSource(src, opts).catch(() => {})));
+}
+
+/// Revenue over all time: the two ledger sources and the products, { amounts, sources, products }
+/// (sources: [{ src, summary }], summary null while loading).
+export function revenueTotals() {
+    const products = productTotals();
+    const sources = SOURCES.map((src) => ({ src, summary: src.summary() }));
+    const amounts = [];
+    for (const a of products.amounts) add(amounts, a.ledger, a.amount);
+    for (const { summary } of sources) if (summary) for (const a of summary.amounts) add(amounts, a.ledger, a.amount);
+    return { amounts, sources, products };
+}
+
 export const loadNeuron = (opts) => load('rll:neuron', () => fetchNeuron(), opts);
 export const peekNeuron = () => peek('rll:neuron');
 export const loadSplits = (node, opts) => load(`rll:splits:${node}`, () => fetchSplits(node), opts);
