@@ -609,8 +609,9 @@ const TokenAnimationManager = ({ edges, nodes }) => {
 };
 
 // A small floating card. Hover cards follow the pointer and take no clicks; pinned
-// cards (opened by a tap or a click) stay until closed, and can carry a link.
-const Popover = ({ x, y, hover, onClose, link, ignoreRef, children }) => {
+// cards (opened by a tap or a click) stay until closed, and can carry a link. A hover card that
+// is `held` has stopped following and takes the pointer, so its links can be clicked.
+const Popover = ({ x, y, hover, held, onPointerEnter, onPointerLeave, onClose, link, ignoreRef, children }) => {
     const ref = useRef(null);
     const [pos, setPos] = useState({ left: -9999, top: -9999 });
     // re-placed when the content grows too (live numbers arriving), not only on a render
@@ -650,7 +651,8 @@ const Popover = ({ x, y, hover, onClose, link, ignoreRef, children }) => {
         return () => { document.removeEventListener('pointerdown', down, true); document.removeEventListener('keydown', key); };
     }, [hover, onClose, ignoreRef]);
     return (
-        <div ref={ref} className={`rll-popover${hover ? ' rll-popover-hover' : ''}`} style={pos} role={hover ? 'tooltip' : 'dialog'}>
+        <div ref={ref} className={`rll-popover${hover && !held ? ' rll-popover-hover' : ''}`} style={pos} role={hover ? 'tooltip' : 'dialog'}
+            onPointerEnter={onPointerEnter} onPointerLeave={onPointerLeave}>
             {!hover && <button type="button" className="rll-popover-close" aria-label="Close" onClick={onClose}>×</button>}
             <div style={{ paddingRight: hover ? 0 : 24 }}>{children}</div>
             {!hover && link && (
@@ -700,11 +702,12 @@ const RevenueParts = ({ kind, target }) => {
     );
 };
 
-// Diagram card: hover follows the pointer; a tap or click pins it with a link.
-const TooltipOverlay = ({ tooltip, onClose }) => {
+// Diagram card: hover follows the pointer, and stays put for a moment when the pointer leaves so
+// it can be reached (its links clicked); a tap or click pins it with a link.
+const TooltipOverlay = ({ tooltip, onClose, onEnter, onLeave }) => {
     if (!tooltip || !tooltip.content) return null;
     return (
-        <Popover x={tooltip.x} y={tooltip.y} hover={!tooltip.pinned} onClose={onClose} link={tooltip.link}>
+        <Popover x={tooltip.x} y={tooltip.y} hover={!tooltip.pinned} held={!!tooltip.held} onPointerEnter={onEnter} onPointerLeave={onLeave} onClose={onClose} link={tooltip.link}>
             {tooltip.content}
         </Popover>
     );
@@ -2813,30 +2816,48 @@ function RLLInfo() {
         const e = liveEdges.find((x) => x.id === t.id);
         return e ? buildEdgeContent(e) : null;
     };
+    // A hover card freezes when the pointer leaves its node or edge, and closes after a moment
+    // unless the pointer has moved onto it; on the card it stays until the pointer leaves it.
+    const leaveTimer = useRef(null);
+    const cancelLeave = () => { clearTimeout(leaveTimer.current); leaveTimer.current = null; };
+    useEffect(() => () => clearTimeout(leaveTimer.current), []);
     const handleNodeMouseEnter = (event, node) => {
-        if (tooltip?.pinned) return;
+        if (tooltip?.pinned || tooltip?.held === 'inside') return;
+        cancelLeave();
         ensureTooltipData('node', node);
         setTooltip({ kind: 'node', id: node.id, x: event.clientX, y: event.clientY });
     };
     const handleEdgeMouseEnter = (event, edge) => {
-        if (tooltip?.pinned) return;
+        if (tooltip?.pinned || tooltip?.held === 'inside') return;
+        cancelLeave();
         ensureTooltipData('edge', edge);
         setTooltip({ kind: 'edge', id: edge.id, x: event.clientX, y: event.clientY });
     };
     const handleMouseLeave = () => {
+        setTooltip((t) => (t && !t.pinned && !t.held ? { ...t, held: 'leaving' } : t));
+        cancelLeave();
+        leaveTimer.current = setTimeout(() => setTooltip((t) => (t && !t.pinned && t.held === 'leaving' ? null : t)), 400);
+    };
+    const handleTooltipEnter = () => {
+        cancelLeave();
+        setTooltip((t) => (t && !t.pinned ? { ...t, held: 'inside' } : t));
+    };
+    const handleTooltipLeave = () => {
         setTooltip((t) => (t && !t.pinned ? null : t));
     };
     const handleMouseMove = (event) => {
-        if (tooltip && !tooltip.pinned) {
+        if (tooltip && !tooltip.pinned && !tooltip.held) {
             setTooltip((prev) => ({ ...prev, x: event.clientX, y: event.clientY }));
         }
     };
     // A tap or a click pins the card so it can be read and its link followed (hover never fires on a phone)
     const handleNodeClick = (event, node) => {
+        cancelLeave();
         ensureTooltipData('node', node);
         setTooltip({ kind: 'node', id: node.id, x: event.clientX, y: event.clientY, pinned: true, link: node.data.link });
     };
     const handleEdgeClick = (event, edge) => {
+        cancelLeave();
         ensureTooltipData('edge', edge);
         setTooltip({ kind: 'edge', id: edge.id, x: event.clientX, y: event.clientY, pinned: true });
     };
@@ -4341,7 +4362,7 @@ function RLLInfo() {
                                 <TokenAnimationManager edges={liveEdges} nodes={liveNodes} />
                             </ReactFlow>
                         </div>
-                        <TooltipOverlay tooltip={tooltip && { ...tooltip, content: tooltipContent(tooltip) }} onClose={closeTooltip} />
+                        <TooltipOverlay tooltip={tooltip && { ...tooltip, content: tooltipContent(tooltip) }} onClose={closeTooltip} onEnter={handleTooltipEnter} onLeave={handleTooltipLeave} />
                     </section>
                     )}
 
