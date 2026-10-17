@@ -43,17 +43,23 @@ def canister_ids(network):
     return out
 
 
-def call(network, canister, method, arg="()", query=False):
-    cmd = ["dfx", *IDENTITY, "canister", "--network", network, "call", "--output", "json"]
+def call(network, canister, method, arg="()", query=False, public=False):
+    """A dfx call. `public` reads go as the anonymous identity, so they need no passphrase; the
+    others run as IDENTITY, with stderr left on the terminal so dfx can ask for its passphrase."""
+    ident = ["--identity", "anonymous"] if public else IDENTITY
+    cmd = ["dfx", *ident, "canister", "--network", network, "call", "--output", "json"]
     if query:
         cmd.append("--query")
     with tempfile.NamedTemporaryFile("w", suffix=".did", delete=False) as f:
         f.write(arg)
         path = f.name
     cmd += [canister, method, "--argument-file", path]
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    if public:
+        r = subprocess.run(cmd, capture_output=True, text=True)
+    else:
+        r = subprocess.run(cmd, stdout=subprocess.PIPE, text=True)  # stderr: the passphrase prompt
     if r.returncode != 0:
-        raise RuntimeError(f"{method}: {r.stderr.strip()[:500]}")
+        raise RuntimeError(f"{method}: {(r.stderr or 'see the dfx error above').strip()[:500]}")
     return json.loads(r.stdout)
 
 
@@ -113,8 +119,8 @@ def is_canister(p):
 # ---- read ----
 
 def read_backend(network, be):
-    pnames = call(network, be, "get_all_principal_names", query=True)
-    nnames = call(network, be, "get_all_neuron_names", query=True)
+    pnames = call(network, be, "get_all_principal_names", query=True, public=True)
+    nnames = call(network, be, "get_all_neuron_names", query=True, public=True)
 
     def pages(method):
         out, start = [], 0
@@ -270,7 +276,7 @@ def apply(network, ids, p):
 def verify(network, ids, p):
     ok = True
     for batch in chunks(p["names"], 500):
-        got = call(network, ids["sneed_pid_names"], "get_names", "(vec { " + "; ".join(principal(x[0]) for x in batch) + " })", query=True)
+        got = call(network, ids["sneed_pid_names"], "get_names", "(vec { " + "; ".join(principal(x[0]) for x in batch) + " })", query=True, public=True)
         for (pr, n, v), g in zip(batch, got):
             g = g[0] if g else None
             have = (g["name"][0] if g and g["name"] else "") if g else None
@@ -279,14 +285,14 @@ def verify(network, ids, p):
                 print(f"  MISMATCH {pr}: want {n!r} verified={v}, have {g}")
     for batch in chunks(p["neuron_names"], 500):
         keys = "; ".join(f'record {{ "sns_root" = {principal(r)}; "neuron_id" = {blob(i)} }}' for r, i, _, _ in batch)
-        got = call(network, ids["sneed_neuron_names"], "get_names", f"(vec {{ {keys} }})", query=True)
+        got = call(network, ids["sneed_neuron_names"], "get_names", f"(vec {{ {keys} }})", query=True, public=True)
         for (r, i, n, v), g in zip(batch, got):
             g = g[0] if g else None
             if not g or g["name"] != n or bool(g["verified"]) != v:
                 ok = False
                 print(f"  MISMATCH neuron {r}/{i.hex()}: want {n!r} verified={v}, have {g}")
-    s1 = call(network, ids["sneed_pid_nicknames"], "stats", query=True)
-    s2 = call(network, ids["sneed_neuron_nicknames"], "stats", query=True)
+    s1 = call(network, ids["sneed_pid_nicknames"], "stats", query=True, public=True)
+    s2 = call(network, ids["sneed_neuron_nicknames"], "stats", query=True, public=True)
     for label, want, have in [("principal nicknames", len(p["principal_nicknames"]), int(s1["nicknames"])), ("neuron nicknames", len(p["neuron_nicknames"]), int(s2["nicknames"]))]:
         print(f"  {label}: planned {want}, in canister {have}")
         if have < want:
@@ -321,7 +327,7 @@ def main():
     if args.apply:
         if report["needs_decision"] or report["collisions"]:
             sys.exit("Resolve the collisions and the names needing a decision in --decisions first")
-        if not call(args.network, ids["app_sneeddao_backend"], "get_names_frozen", query=True):
+        if not call(args.network, ids["app_sneeddao_backend"], "get_names_frozen", query=True, public=True):
             sys.exit("Freeze the backend's naming writes first: admin_set_names_frozen(true)")
         if not apply(args.network, ids, p):
             sys.exit(1)
