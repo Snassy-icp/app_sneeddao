@@ -62,12 +62,13 @@ function ProductCard({ product }) {
             {s && !s.hidden && s.parts.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {s.parts.map((part) => (
-                        <div key={part.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: '0.8rem', padding: '5px 8px', borderRadius: 8, background: theme.colors.secondaryBg }}>
-                            <span style={{ color: theme.colors.primaryText, minWidth: 0 }}>
+                        // the label keeps its line; amounts in several tokens wrap under it, right-aligned
+                        <div key={part.label} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 12, rowGap: 2, fontSize: '0.8rem', padding: '5px 8px', borderRadius: 8, background: theme.colors.secondaryBg }}>
+                            <span style={{ color: theme.colors.primaryText, flex: '0 0 auto', whiteSpace: 'nowrap' }}>
                                 {part.link ? <Link to={part.link} style={{ color: theme.colors.primaryText }}>{part.label}</Link> : part.label}
                                 {part.note && <span style={{ color: theme.colors.mutedText }}> · {part.note}</span>}
                             </span>
-                            <span style={{ color: theme.colors.primaryText, fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}><Amounts amounts={part.amounts} /></span>
+                            <span style={{ color: theme.colors.primaryText, fontVariantNumeric: 'tabular-nums', textAlign: 'right', flex: '1 1 auto', marginLeft: 'auto' }}><Amounts amounts={part.amounts} /></span>
                         </div>
                     ))}
                 </div>
