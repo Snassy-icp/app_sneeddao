@@ -428,7 +428,7 @@ const TokenAnimationManager = ({ edges, nodes }) => {
 
         // Check destinations
         const isBurnDestination = targetNode.id === '8'; // SNEED Burn Address
-        const isDistributionDestination = targetNode.id === '9'; // RLL Distribution
+        const isDistributionDestination = targetNode.id === '9'; // Member Rewards
 
         return {
             id: animId(`token-${edge.id}`),
@@ -539,7 +539,7 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                             if (newToken) updatedTokens.push(newToken);
                         }
                     } else if (edge.target === '7') {
-                        // When tokens reach DeFi Canister, forward to RLL Distribution
+                        // When tokens reach DeFi Canister, forward to Member Rewards
                         const nextEdge = edges.find(e => e.source === '7' && e.target === '9');
                         if (nextEdge) {
                             const newToken = createToken(nextEdge, token.scale, token.type);
@@ -865,7 +865,7 @@ const nodes = {
                 outputs: [
                     "10% SNEED to Burn Address",
                     "10% SNEED to Treasury",
-                    "80% SNEED to RLL Distribution"
+                    "80% SNEED to Member Rewards"
                 ],
                 canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-vilbrxq.1000000002d0000000000000000000000000000000000000000000000000000",
                 details: "Vector ID: 45 on Neuronpool",
@@ -893,7 +893,7 @@ const nodes = {
                 ],
                 outputs: [
                     "ICP to ICP Splitter Vector",
-                    "Tokens to RLL Distribution"
+                    "Tokens to Member Rewards"
                 ],
                 canisterId: "ok64y-uiaaa-aaaag-qdcbq-cai",
                 link: "https://dashboard.internetcomputer.org/canister/ok64y-uiaaa-aaaag-qdcbq-cai"
@@ -908,7 +908,7 @@ const nodes = {
             },
             {
                 id: "9",
-                title: "RLL Distribution Canister",
+                title: "Member Rewards Canister",
                 description: "Holds rewards until SNEED voters claim them on the Rewards page",
                 inputs: ["80% of bought SNEED from SNEED Splitter", "Tokens from DeFi Canister"],
                 outputs: ["100% to Sneed Members (Rewards claimable on app.sneeddao.com)"],
@@ -1052,7 +1052,7 @@ const edges = {
                 id: "e7",
                 source: "5",
                 target: "9",
-                description: "SNEED to RLL Distribution",
+                description: "SNEED to Member Rewards",
                 token: "SNEED",
                 percentage: "80%"
             },
@@ -1105,7 +1105,7 @@ const edges = {
                 id: "e13",
                 source: "7",
                 target: "9",
-                description: "Tokens to RLL Distribution",
+                description: "Tokens to Member Rewards",
                 token: "Various",
                 percentage: "100%"
             },
@@ -1203,7 +1203,7 @@ const initialNodes = [
             outputs: [
                 "10% SNEED to Burn Address",
                 "10% SNEED to Treasury",
-                "80% SNEED to RLL Distribution"
+                "80% SNEED to Member Rewards"
             ],
             canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-vilbrxq.1000000002d0000000000000000000000000000000000000000000000000000",
             details: "Vector ID: 45 on Neuronpool",
@@ -1245,7 +1245,7 @@ const initialNodes = [
             ],
             outputs: [
                 "ICP to ICP Splitter Vector",
-                "Tokens to RLL Distribution"
+                "Tokens to Member Rewards"
             ],
             canisterId: "ok64y-uiaaa-aaaag-qdcbq-cai",
             link: "https://dashboard.internetcomputer.org/canister/ok64y-uiaaa-aaaag-qdcbq-cai"
@@ -1274,7 +1274,7 @@ const initialNodes = [
         id: '9',
         type: 'default',
         data: { 
-            label: 'RLL Distribution',
+            label: 'Member Rewards',
             description: "Holds rewards until SNEED voters claim them on the Rewards page",
             inputs: ["80% of bought SNEED from SNEED Splitter", "Tokens from DeFi Canister"],
             outputs: ["100% to Sneed Members (Rewards claimable on app.sneeddao.com)"],
@@ -1465,7 +1465,7 @@ const initialEdges = [
         style: edgeStyles.sneed,
         markerEnd: { type: MarkerType.ArrowClosed },
         data: {
-            description: "SNEED to RLL Distribution",
+            description: "SNEED to Member Rewards",
             token: "SNEED",
             percentage: "80%"
         }
@@ -1551,7 +1551,7 @@ const initialEdges = [
         style: edgeStyles.various,
         markerEnd: { type: MarkerType.ArrowClosed },
         data: {
-            description: "Tokens to RLL Distribution",
+            description: "Tokens to Member Rewards",
             token: "Various",
             percentage: "100%"
         }
@@ -1627,7 +1627,7 @@ function RLLInfo() {
     const [totalSupply, setTotalSupply] = useState(null);
 
     // ---- live diagram: splitter ratios and destinations come from the vectors, not from the text above ----
-    const NODE_LABELS = { '2': 'ICP Neuron Vector', '4': 'SNEED Buyback Vector', '6': 'Sneed DAO Treasury', '7': 'Sneed DeFi Canister', '8': 'SNEED Burn Address', '9': 'RLL Distribution' };
+    const NODE_LABELS = { '2': 'ICP Neuron Vector', '4': 'SNEED Buyback Vector', '6': 'Sneed DAO Treasury', '7': 'Sneed DeFi Canister', '8': 'SNEED Burn Address', '9': 'Member Rewards' };
     const TREASURY_SUB = '8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de';
     const liveSplits = useMemo(() => {
         const toHex = (a) => Array.from(a, (b) => b.toString(16).padStart(2, '0')).join('');
@@ -2273,7 +2273,7 @@ function RLLInfo() {
                 '6jvpj-sqaaa-aaaaj-azwnq-cai-vilbrxq': 'SNEED Splitter Vector',
                 'togwv-zqaaa-aaaal-qr7aa-cai-ihr3xbq': 'SNEED Buyback Vector',
                 'ok64y-uiaaa-aaaag-qdcbq-cai': 'Sneed DeFi Canister',
-                'lvc4n-7aaaa-aaaam-adm6a-cai': 'RLL Distribution'
+                'lvc4n-7aaaa-aaaam-adm6a-cai': 'Member Rewards'
             };
 
             // Try to find a matching node name
@@ -3034,7 +3034,7 @@ function RLLInfo() {
                 });
         }
 
-        // Add RLL Distribution balances
+        // Add Member Rewards balances
         reconciliationData
             .filter(rllBalance => 
                 rllBalance.token_id.toString() !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && 
@@ -3095,7 +3095,7 @@ function RLLInfo() {
             getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP') +
             getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP') +
             getUSDValue(defiBalances.icp, 8, 'ICP') +
-            getUSDValue(rllBalances.icp, 8, 'ICP');  // RLL Distribution ICP
+            getUSDValue(rllBalances.icp, 8, 'ICP');  // Member Rewards ICP
 
         // Add ICP from Other Positions
         if (otherLpPositions['ICP/CLOWN'].position) {
@@ -3127,7 +3127,7 @@ function RLLInfo() {
                getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED') +
                getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED') +
                getUSDValue(defiBalances.sneed, 8, 'SNEED') +
-               getUSDValue(rllBalances.sneed, 8, 'SNEED');  // RLL Distribution SNEED
+               getUSDValue(rllBalances.sneed, 8, 'SNEED');  // Member Rewards SNEED
     };
 
     // Calculate NAV (excluding treasury SNEED)
@@ -3136,7 +3136,7 @@ function RLLInfo() {
                getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED') +  // LP SNEED
                getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED') +   // Unclaimed LP SNEED
                getUSDValue(defiBalances.sneed, 8, 'SNEED') +               // DeFi SNEED
-               getUSDValue(rllBalances.sneed, 8, 'SNEED') +                // RLL Distribution SNEED
+               getUSDValue(rllBalances.sneed, 8, 'SNEED') +                // Member Rewards SNEED
                getOtherPositionsNonIcpUSDTotal() +  // Non-ICP values from Other Positions
                getOtherTokensUSDTotal();     // Other tokens
     };
@@ -3824,7 +3824,7 @@ function RLLInfo() {
                                                             rel="noopener noreferrer"
                                                             style={{ color: theme.colors.accent, textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                         >
-                                                            RLL Distribution:
+                                                            Member Rewards:
                                                         </a>
                                                     </div>
                                                     <div style={{ fontSize: '1.1em' }}>
@@ -4066,7 +4066,7 @@ function RLLInfo() {
                                                             rel="noopener noreferrer"
                                                             style={{ color: theme.colors.accent, textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                         >
-                                                            RLL Distribution:
+                                                            Member Rewards:
                                                         </a>
                                                     </div>
                                                     <div style={{ fontSize: '1.1em' }}>
@@ -4205,7 +4205,7 @@ function RLLInfo() {
                                                     </div>
                                                 </div>
 
-                                                {/* RLL Distribution Balances */}
+                                                {/* Member Rewards Balances */}
                                                 <div>
                                                     <div style={{ 
                                                         color: theme.colors.accent, 
@@ -4215,7 +4215,7 @@ function RLLInfo() {
                                                         borderBottom: `1px solid ${theme.colors.border}`,
                                                         paddingBottom: '5px'
                                                     }}>
-                                                        RLL Distribution Balances
+                                                        Member Rewards Balances
                                                     </div>
                                                     <div style={{ marginLeft: '15px' }}>
                                                         {knownTokens
