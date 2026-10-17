@@ -161,6 +161,33 @@ persistent actor SneedSMS {
         state.config.max_body_length := stable_max_body_length;
         state.config.max_recipients := stable_max_recipients;
         state.next_id := stable_next_id;
+        ignore mark_legacy_removed_senders();
+    };
+
+    // Builds before stable_sender_removed (ab70f949) marked a sender who left a message by setting
+    // its sender to index 0, a real user's index, who then had the message as their own. Those
+    // builds also took a message out of index 0's sent list whenever a recipient left it, whoever
+    // sent it. So a message with sender 0 that is missing from index 0's sent list was either handed
+    // to index 0 by a sender leaving, or really sent by index 0 and then left by a recipient; the
+    // data cannot tell which. Both are marked sender-removed (decided 2026-10-17): the leak closes
+    // for certain, and index 0 may lose sight of a message they sent that a recipient left (the
+    // other recipients keep it, with the sender shown as removed). A message index 0 sent that no
+    // recipient left is still in their sent list and stays theirs. Running it again finds nothing
+    // new. Returns how many it marked.
+    private func mark_legacy_removed_senders() : Nat {
+        let sent_by_zero = Map.new<Nat, Bool>();
+        switch (Map.get(state.sender_messages, Map.n32hash, 0 : Nat32)) {
+            case (?ids) { for (id in Vector.vals(ids)) Map.set(sent_by_zero, Map.nhash, id, true) };
+            case null {};
+        };
+        var marked = 0;
+        for ((id, message) in Map.entries(state.messages)) {
+            if (message.sender == 0 and Map.get(sent_by_zero, Map.nhash, id) == null and not is_sender_removed(id)) {
+                Map.set(stable_sender_removed, Map.nhash, id, true);
+                marked += 1;
+            };
+        };
+        marked
     };
 
     // Helper functions

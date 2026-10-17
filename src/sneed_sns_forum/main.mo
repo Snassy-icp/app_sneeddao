@@ -771,8 +771,9 @@ persistent actor SneedSNSForum {
     };
 
     system func postupgrade() {
-        // State is already initialized with stable values
-        // This ensures any post-upgrade initialization if needed
+        // State is already initialized with stable values.
+        // Put right the poll counts of builds before f9df91bf (first votes went uncounted).
+        ignore Lib.recount_poll_votes(state);
     };
 
     // Limits of the ingress guard below

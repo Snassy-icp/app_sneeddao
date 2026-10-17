@@ -2155,6 +2155,41 @@ module {
         #ok()
     };
 
+    /// Sets every poll option's vote_count and total_voting_power from the stored votes (one per
+    /// poll and neuron, never deleted), the source of truth. Builds before f9df91bf did not count a
+    /// neuron's first vote, so polls voted on then show too few votes; postupgrade runs this to put
+    /// them right. Counting again gives the same result. Returns the number of options it changed.
+    public func recount_poll_votes(state: ForumState) : Nat {
+        // poll id -> option id -> (votes, voting power)
+        let tallies = Map.new<Nat, Map.Map<Nat, (Nat, Nat)>>();
+        for (vote in Map.vals(state.poll_votes)) {
+            let options = switch (Map.get(tallies, Map.nhash, vote.poll_id)) {
+                case (?o) o;
+                case null { let o = Map.new<Nat, (Nat, Nat)>(); Map.set(tallies, Map.nhash, vote.poll_id, o); o };
+            };
+            let (n, vp) = switch (Map.get(options, Map.nhash, vote.option_id)) { case (?t) t; case null (0, 0) };
+            Map.set(options, Map.nhash, vote.option_id, (n + 1, vp + vote.voting_power));
+        };
+        var changed = 0;
+        for (poll in Map.vals(state.polls)) {
+            let options = Map.get(tallies, Map.nhash, poll.id);
+            var differs = false;
+            let recounted = Array.map<PollOption, PollOption>(poll.options, func(option) {
+                let (n, vp) = switch (options) {
+                    case (?o) { switch (Map.get(o, Map.nhash, option.id)) { case (?t) t; case null (0, 0) } };
+                    case null (0, 0);
+                };
+                if (n != option.vote_count or vp != option.total_voting_power) { differs := true; changed += 1 };
+                { option with vote_count = n; total_voting_power = vp }
+            });
+            if (differs) {
+                // updated_at stays: a recount is not an edit of the poll
+                ignore Map.put(state.polls, Map.nhash, poll.id, { poll with options = recounted });
+            };
+        };
+        changed
+    };
+
     public func get_poll_votes(state: ForumState, poll_id: Nat) : [PollVoteResponse] {
         let results = Buffer.Buffer<PollVoteResponse>(0);
         

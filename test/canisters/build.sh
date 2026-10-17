@@ -29,6 +29,19 @@ MOC="$(dfx +"$DFX_VERSION" cache show)/moc"
 rm -rf "$PREV_SRC"
 test -s "$OUT/sneed_lock_v2a.wasm"
 
+# backend, sms and forum as production ran them from April to October 2026 ("persistent actors",
+# enhanced orthogonal persistence), for the tests that rehearse upgrading production from there
+LIVE_COMMIT=92eefd18
+echo "== app_sneeddao_backend, sneed_sms, sneed_sns_forum at $LIVE_COMMIT (moc, EOP)"
+LIVE_SRC="$(mktemp -d)"
+git archive "$LIVE_COMMIT" src | tar -x -C "$LIVE_SRC"
+for c in app_sneeddao_backend sneed_sms sneed_sns_forum; do
+  # shellcheck disable=SC2046
+  "$MOC" $(mops sources) --enhanced-orthogonal-persistence "$LIVE_SRC/src/$c/main.mo" -o "$OUT/${c}_april.wasm" 2>&1 | grep -i "error" | head -5 || true
+  test -s "$OUT/${c}_april.wasm"
+done
+rm -rf "$LIVE_SRC"
+
 echo "== sneed_guardian (dfx +$DFX_VERSION build --check: no canister id yet)"
 dfx +"$DFX_VERSION" build --check sneed_guardian 2>&1 | grep -iv "warning\|^ *$\|^\s*[0-9]* |\|^  \^\|Nat$\|bespoke" | tail -2
 cp .dfx/local/canisters/sneed_guardian/sneed_guardian.wasm "$OUT/sneed_guardian.wasm"
