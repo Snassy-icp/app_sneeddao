@@ -23,11 +23,11 @@ function Spinner({ text }) {
     return <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: 6 }}><FaSpinner className="rev-spin" /> {text}</span>;
 }
 
-/// "12.3 ICP · 45.6 SNEED", or a dash.
+/// "12.3 ICP · 45.6 SNEED", or a dash. A long list wraps after a "·", never inside an amount.
 function Amounts({ amounts, max = 2 }) {
     const shown = amounts.filter((a) => a.amount > 0n);
     if (!shown.length) return <>0 ICP</>;
-    return <>{shown.map((a, i) => <span key={a.ledger} style={{ whiteSpace: 'nowrap' }}>{i > 0 && ' · '}{fmtAmount(a.amount, a.ledger, max)}</span>)}</>;
+    return <>{shown.map((a, i) => <React.Fragment key={a.ledger}>{i > 0 && '\u00a0· '}<span style={{ whiteSpace: 'nowrap' }}>{fmtAmount(a.amount, a.ledger, max)}</span></React.Fragment>)}</>;
 }
 
 function ProductCard({ product }) {
@@ -41,7 +41,7 @@ function ProductCard({ product }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                 <Link to={product.link} style={{ fontSize: '1.05rem', fontWeight: 700, color: theme.colors.primaryText, textDecoration: 'none' }}>{product.name}</Link>
                 {s && !s.hidden && (
-                    <div style={{ textAlign: 'right' }}>
+                    <div style={{ textAlign: 'right', minWidth: 0, marginLeft: 'auto' }}>
                         <div style={{ fontSize: '1.1rem', fontWeight: 700, color: product.color, fontVariantNumeric: 'tabular-nums' }}><Amounts amounts={s.amounts} /></div>
                         {value && value.usd > 0 && <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>{formatValue(value.usd)}{value.complete ? '' : ' +'} today</div>}
                     </div>
