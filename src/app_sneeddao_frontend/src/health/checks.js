@@ -47,7 +47,7 @@ export const IDS = {
 export const NAMES = {
     [IDS.root]: 'SNS root', [IDS.governance]: 'SNS governance', [IDS.ledger]: 'SNEED ledger', [IDS.index]: 'SNEED index',
     'h4f44-ayaaa-aaaaq-aacjq-cai': 'SNEED ledger archive', 'hshru-3iaaa-aaaaq-aaciq-cai': 'SNS swap',
-    [IDS.backend]: 'App backend', [IDS.sneedLock]: 'Sneed Lock', [IDS.rll]: 'RLL (rewards)', [IDS.premium]: 'Sneed Premium',
+    [IDS.backend]: 'App backend', [IDS.sneedLock]: 'Sneed Lock', [IDS.rll]: 'Rewards distribution', [IDS.premium]: 'Sneed Premium',
     [IDS.sms]: 'Sneed SMS', [IDS.forum]: 'Sneed Forum', [IDS.sneedex]: 'Sneedex', [IDS.sneedapp]: 'Sneedapp (bot factory)',
     [IDS.sgldt]: 'sGLDT', [IDS.defi]: 'Sneed DeFi canister', 'pxtkg-giaaa-aaaal-ajjzq-cai': 'App frontend',
     [IDS.stakingBot]: 'ICP staking bot', [IDS.neuronManager]: 'ICP neuron manager', 'pojsz-fqaaa-aaaad-adoga-cai': 'Trading bot',
@@ -412,7 +412,7 @@ export function buildTree(config) {
             },
             pingLeaf(IDS.backend, 'App backend', 'get_admins'),
             pingLeaf(IDS.sneedLock, 'Sneed Lock', 'get_admin_list'),
-            pingLeaf(IDS.rll, 'RLL (rewards)', 'get_main_loop_status'),
+            pingLeaf(IDS.rll, 'Rewards distribution', 'get_main_loop_status'),
             pingLeaf(IDS.forum, 'Sneed Forum', 'get_current_counter'),
             pingLeaf(IDS.sms, 'Sneed SMS', 'get_admins'),
             pingLeaf(IDS.premium, 'Sneed Premium', 'getCanisterId'),
@@ -624,7 +624,7 @@ export function buildTree(config) {
     };
 
     const rllGroup = {
-        id: 'rll', name: 'Rewards loop (RLL)',
+        id: 'rll', name: 'Rewards distribution',
         children: [
             {
                 id: 'rll:running', name: 'Main loop flagged as running', link: '/rll',
