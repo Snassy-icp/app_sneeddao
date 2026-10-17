@@ -6,12 +6,13 @@ import { idlFactory as rootIdl } from 'external/sns_root/sns_root.did.js';
 import { idlFactory as governanceIdl } from 'external/sns_governance/sns_governance.did.js';
 import { idlFactory as indexIdl } from 'external/sns_index/sns_index.did.js';
 import { idlFactory as nnsGovIdl } from 'external/nns_gov/nns_gov.did.js';
+import { idlFactory as snsWasmIdl } from 'external/nns_snsw/nns_snsw.did.js';
 import { idlFactory as vectorIdl } from 'external/icrc55_vector/icrc55_vector.did.js';
 import { idlFactory as exVectorIdl } from 'external/icrc55_exvector/icrc55_exvector.did.js';
 import { idlFactory as poolIdl } from 'external/icp_swap/icp_swap.did.js';
 import { idlFactory as rllIdl } from 'declarations/rll/rll.did.js';
 import { verifyTip } from '../utils/icrc3/client.js';
-import { actor, withTimeout, ledgerIdl, swapIdl, pingIdl, archiveStatusIdl, sneedLockHealthIdl, stakingBotIdl, backendTokenListIdl, icpIndexIdl, accountIdentifierHex, hex, isMissingMethod, IDL, Principal } from './agent.js';
+import { actor, readControllers, withTimeout, ledgerIdl, swapIdl, pingIdl, archiveStatusIdl, sneedLockHealthIdl, stakingBotIdl, backendTokenListIdl, icpIndexIdl, accountIdentifierHex, hex, isMissingMethod, IDL, Principal } from './agent.js';
 import { GUARDIANS, guardianIdl } from '../tokensafety/guardianIdl.js';
 import { idlFactory as sneedLockFullIdl } from 'declarations/sneed_lock/sneed_lock.did.js';
 import { getActiveTokenLocks, getActivePositionLocks } from '../utils/sneedLockLists';
@@ -26,6 +27,7 @@ export const IDS = {
     icpLedger: 'ryjl3-tyaaa-aaaaa-aaaba-cai',
     icpIndex: 'qhbym-qaaaa-aaaaa-aaafq-cai',
     nnsGovernance: 'rrkah-fqaaa-aaaaa-aaaaq-cai',
+    snsWasm: 'qaa6y-5yaaa-aaaaa-aaafa-cai',
     backend: 'g7s5u-tqaaa-aaaad-qhktq-cai',
     sneedLock: 'pqsms-lqaaa-aaaal-ajjza-cai',
     rll: 'lvc4n-7aaaa-aaaam-adm6a-cai',
@@ -52,7 +54,13 @@ export const NAMES = {
     [IDS.sgldt]: 'sGLDT', [IDS.defi]: 'Sneed DeFi canister', 'pxtkg-giaaa-aaaal-ajjzq-cai': 'App frontend',
     [IDS.stakingBot]: 'ICP staking bot', [IDS.neuronManager]: 'ICP neuron manager', 'pojsz-fqaaa-aaaad-adoga-cai': 'Trading bot',
     [IDS.swaprunner]: 'Swaprunner', 's4yi7-yiaaa-aaaar-qacpq-cai': 'OpenChat escrow',
+    '5ceyv-syaaa-aaaag-qc43q-cai': 'SneedSwap', '524ne-eyaaa-aaaap-quxhq-cai': 'TORCH ledger', '7hbdm-xqaaa-aaaap-quxia-cai': 'TOMBSTONE ledger',
+    'iczfn-iiaaa-aaaan-qltcq-cai': 'MIF ledger', '7tvr6-fqaaa-aaaan-qmira-cai': 'ALIEN ledger',
 };
+
+/// The DAO's own canisters that the hub calls (the SNS core comes from SNS root). The frontend is
+/// left out: it is not a DAO canister. Bots and Swaprunner belong to their owners.
+const HUB_DAPPS = [IDS.backend, IDS.sneedLock, IDS.rll, IDS.premium, IDS.sms, IDS.forum, IDS.sneedex, IDS.sneedapp, IDS.sgldt, IDS.defi];
 export const nameOf = (id) => NAMES[id] || id;
 
 const NEURON_2Y = 4000934039483276792n;
@@ -132,6 +140,33 @@ const loaders = {
     snsCanisters: async (ctx) => {
         const root = await actor(rootIdl, IDS.root);
         return ctx.call(root.list_sns_canisters({}), 'SNS root canister list');
+    },
+    /// root canister id -> governance canister id of every SNS the SNS wasm canister knows
+    deployedSnses: async (ctx) => {
+        const w = await actor(snsWasmIdl, IDS.snsWasm);
+        const r = await ctx.call(w.list_deployed_snses({}), 'SNS wasm deployed SNSes');
+        return new Map(r.instances.filter((i) => opt(i.root_canister_id) && opt(i.governance_canister_id)).map((i) => [opt(i.root_canister_id).toText(), opt(i.governance_canister_id).toText()]));
+    },
+    /// canister id -> the newest executed UpgradeSnsControlledCanister proposal for it. An executed
+    /// proposal is not proof the install worked (SNS root can fail after governance marks it executed),
+    /// which is what comparing its hash with the running module catches.
+    upgradeProposals: async (ctx) => {
+        const g = await actor(governanceIdl, IDS.governance);
+        const latest = new Map();
+        let before = [];
+        for (let page = 0; page < 100; page++) {
+            const r = await ctx.call(g.list_proposals({ include_reward_status: [], before_proposal: before, limit: 100, exclude_type: [], include_status: [], include_topics: [] }), 'proposals');
+            for (const p of r.proposals) {
+                const a = opt(opt(p.proposal)?.action);
+                const cid = a && 'UpgradeSnsControlledCanister' in a ? opt(a.UpgradeSnsControlledCanister.canister_id)?.toText() : null;
+                if (!cid || Number(p.executed_timestamp_seconds) === 0) continue;
+                const id = opt(p.id).id;
+                if (!latest.has(cid) || latest.get(cid).id < id) latest.set(cid, { id, executedAt: sToMs(p.executed_timestamp_seconds), title: opt(p.proposal).title });
+            }
+            if (r.proposals.length < 100) break;
+            before = [opt(r.proposals[r.proposals.length - 1].id)];
+        }
+        return latest;
     },
     rllLoop: async (ctx) => ctx.call((await actor(rllIdl, IDS.rll)).get_main_loop_status(), 'RLL loop status'),
     rllEvents: async (ctx) => ctx.call((await actor(rllIdl, IDS.rll)).get_distribution_events(), 'RLL distribution events'),
@@ -380,6 +415,78 @@ export function buildTree(config) {
                             const details = { canister: e.id, role: e.role, memory_size: fmtBytes(e.status.memory), limit: `${fmtBytes(limit)} (${kind})`, note: 'memory_size counts the Wasm heap, stable memory and the module together; the Wasm memory limit applies to the heap alone' };
                             const s = pct >= c.memoryRedPct ? 'fail' : pct >= c.memoryOrangePct ? 'warn' : 'pass';
                             return { status: s, summary: `${fmtBytes(e.status.memory)}, ${pct.toFixed(1)}% of ${fmtBytes(limit)}`, details };
+                        },
+                    })),
+                },
+            ];
+        },
+    };
+
+    const controlGroup = {
+        id: 'control', name: 'DAO control and code', dynamic: true,
+        children: async (ctx) => {
+            const list = await ctx.load('snsCanisters', loaders.snsCanisters);
+            const core = ['root', 'governance', 'ledger', 'index', 'swap'].map((k) => opt(list[k])?.toText()).filter(Boolean);
+            const registered = new Set([...core, ...list.dapps.map((p) => p.toText()), ...list.archives.map((p) => p.toText())]);
+            const hub = [...new Set([...core, ...list.archives.map((p) => p.toText()), ...HUB_DAPPS])];
+            const short = (h) => `${h.slice(0, 8)}…`;
+            return [
+                {
+                    id: 'control:hub', name: 'Hub canisters controlled by the DAO',
+                    children: hub.map((id) => ({
+                        id: `control:${id}`, name: nameOf(id), link: DASHBOARD(id),
+                        run: async (ctx2) => {
+                            const { controllers, moduleHash } = await ctx2.call(readControllers(id), `${nameOf(id)} controllers`);
+                            const expected = id === IDS.root ? IDS.governance : IDS.root;   // SNS root answers to governance, everything else to root
+                            const details = { canister: id, controllers, expected_controller: `${expected} (${nameOf(expected)})`, registered_with_sns_root: registered.has(id), module_hash: moduleHash };
+                            if (!controllers.includes(expected)) return fail(`Not controlled by ${nameOf(expected)}: ${controllers.join(', ') || 'no controllers'}`, details);
+                            const others = controllers.filter((p) => p !== expected);
+                            if (others.length) return fail(`Also controlled by ${others.join(', ')}, who could change it without a proposal`, details);
+                            if (!moduleHash) return fail('No code installed', details);
+                            if (!registered.has(id)) return warn(`Controlled by ${nameOf(expected)} but not registered with it, so proposals cannot upgrade it`, details);
+                            return pass(`Controlled by ${nameOf(expected)} alone`, details);
+                        },
+                    })),
+                },
+                {
+                    id: 'control:pylons', name: 'Vector pylons controlled by an SNS DAO',
+                    children: Object.entries(PYLONS).map(([id, name]) => ({
+                        id: `control:pylon:${id}`, name, link: DASHBOARD(id),
+                        run: async (ctx2) => {
+                            const [{ controllers }, snses] = await Promise.all([ctx2.call(readControllers(id), `${name} controllers`), ctx2.load('deployedSnses', loaders.deployedSnses)]);
+                            const details = { canister: id, controllers };
+                            const roots = controllers.filter((p) => snses.has(p));
+                            if (!roots.length) return warn(`Not controlled by an SNS: ${controllers.join(', ') || 'no controllers'}`, details);
+                            const root = roots[0], gov = snses.get(root);
+                            const [rootCtl, meta] = await Promise.all([ctx2.call(readControllers(root), 'SNS root controllers'), ctx2.call((async () => (await actor(governanceIdl, gov)).get_metadata({}))(), 'SNS metadata')]);
+                            const sns = opt(meta.name) || root;
+                            Object.assign(details, { sns, sns_root: root, sns_governance: gov, sns_root_controllers: rootCtl.controllers });
+                            const others = controllers.filter((p) => p !== root);
+                            if (others.length) return warn(`Controlled by the ${sns} SNS, and also by ${others.join(', ')}`, details);
+                            if (rootCtl.controllers.length !== 1 || rootCtl.controllers[0] !== gov) return warn(`Controlled by the ${sns} SNS root, but that root is not controlled by its governance alone`, details);
+                            return pass(`Controlled by the ${sns} SNS (root ${root})`, details);
+                        },
+                    })),
+                },
+                {
+                    id: 'code', name: 'Running the Wasm of their latest upgrade proposal',
+                    children: list.dapps.map((p) => p.toText()).map((id) => ({
+                        id: `code:${id}`, name: nameOf(id), link: DASHBOARD(id),
+                        run: async (ctx2) => {
+                            const [{ moduleHash }, latest] = await Promise.all([ctx2.call(readControllers(id), `${nameOf(id)} module hash`), ctx2.load('upgradeProposals', loaders.upgradeProposals)]);
+                            const prop = latest.get(id);
+                            const details = { canister: id, running: moduleHash };
+                            if (!moduleHash && c.ignoreEmptyCanisters) return skip(IGNORED_SUMMARY, details);
+                            if (!prop) return skip('No executed upgrade proposal found', details);
+                            const r = await ctx2.call((async () => (await actor(governanceIdl, IDS.governance)).get_proposal({ proposal_id: [{ id: prop.id }] }))(), `proposal ${prop.id}`);
+                            const text = opt(opt(r.result)?.Proposal?.payload_text_rendering) || '';
+                            const expected = (text.match(/SHA256 `([0-9a-f]{64})`/i) || text.match(/wasm sha256: ([0-9a-f]{64})/i) || [])[1]?.toLowerCase();   // today's rendering, then the 2024 one
+                            Object.assign(details, { proposal: `#${prop.id}: ${prop.title}`, executed: new Date(prop.executedAt).toISOString(), proposal_wasm: expected || null });
+                            const link = `/proposal?proposalid=${prop.id}&sns=${IDS.root}`;
+                            if (!expected) return skip(`Proposal #${prop.id} shows no Wasm hash`, details, link);
+                            if (!moduleHash) return fail(`No code installed, but proposal #${prop.id} installs ${short(expected)}`, details, link);
+                            if (moduleHash !== expected) return fail(`Running ${short(moduleHash)}, but proposal #${prop.id} (executed ${ago(prop.executedAt)}) installs ${short(expected)}: the upgrade did not take`, details, link);
+                            return pass(`Running the Wasm of proposal #${prop.id}, executed ${ago(prop.executedAt)}`, details, link);
                         },
                     })),
                 },
@@ -756,5 +863,5 @@ export function buildTree(config) {
         },
     };
 
-    return { id: 'dao', name: 'Sneed DAO', children: [canistersGroup, servicesGroup, snsGroup, revenueGroup, rllGroup, lockGroup] };
+    return { id: 'dao', name: 'Sneed DAO', children: [canistersGroup, controlGroup, servicesGroup, snsGroup, revenueGroup, rllGroup, lockGroup] };
 }

@@ -1,6 +1,6 @@
 // One anonymous agent for every health check, plus the small Candid
 // interfaces the checks need that no generated declaration covers.
-import { Actor, HttpAgent } from '@dfinity/agent';
+import { Actor, HttpAgent, CanisterStatus } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
 import { Principal } from '@dfinity/principal';
 import { bigEndianCrc32 } from '@dfinity/utils';
@@ -22,6 +22,14 @@ export const getAgent = (canisterId) => {
 export async function actor(idlFactory, canisterId) {
     const id = typeof canisterId === 'string' ? Principal.fromText(canisterId) : canisterId;
     return Actor.createActor(idlFactory, { agent: getAgent(id.toText()), canisterId: id });
+}
+
+/// A canister's controllers and module hash (hex, null without code), read from the certified
+/// state tree: anyone can ask, the canister does not have to answer or know about it.
+export async function readControllers(canisterId) {
+    const id = typeof canisterId === 'string' ? Principal.fromText(canisterId) : canisterId;
+    const r = await CanisterStatus.request({ canisterId: id, agent: getAgent(id.toText()), paths: ['controllers', 'module_hash'] });
+    return { controllers: (r.get('controllers') || []).map((p) => p.toText()), moduleHash: r.get('module_hash') || null };
 }
 
 /// Reject after `ms` so a hanging canister cannot stall the whole run.
