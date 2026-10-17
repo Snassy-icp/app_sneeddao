@@ -445,13 +445,24 @@ const TokenAnimationManager = ({ edges, nodes }) => {
         };
     }, [nodes]);
 
-    const animateTokens = useCallback(() => {
-        setTokens(prevTokens => {
+    // One frame of the animation. It reads the latest nodes and edges through refs, so the loop
+    // below runs once for the component's life: the diagram re-renders often while its data loads,
+    // and a loop restarted on each render dropped frames (the warm-up stutter). Moves go by the time
+    // since the last frame (an edge takes 5 s), so a slow frame skips ahead instead of slowing down.
+    const tokensRef = useRef([]);
+    const effectsRef = useRef({ burn: [], distribute: [] });
+    const animateTokens = (dt) => {
+        const now = Date.now();
+        const steps = dt / 50; // the old loop ran every 50 ms
+        const spawnChance = 1 - Math.pow(1 - 0.005, steps);
+        const newBurns = [], newDistributions = [];
+        {
+            const prevTokens = tokensRef.current;
             let updatedTokens = [];
             
             // First, process existing tokens
             prevTokens.forEach(token => {
-                const newProgress = token.progress + 0.01;
+                const newProgress = token.progress + 0.01 * steps;
                 
                 if (newProgress < 1) {
                     // Keep moving tokens that haven't reached their destination
@@ -465,22 +476,22 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                     if (!edge) return;
 
                     if (token.isBurnDestination) {
-                        setBurnEffects(prev => [...prev, {
+                        newBurns.push({
                             id: animId('burn'),
                             x: token.targetX,
                             y: token.targetY,
                             scale: token.scale,
-                            createdAt: Date.now()
-                        }]);
+                            createdAt: now
+                        });
                     } else if (token.isDistributionDestination) {
-                        setDistributionEffects(prev => [...prev, {
+                        newDistributions.push({
                             id: animId('distribute'),
                             x: token.targetX,
                             y: token.targetY,
                             type: token.type,
                             scale: token.scale,
-                            createdAt: Date.now()
-                        }]);
+                            createdAt: now
+                        });
                     } else if (edge.target === '2') {
                         // When tokens reach ICP Neuron Vector (node 2)
                         // Check where the token came from to determine where it should go
@@ -550,31 +561,46 @@ const TokenAnimationManager = ({ edges, nodes }) => {
             edges.forEach(edge => {
                 // For 2y neuron, spawn tokens to ICP Neuron Vector
                 if (edge.source === '1' && edge.target === '2') {
-                    if (Math.random() < 0.005) {
+                    if (Math.random() < spawnChance) {
                         const newToken = createToken(edge, 1, 'icp');
                         if (newToken) updatedTokens.push(newToken);
                     }
                 }
                 // For other source nodes
                 else if (isSourceNode(edge.source) && edge.source !== '1') {
-                    if (Math.random() < 0.005 && !updatedTokens.some(t => t.edge === edge.id)) {
+                    if (Math.random() < spawnChance && !updatedTokens.some(t => t.edge === edge.id)) {
                         const newToken = createToken(edge);
                         if (newToken) updatedTokens.push(newToken);
                     }
                 }
             });
 
-            return updatedTokens;
-        });
+            tokensRef.current = updatedTokens;
+            setTokens(updatedTokens);
+        }
 
-        setBurnEffects(prev => prev.filter(effect => Date.now() - effect.createdAt < 500));
-        setDistributionEffects(prev => prev.filter(effect => Date.now() - effect.createdAt < 800));
-    }, [edges, createToken, isSourceNode]);
+        // effects: set only when one starts or ends, not on every frame
+        const fx = effectsRef.current;
+        const burn = [...fx.burn, ...newBurns].filter(effect => now - effect.createdAt < 500);
+        const distribute = [...fx.distribute, ...newDistributions].filter(effect => now - effect.createdAt < 800);
+        if (burn.length !== fx.burn.length || newBurns.length) { fx.burn = burn; setBurnEffects(burn); }
+        if (distribute.length !== fx.distribute.length || newDistributions.length) { fx.distribute = distribute; setDistributionEffects(distribute); }
+    };
+    const frameRef = useRef(animateTokens);
+    frameRef.current = animateTokens;
 
     useEffect(() => {
-        const interval = setInterval(animateTokens, 50);
-        return () => clearInterval(interval);
-    }, [animateTokens]);
+        let raf = 0, last = null;
+        const loop = (t) => {
+            // a hidden tab pauses frames: resume where it was rather than jump
+            const dt = last == null ? 16 : Math.min(t - last, 250);
+            last = t;
+            frameRef.current(dt);
+            raf = requestAnimationFrame(loop);
+        };
+        raf = requestAnimationFrame(loop);
+        return () => cancelAnimationFrame(raf);
+    }, []);
 
     return (
         <>
