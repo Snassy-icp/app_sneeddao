@@ -18,6 +18,7 @@ import Timer "mo:base/Timer";
 import T "Types";
 import PremiumClient "../PremiumClient";
 import IngressGuard "../IngressGuard";
+import Donations "Donations";
 
 shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
@@ -4129,6 +4130,101 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   // On a fresh install, start the daily token list job.
   ensure_token_refresh_timer<system>();
 
+  // ---- Donations (Donations.mo) ----
+  // The account donations go to (set by an admin) and the verified donations, oldest first.
+  var donation_account : ?Donations.Account = null;
+  var donations : [Donations.Donation] = [];
+  var donation_next_id : Nat = 0;
+  transient let SNEED_LEDGER_CANISTER_ID : Text = "hvgxa-wqaaa-aaaaq-aacia-cai";
+  transient let MAX_DONATIONS_PAGE : Nat = 100;
+
+  public query func get_donation_account() : async ?Donations.Account { donation_account };
+
+  public shared ({ caller }) func admin_set_donation_account(account : ?Donations.Account) : async Result.Result<(), Text> {
+    if (not is_admin(caller)) return #err("Only admins can set the donation account");
+    switch (account) {
+      case (?a) {
+        if (Principal.isAnonymous(a.owner)) return #err("The donation account cannot be the anonymous principal");
+        switch (a.subaccount) { case (?b) if (b.size() != 32) return #err("A subaccount is 32 bytes"); case null {} };
+      };
+      case null {};
+    };
+    donation_account := account;
+    #ok();
+  };
+
+  /// ICP, SNEED and the whitelisted tokens: ledgers we trust to report their own blocks.
+  func donation_ledger_ok(ledger : Principal) : Bool {
+    let t = Principal.toText(ledger);
+    t == ICP_LEDGER_CANISTER_ID or t == SNEED_LEDGER_CANISTER_ID or whitelisted_tokens.get(ledger) != null;
+  };
+
+  func donation_known(ledger : Principal, block_index : Nat) : Bool {
+    Array.find<Donations.Donation>(donations, func(d) = d.ledger == ledger and d.block_index == block_index) != null;
+  };
+
+  /// Lists a donation the caller has made: block `block_index` of `ledger` must be a plain transfer
+  /// from the caller's account to the donation account.
+  public shared ({ caller }) func register_donation(args : Donations.RegisterArgs) : async Result.Result<Donations.Donation, Text> {
+    if (Principal.isAnonymous(caller)) return #err("Log in to register a donation");
+    let ?to = donation_account else return #err("No donation account is set");
+    if (not donation_ledger_ok(args.ledger)) return #err("Donations in this token can't be checked: use ICP, SNEED or a whitelisted token");
+    if (donation_known(args.ledger, args.block_index)) return #err("This donation is already on the wall");
+    let from = { owner = caller; subaccount = args.from_subaccount };
+    switch (await* Donations.verify(args.ledger, args.block_index, from, to)) {
+      case (#err(e)) #err(e);
+      case (#ok(t)) {
+        // two calls for the same block may both have passed the check above
+        if (donation_known(args.ledger, args.block_index)) return #err("This donation is already on the wall");
+        let d : Donations.Donation = {
+          id = donation_next_id; donor = caller; from_subaccount = args.from_subaccount; to; ledger = args.ledger;
+          block_index = args.block_index; amount = t.amount; created_at = t.created_at; registered_at = Time.now();
+          message = Donations.cleanMessage(args.message); hidden = false;
+        };
+        donation_next_id += 1;
+        donations := Array.append(donations, [d]);
+        #ok(d);
+      };
+    };
+  };
+
+  func donations_page(all : [Donations.Donation], start : Nat, limit : Nat) : { total : Nat; donations : [Donations.Donation] } {
+    let n = all.size();
+    let lim = Nat.min(limit, MAX_DONATIONS_PAGE);
+    // newest first
+    let page = if (start >= n) [] else Array.tabulate<Donations.Donation>(Nat.min(lim, n - start), func(i) = all[n - 1 - start - i]);
+    { total = n; donations = page };
+  };
+
+  /// The thank-you wall, newest first (hidden donations left out).
+  public query func get_donations(start : Nat, limit : Nat) : async { total : Nat; donations : [Donations.Donation] } {
+    donations_page(Array.filter<Donations.Donation>(donations, func(d) = not d.hidden), start, limit);
+  };
+
+  /// Totals per token over every verified donation, hidden ones included: (ledger, amount, count).
+  public query func get_donation_totals() : async [(Principal, Nat, Nat)] {
+    var totals : [(Principal, Nat, Nat)] = [];
+    for (d in donations.vals()) {
+      var found = false;
+      totals := Array.map<(Principal, Nat, Nat), (Principal, Nat, Nat)>(totals, func((l, a, c)) = if (l == d.ledger) { found := true; (l, a + d.amount, c + 1) } else (l, a, c));
+      if (not found) totals := Array.append(totals, [(d.ledger, d.amount, 1)]);
+    };
+    totals;
+  };
+
+  public query ({ caller }) func admin_get_donations(start : Nat, limit : Nat) : async Result.Result<{ total : Nat; donations : [Donations.Donation] }, Text> {
+    if (not is_admin(caller)) return #err("Only admins can see hidden donations");
+    #ok(donations_page(donations, start, limit));
+  };
+
+  /// Hides a donation from the wall (its message, say) or shows it again; it still counts in the totals.
+  public shared ({ caller }) func admin_set_donation_hidden(id : Nat, hidden : Bool) : async Result.Result<(), Text> {
+    if (not is_admin(caller)) return #err("Only admins can hide donations");
+    if (Array.find<Donations.Donation>(donations, func(d) = d.id == id) == null) return #err("No donation " # Nat.toText(id));
+    donations := Array.map<Donations.Donation, Donations.Donation>(donations, func(d) = if (d.id == id) ({ d with hidden = hidden }) else d);
+    #ok();
+  };
+
   // Limits of the ingress guard below
   transient let MAX_NAME_LENGTH : Nat = 32;
   transient let MAX_SETTING_TEXT : Nat = 256;
@@ -4148,6 +4244,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     #add_project : Any;
     #add_whitelisted_token : Any;
     #admin_clear_avatar : Any;
+    #admin_get_donations : Any;
+    #admin_set_donation_account : Any;
+    #admin_set_donation_hidden : Any;
     #admin_export_avatars : Any;
     #admin_export_neuron_nicknames : Any;
     #admin_export_principal_nicknames : Any;
@@ -4156,6 +4255,10 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     #ban_user : Any;
     #caller_is_admin : Any;
     #check_ban_status : Any;
+    #get_donation_account : Any;
+    #get_donation_totals : Any;
+    #get_donations : Any;
+    #register_donation : () -> Donations.RegisterArgs;
     #clear_my_avatar : Any;
     #delete_canister_groups : Any;
     #delete_jailbreak_config : Any;
@@ -4316,7 +4419,13 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
         or #admin_export_principal_nicknames _
         or #get_names_canisters _
         or #get_names_frozen _
+        or #get_donation_account _
+        or #get_donation_totals _
+        or #get_donations _
+        or #admin_get_donations _
       ) false;
+      // a message of at most 200 characters (Donations.MAX_MESSAGE)
+      case (#register_donation f) arg.size() <= IngressGuard.textArg(Donations.MAX_MESSAGE) and IngressGuard.optText(f().message, Donations.MAX_MESSAGE) and IngressGuard.optBlob(f().from_subaccount, 32);
       // the naming service's canisters call it, never by ingress
       case (#names_moderate _) false;
       // names and nicknames: at most 32 characters (validate_name_text, set_canister_name)
