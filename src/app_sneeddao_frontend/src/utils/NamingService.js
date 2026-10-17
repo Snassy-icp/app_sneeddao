@@ -7,12 +7,25 @@
 // and answers them in the backend's shapes, so the pages need not change. Until the canisters
 // are deployed to a network, builds for it keep using the backend.
 import { Principal } from '@dfinity/principal';
-import { createActor as createPidNames, canisterId as pidNamesId } from 'declarations/sneed_pid_names';
-import { createActor as createNeuronNames, canisterId as neuronNamesId } from 'declarations/sneed_neuron_names';
-import { createActor as createPidNicknames, canisterId as pidNicknamesId } from 'declarations/sneed_pid_nicknames';
-import { createActor as createNeuronNicknames, canisterId as neuronNicknamesId } from 'declarations/sneed_neuron_nicknames';
-import { createActor as createAvatars, canisterId as avatarsId } from 'declarations/sneed_avatars';
-import { createActor as createProfiles, canisterId as profilesId } from 'declarations/sneed_profiles';
+import { createActor as createPidNames, canisterId as pidNamesEnv } from 'declarations/sneed_pid_names';
+import { createActor as createNeuronNames, canisterId as neuronNamesEnv } from 'declarations/sneed_neuron_names';
+import { createActor as createPidNicknames, canisterId as pidNicknamesEnv } from 'declarations/sneed_pid_nicknames';
+import { createActor as createNeuronNicknames, canisterId as neuronNicknamesEnv } from 'declarations/sneed_neuron_nicknames';
+import { createActor as createAvatars, canisterId as avatarsEnv } from 'declarations/sneed_avatars';
+import { createActor as createProfiles, canisterId as profilesEnv } from 'declarations/sneed_profiles';
+
+// A canister id, or null. dfx puts made-up ids (8-byte principals, not ending in -cai) into the
+// build for canisters that have none on its network, so having a value is not enough: only a
+// real canister id (10 bytes, the last 0x01) turns the service on.
+const realCanisterId = (text) => {
+    try { const b = Principal.fromText(text).toUint8Array(); return b.length === 10 && b[9] === 1 ? text : null; } catch { return null; }
+};
+const pidNamesId = realCanisterId(pidNamesEnv);
+const neuronNamesId = realCanisterId(neuronNamesEnv);
+const pidNicknamesId = realCanisterId(pidNicknamesEnv);
+const neuronNicknamesId = realCanisterId(neuronNicknamesEnv);
+const avatarsId = realCanisterId(avatarsEnv);
+const profilesId = realCanisterId(profilesEnv);
 
 export const namingServiceEnabled = Boolean(pidNamesId && neuronNamesId && pidNicknamesId && neuronNicknamesId && avatarsId);
 export const dappRegistryEnabled = Boolean(profilesId);
