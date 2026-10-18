@@ -118,6 +118,39 @@ async function loadItems(agent, collections, nftAccount, owner, games) {
     return out;
 }
 
+const charsIdl = ({ IDL }) => IDL.Service({
+    account_of: IDL.Func([IDL.Nat], [IDL.Record({ owner: IDL.Principal, subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)) })], ['query']),
+});
+/// When an NFT's owner is a character's own account (a character collection - wu_chars or compatible - holding it for
+/// the character with that token id: account_of(id) is exactly this account), the character it is carried by.
+export function CarriedBy({ owner, theme }) {
+    const [who, setWho] = useState(null);
+    const ownerText = owner?.owner?.toText?.() || null, sub = owner?.subaccount?.length ? new Uint8Array(owner.subaccount[0]) : null;
+    useEffect(() => {
+        setWho(null);
+        if (!ownerText || !sub || sub.length !== 32) return undefined;
+        let alive = true;
+        (async () => {
+            try {
+                let id = 0n; for (const x of sub) id = (id << 8n) + BigInt(x);
+                const agent = anonymousNftAgent(), acct = await Actor.createActor(charsIdl, { agent, canisterId: ownerText }).account_of(id);
+                const same = acct.owner.toText() === ownerText && acct.subaccount.length && hex(acct.subaccount[0]) === hex(sub);
+                if (!same) return;
+                const [t] = await fetchTokenDetails(ownerText, [id], agent, { withOwner: false, withIcrc97: false });
+                if (alive && t && t.exists) setWho({ collection: ownerText, id, name: getNftName(t.metadata, id, t), img: getNftImage(t.metadata, t) });
+            } catch { /* not a character collection: the plain owner stands */ }
+        })();
+        return () => { alive = false; };
+    }, [ownerText, sub ? hex(sub) : '']);
+    if (!who) return null;
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', textAlign: 'left', alignSelf: 'stretch', width: '100%', gap: 8, marginTop: 8, fontSize: '0.85rem', color: theme.colors.secondaryText }}>
+            {who.img && <img src={who.img} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'cover', margin: 0, flex: 'none' }} />}
+            <span style={{ flex: 'none', textAlign: 'left', margin: 0 }}>Carried by the character <Link to={nftItemUrl(who.collection, who.id)} style={{ color: theme.colors.accent, fontWeight: 600 }}>{who.name}</Link></span>
+        </div>
+    );
+}
+
 export default function CharacterPanel({ collection, tokenId, metadata, owner, theme, card, label }) {
     const [games, setGames] = useState(null);
     const [items, setItems] = useState(null);

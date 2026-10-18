@@ -13,7 +13,7 @@ import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { fetchApprovals, getNftImage, getNftName, getNftDescription, getNftAttributes, getNftLinks, getNftMedia, formatNftMetadata, getSavedNftCollections, NFT_COLLECTIONS_STORAGE_KEY } from '../utils/NftUtils';
 import NftModel from '../components/NftModel';
-import CharacterPanel, { hasCharacterLinks } from '../components/CharacterPanel';
+import CharacterPanel, { hasCharacterLinks, CarriedBy } from '../components/CharacterPanel';
 import { loadCollectionInfoCached, loadTokensCached, nftCollectionUrl } from '../components/NftAssetView';
 import { customStyles } from '../health/TreeView.jsx';
 import LockGas from '../components/LockGas';
@@ -137,6 +137,7 @@ function NftItem() {
                                     </div>
                                 ) : <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>{loading ? 'Reading…' : 'Unknown (the collection did not answer icrc7_owner_of, or the token does not exist)'}</div>}
                                 {ownerSub && <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: 6, fontFamily: 'monospace', wordBreak: 'break-all' }}>subaccount {ownerSub}</div>}
+                                {token?.owner && <CarriedBy owner={token.owner} theme={theme} />}
                                 {mine && (
                                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
                                         <Link to={`/sneedex_create?nft=${collection}:${idText}`} style={btn('#a78bfa')}><FaTag /> Sell on Sneedex</Link>
