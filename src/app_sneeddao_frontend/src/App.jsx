@@ -116,6 +116,7 @@ import RllLedger from './pages/RllLedger';
 import Revenue from './pages/Revenue';
 import Donate from './pages/Donate';
 import Feedback from './pages/Feedback';
+import MrSneed from './pages/MrSneed';
 import Guardian from './pages/Guardian';
 import NftItem from './pages/NftItem';
 import SnsJailbreak from './pages/SnsJailbreak';
@@ -210,6 +211,7 @@ function App() {
                     <Route path="/revenue" element={<Revenue />} />
                     <Route path="/donate" element={<Donate />} />
                     <Route path="/feedback" element={<Feedback />} />
+                    <Route path="/mr-sneed" element={<MrSneed />} />
                     <Route path="/guardian" element={<ComingSoonPage title="Sneed custody"><Guardian /></ComingSoonPage>} />
                     <Route path="/scan_wallet" element={<ScanWallet />} />
                     <Route path="/dashboard" element={<Dashboard />} />
