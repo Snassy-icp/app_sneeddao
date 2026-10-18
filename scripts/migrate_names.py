@@ -217,6 +217,8 @@ def plan(data, decisions):
     pn = [(o, t, clean(n)) for o, t, n in data["principal_nicknames"] if nick_ok(n)]
     nn = [(o, r, i, clean(n)) for o, r, i, n in data["neuron_nicknames"] if nick_ok(n)]
     report["nicknames_skipped"] = len(data["principal_nicknames"]) - len(pn) + len(data["neuron_nicknames"]) - len(nn)
+    report["nicknames_skipped_list"] = [(o, t, n, problem(clean(n), 1)) for o, t, n in data["principal_nicknames"] if not nick_ok(n)] + \
+        [(o, f"{r}/{i.hex()}", n, problem(clean(n), 1)) for o, r, i, n in data["neuron_nicknames"] if not nick_ok(n)]
     return {"names": names, "avatars": avatar_of, "neuron_names": neuron_names, "principal_nicknames": pn, "neuron_nicknames": nn}, report
 
 
@@ -324,6 +326,8 @@ def main():
             print(f"  {k}: {x}")
     if report["nicknames_skipped"]:
         print(f"  nicknames skipped (break the rules): {report['nicknames_skipped']}")
+        for o, t, n, why in report["nicknames_skipped_list"]:
+            print(f"    owner {o} on {t}: {n!r} ({why})")
     if args.apply:
         if report["needs_decision"] or report["collisions"]:
             sys.exit("Resolve the collisions and the names needing a decision in --decisions first")
