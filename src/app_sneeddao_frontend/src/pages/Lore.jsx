@@ -1,6 +1,7 @@
 // /lore: where Sneed DAO and Mr Sneed come from. The name, the two dot letters (SNS-1's and
-// Sneed's, both still live on-chain), the five pillars and the road so far.
-import React from 'react';
+// Sneed's, both still live on-chain) and the road so far, dated from on-chain records.
+import React, { useEffect, useState } from 'react';
+import { Actor, HttpAgent } from '@dfinity/agent';
 import { Link } from 'react-router-dom';
 import { FaExternalLinkAlt, FaArrowRight } from 'react-icons/fa';
 import Header from '../components/Header';
@@ -8,12 +9,17 @@ import { useTheme } from '../contexts/ThemeContext';
 
 const SNS1_LETTER = 'https://sqbzf-5aaaa-aaaam-aavya-cai.icp0.io/';
 const SNEED_LETTER = 'https://xb24g-dyaaa-aaaag-qcrmq-cai.icp0.io/';
-const PILLARS = [['S', 'Security'], ['N', 'Non-inflation'], ['E', 'Eco-friendliness'], ['E', 'Efficiency'], ['D', 'Decentralization']];
+// The pre-SNS SNEED token: its own ICRC-1 ledger (12 decimals), blackholed (its only controller,
+// 5vdms-…, has no controllers). Old SNEED converts 1:1 at the DAO's converter.
+const OLD_LEDGER = 'r7cp6-6aaaa-aaaag-qco5q-cai';
+const CONVERTER = '5ceyv-syaaa-aaaag-qc43q-cai';
+const dashboard = (id) => `https://dashboard.internetcomputer.org/canister/${id}`;
+const supplyIdl = ({ IDL }) => IDL.Service({ icrc1_total_supply: IDL.Func([], [IDL.Nat], ['query']) });
 const ROAD = [
-    ['2022', 'SNS-1 launches: the first SNS, a blank canvas DAO whose only dapp is a dot. Its early community, with a good deal of /biz/ in it, calls SNS-1 tokens "sneeds".'],
+    ['Nov 2022', 'SNS-1 launches: the first SNS, a blank canvas DAO whose only dapp is a dot. Its ledger mints its first block on 21 November; its first proposal follows on 2 December. Its early community, with a good deal of /biz/ in it, calls SNS-1 tokens "sneeds".'],
     ['June 2023', 'The Dragginz team takes over SNS-1 for their MMO (it later becomes DKP). Early SNS-1 members gather to carry the blank-canvas vision on.'],
-    ['2023', 'Mr Sneed signs the Sneed Vision Letter. A pre-SNS SNEED token starts the first liquidity loop by hand: LP fees into an 8-year ICP neuron, its maturity buying back and burning SNEED.'],
-    ['Sneed SNS', 'Sneed becomes an SNS DAO, so the loop can be made trustless. The old token still swaps 1:1 at the converter.'],
+    ['Oct 2023', 'The pre-SNS SNEED token moves its whole supply, 10,000 SNEED, in its first transaction on 20 October; around then Mr Sneed signs the Sneed Vision Letter. The token starts the first liquidity loop by hand: LP fees into an 8-year ICP neuron, its maturity buying back and burning SNEED.'],
+    ['Jan 2024', 'Sneed becomes an SNS DAO, so the loop can be made trustless. Its ledger starts on 21 January, the decentralization swap opens on 23 January and completes on 28 January, the day of its first proposal. The old token still swaps 1:1 at the converter.'],
     ['2024–2025', 'The Recursive Liquidity Loop goes on-chain with Neutrinite DeFi Vectors and NeuronPool: the neuron, buybacks, burns and non-inflationary rewards for voters.'],
     ['2025–2026', 'Sneed Hub grows into home for SNS governance: forums for every SNS, names, messages, Sneed Lock, Sneedex, Sneedapp and the Sneed bots.'],
     ['Now', 'Mr Sneed starts speaking for himself, one step at a time, on the way to a DAO that helps write itself.'],
@@ -22,6 +28,20 @@ const ROAD = [
 export default function Lore() {
     const { theme } = useTheme();
     const c = theme.colors;
+    const [oldSupply, setOldSupply] = useState(null); // old SNEED not yet converted (or burned)
+    useEffect(() => {
+        let live = true;
+        (async () => {
+            try {
+                const agent = await HttpAgent.create({ host: 'https://icp0.io' });
+                const n = await Actor.createActor(supplyIdl, { agent, canisterId: OLD_LEDGER }).icrc1_total_supply();
+                if (live) setOldSupply(Number(n) / 1e12);
+            } catch {
+                // the card reads fine without the live number
+            }
+        })();
+        return () => { live = false; };
+    }, []);
     const card = { background: c.cardBg, border: `1px solid ${c.border}`, borderRadius: 16, padding: 20, marginBottom: 16 };
     const h2 = { margin: '0 0 10px', fontSize: 22, color: c.primaryText };
     const p = { margin: '0 0 12px', color: c.secondaryText, lineHeight: 1.7, fontSize: 15 };
@@ -58,7 +78,10 @@ export default function Lore() {
                         the Sneed Vision Letter, signed by Mr Sneed:
                     </p>
                     <div style={quote}>The Dao is like an empty vessel which, in spite of being used, is never filled.</div>
-                    <p style={p}>Both are still live on the Internet Computer. Click the dot a few times until it fills the screen.</p>
+                    <p style={p}>Both are still live on the Internet Computer.</p>
+                    <div style={{ margin: '0 0 12px', padding: '8px 12px', borderRadius: 10, background: `${c.accent}1a`, color: c.primaryText, fontWeight: 600 }}>
+                        Hint: click on the dot. Then click it again, a few times, until it fills the screen.
+                    </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
                         {[[SNS1_LETTER, 'The SNS-1 letter', 'DFINITY, 2022', '#181818', '#ffffff'], [SNEED_LETTER, 'The Sneed Vision Letter', 'Mr Sneed, 2023', '#efefef', '#000000']].map(([href, title, by, bg, fg]) => (
                             <a key={href} href={href} target="_blank" rel="noopener noreferrer"
@@ -74,23 +97,6 @@ export default function Lore() {
                 </section>
 
                 <section style={card}>
-                    <h2 style={h2}>Five pillars</h2>
-                    <p style={p}>The Vision Letter rests SNEED on five pillars, and they spell its name:</p>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                        {PILLARS.map(([l, w], i) => (
-                            <div key={i} style={{ flex: '1 1 140px', padding: '10px 12px', borderRadius: 12, background: c.secondaryBg, border: `1px solid ${c.border}` }}>
-                                <span style={{ fontSize: 26, fontWeight: 800, color: c.accent }}>{l}</span>
-                                <span style={{ color: c.primaryText }}>{w.slice(1)}</span>
-                            </div>
-                        ))}
-                    </div>
-                    <p style={{ ...p, marginTop: 12 }}>
-                        Non-inflation is still the rule: SNEED started at 10,000 tokens and there will only ever be fewer. Rewards for voters come from real revenue through the{' '}
-                        <Link to="/rll_info" style={{ color: c.accent }}>Recursive Liquidity Loop</Link>, never from minting.
-                    </p>
-                </section>
-
-                <section style={card}>
                     <h2 style={h2}>The road so far</h2>
                     <div style={{ display: 'grid', gap: 10 }}>
                         {ROAD.map(([when, what]) => (
@@ -98,6 +104,26 @@ export default function Lore() {
                                 <span style={{ flex: '0 0 96px', color: c.accent, fontWeight: 700 }}>{when}</span>
                                 <span style={{ flex: '1 1 300px', color: c.secondaryText, lineHeight: 1.6 }}>{what}</span>
                             </div>
+                        ))}
+                    </div>
+                    <p style={{ ...p, margin: '12px 0 0', fontSize: 13, color: c.mutedText }}>Dates come from the chain: each ledger's first block, the swap's timestamps and each DAO's first proposal.</p>
+                </section>
+
+                <section style={card}>
+                    <h2 style={h2}>The old token</h2>
+                    <p style={p}>
+                        Before Sneed was an SNS there was already SNEED: a token on its own ICRC-1 ledger, with 12 decimals and 10,000 tokens, whose first transaction
+                        on 20 October 2023 moved the whole supply. It ran the first liquidity loop by hand. Its ledger is blackholed, so no one can ever change it.
+                    </p>
+                    <p style={p}>
+                        When Sneed became an SNS, old SNEED became convertible 1:1 into SNS SNEED at a converter canister run by the DAO, and it still is.
+                        {oldSupply != null && <> Old SNEED still out there: <strong style={{ color: c.primaryText }}>{oldSupply.toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong> of the original 10,000.</>}
+                    </p>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        {[['Old SNEED ledger', OLD_LEDGER], ['The converter', CONVERTER]].map(([label, id]) => (
+                            <a key={id} href={dashboard(id)} target="_blank" rel="noopener noreferrer" style={{ padding: '9px 16px', borderRadius: 999, border: `1px solid ${c.border}`, color: c.primaryText, textDecoration: 'none', fontWeight: 600 }}>
+                                {label} <span style={{ color: c.mutedText, fontFamily: 'monospace', fontSize: 12 }}>{id.slice(0, 5)}…</span> <FaExternalLinkAlt size={10} />
+                            </a>
                         ))}
                     </div>
                 </section>
