@@ -201,7 +201,7 @@ export default function MrSneed() {
                         <div style={{ flex: '1 1 280px', minWidth: 0 }}>
                             <h1 style={{ margin: 0, color: c.primaryText }}>Mr Sneed</h1>
                             <p style={{ margin: '6px 0 0', color: c.secondaryText, lineHeight: 1.6 }}>
-                                Mr Sneed is Sneed DAO: its mascot and its spirit. We are all Mr Sneed. Now he is learning to speak and act for himself, one step at a time, on the way to a DAO that helps write itself. His personality is set by DAO vote, everything he remembers is on-chain, public and listed below, and he holds only the powers the DAO gave him: a 1-SNEED neuron and a pen.
+                                Mr Sneed is Sneed DAO: its mascot and its spirit. We are all Mr Sneed. Now he is learning to speak and act for himself, one step at a time, on the way to a DAO that helps write itself. His personality is set by DAO vote, everything he remembers is on-chain, public and listed below, and he holds only the powers the DAO gave him: a 1-SNEED neuron and a pen. <Link to="/lore" style={{ color: c.accent }}>Read the lore</Link>.
                             </p>
                         </div>
                     </div>
