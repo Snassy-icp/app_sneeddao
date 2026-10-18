@@ -15,7 +15,7 @@ import { loadTokenMeta, tokenMeta, loadPrice, priceOf } from '../utils/revenueDa
 import { PrincipalDisplay, AvatarImage, getPrincipalDisplayInfoFromContext, computeAccountId } from '../utils/PrincipalUtils';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import TokenSelector from './TokenSelector';
-import { getDonationAccount, donate, registerDonation, pendingDonations, MAX_MESSAGE } from '../utils/donations';
+import { getDonationAccount, donate, registerDonation, pendingDonations, notifyRecipient, MAX_MESSAGE } from '../utils/donations';
 
 export const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 export const ROSE = '#f43f5e';
@@ -142,14 +142,20 @@ export function DonateDialog({ onClose }) {
         setStep('sending'); setPhase('Sending your donation…'); setError(null);
         try {
             const t = setTimeout(() => setPhase('Putting it on the thank-you wall…'), 2500);
-            await donate(identity, { ledger, amount, to: account, message: message.trim() });
+            const { block } = await donate(identity, { ledger, amount, to: account, message: message.trim() });
             clearTimeout(t);
             setStep('done');
+            notifyRecipient(identity, { to: account, amountText: formatUnits(amount, meta.decimals, meta.decimals), symbol: meta.symbol, block, message: message.trim() });
         } catch (e) { setError(e); setStep('error'); }
     };
     const retry = async (p) => {
         setRetrying(true); setError(null);
-        try { await registerDonation(identity, { ledger: p.ledger, block: p.block, message: p.message }); setStep('done'); }
+        try {
+            await registerDonation(identity, { ledger: p.ledger, block: p.block, message: p.message });
+            setStep('done');
+            const m = tokenMeta(p.ledger);
+            if (m && account) notifyRecipient(identity, { to: account, amountText: formatUnits(BigInt(p.amount), m.decimals, m.decimals), symbol: m.symbol, block: p.block, message: p.message });
+        }
         catch (e) { setError(e); setStep('error'); }
         finally { setRetrying(false); setPending(pendingDonations(me)); }
     };

@@ -6,6 +6,7 @@ import { Actor, HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { createActor as createSmsActor, canisterId as smsCanisterId } from 'declarations/sneed_sms';
 
 const isLocal = !(process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging');
 const host = isLocal ? 'http://localhost:4943' : 'https://icp0.io';
@@ -111,6 +112,26 @@ export async function donate(identity, { ledger, amount, to, message }) {
         const err = new Error(`Your donation was sent (block ${block}), but it could not be put on the wall yet: ${e.message}`);
         err.sent = { ledger, block };
         throw err;
+    }
+}
+
+// ---- telling the recipient ----
+
+/// Sends the donation account's owner a Sneed SMS message about a donation, from the donor, so a
+/// reply reaches the donor. Best effort: a donation is complete without it (SMS may refuse, e.g.
+/// within its rate limit), so this never throws; it returns whether the message went out.
+export async function notifyRecipient(identity, { to, amountText, symbol, block, message }) {
+    try {
+        const sms = createSmsActor(smsCanisterId, { agent: await agentFor(identity) });
+        const body = [
+            `I just donated ${amountText} ${symbol} to Sneed Hub (ledger block ${block}).`,
+            message ? `\n“${message}”` : '',
+            `\nThe thank-you wall: https://app.sneeddao.com/donate`,
+        ].filter(Boolean).join('\n');
+        const r = await sms.send_message({ recipients: [to.owner], subject: `A donation of ${amountText} ${symbol}`, body, reply_to: [] });
+        return 'ok' in r;
+    } catch {
+        return false;
     }
 }
 
