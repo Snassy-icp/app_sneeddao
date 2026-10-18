@@ -13,7 +13,7 @@ import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { fetchApprovals, getNftImage, getNftName, getNftDescription, getNftAttributes, getNftLinks, getNftMedia, formatNftMetadata, getSavedNftCollections, NFT_COLLECTIONS_STORAGE_KEY } from '../utils/NftUtils';
 import NftModel from '../components/NftModel';
-import CharacterPanel, { hasCharacterLinks, CarriedBy } from '../components/CharacterPanel';
+import CharacterPanel, { hasCharacterLinks, CarriedBy, SoulboundNote } from '../components/CharacterPanel';
 import { loadCollectionInfoCached, loadTokensCached, nftCollectionUrl } from '../components/NftAssetView';
 import { customStyles } from '../health/TreeView.jsx';
 import LockGas from '../components/LockGas';
@@ -126,6 +126,7 @@ function NftItem() {
                                     <button type="button" onClick={() => setRefreshKey((k) => k + 1)} disabled={loading} title="Re-read from the collection" style={{ ...btn(), padding: '6px 10px' }}><FaSync className={loading ? 'health-spin' : ''} /></button>
                                 </div>
                                 {desc && <p style={{ margin: '12px 0 0', color: theme.colors.secondaryText, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{desc}</p>}
+                                {token && <SoulboundNote metadata={token.metadata} theme={theme} />}
                             </div>
 
                             <div style={card}>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTheme } from './contexts/ThemeContext';
 import NftModel from './components/NftModel';
+import { boundTo, SoulboundBadge } from './components/Soulbound';
 import { getNftImage, getNftName, getNftDescription, formatNftMetadata, getNftAttributes, getNftLinks, getNftMedia } from './utils/NftUtils';
 import PrincipalInput from './components/PrincipalInput';
 import './NftCard.css';
@@ -139,6 +140,7 @@ const NftCard = ({ nft, collectionName, collectionSymbol, onSend , supportsIcrc3
                         wordBreak: 'break-word'
                     }}>
                         {nftName}
+                        {boundTo(nft.metadata) && <SoulboundBadge style={{ marginLeft: 6, verticalAlign: 'middle' }} />}
                     </div>
                     <div style={{
                         fontSize: '13px',

@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import NftModel from './NftModel';
+import { boundTo, SoulboundBadge } from './Soulbound';
+export { boundTo, SoulboundBadge };
 import { Principal } from '@dfinity/principal';
 import { FaExternalLinkAlt, FaSpinner } from 'react-icons/fa';
 import { anonymousNftAgent, fetchTokenDetails, getNftImage, getNftName, getNftMedia } from '../utils/NftUtils';
@@ -165,6 +167,36 @@ export function CarriedBy({ owner, theme }) {
     );
 }
 
+const nftOfIdl = ({ IDL }) => IDL.Service({ nft_of: IDL.Func([IDL.Vec(IDL.Nat8)], [IDL.Opt(IDL.Record({ owner: IDL.Principal, subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)) }))], ['query']) });
+const soulName = (metadata) => { const a = (metadata || []).find(([k]) => k === 'attributes'); const m = a && a[1].Array && a[1].Array.map((v) => v.Map || []).find((x) => x.some(([k, v]) => k === 'trait_type' && v.Text === 'Soulbound')); const v = m && m.find(([k]) => k === 'value'); return v ? v[1].Text : null; };
+/// The notice on a soulbound NFT's page: bound to which character (found through its game: nft_of), and what it means.
+export function SoulboundNote({ metadata, theme }) {
+    const b = boundTo(metadata), name = soulName(metadata);
+    const [who, setWho] = useState(null);
+    useEffect(() => {
+        setWho(null); if (!b) return undefined;
+        let alive = true;
+        (async () => {
+            try {
+                const agent = anonymousNftAgent(), r = await Actor.createActor(nftOfIdl, { agent, canisterId: b.root }).nft_of(b.key);
+                if (!r.length || !r[0].subaccount.length) return;
+                let id = 0n; for (const x of r[0].subaccount[0]) id = (id << 8n) + BigInt(x);
+                const col = r[0].owner.toText(), [t] = await fetchTokenDetails(col, [id], agent, { withOwner: false, withIcrc97: false });
+                if (alive) setWho({ collection: col, id, name: t && t.exists ? getNftName(t.metadata, id, t) : null });
+            } catch { /* the game did not say: the name the item was made with stands */ }
+        })();
+        return () => { alive = false; };
+    }, [b ? b.root + hex(b.key) : '']);
+    if (!b) return null;
+    const shown = who?.name || name || 'a character';
+    return (
+        <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, border: '1px solid #f0b429', background: 'rgba(240, 180, 41, 0.08)', fontSize: '0.85rem', color: theme.colors.primaryText, lineHeight: 1.45 }}>
+            <div style={{ fontWeight: 700, color: '#f0b429', marginBottom: 2 }}>Soulbound</div>
+            Bound to {who ? <Link to={nftItemUrl(who.collection, who.id)} style={{ color: theme.colors.accent, fontWeight: 600 }}>{shown}</Link> : <b>{shown}</b>}. It can be sent or sold like any NFT, but only that character can equip it.
+        </div>
+    );
+}
+
 const setModelIdl = ({ IDL }) => IDL.Service({ set_model: IDL.Func([IDL.Nat, IDL.Opt(IDL.Vec(IDL.Nat8))], [IDL.Variant({ ok: IDL.Null, err: IDL.Text })], []) });
 /// A game's look of the character: turn it around; its owner may make it the NFT's own 3D model (set_model).
 function GameLook({ bytes, gameName, collection, tokenId, identity, mine, theme }) {
@@ -280,6 +312,7 @@ export default function CharacterPanel({ collection, tokenId, metadata, owner, t
                                             <div style={{ aspectRatio: '1 / 1', background: theme.colors.tertiaryBg, borderRadius: 6, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                                                 {img && <img src={img} alt={name} style={{ width: '80%', height: '80%', objectFit: 'contain', imageRendering: 'pixelated' }} />}
                                                 {m?.kind === 'model' && <span style={{ position: 'absolute', top: 3, right: 4, fontSize: '0.6rem', fontWeight: 700, color: theme.colors.accent }}>3D</span>}
+                                                {boundTo(t.metadata) && <SoulboundBadge theme={theme} style={{ position: 'absolute', bottom: 3, left: 3, background: theme.colors.tertiaryBg }} />}
                                             </div>
                                             <div style={{ fontSize: '0.72rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
                                         </Link>
