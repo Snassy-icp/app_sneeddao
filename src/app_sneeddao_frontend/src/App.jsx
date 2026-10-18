@@ -50,6 +50,7 @@ import UserBans from './pages/admin/UserBans';
 import WordBlacklist from './pages/admin/WordBlacklist';
 import AdminPartners from './pages/admin/Partners';
 import AdminDonations from './pages/admin/Donations';
+import AdminFeedback from './pages/admin/Feedback';
 import AdminProjects from './pages/admin/Projects';
 import AdminNames from './pages/AdminNames';
 import AdminForum from './pages/admin/Forum';
@@ -114,6 +115,7 @@ import NftBrowser from './pages/NftBrowser';
 import RllLedger from './pages/RllLedger';
 import Revenue from './pages/Revenue';
 import Donate from './pages/Donate';
+import Feedback from './pages/Feedback';
 import Guardian from './pages/Guardian';
 import NftItem from './pages/NftItem';
 import SnsJailbreak from './pages/SnsJailbreak';
@@ -207,6 +209,7 @@ function App() {
                     <Route path="/rll_ledger" element={<RllLedger />} />
                     <Route path="/revenue" element={<Revenue />} />
                     <Route path="/donate" element={<Donate />} />
+                    <Route path="/feedback" element={<Feedback />} />
                     <Route path="/guardian" element={<ComingSoonPage title="Sneed custody"><Guardian /></ComingSoonPage>} />
                     <Route path="/scan_wallet" element={<ScanWallet />} />
                     <Route path="/dashboard" element={<Dashboard />} />
@@ -316,6 +319,7 @@ function App() {
                     <Route path="/admin/words" element={<WordBlacklist />} />
                     <Route path="/admin/partners" element={<AdminPartners />} />
                     <Route path="/admin/donations" element={<AdminDonations />} />
+                    <Route path="/admin/feedback" element={<AdminFeedback />} />
                     <Route path="/admin/projects" element={<AdminProjects />} />
                     <Route path="/admin/names" element={<AdminNames />} />
                     <Route path="/admin/forum" element={<AdminForum />} />

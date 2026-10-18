@@ -543,6 +543,28 @@ function Admin() {
                         <h2 style={{ margin: 0 }}>Donations</h2>
                         <p style={{ color: '#fda4af', margin: 0 }}>Set where donations go and moderate the thank-you wall</p>
                     </Link>
+                    <Link 
+                        to="/admin/feedback"
+                        style={{
+                            backgroundColor: '#1a2a3a',
+                            padding: '20px',
+                            borderRadius: '8px',
+                            textDecoration: 'none',
+                            color: '#ffffff',
+                            textAlign: 'center',
+                            border: '1px solid #38bdf8',
+                            transition: 'transform 0.2s ease',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '10px'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
+                        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                    >
+                        <h2 style={{ margin: 0 }}>Feedback</h2>
+                        <p style={{ color: '#7dd3fc', margin: 0 }}>Forum topics and recipients of bug reports and ideas</p>
+                    </Link>
                 </div>
             </main>
         </div>
