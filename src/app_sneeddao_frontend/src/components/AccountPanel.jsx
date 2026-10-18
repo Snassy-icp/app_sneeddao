@@ -8,6 +8,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import PrincipalInput from './PrincipalInput';
+import ConfirmationModal from '../ConfirmationModal';
 import * as NS from '../utils/NamingService';
 
 const opt = (x) => (x && x.length ? x[0] : null);
@@ -23,6 +24,7 @@ export default function AccountPanel({ identity, accent }) {
     const [busy, setBusy] = useState('');
     const [error, setError] = useState('');
     const [notice, setNotice] = useState('');
+    const [confirm, setConfirm] = useState(null); // { message, run }
     const me = identity?.getPrincipal?.()?.toText?.();
 
     const reload = useCallback(async () => {
@@ -97,7 +99,7 @@ export default function AccountPanel({ identity, accent }) {
                                 )}
                                 {(isOwner || p === me) && account.members.length > 0 && (
                                     <button type="button" style={btn(true)} disabled={!!busy} title={p === me ? 'Leave this account' : 'Remove from the account'}
-                                        onClick={() => { if (window.confirm(p === me ? 'Leave this account? Your principal will no longer show its name.' : 'Remove this principal from your account?')) run('remove', () => NS.removeMember(identity, p), p === me ? 'You left the account' : 'Removed'); }}>
+                                        onClick={() => setConfirm({ message: p === me ? 'Leave this account? Your principal will no longer show its name.' : 'Remove this principal from your account?', run: () => run('remove', () => NS.removeMember(identity, p), p === me ? 'You left the account' : 'Removed') })}>
                                         {p === me ? 'Leave' : <FaTimes size={10} />}
                                     </button>
                                 )}
@@ -153,7 +155,7 @@ export default function AccountPanel({ identity, accent }) {
                                         style={{ backgroundColor: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, borderRadius: '8px', color: theme.colors.primaryText, padding: '0.35rem 0.6rem', fontSize: '0.8rem' }} />
                                     <button type="button" style={btn(false)} disabled={!!busy || !(renames[id] || '').trim()} onClick={() => run('rename', () => NS.setAccountName(identity, id, renames[id].trim()), 'Renamed')}>Rename</button>
                                     <button type="button" style={primaryBtn} disabled={!!busy}
-                                        onClick={() => { if (window.confirm(`Merge this account into yours? Its principals will show ${opt(account?.name) ? `"${opt(account.name)}"` : 'your name'} from now on.${!opt(account?.name) && opt(a.name) ? ` Your account takes the name "${opt(a.name)}".` : opt(a.name) ? ` The name "${opt(a.name)}" is freed.` : ''}`)) run('merge', () => NS.mergeAccount(identity, id), 'Merged into your account'); }}>
+                                        onClick={() => setConfirm({ message: `Merge this account into yours? Its principals will show ${opt(account?.name) ? `"${opt(account.name)}"` : 'your name'} from now on, and everyone can see they are yours.${!opt(account?.name) && opt(a.name) ? ` Your account takes the name "${opt(a.name)}".` : opt(a.name) ? ` The name "${opt(a.name)}" is freed.` : ''}`, run: () => run('merge', () => NS.mergeAccount(identity, id), 'Merged into your account') })}>
                                         {busy === 'merge' ? 'Merging…' : 'Merge into my account'}
                                     </button>
                                     <button type="button" style={btn(true)} disabled={!!busy} title="Give up this hotkey" onClick={() => run('drop', () => NS.removeHotkey(identity, id, identity.getPrincipal()), 'Hotkey given up')}><FaTimes size={10} /></button>
@@ -163,6 +165,7 @@ export default function AccountPanel({ identity, accent }) {
                     })}
                 </>
             )}
+            {confirm && <ConfirmationModal show onClose={() => setConfirm(null)} onSubmit={confirm.run} doAwait message={confirm.message} />}
         </div>
     );
 }
