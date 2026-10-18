@@ -102,6 +102,17 @@ export default function Lore() {
                     </div>
                 </section>
 
+                <section style={card}>
+                    <h2 style={h2}>Join us</h2>
+                    <p style={p}>Like SNS-1, Sneed is a blank canvas: build or suggest pretty much anything. Come say hi (and if it's over, we'll tell you).</p>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        {[['Discord', 'https://discord.gg/4bzUtDc5q8'], ['X: @icsneed', 'https://x.com/icsneed']].map(([label, href]) => (
+                            <a key={href} href={href} target="_blank" rel="noopener noreferrer" style={{ padding: '9px 16px', borderRadius: 999, border: `1px solid ${c.border}`, color: c.primaryText, textDecoration: 'none', fontWeight: 600 }}>{label} <FaExternalLinkAlt size={10} /></a>
+                        ))}
+                        <Link to="/forum" style={{ padding: '9px 16px', borderRadius: 999, border: `1px solid ${c.border}`, color: c.primaryText, textDecoration: 'none', fontWeight: 600 }}>The Sneed forum</Link>
+                    </div>
+                </section>
+
                 <section style={{ ...card, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
                     <img src="/mr-sneed-face.png" alt="Mr Sneed" width={72} height={72} style={{ width: 72, height: 72, objectFit: 'contain', borderRadius: '50%', background: '#f4f1ea', border: `3px solid ${c.accent}`, padding: 4, boxSizing: 'border-box' }} />
                     <div style={{ flex: '1 1 300px' }}>

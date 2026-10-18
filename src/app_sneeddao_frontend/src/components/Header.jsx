@@ -584,6 +584,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Feedback', path: '/feedback' },
                 { name: 'Mr Sneed', path: '/mr-sneed' },
                 { name: 'Lore', path: '/lore' },
+                { name: 'Discord', href: 'https://discord.gg/4bzUtDc5q8' },
+                { name: 'X', href: 'https://x.com/icsneed' },
                 { name: 'Projects', path: '/projects' },
                 { name: 'Disclaimer', path: '/disclaimer' }
             ]
@@ -1593,11 +1595,14 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         </div>
                     ) : (
                         menuSections[activeSection]?.subMenu?.map((item) => {
-                            const isActive = isSubmenuItemActive(item.path);
+                            // an item with href is an external link (Discord, X), opened in a new tab
+                            const isActive = !item.href && isSubmenuItemActive(item.path);
+                            const ItemLink = item.href ? 'a' : Link;
+                            const target = item.href ? { href: item.href, target: '_blank', rel: 'noopener noreferrer' } : { to: item.path };
                             return (
-                                <Link
+                                <ItemLink
                                     key={item.name}
-                                    to={item.path}
+                                    {...target}
                                     style={{
                                         color: isActive ? '#fff' : theme.colors.secondaryText,
                                         textDecoration: 'none',
@@ -1627,8 +1632,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                         }
                                     }}
                                 >
-                                    {item.name}
-                                </Link>
+                                    {item.name}{item.href ? ' ↗' : ''}
+                                </ItemLink>
                             );
                         })
                     )}
