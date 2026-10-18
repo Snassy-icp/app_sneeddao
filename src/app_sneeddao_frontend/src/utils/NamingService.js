@@ -29,6 +29,8 @@ const profilesId = realCanisterId(profilesEnv);
 
 export const namingServiceEnabled = Boolean(pidNamesId && neuronNamesId && pidNicknamesId && neuronNicknamesId && avatarsId);
 export const dappRegistryEnabled = Boolean(profilesId);
+/// The naming canisters' ids on this build's network (null where there is none).
+export const namingCanisterIds = { pidNames: pidNamesId, neuronNames: neuronNamesId, pidNicknames: pidNicknamesId, neuronNicknames: neuronNicknamesId, avatars: avatarsId, profiles: profilesId };
 
 const isLocal = !(process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging');
 const host = isLocal ? 'http://localhost:4943' : 'https://icp0.io';

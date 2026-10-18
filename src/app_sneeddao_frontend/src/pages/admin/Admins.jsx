@@ -11,7 +11,7 @@ import {
     FaUserShield, FaSpinner, FaSync, FaPlus, FaTrash, 
     FaChevronDown, FaChevronUp, FaCheck, FaTimes, FaDatabase,
     FaLock, FaComments, FaEnvelope, FaCrown, FaExchangeAlt, FaCopy,
-    FaBrain, FaMinus, FaGift
+    FaBrain, FaMinus, FaGift, FaIdBadge, FaTag, FaImage, FaAddressBook
 } from 'react-icons/fa';
 
 // Import actors
@@ -23,6 +23,7 @@ import { createActor as createPremiumActor, canisterId as premiumCanisterId } fr
 import { createActor as createSneedexActorDecl, canisterId as sneedexCanisterId } from 'declarations/sneedex';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
+import * as NS from '../../utils/NamingService';
 
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
 
@@ -170,6 +171,33 @@ const CANISTERS = {
         },
         formatAdmins: (admins) => admins.map(p => ({ principal: p })),
     },
+    // the naming service (spec/sneed_names.md): the same admin methods on all six
+    ...Object.fromEntries([
+        ['sneed_pid_names', 'Names', FaIdBadge, '#14b8a6', 'pidNames', NS.pidNamesActor],
+        ['sneed_neuron_names', 'Neuron Names', FaIdBadge, '#0ea5e9', 'neuronNames', NS.neuronNamesActor],
+        ['sneed_pid_nicknames', 'Nicknames', FaTag, '#a855f7', 'pidNicknames', NS.pidNicknamesActor],
+        ['sneed_neuron_nicknames', 'Neuron Nicknames', FaTag, '#6366f1', 'neuronNicknames', NS.neuronNicknamesActor],
+        ['sneed_avatars', 'Avatars', FaImage, '#f97316', 'avatars', NS.avatarsActor],
+        ['sneed_profiles', 'Profiles (dapps)', FaAddressBook, '#84cc16', 'profiles', NS.profilesActor],
+    ].filter(([, , , , key]) => NS.namingCanisterIds[key]).map(([k, name, icon, color, key, actorOf]) => [k, {
+        id: NS.namingCanisterIds[key],
+        name,
+        icon,
+        color,
+        getActor: (identity) => actorOf(identity),
+        getAdmins: async (actor) => await actor.get_admins(),
+        addAdmin: async (actor, principal) => {
+            const result = await actor.admin_add_admin(principal);
+            if ('err' in result) throw new Error(result.err);
+            return result;
+        },
+        removeAdmin: async (actor, principal) => {
+            const result = await actor.admin_remove_admin(principal);
+            if ('err' in result) throw new Error(result.err);
+            return result;
+        },
+        formatAdmins: (admins) => admins.map(p => ({ principal: p })),
+    }])),
 };
 
 export default function AdminsAdmin() {
