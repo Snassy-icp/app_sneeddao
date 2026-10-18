@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTheme } from './contexts/ThemeContext';
-import { getNftImage, getNftName, getNftDescription, formatNftMetadata, getNftAttributes, getNftLinks } from './utils/NftUtils';
+import { getNftImage, getNftName, getNftDescription, formatNftMetadata, getNftAttributes, getNftLinks, getNftMedia } from './utils/NftUtils';
 import PrincipalInput from './components/PrincipalInput';
 import './NftCard.css';
 
@@ -16,6 +16,7 @@ const NftCard = ({ nft, collectionName, collectionSymbol, onSend , supportsIcrc3
     const formattedMetadata = formatNftMetadata(nft.metadata);
     const attributes = getNftAttributes(nft);
     const links = getNftLinks(nft);
+    const media = getNftMedia(nft);
     const [approveForm, setApproveForm] = useState({ open: false, spender: '', days: '', busy: false, error: '' });
     const fmtExpiry = (e) => (e && e.length ? new Date(Number(e[0] / 1_000_000n)).toLocaleString() : 'never');
     
@@ -243,6 +244,9 @@ const NftCard = ({ nft, collectionName, collectionSymbol, onSend , supportsIcrc3
                             </button>
                         </div>
                         
+                        {/* Its sound or video (animation_url) */}
+                        {media?.kind === 'audio' && <audio controls preload="none" src={media.url} onClick={(e) => e.stopPropagation()} style={{ width: '100%', marginTop: '12px', display: 'block' }} />}
+                        {media?.kind === 'video' && <video controls preload="none" src={media.url} poster={imageUrl || undefined} onClick={(e) => e.stopPropagation()} style={{ width: '100%', marginTop: '12px', display: 'block', background: '#000', borderRadius: 8 }} />}
                         {/* Attributes (ICRC-97 or inline) */}
                         {attributes.length > 0 && (
                             <div style={{ marginTop: '12px' }}>

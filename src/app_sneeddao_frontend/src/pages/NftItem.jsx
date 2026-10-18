@@ -11,7 +11,7 @@ import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
-import { fetchApprovals, getNftImage, getNftName, getNftDescription, getNftAttributes, getNftLinks, formatNftMetadata, getSavedNftCollections, NFT_COLLECTIONS_STORAGE_KEY } from '../utils/NftUtils';
+import { fetchApprovals, getNftImage, getNftName, getNftDescription, getNftAttributes, getNftLinks, getNftMedia, formatNftMetadata, getSavedNftCollections, NFT_COLLECTIONS_STORAGE_KEY } from '../utils/NftUtils';
 import { loadCollectionInfoCached, loadTokensCached, nftCollectionUrl } from '../components/NftAssetView';
 import { customStyles } from '../health/TreeView.jsx';
 import LockGas from '../components/LockGas';
@@ -75,6 +75,7 @@ function NftItem() {
     const desc = token ? getNftDescription(token.metadata, token) : null;
     const attrs = token ? getNftAttributes(token) : [];
     const links = token ? getNftLinks(token) : [];
+    const media = token ? getNftMedia(token) : null;
     const raw = token ? formatNftMetadata(token.metadata) : [];
     const inWallet = useMemo(() => getSavedNftCollections().includes(collection), [collection]);
     const addToWallet = () => { try { localStorage.setItem(NFT_COLLECTIONS_STORAGE_KEY, JSON.stringify([...new Set([...getSavedNftCollections(), collection])])); } catch { /* ignore */ } };
@@ -103,6 +104,8 @@ function NftItem() {
                                     : img && !imgBroken ? <img src={img} alt={name} onError={() => setImgBroken(true)} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
                                     : <div style={{ textAlign: 'center', color: theme.colors.mutedText }}><FaImage size={48} color={primary} /><div style={{ fontSize: '0.8rem', marginTop: 8 }}>{token && !token.exists ? 'This token does not exist in the collection' : imgBroken ? 'The picture could not be loaded' : 'No picture in the metadata'}</div></div>}
                             </div>
+                            {media?.kind === 'audio' && <audio controls preload="none" src={media.url} style={{ width: '100%', display: 'block' }} />}
+                            {media?.kind === 'video' && <video controls preload="none" src={media.url} poster={img || undefined} style={{ width: '100%', display: 'block', background: '#000' }} />}
                             {img && <div style={{ padding: '8px 12px', fontSize: '0.75rem' }}><a href={img} target="_blank" rel="noopener noreferrer" style={{ color: theme.colors.accent, display: 'inline-flex', alignItems: 'center', gap: 4 }}>open picture <FaExternalLinkAlt size={9} /></a></div>}
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

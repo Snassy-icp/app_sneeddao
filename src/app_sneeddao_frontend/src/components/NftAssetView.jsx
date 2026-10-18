@@ -5,7 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FaImage, FaExternalLinkAlt } from 'react-icons/fa';
 import { useTheme } from '../contexts/ThemeContext';
-import { anonymousNftAgent, fetchCollectionInfo, fetchTokenDetails, getNftImage, getNftName, getNftDescription, getNftAttributes, getNftLinks, formatNftMetadata } from '../utils/NftUtils';
+import { anonymousNftAgent, fetchCollectionInfo, fetchTokenDetails, getNftImage, getNftName, getNftDescription, getNftAttributes, getNftLinks, formatNftMetadata, getNftMedia } from '../utils/NftUtils';
 
 const collectionCache = new Map(); // id -> Promise<info>
 const tokenCache = new Map(); // `${collection}:${id}` -> token detail
@@ -118,6 +118,7 @@ export function NftAssetDetails({ collectionId, tokenIds, me = null }) {
                     const attrs = t ? getNftAttributes(t) : [];
                     const links = t ? getNftLinks(t) : [];
                     const raw = t ? formatNftMetadata(t.metadata) : [];
+                    const media = t ? getNftMedia(t) : null;
                     const ownerText = t?.owner?.owner?.toString?.() || null;
                     const key = id.toString();
                     return (
@@ -126,6 +127,7 @@ export function NftAssetDetails({ collectionId, tokenIds, me = null }) {
                                 {img ? <img src={img} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                                     : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 6, color: theme.colors.mutedText }}><FaImage size={34} color="#a18cd1" /><span style={{ fontSize: '0.75rem' }}>{t && !t.exists ? 'token not found' : 'no picture'}</span></div>}
                             </Link>
+                            {media?.kind === 'audio' && <audio controls preload="none" src={media.url} style={{ width: '100%', display: 'block', height: 36 }} />}
                             <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
                                     <Link to={nftItemUrl(collectionId, id)} style={{ fontWeight: 600, color: theme.colors.primaryText, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</Link>
