@@ -10,6 +10,7 @@ import T "Types";
 import Lib "lib";
 import PremiumClient "../PremiumClient";
 import IngressGuard "../IngressGuard";
+import Mentions "Mentions";
 
 persistent actor SneedSNSForum {
     // NNS SNS-W canister interface for getting deployed SNS instances
@@ -106,6 +107,14 @@ persistent actor SneedSNSForum {
     let stable_thread_proposals = Map.new<Nat, (Nat32, Nat)>();
     let stable_user_thread_reads = Map.new<Text, T.UserThreadReadData>();
     var stable_text_limits : T.TextLimits = Lib.get_default_text_limits();
+
+    // @-mentions (Mentions.mo, spec/forum_mentions.md): who was mentioned where, newest last; the
+    // keys already recorded (so an edit only adds new mentions); when each user last looked; and
+    // who asked for a Sneed SMS when mentioned.
+    let stable_mentions = Map.new<Principal, Vector.Vector<Mentions.Mention>>();
+    let stable_mention_keys = Map.new<Text, ()>();
+    let stable_user_last_seen_mentions = Map.new<Principal, Int>();
+    let stable_mention_sms = Map.new<Principal, ()>();
     
     // Premium configuration and cache
     var stable_premium_config : T.PremiumConfig = {
@@ -240,7 +249,9 @@ persistent actor SneedSNSForum {
                 };
             };
         };
-        Lib.create_thread(state, caller, input, body_max_override)
+        let r = Lib.create_thread(state, caller, input, body_max_override);
+        switch (r) { case (#ok(id)) recordMentions(caller, id, null, input.body); case _ {} };
+        r
     };
 
     public shared ({ caller }) func update_thread(id: Nat, title: ?Text, body: Text) : async T.Result<(), T.ForumError> {
@@ -256,7 +267,9 @@ persistent actor SneedSNSForum {
                 };
             };
         };
-        Lib.update_thread(state, caller, id, title, body, body_max_override)
+        let r = Lib.update_thread(state, caller, id, title, body, body_max_override);
+        switch (r) { case (#ok) recordMentions(caller, id, null, body); case _ {} };
+        r
     };
 
     public query ({ caller }) func get_thread(id: Nat) : async ?T.ThreadResponse {
@@ -308,6 +321,7 @@ persistent actor SneedSNSForum {
         };
         let (result, updated_cache) = await Lib.create_post_with_sns(state, caller, thread_id, reply_to_post_id, title, body, sns_cache, body_max_override);
         sns_cache := updated_cache;
+        switch (result) { case (#ok(post_id)) recordMentions(caller, thread_id, ?post_id, body); case _ {} };
         result
     };
 
@@ -324,7 +338,12 @@ persistent actor SneedSNSForum {
                 };
             };
         };
-        Lib.update_post(state, caller, id, title, body, body_max_override)
+        let r = Lib.update_post(state, caller, id, title, body, body_max_override);
+        switch (r, Map.get(state.posts, Map.nhash, id)) {
+            case (#ok, ?post) recordMentions(caller, post.thread_id, ?id, body);
+            case _ {};
+        };
+        r
     };
 
     public query ({ caller }) func get_post(id: Nat) : async ?T.PostResponse {
@@ -513,6 +532,98 @@ persistent actor SneedSNSForum {
 
     public query func get_threads_by_user(user_principal: Principal) : async [T.ThreadResponse] {
         Lib.get_threads_by_user(state, user_principal)
+    };
+
+    // @-mentions (Mentions.mo, spec/forum_mentions.md)
+
+    func recordMentions(by : Principal, thread_id : Nat, post_id : ?Nat, body : Text) {
+        let at = Time.now();
+        let place = switch (post_id) { case (?p) "p" # Nat.toText(p); case null "t" # Nat.toText(thread_id) };
+        for (p in Mentions.parse(body).vals()) {
+            let key = place # ":" # Principal.toText(p);
+            if (p != by and not Principal.isAnonymous(p) and Map.get(stable_mention_keys, Map.thash, key) == null) {
+                Map.set(stable_mention_keys, Map.thash, key, ());
+                let list = switch (Map.get(stable_mentions, Map.phash, p)) {
+                    case (?l) l;
+                    case null { let l = Vector.new<Mentions.Mention>(); Map.set(stable_mentions, Map.phash, p, l); l };
+                };
+                Vector.add(list, { thread_id; post_id; by; at });
+            };
+        };
+    };
+
+    /// The mention as shown in a notification, or null when its thread or post is gone.
+    func mentionView(i : Nat, m : Mentions.Mention) : ?T.MentionResponse {
+        let thread = switch (Map.get(state.threads, Map.nhash, m.thread_id)) { case (?t) t; case null return null };
+        if (thread.deleted) return null;
+        let (title, body) = switch (m.post_id) {
+            case (?pid) switch (Map.get(state.posts, Map.nhash, pid)) {
+                case (?post) { if (post.deleted) return null; (post.title, post.body) };
+                case null return null;
+            };
+            case null (thread.title, thread.body);
+        };
+        ?{ index = i; thread_id = m.thread_id; post_id = m.post_id; by = m.by; created_at = m.at;
+           thread_title = thread.title; title; excerpt = Mentions.excerpt(body, 200) };
+    };
+
+    /// Where a user was mentioned, newest first, from `before` (an index, exclusive), at most 100.
+    public query func get_mentions_of_user(user : Principal, before : ?Nat, limit : Nat) : async T.MentionsPage {
+        let list = switch (Map.get(stable_mentions, Map.phash, user)) { case (?l) l; case null return { items = []; next = null } };
+        let max = if (limit == 0 or limit > 100) 100 else limit;
+        var i : Nat = switch (before) { case (?b) if (b < Vector.size(list)) b else Vector.size(list); case null Vector.size(list) };
+        let out = Vector.new<T.MentionResponse>();
+        var scanned = 0;
+        while (i > 0 and Vector.size(out) < max and scanned < 1_000) {
+            i -= 1; scanned += 1;
+            switch (mentionView(i, Vector.get(list, i))) { case (?v) Vector.add(out, v); case null {} };
+        };
+        { items = Vector.toArray(out); next = if (i > 0) ?i else null };
+    };
+
+    /// Mentions since the user last marked them seen (live threads and posts only).
+    public query func get_recent_mentions_count(user : Principal) : async Nat {
+        let list = switch (Map.get(stable_mentions, Map.phash, user)) { case (?l) l; case null return 0 };
+        let since = switch (Map.get(stable_user_last_seen_mentions, Map.phash, user)) { case (?t) t; case null 0 };
+        var count = 0;
+        var i = Vector.size(list);
+        label newest while (i > 0) {
+            i -= 1;
+            let m = Vector.get(list, i);
+            if (m.at <= since) break newest;
+            if (mentionView(i, m) != null) count += 1;
+        };
+        count
+    };
+
+    public shared ({ caller }) func mark_mentions_seen_up_to(timestamp : Int) : async () {
+        if (Principal.isAnonymous(caller)) return;
+        Map.set(stable_user_last_seen_mentions, Map.phash, caller, timestamp);
+    };
+
+    public query func get_last_seen_mentions_timestamp(user : Principal) : async ?Int {
+        Map.get(stable_user_last_seen_mentions, Map.phash, user)
+    };
+
+    /// Opt in (or out) of a Sneed SMS when someone mentions you. The SMS is sent by the poster's
+    /// own client, from the poster's principal, so it counts against their SMS limits.
+    public shared ({ caller }) func set_mention_sms(on : Bool) : async T.Result<(), T.ForumError> {
+        if (Principal.isAnonymous(caller)) return #err(#Unauthorized("Log in to change this setting"));
+        if (on) Map.set(stable_mention_sms, Map.phash, caller, ()) else Map.delete(stable_mention_sms, Map.phash, caller);
+        #ok
+    };
+
+    public query func get_mention_sms(user : Principal) : async Bool {
+        Map.get(stable_mention_sms, Map.phash, user) != null
+    };
+
+    /// Which of these principals (at most Mentions.MAX_PER_TEXT) want a Sneed SMS when mentioned.
+    public query func get_mention_sms_opted_in(users : [Principal]) : async [Principal] {
+        let out = Vector.new<Principal>();
+        for (u in users.vals()) {
+            if (Vector.size(out) < Mentions.MAX_PER_TEXT and Map.get(stable_mention_sms, Map.phash, u) != null) Vector.add(out, u);
+        };
+        Vector.toArray(out)
     };
 
     // Admin/utility endpoints
@@ -843,7 +954,11 @@ persistent actor SneedSNSForum {
         #get_forums : Any;
         #get_forums_admin : Any;
         #get_last_read_post : Any;
+        #get_last_seen_mentions_timestamp : Any;
         #get_last_seen_replies_timestamp : Any;
+        #get_mention_sms : Any;
+        #get_mention_sms_opted_in : Any;
+        #get_mentions_of_user : Any;
         #get_last_seen_tip_timestamp : Any;
         #get_poll : Any;
         #get_poll_votes : Any;
@@ -862,6 +977,7 @@ persistent actor SneedSNSForum {
         #get_proposal_thread : Any;
         #get_proposals_topic : Any;
         #get_proposals_topic_by_sns_root : Any;
+        #get_recent_mentions_count : Any;
         #get_recent_replies_count : Any;
         #get_recent_tips_count : Any;
         #get_recent_tips_received : Any;
@@ -896,6 +1012,7 @@ persistent actor SneedSNSForum {
         #get_user_thread_reads_for_topic : Any;
         #health_check : Any;
         #is_admin : Any;
+        #mark_mentions_seen_up_to : Any;
         #mark_replies_seen_up_to : Any;
         #mark_tips_seen_up_to : Any;
         #remove_admin : Any;
@@ -903,6 +1020,7 @@ persistent actor SneedSNSForum {
         #retract_vote : Any;
         #retract_vote_with_neurons : () -> (Nat, [T.NeuronId]);
         #set_last_read_post : Any;
+        #set_mention_sms : Any;
         #set_proposals_topic : Any;
         #undelete_forum : Any;
         #undelete_post : Any;
@@ -929,7 +1047,11 @@ persistent actor SneedSNSForum {
                 or #get_forums _
                 or #get_forums_admin _
                 or #get_last_read_post _
+                or #get_last_seen_mentions_timestamp _
                 or #get_last_seen_replies_timestamp _
+                or #get_mention_sms _
+                or #get_mention_sms_opted_in _
+                or #get_mentions_of_user _
                 or #get_last_seen_tip_timestamp _
                 or #get_poll _
                 or #get_poll_votes _
@@ -948,6 +1070,7 @@ persistent actor SneedSNSForum {
                 or #get_proposal_thread _
                 or #get_proposals_topic _
                 or #get_proposals_topic_by_sns_root _
+                or #get_recent_mentions_count _
                 or #get_recent_replies_count _
                 or #get_recent_tips_count _
                 or #get_recent_tips_received _

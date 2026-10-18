@@ -134,6 +134,19 @@ module {
         deleted: Bool;
     };
 
+    /// A mention as shown in a notification (main.mo, Mentions.mo).
+    public type MentionResponse = {
+        index: Nat;            // position in the user's mention list, for paging
+        thread_id: Nat;
+        post_id: ?Nat;         // null: mentioned in the thread's own text
+        by: Principal;
+        created_at: Int;
+        thread_title: ?Text;
+        title: ?Text;
+        excerpt: Text;
+    };
+    public type MentionsPage = { items: [MentionResponse]; next: ?Nat };
+
     public type Post = {
         id: Nat;
         thread_id: Nat;
