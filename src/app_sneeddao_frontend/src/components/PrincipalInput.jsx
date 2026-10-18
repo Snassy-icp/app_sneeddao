@@ -72,6 +72,255 @@ const isCanisterPrincipal = (principalStr) => {
     return principalStr.length <= 30;
 };
 
+// Search and rank named principals, as PrincipalInput's dropdown does. Shared with the @-mention
+// dropdown (MentionTextarea). tab: 'private' (nicknames) | 'public' (names) | 'all'.
+export function searchPrincipals(input, { tab: activeTab, showUsers = true, showCanisters = true, principalNames, principalNicknames, verifiedNames, principalCanisterTypes, loose = false, limit = 20 }) {
+    if (!(input || '').trim()) {
+        return [];
+    }
+
+    // loose: "_", "-" and spaces count as the same (an @-mention query can't hold a space)
+    const fold = (t) => (loose ? t.replace(/[_\-\s]+/g, ' ') : t);
+    const query = fold(input.trim().toLowerCase());
+    const results = [];
+
+    // Collect all principals with their info
+    const allPrincipals = new Set();
+    
+    const includeNicknames = activeTab === 'private' || activeTab === 'all';
+    const includeNames = activeTab === 'public' || activeTab === 'all';
+
+    if (includeNames && principalNames) {
+        principalNames.forEach((name, principal) => {
+            allPrincipals.add(principal);
+        });
+    }
+
+    if (includeNicknames && principalNicknames) {
+        principalNicknames.forEach((nickname, principal) => {
+            allPrincipals.add(principal);
+        });
+    }
+
+    allPrincipals.forEach(principalStr => {
+        if (!principalStr || !principalStr.trim()) return; // Skip empty principals
+        
+        // Filter by principal type (user vs canister)
+        const isCanister = isCanisterPrincipal(principalStr);
+        if (isCanister && !showCanisters) return;
+        if (!isCanister && !showUsers) return;
+        
+        try {
+            const principal = Principal.fromText(principalStr);
+            const displayInfo = getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames, verifiedNames, principalCanisterTypes);
+            
+            const name = displayInfo.name || '';
+            const nickname = displayInfo.nickname || '';
+            const isVerified = displayInfo.isVerified || false;
+            
+            let score = 0;
+            let matchType = '';
+            
+            // STRICT tab matching:
+            // - private: ONLY match on nickname
+            // - public: ONLY match on public name
+            // - all: match on either
+
+            const scoreNameStrict = () => {
+                if (!includeNames || !name) return { score: 0, matchType: '' };
+                const n = fold(name.toLowerCase());
+                if (n === query) return { score: isVerified ? 1000 : 900, matchType: 'name-exact' };
+                if (n.startsWith(query)) return { score: isVerified ? 800 : 700, matchType: 'name-start' };
+                if (n.includes(query)) return { score: isVerified ? 600 : 500, matchType: 'name-contains' };
+                return { score: 0, matchType: '' };
+            };
+
+            const scoreNicknameStrict = () => {
+                if (!includeNicknames || !nickname) return { score: 0, matchType: '' };
+                const n = fold(nickname.toLowerCase());
+                if (n === query) return { score: 950, matchType: 'nickname-exact' };
+                if (n.startsWith(query)) return { score: 850, matchType: 'nickname-start' };
+                if (n.includes(query)) return { score: 750, matchType: 'nickname-contains' };
+                return { score: 0, matchType: '' };
+            };
+
+            if (activeTab === 'private') {
+                const a = scoreNicknameStrict();
+                score = a.score;
+                matchType = a.matchType;
+            } else if (activeTab === 'public') {
+                const a = scoreNameStrict();
+                score = a.score;
+                matchType = a.matchType;
+            } else {
+                const a = scoreNameStrict();
+                const b = scoreNicknameStrict();
+                score = a.score || b.score;
+                matchType = a.matchType || b.matchType;
+            }
+            
+            // Check principal ID matches (lowest priority)
+            if (score === 0 && principalStr.toLowerCase().includes(query)) {
+                score = 100; // Principal ID contains
+                matchType = 'principal-contains';
+            }
+            
+            if (score > 0) {
+                results.push({
+                    principal,
+                    principalStr,
+                    displayInfo,
+                    score,
+                    matchType
+                });
+            }
+        } catch (e) {
+            // Invalid principal, skip
+        }
+    });
+
+    // Sort by score (highest first) and limit results
+    return results
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit);
+}
+
+// The dropdown body of PrincipalInput: Private/Public/All tabs, user/canister toggles and the
+// matching principals. Shared with the @-mention dropdown. activeIndex/onHoverIndex give keyboard
+// highlighting; keepFocus keeps focus in the input while picking.
+export function PrincipalPickerPanel({ activeTab, onTabChange, showUsers, showCanisters, onToggleUsers, onToggleCanisters, results, onSelect, isAuthenticated = false, activeIndex = -1, onHoverIndex = null, keepFocus = false, note = null }) {
+    const { theme } = useTheme();
+    return (
+        <>
+            {note && <div style={{ padding: '6px 10px', fontSize: '11px', color: theme.colors.mutedText, borderBottom: `1px solid ${theme.colors.border}` }}>{note}</div>}
+            {/* Tabs and Type Filters */}
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px',
+                borderBottom: `1px solid ${theme.colors.border}`,
+                position: 'sticky',
+                top: 0,
+                backgroundColor: theme.colors.tertiaryBg,
+                zIndex: 1
+            }}>
+                {/* Name Tabs */}
+                <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
+                    {[
+                        { key: 'private', label: 'Private' },
+                        { key: 'public', label: 'Public' },
+                        { key: 'all', label: 'All' }
+                    ].map(tab => (
+                        <button
+                            key={tab.key}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => onTabChange(tab.key)}
+                            style={{
+                                flex: 1,
+                                padding: '5px 6px',
+                                borderRadius: '6px',
+                                border: `1px solid ${activeTab === tab.key ? theme.colors.accent : theme.colors.border}`,
+                                backgroundColor: activeTab === tab.key ? `${theme.colors.accent}20` : theme.colors.primaryBg,
+                                color: activeTab === tab.key ? theme.colors.accent : theme.colors.mutedText,
+                                cursor: 'pointer',
+                                fontSize: '11px',
+                                fontWeight: 600
+                            }}
+                            title={tab.label}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
+                
+                {/* Separator */}
+                <div style={{ width: '1px', height: '20px', backgroundColor: theme.colors.border }} />
+                
+                {/* Type Filter Toggles */}
+                <div style={{ display: 'flex', gap: '4px' }}>
+                    <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={onToggleUsers}
+                        style={{
+                            padding: '5px 8px',
+                            borderRadius: '6px',
+                            border: `1px solid ${showUsers ? theme.colors.accent : theme.colors.border}`,
+                            backgroundColor: showUsers ? `${theme.colors.accent}20` : theme.colors.primaryBg,
+                            color: showUsers ? theme.colors.accent : theme.colors.mutedText,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '11px'
+                        }}
+                        title="Show users"
+                    >
+                        <FaUser size={10} />
+                    </button>
+                    <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={onToggleCanisters}
+                        style={{
+                            padding: '5px 8px',
+                            borderRadius: '6px',
+                            border: `1px solid ${showCanisters ? theme.colors.accent : theme.colors.border}`,
+                            backgroundColor: showCanisters ? `${theme.colors.accent}20` : theme.colors.primaryBg,
+                            color: showCanisters ? theme.colors.accent : theme.colors.mutedText,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '11px'
+                        }}
+                        title="Show canisters"
+                    >
+                        <FaCube size={10} />
+                    </button>
+                </div>
+            </div>
+            {results.length === 0 ? (
+                <div style={{ padding: '10px 12px', color: theme.colors.mutedText, fontSize: '12px' }}>
+                    No matches in <strong>{activeTab === 'private' ? 'Private (nicknames)' : activeTab === 'public' ? 'Public (names)' : 'All'}</strong>.
+                    Try switching tabs or toggling users/canisters.
+                </div>
+            ) : (
+            results.map((item, index) => (
+                <div
+                    key={item.principalStr}
+                    role="option"
+                    aria-selected={index === activeIndex}
+                    onMouseDown={keepFocus ? (e) => e.preventDefault() : undefined}
+                    onClick={() => onSelect(item)}
+                    style={{
+                        padding: '8px 12px',
+                        cursor: 'pointer',
+                        borderBottom: index < results.length - 1 ? `1px solid ${theme.colors.border}` : 'none',
+                        backgroundColor: index === activeIndex ? theme.colors.secondaryBg : 'transparent',
+                        transition: 'background-color 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => { if (onHoverIndex) onHoverIndex(index); else e.target.style.backgroundColor = theme.colors.secondaryBg; }}
+                    onMouseLeave={(e) => { if (!onHoverIndex) e.target.style.backgroundColor = 'transparent'; }}
+                >
+                    <PrincipalDisplay
+                        principal={item.principal}
+                        displayInfo={item.displayInfo}
+                        showCopyButton={false}
+                        style={{ fontSize: '14px' }}
+                        noLink={true}
+                        short={true}
+                        isAuthenticated={isAuthenticated}
+                    />
+                </div>
+            ))
+            )}
+        </>
+    );
+}
+
 const PrincipalInput = ({ 
     value = '', 
     onChange, 
@@ -151,114 +400,9 @@ const PrincipalInput = ({
     }, [value]);
 
     // Search and rank principals
-    const searchResults = useMemo(() => {
-        if (!inputValue.trim()) {
-            return [];
-        }
-
-        const query = inputValue.trim().toLowerCase();
-        const results = [];
-
-        // Collect all principals with their info
-        const allPrincipals = new Set();
-        
-        const includeNicknames = activeTab === 'private' || activeTab === 'all';
-        const includeNames = activeTab === 'public' || activeTab === 'all';
-
-        if (includeNames && principalNames) {
-            principalNames.forEach((name, principal) => {
-                allPrincipals.add(principal);
-            });
-        }
-
-        if (includeNicknames && principalNicknames) {
-            principalNicknames.forEach((nickname, principal) => {
-                allPrincipals.add(principal);
-            });
-        }
-
-        allPrincipals.forEach(principalStr => {
-            if (!principalStr || !principalStr.trim()) return; // Skip empty principals
-            
-            // Filter by principal type (user vs canister)
-            const isCanister = isCanisterPrincipal(principalStr);
-            if (isCanister && !showCanisters) return;
-            if (!isCanister && !showUsers) return;
-            
-            try {
-                const principal = Principal.fromText(principalStr);
-                const displayInfo = getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames, verifiedNames, principalCanisterTypes);
-                
-                const name = displayInfo.name || '';
-                const nickname = displayInfo.nickname || '';
-                const isVerified = displayInfo.isVerified || false;
-                
-                let score = 0;
-                let matchType = '';
-                
-                // STRICT tab matching:
-                // - private: ONLY match on nickname
-                // - public: ONLY match on public name
-                // - all: match on either
-
-                const scoreNameStrict = () => {
-                    if (!includeNames || !name) return { score: 0, matchType: '' };
-                    const n = name.toLowerCase();
-                    if (n === query) return { score: isVerified ? 1000 : 900, matchType: 'name-exact' };
-                    if (n.startsWith(query)) return { score: isVerified ? 800 : 700, matchType: 'name-start' };
-                    if (n.includes(query)) return { score: isVerified ? 600 : 500, matchType: 'name-contains' };
-                    return { score: 0, matchType: '' };
-                };
-
-                const scoreNicknameStrict = () => {
-                    if (!includeNicknames || !nickname) return { score: 0, matchType: '' };
-                    const n = nickname.toLowerCase();
-                    if (n === query) return { score: 950, matchType: 'nickname-exact' };
-                    if (n.startsWith(query)) return { score: 850, matchType: 'nickname-start' };
-                    if (n.includes(query)) return { score: 750, matchType: 'nickname-contains' };
-                    return { score: 0, matchType: '' };
-                };
-
-                if (activeTab === 'private') {
-                    const a = scoreNicknameStrict();
-                    score = a.score;
-                    matchType = a.matchType;
-                } else if (activeTab === 'public') {
-                    const a = scoreNameStrict();
-                    score = a.score;
-                    matchType = a.matchType;
-                } else {
-                    const a = scoreNameStrict();
-                    const b = scoreNicknameStrict();
-                    score = a.score || b.score;
-                    matchType = a.matchType || b.matchType;
-                }
-                
-                // Check principal ID matches (lowest priority)
-                if (score === 0 && principalStr.toLowerCase().includes(query)) {
-                    score = 100; // Principal ID contains
-                    matchType = 'principal-contains';
-                }
-                
-                if (score > 0) {
-                    results.push({
-                        principal,
-                        principalStr,
-                        displayInfo,
-                        score,
-                        matchType
-                    });
-                }
-            } catch (e) {
-                // Invalid principal, skip
-            }
-        });
-
-        // Sort by score (highest first) and limit results
-        return results
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 20);
-    }, [inputValue, principalNames, principalNicknames, verifiedNames, principalCanisterTypes, activeTab, showUsers, showCanisters]);
+    const searchResults = useMemo(() => searchPrincipals(inputValue, {
+        tab: activeTab, showUsers, showCanisters, principalNames, principalNicknames, verifiedNames, principalCanisterTypes,
+    }), [inputValue, principalNames, principalNicknames, verifiedNames, principalCanisterTypes, activeTab, showUsers, showCanisters]);
 
     // Validate input and resolve info
     useEffect(() => {
@@ -699,139 +843,29 @@ const PrincipalInput = ({
                         boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
                     }}
                 >
-                    {/* Tabs and Type Filters */}
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '8px',
-                        borderBottom: `1px solid ${theme.colors.border}`,
-                        position: 'sticky',
-                        top: 0,
-                        backgroundColor: theme.colors.tertiaryBg,
-                        zIndex: 1
-                    }}>
-                        {/* Name Tabs */}
-                        <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
-                            {[
-                                { key: 'private', label: 'Private' },
-                                { key: 'public', label: 'Public' },
-                                { key: 'all', label: 'All' }
-                            ].map(tab => (
-                                <button
-                                    key={tab.key}
-                                    type="button"
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => { setActiveTab(tab.key); onTabChange?.(tab.key); }}
-                                    style={{
-                                        flex: 1,
-                                        padding: '5px 6px',
-                                        borderRadius: '6px',
-                                        border: `1px solid ${activeTab === tab.key ? theme.colors.accent : theme.colors.border}`,
-                                        backgroundColor: activeTab === tab.key ? `${theme.colors.accent}20` : theme.colors.primaryBg,
-                                        color: activeTab === tab.key ? theme.colors.accent : theme.colors.mutedText,
-                                        cursor: 'pointer',
-                                        fontSize: '11px',
-                                        fontWeight: 600
-                                    }}
-                                    title={tab.label}
-                                >
-                                    {tab.label}
-                                </button>
-                            ))}
-                        </div>
-                        
-                        {/* Separator */}
-                        <div style={{ width: '1px', height: '20px', backgroundColor: theme.colors.border }} />
-                        
-                        {/* Type Filter Toggles */}
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                            <button
-                                type="button"
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => {
-                                    // If turning off users and canisters would also be off, turn on canisters instead
-                                    if (showUsers && !showCanisters) {
-                                        setShowCanisters(true);
-                                    }
-                                    setShowUsers(!showUsers);
-                                }}
-                                style={{
-                                    padding: '5px 8px',
-                                    borderRadius: '6px',
-                                    border: `1px solid ${showUsers ? theme.colors.accent : theme.colors.border}`,
-                                    backgroundColor: showUsers ? `${theme.colors.accent}20` : theme.colors.primaryBg,
-                                    color: showUsers ? theme.colors.accent : theme.colors.mutedText,
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                    fontSize: '11px'
-                                }}
-                                title="Show users"
-                            >
-                                <FaUser size={10} />
-                            </button>
-                            <button
-                                type="button"
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => {
-                                    // If turning off canisters and users would also be off, turn on users instead
-                                    if (showCanisters && !showUsers) {
-                                        setShowUsers(true);
-                                    }
-                                    setShowCanisters(!showCanisters);
-                                }}
-                                style={{
-                                    padding: '5px 8px',
-                                    borderRadius: '6px',
-                                    border: `1px solid ${showCanisters ? theme.colors.accent : theme.colors.border}`,
-                                    backgroundColor: showCanisters ? `${theme.colors.accent}20` : theme.colors.primaryBg,
-                                    color: showCanisters ? theme.colors.accent : theme.colors.mutedText,
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                    fontSize: '11px'
-                                }}
-                                title="Show canisters"
-                            >
-                                <FaCube size={10} />
-                            </button>
-                        </div>
-                    </div>
-                    {searchResults.length === 0 ? (
-                        <div style={{ padding: '10px 12px', color: theme.colors.mutedText, fontSize: '12px' }}>
-                            No matches in <strong>{activeTab === 'private' ? 'Private (nicknames)' : activeTab === 'public' ? 'Public (names)' : 'All'}</strong>.
-                            Try switching tabs or toggling users/canisters.
-                        </div>
-                    ) : (
-                    searchResults.map((item, index) => (
-                        <div
-                            key={item.principalStr}
-                            onClick={() => handleSelect(item)}
-                            style={{
-                                padding: '8px 12px',
-                                cursor: 'pointer',
-                                borderBottom: index < searchResults.length - 1 ? `1px solid ${theme.colors.border}` : 'none',
-                                backgroundColor: 'transparent',
-                                transition: 'background-color 0.2s ease'
-                            }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.secondaryBg}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                        >
-                            <PrincipalDisplay
-                                principal={item.principal}
-                                displayInfo={item.displayInfo}
-                                showCopyButton={false}
-                                style={{ fontSize: '14px' }}
-                                noLink={true}
-                                short={true}
-                                isAuthenticated={isAuthenticated}
-                            />
-                        </div>
-                    ))
-                    )}
+                    <PrincipalPickerPanel
+                        activeTab={activeTab}
+                        onTabChange={(key) => { setActiveTab(key); onTabChange?.(key); }}
+                        showUsers={showUsers}
+                        showCanisters={showCanisters}
+                        onToggleUsers={() => {
+                            // If turning off users and canisters would also be off, turn on canisters instead
+                            if (showUsers && !showCanisters) {
+                                setShowCanisters(true);
+                            }
+                            setShowUsers(!showUsers);
+                        }}
+                        onToggleCanisters={() => {
+                            // If turning off canisters and users would also be off, turn on users instead
+                            if (showCanisters && !showUsers) {
+                                setShowUsers(true);
+                            }
+                            setShowCanisters(!showCanisters);
+                        }}
+                        results={searchResults}
+                        onSelect={handleSelect}
+                        isAuthenticated={isAuthenticated}
+                    />
                 </div>,
                 document.body
             )}
