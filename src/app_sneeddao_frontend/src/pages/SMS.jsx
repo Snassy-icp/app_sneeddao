@@ -1177,6 +1177,9 @@ const SMS = () => {
                             maxWidth: '600px',
                             maxHeight: '85vh',
                             overflow: 'hidden',
+                            // a column: the body scrolls, the header and the buttons always show
+                            display: 'flex',
+                            flexDirection: 'column',
                             border: `1px solid ${theme.colors.border}`,
                             fontFamily: SYSTEM_FONT,
                             boxShadow: `0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px ${smsPrimary}20`,
@@ -1240,7 +1243,7 @@ const SMS = () => {
                             </div>
 
                             {/* Modal Body */}
-                            <div style={{ padding: '1.5rem', maxHeight: 'calc(85vh - 180px)', overflowY: 'auto' }}>
+                            <div style={{ padding: '1.5rem', flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                                     {/* Recipients Section */}
                                     <div>
@@ -1501,6 +1504,7 @@ const SMS = () => {
 
                             {/* Modal Footer */}
                             <div style={{ 
+                                flexShrink: 0,
                                 borderTop: `1px solid ${theme.colors.border}`,
                                 padding: '1.25rem 1.5rem',
                                 display: 'flex',
@@ -1599,6 +1603,9 @@ const SMS = () => {
                             maxWidth: '700px',
                             maxHeight: '85vh',
                             overflow: 'hidden',
+                            // a column: the body scrolls, the header and the buttons always show
+                            display: 'flex',
+                            flexDirection: 'column',
                             border: `1px solid ${theme.colors.border}`,
                             fontFamily: SYSTEM_FONT,
                             boxShadow: `0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px ${smsPrimary}20`,
@@ -1687,7 +1694,7 @@ const SMS = () => {
                             </div>
 
                             {/* Modal Body */}
-                            <div style={{ padding: '1.5rem', maxHeight: 'calc(85vh - 180px)', overflowY: 'auto' }}>
+                            <div style={{ padding: '1.5rem', flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
                                 {/* Collapsible Message Details */}
                                 <button
                                     onClick={() => setShowMessageDetails(!showMessageDetails)}
@@ -1834,6 +1841,7 @@ const SMS = () => {
 
                             {/* Modal Footer */}
                             <div style={{ 
+                                flexShrink: 0,
                                 borderTop: `1px solid ${theme.colors.border}`,
                                 padding: '1.25rem 1.5rem',
                                 display: 'flex',
