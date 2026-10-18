@@ -73,6 +73,7 @@ type Status = variant {
 };
 type Memory = record {
   id : nat;
+  path : text;                  // a folder: "dao/governance", "icp/subnets", "oslo/events"; "" is the top
   kind : Kind;
   title : text;                 // at most 120 characters
   body : text;                  // at most 4 KB; empty once removed
@@ -83,8 +84,22 @@ type Memory = record {
   created_at : int;
   status : Status;
 };
-type MemoryInput = record { kind : Kind; title : text; body : text; tags : vec text; links : vec text; pinned : bool };
+type MemoryInput = record { path : text; kind : Kind; title : text; body : text; tags : vec text; links : vec text; pinned : bool };
 ```
+
+### Folders
+
+Mr Sneed may note down any fact he finds useful for serving the community: about the DAO, ICP, the
+code, members (within their rights below), or the world, such as events in Oslo. He files each
+memory in a **folder** and can tag it.
+
+- **Paths:** up to 8 folders of lowercase letters, digits, '-', '_' and '.', joined by '/', at most
+  120 characters. Folders exist as long as a memory uses them.
+- **Listing:** `list_folders` returns every folder with its active and total counts, so a session
+  can see the whole tree in one call.
+- **Filtering:** `list_memories` filters by a folder and everything under it.
+- **Search:** `search_memories` also matches the words of the path.
+- **Moving:** revising a memory with another path moves it.
 
 ### Writing (writer principals only)
 
@@ -128,7 +143,8 @@ forget_about_me : (nat, text) -> (variant { ok; err : text });
 
 ```candid
 get_memory : (nat) -> (opt Memory) query;
-list_memories : (record { kind : opt text; tag : opt text; status : opt text;
+list_folders : () -> (vec record { path : text; active : nat; total : nat }) query;
+list_memories : (record { path : opt text; kind : opt text; tag : opt text; status : opt text;
                           after : opt nat; limit : nat }) -> (record { items : vec Memory; next : opt nat }) query;   // newest first, limit at most 100
 search_memories : (text, nat) -> (vec Memory) query;     // titles and tags, case-insensitive prefix of a word
 session_brief : (nat) -> (record {
@@ -154,9 +170,9 @@ voters need: the full new text or list, and the change from the current value.
 | `set_limits(Limits)` | the limits above |
 | `remove_memory(nat, text)` | tombstone any memory |
 
-**The operator** (install argument, Snassy's principal) can do the same through `operator_*`
-methods until `end_operator()`. After that, only governance can. Calling `end_operator` is one of
-the handover steps.
+**The operator** is the principal that installs the canister. It can call the same methods as
+governance, plus `operator_set_config` (governance id, archive controllers), until `end_operator()`.
+After that, only governance can, for good. Calling `end_operator` is the last handover step.
 
 ## ICRC-3 log
 
@@ -182,14 +198,14 @@ it against the hash. After a removal, the hash remains and the text is gone.
   - queries are refused as update calls;
   - argument sizes are capped per method (memory input about 8 KB, personality about 9 KB);
   - write methods are accepted only from writers, `forget_about_me` from any signed-in caller.
-- **Storage:** memories in a stable map by id. Secondary indexes:
-  - by kind;
-  - by tag;
-  - by member principal;
-  - by status;
-  - a word-prefix index on titles and tags for `search_memories`.
-
-  Bodies are plain text.
+- **Storage:** memories in a stable map by id, with indexes by member principal, by tag and by
+  folder (counts). Kind, status, folder and search filters scan newest first, at most 20,000
+  memories per query; that is plenty for years at today's pace. Bodies are plain text.
+- **ICRC-3 archives** are created like those of every Sneed canister: on the canister's own subnet,
+  so on the confidential subnet too. The log is public, so a TEE adds nothing for archives. Moving
+  archive creation to another subnet (create the canister through the cycles ledger with a subnet
+  choice, then install the archive class into it) is possible, but changes `src/icrc3` for every
+  canister. Revisit it when the first archive appears: after 2,000 blocks.
 - Registered with Sneed DAO as a dapp canister (SNS root controls it), like the hub canisters.
 
 ## Using it from a session (today)

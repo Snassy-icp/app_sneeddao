@@ -22,7 +22,7 @@ const govIdl = () => IDL.Service({
 });
 
 let pic, rootKey, id, govId, op, mr, mrAlice, mrBob, mrAnon, gov;
-const input = (over = {}) => ({ kind: { note: null }, title: 'A note', body: 'Some text', tags: [], links: [], pinned: false, ...over });
+const input = (over = {}) => ({ path: 'notes', kind: { note: null }, title: 'A note', body: 'Some text', tags: [], links: [], pinned: false, ...over });
 const ok = (r) => { if ('err' in r) throw new Error(r.err); return r.ok; };
 const errOf = (r) => ('err' in r ? r.err : null);
 const archiveActor = (a) => actorAs(pic, archiveIdl, a, admin);
@@ -127,16 +127,40 @@ describe('mr_sneed: prompt and memories', () => {
   });
 
   it('lists by kind, tag and status, newest first, and searches titles and tags by word prefix', async () => {
-    const lessons = await mrAnon.list_memories({ kind: ['lesson'], tag: [], status: [], after: [], limit: 10n });
+    const lessons = await mrAnon.list_memories({ path: [], kind: ['lesson'], tag: [], status: [], after: [], limit: 10n });
     expect(lessons.items.every((m) => 'lesson' in m.kind)).toBe(true);
-    const release = await mrAnon.list_memories({ kind: [], tag: ['release'], status: ['active'], after: [], limit: 10n });
+    const release = await mrAnon.list_memories({ path: [], kind: [], tag: ['release'], status: ['active'], after: [], limit: 10n });
     expect(release.items.map((m) => m.title)).toEqual(['Release process']);
-    const all = await mrAnon.list_memories({ kind: [], tag: [], status: [], after: [], limit: 100n });
+    const all = await mrAnon.list_memories({ path: [], kind: [], tag: [], status: [], after: [], limit: 100n });
     const ids = all.items.map((m) => m.id);
     expect([...ids].sort((x, y) => Number(y - x))).toEqual(ids);
     expect((await mrAnon.search_memories('relea', 10n)).map((m) => m.title)).toEqual(['Release process']);
     expect((await mrAnon.search_memories('ALICE moto', 10n)).map((m) => m.title)).toEqual(['Alice likes Motoko']);
     expect(await mrAnon.search_memories('Alice bridge', 10n)).toEqual([]); // that one was removed
+  });
+
+  it('folders: paths are validated, counted, listed and searched', async () => {
+    expect(errOf(await mr.remember(input({ path: 'Bad/Path' })))).toMatch(/A path is/);
+    expect(errOf(await mr.remember(input({ path: 'a//b' })))).toMatch(/A path is/);
+    expect(errOf(await mr.remember(input({ path: 'a/b/c/d/e/f/g/h/i' })))).toMatch(/A path is/);
+    const g = ok(await mr.remember(input({ path: 'dao/governance', title: 'Proposals need a reject fee' })));
+    ok(await mr.remember(input({ path: 'dao/governance/gnsf', title: 'GNSF targets trap on refusal' })));
+    ok(await mr.remember(input({ path: 'oslo/events', title: 'ICP meetup at the harbour' })));
+    ok(await mr.remember(input({ path: '', title: 'At the top' })));
+    const folders = Object.fromEntries((await mrAnon.list_folders()).map((f) => [f.path, [f.active, f.total]]));
+    expect(folders['dao/governance']).toEqual([1n, 1n]);
+    expect(folders['oslo/events']).toEqual([1n, 1n]);
+    expect(folders['']).toEqual([1n, 1n]);
+    const dao = await mrAnon.list_memories({ path: ['dao'], kind: [], tag: [], status: [], after: [], limit: 10n });
+    expect(dao.items.map((m) => m.path).sort()).toEqual(['dao/governance', 'dao/governance/gnsf']);
+    const exact = await mrAnon.list_memories({ path: ['dao/governance/gnsf'], kind: [], tag: [], status: [], after: [], limit: 10n });
+    expect(exact.items.length).toBe(1);
+    expect((await mrAnon.search_memories('oslo', 10n)).map((m) => m.title)).toEqual(['ICP meetup at the harbour']);
+    // moving a memory to another folder by revising it moves the count
+    ok(await mr.revise(g, input({ path: 'dao/fees', title: 'Proposals need a reject fee' })));
+    const after = Object.fromEntries((await mrAnon.list_folders()).map((f) => [f.path, [f.active, f.total]]));
+    expect(after['dao/governance']).toEqual([0n, 1n]);
+    expect(after['dao/fees']).toEqual([1n, 1n]);
   });
 
   it('pins, within the limit', async () => {
@@ -179,7 +203,7 @@ describe('mr_sneed: prompt and memories', () => {
 
   it('queries are refused as update calls', async () => {
     const upd = actorAs(pic, asUpdates(mrIdl), id, alice);
-    for (const call of [upd.get_prompt(), upd.session_brief(5n), upd.list_memories({ kind: [], tag: [], status: [], after: [], limit: 1n }), upd.search_memories('x', 1n), upd.validate_set_writers([])]) {
+    for (const call of [upd.get_prompt(), upd.session_brief(5n), upd.list_memories({ path: [], kind: [], tag: [], status: [], after: [], limit: 1n }), upd.search_memories('x', 1n), upd.validate_set_writers([])]) {
       expect(await refusedAtIngress(call)).toBe(true);
     }
   });

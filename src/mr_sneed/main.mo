@@ -44,6 +44,7 @@ shared (deployer) persistent actor class MrSneed() = this {
   };
   public type Memory = {
     id : Nat;
+    path : Text; // a folder, like "dao/governance" or "oslo/events"; "" is the top
     kind : Kind;
     title : Text;
     body : Text;
@@ -54,8 +55,9 @@ shared (deployer) persistent actor class MrSneed() = this {
     created_at : Int;
     status : Status;
   };
-  public type MemoryInput = { kind : Kind; title : Text; body : Text; tags : [Text]; links : [Text]; pinned : Bool };
-  public type ListArgs = { kind : ?Text; tag : ?Text; status : ?Text; after : ?Nat; limit : Nat };
+  public type MemoryInput = { path : Text; kind : Kind; title : Text; body : Text; tags : [Text]; links : [Text]; pinned : Bool };
+  public type ListArgs = { path : ?Text; kind : ?Text; tag : ?Text; status : ?Text; after : ?Nat; limit : Nat }; // path: that folder and everything under it
+  public type Folder = { path : Text; active : Nat; total : Nat };
   public type Page = { items : [Memory]; next : ?Nat };
   public type Personality = { version : Nat; text : Text; hash : Blob; set_at : Int; set_by_proposal : ?Nat64; reason : Text };
   public type SetPersonalityArgs = { text : Text; reason : Text; expected_version : ?Nat };
@@ -70,6 +72,7 @@ shared (deployer) persistent actor class MrSneed() = this {
 
   type Stored = {
     id : Nat;
+    path : Text;
     kind : Kind;
     title : Text;
     var body : Text;
@@ -96,6 +99,8 @@ shared (deployer) persistent actor class MrSneed() = this {
 
   transient let PERSONALITY_MAX_BYTES : Nat = 8_192;
   transient let TITLE_MAX : Nat = 120; // characters
+  transient let PATH_MAX : Nat = 120;
+  transient let PATH_DEPTH_MAX : Nat = 8;
   transient let BODY_MAX_BYTES : Nat = 4_096;
   transient let TAGS_MAX : Nat = 8;
   transient let TAG_MAX : Nat = 32;
@@ -124,6 +129,7 @@ shared (deployer) persistent actor class MrSneed() = this {
   var next_id : Nat = 0;
   let by_member : Map.Map<Principal, [Nat]> = Map.new();
   let by_tag : Map.Map<Text, [Nat]> = Map.new();
+  let folders : Map.Map<Text, (Nat, Nat)> = Map.new(); // path -> (active, total)
   let writes_today : Map.Map<Principal, (Int, Nat)> = Map.new(); // (day, count)
   var active_count : Nat = 0;
   var active_bytes : Nat = 0;
@@ -149,7 +155,7 @@ shared (deployer) persistent actor class MrSneed() = this {
   func current() : ?Personality = if (personalities.size() == 0) null else ?personalities[personalities.size() - 1];
 
   func view(m : Stored) : Memory = {
-    id = m.id; kind = m.kind; title = m.title; body = m.body; tags = m.tags; links = m.links;
+    id = m.id; path = m.path; kind = m.kind; title = m.title; body = m.body; tags = m.tags; links = m.links;
     pinned = m.pinned; author = m.author; created_at = m.created_at; status = m.status;
   };
   func kindName(k : Kind) : Text = switch k {
@@ -205,7 +211,25 @@ shared (deployer) persistent actor class MrSneed() = this {
     true;
   };
 
+  /// A path is up to 8 folders of lowercase letters, digits, '-', '_' and '.', joined by '/'.
+  func pathOk(p : Text) : Bool {
+    if (p == "") return true;
+    if (p.size() > PATH_MAX) return false;
+    var depth = 0;
+    for (seg in Text.split(p, #char '/')) {
+      depth += 1;
+      if (not tagOk(seg)) return false;
+    };
+    depth <= PATH_DEPTH_MAX;
+  };
+  func underPath(path : Text, folder : Text) : Bool = folder == "" or path == folder or Text.startsWith(path, #text (folder # "/"));
+  func folderCount(path : Text, active : Int, total : Nat) {
+    let (a, t) = switch (Map.get(folders, Map.thash, path)) { case (?x) x; case null (0, 0) };
+    Map.set(folders, Map.thash, path, (Int.abs(a + active), t + total));
+  };
+
   func checkInput(m : MemoryInput) : ?Text {
+    if (not pathOk(m.path)) return ?"A path is up to 8 folders of lowercase letters, digits, '-', '_' or '.', joined by '/', at most 120 characters";
     let title = Text.trim(m.title, #char ' ');
     if (title.size() == 0) return ?"A memory needs a title";
     if (m.title.size() > TITLE_MAX) return ?("A title is at most " # Nat.toText(TITLE_MAX) # " characters");
@@ -243,18 +267,19 @@ shared (deployer) persistent actor class MrSneed() = this {
     next_id += 1;
     let bytes = bytesOf(m.title) + bytesOf(m.body);
     let s : Stored = {
-      id; kind = m.kind; title = m.title; var body = m.body; tags = m.tags; links = m.links;
+      id; path = m.path; kind = m.kind; title = m.title; var body = m.body; tags = m.tags; links = m.links;
       var pinned = m.pinned; author = caller; created_at = Time.now(); var status = #active; bytes;
     };
     Map.set(memories, Map.nhash, id, s);
     switch (m.kind) { case (#member p) addTo(by_member, Map.phash, p, id); case _ {} };
     for (t in m.tags.vals()) addTo(by_tag, Map.thash, t, id);
+    folderCount(m.path, 1, 1);
     active_count += 1;
     active_bytes += bytes;
     if (m.pinned) pinned_count += 1;
     countWrite(caller);
     block("mrs_memory", caller, Array.flatten<(Text, T3.Value)>([
-      [("id", #Nat(id)), ("kind", kindValue(m.kind)), ("title", #Text(m.title)), ("body_hash", #Blob(sha(m.body))),
+      [("id", #Nat(id)), ("path", #Text(m.path)), ("kind", kindValue(m.kind)), ("title", #Text(m.title)), ("body_hash", #Blob(sha(m.body))),
        ("tags", texts(m.tags)), ("links", texts(m.links)), ("pinned", #Nat(if (m.pinned) 1 else 0))],
       switch supersedes { case (?old) [("supersedes", #Nat(old))]; case null [] },
     ]));
@@ -263,6 +288,7 @@ shared (deployer) persistent actor class MrSneed() = this {
 
   /// Leave the active set (superseded or removed): the counters follow.
   func deactivate(m : Stored) {
+    folderCount(m.path, -1, 0);
     active_count -= 1;
     active_bytes -= m.bytes;
     if (m.pinned) { m.pinned := false; pinned_count -= 1 };
@@ -515,6 +541,7 @@ shared (deployer) persistent actor class MrSneed() = this {
     let out = Buffer.Buffer<Memory>(max);
     let tagged : ?[Nat] = switch (a.tag) { case (?t) ?(switch (Map.get(by_tag, Map.thash, t)) { case (?ids) ids; case null [] }); case null null };
     let matches = func(m : Stored) : Bool {
+      (switch (a.path) { case (?p) underPath(m.path, p); case null true }) and
       (switch (a.kind) { case (?k) kindName(m.kind) == k; case null true }) and
       (switch (a.status) { case (?s) statusName(m.status) == s; case null true });
     };
@@ -569,7 +596,7 @@ shared (deployer) persistent actor class MrSneed() = this {
       scanned += 1;
       switch (Map.get(memories, Map.nhash, id)) {
         case (?m) if (isActive(m)) {
-          let hay = Buffer.toArray(Buffer.fromIter<Text>(Text.tokens(Text.toLowercase(m.title # " " # Text.join(" ", m.tags.vals())), #predicate(func(c : Char) : Bool = not (Char.isAlphabetic(c) or Char.isDigit(c))))));
+          let hay = Buffer.toArray(Buffer.fromIter<Text>(Text.tokens(Text.toLowercase(m.title # " " # m.path # " " # Text.join(" ", m.tags.vals())), #predicate(func(c : Char) : Bool = not (Char.isAlphabetic(c) or Char.isDigit(c))))));
           let all = Array.foldLeft<Text, Bool>(words, true, func(acc, w) = acc and Array.find<Text>(hay, func(h) = Text.startsWith(h, #text w)) != null);
           if (all) out.add(view(m));
         };
@@ -577,6 +604,11 @@ shared (deployer) persistent actor class MrSneed() = this {
       };
     };
     Buffer.toArray(out);
+  };
+
+  /// Every folder that has held a memory, with its counts. A tree is built from the paths.
+  public query func list_folders() : async [Folder] {
+    Array.map<(Text, (Nat, Nat)), Folder>(Map.toArray(folders), func((path, (active, total))) = { path; active; total });
   };
 
   func stats() : Stats = { active = active_count; total = next_id; bytes = active_bytes; pinned = pinned_count };
@@ -644,7 +676,7 @@ shared (deployer) persistent actor class MrSneed() = this {
   // Ingress guard (src/IngressGuard.mo)
   // ---------------------------------------------------------------------------------------------
 
-  transient let MEMORY_ARG : Nat = IngressGuard.textArg(BODY_MAX_BYTES + TITLE_MAX + TAGS_MAX * TAG_MAX + LINKS_MAX * LINK_MAX + PROJECT_MAX);
+  transient let MEMORY_ARG : Nat = IngressGuard.textArg(BODY_MAX_BYTES + TITLE_MAX + PATH_MAX + TAGS_MAX * TAG_MAX + LINKS_MAX * LINK_MAX + PROJECT_MAX);
 
   system func inspect({ caller : Principal; arg : Blob; msg : {
     #admin_icrc3_spill_now : Any;
@@ -662,6 +694,7 @@ shared (deployer) persistent actor class MrSneed() = this {
     #icrc3_get_tip_certificate : Any;
     #icrc3_log_status : Any;
     #icrc3_supported_block_types : Any;
+    #list_folders : Any;
     #list_memories : Any;
     #list_personalities : Any;
     #memories_about : Any;
@@ -682,7 +715,7 @@ shared (deployer) persistent actor class MrSneed() = this {
   } }) : Bool {
     switch msg {
       // queries are free as queries; as updates the canister would pay for consensus
-      case (#get_config _ or #get_memory _ or #get_personality _ or #get_prompt _ or #get_stats _ or #icrc10_supported_standards _ or #icrc3_get_archives _ or #icrc3_get_blocks _ or #icrc3_get_tip_certificate _ or #icrc3_log_status _ or #icrc3_supported_block_types _ or #list_memories _ or #list_personalities _ or #memories_about _ or #search_memories _ or #session_brief _ or #validate_remove_memory _ or #validate_set_limits _ or #validate_set_personality _ or #validate_set_writers _) false;
+      case (#get_config _ or #get_memory _ or #get_personality _ or #get_prompt _ or #get_stats _ or #icrc10_supported_standards _ or #icrc3_get_archives _ or #icrc3_get_blocks _ or #icrc3_get_tip_certificate _ or #icrc3_log_status _ or #icrc3_supported_block_types _ or #list_folders _ or #list_memories _ or #list_personalities _ or #memories_about _ or #search_memories _ or #session_brief _ or #validate_remove_memory _ or #validate_set_limits _ or #validate_set_personality _ or #validate_set_writers _) false;
       // governance calls these inter-canister; by ingress only the operator, while there is one
       case (#set_personality _) isOperator(caller) and arg.size() <= IngressGuard.textArg(PERSONALITY_MAX_BYTES + REASON_MAX);
       case (#set_writers _ or #set_limits _ or #remove_memory _ or #end_operator _ or #operator_set_config _) isOperator(caller) and arg.size() <= IngressGuard.textArg(REASON_MAX + WRITERS_MAX * 32);
