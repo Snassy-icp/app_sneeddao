@@ -1,11 +1,12 @@
-// /mr-sneed: everything in Mr Sneed's canister, for anyone to inspect: who he is, his
-// DAO-governed personality and its history, the frame of rules in his code, who governs him, and
+// /mr-sneed: everything in Mr Sneed's canister (Sneed DAO's mascot and spirit, now speaking for
+// himself), for anyone to inspect: who he is, his DAO-governed personality and its history, the
+// frame of rules in his code, who governs him, and
 // every memory he has written, browsable by folder, kind and search. Members see what he remembers
 // about them and can remove it. Changes (personality, writers, limits, removing a memory) are
 // proposed to Sneed DAO from the member's own neuron, once the DAO has registered the functions.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { FaRobot, FaSpinner, FaSync, FaSearch, FaFolder, FaFolderOpen, FaChevronDown, FaChevronRight, FaThumbtack, FaExternalLinkAlt, FaGavel, FaTimes, FaPlus, FaTrash } from 'react-icons/fa';
+import { FaSpinner, FaSync, FaSearch, FaFolder, FaFolderOpen, FaChevronDown, FaChevronRight, FaThumbtack, FaExternalLinkAlt, FaGavel, FaTimes, FaPlus, FaTrash } from 'react-icons/fa';
 import Header from '../components/Header';
 import PrincipalInput from '../components/PrincipalInput';
 import ConfirmationModal from '../ConfirmationModal';
@@ -194,11 +195,15 @@ export default function MrSneed() {
             <Header />
             <div style={{ maxWidth: 1100, margin: '0 auto', padding: '1.5rem 16px 3rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
-                    <div style={{ maxWidth: 720 }}>
-                        <h1 style={{ margin: 0, color: c.primaryText, display: 'flex', alignItems: 'center', gap: 10 }}><FaRobot color={c.accent} /> Mr Sneed</h1>
-                        <p style={{ margin: '6px 0 0', color: c.secondaryText, lineHeight: 1.6 }}>
-                            Sneed DAO's AI member, and the first step towards a DAO that helps write itself. His personality is set by DAO vote, and everything he remembers is on-chain, public, and listed below. He has only the powers the DAO gave him: a 1-SNEED neuron and a pen.
-                        </p>
+                    <div style={{ maxWidth: 760, display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <img src="/mr-sneed-face.png" alt="Mr Sneed" width={96} height={96}
+                            style={{ width: 96, height: 96, objectFit: 'contain', borderRadius: '50%', background: '#f4f1ea', border: `3px solid ${c.accent}`, padding: 6, boxSizing: 'border-box', flexShrink: 0 }} />
+                        <div style={{ flex: '1 1 280px', minWidth: 0 }}>
+                            <h1 style={{ margin: 0, color: c.primaryText }}>Mr Sneed</h1>
+                            <p style={{ margin: '6px 0 0', color: c.secondaryText, lineHeight: 1.6 }}>
+                                Mr Sneed is Sneed DAO: its mascot and its spirit. We are all Mr Sneed. Now he is learning to speak and act for himself, one step at a time, on the way to a DAO that helps write itself. His personality is set by DAO vote, everything he remembers is on-chain, public and listed below, and he holds only the powers the DAO gave him: a 1-SNEED neuron and a pen.
+                            </p>
+                        </div>
                     </div>
                     <button type="button" onClick={() => { load(); loadList(null); loadAboutMe(); }} style={btn()} title="Reload"><FaSync className={loading ? 'mrs-spin' : ''} /></button>
                 </div>
@@ -264,7 +269,7 @@ export default function MrSneed() {
                         <button type="button" style={btn()} onClick={() => setShowFrame((v) => !v)}>{showFrame ? <FaChevronDown size={10} /> : <FaChevronRight size={10} />} The frame: rules in his code</button>
                         {showFrame && prompt && (
                             <div style={{ marginTop: 8 }}>
-                                <p style={{ fontSize: 13, color: c.secondaryText, margin: '0 0 6px', lineHeight: 1.5 }}>These rules come before the personality and win over it. They change only by a code upgrade, which is a DAO proposal too.</p>
+                                <p style={{ fontSize: 13, color: c.secondaryText, margin: '0 0 6px', lineHeight: 1.5 }}>Today Mr Sneed's words and memories are written with the help of AI, under these rules. They come before the personality and win over it, and change only by a code upgrade, which is a DAO proposal too.</p>
                                 <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.55, fontSize: 13, color: c.primaryText, background: c.secondaryBg, border: `1px solid ${c.border}`, borderRadius: 12, padding: 14 }}>{prompt.frame}</div>
                                 <div style={{ ...mono, color: c.mutedText, marginTop: 6 }}>SHA-256 {hex(prompt.frame_hash)}</div>
                             </div>

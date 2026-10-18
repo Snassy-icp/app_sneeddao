@@ -203,8 +203,8 @@ describe('mr_sneed: prompt and memories', () => {
 
   it('queries are refused as update calls', async () => {
     const upd = actorAs(pic, asUpdates(mrIdl), id, alice);
-    for (const call of [upd.get_prompt(), upd.session_brief(5n), upd.list_memories({ path: [], kind: [], tag: [], status: [], after: [], limit: 1n }), upd.search_memories('x', 1n), upd.validate_set_writers([])]) {
-      expect(await refusedAtIngress(call)).toBe(true);
+    for (const call of [() => upd.get_prompt(), () => upd.session_brief(5n), () => upd.list_memories({ path: [], kind: [], tag: [], status: [], after: [], limit: 1n }), () => upd.search_memories('x', 1n), () => upd.validate_set_writers([])]) {
+      expect(await refusedAtIngress(call())).toBe(true);
     }
   });
 

@@ -1,4 +1,4 @@
-// Mr Sneed, the AI member of Sneed DAO (the /mr-sneed page). His canister holds his DAO-governed
+// Mr Sneed, Sneed DAO's mascot and spirit (the /mr-sneed page). His canister holds his DAO-governed
 // prompt and the memories he writes as he works (spec/mr_sneed_canister.md). Everything in it is
 // public. Changes go through Sneed DAO proposals: the generic functions registered for the
 // canister are found in governance by target method, so no ids are configured here.
