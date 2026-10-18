@@ -189,7 +189,7 @@ function NftItem() {
                                 </div>
                             )}
 
-                            {token && hasCharacterLinks(token.metadata) && <CharacterPanel collection={collection} tokenId={idText} metadata={token.metadata} owner={token.owner?.owner} theme={theme} card={card} label={label} />}
+                            {token && hasCharacterLinks(token.metadata) && <CharacterPanel collection={collection} tokenId={idText} metadata={token.metadata} owner={token.owner?.owner} theme={theme} card={card} label={label} identity={identity} mine={mine} />}
 
                             {(links.length > 0 || token?.icrc97?.url) && (
                                 <div style={card}>

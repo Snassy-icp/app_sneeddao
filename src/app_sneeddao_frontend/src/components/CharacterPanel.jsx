@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Actor } from '@dfinity/agent';
+import { Actor, HttpAgent } from '@dfinity/agent';
+import NftModel from './NftModel';
 import { Principal } from '@dfinity/principal';
 import { FaExternalLinkAlt, FaSpinner } from 'react-icons/fa';
 import { anonymousNftAgent, fetchTokenDetails, getNftImage, getNftName, getNftMedia } from '../utils/NftUtils';
@@ -10,6 +11,8 @@ import { nftItemUrl } from './NftAssetView';
 //   wu:stats  game roots it has stats in. Each root says how it presents them (showcase: its name, site and readable
 //             names for its fact keys and ids), where this NFT's character is (character_of: its key there and the
 //             shard with its facts) - and the shard hands out everything the game holds about it (get, get_doc).
+//             A game may keep the character's look there too: a "look" document, a 3D model (.glb) of it as it is
+//             in that game - what it wears and holds, in that game's own style.
 //   wu:items  item collections it holds things in: the NFT's own account's tokens there (carried by the character),
 //             and the owner's tokens kept for this character in each of its games (a subaccount of the owner's:
 //             sha256("wu-char/" + game root + "/" + the character's key there)).
@@ -86,7 +89,7 @@ function readInventory(xml, n) {
 async function loadGame(agent, root, nftAccount) {
     const g = Actor.createActor(gameIdl, { agent, canisterId: root });
     const [show, who] = await Promise.all([g.showcase().catch(() => null), g.character_of(nftAccount).catch(() => [])]);
-    const out = { root, name: show?.name || root, url: show?.url?.[0] || null, n: namer(show?.names || []), char: null, facts: null, docs: {} };
+    const out = { root, name: show?.name || root, url: show?.url?.[0] || null, n: namer(show?.names || []), char: null, facts: null, docs: {}, models: {} };
     if (!who.length) return out;
     const charKey = who[0].char.subaccount[0];
     out.char = charKey ? hex(charKey) : null;
@@ -96,7 +99,10 @@ async function loadGame(agent, root, nftAccount) {
     out.facts = await s.get(charKey);
     for (const d of out.facts.docs) {
         const got = await s.get_doc(charKey, d.key).catch(() => []);
-        if (got.length) out.docs[d.key] = await gunzipText(new Uint8Array(got[0].data));
+        if (!got.length) continue;
+        const bytes = new Uint8Array(got[0].data);
+        if (bytes[0] === 0x67 && bytes[1] === 0x6c && bytes[2] === 0x54 && bytes[3] === 0x46) out.models[d.key] = bytes;   // a binary glTF: a 3D model (its look)
+        else out.docs[d.key] = await gunzipText(bytes);
     }
     return out;
 }
@@ -151,7 +157,34 @@ export function CarriedBy({ owner, theme }) {
     );
 }
 
-export default function CharacterPanel({ collection, tokenId, metadata, owner, theme, card, label }) {
+const setModelIdl = ({ IDL }) => IDL.Service({ set_model: IDL.Func([IDL.Nat, IDL.Opt(IDL.Vec(IDL.Nat8))], [IDL.Variant({ ok: IDL.Null, err: IDL.Text })], []) });
+/// A game's look of the character: turn it around; its owner may make it the NFT's own 3D model (set_model).
+function GameLook({ bytes, gameName, collection, tokenId, identity, mine, theme }) {
+    const [url, setUrl] = useState(null);
+    const [msg, setMsg] = useState('');
+    useEffect(() => { const u = URL.createObjectURL(new Blob([bytes], { type: 'model/gltf-binary' })); setUrl(u); return () => URL.revokeObjectURL(u); }, [bytes]);
+    const use = async () => {
+        try {
+            setMsg('Saving…');
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
+            const agent = HttpAgent.createSync({ host, identity, shouldFetchRootKey: host.startsWith('http://localhost') });
+            const r = await Actor.createActor(setModelIdl, { agent, canisterId: collection }).set_model(BigInt(tokenId), [bytes]);
+            setMsg('err' in r ? r.err : `This is the NFT's 3D model now (reload to see it above).`);
+        } catch (e) { setMsg(e?.message || String(e)); }
+    };
+    if (!url) return null;
+    return (
+        <div style={{ marginTop: 10 }}>
+            <div style={{ aspectRatio: '4 / 3', maxHeight: 320, background: theme.colors.tertiaryBg, borderRadius: 8, overflow: 'hidden' }}><NftModel url={url} alt={`Its look in ${gameName}`} style={{ width: '100%', height: '100%' }} /></div>
+            {mine && <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
+                <button onClick={use} style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${theme.colors.border}`, background: 'transparent', color: theme.colors.primaryText, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>Use this look as the NFT's 3D model</button>
+                {msg && <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>{msg}</span>}
+            </div>}
+        </div>
+    );
+}
+
+export default function CharacterPanel({ collection, tokenId, metadata, owner, theme, card, label, identity, mine }) {
     const [games, setGames] = useState(null);
     const [items, setItems] = useState(null);
     const [error, setError] = useState('');
@@ -201,6 +234,7 @@ export default function CharacterPanel({ collection, tokenId, metadata, owner, t
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
                                         {facts.map((x, i) => <div key={i} style={cell}><div style={small}>{x.k}</div><div style={{ fontSize: '0.9rem', fontWeight: 600, wordBreak: 'break-word', color: theme.colors.primaryText }}>{x.v}</div></div>)}
                                     </div>
+                                    {g.models?.look && <GameLook bytes={g.models.look} gameName={g.name} collection={collection} tokenId={tokenId} identity={identity} mine={mine} theme={theme} />}
                                     {inv && inv.length > 0 && (
                                         <div style={{ marginTop: 10 }}>
                                             <div style={small}>{n.key('inventory')}</div>
