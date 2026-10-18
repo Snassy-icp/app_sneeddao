@@ -46,6 +46,7 @@ describe('mr_sneed: prompt and memories', () => {
     expect(c.writers).toEqual([]);
     const p = await mrAnon.get_prompt();
     expect(p.frame).toMatch(/^You are Mr Sneed/);
+    expect(p.frame).toMatch(/7\. Never talk about price\./);
     expect(p.frame_hash.length).toBe(32);
     expect(p.personality).toEqual([]);
   });
