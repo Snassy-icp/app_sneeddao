@@ -13,6 +13,7 @@ import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { fetchApprovals, getNftImage, getNftName, getNftDescription, getNftAttributes, getNftLinks, getNftMedia, formatNftMetadata, getSavedNftCollections, NFT_COLLECTIONS_STORAGE_KEY } from '../utils/NftUtils';
 import NftModel from '../components/NftModel';
+import CharacterPanel, { hasCharacterLinks } from '../components/CharacterPanel';
 import { loadCollectionInfoCached, loadTokensCached, nftCollectionUrl } from '../components/NftAssetView';
 import { customStyles } from '../health/TreeView.jsx';
 import LockGas from '../components/LockGas';
@@ -186,6 +187,8 @@ function NftItem() {
                                     </div>
                                 </div>
                             )}
+
+                            {token && hasCharacterLinks(token.metadata) && <CharacterPanel collection={collection} tokenId={idText} metadata={token.metadata} owner={token.owner?.owner} theme={theme} card={card} label={label} />}
 
                             {(links.length > 0 || token?.icrc97?.url) && (
                                 <div style={card}>

@@ -136,11 +136,17 @@ export function getNftImage(metadata, nft) {
     const imageKeys = ['image', 'icrc7:image', 'url', 'icrc7:url', 'logo', 'icrc7:logo', 'thumbnail', 'asset'];
     const looksLikeUrl = (t) => typeof t === 'string' && (/^(https?:|data:image\/|ipfs:)/i.test(t));
     const blobToDataUrl = (blob) => { try { const bytes = new Uint8Array(blob); let bin = ''; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]); return `data:image/png;base64,${btoa(bin)}`; } catch { return null; } };
+    // keys that hold a URL but never the picture (ERC-721 / ICRC-97 metadata: the sound, video or 3D model; a web page)
+    const notImage = ['animation_url', 'external_url', 'youtube_url'];
+    for (const k of ['image', 'icrc7:image']) {   // the standard key, wherever it sits among the entries
+        const e = metadata.find(([key]) => String(key).toLowerCase() === k);
+        if (e && e[1].Text !== undefined && looksLikeUrl(e[1].Text)) return e[1].Text.replace(/^ipfs:\/\//, 'https://ipfs.io/ipfs/');
+    }
     const visit = (entries, depth) => {
         if (depth > 4) return null;
         for (const [key, value] of entries) {
             const lowerKey = String(key).toLowerCase();
-            const keyed = imageKeys.some(k => lowerKey.includes(k));
+            const keyed = !notImage.includes(lowerKey) && imageKeys.some(k => lowerKey.includes(k));
             if (keyed && value.Text !== undefined && looksLikeUrl(value.Text)) return value.Text.replace(/^ipfs:\/\//, 'https://ipfs.io/ipfs/');
             if (keyed && value.Blob !== undefined) { const u = blobToDataUrl(value.Blob); if (u) return u; }
             if (value.Map !== undefined) { const r = visit(value.Map, depth + 1); if (r) return r; }
@@ -328,7 +334,7 @@ export async function loadNftCollection(canisterId, account, identity, agent, on
 /// An anonymous agent for read-only browsing (the NFT browser works logged out).
 export function anonymousNftAgent() {
     const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
-    return HttpAgent.createSync({ host });
+    return HttpAgent.createSync({ host, shouldFetchRootKey: host.startsWith('http://localhost') });   // a local replica has its own root key
 }
 
 /// One page of a collection's token ids (ICRC-7 pages ascending by the last id seen).
