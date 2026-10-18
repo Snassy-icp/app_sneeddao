@@ -109,10 +109,12 @@ export async function smsMentioned(identity, { body, before = '', link, where })
         const sms = createSmsActor(smsCanisterId, { agent: await agentFor(identity) });
         const text = (body || '').replace(/\[@([^\]\n]{1,64})\]\([^)\s]+\)/g, '@$1');
         const excerpt = text.length > 300 ? `${text.slice(0, 299)}…` : text;
+        // the site the poster is on (staging links must stay on staging)
+        const url = typeof window !== 'undefined' && link?.startsWith(HUB) ? window.location.origin + link.slice(HUB.length) : link;
         const r = await sms.send_message({
             recipients: opted,
             subject: `You were mentioned${where ? ` in ${where}`.slice(0, 80) : ''}`,
-            body: `${excerpt}\n\n${link}`,
+            body: `${excerpt}\n\n${url}`,
             reply_to: [],
         });
         return 'ok' in r ? opted.length : 0;

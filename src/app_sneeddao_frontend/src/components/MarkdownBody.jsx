@@ -13,7 +13,8 @@ function Mention({ principal, children }) {
   const { theme } = useTheme();
   const naming = useNaming();
   const id = principal.toText();
-  const name = naming?.principalNames?.get?.(id);
+  // the public name, else the viewer's own private nickname (shown only to them, as elsewhere)
+  const name = naming?.principalNames?.get?.(id) || naming?.principalNicknames?.get?.(id);
   const label = name ? `@${name}` : textOf(children) || `@${id.slice(0, 5)}…`;
   return (
     <Link to={`/principal?id=${id}`} title={id}
