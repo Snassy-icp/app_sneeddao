@@ -432,7 +432,7 @@ function ProposeDialog({ theme, identity, governance, functions, method, initial
     return (
         <div role="dialog" aria-modal="true" aria-label={METHOD_TITLES[method]} onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}
             style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-            <div style={{ background: c.cardBg, border: `1px solid ${c.border}`, borderRadius: 16, width: '100%', maxWidth: 720, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ background: c.primaryBg, border: `1px solid ${c.border}`, borderRadius: 16, width: '100%', maxWidth: 720, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: `1px solid ${c.border}`, flexShrink: 0 }}>
                     <h2 style={{ margin: 0, fontSize: 18, color: c.primaryText }}>{METHOD_TITLES[method]}</h2>
                     <button type="button" onClick={onClose} disabled={busy} aria-label="Close" style={{ background: 'none', border: 'none', color: c.mutedText, cursor: 'pointer' }}><FaTimes /></button>

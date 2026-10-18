@@ -203,7 +203,7 @@ function WrapUnwrapModal({ show, onClose, onWrap, onUnwrap, token, gldtToken }) 
       backdropFilter: 'blur(4px)'
     }}>
       <div style={{
-        background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${wrapPrimary}08 100%)`,
+        background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${wrapPrimary}08 100%), ${theme.colors.primaryBg}`,
         border: `1px solid ${theme.colors.border}`,
         boxShadow: `0 20px 60px rgba(0, 0, 0, 0.4), 0 0 40px ${wrapPrimary}15`,
         borderRadius: '16px',

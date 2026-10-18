@@ -92,7 +92,7 @@ export default function MintTokenDialog({ isOpen, onClose, token, onMinted }) {
     return createPortal(
         <div onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}
             style={{ position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100000, padding: 16 }}>
-            <div role="dialog" aria-label={`Mint ${token.symbol}`} style={{ width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto', background: theme.colors.cardBg || theme.colors.primaryBg, border: `1px solid ${theme.colors.border}`, borderRadius: 16, padding: '1.25rem', boxShadow: '0 20px 60px rgba(0,0,0,0.35)' }}>
+            <div role="dialog" aria-label={`Mint ${token.symbol}`} style={{ width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto', background: theme.colors.primaryBg, border: `1px solid ${theme.colors.border}`, borderRadius: 16, padding: '1.25rem', boxShadow: '0 20px 60px rgba(0,0,0,0.35)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '1.15rem', fontWeight: 700, color: theme.colors.primaryText }}>
                         <span style={{ width: 34, height: 34, borderRadius: 10, background: `${theme.colors.accent}22`, color: theme.colors.accent, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><FaCoins /></span>

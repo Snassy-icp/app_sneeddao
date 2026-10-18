@@ -28,7 +28,7 @@ export default function CacheRefreshDialog({ isOpen }) {
         >
             <div
                 style={{
-                    background: theme.colors?.cardBg || 'rgba(255, 255, 255, 0.1)',
+                    background: theme.colors.primaryBg,
                     borderRadius: '16px',
                     padding: '2rem 2.5rem',
                     maxWidth: '420px',

@@ -46,7 +46,7 @@ function LoginModal({ isOpen, onClose }) {
             <div 
                 className="login-modal"
                 style={{
-                    background: theme.colors.cardBg,
+                    background: theme.colors.primaryBg,
                     borderRadius: '16px',
                     border: `1px solid ${theme.colors.border}`,
                     padding: '32px',

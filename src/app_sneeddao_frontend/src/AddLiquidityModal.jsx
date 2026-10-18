@@ -275,7 +275,7 @@ function AddLiquidityModal({ show, onClose, position, positionDetails, identity,
       zIndex: 1000, backdropFilter: 'blur(4px)'
     }}>
       <div style={{
-        background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${accent}08 100%)`,
+        background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${accent}08 100%), ${theme.colors.primaryBg}`,
         border: `1px solid ${theme.colors.border}`,
         boxShadow: `0 20px 60px rgba(0, 0, 0, 0.4), 0 0 40px ${accent}15`,
         borderRadius: '16px', padding: '0', width: '480px', maxWidth: '90vw', maxHeight: '90vh', overflow: 'auto'

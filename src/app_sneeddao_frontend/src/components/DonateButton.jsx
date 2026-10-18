@@ -275,7 +275,7 @@ export function DonateDialog({ onClose }) {
         <div role="dialog" aria-modal="true" aria-label="Donate to Sneed Hub" onMouseDown={(e) => { if (e.target === e.currentTarget && step !== 'sending') onClose(); }}
             style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(8, 8, 14, .62)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, animation: 'donate-fade .2s ease-out' }}>
             <style>{STYLE}</style>
-            <div style={{ position: 'relative', width: '100%', maxWidth: 440, maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', background: c.cardBg, color: c.primaryText, borderRadius: 20, border: `1px solid ${c.border}`, boxShadow: '0 30px 80px -20px rgba(0,0,0,.6)', animation: 'donate-in .3s ease-out' }}>
+            <div style={{ position: 'relative', width: '100%', maxWidth: 440, maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', background: c.primaryBg, color: c.primaryText, borderRadius: 20, border: `1px solid ${c.border}`, boxShadow: '0 30px 80px -20px rgba(0,0,0,.6)', animation: 'donate-in .3s ease-out' }}>
                 {step === 'done' && <Hearts />}
                 <div style={{ height: 4, borderRadius: '20px 20px 0 0', background: `linear-gradient(90deg, ${ROSE}, ${ROSE_2}, #f59e0b)` }} />
                 <div style={{ padding: '20px 22px 22px' }}>

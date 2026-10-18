@@ -176,7 +176,7 @@ const ConsolidateModal = ({
             backdropFilter: 'blur(4px)'
         }}>
             <div style={{
-                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${walletPrimary}08 100%)`,
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${walletPrimary}08 100%), ${theme.colors.primaryBg}`,
                 borderRadius: '16px',
                 padding: '0',
                 maxWidth: '550px',

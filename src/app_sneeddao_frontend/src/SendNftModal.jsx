@@ -114,7 +114,7 @@ const SendNftModal = ({ isOpen, onClose, nft, collection, onConfirm }) => {
                 className="modal-content"
                 onClick={(e) => e.stopPropagation()}
                 style={{
-                    background: theme.colors.cardBg,
+                    background: theme.colors.primaryBg,
                     borderRadius: '16px',
                     maxWidth: '500px',
                     width: '100%',

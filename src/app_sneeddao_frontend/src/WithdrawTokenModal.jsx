@@ -104,7 +104,7 @@ function WithdrawTokenModal({ show, onClose, onWithdraw, token }) {
       backdropFilter: 'blur(4px)'
     }}>
       <div style={{
-        background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${withdrawColor}08 100%)`,
+        background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${withdrawColor}08 100%), ${theme.colors.primaryBg}`,
         border: `1px solid ${theme.colors.border}`,
         boxShadow: `0 20px 60px rgba(0, 0, 0, 0.4), 0 0 40px ${withdrawColor}15`,
         borderRadius: '16px',
