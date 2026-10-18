@@ -23,7 +23,7 @@ import { extractPrincipalString } from '../utils/NeuronUtils';
 function Neurons() {
     const { theme } = useTheme();
     const { identity } = useAuth();
-    const { selectedSnsRoot, updateSelectedSns } = useSns();
+    const { selectedSnsRoot, updateSelectedSns, snsReady } = useSns(); // snsReady: details arrived on a clean browser
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams] = useSearchParams();
@@ -145,7 +145,7 @@ function Neurons() {
     const currentSnsInfo = useMemo(() => {
         if (!selectedSnsRoot) return null;
         return getSnsById(selectedSnsRoot);
-    }, [selectedSnsRoot]);
+    }, [selectedSnsRoot, snsReady]);
     
     // Accent colors for this page
     const neuronPrimary = '#6366f1'; // Indigo
@@ -286,7 +286,7 @@ function Neurons() {
         };
         
         loadSnsLogo();
-    }, [selectedSnsRoot, identity]);
+    }, [selectedSnsRoot, identity, snsReady]);
 
     // Fetch SNS data on component mount
     useEffect(() => {
@@ -311,7 +311,7 @@ function Neurons() {
         if (selectedSnsRoot) {
             fetchTotalSupply();
         }
-    }, [selectedSnsRoot]);
+    }, [selectedSnsRoot, snsReady]);
 
     // Fetch nervous system parameters for voting power calculation
     useEffect(() => {
@@ -336,7 +336,7 @@ function Neurons() {
         if (selectedSnsRoot && identity) {
             fetchNervousSystemParameters();
         }
-    }, [selectedSnsRoot, identity]);
+    }, [selectedSnsRoot, identity, snsReady]);
 
     // Neurons are now fetched by useNeuronsCache hook (shared with /hub and /users)
 

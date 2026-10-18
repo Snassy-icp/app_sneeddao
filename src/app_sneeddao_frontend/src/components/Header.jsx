@@ -42,7 +42,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const navigate = useNavigate();
     const { isAuthenticated, identity, login, logout } = useAuth();
     const { theme } = useTheme();
-    const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
+    const { selectedSnsRoot, SNEED_SNS_ROOT, snsReady } = useSns(); // snsReady: details arrived on a clean browser
     const { denomTokenId, denomTokenSymbol, setDenomToken, currencySign } = useDenomination();
     
     // Use WalletContext's global neuron cache for user neurons
@@ -78,7 +78,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setUserNeurons([]);
             setNeuronsLoading(false);
         }
-    }, [isAuthenticated, identity, selectedSnsRoot, getCachedNeurons, neuronCacheInitialized, neuronCache]);
+    }, [isAuthenticated, identity, selectedSnsRoot, getCachedNeurons, neuronCacheInitialized, neuronCache, snsReady]);
     
     // Helper functions matching the old NeuronsContext API
     const getAllNeurons = () => userNeurons;
@@ -415,7 +415,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         };
 
         fetchNervousSystemParameters();
-    }, [selectedSnsRoot, identity]);
+    }, [selectedSnsRoot, identity, snsReady]);
 
     // Fetch SNS logo for VP bar
     useEffect(() => {
@@ -456,7 +456,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         };
         
         loadSnsLogo();
-    }, [selectedSnsRoot, identity, SNEED_SNS_ROOT]);
+    }, [selectedSnsRoot, identity, SNEED_SNS_ROOT, snsReady]);
 
     // Scroll listener for VP bar visibility
     useEffect(() => {

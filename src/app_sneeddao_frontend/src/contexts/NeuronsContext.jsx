@@ -20,7 +20,7 @@ const NeuronsContext = createContext();
  */
 export function NeuronsProvider({ children }) {
     const { isAuthenticated, identity } = useAuth();
-    const { selectedSnsRoot } = useSns();
+    const { selectedSnsRoot, snsReady } = useSns(); // snsReady: details arrived on a clean browser
     
     // State for neurons data
     const [neuronsData, setNeuronsData] = useState({
@@ -303,7 +303,7 @@ export function NeuronsProvider({ children }) {
             });
             setLoading(false);
         }
-    }, [isAuthenticated, identity, selectedSnsRoot, fetchHotkeyNeuronsData]);
+    }, [isAuthenticated, identity, selectedSnsRoot, fetchHotkeyNeuronsData, snsReady]);
 
     const value = {
         // Data

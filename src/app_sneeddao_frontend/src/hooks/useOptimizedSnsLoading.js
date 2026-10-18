@@ -6,7 +6,9 @@ import { normalizeId } from './useNeuronsCache';
 import { 
     fetchSingleSnsData, 
     startBackgroundSnsFetch,
-    getAllSnses
+    getAllSnses,
+    isSnsCacheComplete,
+    SNS_CACHE_UPDATED_EVENT
 } from '../utils/SnsUtils';
 
 /**
@@ -57,10 +59,10 @@ export function useOptimizedSnsLoading() {
         
         setLoadingCurrent(true);
         setError(null);
+        // Step 1: Check if we have cached data (also decides on step 3, outside the try)
+        const cachedData = getAllSnses();
 
         try {
-            // Step 1: Check if we have cached data
-            const cachedData = getAllSnses();
             
             if (cachedData && cachedData.length > 0) {
                 console.log('useOptimizedSnsLoading: Found cached SNS data');
@@ -128,7 +130,7 @@ export function useOptimizedSnsLoading() {
         }
 
         // Step 3: Start background fetch for all SNSes (non-blocking)
-        if (!cachedData || cachedData.length <= 1) {
+        if (!isSnsCacheComplete()) {
             console.log('useOptimizedSnsLoading: Starting background fetch for all SNSes');
             setLoadingAll(true);
             
@@ -156,6 +158,17 @@ export function useOptimizedSnsLoading() {
             loadSnsData();
         }
     }, [identity, loadSnsData]);
+
+    // Grow the list as the background fetch adds SNSes
+    useEffect(() => {
+        const onCacheUpdated = () => {
+            const data = getAllSnses();
+            if (data.length) setSnsList(data);
+            if (isSnsCacheComplete()) setLoadingAll(false);
+        };
+        window.addEventListener(SNS_CACHE_UPDATED_EVENT, onCacheUpdated);
+        return () => window.removeEventListener(SNS_CACHE_UPDATED_EVENT, onCacheUpdated);
+    }, []);
 
     // Refresh function for manual reload
     const refreshSnsData = useCallback(() => {

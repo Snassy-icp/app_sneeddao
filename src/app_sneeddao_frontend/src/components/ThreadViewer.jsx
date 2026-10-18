@@ -4,6 +4,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
+import { useSnsDetailsReady } from '../contexts/SnsContext';
 import { useWalletOptional } from '../contexts/WalletContext';
 import { useAdminCheck } from '../hooks/useAdminCheck';
 import { useTextLimits } from '../hooks/useTextLimits';
@@ -467,6 +468,7 @@ function ThreadViewer({
     const [userNeurons, setUserNeurons] = useState([]);
     const [neuronsLoading, setNeuronsLoading] = useState(true);
     
+    const snsReady = useSnsDetailsReady(selectedSnsRoot); // details arrived on a clean browser
     useEffect(() => {
         if (!isAuthenticated || !identity || !selectedSnsRoot) {
             setUserNeurons([]);
@@ -489,7 +491,7 @@ function ThreadViewer({
             setUserNeurons([]);
             setNeuronsLoading(false);
         }
-    }, [isAuthenticated, identity, selectedSnsRoot, getCachedNeurons, neuronCacheInitialized]);
+    }, [isAuthenticated, identity, selectedSnsRoot, getCachedNeurons, neuronCacheInitialized, snsReady]);
     
     // Helper functions matching the old NeuronsContext API
     const getAllNeurons = useCallback(() => userNeurons, [userNeurons]);
@@ -3589,13 +3591,9 @@ function ThreadViewer({
                 ) : (
                     <div className={`posts-container ${viewMode}`}>
                         {displayPosts.map(post => (
-                            <PostComponent 
-                                key={post.id} 
-                                post={post} 
-                                depth={0} 
-                                isFlat={viewMode === 'flat'}
-                                focusedPostId={focusedPostId}
-                            />
+                            <React.Fragment key={post.id}>
+                                {PostComponent({ post, depth: 0, isFlat: viewMode === 'flat', focusedPostId })}
+                            </React.Fragment>
                         ))}
                     </div>
                 )}
@@ -3662,6 +3660,9 @@ function ThreadViewer({
 
     // PostComponent would be extracted from Discussion.jsx and placed here
     // For now, I'll create a simplified placeholder that references the full implementation
+    // Called as a plain function, not as <PostComponent />: defined in here it would be a new
+    // component type on every render, and React would remount every post (wiping an open reply box
+    // while names and votes load). It must not use hooks.
     function PostComponent({ post, depth, isFlat, focusedPostId }) {
         const isFocused = focusedPostId && Number(post.id) === Number(focusedPostId);
         const score = calculatePostScore(post);
@@ -4429,13 +4430,9 @@ function ThreadViewer({
                 {!isFlat && !isCollapsed && post.replies && post.replies.length > 0 && (
                     <div style={{ marginTop: '4px' }}>
                         {post.replies.map(reply => (
-                            <PostComponent 
-                                key={reply.id} 
-                                post={reply} 
-                                depth={depth + 1} 
-                                isFlat={false}
-                                focusedPostId={focusedPostId}
-                            />
+                            <React.Fragment key={reply.id}>
+                                {PostComponent({ post: reply, depth: depth + 1, isFlat: false, focusedPostId })}
+                            </React.Fragment>
                         ))}
                     </div>
                 )}

@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
+import { useSnsDetailsReady } from '../contexts/SnsContext';
 import { useWalletOptional } from '../contexts/WalletContext';
 import { getSnsById } from '../utils/SnsUtils';
 import { safePrincipalString, safePermissionType } from '../utils/NeuronUtils';
@@ -290,6 +291,7 @@ function Discussion({
     const [userNeurons, setUserNeurons] = useState([]);
     const [neuronsLoading, setNeuronsLoading] = useState(true);
     
+    const snsReady = useSnsDetailsReady(selectedSnsRoot); // details arrived on a clean browser
     useEffect(() => {
         if (!isAuthenticated || !identity || !selectedSnsRoot) {
             setUserNeurons([]);
@@ -312,7 +314,7 @@ function Discussion({
             setUserNeurons([]);
             setNeuronsLoading(false);
         }
-    }, [isAuthenticated, identity, selectedSnsRoot, getCachedNeurons, neuronCacheInitialized]);
+    }, [isAuthenticated, identity, selectedSnsRoot, getCachedNeurons, neuronCacheInitialized, snsReady]);
     
     // Helper functions matching the old NeuronsContext API
     const getAllNeurons = useCallback(() => userNeurons, [userNeurons]);

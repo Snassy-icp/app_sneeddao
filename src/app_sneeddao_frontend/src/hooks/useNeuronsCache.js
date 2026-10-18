@@ -6,6 +6,7 @@ import { Principal } from '@dfinity/principal';
 import { getSnsById, getAllSnses } from '../utils/SnsUtils';
 import { uint8ArrayToHex, getNeuronDetails } from '../utils/NeuronUtils';
 import { normalizeId } from '../utils/IdUtils';
+import { useSnsDetailsReady } from '../contexts/SnsContext';
 
 // ============================================================================
 // STANDALONE CACHE UTILITIES (for single neuron operations)
@@ -788,6 +789,7 @@ export const clearCacheForSns = async (snsRoot) => {
 export default function useNeuronsCache(selectedSnsRoot, identity) {
     // Normalize the selected SNS root
     const normalizedSnsRoot = normalizeId(selectedSnsRoot);
+    const snsReady = useSnsDetailsReady(normalizedSnsRoot); // details arrived on a clean browser
     const [neurons, setNeurons] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -1099,7 +1101,7 @@ export default function useNeuronsCache(selectedSnsRoot, identity) {
             setNeurons([]);
             loadData();
         }
-    }, [normalizedSnsRoot, loadData]);
+    }, [normalizedSnsRoot, loadData, snsReady]);
 
     return {
         neurons,

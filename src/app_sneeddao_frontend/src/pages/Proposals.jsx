@@ -79,7 +79,7 @@ const proposalAccent = '#06b6d4'; // Cyan
 function Proposals() {
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
-    const { selectedSnsRoot, updateSelectedSns } = useSns();
+    const { selectedSnsRoot, updateSelectedSns, snsReady } = useSns();
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams] = useSearchParams();
@@ -799,7 +799,7 @@ function Proposals() {
             fetchProposals();
             fetchTokenSymbol();
         }
-    }, [selectedSnsRoot, itemsPerPage, currentPage]);
+    }, [selectedSnsRoot, itemsPerPage, currentPage, snsReady]); // snsReady: details arrived on a clean browser
 
     const fetchProposals = async () => {
         setLoading(true);

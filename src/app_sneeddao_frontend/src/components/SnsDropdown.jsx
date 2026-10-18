@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSns } from '../contexts/SnsContext';
-import { fetchSnsLogo, startBackgroundSnsFetch, getAllSnses } from '../utils/SnsUtils';
+import { fetchSnsLogo, startBackgroundSnsFetch, getAllSnses, getSnsLogoSync, isSnsCacheComplete, SNS_CACHE_UPDATED_EVENT } from '../utils/SnsUtils';
 import { HttpAgent } from '@dfinity/agent';
 
 function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
@@ -18,6 +18,7 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
     const [snsLogos, setSnsLogos] = useState(new Map());
     const [loadingLogos, setLoadingLogos] = useState(new Set());
     const [dropdownOffset, setDropdownOffset] = useState(0);
+    const [listComplete, setListComplete] = useState(() => isSnsCacheComplete());
 
     // Function to calculate dropdown offset to keep it within bounds
     const calculateDropdownOffset = () => {
@@ -209,6 +210,30 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
         console.log('SnsDropdown: Initial mount, loading SNS data...'); // Debug log
         loadSnsData();
     }, []); // Only run once on mount
+
+    // Fill the list as SNSes arrive instead of waiting for all of them
+    useEffect(() => {
+        const onCacheUpdated = () => {
+            const data = getAllSnses();
+            setListComplete(isSnsCacheComplete());
+            if (!data.length) return;
+            setSnsList([...data].sort((a, b) => {
+                if (a.rootCanisterId === SNEED_SNS_ROOT) return -1;
+                if (b.rootCanisterId === SNEED_SNS_ROOT) return 1;
+                return a.name.localeCompare(b.name);
+            }));
+            setLoadingSnses(false);
+            data.forEach((sns) => {
+                const gov = sns.canisters?.governance;
+                if (!gov) return;
+                const logo = sns.logo || getSnsLogoSync(gov);
+                if (logo) setSnsLogos((prev) => (prev.has(gov) ? prev : new Map(prev).set(gov, logo)));
+                else loadSnsLogo(gov);
+            });
+        };
+        window.addEventListener(SNS_CACHE_UPDATED_EVENT, onCacheUpdated);
+        return () => window.removeEventListener(SNS_CACHE_UPDATED_EVENT, onCacheUpdated);
+    }, [SNEED_SNS_ROOT]);
 
     const handleSnsChange = (snsRoot) => {
         // Update global state
@@ -417,6 +442,9 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                                 </div>
                             );
                         })}
+                        {!listComplete && (
+                            <div style={{ padding: '8px 12px', fontSize: '12px', color: theme.colors.mutedText, fontStyle: 'italic' }}>Loading more SNSes…</div>
+                        )}
                     </div>
                 )}
             </div>

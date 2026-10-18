@@ -74,7 +74,7 @@ const customStyles = `
 function Neuron() {
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
-    const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
+    const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT, snsReady } = useSns();
     const neuronsContext = useNeuronsOptional();
     const walletContext = useWalletOptional();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -252,7 +252,7 @@ function Neuron() {
                 fetchVotingHistory();
             }
         }
-    }, [currentNeuronId, selectedSnsRoot]);
+    }, [currentNeuronId, selectedSnsRoot, snsReady]); // snsReady: details arrived on a clean browser
 
     const fetchNeuronData = async () => {
         setError('');

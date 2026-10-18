@@ -12,7 +12,7 @@ import Discussion from './components/Discussion';
 import ThreadViewer from './components/ThreadViewer';
 import ReactMarkdown from 'react-markdown';
 import './Wallet.css';
-import { getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
+import { getSnsById, getAllSnses, clearSnsCache, fetchSingleSnsData } from './utils/SnsUtils';
 import { useOptimizedSnsLoading } from './hooks/useOptimizedSnsLoading';
 import { formatNeuronDisplayWithContext, uint8ArrayToHex, extractPrincipalString } from './utils/NeuronUtils';
 import { fetchUserNeuronsForSns } from './utils/NeuronUtils';
@@ -79,7 +79,7 @@ const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hel
 function Proposal() {
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
-    const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
+    const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT, snsReady } = useSns();
     const { fetchNeuronsForSns, refreshNeurons } = useNeurons();
     const { createForumActor } = useForum();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -230,7 +230,7 @@ function Proposal() {
         if (currentProposalId && effectiveSnsRoot) {
             fetchProposalData(effectiveSnsRoot);
         }
-    }, [currentProposalId, effectiveSnsRoot]);
+    }, [currentProposalId, effectiveSnsRoot, snsReady]); // snsReady: details arrived on a clean browser
 
     // Fetch proposer neuron permissions
     useEffect(() => {
@@ -292,9 +292,12 @@ function Proposal() {
         if (!silent) setLoading(true);
         setError('');
         try {
-            const selectedSns = getSnsById(snsRoot);
+            let selectedSns = getSnsById(snsRoot);
             if (!selectedSns) {
-                setError('Selected SNS not found');
+                try { selectedSns = await fetchSingleSnsData(snsRoot, identity); } catch { selectedSns = null; }
+            }
+            if (!selectedSns) {
+                if (!silent) setError('Selected SNS not found');
                 return;
             }
 
@@ -311,6 +314,9 @@ function Proposal() {
             const response = await snsGovActor.get_proposal(proposalIdArg);
             if (response?.result?.[0]?.Proposal) {
                 setProposalData(response.result[0].Proposal);
+            } else if (silent) {
+                // a refresh that fails keeps showing what we have
+                console.warn('Proposal refresh failed:', response?.result?.[0]?.Error?.error_message);
             } else if (response?.result?.[0]?.Error) {
                 setError(response.result[0].Error.error_message);
             } else {
@@ -318,7 +324,7 @@ function Proposal() {
             }
         } catch (err) {
             console.error('Error fetching proposal data:', err);
-            setError('Failed to fetch proposal data');
+            if (!silent) setError('Failed to fetch proposal data');
         } finally {
             if (!silent) setLoading(false);
         }
@@ -1397,8 +1403,8 @@ function Proposal() {
                                                 currentProposalId={currentProposalId}
                                                 onVoteSuccess={() => {
                                                     // (snsRoot, silent): refresh in place, without the loading screen
+                                                    // (HotkeyNeurons refreshes the neurons itself)
                                                     fetchProposalData(effectiveSnsRoot, true);
-                                                    refreshNeurons(selectedSnsRoot);
                                                     window.dispatchEvent(new CustomEvent('votableProposalsRefresh'));
                                                 }}
                                             />

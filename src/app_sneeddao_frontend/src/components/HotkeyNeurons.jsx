@@ -46,7 +46,8 @@ const HotkeyNeurons = ({
 
     const showInfoModal = (title, message, type = 'info', onCloseCallback = null) => {
         setInfoModal({ show: true, title, message, type });
-        setPendingVoteSuccessCallback(onCloseCallback);
+        // wrapped: a bare function passed to a state setter is run as an updater, right away
+        setPendingVoteSuccessCallback(() => onCloseCallback);
     };
     const closeInfoModal = () => {
         const cb = pendingVoteSuccessCallback;
@@ -679,7 +680,8 @@ const HotkeyNeurons = ({
     };
 
     if (inlineInProposal && proposalData && currentProposalId) {
-        if (neuronsLoading) {
+        // a refresh after a vote keeps the neurons (and the result dialog) on screen
+        if (neuronsLoading && getAllNeurons().length === 0) {
             return (
                 <div style={{
                     marginTop: '1.5rem',
