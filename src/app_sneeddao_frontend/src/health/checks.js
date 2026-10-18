@@ -44,6 +44,10 @@ export const IDS = {
     neuronVector: '6jvpj-sqaaa-aaaaj-azwnq-cai',   // Neutrinite pylon: ICP neuron (node 1), ICP splitter (6), SNEED splitter (45)
     buybackVector: 'togwv-zqaaa-aaaal-qr7aa-cai',  // ICPCoins exchange pylon: SNEED buyback (node 18; the pylon hides its nodes from anonymous callers)
     sneedIcpPool: 'osyzs-xiaaa-aaaag-qc76q-cai',
+    // the naming service (spec/sneed_names.md)
+    pidNames: 'ejz7n-lyaaa-aaaad-qmkzq-cai', neuronNames: 'e46oa-kqaaa-aaaad-qmk2a-cai',
+    pidNicknames: 'e37iu-hiaaa-aaaad-qmk2q-cai', neuronNicknames: 'es4di-raaaa-aaaad-qmk3a-cai',
+    avatars: 'ev5f4-4yaaa-aaaad-qmk3q-cai', profiles: 'fytbs-tqaaa-aaaad-qmk4a-cai',
 };
 
 export const NAMES = {
@@ -56,11 +60,14 @@ export const NAMES = {
     [IDS.swaprunner]: 'Swaprunner', 's4yi7-yiaaa-aaaar-qacpq-cai': 'OpenChat escrow',
     '5ceyv-syaaa-aaaag-qc43q-cai': 'SneedSwap', '524ne-eyaaa-aaaap-quxhq-cai': 'TORCH ledger', '7hbdm-xqaaa-aaaap-quxia-cai': 'TOMBSTONE ledger',
     'iczfn-iiaaa-aaaan-qltcq-cai': 'MIF ledger', '7tvr6-fqaaa-aaaan-qmira-cai': 'ALIEN ledger',
+    [IDS.pidNames]: 'Names', [IDS.neuronNames]: 'Neuron names', [IDS.pidNicknames]: 'Nicknames',
+    [IDS.neuronNicknames]: 'Neuron nicknames', [IDS.avatars]: 'Avatars', [IDS.profiles]: 'Profiles (dapps)',
 };
 
 /// The DAO's own canisters that the hub calls (the SNS core comes from SNS root). The frontend is
 /// left out: it is not a DAO canister. Bots and Swaprunner belong to their owners.
-const HUB_DAPPS = [IDS.backend, IDS.sneedLock, IDS.rll, IDS.premium, IDS.sms, IDS.forum, IDS.sneedex, IDS.sneedapp, IDS.sgldt, IDS.defi];
+const HUB_DAPPS = [IDS.backend, IDS.sneedLock, IDS.rll, IDS.premium, IDS.sms, IDS.forum, IDS.sneedex, IDS.sneedapp, IDS.sgldt, IDS.defi,
+    IDS.pidNames, IDS.neuronNames, IDS.pidNicknames, IDS.neuronNicknames, IDS.avatars, IDS.profiles];
 export const nameOf = (id) => NAMES[id] || id;
 
 const NEURON_2Y = 4000934039483276792n;
