@@ -207,6 +207,11 @@
     "sneed_accord": {
       "main": "src/sneed_guardian/main.mo",
       "type": "motoko"
+    },
+    "mr_sneed": {
+      "main": "src/mr_sneed/main.mo",
+      "type": "motoko",
+      "args": "--enhanced-orthogonal-persistence"
     }
   },
   "networks": {
