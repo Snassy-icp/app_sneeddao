@@ -66,7 +66,15 @@ function namer(names) {
         const p = prefixes.find((x) => k.startsWith(x.key));
         return p ? `${p.name}: ${id(k.slice(p.key.length))}` : k;
     };
-    return { key, id };
+    /// A key as a family and a member (a quest in "Quest done", a faction in "Reputation") or alone (group null).
+    const split = (k) => {
+        if (exact.has(k)) return { group: null, name: exact.get(k) };
+        const p = prefixes.find((x) => k.startsWith(x.key));
+        if (p) return { group: p.name, name: id(k.slice(p.key.length)) };
+        const c = k.indexOf(':');   // a family the game did not name: its prefix as it is
+        return c > 0 ? { group: k.slice(0, c), name: id(k.slice(c + 1)) } : { group: null, name: k };
+    };
+    return { key, id, split };
 }
 const when = (secs) => { const d = new Date(Number(secs) * 1000); return isNaN(d) ? String(secs) : d.toISOString().slice(0, 10); };
 
@@ -215,10 +223,12 @@ export default function CharacterPanel({ collection, tokenId, metadata, owner, t
             {(games || []).map((g) => {
                 const n = g.n, f = g.facts;
                 const facts = f ? [
-                    ...f.labels.map((l) => ({ k: n.key(l.key), v: n.id(l.text) })),
-                    ...f.values.map((v) => ({ k: n.key(v.key), v: v.key.startsWith('questat:') ? when(v.value) : v.value.toString() })),
-                    ...f.events.map((e) => ({ k: n.key(e.key), v: e.event.count > 1n ? `${e.event.count}×, last ${when(e.event.last / 1_000_000_000n)}` : when(e.event.first / 1_000_000_000n) })),
+                    ...f.labels.map((l) => ({ ...n.split(l.key), v: n.id(l.text) })),
+                    ...f.values.map((v) => ({ ...n.split(v.key), v: v.key.startsWith('questat:') ? when(v.value) : v.value.toString() })),
+                    ...f.events.map((e) => ({ ...n.split(e.key), v: e.event.count > 1n ? `${e.event.count}×, last ${when(e.event.last / 1_000_000_000n)}` : when(e.event.first / 1_000_000_000n) })),
                 ] : [];
+                const alone = facts.filter((x) => !x.group), families = [];
+                for (const x of facts) if (x.group) { let fam = families.find((y) => y.name === x.group); if (!fam) families.push(fam = { name: x.group, items: [] }); fam.items.push(x); }
                 const inv = g.docs?.inventory ? readInventory(g.docs.inventory, n) : null;
                 return (
                     <div key={g.root} style={card}>
@@ -232,16 +242,24 @@ export default function CharacterPanel({ collection, tokenId, metadata, owner, t
                             : (
                                 <>
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
-                                        {facts.map((x, i) => <div key={i} style={cell}><div style={small}>{x.k}</div><div style={{ fontSize: '0.9rem', fontWeight: 600, wordBreak: 'break-word', color: theme.colors.primaryText }}>{x.v}</div></div>)}
+                                        {alone.map((x, i) => <div key={i} style={cell}><div style={small}>{x.name}</div><div style={{ fontSize: '0.9rem', fontWeight: 600, wordBreak: 'break-word', color: theme.colors.primaryText }}>{x.v}</div></div>)}
                                     </div>
+                                    {families.map((fam) => (   /* a family of facts (quests, reputation, skills): folded when it is long */
+                                        <details key={fam.name} open={fam.items.length <= 6} style={{ marginTop: 10 }}>
+                                            <summary style={{ ...small, cursor: 'pointer', userSelect: 'none' }}>{fam.name} ({fam.items.length})</summary>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6, fontSize: '0.85rem' }}>
+                                                {fam.items.map((x, i) => <div key={i} style={{ display: 'flex', gap: 10, justifyContent: 'space-between', borderBottom: `1px solid ${theme.colors.border}`, padding: '3px 0' }}><span style={{ color: theme.colors.primaryText }}>{x.name}</span><span style={{ color: theme.colors.secondaryText, fontWeight: 600, whiteSpace: 'nowrap' }}>{x.v}</span></div>)}
+                                            </div>
+                                        </details>
+                                    ))}
                                     {g.models?.look && <GameLook bytes={g.models.look} gameName={g.name} collection={collection} tokenId={tokenId} identity={identity} mine={mine} theme={theme} />}
                                     {inv && inv.length > 0 && (
-                                        <div style={{ marginTop: 10 }}>
-                                            <div style={small}>{n.key('inventory')}</div>
+                                        <details open={inv.length <= 12} style={{ marginTop: 10 }}>
+                                            <summary style={{ ...small, cursor: 'pointer', userSelect: 'none' }}>{n.key('inventory')} ({inv.length})</summary>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4, fontSize: '0.85rem' }}>
                                                 {inv.map((it, i) => <div key={i} style={{ display: 'flex', gap: 8 }}><span style={{ color: theme.colors.mutedText, minWidth: 120 }}>{it.where}</span><span style={{ color: theme.colors.primaryText }}>{it.name}{it.stack > 1 ? ` ×${it.stack}` : ''}</span>{it.bound && <span style={{ color: theme.colors.mutedText }}>(soulbound)</span>}</div>)}
                                             </div>
-                                        </div>
+                                        </details>
                                     )}
                                 </>
                             )}
