@@ -19,6 +19,8 @@ import { formatError } from '../utils/errorUtils';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { useTheme } from '../contexts/ThemeContext';
 import { FaCommentAlt, FaReply, FaEdit, FaTrash, FaCoins, FaArrowUp, FaArrowDown, FaUndo, FaSpinner, FaCheck, FaTimes, FaPlus, FaMinus, FaEye, FaSitemap, FaCheckCircle, FaKey } from 'react-icons/fa';
+import MentionTextarea from './MentionTextarea';
+import { smsMentioned } from '../utils/mentions';
 
 // Accent colors
 const accentPrimary = '#06b6d4'; // Cyan to match discussion section in Proposal
@@ -74,7 +76,7 @@ const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, p
                 <FaReply size={12} />
                 Replying to {displayName}
             </div>
-            <textarea
+            <MentionTextarea
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
                 placeholder={`Write your reply...`}
@@ -199,7 +201,7 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
                 Title: {title.length}/{maxTitleLength}
                 {isTitleOverLimit && <span style={{ marginLeft: '0.5rem' }}>({title.length - maxTitleLength} over)</span>}
             </div>
-            <textarea
+            <MentionTextarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 placeholder="Post content..."
@@ -546,6 +548,7 @@ function Discussion({
             
             if ('ok' in result) {
                 const postId = result.ok;
+                smsMentioned(identity, { body: commentText, link: `https://app.sneeddao.com/post?postid=${postId}`, where: 'a proposal discussion' });
                 
                 setCommentText('');
                 setCommentTitle('');
@@ -764,6 +767,7 @@ function Discussion({
             
             if ('ok' in result) {
                 const postId = result.ok;
+                smsMentioned(identity, { body: replyText, link: `https://app.sneeddao.com/post?postid=${postId}`, where: 'a proposal discussion' });
                 
                 setReplyingTo(null);
                 
@@ -1386,13 +1390,16 @@ function Discussion({
         
         setSubmittingEdit(true);
         try {
+            const editedPostId = Number(editingPost);
+            const before = await forumActor.get_post(editedPostId).then((r) => r[0]?.body || '').catch(() => null);
             const result = await forumActor.update_post(
-                Number(editingPost),
+                editedPostId,
                 title,
                 body
             );
             
             if ('ok' in result) {
+                if (before !== null) smsMentioned(identity, { body, before, link: `https://app.sneeddao.com/post?postid=${editedPostId}`, where: 'a proposal discussion' });
                 if (discussionThread) {
                     await fetchDiscussionPosts(Number(discussionThread.thread_id));
                 }
@@ -1768,7 +1775,7 @@ function Discussion({
                                             {commentTitle.length}/{textLimits.max_title_length}
                                         </div>
                                     )}
-                                    <textarea
+                                    <MentionTextarea
                                         value={commentText}
                                         onChange={(e) => setCommentText(e.target.value)}
                                         placeholder="Share your thoughts on this proposal..."

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea, FaCloudDownloadAlt, FaBolt, FaRobot, FaCubes, FaChartLine, FaArrowUp, FaStore } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea, FaCloudDownloadAlt, FaBolt, FaRobot, FaCubes, FaChartLine, FaArrowUp, FaStore, FaAt } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -14,6 +14,7 @@ import { useWalletOptional } from '../contexts/WalletContext';
 import { useSns } from '../contexts/SnsContext';
 import { useTipNotifications } from '../hooks/useTipNotifications';
 import { useReplyNotifications } from '../hooks/useReplyNotifications';
+import { useMentionNotifications } from '../hooks/useMentionNotifications';
 import { useVotableProposalsNotifications } from '../hooks/useVotableProposalsNotifications';
 import { useSmsNotifications } from '../hooks/useSmsNotifications';
 import { useCollectiblesNotifications } from '../hooks/useCollectiblesNotifications';
@@ -98,6 +99,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     };
     const { newTipCount } = useTipNotifications();
     const { newReplyCount } = useReplyNotifications();
+    const { newMentionCount } = useMentionNotifications(); // shown with replies, under the same setting
     const { newMessageCount } = useSmsNotifications();
     const { 
         collectiblesCount, 
@@ -1864,7 +1866,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             )}
 
             {/* Notifications Row: Shows when there are notifications or update available */}
-            {!isHeaderCollapsed && ((hasUpdateAvailable && notifyUpdatesSetting) || (showHeaderNotificationsSetting && isAuthenticated && ((notifyRepliesSetting && newReplyCount > 0) || (notifyTipsSetting && newTipCount > 0) || (notifyMessagesSetting && newMessageCount > 0) || (notifyCollectiblesSetting && collectiblesCount > 0) || (notifyVotableProposalsSetting && votableCount > 0) || (notifyOutdatedBotsSetting && outdatedCount > 0) || (notifyLowCyclesSetting && lowCyclesCount > 0) || ((notifyBotChoresSetting || notifyBotLogErrorsSetting) && botHealthCount > 0)))) && (
+            {!isHeaderCollapsed && ((hasUpdateAvailable && notifyUpdatesSetting) || (showHeaderNotificationsSetting && isAuthenticated && ((notifyRepliesSetting && (newReplyCount > 0 || newMentionCount > 0)) || (notifyTipsSetting && newTipCount > 0) || (notifyMessagesSetting && newMessageCount > 0) || (notifyCollectiblesSetting && collectiblesCount > 0) || (notifyVotableProposalsSetting && votableCount > 0) || (notifyOutdatedBotsSetting && outdatedCount > 0) || (notifyLowCyclesSetting && lowCyclesCount > 0) || ((notifyBotChoresSetting || notifyBotLogErrorsSetting) && botHealthCount > 0)))) && (
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
@@ -1954,6 +1956,38 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             >
                                 <FaComments size={10} />
                                 <span>{newReplyCount}</span>
+                            </div>
+                        )}
+                        
+                        {/* Mention Notifications */}
+                        {notifyRepliesSetting && newMentionCount > 0 && (
+                            <div 
+                                onClick={() => navigate('/posts?tab=mentions')}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '3px 8px',
+                                    background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.2), rgba(236, 72, 153, 0.1))',
+                                    border: '1px solid rgba(236, 72, 153, 0.3)',
+                                    borderRadius: '12px',
+                                    cursor: 'pointer',
+                                    fontSize: '11px',
+                                    fontWeight: '600',
+                                    color: '#f472b6',
+                                    transition: 'all 0.2s ease',
+                                    whiteSpace: 'nowrap',
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                }}
+                                title={`${newMentionCount} new ${newMentionCount === 1 ? 'mention' : 'mentions'}`}
+                            >
+                                <FaAt size={10} />
+                                <span>{newMentionCount}</span>
                             </div>
                         )}
                         

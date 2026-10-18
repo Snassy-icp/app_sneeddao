@@ -40,6 +40,7 @@ import {
     getTipsReceivedByUser
 } from '../utils/BackendUtils';
 import { useForum } from '../contexts/ForumContext';
+import { getMentionSms, setMentionSms } from '../utils/mentions';
 import { useNaming } from '../NamingContext';
 import { Link } from 'react-router-dom';
 import ConfirmationModal from '../ConfirmationModal';
@@ -608,6 +609,13 @@ export default function Me() {
         }
     });
     // Per-notification-type visibility settings
+    // a Sneed SMS when someone @-mentions me in the forum (stored in the forum canister; opt-in)
+    const [mentionSms, setMentionSmsState] = useState(null);
+    const [mentionSmsError, setMentionSmsError] = useState('');
+    useEffect(() => {
+        if (!identity) return;
+        getMentionSms(identity.getPrincipal()).then(setMentionSmsState).catch(() => setMentionSmsState(null));
+    }, [identity]);
     const [notifyReplies, setNotifyReplies] = useState(() => {
         try { const s = localStorage.getItem('notifyReplies'); return s !== null ? JSON.parse(s) : true; } catch { return true; }
     });
@@ -2681,10 +2689,27 @@ export default function Me() {
                                         />
                                     </SettingItem>
 
+                                    <SettingItem
+                                        title="SMS When Mentioned"
+                                        description={mentionSmsError || 'Get a Sneed SMS when someone @-mentions you in the forum. It is sent from their principal, so you can reply to them.'}
+                                        theme={theme}
+                                    >
+                                        <ToggleSwitch
+                                            checked={!!mentionSms}
+                                            disabled={mentionSms === null}
+                                            onChange={async (e) => {
+                                                const newValue = e.target.checked;
+                                                setMentionSmsState(newValue); setMentionSmsError('');
+                                                try { await setMentionSms(identity, newValue); }
+                                                catch (err) { setMentionSmsState(!newValue); setMentionSmsError(`Could not save: ${err?.message || err}`); }
+                                            }}
+                                        />
+                                    </SettingItem>
+
                                     {showHeaderNotifications && (<>
                                     <SettingItem
                                         title="Reply Notifications"
-                                        description="Show notifications when someone replies to your posts"
+                                        description="Show notifications when someone replies to your posts or @-mentions you"
                                         theme={theme}
                                     >
                                         <ToggleSwitch

@@ -1,6 +1,27 @@
 import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { Link } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
+import { useNaming } from '../NamingContext';
+import { mentionTarget } from '../utils/mentions';
+
+const textOf = (children) => React.Children.toArray(children).map((c) => (typeof c === 'string' ? c : '')).join('');
+
+/// An @-mention (spec/forum_mentions.md): shown with the member's current public name, linking
+/// to their page. The name written into the post is only the fallback.
+function Mention({ principal, children }) {
+  const { theme } = useTheme();
+  const naming = useNaming();
+  const id = principal.toText();
+  const name = naming?.principalNames?.get?.(id);
+  const label = name ? `@${name}` : textOf(children) || `@${id.slice(0, 5)}…`;
+  return (
+    <Link to={`/principal?id=${id}`} title={id}
+      style={{ color: theme.colors.accent, background: `${theme.colors.accent}1a`, padding: '0 4px', borderRadius: 4, textDecoration: 'none', fontWeight: 600 }}>
+      {label}
+    </Link>
+  );
+}
 
 function normalizeMarkdownInput(input) {
   const text = (input ?? '').toString().replace(/\r\n/g, '\n');
@@ -42,7 +63,10 @@ export default function MarkdownBody({ text, style }) {
         urlTransform={safeUrlTransform}
         components={{
           p: (props) => <p style={{ margin: '0 0 8px 0', color: 'inherit' }} {...props} />,
-          a: ({ href, children, ...props }) => (
+          a: ({ href, children, ...props }) => {
+            const target = textOf(children).startsWith('@') ? mentionTarget(href) : null;
+            if (target) return <Mention principal={target}>{children}</Mention>;
+            return (
             <a
               href={href}
               target="_blank"
@@ -52,7 +76,8 @@ export default function MarkdownBody({ text, style }) {
             >
               {children}
             </a>
-          ),
+            );
+          },
           code: ({ inline, children, ...props }) => (
             <code
               style={{

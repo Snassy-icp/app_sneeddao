@@ -19,6 +19,8 @@ import { FaComments, FaChevronRight, FaPlus, FaRegClock, FaSort, FaList, FaChevr
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
+import MentionTextarea from '../components/MentionTextarea';
+import { smsMentioned } from '../utils/mentions';
 
 // Custom CSS for animations
 const customStyles = `
@@ -585,6 +587,7 @@ function Topic() {
             }
 
             const newThreadId = threadResult.ok;
+            smsMentioned(identity, { body: createThreadBody.trim(), link: `https://app.sneeddao.com/thread?threadid=${newThreadId}`, where: createThreadTitle.trim() ? `"${createThreadTitle.trim()}"` : 'a forum thread' });
 
             if (includePoll) {
                 const endDateTime = new Date(`${pollEndDate}T${pollEndTime}`);
@@ -1693,11 +1696,11 @@ function Topic() {
                             />
                             
                             {/* Thread Body */}
-                            <textarea
+                            <MentionTextarea
                                 value={createThreadBody}
                                 onChange={(e) => setCreateThreadBody(e.target.value)}
                                 placeholder="What would you like to discuss?"
-                                ref={createThreadBodyRef}
+                                textareaRef={createThreadBodyRef}
                                 style={{
                                     width: '100%',
                                     background: theme.colors.primaryBg,

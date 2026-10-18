@@ -35,6 +35,8 @@ import EmojiPicker from './EmojiPicker';
 import MarkdownButtons from './MarkdownButtons';
 import MarkdownBody from './MarkdownBody';
 import './ThreadViewer.css';
+import MentionTextarea from './MentionTextarea';
+import { smsMentioned } from '../utils/mentions';
 
 // Separate EditForm component to prevent PostComponent re-renders
 const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdit, textLimits, regularLimits, isPremium }) => {
@@ -93,11 +95,11 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
                     />
                 }
             />
-            <textarea
+            <MentionTextarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 placeholder="Post body"
-                ref={bodyRef}
+                textareaRef={bodyRef}
                 style={{
                     width: '100%',
                     minHeight: '120px',
@@ -226,11 +228,11 @@ const ThreadEditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submitt
                     />
                 }
             />
-            <textarea
+            <MentionTextarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 placeholder="Thread body"
-                ref={bodyRef}
+                textareaRef={bodyRef}
                 style={{
                     width: '100%',
                     minHeight: '150px',
@@ -334,11 +336,11 @@ const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, p
                     />
                 }
             />
-            <textarea
+            <MentionTextarea
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
                 placeholder={`Reply to ${displayName}`}
-                ref={replyRef}
+                textareaRef={replyRef}
                 style={{
                     width: '100%',
                     minHeight: '80px',
@@ -1264,6 +1266,7 @@ function ThreadViewer({
             if ('ok' in result) {
                 console.log('Comment created successfully, post ID:', result.ok);
                 const postId = result.ok;
+                smsMentioned(identity, { body: bodyValue, link: `https://app.sneeddao.com/post?postid=${postId}`, where: 'a forum post' });
                 
                 // Remove optimistic post
                 setOptimisticPosts(prev => prev.filter(p => p._tempId !== tempId));
@@ -1849,6 +1852,7 @@ function ThreadViewer({
             if ('ok' in result) {
                 console.log('Reply created successfully, post ID:', result.ok);
                 const postId = result.ok;
+                smsMentioned(identity, { body: replyText.trim(), link: `https://app.sneeddao.com/post?postid=${postId}`, where: 'a forum reply' });
                 
                 // Remove optimistic post
                 setOptimisticPosts(prev => prev.filter(p => p._tempId !== tempId));
@@ -2087,15 +2091,19 @@ function ThreadViewer({
         
         setUpdatingPost(true);
         try {
+            // the text before the edit, so only newly mentioned members get an SMS
+            const editedPostId = Number(editingPost);
+            const before = await forumActor.get_post(editedPostId).then((r) => r[0]?.body || '').catch(() => null);
             // Call update_post directly like Discussion.jsx does - pass title as string or null
             const result = await forumActor.update_post(
-                Number(editingPost),
+                editedPostId,
                 finalTitle,
                 body
             );
 
             if ('ok' in result) {
                 console.log('Post updated successfully');
+                if (before !== null) smsMentioned(identity, { body, before, link: `https://app.sneeddao.com/post?postid=${editedPostId}`, where: 'a forum post' });
                 // Refresh thread data to get the server's version (clears optimistic edit)
                 await fetchThreadData();
                 // Clear optimistic edit now that real data is loaded
@@ -2157,6 +2165,7 @@ function ThreadViewer({
 
         setUpdatingThread(true);
         try {
+            const before = await forumActor.get_thread(Number(threadId)).then((r) => r[0]?.body || '').catch(() => null);
             const result = await forumActor.update_thread(
                 Number(threadId),
                 finalTitle,
@@ -2165,6 +2174,7 @@ function ThreadViewer({
 
             if ('ok' in result) {
                 console.log('Thread updated successfully');
+                if (before !== null) smsMentioned(identity, { body, before, link: `https://app.sneeddao.com/thread?threadid=${threadId}`, where: 'a forum thread' });
                 cancelEditThread();
                 // Refresh thread data to get the updated content
                 await fetchThreadData();
@@ -3208,11 +3218,11 @@ function ThreadViewer({
                                     />
                                 }
                             />
-                            <textarea
+                            <MentionTextarea
                                 value={commentText}
                                 onChange={(e) => setCommentText(e.target.value)}
                                 placeholder="Share your thoughts..."
-                                ref={commentBodyRef}
+                                textareaRef={commentBodyRef}
                                 style={{
                                     width: '100%',
                                     background: theme.colors.secondaryBg,

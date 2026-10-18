@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useForum } from '../contexts/ForumContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
@@ -17,7 +17,8 @@ import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay } from '../utils/PrincipalUtils';
 import Header from '../components/Header';
 import MarkdownBody from '../components/MarkdownBody';
-import { FaComments, FaReply, FaEdit, FaList, FaSync, FaLock, FaArrowUp, FaArrowDown, FaExternalLinkAlt } from 'react-icons/fa';
+import { FaComments, FaReply, FaEdit, FaList, FaSync, FaLock, FaArrowUp, FaArrowDown, FaExternalLinkAlt, FaAt } from 'react-icons/fa';
+import { getMentions, getLastSeenMentions, markMentionsSeen } from '../utils/mentions';
 
 // Custom CSS for animations
 const customStyles = `
@@ -102,7 +103,12 @@ const Posts = () => {
     const [repliesToMe, setRepliesToMe] = useState([]);
     const [myThreads, setMyThreads] = useState([]);
     const [threadPostCounts, setThreadPostCounts] = useState(new Map());
-    const [activeTab, setActiveTab] = useState('replies-to-me');
+    const [searchParams] = useSearchParams();
+    const [activeTab, setActiveTab] = useState(searchParams.get('tab') === 'mentions' ? 'mentions' : 'replies-to-me');
+    // @-mentions (spec/forum_mentions.md): newest first; those newer than the last visit are marked new
+    const [mentions, setMentions] = useState(null);
+    const [mentionsNext, setMentionsNext] = useState(null);
+    const [mentionsSeenBefore, setMentionsSeenBefore] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
@@ -110,6 +116,47 @@ const Posts = () => {
     // Reply highlighting state (using single-execution pattern like Tips)
     const [capturedOldRepliesTimestamp, setCapturedOldRepliesTimestamp] = useState(0);
     const [repliesTimestampProcessed, setRepliesTimestampProcessed] = useState(false);
+
+    const loadMentions = useCallback(async (before = null) => {
+        if (!isAuthenticated || !identity) return;
+        try {
+            const page = await getMentions(identity, identity.getPrincipal(), before, 30);
+            setMentions((prev) => (before == null ? page.items : [...(prev || []), ...page.items]));
+            setMentionsNext(page.next.length ? page.next[0] : null);
+        } catch { setMentions([]); } // a forum from before mentions
+    }, [isAuthenticated, identity]);
+
+    useEffect(() => {
+        if (!isAuthenticated || !identity) return;
+        loadMentions();
+        getLastSeenMentions(identity, identity.getPrincipal()).then(setMentionsSeenBefore).catch(() => setMentionsSeenBefore(0n));
+    }, [isAuthenticated, identity, loadMentions]);
+
+    // opening the Mentions tab marks them seen (the header count clears)
+    useEffect(() => {
+        if (activeTab !== 'mentions' || !identity || mentionsSeenBefore === null) return;
+        markMentionsSeen(identity).then(() => window.dispatchEvent(new Event('mentionsSeen'))).catch(() => {});
+    }, [activeTab, identity, mentionsSeenBefore]);
+
+    const renderMentionCard = (m) => {
+        const isNew = mentionsSeenBefore !== null && m.created_at > mentionsSeenBefore;
+        const href = m.post_id.length ? `/post?postid=${m.post_id[0]}` : `/thread?threadid=${m.thread_id}`;
+        const info = getPrincipalDisplayInfoFromContext(m.by, principalNames, principalNicknames);
+        const plain = m.excerpt.replace(/\[@([^\]\n]{1,64})\]\([^)\s]+\)/g, '@$1');
+        return (
+            <div key={`m-${m.index}`} onClick={() => navigate(href)} role="link" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') navigate(href); }}
+                style={{ background: theme.colors.secondaryBg, border: `1px solid ${isNew ? '#ec4899' : theme.colors.border}`, borderRadius: '12px', padding: '0.9rem 1rem', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.85rem', color: theme.colors.secondaryText }}>
+                    <FaAt size={12} color="#ec4899" />
+                    <PrincipalDisplay principal={m.by} displayInfo={info} short={true} showCopyButton={false} isAuthenticated={isAuthenticated} />
+                    <span>mentioned you in {m.thread_title.length ? <strong style={{ color: theme.colors.primaryText }}>{m.thread_title[0]}</strong> : (m.post_id.length ? 'a post' : 'a thread')}</span>
+                    <span title={getFullDate(m.created_at)}>· {getRelativeTime(m.created_at)}</span>
+                    {isNew && <span style={{ background: '#ec489922', color: '#ec4899', borderRadius: 6, padding: '0 6px', fontSize: '0.75rem', fontWeight: 700 }}>new</span>}
+                </div>
+                <div style={{ marginTop: 6, color: theme.colors.primaryText, fontSize: '0.92rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{plain}</div>
+            </div>
+        );
+    };
 
     // Fetch posts data
     const fetchPostsData = useCallback(async () => {
@@ -216,8 +263,8 @@ const Posts = () => {
                     await markRepliesSeenUpTo(forumActor, currentTimestamp);
                     console.log(`🔥 REPLIES: UPDATED BACKEND TIMESTAMP ONCE: ${currentTimestamp}`);
                     
-                    // Step 4: Default to replies tab if new replies > 0
-                    setActiveTab('replies-to-me');
+                    // Step 4: Default to replies tab if new replies > 0 (unless the link asked for mentions)
+                    if (searchParams.get('tab') !== 'mentions') setActiveTab('replies-to-me');
                     console.log(`🔥 REPLIES: DEFAULTED TO REPLIES TAB (${newRepliesCount} new replies)`);
                 } else {
                     console.log('🔥 REPLIES: NO NEW REPLIES - NO BACKEND UPDATE');
@@ -724,6 +771,7 @@ const Posts = () => {
                     }}>
                         {[
                             { key: 'replies-to-me', label: 'Replies to Me', count: repliesToMe.length, icon: <FaReply size={14} />, color: theme.colors.accent },
+                            { key: 'mentions', label: 'Mentions', count: (mentions || []).length, icon: <FaAt size={14} />, color: '#ec4899' },
                             { key: 'my-posts', label: 'My Posts', count: myPosts.length, icon: <FaEdit size={14} />, color: postsPrimary },
                             { key: 'my-threads', label: 'My Threads', count: myThreads.length, icon: <FaList size={14} />, color: theme.colors.success }
                         ].map(tab => (
@@ -844,7 +892,20 @@ const Posts = () => {
                         </div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                            {activeTab === 'replies-to-me' ? (
+                            {activeTab === 'mentions' ? (
+                                mentions === null ? (
+                                    <div style={{ color: theme.colors.mutedText, padding: '1rem' }}>Loading mentions…</div>
+                                ) : mentions.length === 0 ? (
+                                    <div style={{ color: theme.colors.secondaryText, padding: '1.5rem', textAlign: 'center', lineHeight: 1.6 }}>
+                                        Nobody has mentioned you yet. When someone writes @ and picks your name in a forum post, it shows up here.
+                                    </div>
+                                ) : (
+                                    <>
+                                        {mentions.map(renderMentionCard)}
+                                        {mentionsNext != null && <button type="button" onClick={() => loadMentions(mentionsNext)} style={{ alignSelf: 'center', background: 'transparent', border: `1px solid ${theme.colors.border}`, color: theme.colors.secondaryText, borderRadius: 999, padding: '6px 16px', cursor: 'pointer' }}>More</button>}
+                                    </>
+                                )
+                            ) : activeTab === 'replies-to-me' ? (
                                 repliesToMe.length === 0 ? (
                                     renderEmptyState('replies')
                                 ) : (

@@ -10,6 +10,8 @@ import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { getFeedbackConfig, recentReports, reportDetails, sendReport, MAX_TITLE, MAX_PUBLIC_TEXT, MAX_PRIVATE_TEXT } from '../utils/feedback';
+import MentionTextarea from '../components/MentionTextarea';
+import { smsMentioned } from '../utils/mentions';
 
 const dateOf = (ns) => new Date(Number(BigInt(ns) / 1_000_000n)).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 const KINDS = {
@@ -67,6 +69,7 @@ export default function Feedback() {
         setSending(true); setError('');
         try {
             const r = await sendReport(identity, config, { kind, title: title.trim(), text: text.trim(), details: attached, security: isSecurity });
+            if (!isSecurity && r.threadId != null) smsMentioned(identity, { body: text.trim(), link: `https://app.sneeddao.com/thread?threadid=${r.threadId}`, where: 'a feedback report' });
             setSent({ ...r, security: isSecurity });
             setTitle(''); setText(''); setSecurity(false);
         } catch (e) { setError(e?.message || String(e)); }
@@ -130,7 +133,7 @@ export default function Feedback() {
                                         <label style={label} htmlFor="fb-title">{K.title}</label>
                                         <input id="fb-title" value={title} maxLength={MAX_TITLE} onChange={(e) => setTitle(e.target.value)} placeholder="A short title" style={input} />
                                         <label style={label} htmlFor="fb-text">Details</label>
-                                        <textarea id="fb-text" value={text} onChange={(e) => setText(e.target.value)} placeholder={K.placeholder} rows={8} style={{ ...input, resize: 'vertical', lineHeight: 1.5 }} />
+                                        <MentionTextarea id="fb-text" value={text} onChange={(e) => setText(e.target.value)} placeholder={K.placeholder} rows={8} style={{ ...input, resize: 'vertical', lineHeight: 1.5 }} />
                                         <div style={{ textAlign: 'right', fontSize: 12, color: text.length > maxText ? c.error : c.mutedText, marginTop: 4 }}>{text.length.toLocaleString()} / {maxText.toLocaleString()}</div>
 
                                         {kind === 'bug' && (
