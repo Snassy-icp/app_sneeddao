@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTheme } from './contexts/ThemeContext';
+import NftModel from './components/NftModel';
 import { getNftImage, getNftName, getNftDescription, formatNftMetadata, getNftAttributes, getNftLinks, getNftMedia } from './utils/NftUtils';
 import PrincipalInput from './components/PrincipalInput';
 import './NftCard.css';
@@ -244,7 +245,8 @@ const NftCard = ({ nft, collectionName, collectionSymbol, onSend , supportsIcrc3
                             </button>
                         </div>
                         
-                        {/* Its sound or video (animation_url) */}
+                        {/* Its sound, video or 3D model (animation_url) */}
+                        {media?.kind === 'model' && <div onClick={(e) => e.stopPropagation()} style={{ marginTop: '12px', aspectRatio: '1 / 1', background: theme.colors.secondaryBg, borderRadius: 8, overflow: 'hidden' }}><NftModel url={media.url} poster={imageUrl} alt={nftName} style={{ width: '100%', height: '100%' }} /></div>}
                         {media?.kind === 'audio' && <audio controls preload="none" src={media.url} onClick={(e) => e.stopPropagation()} style={{ width: '100%', marginTop: '12px', display: 'block' }} />}
                         {media?.kind === 'video' && <video controls preload="none" src={media.url} poster={imageUrl || undefined} onClick={(e) => e.stopPropagation()} style={{ width: '100%', marginTop: '12px', display: 'block', background: '#000', borderRadius: 8 }} />}
                         {/* Attributes (ICRC-97 or inline) */}

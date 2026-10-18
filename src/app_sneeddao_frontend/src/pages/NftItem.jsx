@@ -12,6 +12,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { fetchApprovals, getNftImage, getNftName, getNftDescription, getNftAttributes, getNftLinks, getNftMedia, formatNftMetadata, getSavedNftCollections, NFT_COLLECTIONS_STORAGE_KEY } from '../utils/NftUtils';
+import NftModel from '../components/NftModel';
 import { loadCollectionInfoCached, loadTokensCached, nftCollectionUrl } from '../components/NftAssetView';
 import { customStyles } from '../health/TreeView.jsx';
 import LockGas from '../components/LockGas';
@@ -101,6 +102,7 @@ function NftItem() {
                         <div style={{ ...card, padding: 0, overflow: 'hidden', alignSelf: 'start' }}>
                             <div style={{ aspectRatio: '1 / 1', background: theme.colors.tertiaryBg, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                                 {loading ? <FaSpinner className="health-spin" size={28} color={theme.colors.mutedText} />
+                                    : media?.kind === 'model' ? <NftModel url={media.url} poster={img && !imgBroken ? img : null} alt={name} style={{ width: '100%', height: '100%' }} />
                                     : img && !imgBroken ? <img src={img} alt={name} onError={() => setImgBroken(true)} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
                                     : <div style={{ textAlign: 'center', color: theme.colors.mutedText }}><FaImage size={48} color={primary} /><div style={{ fontSize: '0.8rem', marginTop: 8 }}>{token && !token.exists ? 'This token does not exist in the collection' : imgBroken ? 'The picture could not be loaded' : 'No picture in the metadata'}</div></div>}
                             </div>

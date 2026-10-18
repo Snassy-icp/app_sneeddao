@@ -22,6 +22,7 @@
     "@dfinity/ledger-icrc": "^2.0.0",
     "@dfinity/utils": "^2.0.0",
     "@emotion/styled": "^11.14.0",
+    "@google/model-viewer": "4.3.1",
     "@icp-sdk/canisters": "^3.4.0",
     "@icp-sdk/core": "^5.0.0",
     "react-dnd": "^16.0.1",
@@ -30,6 +31,7 @@
     "react-markdown": "^10.1.0",
     "react-router-dom": "^6.26.0",
     "reactflow": "^11.11.4",
-    "recharts": "^3.7.0"
+    "recharts": "^3.7.0",
+    "three": "0.183.2"
   }
 }

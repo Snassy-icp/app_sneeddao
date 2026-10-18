@@ -101,8 +101,8 @@ export function getNftAttributes(nft) {
     if (inline && inline[1].Map !== undefined) for (const [k, x] of inline[1].Map) out.push({ trait_type: k, value: x.Text ?? (x.Nat !== undefined ? x.Nat.toString() : x.Int !== undefined ? x.Int.toString() : '') });
     return out;
 }
-/// The NFT's sound or video: `animation_url` (the ERC-721 / ICRC-97 metadata key), inline or in its ICRC-97 document.
-/// Returns { url, kind: 'audio' | 'video' } or null; the kind is read from the file's extension, as marketplaces do.
+/// The NFT's sound, video or 3D model: `animation_url` (the ERC-721 / ICRC-97 metadata key), inline or in its ICRC-97 document.
+/// Returns { url, kind: 'audio' | 'video' | 'model' } or null; the kind is read from the file's extension, as marketplaces do.
 export function getNftMedia(nft) {
     const inline = (nft?.metadata || []).find(([k]) => String(k).toLowerCase() === 'animation_url');
     let url = inline && inline[1].Text !== undefined ? inline[1].Text : nft?.icrc97?.animation_url;
@@ -111,6 +111,7 @@ export function getNftMedia(nft) {
     const ext = (url.split(/[?#]/)[0].match(/\.([a-z0-9]+)$/i) || [])[1]?.toLowerCase();
     if (['mp3', 'ogg', 'oga', 'wav', 'm4a', 'aac', 'flac', 'opus'].includes(ext)) return { url, kind: 'audio' };
     if (['mp4', 'webm', 'ogv', 'mov', 'm4v'].includes(ext)) return { url, kind: 'video' };
+    if (['glb', 'gltf'].includes(ext)) return { url, kind: 'model' };
     return null;
 }
 

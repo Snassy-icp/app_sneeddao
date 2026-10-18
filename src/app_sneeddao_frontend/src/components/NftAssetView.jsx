@@ -131,7 +131,7 @@ export function NftAssetDetails({ collectionId, tokenIds, me = null }) {
                             <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
                                     <Link to={nftItemUrl(collectionId, id)} style={{ fontWeight: 600, color: theme.colors.primaryText, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</Link>
-                                    <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText, fontFamily: 'monospace', flexShrink: 0 }}>#{key}</span>
+                                    <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText, fontFamily: 'monospace', flexShrink: 0 }}>{media?.kind === 'model' && <span title="Has a 3D model - open it to turn it around" style={{ marginRight: 6, fontFamily: 'inherit', fontWeight: 700, color: theme.colors.accent }}>3D</span>}#{key}</span>
                                 </div>
                                 {desc && <div style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{desc}</div>}
                                 {ownerText && (
