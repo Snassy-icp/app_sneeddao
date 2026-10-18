@@ -15,6 +15,7 @@
     "staging": "twapx-riaaa-aaaak-qlojq-cai"
   },
   "sneed_avatars": {
+    "ic": "ev5f4-4yaaa-aaaad-qmk3q-cai",
     "staging": "rapit-ziaaa-aaaad-ag6nq-cai"
   },
   "sneed_guardian": {
@@ -29,18 +30,22 @@
     "staging": "25fsc-7yaaa-aaaal-qjt5q-cai"
   },
   "sneed_neuron_names": {
+    "ic": "e46oa-kqaaa-aaaad-qmk2a-cai",
     "staging": "rjmdp-paaaa-aaaad-ag6ma-cai"
   },
   "sneed_neuron_nicknames": {
+    "ic": "es4di-raaaa-aaaad-qmk3a-cai",
     "staging": "rhooh-uqaaa-aaaad-ag6na-cai"
   },
   "sneed_pad": {
     "staging": "symdn-ciaaa-aaaal-qxobq-cai"
   },
   "sneed_pid_names": {
+    "ic": "ejz7n-lyaaa-aaaad-qmkzq-cai",
     "staging": "qechb-aiaaa-aaaad-ag6lq-cai"
   },
   "sneed_pid_nicknames": {
+    "ic": "e37iu-hiaaa-aaaad-qmk2q-cai",
     "staging": "ronf3-cyaaa-aaaad-ag6mq-cai"
   },
   "sneed_premium": {
@@ -48,6 +53,7 @@
     "staging": "sf5tm-dqaaa-aaaae-qgyla-cai"
   },
   "sneed_profiles": {
+    "ic": "fytbs-tqaaa-aaaad-qmk4a-cai",
     "staging": "rviz6-yaaaa-aaaad-ag6oa-cai"
   },
   "sneed_sms": {
