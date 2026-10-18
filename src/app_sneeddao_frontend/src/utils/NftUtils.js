@@ -197,21 +197,27 @@ export function getNftDescription(metadata, nft) {
 /**
  * Format Value type for display
  */
-export function formatValue(value) {
+export function formatValue(value, depth = 0) {
     if (!value) return 'null';
-    
+
     if (value.Text !== undefined) return value.Text;
     if (value.Nat !== undefined) return value.Nat.toString();
     if (value.Int !== undefined) return value.Int.toString();
-    if (value.Blob !== undefined) return `[Blob: ${value.Blob.length} bytes]`;
+    // short blobs (keys, hashes, subaccounts) as hex; long ones by size. Small arrays and maps show what is in them.
+    if (value.Blob !== undefined) {
+        const b = value.Blob;
+        return b.length <= 32 ? Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('') : `[Blob: ${b.length} bytes]`;
+    }
     if (value.Array !== undefined) {
+        if (depth < 2 && value.Array.length <= 8) return `[${value.Array.map((v) => formatValue(v, depth + 1)).join(', ')}]`;
         return `[Array: ${value.Array.length} items]`;
     }
     if (value.Map !== undefined) {
+        if (depth < 2 && value.Map.length <= 8) return `{ ${value.Map.map(([k, v]) => `${k}: ${formatValue(v, depth + 1)}`).join(', ')} }`;
         return `[Map: ${value.Map.length} entries]`;
     }
-    
-    return JSON.stringify(value);
+
+    return JSON.stringify(value, (k, v) => (typeof v === 'bigint' ? v.toString() : v));
 }
 
 /**
