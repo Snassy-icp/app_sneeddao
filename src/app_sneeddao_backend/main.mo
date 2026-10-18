@@ -4153,6 +4153,23 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     #ok();
   };
 
+  // ---- Feedback: bug reports and ideas (the /feedback page) ----
+  // The page posts public reports as threads in these Sneed forum topics, and sends every report,
+  // public or private, to the recipients as a Sneed SMS message from the reporter.
+  type FeedbackConfig = { recipients : [Principal]; bug_topic : ?Nat; idea_topic : ?Nat };
+  var feedback_config : FeedbackConfig = { recipients = []; bug_topic = null; idea_topic = null };
+  transient let MAX_FEEDBACK_RECIPIENTS : Nat = 5; // what one Sneed SMS message can reach
+
+  public query func get_feedback_config() : async FeedbackConfig { feedback_config };
+
+  public shared ({ caller }) func admin_set_feedback_config(c : FeedbackConfig) : async Result.Result<(), Text> {
+    if (not is_admin(caller)) return #err("Only admins can set the feedback settings");
+    if (c.recipients.size() > MAX_FEEDBACK_RECIPIENTS) return #err("At most " # Nat.toText(MAX_FEEDBACK_RECIPIENTS) # " recipients: a Sneed SMS message reaches no more");
+    for (p in c.recipients.vals()) if (Principal.isAnonymous(p)) return #err("The anonymous principal cannot receive reports");
+    feedback_config := c;
+    #ok();
+  };
+
   /// ICP, SNEED and the whitelisted tokens: ledgers we trust to report their own blocks.
   func donation_ledger_ok(ledger : Principal) : Bool {
     let t = Principal.toText(ledger);
@@ -4246,6 +4263,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     #admin_clear_avatar : Any;
     #admin_get_donations : Any;
     #admin_set_donation_account : Any;
+    #admin_set_feedback_config : Any;
     #admin_set_donation_hidden : Any;
     #admin_export_avatars : Any;
     #admin_export_neuron_nicknames : Any;
@@ -4256,6 +4274,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     #caller_is_admin : Any;
     #check_ban_status : Any;
     #get_donation_account : Any;
+    #get_feedback_config : Any;
     #get_donation_totals : Any;
     #get_donations : Any;
     #register_donation : () -> Donations.RegisterArgs;
@@ -4420,6 +4439,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
         or #get_names_canisters _
         or #get_names_frozen _
         or #get_donation_account _
+        or #get_feedback_config _
         or #get_donation_totals _
         or #get_donations _
         or #admin_get_donations _
