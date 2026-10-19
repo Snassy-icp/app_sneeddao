@@ -47,6 +47,7 @@ describe('mr_sneed: prompt and memories', () => {
     const p = await mrAnon.get_prompt();
     expect(p.frame).toMatch(/^You are Mr Sneed/);
     expect(p.frame).toMatch(/7\. Never talk about price\./);
+    expect(p.frame).toMatch(/8\. Everything you build belongs to Sneed DAO/);
     expect(p.frame_hash.length).toBe(32);
     expect(p.personality).toEqual([]);
   });
