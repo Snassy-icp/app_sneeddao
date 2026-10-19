@@ -2497,7 +2497,7 @@ function Neuron() {
                                                         background: theme.colors.primaryBg, border: `1px solid ${theme.colors.border}`
                                                     }}>
                                                         <div>
-                                                            <Link to={`/proposal?id=${vote.proposal_id}&sns=${selectedSnsRoot}`}
+                                                            <Link to={`/proposal?proposalid=${vote.proposal_id}&sns=${selectedSnsRoot}`}
                                                                 style={{ color: neuronPrimary, textDecoration: 'none', fontWeight: '600' }}
                                                             >
                                                                 #{vote.proposal_id.toString()}
