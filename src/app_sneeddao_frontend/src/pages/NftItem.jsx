@@ -5,7 +5,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent } from '@dfinity/agent';
-import { FaImage, FaSpinner, FaSync, FaExternalLinkAlt, FaArrowLeft, FaTag, FaWallet } from 'react-icons/fa';
+import { FaImage, FaSpinner, FaSync, FaExternalLinkAlt, FaArrowLeft, FaTag, FaWallet, FaUserCircle } from 'react-icons/fa';
 import Header from '../components/Header';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -18,6 +18,8 @@ import { loadCollectionInfoCached, loadTokensCached, nftCollectionUrl } from '..
 import { customStyles } from '../health/TreeView.jsx';
 import LockGas from '../components/LockGas';
 import { canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
+import { namingServiceEnabled, setMyNftAvatar } from '../utils/NamingService';
+import { useNaming } from '../NamingContext';
 
 const primary = '#a18cd1';
 const getHost = () => (process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943');
@@ -61,6 +63,13 @@ function NftItem() {
     const ownerText = token?.owner?.owner?.toString?.() || null;
     const ownerSub = token?.owner?.subaccount?.length ? uint8ArrayToHex(token.owner.subaccount[0]) : null;
     const mine = !!(me && ownerText === me);
+    const { setKnownAvatar } = useNaming();
+    const [avatarState, setAvatarState] = useState(null); // null | 'saving' | 'done' | error text
+    const useAsAvatar = async () => {
+        setAvatarState('saving');
+        const r = await setMyNftAvatar(identity, collection, idText);
+        if ('ok' in r) { setAvatarState('done'); setKnownAvatar?.(me, img); } else setAvatarState(r.err);
+    };
 
     // approvals are only meaningful to the owner and only on ICRC-37 collections
     useEffect(() => {
@@ -143,8 +152,14 @@ function NftItem() {
                                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
                                         <Link to={`/sneedex_create?nft=${collection}:${idText}`} style={btn('#a78bfa')}><FaTag /> Sell on Sneedex</Link>
                                         <Link to="/nft" onClick={() => { if (!inWallet) addToWallet(); }} style={btn()}><FaWallet /> {inWallet ? 'Open in wallet' : 'Add collection to wallet'}</Link>
+                                        {namingServiceEnabled && img && (
+                                            <button type="button" onClick={useAsAvatar} disabled={avatarState === 'saving' || avatarState === 'done'} style={btn()} title="Show this NFT next to your name while you own it">
+                                                <FaUserCircle /> {avatarState === 'saving' ? 'Setting…' : avatarState === 'done' ? 'Your avatar now' : 'Use as my avatar'}
+                                            </button>
+                                        )}
                                     </div>
                                 )}
+                                {mine && avatarState && !['saving', 'done'].includes(avatarState) && <div style={{ color: theme.colors.error, fontSize: '0.8rem', marginTop: 8 }}>{avatarState}</div>}
                                 {!mine && isAuthenticated && !inWallet && <div style={{ marginTop: 10 }}><button type="button" onClick={addToWallet} style={btn()}>Add collection to my wallet</button></div>}
                             </div>
 

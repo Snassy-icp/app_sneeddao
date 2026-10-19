@@ -4,7 +4,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import AccountPanel from '../components/AccountPanel';
-import { namingServiceEnabled } from '../utils/NamingService';
+import { namingServiceEnabled, getMyNftAvatar } from '../utils/NamingService';
+import NftAvatarPicker from '../components/NftAvatarPicker';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, fetchSnsLogo } from '../utils/SnsUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
@@ -172,8 +173,10 @@ export default function Me() {
         if (!identity) return;
         let alive = true;
         getAvatar(identity, identity.getPrincipal()).then((u) => { if (alive) setAvatarUrl(u); }).catch(() => {});
+        if (namingServiceEnabled) getMyNftAvatar(identity).then((n) => { if (alive) setNftAvatar(n); }).catch(() => {});
         return () => { alive = false; };
     }, [identity]);
+    const [nftAvatar, setNftAvatar] = useState(null); // { collection, token_id, owner } while an NFT is the avatar
     const [avatarEditing, setAvatarEditing] = useState(false);
     const [avatarDraft, setAvatarDraft] = useState('');
     const [avatarBusy, setAvatarBusy] = useState(false);
@@ -1813,6 +1816,16 @@ export default function Me() {
                                             </div>
                                         )}
                                         {avatarError && <div style={{ color: theme.colors.error, fontSize: '0.8rem' }}>{avatarError}</div>}
+                                        {namingServiceEnabled && (
+                                            <NftAvatarPicker identity={identity} accent={mePrimary} current={nftAvatar} onChanged={async (url, ref) => {
+                                                setNftAvatar(ref);
+                                                const me = identity.getPrincipal();
+                                                const shown = url || await getAvatar(identity, me).catch(() => null);
+                                                setAvatarUrl(shown || null);
+                                                namingSetKnownAvatar?.(me.toText(), shown || null);
+                                                if (url) setAvatarEditing(false);
+                                            }} />
+                                        )}
                                         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                                             <button type="button" disabled={avatarBusy || !avatarDraft} onClick={() => saveAvatar(avatarDraft)} style={{ background: mePrimary, border: 'none', borderRadius: '10px', color: 'white', padding: '0.6rem 1rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, opacity: avatarBusy || !avatarDraft ? 0.6 : 1 }}>{avatarBusy ? 'Saving…' : 'Save avatar'}</button>
                                             {avatarUrl && <button type="button" disabled={avatarBusy} onClick={() => saveAvatar('')} style={{ background: 'transparent', border: `1px solid ${theme.colors.error}`, borderRadius: '10px', color: theme.colors.error, padding: '0.6rem 1rem', cursor: 'pointer', fontSize: '0.85rem' }}>Remove avatar</button>}

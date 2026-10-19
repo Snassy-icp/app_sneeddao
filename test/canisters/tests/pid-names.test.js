@@ -2,12 +2,13 @@
 // hotkeys and merging, links proven by a neuron's staking subaccount, canister names by
 // controllers and SNS governance, verification that belongs to the exact name, case-insensitive
 // uniqueness, search as you type, paging, the changes feed, moderation through the backend,
-// the one-time import, the ICRC-3 log, the ingress guard and an upgrade.
+// the one-time import, NFT avatars, the ICRC-3 log, the ingress guard and an upgrade.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createHash } from 'node:crypto';
 import { Principal } from '@icp-sdk/core/principal';
 import { createPic, install, actorAs, admin, alice, bob, carol, user, T, unwrap, errOf, wasm, refusedAtIngress, asUpdates } from '../lib/pic.js';
 import { hubSnsIdl } from '../lib/hub.js';
+import { icrc7Idl, icrc7Init } from '../lib/idl.js';
 import { verifyLog, archiveIdl, btype, txField } from '../lib/icrc3.js';
 import { idlFactory as namesIdl } from '../build/sneed_pid_names.did.js';
 
@@ -338,10 +339,56 @@ describe('sneed_pid_names', () => {
     expect((await names.stats()).import_closed).toBe(true);
   });
 
+  it('shows an ICRC-7 NFT a member owns as the avatar, and stops when it changes hands', async () => {
+    const erin = user('nft-erin'), frank = user('nft-frank');
+    const acct = (p) => ({ owner: p, subaccount: [] });
+    const nftId = await install(pic, { name: 'Icrc7Demo', initTypes: icrc7Init, initArgs: [{ name: 'Avatar Cats', symbol: 'ACAT', description: [], logo: [] }], targetSubnetId: appSubnet });
+    const nft = actorAs(pic, icrc7Idl, nftId, admin);
+    const [one, two] = [unwrap(await nft.mint(acct(erin), [['name', { Text: 'Cat 1' }]])), unwrap(await nft.mint(acct(frank), [['name', { Text: 'Cat 2' }]]))];
+    expect(await refusedAtIngress(as(anon).set_my_nft_avatar([{ collection: nftId, token_id: one }]))).toBe(true);
+
+    // only an NFT a member of the account owns
+    expect(errOf(await as(erin).set_my_nft_avatar([{ collection: nftId, token_id: two }]))).toMatch(/do not own/);
+    expect(errOf(await as(erin).set_my_nft_avatar([{ collection: nftId, token_id: 999n }]))).toMatch(/does not exist/);
+    expect(errOf(await as(erin).set_my_nft_avatar([{ collection: moderatorId, token_id: one }]))).toMatch(/did not answer/);
+    expect(await nameOf(erin)).toBeUndefined(); // refused sets create no account
+    unwrap(await as(erin).set_my_nft_avatar([{ collection: nftId, token_id: one }]));
+    const shown = (await nameOf(erin)).nft_avatar[0];
+    expect(shown.collection.toText()).toBe(nftId.toText());
+    expect(shown.token_id).toBe(one);
+    expect(shown.owner.toText()).toBe(erin.toText());
+    const account = (await names.get_account_of(erin))[0];
+    expect(account.nft_avatar[0].token_id).toBe(one);
+    expect(unwrap(await as(frank).refresh_nft_avatar(account.id))).toBe('Still owned');
+
+    // it changes hands: anyone may have it cleared, and the empty account goes with it
+    const sent = await actorAs(pic, icrc7Idl, nftId, erin).icrc7_transfer([{ from_subaccount: [], to: acct(frank), token_id: one, memo: [], created_at_time: [] }]);
+    expect('Ok' in sent[0][0]).toBe(true);
+    expect(unwrap(await as(frank).refresh_nft_avatar(account.id))).toMatch(/changed hands/);
+    expect(await nameOf(erin)).toBeUndefined();
+
+    // a named account keeps its name and other avatar; null stops showing the NFT
+    unwrap(await as(frank).set_my_name('Frank Of Cats'));
+    unwrap(await as(frank).set_my_avatar([{ url: 'https://example.com/frank.png' }]));
+    unwrap(await as(frank).set_my_nft_avatar([{ collection: nftId, token_id: one }]));
+    expect((await nameOf(frank)).nft_avatar[0].token_id).toBe(one);
+    expect((await names.search({ prefix: 'Frank Of', limit: 5n, kind: [] }))[0].nft_avatar[0].token_id).toBe(one);
+    expect(unwrap(await as(frank).set_my_nft_avatar([]))).toBe('NFT avatar cleared');
+    const after = await nameOf(frank);
+    expect(after.nft_avatar).toEqual([]);
+    expect(after.avatar[0].url).toBe('https://example.com/frank.png');
+    expect(unwrap(await as(frank).set_my_nft_avatar([]))).toBe('Unchanged');
+
+    // admins clearing an avatar clear the NFT too
+    unwrap(await as(frank).set_my_nft_avatar([{ collection: nftId, token_id: two }]));
+    unwrap(await names.admin_clear_avatar(frank));
+    expect((await nameOf(frank)).nft_avatar).toEqual([]);
+  });
+
   it('keeps an ICRC-3 log of it all that verifies', async () => {
     const { blocks } = await verifyLog(names, namesId, rootKey, archiveActor);
     const types = new Set(blocks.map(btype));
-    for (const t of ['account_create', 'account_delete', 'name_set', 'avatar_set', 'member_link', 'member_unlink', 'member_update', 'hotkey_add', 'account_merge', 'verify', 'unverify', 'canister_name_set', 'canister_run_by', 'config_update', 'import']) {
+    for (const t of ['account_create', 'account_delete', 'name_set', 'avatar_set', 'member_link', 'member_unlink', 'member_update', 'hotkey_add', 'account_merge', 'verify', 'unverify', 'canister_name_set', 'canister_run_by', 'config_update', 'import', 'nft_avatar_set']) {
       expect(types.has(`sneednames_${t}`), t).toBe(true);
     }
     const merge = blocks.find((b) => btype(b) === 'sneednames_account_merge');

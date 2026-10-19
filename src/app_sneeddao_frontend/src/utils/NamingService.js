@@ -13,6 +13,7 @@ import { createActor as createPidNicknames, canisterId as pidNicknamesEnv } from
 import { createActor as createNeuronNicknames, canisterId as neuronNicknamesEnv } from 'declarations/sneed_neuron_nicknames';
 import { createActor as createAvatars, canisterId as avatarsEnv } from 'declarations/sneed_avatars';
 import { createActor as createProfiles, canisterId as profilesEnv } from 'declarations/sneed_profiles';
+import { nftAvatarRef, nftAvatarKey, resolveNftAvatars, forgetNftAvatars } from './nftAvatars';
 
 // A canister id, or null. dfx puts made-up ids (8-byte principals, not ending in -cai) into the
 // build for canisters that have none on its network, so having a value is not enough: only a
@@ -209,16 +210,37 @@ export async function getNeuronNickname(identity, root, neuronId) {
     return opt(n) ? [opt(n).nickname] : [];
 }
 
-/// Avatars of up to 500 principals: Map<principalText, url>.
+/// Avatars of up to 500 principals: Map<principalText, url>. An NFT avatar wins while its owner
+/// still holds the NFT; otherwise the account's other avatar shows.
 export async function getAvatars(identity, principals) {
     const list = principals.slice(0, 500).map(toPrincipal);
     const infos = await pidNamesActor(identity).get_names(list);
+    const nfts = list.map((_, i) => nftAvatarRef(opt(infos[i])?.nft_avatar ?? []));
+    const resolved = nfts.some(Boolean) ? await resolveNftAvatars(nfts.filter(Boolean)) : new Map();
     const out = new Map();
     list.forEach((p, i) => {
-        const url = avatarUrl(opt(infos[i])?.avatar);
+        const url = (nfts[i] && resolved.get(nftAvatarKey(nfts[i]))) || avatarUrl(opt(infos[i])?.avatar);
         if (url) out.set(p.toText(), url);
     });
     return out;
+}
+
+/// Show an ICRC-7 NFT you own as your avatar (collection id text and token id), or stop (null).
+export async function setMyNftAvatar(identity, collection, tokenId) {
+    try {
+        const nft = collection == null ? [] : [{ collection: toPrincipal(collection), token_id: BigInt(tokenId) }];
+        const r = await pidNamesActor(identity).set_my_nft_avatar(nft);
+        forgetNftAvatars();
+        return r;
+    } catch (e) {
+        return { err: e.message || String(e) };
+    }
+}
+
+/// Your account's NFT avatar as { collection, token_id, owner } texts, or null.
+export async function getMyNftAvatar(identity) {
+    const account = opt(await pidNamesActor(identity).get_account_of(identity.getPrincipal()));
+    return account ? nftAvatarRef(account.nft_avatar) : null;
 }
 
 export const setPrincipalName = (identity, name) => pidNamesActor(identity).set_my_name(name);
