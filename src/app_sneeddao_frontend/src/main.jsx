@@ -15,3 +15,10 @@ completePendingCacheClear().finally(() => {
     </React.StrictMode>,
   );
 });
+
+// Installable as an app (public/sw.js caches nothing; it is there for installs and, later, push).
+if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((e) => console.warn('service worker not registered', e));
+  });
+}
