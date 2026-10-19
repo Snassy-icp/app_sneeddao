@@ -13,6 +13,7 @@ const SNEED_LETTER = 'https://xb24g-dyaaa-aaaag-qcrmq-cai.icp0.io/';
 // 5vdms-…, has no controllers). Old SNEED converts 1:1 at the DAO's converter.
 const OLD_LEDGER = 'r7cp6-6aaaa-aaaag-qco5q-cai';
 const CONVERTER = '5ceyv-syaaa-aaaag-qc43q-cai';
+const CONVERTER_APP = 'https://4pk43-5qaaa-aaaag-qc44a-cai.icp0.io/'; // the converter's frontend, where people convert
 const dashboard = (id) => `https://dashboard.internetcomputer.org/canister/${id}`;
 const supplyIdl = ({ IDL }) => IDL.Service({ icrc1_total_supply: IDL.Func([], [IDL.Nat], ['query']) });
 const ROAD = [
@@ -120,7 +121,10 @@ export default function Lore() {
                         {oldSupply != null && <> Old SNEED still out there: <strong style={{ color: c.primaryText }}>{oldSupply.toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong> of the original 10,000.</>}
                     </p>
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                        {[['Old SNEED ledger', OLD_LEDGER], ['The converter', CONVERTER]].map(([label, id]) => (
+                        <a href={CONVERTER_APP} target="_blank" rel="noopener noreferrer" style={{ padding: '9px 16px', borderRadius: 999, border: `1px solid ${c.accent}`, background: c.accent, color: '#fff', textDecoration: 'none', fontWeight: 700 }}>
+                            Convert old SNEED <FaExternalLinkAlt size={10} />
+                        </a>
+                        {[['Old SNEED ledger', OLD_LEDGER], ['The converter canister', CONVERTER]].map(([label, id]) => (
                             <a key={id} href={dashboard(id)} target="_blank" rel="noopener noreferrer" style={{ padding: '9px 16px', borderRadius: 999, border: `1px solid ${c.border}`, color: c.primaryText, textDecoration: 'none', fontWeight: 600 }}>
                                 {label} <span style={{ color: c.mutedText, fontFamily: 'monospace', fontSize: 12 }}>{id.slice(0, 5)}…</span> <FaExternalLinkAlt size={10} />
                             </a>
