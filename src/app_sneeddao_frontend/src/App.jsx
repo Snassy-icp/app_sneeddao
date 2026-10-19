@@ -68,6 +68,7 @@ import AdminSnsJailbreak from './pages/AdminSnsJailbreak';
 import RewardsAdmin from './pages/admin/Rewards';
 import Projects from './pages/Projects';
 import PairApp from './pages/PairApp';
+import Notifications from './pages/Notifications';
 import Rewards from './pages/Rewards';
 import Disclaimer from './pages/Disclaimer';
 import Principal from './pages/Principal';
@@ -248,6 +249,7 @@ function App() {
                     <Route path="/partners" element={<Partners />} />
                     <Route path="/projects" element={<Projects />} />
                     <Route path="/pair" element={<PairApp />} />
+                    <Route path="/notifications" element={<Notifications />} />
                     <Route path="/proposals" element={<Proposals />} />
                     <Route path="/icp_proposals" element={<IcpProposals />} />
                     <Route path="/icp_proposal" element={<IcpProposal />} />

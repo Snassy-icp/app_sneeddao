@@ -6,6 +6,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import AccountPanel from '../components/AccountPanel';
 import { namingServiceEnabled, getMyNftAvatar } from '../utils/NamingService';
 import NftAvatarPicker from '../components/NftAvatarPicker';
+import { notificationsEnabled } from '../utils/NotificationsService';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, fetchSnsLogo } from '../utils/SnsUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
@@ -2676,6 +2677,15 @@ export default function Me() {
                                         </div>
                                     </SettingItem>
                                 </SettingsSection>
+
+                                {/* Notifications from apps (sneed_notifications), managed on their own page */}
+                                {notificationsEnabled && (
+                                    <Link to="/notifications" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', margin: '0 0 12px', borderRadius: 12, border: `1px solid ${theme.colors.border}`, background: theme.colors.secondaryBg, color: theme.colors.primaryText, textDecoration: 'none' }}>
+                                        <FaBell size={16} color="#f59e0b" />
+                                        <span style={{ flex: 1 }}><strong>Notifications from apps</strong><span style={{ display: 'block', fontSize: '0.8rem', color: theme.colors.mutedText }}>Which apps may notify you, where, quiet hours, channels</span></span>
+                                        <span style={{ color: theme.colors.mutedText }}>→</span>
+                                    </Link>
+                                )}
 
                                 {/* Notification Bar Settings */}
                                 <SettingsSection
