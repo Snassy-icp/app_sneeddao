@@ -186,7 +186,7 @@ export class DexAggregator {
    * @param {string}  params.outputToken
    * @param {number}  params.slippage
    * @param {string}  [params.preferredStandard]
-   * @returns {Promise<{ distribution: number, totalOut: bigint, icpswapQuote: SwapQuote|null, kongQuote: SwapQuote|null }|null>}
+   * @returns {Promise<{ distribution: number, totalOut: bigint, icpswapQuote: import('./types').SwapQuote|null, kongQuote: import('./types').SwapQuote|null }|null>}
    */
   async getQuoteForDistribution({
     totalAmount, distribution, inputToken, outputToken, slippage, preferredStandard,

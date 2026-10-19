@@ -53,8 +53,8 @@ function saveCachedStatus(principalStr, isPremium, expiration) {
 /**
  * Hook to check premium membership status for a principal
  * Results are cached in localStorage until membership expiration
- * @param {Identity} identity - User identity
- * @param {Principal} principal - Principal to check (defaults to identity's principal)
+ * @param {import('@dfinity/agent').Identity} identity - User identity
+ * @param {import('@dfinity/principal').Principal} principal - Principal to check (defaults to identity's principal)
  * @returns {{ isPremium: boolean, expiration: bigint|null, loading: boolean, error: string|null, refresh: function }}
  */
 export function usePremiumStatus(identity, principal = null) {

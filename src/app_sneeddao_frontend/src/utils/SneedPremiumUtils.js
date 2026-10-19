@@ -269,7 +269,7 @@ const sneedPremiumIdlFactory = ({ IDL }) => {
 
 /**
  * Create a Sneed Premium actor instance
- * @param {Identity} identity - Optional identity for authenticated calls
+ * @param {import('@dfinity/agent').Identity} identity - Optional identity for authenticated calls
  * @returns {Actor} Sneed Premium actor
  */
 export const createSneedPremiumActor = async (identity = null) => {

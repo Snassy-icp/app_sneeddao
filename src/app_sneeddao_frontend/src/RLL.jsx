@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from './AuthContext';
@@ -653,7 +653,9 @@ function RLL() {
         fetchUserBalances();
     }, [isAuthenticated, identity]);
 
-    // Fetch import status
+    // Fetch import status (the admin buttons below refresh it through this ref)
+    const fetchImportStatusRef = useRef(null);
+    const fetchImportStatus = async () => { await fetchImportStatusRef.current?.(); };
     useEffect(() => {
         const fetchImportStatus = async () => {
             console.log('Starting to fetch import status...');
@@ -739,6 +741,7 @@ function RLL() {
             }
         };
 
+        fetchImportStatusRef.current = fetchImportStatus;
         fetchImportStatus();
         
         // Poll faster (5s) when cycle is active, slower (30s) when idle

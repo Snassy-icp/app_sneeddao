@@ -78,7 +78,7 @@ const icrc1IdlFactory = ({ IDL: idl }) => {
 /**
  * Create an ICRC-1 ledger actor
  * @param {string} ledgerId - Ledger canister ID
- * @param {Identity} identity - Optional identity for authenticated calls
+ * @param {import('@dfinity/agent').Identity} identity - Optional identity for authenticated calls
  * @returns {Actor} ICRC-1 ledger actor
  */
 export const createLedgerActor = async (ledgerId, identity = null) => {
@@ -96,7 +96,7 @@ export const createLedgerActor = async (ledgerId, identity = null) => {
 
 /**
  * Create a Sneedex actor instance
- * @param {Identity} identity - Optional identity for authenticated calls
+ * @param {import('@dfinity/agent').Identity} identity - Optional identity for authenticated calls
  * @returns {Actor} Sneedex actor
  */
 export const createSneedexActor = (identity = null) => {

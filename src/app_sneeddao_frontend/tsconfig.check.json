@@ -1,0 +1,20 @@
+{
+  // `npm run check`: type-check the JavaScript for the mistakes that break at runtime (see
+  // scripts/check.mjs for which errors count). The build itself does not check JavaScript.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "strict": false,
+    "noEmit": true,
+    "jsx": "preserve",
+    "baseUrl": ".",
+    "paths": {
+      "declarations/*": ["../declarations/*"],
+      "external/*": ["../external/*"]
+    },
+    "types": ["vite/client"]
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.*", "dist", "node_modules"]
+}

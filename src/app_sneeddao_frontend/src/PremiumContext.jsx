@@ -49,7 +49,7 @@ export function PremiumProvider({ children }) {
 
     /**
      * Check if a principal is a premium member
-     * @param {string|Principal} principal - The principal to check
+     * @param {string|import('@dfinity/principal').Principal} principal - The principal to check
      * @returns {boolean} True if the principal is an active premium member
      */
     const isPremiumMember = useCallback((principal) => {
