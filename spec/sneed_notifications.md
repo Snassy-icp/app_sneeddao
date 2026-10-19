@@ -92,13 +92,18 @@ Plus:
 ```
 register_app({ name; logo; canisters : [Principal]; topics : [{ id : Text; title : Text; description : Text; level : Level }] })
 request_permission(user)               // shows up in the user's centre
-notify({ user : Principal; topic : Text; title : Text; body : Text; link : ?Text; dedupe : ?Text })
+notify({ user : Principal; topic : Text; title : Text; body : Text; link : ?Text; dedupe : ?Text; sponsored : Bool })
   -> { #queued : Nat; #not_allowed; #rate_limited; #no_funds }
 notify_batch(vec ...)
 get_receipts(ids)                      // queued, delivered per channel, failed, suppressed (quiet hours, muted)
 ```
 
 - Called only from a registered canister (or its controllers, for testing).
+- `sponsored = true`: the dapp pays for this message from its own balance (top up like any
+  balance), e.g. for its own important alerts. If the dapp's balance can't cover it, the call
+  fails with `#no_funds` rather than falling back to the user. Otherwise the user's balance pays.
+  Spending caps still apply to what the *user* pays; sponsored messages count only toward the
+  per-app message cap.
 - `dedupe` folds repeats (e.g. "cycles low" every hour → one message until it changes).
 - The dapp never learns a user's channels or contact details, only whether a message was
   delivered somewhere.
@@ -156,7 +161,7 @@ pays for every member getting a real SMS whenever a canister runs low.
   Discord, Telegram and email the cost of one outcall plus a margin; real SMS the provider's price.
 - **Even the `notify` call is charged to the user**, not the dapp: the cost of queueing and
   delivering lands on the account of the person who chose to receive it. A dapp may *sponsor*
-  its users' notifications instead (a dapp balance that pays first), e.g. for its own alerts.
+  a message instead: `notify` with `sponsored = true` charges the dapp's own balance (§3).
 - **Empty balance:** messages still go to the "always copy to" channel (Sneed SMS), which the
   service carries at near-zero cost; paid channels pause until the user tops up.
 - **Shared plans (Q):** a bundle sold by the DAO (e.g. "1,000 push messages a month") or included
