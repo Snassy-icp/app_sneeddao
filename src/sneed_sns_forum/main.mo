@@ -1,3 +1,4 @@
+import Array "mo:base/Array";
 import Principal "mo:base/Principal";
 import Map "mo:map/Map";
 import Dedup "mo:dedup";
@@ -115,6 +116,11 @@ persistent actor SneedSNSForum {
     let stable_mention_keys = Map.new<Text, ()>();
     let stable_user_last_seen_mentions = Map.new<Principal, Int>();
     let stable_mention_sms = Map.new<Principal, ()>();
+
+    // Sneed Notifications (spec/sneed_notifications.md): when set, replies, mentions and tips are
+    // also sent there, for members who allowed Sneed Hub to notify them. Best effort: the forum
+    // never waits on it.
+    var stable_notifications : ?Principal = null;
     
     // Premium configuration and cache
     var stable_premium_config : T.PremiumConfig = {
@@ -250,7 +256,7 @@ persistent actor SneedSNSForum {
             };
         };
         let r = Lib.create_thread(state, caller, input, body_max_override);
-        switch (r) { case (#ok(id)) recordMentions(caller, id, null, input.body); case _ {} };
+        switch (r) { case (#ok(id)) { let m = recordMentions(caller, id, null, input.body); await* notifyMentions(id, null, input.body, m) }; case _ {} };
         r
     };
 
@@ -268,7 +274,7 @@ persistent actor SneedSNSForum {
             };
         };
         let r = Lib.update_thread(state, caller, id, title, body, body_max_override);
-        switch (r) { case (#ok) recordMentions(caller, id, null, body); case _ {} };
+        switch (r) { case (#ok) { let m = recordMentions(caller, id, null, body); await* notifyMentions(id, null, body, m) }; case _ {} };
         r
     };
 
@@ -321,7 +327,13 @@ persistent actor SneedSNSForum {
         };
         let (result, updated_cache) = await Lib.create_post_with_sns(state, caller, thread_id, reply_to_post_id, title, body, sns_cache, body_max_override);
         sns_cache := updated_cache;
-        switch (result) { case (#ok(post_id)) recordMentions(caller, thread_id, ?post_id, body); case _ {} };
+        switch (result) {
+            case (#ok(post_id)) {
+                let m = recordMentions(caller, thread_id, ?post_id, body);
+                await* notifyPost(caller, thread_id, reply_to_post_id, post_id, body, m);
+            };
+            case _ {};
+        };
         result
     };
 
@@ -340,7 +352,7 @@ persistent actor SneedSNSForum {
         };
         let r = Lib.update_post(state, caller, id, title, body, body_max_override);
         switch (r, Map.get(state.posts, Map.nhash, id)) {
-            case (#ok, ?post) recordMentions(caller, post.thread_id, ?id, body);
+            case (#ok, ?post) { let m = recordMentions(caller, post.thread_id, ?id, body); await* notifyMentions(post.thread_id, ?id, body, m) };
             case _ {};
         };
         r
@@ -456,7 +468,14 @@ persistent actor SneedSNSForum {
             amount;
             transaction_block_index;
         };
-        Lib.create_tip(state, caller, input)
+        let r = Lib.create_tip(state, caller, input);
+        switch (r, Map.get(state.posts, Map.nhash, post_id)) {
+            case (#ok _, ?post) if (to_principal != caller) await* sendNotifications([{
+                user = to_principal; topic = "tip"; title = "Your post got a tip"; body = "Someone tipped your post in " # threadName(post.thread_id) # ".";
+                link = ?postLink(post_id); dedupe = null; sponsored = false }]);
+            case _ {};
+        };
+        r
     };
 
     public query func get_tip(id: Nat) : async ?T.TipResponse {
@@ -536,7 +555,9 @@ persistent actor SneedSNSForum {
 
     // @-mentions (Mentions.mo, spec/forum_mentions.md)
 
-    func recordMentions(by : Principal, thread_id : Nat, post_id : ?Nat, body : Text) {
+    /// Records new mentions in a thread or post and answers who was newly mentioned.
+    func recordMentions(by : Principal, thread_id : Nat, post_id : ?Nat, body : Text) : [Principal] {
+        let fresh = Vector.new<Principal>();
         let at = Time.now();
         let place = switch (post_id) { case (?p) "p" # Nat.toText(p); case null "t" # Nat.toText(thread_id) };
         for (p in Mentions.parse(body).vals()) {
@@ -548,9 +569,72 @@ persistent actor SneedSNSForum {
                     case null { let l = Vector.new<Mentions.Mention>(); Map.set(stable_mentions, Map.phash, p, l); l };
                 };
                 Vector.add(list, { thread_id; post_id; by; at });
+                Vector.add(fresh, p);
             };
         };
+        Vector.toArray(fresh);
     };
+
+    // ---- Sneed Notifications ----
+
+    type NotifyInput = { user : Principal; topic : Text; title : Text; body : Text; link : ?Text; dedupe : ?Text; sponsored : Bool };
+    type Notifications = actor { notify_batch : shared [NotifyInput] -> async [Any] };
+
+    func postLink(post_id : Nat) : Text = "https://app.sneeddao.com/post?postid=" # Nat.toText(post_id);
+    func threadLink(thread_id : Nat) : Text = "https://app.sneeddao.com/thread?threadid=" # Nat.toText(thread_id);
+    func threadName(thread_id : Nat) : Text = switch (Map.get(state.threads, Map.nhash, thread_id)) {
+        case (?t) switch (t.title) { case (?title) "“" # Mentions.excerpt(title, 120) # "”"; case null "a thread" };
+        case null "a thread";
+    };
+    func authorOf(index : Nat32) : ?Principal = Dedup.getPrincipalForIndex(state.principal_dedup_state, index);
+
+    /// Hands the messages to Sneed Notifications without waiting for the answer (bounded, so an
+    /// unanswered call can never hold up the forum or its upgrades).
+    func sendNotifications(items : [NotifyInput]) : async* () {
+        if (items.size() == 0) return;
+        switch (stable_notifications) {
+            case (?id) {
+                let n : Notifications = actor (Principal.toText(id));
+                ignore (with timeout = 60) n.notify_batch(items);
+            };
+            case null {};
+        };
+    };
+
+    func mentionItems(thread_id : Nat, post_id : ?Nat, body : Text, mentioned : [Principal]) : [NotifyInput] {
+        let link = switch (post_id) { case (?p) postLink(p); case null threadLink(thread_id) };
+        Array.map<Principal, NotifyInput>(mentioned, func(u) = { user = u; topic = "mention"; title = "You were mentioned in " # threadName(thread_id);
+            body = Mentions.excerpt(body, 300); link = ?link; dedupe = null; sponsored = false });
+    };
+
+    func notifyMentions(thread_id : Nat, post_id : ?Nat, body : Text, mentioned : [Principal]) : async* () {
+        await* sendNotifications(mentionItems(thread_id, post_id, body, mentioned));
+    };
+
+    /// A new post: its mentions, and a reply notice to the author of the post it answers (or of
+    /// the thread), unless that is the poster or someone already mentioned.
+    func notifyPost(by : Principal, thread_id : Nat, reply_to : ?Nat, post_id : Nat, body : Text, mentioned : [Principal]) : async* () {
+        let target : ?Principal = switch (reply_to) {
+            case (?pid) switch (Map.get(state.posts, Map.nhash, pid)) { case (?p) authorOf(p.created_by); case null null };
+            case null switch (Map.get(state.threads, Map.nhash, thread_id)) { case (?t) authorOf(t.created_by); case null null };
+        };
+        let reply : [NotifyInput] = switch (target) {
+            case (?u) if (u != by and Array.find<Principal>(mentioned, func(m) = m == u) == null) [{
+                user = u; topic = "reply"; title = "New reply in " # threadName(thread_id); body = Mentions.excerpt(body, 300);
+                link = ?postLink(post_id); dedupe = null; sponsored = false }] else [];
+            case null [];
+        };
+        await* sendNotifications(Array.append(reply, mentionItems(thread_id, ?post_id, body, mentioned)));
+    };
+
+    /// Admins: where to send notifications (null: nowhere).
+    public shared ({ caller }) func admin_set_notifications(canister : ?Principal) : async T.Result<(), T.ForumError> {
+        if (not Lib.is_admin(state, caller)) return #err(#Unauthorized("Admins only"));
+        stable_notifications := canister;
+        #ok();
+    };
+
+    public query func get_notifications_canister() : async ?Principal { stable_notifications };
 
     /// The mention as shown in a notification, or null when its thread or post is gone.
     func mentionView(i : Nat, m : Mentions.Mention) : ?T.MentionResponse {
@@ -946,6 +1030,8 @@ persistent actor SneedSNSForum {
         #delete_thread : Any;
         #delete_topic : Any;
         #get_admins : Any;
+        #get_notifications_canister : Any;
+        #admin_set_notifications : Any;
         #get_current_counter : Any;
         #get_feed : Any;
         #get_forum : Any;
@@ -1038,6 +1124,7 @@ persistent actor SneedSNSForum {
     } }) : Bool {
         switch (msg) {
             case (
+                #get_notifications_canister _ or
                 #get_admins _
                 or #get_current_counter _
                 or #get_feed _

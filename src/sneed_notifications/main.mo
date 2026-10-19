@@ -108,6 +108,8 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     max_attempts = 5;
   };
   var admins : [Principal] = [];
+  /// Each relay kind's public key (base64 SPKI, RSA-OAEP-256): clients encrypt addresses to it.
+  var relay_keys : [(ChannelKind, Text)] = [];
 
   let apps = Map.new<Nat, App>();
   var next_app_id : Nat = 1;
@@ -240,6 +242,19 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     let id = next_app_id;
     next_app_id += 1;
     Map.set(apps, Map.nhash, id, { id; name = input.name; logo = input.logo; description = input.description; owner = caller; canisters = input.canisters; topics = input.topics; verified = false; created_at = now() });
+    for (c in input.canisters.vals()) Map.set(app_of_canister, Map.phash, c, id);
+    #ok(id);
+  };
+
+  /// Admins register an app for canisters a DAO controls (e.g. Sneed Hub's forum), with the DAO's
+  /// governance as owner.
+  public shared ({ caller }) func admin_register_app(owner : Principal, input : AppInput) : async ResultNat {
+    if (not isAdmin(caller)) return #err("Admins only");
+    switch (checkAppInput(input)) { case (?e) return #err(e); case null {} };
+    for (c in input.canisters.vals()) if (Map.has(app_of_canister, Map.phash, c)) return #err(Principal.toText(c) # " already belongs to an app");
+    let id = next_app_id;
+    next_app_id += 1;
+    Map.set(apps, Map.nhash, id, { id; name = input.name; logo = input.logo; description = input.description; owner; canisters = input.canisters; topics = input.topics; verified = true; created_at = now() });
     for (c in input.canisters.vals()) Map.set(app_of_canister, Map.phash, c, id);
     #ok(id);
   };
@@ -616,6 +631,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     Buffer.toArray(out);
   };
   public query func get_config() : async Config { config };
+  public query func get_relay_keys() : async [(ChannelKind, Text)] { relay_keys };
   public query func get_admins() : async [Principal] { admins };
   public query func stats() : async { apps : Nat; users : Nat; notifications : Nat; pending : Nat } {
     { apps = Map.size(apps); users = Map.size(channels); notifications = Map.size(notifications); pending = Map.size(pending) };
@@ -767,6 +783,13 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     config := c;
     #ok("Saved");
   };
+  public shared ({ caller }) func admin_set_relay_key(kind : ChannelKind, key : Text) : async Result {
+    if (not isAdmin(caller)) return #err("Admins only");
+    if (key.size() > 4_096) return #err("Key too long");
+    relay_keys := Array.append(Array.filter<(ChannelKind, Text)>(relay_keys, func((k, _)) = k != kind), if (key == "") [] else [(kind, key)]);
+    #ok("Saved");
+  };
+
   public shared ({ caller }) func admin_add_admin(p : Principal) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     if (Array.find<Principal>(admins, func(a) = a == p) == null) admins := Array.append(admins, [p]);
@@ -797,6 +820,9 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   system func inspect({ caller : Principal; arg : Blob; msg : {
     #add_channel : Any;
     #admin_add_admin : Any;
+    #admin_register_app : Any;
+    #admin_set_relay_key : Any;
+    #get_relay_keys : Any;
     #admin_remove_admin : Any;
     #admin_remove_app : Any;
     #admin_set_app_verified : Any;
@@ -829,11 +855,11 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     #verify_channel : Any;
   } }) : Bool {
     switch msg {
-      case (#get_admins _ or #get_app _ or #get_app_balance _ or #get_app_of _ or #get_config _ or #get_my_apps _ or #get_my_history _ or #get_my_requests _ or #get_my_settings _ or #get_receipts _ or #list_apps _ or #stats _) false;
+      case (#get_relay_keys _ or #get_admins _ or #get_app _ or #get_app_balance _ or #get_app_of _ or #get_config _ or #get_my_apps _ or #get_my_history _ or #get_my_requests _ or #get_my_settings _ or #get_receipts _ or #list_apps _ or #stats _) false;
       // apps call these from their canisters, never by ingress
       case (#notify _ or #notify_batch _ or #request_permission _) false;
       case (#admin_add_admin _ or #admin_remove_admin _ or #admin_remove_app _ or #admin_set_app_verified _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
-      case (#admin_set_config _) isAdmin(caller) and arg.size() <= IngressGuard.MEDIUM_ARG;
+      case (#admin_set_config _ or #admin_register_app _ or #admin_set_relay_key _) isAdmin(caller) and arg.size() <= IngressGuard.MEDIUM_ARG;
       case (#register_app _ or #update_app _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.MEDIUM_ARG;
       case (#relay_ack _) relayKind(caller) != null and arg.size() <= IngressGuard.MEDIUM_ARG;
       case (#relay_pull _) relayKind(caller) != null and arg.size() <= IngressGuard.SMALL_ARG;
