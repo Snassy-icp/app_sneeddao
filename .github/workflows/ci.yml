@@ -1,0 +1,119 @@
+# Continuous integration for Sneed DAO. Runs on every pull request and push to main:
+#   canisters  the PocketIC integration suite (test/canisters), built with the release toolchain
+#   frontend   `npm run check` (unknown names, missing modules or exports) and the production build
+#   hashes     release builds of every canister at the path production builds use, so a proposal's
+#              Wasm hash can be checked against the PR (listed in the job summary)
+# Branch protection on main should require all three before a merge.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DFX_VERSION: 0.28.0 # canisters (moc 0.14.13); releases are built with it
+  DFX_WARNING: -mainnet_plaintext_identity
+
+jobs:
+  canisters:
+    name: Canister tests (PocketIC)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: dfx ${{ env.DFX_VERSION }} and mops
+        run: |
+          DFXVM_INIT_YES=true DFX_VERSION=$DFX_VERSION sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
+          echo "$HOME/.local/share/dfx/bin" >> "$GITHUB_PATH"
+          npm install -g ic-mops
+      - name: Motoko packages
+        run: mops install
+      - name: Test dependencies (pic-js downloads its PocketIC server)
+        working-directory: test/canisters
+        run: npm install --no-audit --no-fund
+      - name: Build the canisters under test
+        working-directory: test/canisters
+        run: npm run build
+      - name: Run the suite
+        working-directory: test/canisters
+        run: npm test
+
+  frontend:
+    name: Frontend check and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: dfx ${{ env.DFX_VERSION }} (declarations are generated with it)
+        run: |
+          DFXVM_INIT_YES=true DFX_VERSION=$DFX_VERSION sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
+          echo "$HOME/.local/share/dfx/bin" >> "$GITHUB_PATH"
+          npm install -g ic-mops
+      - name: Packages
+        run: |
+          mops install
+          npm install --no-audit --no-fund
+      - name: Declarations
+        run: |
+          dfx generate
+          node src/app_sneeddao_frontend/scripts/fix-declaration-imports.mjs
+      - name: npm run check
+        working-directory: src/app_sneeddao_frontend
+        run: npm run check
+      - name: Production build
+        env:
+          DFX_NETWORK: ic
+        run: npm run build --workspace app_sneeddao_frontend
+
+  hashes:
+    name: Release Wasm hashes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: dfx ${{ env.DFX_VERSION }} and mops
+        run: |
+          DFXVM_INIT_YES=true DFX_VERSION=$DFX_VERSION sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
+          echo "$HOME/.local/share/dfx/bin" >> "$GITHUB_PATH"
+          npm install -g ic-mops
+      # Motoko builds embed the source path in the Wasm's stable-types section, so release hashes
+      # only reproduce when built at the same absolute path as production (/home/snassy/app_sneeddao).
+      - name: Copy the checkout to the release path
+        run: |
+          sudo mkdir -p /home/snassy
+          sudo chown "$USER" /home/snassy
+          rsync -a --exclude .git ./ /home/snassy/app_sneeddao/
+      - name: Build every canister (dfx ${{ env.DFX_VERSION }}, network ic)
+        working-directory: /home/snassy/app_sneeddao
+        run: |
+          mops install
+          {
+            echo "### Release Wasm hashes (dfx $DFX_VERSION, built at /home/snassy/app_sneeddao)"
+            echo
+            echo "| Canister | SHA-256 |"
+            echo "|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for c in app_sneeddao_backend sneed_sns_forum sneed_sms sneed_lock rll sneed_premium sneedex sneedapp \
+                   sneed_pid_names sneed_neuron_names sneed_pid_nicknames sneed_neuron_nicknames sneed_avatars sneed_profiles mr_sneed; do
+            dfx +"$DFX_VERSION" build --network ic "$c" > /dev/null
+            echo "| $c | \`$(sha256sum ".dfx/ic/canisters/$c/$c.wasm" | cut -d' ' -f1)\` |" >> "$GITHUB_STEP_SUMMARY"
+          done
+          cat "$GITHUB_STEP_SUMMARY"
