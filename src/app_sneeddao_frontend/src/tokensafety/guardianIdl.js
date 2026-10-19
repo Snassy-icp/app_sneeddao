@@ -1,4 +1,4 @@
-// The custody canisters (sneed_guardian, sneed_hole, sneed_accord: one codebase,
+// The custody canisters (sneed_guardian, sneed_guardian_blackhole, sneed_guardian_multidao: one codebase,
 // three deployments, see spec/custody.md) and their Candid interface.
 import { IDL } from '@dfinity/candid';
 
@@ -72,14 +72,14 @@ export const guardianIdl = ({ IDL }) => IDL.Service({
 // so each one is read literally; a deployment missing from the build leaves its key undefined.
 const safe = (f) => { try { return f() || null; } catch { return null; } };
 const GUARDIAN_ID = safe(() => process.env.CANISTER_ID_SNEED_GUARDIAN);
-const HOLE_ID = safe(() => process.env.CANISTER_ID_SNEED_HOLE);
-const ACCORD_ID = safe(() => process.env.CANISTER_ID_SNEED_ACCORD);
+const BLACKHOLE_ID = safe(() => process.env.CANISTER_ID_SNEED_GUARDIAN_BLACKHOLE);
+const MULTIDAO_ID = safe(() => process.env.CANISTER_ID_SNEED_GUARDIAN_MULTIDAO);
 export const GUARDIANS = [
     { key: 'guardian', id: GUARDIAN_ID, live: false, name: 'Sneed Guardian', blackholed: false, functionId: null,
       blurb: 'Custody under Sneed DAO. The DAO can also upgrade the guardian itself, so your veto council trusts Sneed DAO not to go around it. Upgradeable, so bugs can be fixed.' },
-    { key: 'hole', id: HOLE_ID, live: false, name: 'Sneed Hole', blackholed: true, functionId: null,
+    { key: 'blackhole', id: BLACKHOLE_ID, live: false, name: 'Sneed Guardian Blackhole', blackholed: true, functionId: null,
       blurb: 'Blackholed custody with Sneed DAO as the only approver. Nobody, not even the DAO, can change its code: your veto council is final. The code is frozen.' },
-    { key: 'accord', id: ACCORD_ID, live: false, name: 'Sneed Accord', blackholed: true, functionId: null,
+    { key: 'multidao', id: MULTIDAO_ID, live: false, name: 'Sneed Guardian Multi-DAO', blackholed: true, functionId: null,
       blurb: 'Blackholed custody shared by several DAOs: changes need m-of-n of their governance canisters, plus your veto council.' },
 ].filter((g) => g.id);
 export const guardianById = (id) => GUARDIANS.find((g) => g.id === id) || null;

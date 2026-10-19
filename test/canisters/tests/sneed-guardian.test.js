@@ -260,7 +260,7 @@ describe('sneed_guardian', () => {
     expect(errOf(await gAlice.register(childId, { ledger: null }, policy(), [], 'AAA ledger'))).toMatch(/add the guardian/);
   });
 
-  it('runs exactly the same without any controller (sneed_hole)', async () => {
+  it('runs exactly the same without any controller (sneed_guardian_blackhole)', async () => {
     holeId = await install(pic, { name: 'sneed_guardian', initTypes: guardianInit({ IDL }), initArgs: [initArg({ name: 'hole', icp_ledger: [icpId], sns_wasm: [snsWasmId], archive_controllers: [], admins: [] })], cycles: 50n * T });
     await pic.updateCanisterSettings({ canisterId: holeId, sender: admin, controllers: [] });
     expect(await pic.getControllers(holeId)).toEqual([]);

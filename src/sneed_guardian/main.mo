@@ -3,8 +3,8 @@
 ///
 /// Deployed three ways from this one codebase (spec/custody.md): under SNS
 /// root control as `sneed_guardian`, blackholed with Sneed governance as the
-/// only approver as `sneed_hole`, and blackholed with several DAOs' governance
-/// canisters as `sneed_accord`. Nothing here depends on having a controller:
+/// only approver as `sneed_guardian_blackhole`, and blackholed with several DAOs' governance
+/// canisters as `sneed_guardian_multidao`. Nothing here depends on having a controller:
 /// every change to a child is an "op" that the approvers approve (by DAO
 /// proposal, through a generic nervous system function), that the child's
 /// guardians may veto or must ok, and that anyone may then execute.

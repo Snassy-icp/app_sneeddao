@@ -200,11 +200,11 @@
       "main": "src/sneed_guardian/main.mo",
       "type": "motoko"
     },
-    "sneed_hole": {
+    "sneed_guardian_blackhole": {
       "main": "src/sneed_guardian/main.mo",
       "type": "motoko"
     },
-    "sneed_accord": {
+    "sneed_guardian_multidao": {
       "main": "src/sneed_guardian/main.mo",
       "type": "motoko"
     },

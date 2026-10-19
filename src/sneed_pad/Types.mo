@@ -47,8 +47,8 @@ module {
   /// `#keep_with` keeps the creator and adds more controllers; `#sns` hands the
   /// canisters to that SNS's root (the creator files the registration
   /// proposal with their own neuron; the pad files nothing).
-  /// `#guardian` hands the canisters to a Sneed custody canister (sneed_guardian, sneed_hole or
-  /// sneed_accord, see spec/custody.md) and registers them there with this policy; the DAO then
+  /// `#guardian` hands the canisters to a Sneed custody canister (sneed_guardian, sneed_guardian_blackhole or
+  /// sneed_guardian_multidao, see spec/custody.md) and registers them there with this policy; the DAO then
   /// changes them only through that canister's ops, with the creator's guardians able to veto.
   public type GuardianPolicy = { guardians : [Principal]; vetoes_to_block : Nat; oks_required : Nat; window_ns : Nat; auto_upgrade : Bool };
   public type ControlChoice = { #keep; #keep_with : [Principal]; #blackhole; #sneed_dao; #sns : Principal; #guardian : { canister : Principal; policy : GuardianPolicy } };

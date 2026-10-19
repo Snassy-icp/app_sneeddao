@@ -5,8 +5,8 @@ Agreed on 2026-10-14. One canister codebase, `sneed_guardian`, deployed three ti
 | Deployment | Controllers | Approvers | Who trusts whom |
 |---|---|---|---|
 | `sneed_guardian` | Sneed SNS root | Sneed governance | the project trusts Sneed DAO: the DAO can upgrade the guardian itself and so bypass any veto |
-| `sneed_hole` | none (blackholed) | Sneed governance | the project trusts only the code: a DAO vote and the child's own rules are the only way in |
-| `sneed_accord` | none (blackholed) | several DAOs' governance canisters, m-of-n | no single DAO can act alone |
+| `sneed_guardian_blackhole` | none (blackholed) | Sneed governance | the project trusts only the code: a DAO vote and the child's own rules are the only way in |
+| `sneed_guardian_multidao` | none (blackholed) | several DAOs' governance canisters, m-of-n | no single DAO can act alone |
 
 The three differ only in configuration. The blackholed ones run code that first ran
 under DAO control on staging and production, with the PocketIC suite as the net.
