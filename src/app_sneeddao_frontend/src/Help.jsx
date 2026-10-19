@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import Header from './components/Header';
 import { useTheme } from './contexts/ThemeContext';
-import { 
+import { FaMobileAlt, 
     FaQuestionCircle, FaBook, FaWallet, FaBrain, FaLock, FaServer, 
     FaCubes, FaStore, FaUnlock, FaArrowRight, FaLifeRing, FaChartLine 
 } from 'react-icons/fa';
@@ -48,6 +48,13 @@ const helpPrimary = '#06b6d4';
 const helpSecondary = '#22d3ee';
 
 const helpTopics = [
+    {
+        path: '/help/app',
+        icon: FaMobileAlt,
+        title: 'Sneed Hub on Your Phone',
+        description: 'Install Sneed Hub as an app and log in there by pairing it with your browser',
+        color: '#3498db',
+    },
     {
         path: '/help/wallet',
         icon: FaWallet,

@@ -93,6 +93,7 @@ import Feed from './pages/Feed';
 import Topic from './pages/Topic';
 import HelpNeurons from './pages/HelpNeurons';
 import HelpWallet from './pages/HelpWallet';
+import HelpApp from './pages/HelpApp';
 import HelpSneedlock from './pages/HelpSneedlock';
 import Api from './pages/Api';
 import ApiDoc from './pages/ApiDoc';
@@ -198,6 +199,7 @@ function App() {
                     <Route path="/help" element={<Help />} />
                     <Route path="/help/neurons" element={<HelpNeurons />} />
                     <Route path="/help/wallet" element={<HelpWallet />} />
+                    <Route path="/help/app" element={<HelpApp />} />
                     <Route path="/help/sneedlock" element={<HelpSneedlock />} />
                     <Route path="/help/icp-neuron-manager" element={<HelpIcpNeuronManager />} />
                     <Route path="/help/sneedex" element={<HelpSneedex />} />

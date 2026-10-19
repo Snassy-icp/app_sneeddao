@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
+import InstallAppCard from '../components/InstallAppCard';
 import { Link } from 'react-router-dom';
 import { FaFlask, FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaCube, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock, FaShieldAlt, FaGlobe, FaBrain, FaGavel, FaNetworkWired, FaStore, FaChartLine, FaRobot } from 'react-icons/fa';
 import { HttpAgent } from '@dfinity/agent';
@@ -1400,6 +1401,7 @@ function Hub() {
                 margin: '0 auto',
                 padding: '2rem'
             }}>
+                <InstallAppCard />
                 {/* ============================================ */}
                 {/* HERO SECTION - Modern & Engaging Design */}
                 {/* ============================================ */}
