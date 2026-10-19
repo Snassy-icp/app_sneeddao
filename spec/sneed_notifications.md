@@ -6,6 +6,9 @@ where and when. Any dapp (Sneed Hub, Unicycle, bots, Sneed Lock, Sneedex...) sen
 and never sees anyone's contact details.
 
 Status: draft for discussion between Sneed DAO and Unicycle. Open questions are marked **Q**.
+Decided 2026-10-19 (Snassy): Sneed DAO governs it (perhaps later the multi-DAO guardian); **users pay
+for their own notifications**; real SMS only as a proof of concept until payments are worked out;
+the inbox is a configurable "always copy to" channel, Sneed SMS by default.
 
 ## 1. Goals
 
@@ -20,12 +23,14 @@ Status: draft for discussion between Sneed DAO and Unicycle. Open questions are 
 
 ### 2.1 Concepts
 
-- **Channel:** a place the user receives messages. Kinds: `#inbox` (always there: the in-app
-  bell, readable only by the user), `#sneed_sms`, `#push` (one per device), `#discord`,
+- **Channel:** a place the user receives messages. Kinds: `#sneed_sms`, `#push` (one per device), `#discord`,
   `#telegram`, `#email`, later `#sms`. Each channel except inbox and Sneed SMS is **verified**
   (a code sent to it) before use.
 - **App:** a sender, registered by the controller of its canister (checked like the naming
   service checks controllers). Shown with its name, logo and verification.
+- **Always copy to:** one channel every message also goes to, whatever the rules say, so nothing
+  is ever only in a push banner. Default: Sneed SMS (it is the inbox: the bell in Sneed Hub and
+  any client). Users may pick another channel or none.
 - **Topic:** a kind of message an app sends, declared at registration, e.g. Unicycle "Cycles
   running low", Sneedex "Your offer sold", Sneed Hub "New reply". Each topic has a declared
   **level** and a description.
@@ -40,11 +45,13 @@ Thirty apps times ten topics times six channels is a grid nobody fills in. So us
 1. **Defaults by level** (one small grid: 3 levels by the user's channels). Suggested starting
    point:
 
-   | Level | Inbox | Push | Discord | Email |
-   |---|---|---|---|---|
-   | Urgent | yes | yes | yes | no |
-   | Normal | yes | yes | no | no |
-   | Info | yes | no | no | daily digest |
+   | Level | Push | Discord | Email |
+   |---|---|---|---|
+   | Urgent | yes | yes | no |
+   | Normal | yes | no | no |
+   | Info | no | no | daily digest |
+
+   (plus the "always copy to" channel, Sneed SMS by default)
 
 2. **Per app:** on, off, or "customize". An app can be demoted (all its topics one level down)
    or limited to the inbox.
@@ -64,7 +71,10 @@ Plus:
   page ("Get notified about your bot" calls `request_permission`, and the user approves in the
   notification centre).
 - Users can **demote** a topic: an app that marks everything urgent loses that power with them.
-- Every message lands in the inbox with its app, topic and level, so users can see who sent what
+- **Spending caps.** Users pay for their notifications (§6), so an app could cost them money.
+  Each allowed app gets a daily message cap and a spending cap the user sets; past either, its
+  messages only go to the "always copy to" channel, which costs (almost) nothing.
+- Every message lands in the "always copy to" channel with its app, topic and level, so users can see who sent what
   and switch it off from there.
 - A user can **block** an app; a DAO-run list can flag abusive apps (**Q**: who maintains it).
 
@@ -73,6 +83,7 @@ Plus:
 - **Settings → Notifications:** channels (add, verify, test, remove), the level grid, quiet
   hours, digests.
 - **Apps:** each allowed app with its topics and switches.
+- **Balance:** what the user's notifications cost, top up, per-app spending.
 - **Inbox / bell:** the latest messages, read and unread, with links back into the app that sent
   them.
 
@@ -94,16 +105,18 @@ get_receipts(ids)                      // queued, delivered per channel, failed,
 
 ## 4. Delivery: relays
 
-The canister keeps the queue. **Relays** take jobs for one channel kind, deliver them, and report
+A dapp calls the sneed_notifications canister directly. The message **sits in the canister until
+it is delivered** (or expires): relays never receive messages from dapps directly, and a relay that
+is offline delays delivery but loses nothing. **Relays** take jobs for one channel kind, deliver them, and report
 a receipt. A relay is registered by the DAO (or by governance of the service).
 
 | Channel | First relay | Later |
 |---|---|---|
-| Inbox, Sneed SMS | the canister itself | — |
+| Sneed SMS | the canister itself | — |
 | Push (web push) | off-chain worker (VAPID P-256 key, payload encryption) | on-chain relay on a confidential subnet, non-replicated HTTPS outcalls |
 | Discord, Telegram | off-chain worker (bot token) | on-chain relay, same |
 | Email | off-chain worker + a mail provider (deliverability needs SPF/DKIM on a domain) | on-chain relay calling the provider's API |
-| Real SMS | paid provider; needs billing first (**Q**) | — |
+| Real SMS | proof of concept only, through a paid provider, until payments are worked out | — |
 
 Why both: an HTTPS outcall from an ordinary subnet is made by every replica (13 POSTs = 13
 messages) and every secret in canister memory is readable by node providers. Non-replicated
@@ -135,10 +148,21 @@ are private:
 
 ## 6. Paying for it
 
-- **Dapps pay** per message in cycles from a prepaid balance (Unicycle can top it up like any
-  canister). Inbox and Sneed SMS cost almost nothing; outcall channels cost per send.
-- **Users pay** for costly channels they want (real SMS), or they come with Sneed Premium (**Q**).
-- Prices are set by the service's governance and shown in the dapp docs.
+**Users pay for their own notifications.** Nobody (least of all one person or the DAO's treasury)
+pays for every member getting a real SMS whenever a canister runs low.
+
+- **The user's balance:** each user tops up a notification balance (cycles, or ICP converted to
+  cycles). Each delivery is charged to it at the channel's price: Sneed SMS almost nothing; push,
+  Discord, Telegram and email the cost of one outcall plus a margin; real SMS the provider's price.
+- **Even the `notify` call is charged to the user**, not the dapp: the cost of queueing and
+  delivering lands on the account of the person who chose to receive it. A dapp may *sponsor*
+  its users' notifications instead (a dapp balance that pays first), e.g. for its own alerts.
+- **Empty balance:** messages still go to the "always copy to" channel (Sneed SMS), which the
+  service carries at near-zero cost; paid channels pause until the user tops up.
+- **Shared plans (Q):** a bundle sold by the DAO (e.g. "1,000 push messages a month") or included
+  in Sneed Premium.
+- Prices are set by the service's governance and shown in the notification centre and the dapp
+  docs.
 
 ## 7. Built on it, first
 
@@ -150,17 +174,21 @@ are private:
 
 ## 8. Questions
 
-1. **Governance:** a Sneed DAO canister, a joint one with Unicycle, or its own SNS later?
-2. **Real SMS:** in scope at all (cost, phone-number privacy), and who pays?
-3. **Abuse list:** who flags spammy apps?
-4. **Inbox vs Sneed SMS:** should the inbox simply be Sneed SMS (one inbox for everything), or a
-   lighter separate store with SMS as one channel?
-5. **Email domain:** which sending domain, and who manages its DNS (SPF/DKIM)?
+1. **Shared plans:** bundles sold by the DAO, included in Sneed Premium, or neither at first?
+2. **Abuse:** users pay and set caps per app, so each user protects themselves. Should there also
+   be a shared "reported apps" list (a warning when allowing one), and who keeps it?
+3. **Email:** sending email that doesn't land in spam needs a domain we control, with DNS records
+   (SPF, DKIM, DMARC) saying who may send for it, and a sending provider with an HTTPS API (e.g.
+   Postmark, Resend, Amazon SES; around $0.0001-0.001 per email). Which domain (e.g.
+   notify.sneeddao.com), and who manages its DNS?
+4. **Real SMS payments:** after the proof of concept, which provider, and how users pay the much
+   higher price (per message, or a monthly plan)?
 
 ## 9. Build order
 
-1. Canister: apps, topics, channels (inbox, Sneed SMS), rules (levels, overrides, quiet hours,
-   digests), consent, `notify`, receipts, billing; tests (PocketIC).
+1. Canister: apps, topics, channels (Sneed SMS, "always copy to"), rules (levels, overrides, quiet
+   hours, digests), consent, `notify`, the queue, receipts, user balances, spending caps; tests
+   (PocketIC).
 2. Sneed Hub notification centre; Sneed Hub's own notifications as the first app.
 3. Off-chain relay for push and Discord (the VPS), with vetKD-encrypted contacts.
 4. Unicycle integration.
