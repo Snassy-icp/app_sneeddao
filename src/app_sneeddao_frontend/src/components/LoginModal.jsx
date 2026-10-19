@@ -1,11 +1,17 @@
 // LoginModal.jsx - Login method selection modal
-import React from 'react';
+import React, { useState } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
+import PairAppPanel from './PairAppPanel';
+import { isStandaloneApp, isIOS } from '../utils/pairing';
 
 function LoginModal({ isOpen, onClose }) {
     const { theme } = useTheme();
     const { loginWithII1, loginWithII2, isLoggingIn, authError, clearAuthError } = useAuth();
+    // In an app installed to the home screen the II popup can't hand the login back on iPhone,
+    // so pairing with a browser comes first there (and is offered in every installed app).
+    const standalone = isStandaloneApp();
+    const [pairing, setPairing] = useState(() => standalone && isIOS());
 
     if (!isOpen) return null;
 
@@ -52,6 +58,9 @@ function LoginModal({ isOpen, onClose }) {
                     padding: '32px',
                     maxWidth: '420px',
                     width: '90%',
+                    maxHeight: '90vh',
+                    overflowY: 'auto',
+                    boxSizing: 'border-box',
                     boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
                     position: 'relative',
                 }}
@@ -135,8 +144,18 @@ function LoginModal({ isOpen, onClose }) {
                     </div>
                 )}
 
+                {pairing && (
+                    <>
+                        <PairAppPanel />
+                        <button type="button" onClick={() => setPairing(false)} style={{ marginTop: '16px', background: 'none', border: 'none', color: theme.colors.mutedText, fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline', width: '100%' }}>Use Internet Identity directly instead</button>
+                    </>
+                )}
+
                 {/* Login Options */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {!pairing && standalone && (
+                    <button type="button" onClick={() => setPairing(true)} style={{ marginBottom: '16px', background: 'none', border: 'none', color: theme.colors.mutedText, fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline', width: '100%' }}>Login doesn't come back to the app? Pair it with a browser</button>
+                )}
+                <div style={{ display: pairing ? 'none' : 'flex', flexDirection: 'column', gap: '16px' }}>
                     
                     {/* Internet Identity 1.0 (Classic) */}
                     <button

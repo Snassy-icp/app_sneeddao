@@ -1,6 +1,7 @@
 // AuthContext.jsx
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { AuthClient } from '@dfinity/auth-client';
+import { completePairing as storePairing } from './utils/pairing';
 
 const AuthContext = createContext();
 
@@ -172,6 +173,15 @@ export function AuthProvider({ children }) {
     }
   }, [authClient]);
 
+  // "Pair this app" (utils/pairing.js): store the approval pasted from a logged-in browser, then
+  // load it the way a normal login is loaded.
+  const completePairing = useCallback(async (text) => {
+    await storePairing(text);
+    await initAuthClient();
+    setShowLoginModal(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Clear any authentication errors
   const clearAuthError = useCallback(() => {
     setAuthError(null);
@@ -184,6 +194,7 @@ export function AuthProvider({ children }) {
       login,
       loginWithII1,
       loginWithII2,
+      completePairing,
       logout, 
       isLoggingIn,
       authError,

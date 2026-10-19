@@ -165,6 +165,16 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
     const [isVpBarVisible, setIsVpBarVisible] = useState(true);
+    // Phones and the installed app: the menu row also slides away on scroll, and the collapse pill is bigger
+    const compactQuery = () => {
+        try { return window.innerWidth <= 768 || window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; } catch { return false; }
+    };
+    const [isCompact, setIsCompact] = useState(compactQuery);
+    useEffect(() => {
+        const onResize = () => setIsCompact(compactQuery());
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, []);
     const [showVpBarSetting, setShowVpBarSetting] = useState(() => {
         try {
             const saved = localStorage.getItem('showVpBar');
@@ -828,15 +838,15 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             display: 'inline-flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            padding: isHeaderCollapsed ? '1px 6px' : '1px 5px',
+                            padding: isCompact ? '4px 10px' : (isHeaderCollapsed ? '1px 6px' : '1px 5px'),
                             borderRadius: '8px',
                             backgroundColor: 'rgba(255, 255, 255, 0.08)',
                             cursor: 'pointer',
-                            opacity: 0.5,
+                            opacity: isCompact ? 0.85 : 0.5,
                             transition: 'opacity 0.2s ease, background-color 0.2s ease',
                             alignSelf: 'flex-end',
                             marginBottom: '2px',
-                            fontSize: '10px',
+                            fontSize: isCompact ? '14px' : '10px',
                             fontWeight: 'bold',
                             letterSpacing: isHeaderCollapsed ? '1px' : '0px',
                             color: theme.colors.mutedText,
@@ -847,7 +857,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.12)';
                         }}
                         onMouseLeave={(e) => {
-                            e.currentTarget.style.opacity = '0.5';
+                            e.currentTarget.style.opacity = isCompact ? '0.85' : '0.5';
                             e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)';
                         }}
                         title={isHeaderCollapsed ? "Expand header" : "Collapse header"}
@@ -1564,7 +1574,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
 
             </div>
 
-            {/* Submenu Row: Full-width navigation links */}
+            {/* Submenu Row: Full-width navigation links (on phones it slides away when scrolling down) */}
             {!isHeaderCollapsed && (
             <div style={{ 
                 display: 'flex', 
@@ -1574,7 +1584,14 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 paddingTop: '6px',
                 borderTop: '1px solid rgba(255,255,255,0.1)',
                 marginTop: '6px',
-                boxSizing: 'border-box'
+                boxSizing: 'border-box',
+                ...(isCompact ? {
+                    maxHeight: isVpBarVisible ? '200px' : '0',
+                    opacity: isVpBarVisible ? 1 : 0,
+                    overflow: 'hidden',
+                    transition: 'max-height 0.25s ease, opacity 0.2s ease, padding 0.25s ease, margin 0.25s ease',
+                    ...(isVpBarVisible ? {} : { paddingTop: 0, marginTop: 0, borderTop: 'none' }),
+                } : {})
             }}>
                 <div style={{ 
                     display: 'flex', 
