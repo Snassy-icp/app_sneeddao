@@ -43,3 +43,48 @@ export async function topUp(identity, amountE8s) {
 }
 
 export const formatIcp = (e8s) => `${(Number(e8s) / 1e8).toLocaleString(undefined, { maximumFractionDigits: 8 })} ICP`;
+
+// ---- channels: addresses encrypted in the browser to the relay that delivers them ----
+
+const b64 = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)));
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const urlB64ToBytes = (s) => unb64((s + '='.repeat((4 - (s.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+
+/// The relay's published keys for a channel kind: { enc, vapid? } or null when none runs yet.
+export async function relayKeys(identity, kind) {
+    const keys = await notificationsActor(identity).get_relay_keys();
+    const hit = keys.find(([k]) => kindOf(k) === kind);
+    return hit ? JSON.parse(hit[1]) : null;
+}
+
+/// { k: RSA-OAEP-256(aesKey), iv, c: AES-256-GCM(json) } as bytes: only the relay can open it.
+async function encryptFor(encSpkiB64, obj) {
+    const rsa = await crypto.subtle.importKey('spki', unb64(encSpkiB64), { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']);
+    const aes = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt']);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const c = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aes, new TextEncoder().encode(JSON.stringify(obj)));
+    const k = await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, rsa, await crypto.subtle.exportKey('raw', aes));
+    return new TextEncoder().encode(JSON.stringify({ k: b64(k), iv: b64(iv), c: b64(c) }));
+}
+
+async function addEncrypted(identity, kind, name, address) {
+    const keys = await relayKeys(identity, kind);
+    if (!keys) throw new Error('This channel has no relay running yet');
+    const r = await notificationsActor(identity).add_channel({ [kind]: null }, name, await encryptFor(keys.enc, address));
+    if ('err' in r) throw new Error(r.err);
+    return r.ok;
+}
+
+/// Discord: Mr Sneed's bot DMs you (you must share a server with it).
+export const addDiscordChannel = (identity, discordId) => addEncrypted(identity, 'discord', 'Discord', { discord_id: String(discordId).trim() });
+
+/// Push to this device (on iPhone: only inside the installed app).
+export const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+export async function addPushChannel(identity, deviceName) {
+    const keys = await relayKeys(identity, 'push');
+    if (!keys?.vapid) throw new Error('Push has no relay running yet');
+    if ((await Notification.requestPermission()) !== 'granted') throw new Error('Notifications are not allowed on this device (check the system settings)');
+    const reg = await navigator.serviceWorker.ready;
+    const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToBytes(keys.vapid) }));
+    return addEncrypted(identity, 'push', deviceName, sub.toJSON());
+}

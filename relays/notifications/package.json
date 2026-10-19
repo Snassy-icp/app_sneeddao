@@ -1,0 +1,14 @@
+{
+  "name": "sneed-notifications-relay",
+  "private": true,
+  "type": "module",
+  "description": "Delivers Sneed Notifications jobs for Discord and web push (spec/sneed_notifications.md §4).",
+  "scripts": { "start": "node relay.mjs" },
+  "dependencies": {
+    "@dfinity/agent": "2.4.1",
+    "@dfinity/candid": "2.4.1",
+    "@dfinity/identity": "2.4.1",
+    "@dfinity/principal": "2.4.1",
+    "web-push": "3.6.7"
+  }
+}

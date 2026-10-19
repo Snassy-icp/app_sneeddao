@@ -7,7 +7,8 @@ import { FaBell, FaCheckCircle, FaChevronDown, FaChevronRight, FaMoon, FaWallet,
 import Header from '../components/Header';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { notificationsEnabled, notificationsActor, LEVELS, CHANNEL_KINDS, kindOf, levelOf, topUp, formatIcp } from '../utils/NotificationsService';
+import { notificationsEnabled, notificationsActor, LEVELS, CHANNEL_KINDS, kindOf, levelOf, topUp, formatIcp, relayKeys, addDiscordChannel, addPushChannel, pushSupported } from '../utils/NotificationsService';
+import { isStandaloneApp, isIOS } from '../utils/pairing';
 
 const accent = '#f59e0b';
 const opt = (x) => (x && x.length ? x[0] : null);
@@ -22,19 +23,26 @@ export default function Notifications() {
     const [data, setData] = useState(null); // { settings, channels, balance_e8s }
     const [apps, setApps] = useState([]); // [[App, Permission]]
     const [requests, setRequests] = useState([]);
+    const [allApps, setAllApps] = useState([]);
     const [history, setHistory] = useState([]);
     const [draft, setDraft] = useState(null); // edited Settings
     const [open, setOpen] = useState(null); // app id expanded
     const [msg, setMsg] = useState(null); // { ok|err, text }
     const [busy, setBusy] = useState(false);
     const [amount, setAmount] = useState('0.01');
+    const [live, setLive] = useState({}); // channel kinds with a relay running: { discord: true, push: true }
+    const [discordId, setDiscordId] = useState('');
+    const [codes, setCodes] = useState({}); // channel id -> code typed
 
     const actor = useMemo(() => (identity && notificationsEnabled ? notificationsActor(identity) : null), [identity]);
     const load = useCallback(async () => {
         if (!actor) return;
-        const [s, a, r, h] = await Promise.all([actor.get_my_settings(), actor.get_my_apps(), actor.get_my_requests(), actor.get_my_history(30n)]);
-        setData(s); setApps(a); setRequests(r); setHistory(h); setDraft(s.settings);
-    }, [actor]);
+        const [s, a, r, h, all] = await Promise.all([actor.get_my_settings(), actor.get_my_apps(), actor.get_my_requests(), actor.get_my_history(30n), actor.list_apps(1n, 100n)]);
+        setData(s); setApps(a); setRequests(r); setHistory(h); setDraft(s.settings); setAllApps(all);
+        const kinds = {};
+        for (const k of ['discord', 'push']) kinds[k] = !!(await relayKeys(identity, k).catch(() => null));
+        setLive(kinds);
+    }, [actor, identity]);
     useEffect(() => { load().catch((e) => setMsg({ err: e.message || String(e) })); }, [load]);
 
     const run = async (f, okText) => {
@@ -160,7 +168,7 @@ export default function Notifications() {
 
             <div style={card}>
                 <h2 style={h2}><FaPlug color={accent} /> Apps</h2>
-                {apps.length === 0 && <p style={muted}>No apps yet. When an app asks to notify you, it shows up above, and you decide.</p>}
+                {apps.length === 0 && <p style={muted}>No apps yet. Allow one below, or wait until an app asks you.</p>}
                 {apps.map(([a, p]) => (
                     <div key={String(a.id)} style={{ borderTop: `1px solid ${c.border}`, padding: '8px 0' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -196,6 +204,26 @@ export default function Notifications() {
                 ))}
             </div>
 
+            {(() => {
+                const decided = new Set([...apps.map(([a]) => String(a.id)), ...requests.map((a) => String(a.id))]);
+                const others = allApps.filter((a) => !decided.has(String(a.id)));
+                if (!others.length) return null;
+                return (
+                    <div style={card}>
+                        <h2 style={h2}><FaPlug color={accent} /> Other apps</h2>
+                        {others.map((a) => (
+                            <div key={String(a.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 0', borderTop: `1px solid ${c.border}` }}>
+                                <div style={{ flex: 1, minWidth: 200 }}>
+                                    <div style={{ color: c.primaryText, fontWeight: 600 }}>{a.name} {a.verified && <FaCheckCircle color="#3b82f6" size={12} title="Verified app" />}</div>
+                                    <div style={muted}>{a.description || 'No description'} · {a.topics.map((t) => t.title).join(', ')}</div>
+                                </div>
+                                <button type="button" style={btn(true)} disabled={busy} onClick={() => run(() => actor.allow_app(a.id, true), `${a.name} may now notify you`)}>Allow</button>
+                            </div>
+                        ))}
+                    </div>
+                );
+            })()}
+
             <div style={card}>
                 <h2 style={h2}><FaBell color={accent} /> Channels</h2>
                 {channels.map((ch) => (
@@ -205,10 +233,36 @@ export default function Notifications() {
                         {kindOf(ch.kind) !== 'sneed_sms' && <button type="button" style={btn(false)} disabled={busy} onClick={() => run(() => actor.remove_channel(ch.id), 'Channel removed')}>Remove</button>}
                     </div>
                 ))}
-                <p style={{ ...muted, marginBottom: 0 }}>
-                    Sneed SMS is your inbox: messages land in <Link to="/sms" style={{ color: accent }}>Sneed SMS</Link> and the bell in the header. Coming soon:{' '}
-                    {CHANNEL_KINDS.filter((k) => !k.live).map((k) => k.label).join(', ')}. You'll add them here and confirm each with a code.
-                </p>
+                {channels.filter((ch) => 'unverified' in ch.state).map((ch) => (
+                    <div key={`v${ch.id}`} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '6px 0', fontSize: '0.85rem', color: c.secondaryText }}>
+                        <span>Code sent to {ch.name}:</span>
+                        <input inputMode="numeric" maxLength={6} placeholder="123456" value={codes[String(ch.id)] || ''} onChange={(e) => setCodes({ ...codes, [String(ch.id)]: e.target.value.trim() })} style={{ ...select, width: 100 }} />
+                        <button type="button" style={btn(true)} disabled={busy || (codes[String(ch.id)] || '').length !== 6} onClick={() => run(async () => {
+                            const r = await actor.verify_channel(ch.id, codes[String(ch.id)]);
+                            if ('err' in r) return r;
+                            // a new channel starts with urgent and normal messages
+                            const s = (await actor.get_my_settings()).settings;
+                            return actor.set_settings({ ...s, defaults: { ...s.defaults, urgent: [...s.defaults.urgent, ch.id], normal: [...s.defaults.normal, ch.id] } });
+                        }, `${ch.name} is ready: urgent and normal messages go there now`)}>Verify</button>
+                    </div>
+                ))}
+                <p style={{ ...muted }}>Sneed SMS is your inbox: messages land in <Link to="/sms" style={{ color: accent }}>Sneed SMS</Link> and the bell in the header.</p>
+                {live.push && (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+                        {pushSupported() && (!isIOS() || isStandaloneApp())
+                            ? <button type="button" style={btn(true)} disabled={busy} onClick={() => run(async () => { await addPushChannel(identity, /iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : /Android/.test(navigator.userAgent) ? 'Android phone' : 'This computer'); }, 'Check this device: a code is on its way as a notification')}>Get notifications on this device</button>
+                            : <span style={muted}>Phone notifications: {isIOS() ? <>install Sneed Hub on your home screen first (<Link to="/help/app" style={{ color: accent }}>how</Link>), then turn them on here inside the app.</> : 'this browser cannot receive push notifications.'}</span>}
+                    </div>
+                )}
+                {live.discord && (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+                        <input placeholder="Your Discord user id" value={discordId} onChange={(e) => setDiscordId(e.target.value.trim())} style={{ ...select, width: 200 }} />
+                        <button type="button" style={btn(false)} disabled={busy || !/^\d{15,22}$/.test(discordId)} onClick={() => run(async () => { await addDiscordChannel(identity, discordId); setDiscordId(''); }, 'Mr Sneed is sending you a code on Discord')}>Add Discord</button>
+                        <span style={{ ...muted, flexBasis: '100%' }}>Mr Sneed's bot DMs you, so you need to share a server with him (the Sneed Discord) and allow DMs from its members. Your user id: Discord settings → Advanced → Developer Mode, then right-click your name → Copy User ID.</span>
+                    </div>
+                )}
+                {!live.push && !live.discord && <p style={muted}>Coming soon: {CHANNEL_KINDS.filter((k) => !k.live).map((k) => k.label).join(', ')}.</p>}
+                <p style={{ ...muted, fontSize: '0.75rem', marginBottom: 0 }}>Addresses are encrypted in your browser to the relay that delivers them: this canister and other apps can't read them.</p>
             </div>
 
             <div style={card}>
