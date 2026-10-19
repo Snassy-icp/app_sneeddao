@@ -192,6 +192,11 @@
       "type": "motoko",
       "args": "--enhanced-orthogonal-persistence"
     },
+    "sneed_notifications": {
+      "main": "src/sneed_notifications/main.mo",
+      "type": "motoko",
+      "args": "--enhanced-orthogonal-persistence"
+    },
     "icrc7_demo": {
       "main": "src/icrc7_demo/main.mo",
       "type": "motoko"
