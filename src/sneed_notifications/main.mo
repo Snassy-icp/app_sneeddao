@@ -80,6 +80,10 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   // ---------------------------------------------------------------------------------------------
 
   let DAY_NS : Nat = 86_400_000_000_000;
+  // A verification code goes to whatever address the user typed, so both guessing it and asking for
+  // new ones are limited: otherwise the relays could be used to message someone over and over.
+  let MAX_CODE_MISSES : Nat = 5;
+  let MAX_CHANNEL_ADDS_PER_DAY : Nat = 5;
   let MAX_NAME = 64;
   let MAX_DESCRIPTION = 500;
   let MAX_TOPICS = 50;
@@ -119,6 +123,8 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   let channels = Map.new<Principal, [Channel]>();
   var next_channel_id : Nat = 1;
   let codes = Map.new<Nat, (Text, Int)>(); // channel -> (verification code, expires)
+  let code_misses = Map.new<Nat, Nat>(); // channel -> wrong codes entered (MAX_CODE_MISSES ends the code)
+  let channel_adds = Map.new<Principal, (Nat, Nat)>(); // user -> (day, channels added that day)
   let settings = Map.new<Principal, Settings>();
   let user_balances = Map.new<Principal, Nat>();
   let permissions = Map.new<Text, Permission>(); // "user/app"
@@ -336,15 +342,12 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     let (uDay, count, spent) = switch (Map.get(usage, Map.thash, k)) { case (?(d, c, s)) if (d == day()) (d, c, s) else (day(), 0, 0); case null (day(), 0, 0) };
     if (count >= perm.daily_cap) return #err(#rate_limited);
 
-    // the same message again within the window is folded
-    switch (input.dedupe) {
-      case (?d) {
-        let dk = k # "/" # d;
-        switch (Map.get(dedupes, Map.thash, dk)) {
-          case (?last) if (t - last < config.dedupe_window_ns) return #ok({ id = 0; deliveries = 0; deduplicated = true });
-          case null {};
-        };
-        Map.set(dedupes, Map.thash, dk, t);
+    // the same message again within the window is folded (recorded below, once the message is accepted)
+    let dedupeKey : ?Text = switch (input.dedupe) { case (?d) ?(k # "/" # d); case null null };
+    switch (dedupeKey) {
+      case (?dk) switch (Map.get(dedupes, Map.thash, dk)) {
+        case (?last) if (t - last < config.dedupe_window_ns) return #ok({ id = 0; deliveries = 0; deduplicated = true });
+        case null {};
       };
       case null {};
     };
@@ -377,6 +380,8 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     var total = config.notify_price_e8s;
     for (c in wanted.vals()) total += priceOf(c.kind);
     if (input.sponsored and appBalanceOf(a.id) < total) return #err(#no_funds);
+    // a refused message must not fold its retry
+    switch (dedupeKey) { case (?dk) Map.set(dedupes, Map.thash, dk, t); case null {} };
 
     let id = next_notification_id;
     next_notification_id += 1;
@@ -490,6 +495,9 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     if (kind == #sneed_sms) return #ok(smsChannel(caller).id);
     if (name.size() > MAX_NAME or address.size() == 0 or address.size() > MAX_ADDRESS) return #err("A label of at most 64 characters and an address of 1 to 2048 bytes");
     if (userChannels(caller).size() >= MAX_CHANNELS) return #err("At most 20 channels");
+    let added = switch (Map.get(channel_adds, Map.phash, caller)) { case (?(d, n)) if (d == day()) n else 0; case null 0 };
+    if (added >= MAX_CHANNEL_ADDS_PER_DAY) return #err("At most 5 new channels a day; try again tomorrow");
+    Map.set(channel_adds, Map.phash, caller, (day(), added + 1));
     let seed = await Random.blob();
     var code = "";
     for (b in seed.vals()) if (code.size() < 6) code #= Nat.toText(Nat8.toNat(b) % 10);
@@ -511,9 +519,19 @@ shared (deployer) persistent actor class SneedNotifications() = this {
       case (?(c, expires)) {
         if (not ownsChannels(caller, [id])) return #err("Not your channel");
         if (now() > expires) return #err("The code expired; remove the channel and add it again");
-        if (c != code) return #err("Wrong code");
+        if (c != code) {
+          let misses = (switch (Map.get(code_misses, Map.nhash, id)) { case (?m) m; case null 0 }) + 1;
+          if (misses >= MAX_CODE_MISSES) {
+            Map.delete(codes, Map.nhash, id);
+            Map.delete(code_misses, Map.nhash, id);
+            return #err("Too many wrong codes; remove the channel and add it again");
+          };
+          Map.set(code_misses, Map.nhash, id, misses);
+          return #err("Wrong code");
+        };
         Map.set(channels, Map.phash, caller, Array.map<Channel, Channel>(userChannels(caller), func(x) = if (x.id == id) ({ x with state = #verified }) else x));
         Map.delete(codes, Map.nhash, id);
+        Map.delete(code_misses, Map.nhash, id);
         #ok("Verified");
       };
       case null #err("Nothing to verify");
@@ -525,6 +543,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     if (not ownsChannels(caller, [id])) return #err("Not your channel");
     Map.set(channels, Map.phash, caller, Array.filter<Channel>(userChannels(caller), func(x) = x.id != id));
     Map.delete(codes, Map.nhash, id);
+    Map.delete(code_misses, Map.nhash, id);
     switch (Map.get(settings, Map.phash, caller)) {
       case (?s) {
         let drop = func(ids : [Nat]) : [Nat] = Array.filter<Nat>(ids, func(x) = x != id);
@@ -606,7 +625,9 @@ shared (deployer) persistent actor class SneedNotifications() = this {
         case (?n) {
           let name = if (n.app == SYSTEM_APP) "Sneed Notifications" else switch (Map.get(apps, Map.nhash, n.app)) { case (?a) a.name; case null "(removed app)" };
           let deliveries = Array.mapFilter<Nat, { channel : Nat; kind : ChannelKind; state : JobState }>(n.jobs, func(j) = switch (Map.get(jobs, Map.nhash, j)) { case (?job) ?{ channel = job.channel; kind = job.kind; state = job.state }; case null null });
-          out.add({ id = n.id; app = n.app; app_name = name; topic = n.topic; level = n.level; title = n.title; body = n.body; link = n.link; created_at = n.created_at; deliveries });
+          // a verification code is for the channel's owner only: whoever added the channel must not read it here
+          let title = if (n.app == SYSTEM_APP and n.topic == "verify") "Your Sneed Notifications code (sent to the channel only)" else n.title;
+          out.add({ id = n.id; app = n.app; app_name = name; topic = n.topic; level = n.level; title; body = n.body; link = n.link; created_at = n.created_at; deliveries });
         };
         case null {};
       };

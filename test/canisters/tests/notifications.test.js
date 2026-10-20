@@ -108,12 +108,28 @@ describe('sneed_notifications', () => {
     const [job] = await as(relay).relay_pull(10n);
     expect(new TextDecoder().decode(job.address)).toBe('enc:discord-id');
     const code = job.title.match(/(\d{6})/)[1];
+    // the code reaches the channel through the relay only: the user who added the channel can't read it back
+    expect((await as(bob).get_my_history(50n)).some((h) => h.title.includes(code))).toBe(false);
     await as(relay).relay_ack([[job.id, { ok: null }]]);
     expect(errOf(await as(bob).verify_channel(discordCh, '000000' === code ? '111111' : '000000'))).toMatch(/Wrong code/);
     expect(errOf(await as(carol).verify_channel(discordCh, code))).toMatch(/Not your channel/);
     unwrap(await as(bob).verify_channel(discordCh, code));
     const mine = await as(bob).get_my_settings();
     expect(mine.channels.find((c) => c.id === discordCh).state).toEqual({ verified: null });
+  });
+
+  it('limits wrong codes and new channels, so the relays cannot be used to pester someone', async () => {
+    const add = () => as(carol).add_channel({ discord: null }, 'someone', new TextEncoder().encode('enc:someone-else'));
+    const ch = unwrap(await add());
+    for (let i = 0; i < 4; i++) expect(errOf(await as(carol).verify_channel(ch, 'xxxxxx'))).toMatch(/Wrong code/);
+    expect(errOf(await as(carol).verify_channel(ch, 'xxxxxx'))).toMatch(/Too many wrong codes/);
+    expect(errOf(await as(carol).verify_channel(ch, 'yyyyyy'))).toMatch(/Nothing to verify/); // the code is gone
+    for (let i = 0; i < 4; i++) unwrap(await add()); // 5 a day
+    expect(errOf(await add())).toMatch(/At most 5 new channels a day/);
+    // clean up: the relay delivers the codes, carol removes the channels
+    const jobs = await as(relay).relay_pull(50n);
+    await as(relay).relay_ack(jobs.map((j) => [j.id, { ok: null }]));
+    for (const c of (await as(carol).get_my_settings()).channels.filter((c) => 'discord' in c.kind)) unwrap(await as(carol).remove_channel(c.id));
   });
 
   it('charges paid channels to the user, and skips them without balance', async () => {
@@ -158,7 +174,7 @@ describe('sneed_notifications', () => {
     unwrap(await actorAs(pic, ledgerIdl, icpId, alice).icrc2_approve({ from_subaccount: [], spender: account(notifId), amount: 1_000_000n, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] }));
     unwrap(await as(alice).top_up_app(appId, 500_000n));
     const userBefore = (await as(bob).get_my_settings()).balance_e8s;
-    const r = await notify({ sponsored: true, dedupe: ['f'] });
+    const r = await notify({ sponsored: true, dedupe: ['e'] }); // the refused one above must not fold this retry
     expect(r.ok.deliveries).toBe(2n);
     expect(await n.get_app_balance(appId)).toBe(500_000n - 100n);
     expect((await as(bob).get_my_settings()).balance_e8s).toBe(userBefore);
