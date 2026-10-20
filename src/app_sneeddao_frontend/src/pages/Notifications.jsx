@@ -96,7 +96,8 @@ export default function Notifications() {
 
     return page(
         <>
-            {msg && <div style={{ ...card, borderColor: msg.err ? (c.error || '#ef4444') : '#10b981', color: msg.err ? (c.error || '#ef4444') : '#10b981', fontSize: '0.88rem' }}>{msg.err || msg.ok}</div>}
+            {/* the outcome of the last action, pinned to the bottom of the screen so it shows wherever the button was */}
+            {msg && <div role="status" onClick={() => setMsg(null)} style={{ position: 'fixed', left: 16, right: 16, bottom: 'calc(16px + env(safe-area-inset-bottom))', maxWidth: 560, margin: '0 auto', zIndex: 1002, padding: '12px 16px', borderRadius: 12, background: c.primaryBg, border: `1px solid ${msg.err ? (c.error || '#ef4444') : '#10b981'}`, color: msg.err ? (c.error || '#ef4444') : '#10b981', fontSize: '0.88rem', boxShadow: '0 10px 30px rgba(0,0,0,0.35)', cursor: 'pointer' }}>{msg.err || msg.ok} <span style={{ color: c.mutedText, fontSize: '0.75rem' }}>(tap to close)</span></div>}
 
             {requests.length > 0 && (
                 <div style={{ ...card, borderColor: accent }}>
@@ -257,7 +258,8 @@ export default function Notifications() {
                 {live.discord && (
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
                         <input placeholder="Your Discord user id" value={discordId} onChange={(e) => setDiscordId(e.target.value.trim())} style={{ ...select, width: 200 }} />
-                        <button type="button" style={btn(false)} disabled={busy || !/^\d{15,22}$/.test(discordId)} onClick={() => run(async () => { await addDiscordChannel(identity, discordId); setDiscordId(''); }, 'Mr Sneed is sending you a code on Discord')}>Add Discord</button>
+                        <button type="button" style={btn(false)} disabled={busy || !/^\d{15,22}$/.test(discordId)} onClick={() => run(async () => { await addDiscordChannel(identity, discordId); setDiscordId(''); }, 'Mr Sneed is sending you a code on Discord')}>{busy ? 'Adding…' : 'Add Discord'}</button>
+                        {discordId && !/^\d{15,22}$/.test(discordId) && <span style={{ color: c.error || '#ef4444', fontSize: '0.8rem' }}>That's not a Discord user id: it is a number of about 18 digits, not your username.</span>}
                         <span style={{ ...muted, flexBasis: '100%' }}>Mr Sneed's bot DMs you, so you need to share a server with him (the Sneed Discord) and allow DMs from its members. Your user id: Discord settings → Advanced → Developer Mode, then right-click your name → Copy User ID.</span>
                     </div>
                 )}
