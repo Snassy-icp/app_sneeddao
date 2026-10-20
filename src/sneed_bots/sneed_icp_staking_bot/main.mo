@@ -427,13 +427,26 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         };
     });
 
-    // Mutable state for chore closures (transient, reset on upgrade)
+    // Mutable state for chore closures (transient, reset on upgrade), per chore instance:
+    // the neurons a run works through and the index of the current one.
+    type NeuronRunState = { neurons: [T.NeuronId]; index: Nat };
     // -- Refresh Stake chore state --
-    transient var _rs_neurons: [T.NeuronId] = [];
-    transient var _rs_index: Nat = 0;
+    transient var _rs_state: [(Text, NeuronRunState)] = [];
     // -- Confirm Following chore state --
-    transient var _cf_neurons: [T.NeuronId] = [];
-    transient var _cf_index: Nat = 0;
+    transient var _cf_state: [(Text, NeuronRunState)] = [];
+
+    func _nrsGet(map: [(Text, NeuronRunState)], instanceId: Text): NeuronRunState {
+        for ((id, s) in map.vals()) { if (id == instanceId) return s };
+        { neurons = []; index = 0 }
+    };
+
+    func _nrsSet(map: [(Text, NeuronRunState)], instanceId: Text, s: NeuronRunState): [(Text, NeuronRunState)] {
+        var found = false;
+        let updated = Array.map<(Text, NeuronRunState), (Text, NeuronRunState)>(
+            map, func((id, old)) { if (id == instanceId) { found := true; (id, s) } else { (id, old) } }
+        );
+        if (found) { updated } else { Array.append(map, [(instanceId, s)]) }
+    };
 
     // Map a chore instance ID to its per-type manage permission ID.
     // Resolves instanceId -> typeId -> permission.
@@ -2326,58 +2339,61 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     // Helper: create a task function that refreshes stake for a specific neuron.
     // This calls ClaimOrRefresh which picks up any ICP deposited to the neuron's account.
-    func _rs_makeTaskFn(nid: T.NeuronId): () -> async BotChoreTypes.TaskAction {
+    func _rs_makeTaskFn(instanceId: Text, nid: T.NeuronId): () -> async BotChoreTypes.TaskAction {
         func(): async BotChoreTypes.TaskAction {
+            let src = "chore:" # instanceId;
             let nidText = Nat64.toText(nid.id);
-            logEngine.logDebug("chore:refresh-stake", "Refreshing stake for neuron " # nidText, null, [("neuronId", nidText)]);
+            logEngine.logDebug(src, "Refreshing stake for neuron " # nidText, null, [("neuronId", nidText)]);
             let result = await refreshStakeInternal(nid);
             switch (result) {
                 case (#Ok) {
-                    logEngine.logInfo("chore:refresh-stake", "Refreshed stake for neuron " # nidText, null, [("neuronId", nidText), ("result", "success")]);
+                    logEngine.logInfo(src, "Refreshed stake for neuron " # nidText, null, [("neuronId", nidText), ("result", "success")]);
                     #Done
                 };
                 case (#Err(#GovernanceError(e))) {
-                    logEngine.logDebug("chore:refresh-stake", "Refresh stake failed for neuron " # nidText # ": " # e.error_message, null, [("neuronId", nidText), ("error", e.error_message)]);
+                    logEngine.logDebug(src, "Refresh stake failed for neuron " # nidText # ": " # e.error_message, null, [("neuronId", nidText), ("error", e.error_message)]);
                     #Error(e.error_message)
                 };
                 case (#Err(#NoNeuron)) {
-                    logEngine.logDebug("chore:refresh-stake", "Neuron not found: " # nidText, null, [("neuronId", nidText)]);
+                    logEngine.logDebug(src, "Neuron not found: " # nidText, null, [("neuronId", nidText)]);
                     #Error("Neuron not found")
                 };
                 case (#Err(#InvalidOperation(msg))) {
-                    logEngine.logDebug("chore:refresh-stake", "Invalid operation for neuron " # nidText # ": " # msg, null, [("neuronId", nidText), ("error", msg)]);
+                    logEngine.logDebug(src, "Invalid operation for neuron " # nidText # ": " # msg, null, [("neuronId", nidText), ("error", msg)]);
                     #Error(msg)
                 };
                 case (#Err(#TransferFailed(msg))) {
-                    logEngine.logDebug("chore:refresh-stake", "Transfer failed for neuron " # nidText # ": " # msg, null, [("neuronId", nidText), ("error", msg)]);
+                    logEngine.logDebug(src, "Transfer failed for neuron " # nidText # ": " # msg, null, [("neuronId", nidText), ("error", msg)]);
                     #Error(msg)
                 };
                 case (#Err(#InsufficientFunds(_))) {
-                    logEngine.logDebug("chore:refresh-stake", "Insufficient funds for neuron " # nidText, null, [("neuronId", nidText)]);
+                    logEngine.logDebug(src, "Insufficient funds for neuron " # nidText, null, [("neuronId", nidText)]);
                     #Error("Insufficient funds")
                 };
             };
         }
     };
 
-    // Helper: start a refresh-stake task for the neuron at _rs_index
-    func _rs_startCurrentTask() {
-        if (_rs_index < _rs_neurons.size()) {
-            let nid = _rs_neurons[_rs_index];
-            let taskFn = _rs_makeTaskFn(nid);
+    // Helper: start a refresh-stake task for the instance's current neuron
+    func _rs_startCurrentTask(instanceId: Text) {
+        let st = _nrsGet(_rs_state, instanceId);
+        if (st.index < st.neurons.size()) {
+            let nid = st.neurons[st.index];
+            let taskFn = _rs_makeTaskFn(instanceId, nid);
             choreEngine.setPendingTask(
-                "refresh-stake",
-                "refresh-" # Nat.toText(_rs_index),
+                instanceId,
+                "refresh-" # Nat.toText(st.index),
                 taskFn
             );
         };
     };
 
     // Helper: create a task function that confirms following for a specific neuron
-    func _cf_makeTaskFn(nid: T.NeuronId): () -> async BotChoreTypes.TaskAction {
+    func _cf_makeTaskFn(instanceId: Text, nid: T.NeuronId): () -> async BotChoreTypes.TaskAction {
         func(): async BotChoreTypes.TaskAction {
+            let src = "chore:" # instanceId;
             let nidText = Nat64.toText(nid.id);
-            logEngine.logDebug("chore:confirm-following", "Fetching neuron " # nidText # " to read followees", null, [("neuronId", nidText)]);
+            logEngine.logDebug(src, "Fetching neuron " # nidText # " to read followees", null, [("neuronId", nidText)]);
 
             // Get full neuron to read current followees
             let neuronResult = await governance.get_full_neuron(nid.id);
@@ -2387,14 +2403,14 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             };
 
             let numTopics = neuron.followees.size();
-            logEngine.logDebug("chore:confirm-following", "Confirming " # Nat.toText(numTopics) # " topic(s) for neuron " # nidText, null, [("neuronId", nidText), ("topics", Nat.toText(numTopics))]);
+            logEngine.logDebug(src, "Confirming " # Nat.toText(numTopics) # " topic(s) for neuron " # nidText, null, [("neuronId", nidText), ("topics", Nat.toText(numTopics))]);
 
             // Re-apply each topic's followees
             var confirmedCount: Nat = 0;
             for ((topic, followeesRecord) in neuron.followees.vals()) {
                 let topicText = Int.toText(Int32.toInt(topic));
                 let numFollowees = followeesRecord.followees.size();
-                logEngine.logTrace("chore:confirm-following", "Confirming topic " # topicText # " with " # Nat.toText(numFollowees) # " followee(s) for neuron " # nidText, null, [("neuronId", nidText), ("topic", topicText), ("followees", Nat.toText(numFollowees))]);
+                logEngine.logTrace(src, "Confirming topic " # topicText # " with " # Nat.toText(numFollowees) # " followee(s) for neuron " # nidText, null, [("neuronId", nidText), ("topic", topicText), ("followees", Nat.toText(numFollowees))]);
 
                 let request: T.ManageNeuronRequest = {
                     id = ?nid;
@@ -2412,31 +2428,32 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                     };
                     case (?#Follow(_)) {
                         confirmedCount += 1;
-                        logEngine.logTrace("chore:confirm-following", "Topic " # topicText # " confirmed for neuron " # nidText, null, [("neuronId", nidText), ("topic", topicText)]);
+                        logEngine.logTrace(src, "Topic " # topicText # " confirmed for neuron " # nidText, null, [("neuronId", nidText), ("topic", topicText)]);
                     };
                     case null {
                         return #Error("No response for topic " # topicText);
                     };
                     case (_) {
                         confirmedCount += 1;
-                        logEngine.logTrace("chore:confirm-following", "Topic " # topicText # " got unexpected response (continuing) for neuron " # nidText, null, [("neuronId", nidText), ("topic", topicText)]);
+                        logEngine.logTrace(src, "Topic " # topicText # " got unexpected response (continuing) for neuron " # nidText, null, [("neuronId", nidText), ("topic", topicText)]);
                     };
                 };
             };
 
-            logEngine.logInfo("chore:confirm-following", "Confirmed " # Nat.toText(confirmedCount) # "/" # Nat.toText(numTopics) # " topics for neuron " # nidText, null, [("neuronId", nidText), ("topicsConfirmed", Nat.toText(confirmedCount)), ("topicsTotal", Nat.toText(numTopics))]);
+            logEngine.logInfo(src, "Confirmed " # Nat.toText(confirmedCount) # "/" # Nat.toText(numTopics) # " topics for neuron " # nidText, null, [("neuronId", nidText), ("topicsConfirmed", Nat.toText(confirmedCount)), ("topicsTotal", Nat.toText(numTopics))]);
             #Done
         }
     };
 
-    // Helper: start a confirm-following task for the neuron at _cf_index
-    func _cf_startCurrentTask() {
-        if (_cf_index < _cf_neurons.size()) {
-            let nid = _cf_neurons[_cf_index];
-            let taskFn = _cf_makeTaskFn(nid);
+    // Helper: start a confirm-following task for the instance's current neuron
+    func _cf_startCurrentTask(instanceId: Text) {
+        let st = _nrsGet(_cf_state, instanceId);
+        if (st.index < st.neurons.size()) {
+            let nid = st.neurons[st.index];
+            let taskFn = _cf_makeTaskFn(instanceId, nid);
             choreEngine.setPendingTask(
-                "confirm-following",
-                "confirm-" # Nat.toText(_cf_index),
+                instanceId,
+                "confirm-" # Nat.toText(st.index),
                 taskFn
             );
         };
@@ -2579,9 +2596,9 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     };
 
     // Helper: create a task function that distributes funds for a single distribution list
-    func _df_makeTaskFn(list: DistributionTypes.DistributionList): () -> async BotChoreTypes.TaskAction {
+    func _df_makeTaskFn(list: DistributionTypes.DistributionList, instanceId: Text): () -> async BotChoreTypes.TaskAction {
         func(): async BotChoreTypes.TaskAction {
-            let src = "chore:distribute-funds";
+            let src = "chore:" # instanceId;
             let listName = list.name;
             let numTargets = list.targets.size();
             let ledgerText = Principal.toText(list.tokenLedgerCanisterId);
@@ -2619,15 +2636,12 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                 let pctAmount = (balance * pct) / 10000;
                 Nat.min(pctAmount, list.maxDistributionAmount)
             } else {
-                let minAmt = list.minDistributionAmount;
-                let maxAmt = Nat.min(balance, list.maxDistributionAmount);
-                if (maxAmt < minAmt) { 0 }
-                else if (minAmt == maxAmt) { minAmt }
-                else {
-                    let range = maxAmt - minAmt;
-                    let entropy = Int.abs(Time.now()) % (range + 1);
-                    minAmt + entropy
-                }
+                // Mode 0 in the staking bot: up to the maximum per round, i.e. min(balance, max),
+                // as before amount modes existed (lists migrated from then have mode 0 and
+                // minDistributionAmount 0). Deterministic: no random amount as in the trading bot.
+                // minDistributionAmount is a floor: below it the list is skipped this round.
+                let amt = Nat.min(balance, list.maxDistributionAmount);
+                if (amt < list.minDistributionAmount) { 0 } else { amt }
             };
 
             // Reserve fees for all transfers
@@ -2731,7 +2745,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
             if (transferErrors.size() > 0) {
                 eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.DistributionFailed, [
-                    ("choreId", "distribute-funds"), ("list", listName),
+                    ("choreId", instanceId), ("list", listName),
                     ("succeeded", Nat.toText(successCount)),
                     ("failed", Nat.toText(transferErrors.size())),
                     ("ledger", ledgerText),
@@ -2740,7 +2754,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             };
 
             eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.DistributionExecuted, [
-                ("choreId", "distribute-funds"), ("list", listName),
+                ("choreId", instanceId), ("list", listName),
                 ("amount", Nat.toText(distributableNet)),
                 ("targets", Nat.toText(successCount)),
                 ("ledger", ledgerText),
@@ -2754,7 +2768,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         let st = _df_getState(instanceId);
         if (st.index < st.lists.size()) {
             let list = st.lists[st.index];
-            let taskFn = _df_makeTaskFn(list);
+            let taskFn = _df_makeTaskFn(list, instanceId);
             choreEngine.setPendingTask(
                 instanceId,
                 "dist-" # Nat.toText(list.id),
@@ -2940,6 +2954,8 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             defaultMaxIntervalSeconds = null; // No randomization for confirm following
             defaultTaskTimeoutSeconds = 600; // 10 minutes (confirming many topics can take time)
             conduct = func(ctx: BotChoreTypes.ConductorContext): BotChoreTypes.ConductorAction {
+                let instanceId = ctx.choreId;
+                let src = "chore:" # instanceId;
                 if (ctx.isTaskRunning) {
                     return #ContinueIn(10);
                 };
@@ -2952,29 +2968,31 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                             for (n in neurons.vals()) {
                                 switch (n.id) { case (?nid) { neuronIds.add(nid) }; case null {} };
                             };
-                            _cf_neurons := Buffer.toArray(neuronIds);
-                            _cf_index := 0;
+                            _cf_state := _nrsSet(_cf_state, instanceId, { neurons = Buffer.toArray(neuronIds); index = 0 });
                             #Done
                         };
-                        choreEngine.setPendingTask("confirm-following", "cf-fetch-neurons", taskFn);
+                        choreEngine.setPendingTask(instanceId, "cf-fetch-neurons", taskFn);
                         return #ContinueIn(5);
                     };
                     case (?lastResult) {
                         if (lastResult.taskId == "cf-fetch-neurons") {
-                            logEngine.logInfo("chore:confirm-following", "Starting: found " # Nat.toText(_cf_neurons.size()) # " neurons to confirm followees for", null, [("neuronCount", Nat.toText(_cf_neurons.size()))]);
-                            if (_cf_neurons.size() == 0) {
+                            let st = _nrsGet(_cf_state, instanceId);
+                            logEngine.logInfo(src, "Starting: found " # Nat.toText(st.neurons.size()) # " neurons to confirm followees for", null, [("neuronCount", Nat.toText(st.neurons.size()))]);
+                            if (st.neurons.size() == 0) {
                                 return #Done;
                             };
-                            _cf_startCurrentTask();
+                            _cf_startCurrentTask(instanceId);
                             return #ContinueIn(10);
                         };
-                        logEngine.logTrace("chore:confirm-following", "Neuron " # Nat.toText(_cf_index) # "/" # Nat.toText(_cf_neurons.size()) # " task done (success=" # (if (lastResult.succeeded) "true" else "false") # ")", null, [("index", Nat.toText(_cf_index)), ("total", Nat.toText(_cf_neurons.size())), ("succeeded", if (lastResult.succeeded) "true" else "false")]);
-                        _cf_index += 1;
-                        if (_cf_index >= _cf_neurons.size()) {
-                            logEngine.logInfo("chore:confirm-following", "Completed: all " # Nat.toText(_cf_neurons.size()) # " neurons processed", null, [("neuronCount", Nat.toText(_cf_neurons.size()))]);
+                        let st = _nrsGet(_cf_state, instanceId);
+                        logEngine.logTrace(src, "Neuron " # Nat.toText(st.index) # "/" # Nat.toText(st.neurons.size()) # " task done (success=" # (if (lastResult.succeeded) "true" else "false") # ")", null, [("index", Nat.toText(st.index)), ("total", Nat.toText(st.neurons.size())), ("succeeded", if (lastResult.succeeded) "true" else "false")]);
+                        let nextIdx = st.index + 1;
+                        _cf_state := _nrsSet(_cf_state, instanceId, { st with index = nextIdx });
+                        if (nextIdx >= st.neurons.size()) {
+                            logEngine.logInfo(src, "Completed: all " # Nat.toText(st.neurons.size()) # " neurons processed", null, [("neuronCount", Nat.toText(st.neurons.size()))]);
                             return #Done;
                         };
-                        _cf_startCurrentTask();
+                        _cf_startCurrentTask(instanceId);
                         return #ContinueIn(10);
                     };
                 };
@@ -2990,6 +3008,8 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             defaultMaxIntervalSeconds = null; // No randomization for refresh stake
             defaultTaskTimeoutSeconds = 300; // 5 minutes per neuron refresh
             conduct = func(ctx: BotChoreTypes.ConductorContext): BotChoreTypes.ConductorAction {
+                let instanceId = ctx.choreId;
+                let src = "chore:" # instanceId;
                 if (ctx.isTaskRunning) {
                     return #ContinueIn(10);
                 };
@@ -3002,29 +3022,31 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                             for (n in neurons.vals()) {
                                 switch (n.id) { case (?nid) { neuronIds.add(nid) }; case null {} };
                             };
-                            _rs_neurons := Buffer.toArray(neuronIds);
-                            _rs_index := 0;
+                            _rs_state := _nrsSet(_rs_state, instanceId, { neurons = Buffer.toArray(neuronIds); index = 0 });
                             #Done
                         };
-                        choreEngine.setPendingTask("refresh-stake", "rs-fetch-neurons", taskFn);
+                        choreEngine.setPendingTask(instanceId, "rs-fetch-neurons", taskFn);
                         return #ContinueIn(5);
                     };
                     case (?lastResult) {
                         if (lastResult.taskId == "rs-fetch-neurons") {
-                            logEngine.logInfo("chore:refresh-stake", "Starting: found " # Nat.toText(_rs_neurons.size()) # " neurons to refresh stake for", null, [("neuronCount", Nat.toText(_rs_neurons.size()))]);
-                            if (_rs_neurons.size() == 0) {
+                            let st = _nrsGet(_rs_state, instanceId);
+                            logEngine.logInfo(src, "Starting: found " # Nat.toText(st.neurons.size()) # " neurons to refresh stake for", null, [("neuronCount", Nat.toText(st.neurons.size()))]);
+                            if (st.neurons.size() == 0) {
                                 return #Done;
                             };
-                            _rs_startCurrentTask();
+                            _rs_startCurrentTask(instanceId);
                             return #ContinueIn(10);
                         };
-                        logEngine.logTrace("chore:refresh-stake", "Neuron " # Nat.toText(_rs_index) # "/" # Nat.toText(_rs_neurons.size()) # " task done (success=" # (if (lastResult.succeeded) "true" else "false") # ")", null, [("index", Nat.toText(_rs_index)), ("total", Nat.toText(_rs_neurons.size())), ("succeeded", if (lastResult.succeeded) "true" else "false")]);
-                        _rs_index += 1;
-                        if (_rs_index >= _rs_neurons.size()) {
-                            logEngine.logInfo("chore:refresh-stake", "Completed: all " # Nat.toText(_rs_neurons.size()) # " neurons processed", null, [("neuronCount", Nat.toText(_rs_neurons.size()))]);
+                        let st = _nrsGet(_rs_state, instanceId);
+                        logEngine.logTrace(src, "Neuron " # Nat.toText(st.index) # "/" # Nat.toText(st.neurons.size()) # " task done (success=" # (if (lastResult.succeeded) "true" else "false") # ")", null, [("index", Nat.toText(st.index)), ("total", Nat.toText(st.neurons.size())), ("succeeded", if (lastResult.succeeded) "true" else "false")]);
+                        let nextIdx = st.index + 1;
+                        _rs_state := _nrsSet(_rs_state, instanceId, { st with index = nextIdx });
+                        if (nextIdx >= st.neurons.size()) {
+                            logEngine.logInfo(src, "Completed: all " # Nat.toText(st.neurons.size()) # " neurons processed", null, [("neuronCount", Nat.toText(st.neurons.size()))]);
                             return #Done;
                         };
-                        _rs_startCurrentTask();
+                        _rs_startCurrentTask(instanceId);
                         return #ContinueIn(10);
                     };
                 };

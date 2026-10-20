@@ -8,7 +8,7 @@ The **Sneed Trading Bot** is a fully on-chain, autonomous trading bot running as
 **Language**: Motoko (backend), React (frontend)
 **Architecture**: Each user owns their own canister instance — no shared custody, no centralized server.
 
-> **Status (2026-10-20): built** (`src/sneed_bots/sneed_trading_bot/`, version 0.9.3). Items not built are marked inline. Full technical detail and known issues: `spec/trading_bot.md`.
+> **Status (2026-10-20): built** (`src/sneed_bots/sneed_trading_bot/`, version 0.9.4). Items not built are marked inline. Full technical detail and known issues: `spec/trading_bot.md`.
 
 ---
 
@@ -153,7 +153,8 @@ Automatically distributes funds to multiple recipients based on configurable per
 - **Auto-split**: targets without assigned percentages evenly split the remainder
 - **Amount modes**: random amount between min and max (capped by balance), or a percentage of the balance capped by the max
 - External targets whose share would not exceed one transaction fee are skipped
-- Not in the trading bot (unlike the staking bot): renormalization when assigned percentages exceed 100%, and a list-wide hard minimum. Over-100% lists are a known issue, as are ignored transfer errors (see `spec/trading_bot.md`, Known issues)
+- Assigned percentages above 100% in total are scaled down proportionally, as in the staking bot (since 2026-10-20; before, such lists over-distributed). Not in the trading bot: the staking bot's list-wide hard minimum
+- Only transfers the ledger accepts are booked; a refused transfer is logged and reported with a `DistributionFailed` event (fixed 2026-10-20; before, it was booked as paid)
 
 ### 6.2 Multi-Instance Support
 

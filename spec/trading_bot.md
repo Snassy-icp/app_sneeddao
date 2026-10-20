@@ -1,6 +1,6 @@
 # Sneed Trading Bot — Specification
 
-> **Status (2026-10-20): built.** Code: `src/sneed_bots/sneed_trading_bot/` (`main.mo`, `Types.mo`), version 0.9.3, on the shared `src/sneed_bots/Bot*` modules. Items still open are marked inline; known issues are collected in the "Known issues" section at the end.
+> **Status (2026-10-20): built.** Code: `src/sneed_bots/sneed_trading_bot/` (`main.mo`, `Types.mo`), version 0.9.4, on the shared `src/sneed_bots/Bot*` modules. Items still open are marked inline; known issues are collected in the "Known issues" section at the end.
 
 ## 1. Overview
 
@@ -731,14 +731,18 @@ When `choreInstanceId` is set, the distribution credits the target chore's purse
 3. If balance >= `thresholdAmount`, calculate distribution amount based on `amountMode`:
    - `0`: random in `[minDistributionAmount, min(balance, maxDistributionAmount)]` (0 if the range is empty).
    - `1`: `balance × balancePercent / 10000` (100% if null), capped by `maxDistributionAmount`.
+   - Either way never more than the balance from step 2.
+   Every exit from here on releases the purse lock.
 4. Reserve one transfer fee per **external** target; skip if the amount does not cover them. The rest is the net amount.
 5. For each target (in order):
-   - Calculate target share: `net * targetBps / 10000`, or an equal share of the unassigned remainder for auto-split targets.
-   - If target has `choreInstanceId`: credit that chore's purse, debit source purse (bookkeeping).
-   - If target is external and its share exceeds one fee: execute ICRC-1 transfer, debit source purse by `(amount + fee)`. Shares at or below one fee are skipped (no list-wide hard minimum as in the staking bot).
-6. Emit `DistributionExecuted` (or `DistributionFailed` if the task throws).
+   - Calculate target share: `net * targetBps / 10000`, or an equal share of the unassigned remainder for auto-split targets. If the assigned basis points add up to more than 10000 they are scaled down proportionally (`net * targetBps / sumOfAssignedBps`) and auto-split targets get nothing, as in the staking bot.
+   - If target has `choreInstanceId`: credit that chore's purse, debit the source purse (the list's `sourcePurseId`, else the chore's effective purse; nothing to debit for the main purse) — bookkeeping.
+   - If target is external and its share exceeds one fee: execute ICRC-1 transfer. Only a transfer the ledger accepts is booked: the source purse, `lastKnownBalance`, capital deployed and the token outflow go down by `(amount + fee)`. A refused transfer (`#Err`) or a failed call is logged as a warning and booked as nothing. Shares at or below one fee are skipped (no list-wide hard minimum as in the staking bot).
+6. Emit `DistributionExecuted` when everything went through, or `DistributionFailed` (with the amounts that did go out and the number of failed transfers) and end the task in `#Error` when a transfer failed or the task threw.
 
-Status (2026-10-20): built, with known issues (see the end of this spec): assigned percentages over 100% are not renormalized, transfer errors are ignored, and one early return leaves the purse lock held.
+`addDistributionList` / `updateDistributionList` refuse a target `basisPoints` or a `balancePercent` above 10000.
+
+Status (2026-10-20): built. The three distribution issues listed at the end (ignored transfer errors, no scaling above 100 %, lock left held by an early return) were fixed on 2026-10-20 (0.9.4).
 
 ---
 
@@ -2594,7 +2598,9 @@ These are NEVER stored as variants in stable storage — only the Nat values are
 
 Found while aligning this spec with the code; these are code issues, not intended behaviour.
 
-1. **Distribute funds: transfer errors ignored.** `_df_makeTaskFn` does `ignore await ledger.icrc1_transfer(...)` (`src/sneed_bots/sneed_trading_bot/main.mo:5989`) and counts the share as distributed: a failed transfer is still debited from the source purse, from `lastKnownBalance` and from capital deployed, and `DistributionExecuted` is emitted.
-2. **Distribute funds: no renormalization above 100%.** Shares are `net * bp / 10000` (`main.mo:5966`) with no scaling when the assigned basis points sum to more than 10000, so the list can try to distribute more than `net` (unlike the staking bot, which renormalizes). With a source purse this can hit the `assert` in `adjustChorePurseBalance` (`main.mo:765`) and trap the task.
-3. **Distribute funds: purse lock leak.** The early `return #Done` when the amount cannot cover the external fees (`main.mo:5946-5947`) does not call `unlockPurse`, so the source purse stays locked for the 5-minute TTL and other chores sharing it skip.
-4. **`maxFrequencySeconds` is not enforced.** It is stored on actions but no execution path reads it; only `minFrequencySeconds` is checked (`main.mo:3341`).
+Items 1–3 were fixed on 2026-10-20 (version 0.9.4, see §9 Execution Flow; tests in `test/canisters/tests/trading-bot.test.js`, "distribution lists on timers").
+
+1. **Fixed 2026-10-20. Distribute funds: transfer errors ignored.** `_df_makeTaskFn` does `ignore await ledger.icrc1_transfer(...)` (`src/sneed_bots/sneed_trading_bot/main.mo:5989`) and counts the share as distributed: a failed transfer is still debited from the source purse, from `lastKnownBalance` and from capital deployed, and `DistributionExecuted` is emitted.
+2. **Fixed 2026-10-20. Distribute funds: no renormalization above 100%.** Shares are `net * bp / 10000` (`main.mo:5966`) with no scaling when the assigned basis points sum to more than 10000, so the list can try to distribute more than `net` (unlike the staking bot, which renormalizes). With a source purse this can hit the `assert` in `adjustChorePurseBalance` (`main.mo:765`) and trap the task.
+3. **Fixed 2026-10-20. Distribute funds: purse lock leak.** The early `return #Done` when the amount cannot cover the external fees (`main.mo:5946-5947`) does not call `unlockPurse`, so the source purse stays locked for the 5-minute TTL and other chores sharing it skip.
+4. **`maxFrequencySeconds` is not enforced.** It is stored on actions but no execution path reads it; only `minFrequencySeconds` is checked (`main.mo:3341`). Still open: what it should mean (a randomized upper bound of the per-action gap, like `maxIntervalSeconds` for chores, or a forced execution after that long) is not settled, so it was left as is.

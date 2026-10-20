@@ -965,3 +965,84 @@ describe('upgrade', () => {
     expect((await neuron(claimed)).cached_neuron_stake_e8s).toBe(stake + E8S);
   });
 });
+
+// Fixed 2026-10-20 (sneed_icp_staking_bot 0.9.4).
+describe('chore instances and distribution amounts', () => {
+  const distInput = (over = {}) => ({
+    name: 'd', tokenLedgerCanisterId: tokenId, thresholdAmount: 0n, amountMode: 0n, balancePercent: [], sourcePurseId: [],
+    minDistributionAmount: 0n, maxDistributionAmount: 0n,
+    targets: [{ account: account(alice), basisPoints: [5000n], choreInstanceId: [] }, { account: account(carol), basisPoints: [], choreInstanceId: [] }],
+    ...over,
+  });
+  const tok = (p) => token.icrc1_balance_of(account(p));
+
+  // amountMode 0 with minDistributionAmount 0 (every list migrated from 0.9.1, and every list the
+  // staking bot page saves) paid a random amount in [0, min(balance, max)]; it pays min(balance, max)
+  it('amount mode 0 pays min(balance, max), with minDistributionAmount as a floor', async () => {
+    await bot.createChoreInstance('distribute-funds', 'df-amt', 'Amounts');
+    const own0 = await bot.getTokenBalance(tokenId);
+    await token.mint(account(botId), 1_000_000n);
+    const id = await bot.addDistributionList('df-amt', distInput({ maxDistributionAmount: 400_000n }));
+    const [a0, c0] = [await tok(alice), await tok(carol)];
+    await startAndRun('df-amt');
+    const net = 400_000n - 2n * 1_000n;
+    expect(await tok(alice)).toBe(a0 + net / 2n);
+    expect(await tok(carol)).toBe(c0 + net / 2n);
+    // now the balance is below the maximum: all of it goes
+    const bal = await bot.getTokenBalance(tokenId);
+    expect(bal).toBe(own0 + 1_000_000n - 400_000n);
+    await bot.updateDistributionList('df-amt', id, distInput({ maxDistributionAmount: 10_000_000n }));
+    await startAndRun('df-amt', (b) => b.triggerChore('df-amt'));
+    expect(await bot.getTokenBalance(tokenId)).toBe(0n);
+    expect(await tok(alice)).toBe(a0 + net / 2n + (bal - 2_000n) / 2n);
+    // below minDistributionAmount the list is skipped
+    await token.mint(account(botId), 50_000n);
+    await bot.updateDistributionList('df-amt', id, distInput({ maxDistributionAmount: 10_000_000n, minDistributionAmount: 60_000n }));
+    await startAndRun('df-amt', (b) => b.triggerChore('df-amt'));
+    expect(await bot.getTokenBalance(tokenId)).toBe(50_000n);
+    await bot.stopChore('df-amt');
+  });
+
+  // a second instance of confirm-following or refresh-stake set its tasks under the default
+  // instance's id (and shared its neuron list), so it never ran its own work
+  it('a second confirm-following instance runs its own run', async () => {
+    await bot.stopAllChores();
+    expect(await bot.createChoreInstance('confirm-following', 'cf-2', 'Second')).toBe(true);
+    const def = await status('confirm-following');
+    await gov.clear_calls();
+    const s = await startAndRun('cf-2');
+    expect(s.totalSuccessCount).toBe(1n);
+    expect((await gov.get_calls()).some((c) => c.startsWith(`Follow(neuron ${staked} `))).toBe(true);
+    const logs = (await bot.getLogs({ ...noFilter, source: ['chore:cf-2'] })).entries.map((e) => e.message);
+    expect(logs).toContain(`Confirmed 1/1 topics for neuron ${staked}`);
+    expect((await status('confirm-following')).totalRunCount).toBe(def.totalRunCount); // untouched
+    await bot.stopChore('cf-2');
+  });
+
+  it('a second refresh-stake instance runs its own run', async () => {
+    expect(await bot.createChoreInstance('refresh-stake', 'rs-2', 'Second')).toBe(true);
+    const def = await status('refresh-stake');
+    const acct = (await bot.getNeuronAccount({ id: claimed }))[0];
+    await icp.mint(acct, E8S);
+    const stake = (await neuron(claimed)).cached_neuron_stake_e8s;
+    const s = await startAndRun('rs-2');
+    expect(s.totalSuccessCount).toBe(1n);
+    expect((await neuron(claimed)).cached_neuron_stake_e8s).toBe(stake + E8S);
+    const logs = (await bot.getLogs({ ...noFilter, source: ['chore:rs-2'] })).entries.map((e) => e.message);
+    expect(logs).toContain(`Refreshed stake for neuron ${claimed}`);
+    expect((await status('refresh-stake')).totalRunCount).toBe(def.totalRunCount);
+    await bot.stopChore('rs-2');
+  });
+
+  it('distribution logs and events name their own instance', async () => {
+    await token.mint(account(botId), 100_000n);
+    expect(await bot.createChoreInstance('distribute-funds', 'df-2', 'Second')).toBe(true);
+    await bot.addDistributionList('df-2', distInput({ maxDistributionAmount: 100_000n }));
+    await startAndRun('df-2');
+    const ev = (await bot.getEventLog({ eventTypeId: [10n], fromTime: [], toTime: [], startId: [], limit: [500n] })).entries.pop();
+    expect(ev.data).toContainEqual(['choreId', 'df-2']);
+    const logs = (await bot.getLogs({ ...noFilter, source: ['chore:df-2'] })).entries.map((e) => e.message);
+    expect(logs.some((m) => /^Distributed \d+ from list 'd'/.test(m))).toBe(true);
+    await bot.stopChore('df-2');
+  });
+});

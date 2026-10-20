@@ -40,11 +40,14 @@ module {
         /// If set, source funds from this chore's purse (debit on distribution).
         /// null = source from the main purse.
         sourcePurseId: ?Text;
-        /// 0 = random in [minDistributionAmount, maxDistributionAmount], 1 = % of balance (capped by max).
+        /// 0 = up to the max: in the trading bot a random amount in [minDistributionAmount,
+        /// min(balance, maxDistributionAmount)]; in the staking bot min(balance, maxDistributionAmount),
+        /// skipped when that is below minDistributionAmount.
+        /// 1 = % of balance (capped by max).
         amountMode: Nat;
         /// When amountMode=1: percentage in basis points (0–10000 = 0–100%).
         balancePercent: ?Nat;
-        /// Minimum amount to distribute (for random mode).
+        /// Minimum amount to distribute (amountMode 0).
         minDistributionAmount: Nat;
     };
 

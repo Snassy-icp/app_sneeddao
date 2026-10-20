@@ -148,7 +148,7 @@ afterAll(async () => { await pic?.tearDown(); });
 describe('fresh install', () => {
   it('reports its version and principal and starts empty with defaults', async () => {
     const v = await bot.getVersion();
-    expect(v).toEqual({ major: 0n, minor: 9n, patch: 3n });
+    expect(v).toEqual({ major: 0n, minor: 9n, patch: 4n });
     expect((await bot.getCanisterPrincipal()).toText()).toBe(botId.toText());
     expect(await bot.getTokenRegistry()).toEqual([]);
     expect(await bot.getEnabledDexes()).toEqual([0n, 1n]);
@@ -879,5 +879,109 @@ describe('slippage and price impact are bounded at 10 000 bps', () => {
     const { Ok: next } = await b2.submitOneOffTrade(oneOff({ inputAmount: 10_000n, maxSlippageBps: [10_000n], preferredDex: [0n] }));
     expect((await settleOneOff(b2, next)).status).toBe(2n);
     expect((await b2.getOneOffTradeQueue()).every((x) => x.status === 2n)).toBe(true);
+  });
+});
+
+// Fixed 2026-10-20 (sneed_trading_bot 0.9.4): a distribution transfer the ledger refused was still
+// booked as paid (purse debited, DistributionExecuted emitted); assigned shares above 100 % were
+// not scaled down (with purse targets the over-debit trapped and left the purse locked); and a
+// list whose amount could not cover the fees returned without releasing the purse lock, so the
+// next list on the same purse was skipped until the 5-minute lock timeout.
+describe('distribution lists on timers', () => {
+  const FEE_F = 1_000n;
+  let b3, fId, fTok, b3Id;
+  const faultyIdl = ({ IDL }) => {
+    const Account = IDL.Record({ owner: IDL.Principal, subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)) });
+    return IDL.Service({
+      mint: IDL.Func([Account, IDL.Nat], [IDL.Nat], []),
+      icrc1_balance_of: IDL.Func([Account], [IDL.Nat], ['query']),
+      set_fail_to: IDL.Func([IDL.Vec(IDL.Principal)], [], []),
+    });
+  };
+  const list = (over) => ({
+    name: 'l', tokenLedgerCanisterId: fId, thresholdAmount: 0n, amountMode: 0n, balancePercent: [], sourcePurseId: ['df'],
+    minDistributionAmount: 100_000n, maxDistributionAmount: 100_000n, targets: [], ...over,
+  });
+  const ext = (owner, bps) => ({ account: account(owner), basisPoints: bps === undefined ? [] : [bps], choreInstanceId: [] });
+  const toPurse = (id, bps) => ({ account: account(botId), basisPoints: [bps], choreInstanceId: [id] });
+  const events = async (type) => (await b3.getEventLog({ eventTypeId: [type], fromTime: [], toTime: [], startId: [], limit: [] })).entries;
+  async function runDf() {
+    const before = (await b3.getChoreStatus('df'))[0].totalRunCount;
+    await b3.triggerChore('df');
+    for (let i = 0; i < 60; i++) {
+      await pic.advanceTime(5_000); await pic.tick(4);
+      const s = (await b3.getChoreStatus('df'))[0];
+      if (s.totalRunCount > before && 'Idle' in s.conductorStatus) return s;
+    }
+    throw new Error('distribute-funds run did not finish');
+  }
+  async function clearLists() {
+    for (const l of await b3.getDistributionLists('df')) await b3.removeDistributionList('df', l.id);
+  }
+
+  beforeAll(async () => {
+    fId = await install(pic, { name: 'MockLedgerFaulty', initTypes: ledgerInit, initArgs: [{ fee: FEE_F, symbol: 'FFF', decimals: 8 }], targetSubnetId: appSubnet });
+    fTok = actorAs(pic, faultyIdl, fId, admin);
+    b3Id = await installBot();
+    b3 = actorAs(pic, botIdl, b3Id, admin);
+    await b3.addToken(regEntry(fId, 'FFF', FEE_F));
+    await fTok.mint(account(b3Id), 10_000_000n);
+    expect(await b3.createChoreInstance('distribute-funds', 'df', 'Distribute')).toBe(true);
+    for (const p of ['df', 'p1', 'p2']) await b3.enablePurse(p);
+    expect(await b3.fundPurse('df', fId, 5_000_000n)).toEqual({ Ok: null });
+  });
+
+  it('books only the transfers the ledger accepted, and reports the failure', async () => {
+    await b3.addDistributionList('df', list({ targets: [ext(alice, 5_000n), ext(carol, 5_000n)] }));
+    await fTok.set_fail_to([carol]);
+    const [purse, a0, c0] = [await b3.getPurseBalance('df', fId), await fTok.icrc1_balance_of(account(alice)), await fTok.icrc1_balance_of(account(carol))];
+    await runDf();
+    await fTok.set_fail_to([]);
+    const share = (100_000n - 2n * FEE_F) / 2n;
+    expect(await fTok.icrc1_balance_of(account(alice))).toBe(a0 + share);
+    expect(await fTok.icrc1_balance_of(account(carol))).toBe(c0); // refused by the ledger
+    // only the accepted transfer (amount + fee) leaves the purse
+    expect(await b3.getPurseBalance('df', fId)).toBe(purse - share - FEE_F);
+    expect(await fTok.icrc1_balance_of(account(b3Id))).toBe(10_000_000n - share - FEE_F);
+    expect(await events(10n)).toHaveLength(0); // no DistributionExecuted
+    const [failed] = await events(11n);
+    expect(failed.data).toContainEqual(['failed', '1']);
+    expect(failed.data).toContainEqual(['externalAmount', `${share}`]);
+    const logs = (await b3.getLogs({ minLevel: [], source: ['chore:df'], caller: [], fromTime: [], toTime: [], startId: [], limit: [1000n] })).entries.map((e) => e.message);
+    expect(logs.some((m) => /transfer of \d+ FFF to .* failed/.test(m))).toBe(true);
+    await clearLists();
+  });
+
+  it('releases the purse lock when a list cannot cover its fees, so the next list on the purse runs', async () => {
+    // list 1 cannot cover its transfer fee: it returns early (and used to keep the 'df' purse locked)
+    await b3.addDistributionList('df', list({ name: 'tiny', minDistributionAmount: 500n, maxDistributionAmount: 500n, targets: [ext(alice, 10_000n)] }));
+    await b3.addDistributionList('df', list({ name: 'next', targets: [ext(alice, 10_000n)] }));
+    const a0 = await fTok.icrc1_balance_of(account(alice));
+    await runDf();
+    expect(await fTok.icrc1_balance_of(account(alice))).toBe(a0 + 100_000n - FEE_F);
+    await clearLists();
+  });
+
+  it('scales assigned shares above 100 % down instead of over-debiting the source purse', async () => {
+    // two purse targets at 80 % each (160 % in total)
+    await b3.addDistributionList('df', list({ name: 'over', targets: [toPurse('p1', 8_000n), toPurse('p2', 8_000n)] }));
+    const purse = await b3.getPurseBalance('df', fId);
+    const onChain = await fTok.icrc1_balance_of(account(b3Id));
+    await runDf();
+    // each gets 8000/16000 of the 100 000; nothing more than that leaves the source purse
+    expect(await b3.getPurseBalance('p1', fId)).toBe(50_000n);
+    expect(await b3.getPurseBalance('p2', fId)).toBe(50_000n);
+    expect(await b3.getPurseBalance('df', fId)).toBe(purse - 100_000n);
+    expect(await fTok.icrc1_balance_of(account(b3Id))).toBe(onChain); // bookkeeping only
+    expect((await events(10n)).some((e) => e.data.some(([k, v]) => k === 'list' && v === 'over'))).toBe(true);
+    await clearLists();
+  });
+
+  it('refuses basis-point fields above 100 % when a list is written', async () => {
+    await expect(b3.addDistributionList('df', list({ targets: [ext(alice, 10_001n)] }))).rejects.toThrow(/at most 10000 bps/);
+    await expect(b3.addDistributionList('df', list({ amountMode: 1n, balancePercent: [20_000n], targets: [ext(alice)] }))).rejects.toThrow(/at most 10000 bps/);
+    const id = await b3.addDistributionList('df', list({ targets: [ext(alice, 6_000n), ext(bob, 6_000n)] })); // over 100 % in total is allowed
+    await expect(b3.updateDistributionList('df', id, list({ targets: [ext(alice, 10_001n)] }))).rejects.toThrow(/at most 10000 bps/);
+    await clearLists();
   });
 });

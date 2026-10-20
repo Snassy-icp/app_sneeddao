@@ -6258,11 +6258,13 @@ function IcpNeuronManager() {
                                                             setEditingDistListId(null);
                                                             setEditingDistList({
                                                                 name: '',
-                                                                sourceSubaccount: '',
                                                                 tokenLedgerCanisterId: 'ryjl3-tyaaa-aaaaa-aaaba-cai',
                                                                 tokenMeta: null,
                                                                 thresholdAmount: '',
                                                                 maxDistributionAmount: '',
+                                                                amountMode: 0,
+                                                                balancePercent: '',
+                                                                minDistributionAmount: '',
                                                                 targets: [{ accountOwner: '', accountSubaccount: '', basisPoints: '' }],
                                                             });
                                                         }}
@@ -6310,9 +6312,9 @@ function IcpNeuronManager() {
                                                                             {tkInfo.symbol}
                                                                         </span>
                                                                     </div>
-                                                                    {list.sourceSubaccount.length > 0 && (
+                                                                    {Number(list.amountMode) === 1 && (
                                                                         <div style={{ fontSize: '0.7rem', color: theme.colors.secondaryText }}>
-                                                                            Source subaccount: <span style={{ fontFamily: 'monospace' }}>{Array.from(new Uint8Array(list.sourceSubaccount[0])).map(b => b.toString(16).padStart(2, '0')).join('')}</span>
+                                                                            Each round: {(list.balancePercent?.length > 0 ? Number(list.balancePercent[0]) : 10000) / 100}% of the balance, at most the max per round
                                                                         </div>
                                                                     )}
                                                                 </div>
@@ -6323,11 +6325,13 @@ function IcpNeuronManager() {
                                                                             setEditingDistListId(Number(list.id));
                                                                             setEditingDistList({
                                                                                 name: list.name,
-                                                                                sourceSubaccount: list.sourceSubaccount.length > 0 ? Array.from(new Uint8Array(list.sourceSubaccount[0])).map(b => b.toString(16).padStart(2, '0')).join('') : '',
                                                                                 tokenLedgerCanisterId: cid,
                                                                                 tokenMeta: tkInfo,
                                                                                 thresholdAmount: thresholdHuman.toString(),
                                                                                 maxDistributionAmount: maxHuman.toString(),
+                                                                                amountMode: Number(list.amountMode) === 1 ? 1 : 0,
+                                                                                balancePercent: list.balancePercent?.length > 0 ? (Number(list.balancePercent[0]) / 100).toString() : '',
+                                                                                minDistributionAmount: Number(list.minDistributionAmount || 0n) > 0 ? (Number(list.minDistributionAmount) / (10 ** tkDecimals)).toString() : '',
                                                                                 targets: list.targets.map(t => ({
                                                                                     accountOwner: t.account.owner.toString(),
                                                                                     accountSubaccount: t.account.subaccount.length > 0 ? Array.from(new Uint8Array(t.account.subaccount[0])).map(b => b.toString(16).padStart(2, '0')).join('') : '',
@@ -6509,11 +6513,22 @@ function IcpNeuronManager() {
                                                             />
                                                         </div>
 
-                                                        {/* Source Subaccount */}
+                                                        {/* Amount per round (funds always come from the bot's main account) */}
                                                         <div style={{ marginBottom: '10px' }}>
-                                                            <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Source Subaccount (hex, leave empty for default)</label>
-                                                            <input type="text" value={editingDistList.sourceSubaccount} placeholder="default (no subaccount)" style={{ ...inputStyle, width: '100%', fontFamily: 'monospace', fontSize: '0.75rem' }}
-                                                                onChange={e => setEditingDistList({ ...editingDistList, sourceSubaccount: e.target.value })} />
+                                                            <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Amount per round</label>
+                                                            <select value={editingDistList.amountMode === 1 ? '1' : '0'}
+                                                                style={{ ...inputStyle, width: '100%', background: theme.colors.secondaryBg, color: theme.colors.primaryText }}
+                                                                onChange={e => setEditingDistList({ ...editingDistList, amountMode: e.target.value === '1' ? 1 : 0 })}>
+                                                                <option value="0" style={{ background: theme.colors.secondaryBg, color: theme.colors.primaryText }}>The whole balance, up to the max per round</option>
+                                                                <option value="1" style={{ background: theme.colors.secondaryBg, color: theme.colors.primaryText }}>A percentage of the balance, up to the max per round</option>
+                                                            </select>
+                                                            {editingDistList.amountMode === 1 && (
+                                                                <div style={{ marginTop: '6px' }}>
+                                                                    <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Percentage of the balance (%)</label>
+                                                                    <input type="text" inputMode="decimal" value={editingDistList.balancePercent} placeholder="100" style={{ ...inputStyle, width: '100%' }}
+                                                                        onChange={e => setEditingDistList({ ...editingDistList, balancePercent: e.target.value })} />
+                                                                </div>
+                                                            )}
                                                         </div>
 
                                                         {(() => {
@@ -6736,28 +6751,29 @@ function IcpNeuronManager() {
                                                                             return {
                                                                                 account: { owner, subaccount },
                                                                                 basisPoints,
+                                                                                choreInstanceId: [], // purse targets are a trading-bot feature
                                                                             };
                                                                         });
 
-                                                                        // Build source subaccount
-                                                                        let sourceSubaccount = [];
-                                                                        if (editingDistList.sourceSubaccount && editingDistList.sourceSubaccount.trim()) {
-                                                                            const hexStr = editingDistList.sourceSubaccount.trim().replace(/^0x/, '');
-                                                                            const bytes = new Uint8Array(32);
-                                                                            const hexBytes = hexStr.match(/.{1,2}/g) || [];
-                                                                            for (let j = 0; j < Math.min(hexBytes.length, 32); j++) {
-                                                                                bytes[32 - hexBytes.length + j] = parseInt(hexBytes[j], 16);
-                                                                            }
-                                                                            sourceSubaccount = [bytes];
+                                                                        // Amount per round: 0 = min(balance, max); 1 = a percentage of the balance, capped by max
+                                                                        const amountMode = editingDistList.amountMode === 1 ? 1 : 0;
+                                                                        let balancePercent = [];
+                                                                        if (amountMode === 1 && editingDistList.balancePercent && String(editingDistList.balancePercent).trim()) {
+                                                                            const pct = parseFloat(editingDistList.balancePercent);
+                                                                            if (!(pct > 0 && pct <= 100)) { setChoreError('Percentage of the balance must be above 0 and at most 100.'); return; }
+                                                                            balancePercent = [BigInt(Math.round(pct * 100))];
                                                                         }
 
                                                                         const input = {
                                                                             name: editingDistList.name.trim(),
-                                                                            sourceSubaccount,
                                                                             tokenLedgerCanisterId: Principal.fromText(editingDistList.tokenLedgerCanisterId.trim()),
                                                                             thresholdAmount: BigInt(Math.round(parseFloat(editingDistList.thresholdAmount || '0') * divisor)),
                                                                             maxDistributionAmount: BigInt(Math.round(parseFloat(editingDistList.maxDistributionAmount || '0') * divisor)),
                                                                             targets,
+                                                                            sourcePurseId: [], // the staking bot always distributes from its main account
+                                                                            amountMode: BigInt(amountMode),
+                                                                            balancePercent,
+                                                                            minDistributionAmount: BigInt(Math.round(parseFloat(editingDistList.minDistributionAmount || '0') * divisor)),
                                                                         };
 
                                                                         const agent = getAgent();

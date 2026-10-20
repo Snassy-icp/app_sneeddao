@@ -46,7 +46,9 @@ module {
 
         /// Optional callback for chore run lifecycle events.
         /// Arguments: (choreId, eventType, errorMsg)
-        /// eventType: "completed" | "failed" | "halted"
+        /// eventType: "completed" | "failed". The engine never halts a chore on its own: a bot that
+        /// stops a chore for a reason of its own (the trading bot's execution and cumulative limits,
+        /// haltChoreAfterExecution) emits the ChoreHalted bot event itself where it stops it.
         var onRunLifecycle: ?((Text, Text, ?Text) -> ()) = null;
 
         /// Set the lifecycle callback (call after constructing the engine).

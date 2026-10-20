@@ -757,7 +757,7 @@ The state derivation functions operate on `ChoreStatus` data from the backend; t
 
 ## ICP Staking Bot — Implemented Chores
 
-The ICP Staking Bot (canister `sneed_icp_staking_bot`, code `src/sneed_bots/sneed_icp_staking_bot/main.mo`; formerly `sneed_icp_neuron_manager`) uses the Bot Chores framework to automate the following recurring tasks. All four are registered with `registerChore` (one default instance each, instanceId = typeId), none uses interval randomization, and every run starts with a fetch-neurons task (except distribute-funds, which snapshots its lists in the conductor).
+The ICP Staking Bot (canister `sneed_icp_staking_bot`, code `src/sneed_bots/sneed_icp_staking_bot/main.mo`; formerly `sneed_icp_neuron_manager`) uses the Bot Chores framework to automate the following recurring tasks. All four are registered with `registerChore` (one default instance each, instanceId = typeId; more instances can be created, each with its own run state, tasks and log source `chore:<instanceId>`), none uses interval randomization, and every run starts with a fetch-neurons task (except distribute-funds, which snapshots its lists in the conductor).
 
 ### 1. Confirm Following (`confirm-following`)
 
@@ -766,7 +766,7 @@ The ICP Staking Bot (canister `sneed_icp_staking_bot`, code `src/sneed_bots/snee
 - **Task timeout**: 10 minutes per neuron.
 - **Behavior**: For each managed neuron, reads current followees via `get_full_neuron`, then re-applies each topic's followees via `manage_neuron(#Follow)`. The first topic that fails fails the task for that neuron.
 - **Chore-specific settings**: None (uses standard interval configuration).
-- **Known issue**: single-instance only. Its run state (`_cf_neurons`, `_cf_index`) is global and its tasks are posted to the hard-coded chore id `"confirm-following"`, yet `createChoreInstance("confirm-following", …)` is accepted; a second instance would drive the default instance's task slot instead of its own.
+- **Multi-instance**: yes — each instance has its own run state (`_cf_state`, keyed by instanceId, transient) and posts its tasks under its own id. (Known issue fixed 2026-10-20, staking bot 0.9.4: the run state was global and tasks went to the hard-coded id `"confirm-following"`, so a second instance drove the default instance's task slot instead of running.)
 
 ### 2. Refresh Stake (`refresh-stake`)
 
@@ -775,7 +775,7 @@ The ICP Staking Bot (canister `sneed_icp_staking_bot`, code `src/sneed_bots/snee
 - **Task timeout**: 5 minutes per neuron.
 - **Behavior**: For each managed neuron, calls governance `manage_neuron` with `ClaimOrRefresh { by = NeuronIdOrSubaccount }` and `neuron_id_or_subaccount = NeuronId` (the same path as the manual `refreshStake`).
 - **Chore-specific settings**: None.
-- **Known issue**: single-instance only, same as confirm-following (`_rs_neurons`/`_rs_index` are global; tasks are posted to `"refresh-stake"`).
+- **Multi-instance**: yes, as confirm-following (`_rs_state` per instance). (Known issue fixed 2026-10-20, staking bot 0.9.4: the run state was global and tasks were posted to `"refresh-stake"`.)
 
 ### 3. Collect Maturity (`collect-maturity`)
 
@@ -806,7 +806,7 @@ Changed from the original plan: the global `collectMaturityThresholdE8s` / `coll
   3. If balance < `thresholdAmount`, skips the list.
   4. Calculates the distributable amount by `amountMode`:
      - `1` (percent): `balance × balancePercent / 10000` (null = 100%), capped at `maxDistributionAmount`.
-     - `0` (random): a random amount in [`minDistributionAmount`, min(balance, `maxDistributionAmount`)]; 0 (skip) if that range is empty.
+     - `0` (up to the max): min(balance, `maxDistributionAmount`), deterministic; skipped if that is below `minDistributionAmount`. (The trading bot reads mode 0 as a random amount in [min, max]; the staking bot never did — before amount modes it paid min(balance, max), and lists migrated from then have mode 0 with min 0.)
   5. Deducts total transfer fees (one fee per target); skips if nothing is left.
   6. Calculates each target's share based on basis points (see percentage logic below).
   7. Applies hard minimum check: the smallest recipient's share must exceed one tx fee.
@@ -814,7 +814,7 @@ Changed from the original plan: the global `collectMaturityThresholdE8s` / `coll
 
   Changed from the original plan: the per-list `sourceSubaccount` was replaced by `sourcePurseId` (a trading-bot purse), and "distribute min(balance, max)" became the two `amountMode`s. In the staking bot `sourcePurseId` and each target's `choreInstanceId` are **ignored** — it has no purses, so funds always come from the main account and always go by `icrc1_transfer` to `target.account`.
 
-  Known issues: (a) with `amountMode = 0` and `minDistributionAmount = 0` (what a list gets if those fields are left at zero) the amount is random in [0, min(balance, max)], not the old "min(balance, max)"; (b) the staking bot page (`src/app_sneeddao_frontend/src/pages/IcpNeuronManager.jsx`, distribution list save handler) still sends the old input shape (`sourceSubaccount`, no `amountMode`/`balancePercent`/`minDistributionAmount`/`sourcePurseId`, targets without `choreInstanceId`), which does not match the current `DistributionListInput`, so adding or editing a list from that page should fail at Candid encoding; (c) the task logs under source `chore:distribute-funds` and tags events with `choreId = "distribute-funds"` whatever the instance.
+  Known issues, all fixed 2026-10-20 (staking bot 0.9.4; mode 0 as above, the page sends the current `DistributionListInput` and offers both amount modes, logs and events use the instance id): (a) with `amountMode = 0` and `minDistributionAmount = 0` (what a list gets if those fields are left at zero) the amount is random in [0, min(balance, max)], not the old "min(balance, max)"; (b) the staking bot page (`src/app_sneeddao_frontend/src/pages/IcpNeuronManager.jsx`, distribution list save handler) still sends the old input shape (`sourceSubaccount`, no `amountMode`/`balancePercent`/`minDistributionAmount`/`sourcePurseId`, targets without `choreInstanceId`), which does not match the current `DistributionListInput`, so adding or editing a list from that page should fail at Candid encoding; (c) the task logs under source `chore:distribute-funds` and tags events with `choreId = "distribute-funds"` whatever the instance.
 
 - **Percentage Logic**:
   - Targets with assigned `basisPoints` (0–10000, where 10000 = 100%) get their proportional share.
@@ -843,7 +843,7 @@ Changed from the original plan: the global `collectMaturityThresholdE8s` / `coll
       maxDistributionAmount: Nat;       // Cap per round
       targets: [DistributionTarget];
       sourcePurseId: ?Text;             // trading bot: debit this chore's purse; null = main purse
-      amountMode: Nat;                  // 0 = random in [min, max], 1 = % of balance (capped by max)
+      amountMode: Nat;                  // 0 = staking bot: min(balance, max), skipped below min; trading bot: random in [min, max]. 1 = % of balance (capped by max)
       balancePercent: ?Nat;             // amountMode 1: basis points of balance
       minDistributionAmount: Nat;       // amountMode 0: lower bound
   };

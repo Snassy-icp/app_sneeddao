@@ -725,9 +725,10 @@ function HelpIcpNeuronManager() {
                             Each distribution list defines:
                         </p>
                         <ul style={{ ...styles.list, marginBottom: '0.5rem' }}>
-                            <li style={styles.listItem}><strong style={styles.strong}>Source:</strong> which token and (optional) subaccount to check</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Token:</strong> which token to distribute (always from the bot's main account)</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Threshold:</strong> minimum balance before distribution happens</li>
-                            <li style={styles.listItem}><strong style={styles.strong}>Max per round:</strong> optional cap on how much to distribute in one run</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Max per round:</strong> the most to distribute in one run</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Amount per round:</strong> either the whole balance up to the max per round, or a percentage of the balance up to the max per round (transfer fees come out of this amount)</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Targets:</strong> a list of accounts, each with an optional percentage share</li>
                         </ul>
                         <div style={{ ...styles.tipBox, marginBottom: 0 }}>

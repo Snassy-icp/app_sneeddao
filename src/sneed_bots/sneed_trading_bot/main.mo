@@ -5876,8 +5876,23 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         _df_state := setInMap(_df_state, instanceId, s)
     };
 
+    /// Debit a purse for a distribution without trapping: a trap after an on-chain transfer would
+    /// roll back the bookkeeping but not the transfer. Shares never exceed the purse balance read
+    /// at the start, so a shortfall only happens if the purse changed meanwhile; it is logged.
+    func _df_debitPurse(purseId: Text, token: Principal, amount: Nat, src: Text) {
+        let current = getChorePurseBalance(purseId, token);
+        if (amount > current) {
+            logEngine.logWarning(src, "Distribution debit of " # Nat.toText(amount) # " exceeds purse " # purseId # " balance " # Nat.toText(current) # "; debiting " # Nat.toText(current), null, []);
+            adjustChorePurseBalance(purseId, token, current, true);
+        } else {
+            adjustChorePurseBalance(purseId, token, amount, true);
+        };
+    };
+
     func _df_makeTaskFn(list: DistributionTypes.DistributionList, instanceId: Text): () -> async BotChoreTypes.TaskAction {
         func(): async BotChoreTypes.TaskAction {
+            // The purse the list draws from: its source purse, else the chore's effective purse
+            // (null = the main purse). It is locked for the whole task and released on every exit.
             let lockPurseId = switch (list.sourcePurseId) {
                 case (?spid) { ?spid };
                 case null { getEffectivePurseId(instanceId) };
@@ -5886,13 +5901,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 case (?pid) { if (not tryLockPurse(pid, instanceId)) { return #Done } };
                 case null {};
             };
+            func unlock() { switch (lockPurseId) { case (?pid) { unlockPurse(pid) }; case null {} } };
             try {
                 let src = "chore:" # instanceId;
                 let tok = list.tokenLedgerCanisterId;
 
                 if (isTokenFrozen(tok)) {
                     logEngine.logDebug(src, "Distribution list " # list.name # " skipped: token is frozen globally", null, []);
-                    switch (lockPurseId) { case (?pid) { unlockPurse(pid) }; case null {} };
+                    unlock();
                     return #Done;
                 };
 
@@ -5915,7 +5931,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 };
 
                 if (effectiveBal < list.thresholdAmount) {
-                    switch (lockPurseId) { case (?pid) { unlockPurse(pid) }; case null {} };
+                    unlock();
                     return #Done;
                 };
 
@@ -5927,7 +5943,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     };
                 };
 
-                let distributable = if (list.amountMode == 1) {
+                let rawDistributable = if (list.amountMode == 1) {
                     let pct = switch (list.balancePercent) { case (?p) p; case null 10000 };
                     let pctAmount = (effectiveBal * pct) / 10000;
                     Nat.min(pctAmount, list.maxDistributionAmount)
@@ -5942,8 +5958,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         minAmt + entropy
                     }
                 };
+                // Never more than the purse holds (a balancePercent above 100 % would ask for more)
+                let distributable = Nat.min(rawDistributable, effectiveBal);
                 let totalFees = fee * externalTargetCount;
                 if (distributable <= totalFees) {
+                    unlock();
                     return #Done;
                 };
                 let net = distributable - totalFees;
@@ -5960,10 +5979,15 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 var totalExternalDistributed: Nat = 0;
                 var totalPurseDistributed: Nat = 0;
                 var externalTransferCount: Nat = 0;
+                let transferErrors = Buffer.Buffer<Text>(0);
 
                 for (target in list.targets.vals()) {
+                    // Assigned shares above 100 % in total are scaled down proportionally (auto-split
+                    // targets then get nothing), so the shares never add up to more than `net`.
                     let share = switch (target.basisPoints) {
-                        case (?bp) { (net * bp) / 10000 };
+                        case (?bp) {
+                            if (assignedBps > 10000) { (net * bp) / assignedBps } else { (net * bp) / 10000 }
+                        };
                         case null {
                             if (autoSplitCount > 0 and assignedBps < 10000) {
                                 let remainder = net * (10000 - assignedBps) / 10000;
@@ -5976,8 +6000,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         case (?targetChoreId) {
                             if (share > 0) {
                                 adjustChorePurseBalance(targetChoreId, tok, share, false);
-                                switch (list.sourcePurseId) {
-                                    case (?spid) { adjustChorePurseBalance(spid, tok, share, true) };
+                                switch (lockPurseId) {
+                                    case (?spid) { _df_debitPurse(spid, tok, share, src) };
                                     case null {};
                                 };
                                 totalPurseDistributed += share;
@@ -5986,32 +6010,45 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         };
                         case null {
                             if (share > fee) {
-                                ignore await ledger.icrc1_transfer({
-                                    to = { owner = target.account.owner; subaccount = target.account.subaccount };
-                                    fee = ?fee;
-                                    memo = null;
-                                    from_subaccount = null;
-                                    created_at_time = null;
-                                    amount = share;
-                                });
-                                totalExternalDistributed += share;
-                                externalTransferCount += 1;
+                                let targetText = Principal.toText(target.account.owner);
+                                var failure: ?Text = null;
+                                try {
+                                    switch (await ledger.icrc1_transfer({
+                                        to = { owner = target.account.owner; subaccount = target.account.subaccount };
+                                        fee = ?fee;
+                                        memo = null;
+                                        from_subaccount = null;
+                                        created_at_time = null;
+                                        amount = share;
+                                    })) {
+                                        case (#Ok(_)) {
+                                            totalExternalDistributed += share;
+                                            externalTransferCount += 1;
+                                        };
+                                        case (#Err(e)) { failure := ?debug_show(e) };
+                                    };
+                                } catch (e) {
+                                    failure := ?("call failed: " # Error.message(e));
+                                };
+                                switch (failure) {
+                                    case (?msg) {
+                                        logEngine.logWarning(src, "Distribution list " # list.name # ": transfer of " # Nat.toText(share) # " " # tokenLabel(tok) # " to " # targetText # " failed: " # msg, null, []);
+                                        transferErrors.add(targetText # ": " # msg);
+                                    };
+                                    case null {};
+                                };
                             };
                         };
                     };
                 };
 
+                // Only transfers the ledger accepted are booked
                 let totalOnChainSpent = totalExternalDistributed + (fee * externalTransferCount);
                 if (totalOnChainSpent > 0) {
                     setLastKnownBalance(tok, if (balance > totalOnChainSpent) { balance - totalOnChainSpent } else { 0 });
-                    switch (list.sourcePurseId) {
-                        case (?spid) { adjustChorePurseBalance(spid, tok, totalOnChainSpent, true) };
-                        case null {
-                            switch (getEffectivePurseId(instanceId)) {
-                                case (?purseId) { adjustChorePurseBalance(purseId, tok, totalOnChainSpent, true) };
-                                case null {};
-                            };
-                        };
+                    switch (lockPurseId) {
+                        case (?pid) { _df_debitPurse(pid, tok, totalOnChainSpent, src) };
+                        case null {};
                     };
                 };
 
@@ -6025,6 +6062,22 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 let totalDist = totalExternalDistributed + totalPurseDistributed;
                 if (totalDist > 0) {
                     logEngine.logInfo(src, "Distribution list " # list.name # ": distributed " # Nat.toText(totalDist) # " of " # tokenLabel(tok) # " (" # Nat.toText(totalPurseDistributed) # " to purses, " # Nat.toText(totalExternalDistributed) # " external)", null, []);
+                };
+
+                unlock();
+                if (transferErrors.size() > 0) {
+                    eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.DistributionFailed, [
+                        ("choreId", instanceId), ("list", list.name),
+                        ("token", Principal.toText(tok)),
+                        ("amount", Nat.toText(totalDist)),
+                        ("externalAmount", Nat.toText(totalExternalDistributed)),
+                        ("purseAmount", Nat.toText(totalPurseDistributed)),
+                        ("failed", Nat.toText(transferErrors.size())),
+                    ]);
+                    eventEngine.flushDeliveryQueue<system>();
+                    return #Error("Distribution '" # list.name # "' had " # Nat.toText(transferErrors.size()) # " failed transfer(s): " # Text.join("; ", transferErrors.vals()));
+                };
+                if (totalDist > 0) {
                     eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.DistributionExecuted, [
                         ("choreId", instanceId), ("list", list.name),
                         ("token", Principal.toText(tok)),
@@ -6033,12 +6086,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         ("purseAmount", Nat.toText(totalPurseDistributed)),
                     ]);
                 };
-
-                switch (lockPurseId) { case (?pid) { unlockPurse(pid) }; case null {} };
                 eventEngine.flushDeliveryQueue<system>();
                 #Done
             } catch (e) {
-                switch (lockPurseId) { case (?pid) { unlockPurse(pid) }; case null {} };
+                unlock();
                 eventEngine.emitEvent<system>(BotEventTypes.BaseEvent.DistributionFailed, [
                     ("choreId", instanceId), ("list", list.name),
                     ("error", Error.message(e)),
@@ -8737,8 +8788,18 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         ds.lists
     };
 
+    /// Validate a distribution list on write: every basis-point field at most 100 %. Assigned
+    /// shares that add up to more than 100 % are allowed; they are scaled down when the list runs.
+    func assertValidDistributionListInput(input: DistributionTypes.DistributionListInput) {
+        for (t in input.targets.vals()) {
+            switch (t.basisPoints) { case (?bp) { assertBpsInRange("Target basisPoints", bp) }; case null {} };
+        };
+        switch (input.balancePercent) { case (?p) { assertBpsInRange("balancePercent", p) }; case null {} };
+    };
+
     public shared (msg) func addDistributionList(instanceId: Text, input: DistributionTypes.DistributionListInput): async Nat {
         assertPermission(msg.caller, T.TradingPermission.ConfigureDistribution);
+        assertValidDistributionListInput(input);
         let ds = getDistSettings(instanceId);
         let newId = ds.nextListId;
         let newList: DistributionTypes.DistributionList = {
@@ -8761,6 +8822,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     public shared (msg) func updateDistributionList(instanceId: Text, id: Nat, input: DistributionTypes.DistributionListInput): async () {
         assertPermission(msg.caller, T.TradingPermission.ConfigureDistribution);
+        assertValidDistributionListInput(input);
         let ds = getDistSettings(instanceId);
         let updated = Array.map<DistributionTypes.DistributionList, DistributionTypes.DistributionList>(ds.lists, func(l) {
             if (l.id == id) {
