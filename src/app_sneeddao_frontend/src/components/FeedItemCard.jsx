@@ -202,6 +202,12 @@ function FeedItemCard({
         ? getPrincipalDisplayName(creatorPrincipal) 
         : null;
 
+    // Ids from Candid options: an empty option ([]) means none. A topic item is the topic itself
+    // (its topic_id is empty), and a thread item is the thread, so they fall back to the item id.
+    const optId = (v) => (Array.isArray(v) ? (v.length ? v[0] : null) : (v ?? null));
+    const topicId = optId(item.topic_id) ?? (extractVariant(item.item_type) === 'topic' ? item.id : null);
+    const threadId = optId(item.thread_id) ?? (extractVariant(item.item_type) === 'thread' ? item.id : null);
+
     // Navigation URL
     const navigationUrl = (() => {
         if (item._isAuction) return `/sneedex_offer/${item._offerId}`;
@@ -210,9 +216,9 @@ function FeedItemCard({
         
         switch (typeStr) {
             case 'topic':
-                return `/topic/${Array.isArray(item.topic_id) ? item.topic_id[0] : item.topic_id || item.id}`;
+                return `/topic/${topicId}`;
             case 'thread':
-                return `/thread?threadid=${Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id || item.id}`;
+                return `/thread?threadid=${threadId}`;
             case 'post':
                 return `/post?postid=${item.id}`;
             default:
@@ -1106,9 +1112,9 @@ function FeedItemCard({
                         gap: '8px',
                         marginTop: '8px'
                     }}>
-                        {item.topic_title && (Array.isArray(item.topic_title) ? item.topic_title.length > 0 : true) && (
+                        {item.topic_title && (Array.isArray(item.topic_title) ? item.topic_title.length > 0 : true) && topicId != null && (
                             <Link 
-                                to={`/topic/${Array.isArray(item.topic_id) ? item.topic_id[0] : item.topic_id}`} 
+                                to={`/topic/${topicId}`} 
                                 className="feed-context-tag"
                                 onClick={(e) => e.stopPropagation()}
                                 style={{
@@ -1130,9 +1136,9 @@ function FeedItemCard({
                             </Link>
                         )}
                         
-                        {item.thread_title && (Array.isArray(item.thread_title) ? item.thread_title.length > 0 : true) && (
+                        {item.thread_title && (Array.isArray(item.thread_title) ? item.thread_title.length > 0 : true) && threadId != null && (
                             <Link 
-                                to={`/thread?threadid=${Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id}`} 
+                                to={`/thread?threadid=${threadId}`} 
                                 className="feed-context-tag"
                                 onClick={(e) => e.stopPropagation()}
                                 style={{
