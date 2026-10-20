@@ -1,0 +1,14 @@
+// Sneed Names: index of the naming service's Candid files.
+// The naming service is six canisters; each has its own interface:
+//
+//   sneed_pid_names         https://app.sneeddao.com/api-docs/sneed_pid_names.did
+//   sneed_neuron_names      https://app.sneeddao.com/api-docs/sneed_neuron_names.did
+//   sneed_pid_nicknames     https://app.sneeddao.com/api-docs/sneed_pid_nicknames.did
+//   sneed_neuron_nicknames  https://app.sneeddao.com/api-docs/sneed_neuron_nicknames.did
+//   sneed_profiles          https://app.sneeddao.com/api-docs/sneed_profiles.did
+//   sneed_avatars           https://app.sneeddao.com/api-docs/sneed_avatars.did
+//
+// JavaScript IDL factories: the same paths with .did.js, or all six re-exported by
+// https://app.sneeddao.com/api-docs/sneed_names.did.js
+//
+// Documentation: https://app.sneeddao.com/api/sneed_names

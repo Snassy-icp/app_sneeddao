@@ -10,6 +10,12 @@ import { apiDocs } from './Api';
 const apiPrimary = '#8b5cf6';
 
 // Stable, URL-safe ids for headings so the table of contents and deep links work
+// API doc slug -> its agent skill in public/.well-known/agent-skills/
+const AGENT_SKILLS = {
+    sneed_lock: 'sneed-lock', sneedex: 'sneedex', sneed_sns_forum: 'sneed-forum', sneed_sms: 'sneed-sms',
+    sneed_names: 'sneed-names', sneed_notifications: 'sneed-notifications',
+};
+
 const slugify = (text) => text
     .toLowerCase()
     .replace(/[`*_]/g, '')
@@ -175,7 +181,7 @@ function ApiDoc() {
                         {pill(`/api-docs/${slug}.md`, <FaFileAlt size={12} />, 'Raw Markdown')}
                         {pill(`/api-docs/${slug}.did`, <FaFileCode size={12} />, 'Candid')}
                         {pill(`/api-docs/${slug}.did.js`, <FaFileCode size={12} />, 'JS IDL')}
-                        {slug === 'sneed_lock' && pill('/.well-known/agent-skills/sneed-lock/SKILL.md', <FaRobot size={12} />, 'Agent skill')}
+                        {AGENT_SKILLS[slug] && pill(`/.well-known/agent-skills/${AGENT_SKILLS[slug]}/SKILL.md`, <FaRobot size={12} />, 'Agent skill')}
                     </div>
                 </div>
 

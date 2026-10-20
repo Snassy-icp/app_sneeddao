@@ -19,7 +19,12 @@ const apiDocsDir = join(frontendDir, 'public', 'api-docs');
 const skillsDir = join(frontendDir, 'public', '.well-known', 'agent-skills');
 
 // Canisters that have an API document in public/api-docs/<name>.md
-const documented = ['sneed_lock'];
+const documented = [
+    'sneed_lock', 'sneedex', 'sneed_sns_forum', 'sneed_sms', 'sneed_notifications', 'sneed_premium', 'rll', 'sneedapp',
+    'mr_sneed', 'app_sneeddao_backend', 'sneed_pid_names', 'sneed_neuron_names', 'sneed_pid_nicknames',
+    'sneed_neuron_nicknames', 'sneed_profiles', 'sneed_avatars',
+];
+// (sneed_names.did / .did.js, the index of the six naming interfaces, are hand-written and kept in git)
 
 mkdirSync(apiDocsDir, { recursive: true });
 for (const name of documented) {

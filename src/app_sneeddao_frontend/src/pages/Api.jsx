@@ -2,7 +2,10 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaCode, FaLock, FaArrowRight, FaFileCode, FaRobot, FaGithub, FaBookOpen } from 'react-icons/fa';
+import {
+    FaCode, FaLock, FaArrowRight, FaFileCode, FaRobot, FaGithub, FaBookOpen, FaExchangeAlt, FaComments,
+    FaEnvelope, FaIdBadge, FaBell, FaCrown, FaCoins, FaStore, FaBrain, FaServer,
+} from 'react-icons/fa';
 
 // Page accent colors - violet theme for developer material
 const apiPrimary = '#8b5cf6';
@@ -27,18 +30,109 @@ export const apiDocs = [
         description: 'Time-lock ICRC-1 tokens and ICPSwap liquidity positions, claim fees from locked positions, add liquidity, liquid locking, fees and payment. Every method, every error, with JavaScript examples.',
         color: '#f59e0b',
     },
+    {
+        slug: 'sneedex',
+        icon: FaExchangeAlt,
+        title: 'Sneedex marketplace',
+        canisterId: '7bvk3-ryaaa-aaaal-qtykq-cai',
+        description: 'Escrow marketplace for canisters, SNS neurons, ICRC-1 tokens, ICRC-7 NFTs and Sneed Lock locks: create offers, escrow each asset type, bid, buy out, accept, expire, claim and refund, plus the creation fee and marketplace cut. Every method, every error, with JavaScript examples.',
+        color: '#10b981',
+    },
+    {
+        slug: 'sneed_sns_forum',
+        icon: FaComments,
+        title: 'Forum canister',
+        canisterId: 'mcigm-4aaaa-aaaad-qhlkq-cai',
+        description: 'One forum per SNS: topics, threads, posts and replies, votes and polls weighted by the caller\'s SNS neurons, tips, @-mentions, read state and proposal discussion threads. Every method, every error, with JavaScript examples.',
+        color: '#3b82f6',
+    },
+    {
+        slug: 'sneed_sms',
+        icon: FaEnvelope,
+        title: 'Sneed SMS',
+        canisterId: 'zelpl-7yaaa-aaaad-abtcq-cai',
+        description: 'Direct messages between principals: send with a subject, body and replies, read your inbox and sent items, unread counts, leave a message, system messages from authorised canisters. Spells out who can read what: messages are not encrypted.',
+        color: '#06b6d4',
+    },
+    {
+        slug: 'sneed_names',
+        icon: FaIdBadge,
+        title: 'Naming service',
+        canisterId: 'ejz7n-lyaaa-aaaad-qmkzq-cai',
+        description: 'Six canisters, one document: a public name, checkmark and avatar per account (linked principals, hotkeys, merges), canister and SNS neuron names, nicknames, ICRC-7 NFT avatars, the dapp registry and avatar image storage. Batched lookups, search, a changes feed and ICRC-3 logs.',
+        color: '#ec4899',
+    },
+    {
+        slug: 'sneed_notifications',
+        icon: FaBell,
+        title: 'Sneed Notifications',
+        canisterId: 'vuy7a-iaaaa-aaaay-aaduq-cai',
+        description: 'Let a dapp notify its users with their consent: register an app with topics, request permission, notify and track receipts. Users choose channels, levels, quiet hours and caps and pay per delivery from an ICP balance unless the app sponsors the message. Relays pull jobs and acknowledge them.',
+        color: '#f97316',
+    },
+    {
+        slug: 'sneed_premium',
+        icon: FaCrown,
+        title: 'Sneed Premium',
+        canisterId: '7gump-4aaaa-aaaal-qtyka-cai',
+        description: 'Sneed DAO\'s membership registry: check any principal\'s premium status for gating or discounts, buy membership with ICP through a per-user deposit account, or claim it with staked SNEED voting power or a promo code. Includes the Motoko PremiumClient cache.',
+        color: '#eab308',
+    },
+    {
+        slug: 'rll',
+        icon: FaCoins,
+        title: 'Rewards distribution (RLL)',
+        canisterId: 'lvc4n-7aaaa-aaaam-adm6a-cai',
+        description: 'The Recursive Liquidity Loop rewards canister: tokens sent to it are shared out daily to Sneed neuron owners in proportion to the voting power they cast on proposals, and owners or their hotkeys claim to their wallet. Distribution cycle, claims, balances and history.',
+        color: '#22c55e',
+    },
+    {
+        slug: 'sneedapp',
+        icon: FaStore,
+        title: 'Sneedapp factory',
+        canisterId: 'sfamc-kyaaa-aaaau-adnpq-cai',
+        description: 'Sneed DAO\'s app factory: browse apps and their versions, pay a mint fee in ICP and mint your own bot canister (staking bot, trading bot) with you as its only controller. Also the wallet bookmark list, the public mint log and how publishers list apps.',
+        color: '#6366f1',
+    },
+    {
+        slug: 'mr_sneed',
+        icon: FaBrain,
+        title: 'Mr Sneed canister',
+        canisterId: 'ucthl-5qaaa-aaaay-aadrq-cai',
+        description: 'The prompt (a fixed frame plus the personality the DAO sets) and the public memories of Mr Sneed, the DAO\'s mascot and spirit, with their ICRC-3 log. Read-only for integrators.',
+        color: '#a855f7',
+    },
+    {
+        slug: 'app_sneeddao_backend',
+        icon: FaServer,
+        title: 'Sneed Hub backend',
+        canisterId: 'g7s5u-tqaaa-aaaad-qhktq-cai',
+        description: 'The token whitelist and metadata cache, user settings and wallet registry, canister folders, partners and projects, donations and SNS Jailbreak configurations.',
+        color: '#64748b',
+    },
+    // The naming canisters each have a short page pointing into the Sneed Names doc, so links such as
+    // the block_types_url the canisters publish (/api/sneed_pid_names#block-types) resolve. Not listed as cards.
+    ...[
+        ['sneed_pid_names', 'ejz7n-lyaaa-aaaad-qmkzq-cai'],
+        ['sneed_neuron_names', 'e46oa-kqaaa-aaaad-qmk2a-cai'],
+        ['sneed_pid_nicknames', 'e37iu-hiaaa-aaaad-qmk2q-cai'],
+        ['sneed_neuron_nicknames', 'es4di-raaaa-aaaad-qmk3a-cai'],
+        ['sneed_profiles', 'fytbs-tqaaa-aaaad-qmk4a-cai'],
+        ['sneed_avatars', 'ev5f4-4yaaa-aaaad-qmk3q-cai'],
+    ].map(([slug, canisterId]) => ({
+        slug, canisterId, icon: FaIdBadge, title: slug, color: '#ec4899', hidden: true,
+        description: 'Part of the naming service; see the Sneed Names document.',
+    })),
 ];
+
+const listedDocs = apiDocs.filter((d) => !d.hidden);
 
 const machineReadable = [
     {
         icon: FaFileCode,
         title: 'Raw Markdown and Candid',
-        description: 'Each document is published as plain Markdown next to the canister\'s Candid file and a ready JavaScript IDL factory. Fetch them from scripts, paste them into an LLM, or diff them.',
-        links: [
-            { label: 'sneed_lock.md', href: '/api-docs/sneed_lock.md' },
-            { label: 'sneed_lock.did', href: '/api-docs/sneed_lock.did' },
-            { label: 'sneed_lock.did.js', href: '/api-docs/sneed_lock.did.js' },
-        ],
+        description: 'Each document is published as plain Markdown next to the canister\'s Candid file and a ready JavaScript IDL factory, at /api-docs/<canister>.md, .did and .did.js (the naming service has one pair per canister). Fetch them from scripts, paste them into an LLM, or diff them.',
+        links: listedDocs.map((d) => ({ label: `${d.slug}.md`, href: `/api-docs/${d.slug}.md` })),
     },
     {
         icon: FaRobot,
@@ -165,7 +259,7 @@ function Api() {
 
                 <h2 style={styles.sectionTitle}><FaBookOpen style={{ color: apiPrimary }} /> Documents</h2>
                 <div style={styles.grid}>
-                    {apiDocs.map((doc) => {
+                    {listedDocs.map((doc) => {
                         const Icon = doc.icon;
                         return (
                             <Link key={doc.slug} to={`/api/${doc.slug}`} className="api-topic-card api-fade-in" style={styles.card}>

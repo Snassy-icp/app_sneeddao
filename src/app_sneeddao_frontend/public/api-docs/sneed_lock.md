@@ -113,7 +113,7 @@ export function sneedLockActor(identity) {
 With dfx:
 
 ```bash
-dfx canister --network ic call pqsms-lqaaa-aaaal-ajjza-cai get_active_token_locks '()' --query
+dfx canister --network ic call pqsms-lqaaa-aaaal-ajjza-cai get_lock_limits '()' --query
 ```
 
 ### 2.2 Lock tokens, end to end
@@ -420,7 +420,7 @@ Types are in section 7. "Caller" means the principal signing the call. Methods m
 | `get_position_ownerships()` | `vec (pool, PositionId)` | Positions the caller has a claim on. |
 | `has_expired_locks()` | `bool` | True if `clear_expired_locks` would archive something. |
 | `has_expired_position_locks()` | `bool` | Same for position locks. |
-| `get_my_claim_history()` | `vec ClaimRequest` | Completed and failed fee-claim records of the caller (see 6.9). |
+| `get_my_claim_history()` | `vec ClaimRequest` | Completed and failed fee-claim records of the caller (see 6.11). |
 
 ### 6.3 Token locks (updates)
 
@@ -431,7 +431,7 @@ Locks `amount` of the token in the caller's Sneed wallet until `expires_at`, or 
 Sends `amount` from the caller's Sneed wallet to `{ to_principal; to_subaccount }`; the Sneed wallet also pays the ledger fee. Refuses when `balance < amount + fee + sum(active locks)` (`GenericError`, `error_code = 1`) or when another token operation of the caller is running (`error_code = 2`). Returns the ledger block index on success. Also used to withdraw claimed fees and add-liquidity refunds, and to fund the payment subaccount from the Sneed wallet.
 
 **`transfer_token_lock_ownership(to_principal : principal, token_type : principal, lock_id : nat) → TransferTokenLockOwnershipResult`**
-Liquid locking for tokens, see 3.5. Errors: lock not found, lock expired, inconsistent state, `Insufficient unlocked balance to cover transfer fee ...`, or a ledger `transfer_error`. If the ledger call fails with an unknown outcome the lock is kept on both parties until the DAO reconciles; the message says so.
+Liquid locking for tokens, see 3.5. Errors: `A token operation is already in progress for ...`, `Lock N not found for ...`, `Lock N has expired. ...`, `Inconsistent lock state. ...`, `This lock needs gas: ...` (neither the caller's free balance nor the lock's gas tank covers the ledger fee, 3.9), or a ledger `transfer_error`. If the ledger call fails with an unknown outcome the lock is kept on both parties until the DAO reconciles; the message says so.
 
 **`clear_expired_locks() → ()`** archives the caller's expired token locks.
 
@@ -441,7 +441,7 @@ Liquid locking for tokens, see 3.5. Errors: lock not found, lock expired, incons
 Records that the caller owns `position_id` in `swap_canister_id`, after confirming it with the pool's `getUserPositionIdsByPrincipal(caller)`, and removes any other principal's claim on it (3.2). Idempotent. `false` means the pool did not list the caller as owner (or could not be reached).
 
 **`create_position_lock(swap_canister_id : principal, dex : nat, position_id : nat, expires_at : Expiry, token0 : principal, token1 : principal, dissolve_delay : opt nat64) → CreateLockResult`**
-See 3.2 and 3.7. Mints the position's NFT on its first lock. `dex` must be `1`. Errors: lock time bounds, `Position not claimed by caller.`, `Position is not transferred to this canister.`, `Dex not supported.`, `ICP payment verification failed: ...`. If the position already has a lock, behaves as `update_position_lock`.
+See 3.2 and 3.7. Mints the position's NFT on its first lock. `dex` must be `1`. Errors: lock time bounds, `Position not claimed by caller.`, `Position is not transferred to this canister.`, `Dex not supported.`, `ICP payment verification failed: ...`. If the position already has a lock, behaves as `update_position_lock`; passing a dissolve delay for a position that is already locked is refused (`This position is already locked; use increase_dissolve_delay ...`).
 
 **`update_position_lock(swap_canister_id : principal, position_id : nat, expires_at : Expiry) → CreateLockResult`**
 Extends an existing lock. Errors as above plus `New expiry is before current expiry.`. No fee. Returns the existing `lock_id`.
@@ -474,13 +474,34 @@ See 3.4. Errors (text) include `Caller does not own position ...`, `Position ...
 | `getPaymentBalance(user)` | update | `nat` | ICP e8s currently deposited (reads the ledger). |
 | `get_lock_fee_stats()` | query | totals collected | For dashboards. |
 
-### 6.8 Logs
+### 6.8 Dissolve delays and gas
+
+All are updates for the lock's owner and return `LockOpResult` (`Ok(LockState)` or `Err(LockOpError)`), except `withdraw_lock_gas`. See 3.7 and 3.9.
+
+| Method | Notes |
+|---|---|
+| `start_dissolving(lock_id)` | Refused (`Invalid`) with `The lock has no dissolve delay.`, `The lock is already dissolving.`, `Dissolving can start when the lock period ends.` |
+| `stop_dissolving(lock_id)` | The time left becomes the delay again. `Invalid`: `The lock is not dissolving.`, `The lock has finished dissolving.` |
+| `increase_dissolve_delay(lock_id, additional_ns : nat64)` | Also while dissolving. `Invalid`: `The increase must be more than zero.`, `The lock is no longer locked.`, `Maximum lock time exceeded.` |
+| `extend_lock(lock_id, new_lock_end : Expiry)` | Moves the lock period's end later, either kind. `Invalid`: `A dissolving lock cannot be extended; stop dissolving first.`, `New expiry is not after the current one.`, `The lock period cannot end in the past.`, `Maximum lock time exceeded.` |
+| `get_lock_gas(lock_id)` *query* | A token lock's gas tank account, ledger and last seen ledger fee; null for other ids. |
+| `withdraw_lock_gas(lock_id, to : Account) → variant { Ok : nat; Err : text }` | Sends the tank's balance less one ledger fee to `to`; answers the ledger block index. Errors: `No such token lock`, `Only the lock's owner can take its gas back`, `A token operation is in progress; try again shortly`, `A transfer of this lock is awaiting reconciliation`, `The gas tank holds N, not more than one ledger fee (F)`, `The ledger refused: ...`, `The ledger call failed: ...`. |
+
+`InProgress` means a transfer of the lock is waiting on the ledger; retry shortly.
+
+### 6.9 NFT methods (ICRC-7, ICRC-37)
+
+The standard methods, with the semantics in 3.8. Queries: `icrc7_name`, `icrc7_symbol`, `icrc7_description`, `icrc7_logo`, `icrc7_collection_metadata`, `icrc7_total_supply`, `icrc7_supply_cap`, `icrc7_max_query_batch_size` (100), `icrc7_max_update_batch_size` (10), `icrc7_default_take_value` (100), `icrc7_max_take_value` (500), `icrc7_max_memo_size` (32), `icrc7_atomic_batch_transfers`, `icrc7_tx_window` (24 h), `icrc7_permitted_drift` (2 min), `icrc7_token_metadata(ids)`, `icrc7_owner_of(ids)`, `icrc7_balance_of(accounts)`, `icrc7_tokens(prev, take)`, `icrc7_tokens_of(account, prev, take)`, `icrc37_metadata`, `icrc37_max_approvals_per_token_or_collection` (10), `icrc37_max_revoke_approvals` (10), `icrc37_is_approved(args)`, `icrc37_get_token_approvals(token_ids, prev, take)`, `icrc37_get_collection_approvals(owner, prev, take)`, `icrc10_supported_standards`. Updates: `icrc7_transfer`, `icrc37_approve_tokens`, `icrc37_approve_collection`, `icrc37_revoke_token_approvals`, `icrc37_revoke_collection_approvals`, `icrc37_transfer_from`.
+
+Sneed Lock's `GenericError` codes on transfers: `3` busy (a withdrawal, fee claim or liquidity addition in flight, or another token operation of the owner), `7` a token lock needs gas, `8` the lock has unlocked and can no longer be transferred, `9` lock not found or a ledger failure while moving a token lock. A memo over 32 bytes answers `GenericError` code `2`; more than 10 items per call answers `GenericBatchError` code `1`.
+
+### 6.10 Logs
 
 `get_info_id_range()`, `get_error_id_range()`, `get_info_entries(start, length)`, `get_error_entries(start, length)` expose the canister's circular text logs (`BufferEntry { id; timestamp; caller; correlation_id; content }`). Every update logs under a `correlation_id`; error messages that mention one can be looked up here. These are update calls, the buffers hold the last 10,000 entries each, and they record failures as well as successes.
 
 The structured, permanent and verifiable record of what actually happened is the ICRC-3 activity log in [section 8](#8-activity-log-icrc-3); its blocks carry the same `correlation_id` as `cid`, so the two can be joined.
 
-### 6.9 Compatibility and retired methods
+### 6.11 Compatibility and retired methods
 
 The fee-claim queue of earlier versions is gone; claims are synchronous now. These remain for older clients:
 
@@ -495,9 +516,28 @@ New integrations should use `claim_position_fees`.
 
 **Removed in v2** (their replies grew with every lock; there were no integrators yet): `get_all_token_locks`, `get_active_token_locks`, `get_expired_token_locks`, `get_ledger_token_locks`, `get_all_position_locks`, `get_active_position_locks`, `get_expired_position_locks`, `get_swap_position_locks`, `get_token_position_locks`, `get_all_active_claim_requests`, `get_all_completed_claim_requests`, `get_all_failed_claim_requests`. Use `get_lock_states_page` and `get_claim_requests_page`. `get_info_entries` / `get_error_entries` answer at most 500 entries per call.
 
-### 6.10 Admin and governance
+### 6.12 Admin and governance
 
-Methods prefixed `admin_` and `set_max_lock_length_days` are restricted to Sneed governance, the canister's controllers and listed admins (`get_admin_list()`). They exist for recovery (returning stranded tokens, pool balances), fee configuration and premium wiring. Integrators never call them; they are listed in the Candid file for transparency.
+Restricted to Sneed governance, the canister's controllers and listed admins (`get_admin_list()`, a public query). They exist for recovery, fee configuration, premium wiring and log maintenance; integrators never call them. Each is listed here with what it does:
+
+| Method | Purpose |
+|---|---|
+| `set_max_lock_length_days(days)` | Sets the maximum lock length (traps for non-admins). |
+| `admin_add_admin(p)`, `admin_remove_admin(p)` | Manage the admin list. |
+| `admin_set_lock_fees_icp(token, position, premium_token, premium_position)` | Set the ICP lock fees (each `opt nat64`, null keeps the value). |
+| `admin_set_icp_fee_recipient(principal, subaccount)` | Where collected lock fees go (null: this canister). |
+| `admin_set_sneed_premium_canister_id(opt principal)` | The Sneed Premium canister used for premium fees. |
+| `admin_get_payment_log(offset, limit)`, `admin_get_payment_log_count()` | Read the fee payment log. |
+| `admin_return_token(ledger, amount, user)` | Send `amount` from `user`'s Sneed wallet to `user`'s default account. |
+| `admin_return_token_from_failed_request(ledger, amount, recipient)` | Send `amount` from the canister's main account to `recipient`'s default account. |
+| `admin_rescue_stuck_tokens(ledger, recipient)` | Send the canister main account's balance of a token (stuck outside any user's wallet) to `recipient`. |
+| `admin_get_pool_unused_balance(pool)`, `admin_pool_deposit(pool, ledger, amount)`, `admin_withdraw_pool_balance_to_user(pool, ledger, amount, user)` | Inspect and move the canister's unused balances inside an ICPSwap pool (refunds after a failed add-liquidity). |
+| `admin_clear_completed_claim_requests()`, `admin_clear_failed_claim_requests()` | Clear the fee-claim history. |
+| `admin_set_icrc3_settings(SettingsUpdate)` | Tune the ICRC-3 log (live block cap, spill batch, archive size and cycles). |
+| `admin_icrc3_spill_now()` | Move old blocks to archives now. |
+| `admin_icrc3_import_history()` | The one-time import of pre-log state (no-op once done). |
+| `admin_set_icrc3_proposal_neuron(opt blob)` | The SNS neuron that submits archive registration proposals. |
+| `admin_icrc3_register_archives_now()`, `admin_icrc3_reset_archive_registration(archive)`, `admin_icrc3_repair_archive_controllers()` | Archive registration with the SNS and controller repair. |
 
 ---
 
@@ -554,7 +594,7 @@ type AddLiquidityResult = variant {
 // v2
 type LockState = record {
   lock_id : LockId; kind : LockType; owner : principal;
-  owner_subaccount : opt blob;           // the NFT's label (position locks with an NFT)
+  owner_subaccount : opt blob;           // the NFT's subaccount label (null = default account)
   ledger : opt TokenType; amount : opt Balance;                       // token locks
   swap_canister_id : opt SwapCanisterId; position_id : opt PositionId; dex : opt Dex;
   token0 : opt TokenType; token1 : opt TokenType;                     // position locks
