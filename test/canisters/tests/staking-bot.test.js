@@ -127,7 +127,7 @@ afterAll(async () => { await pic?.tearDown(); });
 
 describe('identity and public queries', () => {
   it('reports its version, creation time and accounts', async () => {
-    expect(await botAlice.getVersion()).toEqual({ major: 0n, minor: 9n, patch: 4n });
+    expect(await botAlice.getVersion()).toEqual({ major: 0n, minor: 9n, patch: 5n });
     const created = await botAlice.getCreatedAt();
     const now = BigInt(Math.ceil(await pic.getTime())) * 1_000_000n; // getTime has millisecond precision
     expect(created <= now + 1_000_000n && created > now - 60n * 1_000_000_000n).toBe(true);
@@ -932,7 +932,7 @@ describe('upgrade', () => {
   });
 
   it('keeps permissions, neurons, chores, settings, logs and events', async () => {
-    expect(await bot.getVersion()).toEqual({ major: 0n, minor: 9n, patch: 4n });
+    expect(await bot.getVersion()).toEqual({ major: 0n, minor: 9n, patch: 5n });
     expect(await bot.getCreatedAt()).toBe(before.createdAt);
     expect(await bot.getBotkeySnapshot()).toEqual(before.hotkeys);
     expect(await botCarol.getChoreStatuses()).toHaveLength(4);
@@ -966,7 +966,7 @@ describe('upgrade', () => {
   });
 });
 
-// Fixed 2026-10-20 (sneed_icp_staking_bot 0.9.4).
+// Fixed 2026-10-20 (sneed_icp_staking_bot 0.9.5).
 describe('chore instances and distribution amounts', () => {
   const distInput = (over = {}) => ({
     name: 'd', tokenLedgerCanisterId: tokenId, thresholdAmount: 0n, amountMode: 0n, balancePercent: [], sourcePurseId: [],

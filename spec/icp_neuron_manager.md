@@ -1,6 +1,6 @@
 # ICP Neuron Manager Specification
 
-> **Status (2026-10-20): built, and grown past this spec.** The product shipped as the **ICP Staking Bot**: canister code `src/sneed_bots/sneed_icp_staking_bot/main.mo` + `Types.mo` (dfx canister `sneed_icp_staking_bot`, formerly `sneed_icp_neuron_manager`; current version 0.9.4). The factory is the `sneedapp` canister (`src/sneedapp/main.mo`, see `spec/sneedapp.md`). The sections below are updated to the code; the biggest changes from the original plan are:
+> **Status (2026-10-20): built, and grown past this spec.** The product shipped as the **ICP Staking Bot**: canister code `src/sneed_bots/sneed_icp_staking_bot/main.mo` + `Types.mo` (dfx canister `sneed_icp_staking_bot`, formerly `sneed_icp_neuron_manager`; current version 0.9.5). The factory is the `sneedapp` canister (`src/sneedapp/main.mo`, see `spec/sneedapp.md`). The sections below are updated to the code; the biggest changes from the original plan are:
 > - One bot canister manages **any number of neurons** (every NNS neuron it controls), so all neuron methods take a `neuronId`.
 > - Access is controllers **plus botkeys** (per-principal numeric permissions), not controllers only.
 > - The factory installs an uploaded WASM and charges a creation fee; it does not spawn an actor class.
