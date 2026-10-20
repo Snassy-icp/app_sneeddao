@@ -15,4 +15,7 @@
 //   '<module hash>': { rawSha: '<sha256 of the Wasm>', release: '2025-01-21', kind: 'ledger', u256: false,
 //                      packagedBy: 'OhShii', verifiedAt: '2026-10-20', source: '<where the file came from>' },
 export const REPACKAGED_BUILDS = {
+    // OhShii Launcher's ledger (e.g. 7rrmx-tyaaa-aaaal-qsraq-cai): 678,521 bytes, gzip header names
+    // ic-icrc1-ledger.wasm, mtime 2025-08-01; unzips byte-for-byte to the official 2025-01-21 ledger.
+    'f042ac293df25134660990dddd5d4c0525687fa3e1e69868bb42b2a9fca2d749': { rawSha: '0299be32447ce9880d3a48fa47346532a812685c4e76c96a3cc2e3ea002c6020', release: '2025-01-21', kind: 'ledger', u256: false, packagedBy: 'the OhShii Launcher', verifiedAt: '2026-10-20', source: 'the launcher\'s ledger artifact, sent by OhShii' },
 };
