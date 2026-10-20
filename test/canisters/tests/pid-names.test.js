@@ -8,8 +8,8 @@ import { createHash } from 'node:crypto';
 import { Principal } from '@icp-sdk/core/principal';
 import { createPic, install, actorAs, admin, alice, bob, carol, user, T, unwrap, errOf, wasm, refusedAtIngress, asUpdates } from '../lib/pic.js';
 import { hubSnsIdl } from '../lib/hub.js';
-import { icrc7Idl, icrc7Init } from '../lib/idl.js';
-import { verifyLog, archiveIdl, btype, txField } from '../lib/icrc3.js';
+import { icrc7Idl, icrc7Init, extIdl, extAccountId, extTokenIdentifier } from '../lib/idl.js';
+import { verifyLog, archiveIdl, btype, txField, field } from '../lib/icrc3.js';
 import { idlFactory as namesIdl } from '../build/sneed_pid_names.did.js';
 
 const dave = user('dave');
@@ -40,6 +40,7 @@ let names, as, moderator, snsw, gov, fakeRoot;
 const archiveActor = (id) => actorAs(pic, archiveIdl, id, admin);
 const config = async (over = {}) => ({ ...(await names.get_config()), ...over });
 const nameOf = async (p) => (await names.get_name(p))[0];
+let extBlocksExpected = false; // set once the EXT test has run, for the ICRC-3 test
 
 describe('sneed_pid_names', () => {
   beforeAll(async () => {
@@ -411,11 +412,84 @@ describe('sneed_pid_names', () => {
     expect((await nameOf(frank)).nft_avatar).toEqual([]);
   });
 
+  it('shows an EXT NFT a member holds as the avatar (Sneed Diamond Club cards), checked with bearer', async () => {
+    const gina = user('ext-gina'), hank = user('ext-hank');
+    const extId = await install(pic, { name: 'MockExt', targetSubnetId: appSubnet });
+    const ext = actorAs(pic, extIdl, extId, admin);
+    const card = (n) => [new TextEncoder().encode(JSON.stringify({ name: `Card ${n}`, image: `https://cards.example/${n}.png` }))];
+    const c0 = await ext.mint(extAccountId(gina), card(0));
+    const c1 = await ext.mint(extAccountId(hank), card(1));
+    const ref = (i) => [{ collection: extId, token_id: BigInt(i) }];
+    expect(await refusedAtIngress(as(anon).set_my_ext_nft_avatar(ref(c0)))).toBe(true);
+
+    // only a card the default account of an account's principal holds
+    expect(errOf(await as(gina).set_my_ext_nft_avatar(ref(c1)))).toMatch(/do not own/);
+    expect(errOf(await as(gina).set_my_ext_nft_avatar(ref(999)))).toMatch(/does not exist/);
+    expect(errOf(await as(gina).set_my_ext_nft_avatar(ref(2 ** 32)))).toMatch(/does not exist/);
+    expect(errOf(await as(gina).set_my_ext_nft_avatar([{ collection: moderatorId, token_id: 0n }]))).toMatch(/did not answer/);
+    await ext.set_failing(true);
+    expect(errOf(await as(gina).set_my_ext_nft_avatar(ref(c0)))).toMatch(/refused: The collection is paused/);
+    await ext.set_failing(false);
+    // an EXT collection is no ICRC-7 one: the old method refuses it
+    expect(errOf(await as(gina).set_my_nft_avatar(ref(c0)))).toMatch(/did not answer/);
+    expect(await nameOf(gina)).toBeUndefined(); // refused sets create no account
+
+    unwrap(await as(gina).set_my_ext_nft_avatar(ref(c0)));
+    unwrap(await as(gina).set_my_name('Gina Diamond'));
+    const info = await nameOf(gina);
+    expect(info.nft_avatar[0].collection.toText()).toBe(extId.toText());
+    expect(info.nft_avatar[0].token_id).toBe(BigInt(c0));
+    expect(info.nft_avatar[0].owner.toText()).toBe(gina.toText());
+    expect(info.nft_avatar_standard).toEqual(['EXT']);
+    const account = (await names.get_account_of(gina))[0];
+    expect(account.nft_avatar_standard).toEqual(['EXT']);
+    expect((await names.search({ prefix: 'Gina Dia', limit: 5n, kind: [] }))[0].nft_avatar_standard).toEqual(['EXT']);
+    const feed = await names.changes_since({ after: 0n, limit: 500n });
+    expect(feed.items.find((c) => c.ref.account === account.id).state[0].account.nft_avatar_standard).toEqual(['EXT']);
+    // what a client checks when it shows the avatar: bearer(tokenIdentifier) == the owner's account id
+    const shownBearer = await ext.bearer(extTokenIdentifier(extId, info.nft_avatar[0].token_id));
+    expect(shownBearer).toEqual({ ok: extAccountId(gina) });
+    expect(unwrap(await as(hank).refresh_nft_avatar(account.id))).toBe('Still owned');
+
+    // the card moves: the record stays until someone refreshes it, clients see the bearer changed
+    await ext.set_bearer(c0, extAccountId(hank));
+    expect((await nameOf(gina)).nft_avatar[0].token_id).toBe(BigInt(c0));
+    expect(await ext.bearer(extTokenIdentifier(extId, c0))).not.toEqual({ ok: extAccountId(gina) });
+    expect(unwrap(await as(hank).refresh_nft_avatar(account.id))).toMatch(/changed hands/);
+    const cleared = await nameOf(gina);
+    expect(cleared.nft_avatar).toEqual([]);
+    expect(cleared.nft_avatar_standard).toEqual([]);
+    expect(cleared.name).toEqual(['Gina Diamond']); // a named account stays
+
+    // the new holder takes it; switching to an ICRC-7 avatar switches the standard, null clears either
+    unwrap(await as(hank).set_my_ext_nft_avatar(ref(c0)));
+    expect((await nameOf(hank)).nft_avatar_standard).toEqual(['EXT']);
+    const nftId = await install(pic, { name: 'Icrc7Demo', initTypes: icrc7Init, initArgs: [{ name: 'Hank Cats', symbol: 'HCAT', description: [], logo: [] }], targetSubnetId: appSubnet });
+    const cat = unwrap(await actorAs(pic, icrc7Idl, nftId, admin).mint({ owner: hank, subaccount: [] }, [['name', { Text: 'Cat' }]]));
+    unwrap(await as(hank).set_my_nft_avatar([{ collection: nftId, token_id: cat }]));
+    expect((await nameOf(hank)).nft_avatar_standard).toEqual(['ICRC-7']);
+    expect(unwrap(await as(hank).refresh_nft_avatar((await names.get_account_of(hank))[0].id))).toBe('Still owned');
+    unwrap(await as(hank).set_my_ext_nft_avatar(ref(c1)));
+    expect((await nameOf(hank)).nft_avatar_standard).toEqual(['EXT']);
+    expect(unwrap(await as(hank).set_my_ext_nft_avatar([]))).toBe('NFT avatar cleared');
+    expect(await nameOf(hank)).toBeUndefined(); // nothing else to show: the account goes
+    extBlocksExpected = true;
+  });
+
   it('keeps an ICRC-3 log of it all that verifies', async () => {
     const { blocks } = await verifyLog(names, namesId, rootKey, archiveActor);
     const types = new Set(blocks.map(btype));
     for (const t of ['account_create', 'account_delete', 'name_set', 'avatar_set', 'member_link', 'member_unlink', 'member_update', 'hotkey_add', 'account_merge', 'verify', 'unverify', 'canister_name_set', 'canister_run_by', 'config_update', 'import', 'nft_avatar_set']) {
       expect(types.has(`sneednames_${t}`), t).toBe(true);
+    }
+    // NFT avatar blocks name the standard
+    const sets = blocks.filter((b) => btype(b) === 'sneednames_nft_avatar_set' && txField(b, 'nft_avatar'));
+    const standards = new Set(sets.map((b) => field(txField(b, 'nft_avatar'), 'standard')?.Text));
+    expect(standards.has('ICRC-7')).toBe(true);
+    if (extBlocksExpected) {
+      expect(standards.has('EXT')).toBe(true);
+      const extSet = sets.find((b) => field(txField(b, 'nft_avatar'), 'standard')?.Text === 'EXT');
+      expect(Buffer.from(field(txField(extSet, 'nft_avatar'), 'owner').Blob).equals(Buffer.from(user('ext-gina').toUint8Array()))).toBe(true);
     }
     const merge = blocks.find((b) => btype(b) === 'sneednames_account_merge');
     expect(Buffer.from(txField(merge, 'caller').Blob).equals(Buffer.from(alice.toUint8Array()))).toBe(true);

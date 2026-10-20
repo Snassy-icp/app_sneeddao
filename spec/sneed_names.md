@@ -217,6 +217,31 @@ type NftAvatar = { collection : Principal; token_id : Nat; owner : Principal; se
 - ICRC-3 block `sneednames_nft_avatar_set`. Admins clear it with `admin_clear_avatar`; a merge
   deletes the merged account's NFT avatar.
 
+**EXT NFTs** (step 2 of Sneed DAO proposal #416, built 2026-10-20; e.g. Sneed Diamond Club cards,
+collection `gjv36-laaaa-aaaah-adyza-cai`):
+
+- `set_my_ext_nft_avatar(opt NftRef)`: a new method beside `set_my_nft_avatar`, which is
+  unchanged. The caller names the standard by the method; the canister does not probe
+  `extensions()`. `token_id` is the EXT token index (above 2^32-1: "does not exist"). The canister
+  calls `bearer(tokenIdentifier(collection, index))` (bounded wait, 10 s; a failed call or
+  `#err(#Other)` refuses) and accepts the NFT only if the holder is the default account (account
+  identifier with a zero subaccount) of the caller or another member of the caller's account.
+  Identifiers are computed in `src/sneed_names/Ext.mo` (sha2's SHA-224, own CRC32), the same as
+  the frontend's `ExtUtils.js`.
+- **Storage without a stable type change.** `NftAvatar` (an EOP stable type) is unchanged. A new
+  stable map `nft_avatar_standards : AccountId -> Text` holds `"EXT"` for EXT avatars; no entry
+  means ICRC-7, so every avatar from before keeps meaning what it meant. Setting, clearing,
+  refresh and account deletion keep both maps in step.
+- The views (`NameInfo`, `AccountView`, `SearchHit`, so also `changes_since`) carry a new
+  `nft_avatar_standard : opt text` (`"ICRC-7"` / `"EXT"` while `nft_avatar` is set): an added
+  record field, backward compatible for Candid clients.
+- Display re-check for EXT: `bearer(tokenIdentifier(collection, token_id))` equals the account
+  identifier of `owner`'s default account. Picture: the card's metadata `image`, else the EXT
+  route `https://<collection>.raw.icp0.io/?tokenid=<tid>`. `refresh_nft_avatar` uses the
+  avatar's standard.
+- The `sneednames_nft_avatar_set` block's `nft_avatar` map gains `standard` (`"ICRC-7"` or
+  `"EXT"`); earlier blocks have none and mean ICRC-7.
+
 ### 4.2 Linking principals: hotkeys and merging
 
 Showing a principal as "the same person" as an account needs that principal's
@@ -315,6 +340,7 @@ Queries (anyone):
 get_names : (vec principal) -> (vec opt NameInfo) query;          // max 500
 // NameInfo = record { name : opt text; verified : bool; avatar : opt AvatarRef;
 //   nft_avatar : opt NftAvatar;     // accounts only (§4.1a)
+//   nft_avatar_standard : opt text; // "ICRC-7" or "EXT" while nft_avatar is set
 //   kind : variant { account : nat; canister };
 //   dapp : opt nat;                 // the dapp label of this principal in its account
 //   run_by : opt record { account : nat; name : opt text } }
@@ -337,6 +363,7 @@ Updates (signed in):
 set_my_name : (text) -> (Result);                    // "" clears; creates the account if needed
 set_my_avatar : (opt AvatarRef) -> (Result);
 set_my_nft_avatar : (opt NftRef) -> (Result);         // owners; §4.1a
+set_my_ext_nft_avatar : (opt NftRef) -> (Result);     // owners; EXT token index; §4.1a
 refresh_nft_avatar : (nat) -> (Result);              // anyone signed in; clears a sold NFT avatar
 set_account_name : (nat, text) -> (Result);          // owners and hotkeys
 set_account_avatar : (nat, opt AvatarRef) -> (Result);

@@ -1,6 +1,9 @@
 // Hand-written Candid interfaces of the test-only canisters (the real
 // sneed_lock interface comes from the dfx build in build/sneed_lock.did.js).
 import { IDL } from '@icp-sdk/core/candid';
+import { Principal } from '@icp-sdk/core/principal';
+import { createHash } from 'node:crypto';
+import { crc32 } from 'node:zlib';
 import { Value, icrc3Service } from './icrc3.js';
 
 const Account = IDL.Record({ owner: IDL.Principal, subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)) });
@@ -182,3 +185,34 @@ export const icrc7Idl = ({ IDL }) => {
   });
 };
 export const icrc7Init = [IDL.Record({ name: IDL.Text, symbol: IDL.Text, description: IDL.Opt(IDL.Text), logo: IDL.Opt(IDL.Text) })];
+
+// ---- EXT collection (canisters/MockExt.mo) and EXT identifiers, computed independently of the
+// canister code under test (node's sha224 and crc32) ----
+export const extIdl = ({ IDL }) => {
+  const CommonError = IDL.Variant({ InvalidToken: IDL.Text, Other: IDL.Text });
+  const Metadata = IDL.Variant({
+    fungible: IDL.Record({ name: IDL.Text, symbol: IDL.Text, decimals: IDL.Nat8, metadata: IDL.Opt(IDL.Vec(IDL.Nat8)) }),
+    nonfungible: IDL.Record({ metadata: IDL.Opt(IDL.Vec(IDL.Nat8)) }),
+  });
+  return IDL.Service({
+    mint: IDL.Func([IDL.Text, IDL.Opt(IDL.Vec(IDL.Nat8))], [IDL.Nat32], []),
+    set_bearer: IDL.Func([IDL.Nat32, IDL.Text], [], []),
+    set_failing: IDL.Func([IDL.Bool], [], []),
+    extensions: IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
+    bearer: IDL.Func([IDL.Text], [IDL.Variant({ ok: IDL.Text, err: CommonError })], ['query']),
+    tokens: IDL.Func([IDL.Text], [IDL.Variant({ ok: IDL.Vec(IDL.Nat32), err: CommonError })], ['query']),
+    metadata: IDL.Func([IDL.Text], [IDL.Variant({ ok: Metadata, err: CommonError })], ['query']),
+    getRegistry: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Nat32, IDL.Text))], ['query']),
+  });
+};
+/// The account identifier (hex) of a principal's default account.
+export function extAccountId(principal) {
+  const digest = createHash('sha224').update(Buffer.concat([Buffer.from([0x0a]), Buffer.from('account-id'), Buffer.from(principal.toUint8Array()), Buffer.alloc(32)])).digest();
+  const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(digest));
+  return Buffer.concat([crc, digest]).toString('hex');
+}
+/// The TokenIdentifier of token `index` in collection `canister`.
+export function extTokenIdentifier(canister, index) {
+  const i = Buffer.alloc(4); i.writeUInt32BE(Number(index));
+  return Principal.fromUint8Array(Uint8Array.from(Buffer.concat([Buffer.from([0x0a, 0x74, 0x69, 0x64]), Buffer.from(canister.toUint8Array()), i]))).toText();
+}

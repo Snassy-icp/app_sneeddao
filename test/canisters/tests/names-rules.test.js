@@ -17,4 +17,11 @@ describe('naming modules (src/sneed_names)', () => {
     const out = execFileSync(resolve(cache, 'moc'), ['-r', ...packages, resolve(here, '..', 'motoko', 'names.test.mo')], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     expect(out).toContain('names.test.mo: all passed');
   }, 120_000);
+
+  it('compute EXT account and token identifiers like the frontend (motoko/ext.test.mo)', () => {
+    const cache = execFileSync('dfx', [`+${DFX_VERSION}`, 'cache', 'show'], { encoding: 'utf8' }).trim();
+    const packages = execFileSync('mops', ['sources'], { cwd: root, encoding: 'utf8' }).trim().split(/\s+/);
+    const out = execFileSync(resolve(cache, 'moc'), ['-r', ...packages, resolve(here, '..', 'motoko', 'ext.test.mo')], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    expect(out).toContain('ext.test.mo: all passed');
+  }, 120_000);
 });

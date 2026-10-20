@@ -97,9 +97,19 @@ for pair in 0532de6d:prewallet e6e01c4e:prev; do
   rm -rf "$PREV_SRC"
   test -s "$OUT/sneedapp_$tag.wasm"
 done
+# sneed_pid_names as production runs it (ICRC-7 NFT avatars only), for the test that upgrades
+# from it to EXT avatars (enhanced orthogonal persistence, as dfx.json builds it)
+PID_NAMES_PROD_COMMIT=75cef0a7
+echo "== sneed_pid_names at $PID_NAMES_PROD_COMMIT (moc, EOP, for the upgrade test)"
+PREV_SRC="$(mktemp -d)"
+git archive "$PID_NAMES_PROD_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_pid_names/main.mo" -o "$OUT/sneed_pid_names_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneed_pid_names_prod.wasm"
 for c in MockLedger MockLedgerV2 MockLedgerFaulty MockRejectLedger MockSwapPool MockDexPool MockIcpswapFactory MockKongSwap \
          MockSnsGovernance MockSnsNeurons MockHubSns MockForumGovernance MockForumSnsW MockRllGovernance MockNnsGovernance \
-         MockCmc MockSnsWasm MockPremium MockSneedApp MockIcpSwapList MockIcpSwapTokenList MockNamesModerator MockIcpLedger MockMrSneedGov MockNotifySender Icrc3Demo; do
+         MockCmc MockSnsWasm MockPremium MockSneedApp MockIcpSwapList MockIcpSwapTokenList MockNamesModerator MockIcpLedger MockMrSneedGov MockNotifySender MockExt Icrc3Demo; do
   echo "== $c"
   # shellcheck disable=SC2086
   "$MOC" -c $PKGS -o "$OUT/$c.wasm" "$HERE/canisters/$c.mo" 2>&1 | grep -i "error" -A5 || true

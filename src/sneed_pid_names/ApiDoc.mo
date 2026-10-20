@@ -2,7 +2,7 @@
 module {
   public let text : Text = "# Sneed principal names (canister sneed_pid_names)
 
-Gives a person one public name for all their principals: a name belongs to an **account** (id `nat`, never reused) with a checkmark, an avatar, an optional ICRC-7 NFT avatar, member principals and hotkeys. Also names canisters (by their controllers) and keeps a name search index.
+Gives a person one public name for all their principals: a name belongs to an **account** (id `nat`, never reused) with a checkmark, an avatar, an optional NFT avatar (ICRC-7 or EXT), member principals and hotkeys. Also names canisters (by their controllers) and keeps a name search index.
 
 Production: `ejz7n-lyaaa-aaaad-qmkzq-cai`. Staging (same code, own state and admins; test there first): `qechb-aiaaa-aaaad-ag6lq-cai`.
 
@@ -37,7 +37,8 @@ The Sneed DAO naming service is six canisters (production ids):
 - Writes complete in one call (awaiting the moderator and other canisters, then re-checking state).
 - To mirror names, page `changes_since({ after; limit })`, persisting the last `seq`; each entity appears once at its latest change (`state = []` when deleted). Poll it at a modest interval (minutes), as queries.
 - Audits: read the ICRC-3 log (`icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`).
-- NFT avatars change hands: before showing `nft_avatar`, check `icrc7_owner_of` on the collection and fall back to `avatar`; anyone signed in may call `refresh_nft_avatar`.
+- NFT avatars change hands: before showing `nft_avatar`, check ownership on the collection by `nft_avatar_standard` and fall back to `avatar`: \"ICRC-7\": `icrc7_owner_of([token_id])` owner == `owner`; \"EXT\": `bearer(tokenIdentifier(collection, token_id))` == the account identifier of `owner`'s default account. Anyone signed in may call `refresh_nft_avatar`.
+- `set_my_nft_avatar` takes ICRC-7 NFTs only; EXT NFTs (e.g. Sneed Diamond Club cards) go through `set_my_ext_nft_avatar` (`token_id` = the EXT token index; a member's default account must hold it).
 
 ## Errors, retries and Busy
 - There is no Busy state. Retrying a timed-out write is safe (same value answers `Unchanged` / `Already a hotkey`); re-read state first if the answer matters.
@@ -52,7 +53,7 @@ The Sneed DAO naming service is six canisters (production ids):
 ## Start with these methods
 - `get_names(vec principal)`, `get_name`, `search({ prefix; limit; kind })`, `list_names`
 - `get_account`, `get_account_of`, `get_canister_name`, `my_hotkey_accounts`, `changes_since`, `stats`, `get_config`
-- Writes: `set_my_name`, `set_my_avatar`, `set_my_nft_avatar`, `add_hotkey`, `merge_account`, `remove_member`, `set_member`, `link_by_neuron`, `set_canister_name`
+- Writes: `set_my_name`, `set_my_avatar`, `set_my_nft_avatar`, `set_my_ext_nft_avatar`, `add_hotkey`, `merge_account`, `remove_member`, `set_member`, `link_by_neuron`, `set_canister_name`
 
 ## Full reference
 - https://app.sneeddao.com/api-docs/sneed_names.md (all six canisters)

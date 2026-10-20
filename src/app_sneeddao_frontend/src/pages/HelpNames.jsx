@@ -145,11 +145,11 @@ export default function HelpNames() {
                 </Steps>
                 <Sub>Using an NFT you own</Sub>
                 <P>
-                    You can also show an ICRC-7 NFT you own as your avatar. In the avatar editor press <B>Use an NFT I own…</B> and pick one from the collections in
+                    You can also show an NFT you own as your avatar: an ICRC-7 NFT, or an EXT one such as a Sneed Diamond Club card. In the avatar editor press <B>Use an NFT I own…</B> and pick one from the collections in
                     your <L to="/nft">NFT wallet</L>, or open any NFT you own and choose <B>Use as my avatar</B>.
                 </P>
                 <List>
-                    <Li>Ownership is checked when you set it: one of your account&apos;s principals must own the NFT.</Li>
+                    <Li>Ownership is checked when you set it: one of your account&apos;s principals must own the NFT. For EXT NFTs that means the principal&apos;s main (default) account, where the Sneed Hub wallet keeps them.</Li>
                     <Li>It is checked again whenever the avatar is shown. If you sell or send the NFT away, it stops showing and your normal picture shows instead.</Li>
                     <Li><B>Stop showing the NFT</B> goes back to your normal picture.</Li>
                 </List>

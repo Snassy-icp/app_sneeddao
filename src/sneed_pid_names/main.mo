@@ -3,6 +3,7 @@ import Buffer "mo:base/Buffer";
 import Int "mo:base/Int";
 import Debug "mo:base/Debug";
 import Nat "mo:base/Nat";
+import Nat32 "mo:base/Nat32";
 import Nat64 "mo:base/Nat64";
 import Option "mo:base/Option";
 import Error "mo:base/Error";
@@ -18,6 +19,7 @@ import ApiDoc "ApiDoc";
 import Icrc3Log "../icrc3/Log";
 import T3 "../icrc3/Types";
 import Control "../sneed_names/Control";
+import Ext "../sneed_names/Ext";
 import Moderation "../sneed_names/Moderation";
 import NameIndex "../sneed_names/NameIndex";
 import NameRules "../sneed_names/NameRules";
@@ -46,12 +48,16 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     #import_;
   };
   public type Member = { principal : Principal; role : Role; dapp : ?DappId; linked_at : Nat64; via : LinkProof };
-  /// An ICRC-7 NFT to show as an account's avatar.
+  /// An NFT to show as an account's avatar: an ICRC-7 token id, or an EXT token index.
   public type NftRef = { collection : Principal; token_id : Nat };
   /// An account's NFT avatar: the NFT, and the member principal that owned it when it was set.
-  /// Clients show it only while that principal still owns the NFT (icrc7_owner_of), and otherwise
-  /// fall back to `avatar`.
+  /// Clients show it only while that principal still owns the NFT, and otherwise fall back to
+  /// `avatar`. How to check depends on the collection's standard (`nft_avatar_standard` in the
+  /// views): "ICRC-7": icrc7_owner_of([token_id]) owner == `owner`; "EXT": bearer(tokenIdentifier
+  /// (collection, token_id)) == the account identifier of `owner`'s default account.
+  /// (A stable type: never change it; the standard is kept beside it in nft_avatar_standards.)
   public type NftAvatar = { collection : Principal; token_id : Nat; owner : Principal; set_at : Nat64 };
+  type NftStandard = { #icrc7; #ext };
 
   type Account = {
     id : AccountId;
@@ -92,6 +98,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     verification : ?Verification;
     avatar : ?AvatarRef;
     nft_avatar : ?NftAvatar;
+    nft_avatar_standard : ?Text; // "ICRC-7" or "EXT" while nft_avatar is set
     members : [Member];
     hotkeys : [Principal]; // only shown to the account's owners and hotkeys
     created_at : Nat64;
@@ -112,6 +119,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     verified : Bool;
     avatar : ?AvatarRef;
     nft_avatar : ?NftAvatar; // accounts only
+    nft_avatar_standard : ?Text; // "ICRC-7" or "EXT" while nft_avatar is set
     kind : { #account : AccountId; #canister };
     dapp : ?DappId; // this principal's dapp label in its account
     run_by : ?RunBy;
@@ -121,6 +129,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     verified : Bool;
     avatar : ?AvatarRef;
     nft_avatar : ?NftAvatar; // accounts only
+    nft_avatar_standard : ?Text; // "ICRC-7" or "EXT" while nft_avatar is set
     target : { #account : { id : AccountId; members : [{ principal : Principal; dapp : ?DappId }] }; #canister : Principal };
   };
   public type ChangeRef = { #account : AccountId; #canister : Principal };
@@ -161,6 +170,9 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   let hotkey_accounts = Map.new<Principal, [AccountId]>(); // hotkey -> the accounts it may manage
   let canisters = Map.new<Principal, CanisterName>();
   let nft_avatars = Map.new<AccountId, NftAvatar>(); // accounts that show an NFT as their avatar
+  // the standard of NFT avatars that are not ICRC-7 ("EXT"); no entry: ICRC-7 (added with EXT
+  // avatars, beside nft_avatars so that its stable type stays as it was)
+  let nft_avatar_standards = Map.new<AccountId, Text>();
   let index : NameIndex.State<NameRef> = NameIndex.init<NameRef>();
 
   // changes feed: the latest change of each entity, by sequence number
@@ -328,12 +340,23 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     for (m in a.members.vals()) Map.delete(pid_account, Map.phash, m.principal);
     for (h in a.hotkeys.vals()) dropHotkeyIndex(h, a.id);
     Map.delete(nft_avatars, Map.nhash, a.id);
+    Map.delete(nft_avatar_standards, Map.nhash, a.id);
     Map.delete(accounts, Map.nhash, a.id);
     block("account_delete", caller, Array.flatten<(Text, T3.Value)>([[("account", #Nat(a.id))], optText("name", a.name)]));
     touch(#account(a.id));
   };
 
   func nftAvatarOf(id : AccountId) : ?NftAvatar = Map.get(nft_avatars, Map.nhash, id);
+  func nftStandardOf(id : AccountId) : NftStandard = switch (Map.get(nft_avatar_standards, Map.nhash, id)) {
+    case (?"EXT") #ext;
+    case _ #icrc7;
+  };
+  func standardText(s : NftStandard) : Text = switch s { case (#icrc7) "ICRC-7"; case (#ext) "EXT" };
+  /// The standard of an account's NFT avatar, for the views (null without one).
+  func nftAvatarStandardOf(id : AccountId) : ?Text = switch (nftAvatarOf(id)) {
+    case (?_) ?standardText(nftStandardOf(id));
+    case null null;
+  };
 
   /// An account with nothing left to show (no name, no avatar, at most one member, no hotkeys) is deleted.
   func collect(a : Account, caller : Principal) {
@@ -410,6 +433,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
       verification = a.verification;
       avatar = a.avatar;
       nft_avatar = nftAvatarOf(a.id);
+      nft_avatar_standard = nftAvatarStandardOf(a.id);
       members = a.members;
       hotkeys = if (showHotkeys) a.hotkeys else [];
       created_at = a.created_at;
@@ -437,12 +461,12 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     switch (accountOf(p)) {
       case (?a) {
         let dapp = switch (memberIn(a, p)) { case (?m) m.dapp; case null null };
-        return ?{ name = a.name; verified = verified(a.verification, a.name); avatar = a.avatar; nft_avatar = nftAvatarOf(a.id); kind = #account(a.id); dapp; run_by = null };
+        return ?{ name = a.name; verified = verified(a.verification, a.name); avatar = a.avatar; nft_avatar = nftAvatarOf(a.id); nft_avatar_standard = nftAvatarStandardOf(a.id); kind = #account(a.id); dapp; run_by = null };
       };
       case null {};
     };
     switch (Map.get(canisters, Map.phash, p)) {
-      case (?c) ?{ name = ?c.name; verified = verified(c.verification, ?c.name); avatar = c.avatar; nft_avatar = null; kind = #canister; dapp = null; run_by = runByView(c.run_by) };
+      case (?c) ?{ name = ?c.name; verified = verified(c.verification, ?c.name); avatar = c.avatar; nft_avatar = null; nft_avatar_standard = null; kind = #canister; dapp = null; run_by = runByView(c.run_by) };
       case null null;
     };
   };
@@ -490,6 +514,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
             verified = verified(a.verification, a.name);
             avatar = a.avatar;
             nft_avatar = nftAvatarOf(id);
+            nft_avatar_standard = nftAvatarStandardOf(id);
             target = #account({
               id;
               members = Array.map<Member, { principal : Principal; dapp : ?DappId }>(
@@ -503,7 +528,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
         case null null;
       };
       case (#canister(p)) switch (Map.get(canisters, Map.phash, p)) {
-        case (?c) ?{ name = c.name; verified = verified(c.verification, ?c.name); avatar = c.avatar; nft_avatar = null; target = #canister(p) };
+        case (?c) ?{ name = c.name; verified = verified(c.verification, ?c.name); avatar = c.avatar; nft_avatar = null; nft_avatar_standard = null; target = #canister(p) };
         case null null;
       };
     };
@@ -717,22 +742,46 @@ shared (deployer) persistent actor class SneedPidNames() = this {
 
   type Icrc7Account = { owner : Principal; subaccount : ?Blob };
   type Icrc7 = actor { icrc7_owner_of : shared query [Nat] -> async [?Icrc7Account] };
+  /// Who holds an NFT: an ICRC-7 owner (any subaccount), or an EXT holder's account identifier.
+  type Holder = { #principal : Principal; #account_id : Text };
 
-  /// The owner of an ICRC-7 token. The wait is bounded, so a collection that never answers
-  /// cannot hold this canister's calls (or its upgrades) open.
-  func nftOwner(nft : NftRef) : async* { #ok : ?Icrc7Account; #err : Text } {
-    let c : Icrc7 = actor (Principal.toText(nft.collection));
-    try {
-      let r = await (with timeout = 10) c.icrc7_owner_of([nft.token_id]);
-      if (r.size() != 1) return #err("The collection answered " # Nat.toText(r.size()) # " owners for one token");
-      #ok(r[0]);
-    } catch (e) { #err("The collection did not answer: " # Error.message(e)) };
+  /// Does `p` hold it? (EXT: in its default account; the identifier is hashed one way only)
+  func holds(h : Holder, p : Principal) : Bool = switch h {
+    case (#principal(o)) o == p;
+    case (#account_id(aid)) Text.toLowercase(aid) == Ext.accountId(p);
   };
 
-  func nftValue(n : NftAvatar) : T3.Value = #Map([("collection", pv(n.collection)), ("token_id", #Nat(n.token_id)), ("owner", pv(n.owner))]);
+  /// The holder of a token (null: no such token). The wait is bounded, so a collection that never
+  /// answers cannot hold this canister's calls (or its upgrades) open.
+  func nftHolder(nft : NftRef, standard : NftStandard) : async* { #ok : ?Holder; #err : Text } {
+    switch standard {
+      case (#icrc7) {
+        let c : Icrc7 = actor (Principal.toText(nft.collection));
+        try {
+          let r = await (with timeout = 10) c.icrc7_owner_of([nft.token_id]);
+          if (r.size() != 1) return #err("The collection answered " # Nat.toText(r.size()) # " owners for one token");
+          #ok(switch (r[0]) { case (?o) ?#principal(o.owner); case null null });
+        } catch (e) { #err("The collection did not answer: " # Error.message(e)) };
+      };
+      case (#ext) {
+        if (nft.token_id > Ext.MAX_INDEX) return #ok(null);
+        let c : Ext.Collection = actor (Principal.toText(nft.collection));
+        try {
+          switch (await (with timeout = 10) c.bearer(Ext.tokenIdentifier(nft.collection, Nat32.fromNat(nft.token_id)))) {
+            case (#ok(aid)) #ok(?#account_id(aid));
+            case (#err(#InvalidToken _)) #ok(null);
+            case (#err(#Other(m))) #err("The collection refused: " # m);
+          };
+        } catch (e) { #err("The collection did not answer: " # Error.message(e)) };
+      };
+    };
+  };
+
+  func nftValue(n : NftAvatar, standard : NftStandard) : T3.Value = #Map([("collection", pv(n.collection)), ("token_id", #Nat(n.token_id)), ("owner", pv(n.owner)), ("standard", #Text(standardText(standard)))]);
 
   func clearNftAvatar(a : Account, caller : Principal, reason : Text) {
     Map.delete(nft_avatars, Map.nhash, a.id);
+    Map.delete(nft_avatar_standards, Map.nhash, a.id);
     a.updated_at := now64();
     block("nft_avatar_set", caller, [("account", #Nat(a.id)), ("reason", #Text(reason))]);
     touch(#account(a.id));
@@ -743,6 +792,17 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   /// must own it (in any subaccount). Your other avatar stays, and shows again if the NFT changes
   /// hands.
   public shared ({ caller }) func set_my_nft_avatar(nft : ?NftRef) : async Result {
+    await* setNftAvatar(caller, nft, #icrc7);
+  };
+
+  /// Show an EXT NFT (`token_id` = its token index) as your account's avatar (null stops, whatever
+  /// the standard). The default account of one of your account's principals must hold it
+  /// (`bearer`). Otherwise as set_my_nft_avatar.
+  public shared ({ caller }) func set_my_ext_nft_avatar(nft : ?NftRef) : async Result {
+    await* setNftAvatar(caller, nft, #ext);
+  };
+
+  func setNftAvatar(caller : Principal, nft : ?NftRef, standard : NftStandard) : async* Result {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
     if (T.isCanisterId(caller)) return #err("Canisters cannot own accounts");
     switch (accountOf(caller)) { case (?a) if (not isOwner(a, caller)) return #err("Only the account's owners can change its avatar"); case null {} };
@@ -758,27 +818,38 @@ shared (deployer) persistent actor class SneedPidNames() = this {
       };
     };
     if (not T.isCanisterId(n.collection)) return #err("The collection must be a canister");
-    let owner = switch (await* nftOwner(n)) {
-      case (#ok(?o)) o.owner;
+    let holder = switch (await* nftHolder(n, standard)) {
+      case (#ok(?h)) h;
       case (#ok(null)) return #err("That token does not exist in the collection");
       case (#err(e)) return #err(e);
     };
     // re-check after the call: state may have changed meanwhile
-    let a = switch (accountOf(caller)) {
+    let (a, owner) = switch (accountOf(caller)) {
       case (?a) {
         if (not isOwner(a, caller)) return #err("Only the account's owners can change its avatar");
-        if (memberIn(a, owner) == null) return #err("You do not own that NFT (its owner is not one of your account's principals)");
-        a;
+        // the caller first, then the other members
+        let mine = if (holds(holder, caller)) ?caller else switch (Array.find<Member>(a.members, func(m) = holds(holder, m.principal))) {
+          case (?m) ?m.principal;
+          case null null;
+        };
+        switch mine {
+          case (?o) (a, o);
+          case null return #err("You do not own that NFT (its owner is not one of your account's principals)");
+        };
       };
       case null {
-        if (owner != caller) return #err("You do not own that NFT");
-        newAccount(caller, #self_, caller);
+        if (not holds(holder, caller)) return #err("You do not own that NFT");
+        (newAccount(caller, #self_, caller), caller);
       };
     };
     let v : NftAvatar = { collection = n.collection; token_id = n.token_id; owner; set_at = now64() };
     Map.set(nft_avatars, Map.nhash, a.id, v);
+    switch standard {
+      case (#icrc7) Map.delete(nft_avatar_standards, Map.nhash, a.id);
+      case (#ext) Map.set(nft_avatar_standards, Map.nhash, a.id, "EXT");
+    };
     a.updated_at := now64();
-    block("nft_avatar_set", caller, [("account", #Nat(a.id)), ("nft_avatar", nftValue(v))]);
+    block("nft_avatar_set", caller, [("account", #Nat(a.id)), ("nft_avatar", nftValue(v, standard))]);
     touch(#account(a.id));
     #ok("NFT avatar set");
   };
@@ -787,14 +858,15 @@ shared (deployer) persistent actor class SneedPidNames() = this {
   public shared ({ caller }) func refresh_nft_avatar(account : AccountId) : async Result {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
     let v = switch (nftAvatarOf(account)) { case (?v) v; case null return #ok("No NFT avatar") };
-    let still = switch (await* nftOwner({ collection = v.collection; token_id = v.token_id })) {
-      case (#ok(?o)) o.owner == v.owner;
+    let standard = nftStandardOf(account);
+    let still = switch (await* nftHolder({ collection = v.collection; token_id = v.token_id }, standard)) {
+      case (#ok(?h)) holds(h, v.owner);
       case (#ok(null)) false;
       case (#err(e)) return #err(e);
     };
     if (still) return #ok("Still owned");
     switch (nftAvatarOf(account), Map.get(accounts, Map.nhash, account)) {
-      case (?cur, ?a) if (cur == v) clearNftAvatar(a, caller, "no longer owned"); // unless replaced meanwhile
+      case (?cur, ?a) if (cur == v and nftStandardOf(account) == standard) clearNftAvatar(a, caller, "no longer owned"); // unless replaced meanwhile
       case _ {};
     };
     #ok("Cleared: the NFT changed hands");
@@ -1325,6 +1397,7 @@ shared (deployer) persistent actor class SneedPidNames() = this {
     #set_canister_run_by : Any;
     #set_member : Any;
     #set_my_avatar : Any;
+    #set_my_ext_nft_avatar : Any;
     #set_my_name : Any;
     #set_my_nft_avatar : Any;
     #stats : Any;

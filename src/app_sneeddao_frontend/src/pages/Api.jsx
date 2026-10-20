@@ -59,7 +59,7 @@ export const apiDocs = [
         icon: FaIdBadge,
         title: 'Naming service',
         canisterId: 'ejz7n-lyaaa-aaaad-qmkzq-cai',
-        description: 'Six canisters, one document: a public name, checkmark and avatar per account (linked principals, hotkeys, merges), canister and SNS neuron names, nicknames, ICRC-7 NFT avatars, the dapp registry and avatar image storage. Batched lookups, search, a changes feed and ICRC-3 logs.',
+        description: 'Six canisters, one document: a public name, checkmark and avatar per account (linked principals, hotkeys, merges), canister and SNS neuron names, nicknames, ICRC-7 and EXT NFT avatars, the dapp registry and avatar image storage. Batched lookups, search, a changes feed and ICRC-3 logs.',
         color: '#ec4899',
     },
     {

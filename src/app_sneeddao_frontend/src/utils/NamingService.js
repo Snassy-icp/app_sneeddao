@@ -215,7 +215,7 @@ export async function getNeuronNickname(identity, root, neuronId) {
 export async function getAvatars(identity, principals) {
     const list = principals.slice(0, 500).map(toPrincipal);
     const infos = await pidNamesActor(identity).get_names(list);
-    const nfts = list.map((_, i) => nftAvatarRef(opt(infos[i])?.nft_avatar ?? []));
+    const nfts = list.map((_, i) => nftAvatarRef(opt(infos[i])?.nft_avatar ?? [], opt(infos[i])?.nft_avatar_standard ?? []));
     const resolved = nfts.some(Boolean) ? await resolveNftAvatars(nfts.filter(Boolean)) : new Map();
     const out = new Map();
     list.forEach((p, i) => {
@@ -237,10 +237,23 @@ export async function setMyNftAvatar(identity, collection, tokenId) {
     }
 }
 
-/// Your account's NFT avatar as { collection, token_id, owner } texts, or null.
+/// Show an EXT NFT (e.g. a Sneed Diamond Club card) you hold as your avatar: collection id text
+/// and token index. Your default account must hold it. null stops showing any NFT avatar.
+export async function setMyExtNftAvatar(identity, collection, index) {
+    try {
+        const nft = collection == null ? [] : [{ collection: toPrincipal(collection), token_id: BigInt(index) }];
+        const r = await pidNamesActor(identity).set_my_ext_nft_avatar(nft);
+        forgetNftAvatars();
+        return r;
+    } catch (e) {
+        return { err: e.message || String(e) };
+    }
+}
+
+/// Your account's NFT avatar as { collection, token_id, owner, standard } texts, or null.
 export async function getMyNftAvatar(identity) {
     const account = opt(await pidNamesActor(identity).get_account_of(identity.getPrincipal()));
-    return account ? nftAvatarRef(account.nft_avatar) : null;
+    return account ? nftAvatarRef(account.nft_avatar, account.nft_avatar_standard ?? []) : null;
 }
 
 export const setPrincipalName = (identity, name) => pidNamesActor(identity).set_my_name(name);

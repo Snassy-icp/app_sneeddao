@@ -95,11 +95,16 @@ type AvatarRef = variant { url : text; blob : blob };
 
 Images are PNG, JPEG, GIF or WebP (the type is read from the bytes, not trusted from the client), at most 48 KiB, and each image is stored once however many people use it. Each principal **holds** the images it uploaded, at most 20 (200 with Sneed Premium); an image nobody holds any more is freed, and a name record that points at a freed image simply shows no avatar.
 
-### 1.7 NFT avatars (ICRC-7)
+### 1.7 NFT avatars (ICRC-7 and EXT)
 
-An account may also show an ICRC-7 NFT as its avatar (`nft_avatar`). `set_my_nft_avatar({ collection; token_id })` asks the collection's `icrc7_owner_of` and accepts the NFT only if its owner (in any subaccount) is one of the account's member principals. It records `{ collection; token_id; owner; set_at }`, where `owner` is the member that owned it.
+An account may also show an NFT as its avatar (`nft_avatar`), from an ICRC-7 collection or an EXT one (the Toniq / Entrepot standard, e.g. the Sneed Diamond Club `gjv36-laaaa-aaaah-adyza-cai`):
 
-NFTs change hands, so **clients must check again when they show it**: call `icrc7_owner_of([token_id])` on the collection and show the NFT only while `owner` still owns it; otherwise (or when the collection does not answer) show the account's ordinary `avatar`. The ordinary avatar is kept while an NFT avatar is set, for exactly this case. Anyone signed in can also call `refresh_nft_avatar(account)`, which clears an NFT avatar that changed hands. The reference client does this in [utils/nftAvatars.js](https://github.com/Snassy-icp/app_sneeddao/blob/main/src/app_sneeddao_frontend/src/utils/nftAvatars.js) (unsigned query calls, one batch per collection, 10-minute cache).
+- **ICRC-7**: `set_my_nft_avatar({ collection; token_id })` asks the collection's `icrc7_owner_of` and accepts the NFT only if its owner (in any subaccount) is one of the account's member principals.
+- **EXT**: `set_my_ext_nft_avatar({ collection; token_id })`, where `token_id` is the EXT token index (0 to 2^32-1), asks the collection's `bearer(tokenIdentifier)` and accepts the NFT only if the holder is the **default account** (the ICP-style account identifier with a zero subaccount) of one of the account's member principals. The standard is explicit: the canister does not guess it, and an EXT collection passed to `set_my_nft_avatar` is refused (it has no `icrc7_owner_of`).
+
+Either way it records `{ collection; token_id; owner; set_at }`, where `owner` is the member that owned it, and the views carry `nft_avatar_standard`: `"ICRC-7"` or `"EXT"` while an NFT avatar is set (empty otherwise; clients that predate it may treat a missing field as ICRC-7).
+
+NFTs change hands, so **clients must check again when they show it**, by the standard: for ICRC-7 call `icrc7_owner_of([token_id])` on the collection and show the NFT only while `owner` still owns it; for EXT call `bearer(tokenIdentifier(collection, token_id))` and show it only while the answer equals the account identifier of `owner`'s default account (`TokenIdentifier` = principal text of the bytes `"\x0Atid"` ++ collection principal bytes ++ 4-byte big-endian index; account identifier = hex of CRC32 ++ SHA-224(`"\x0Aaccount-id"` ++ principal bytes ++ 32 zero bytes)). EXT pictures: the card's metadata `image`, else the collection's route `https://<collection>.raw.icp0.io/?tokenid=<tokenIdentifier>`. Otherwise (or when the collection does not answer) show the account's ordinary `avatar`. The ordinary avatar is kept while an NFT avatar is set, for exactly this case. Anyone signed in can also call `refresh_nft_avatar(account)`, which clears an NFT avatar that changed hands. The reference client does this in [utils/nftAvatars.js](https://github.com/Snassy-icp/app_sneeddao/blob/main/src/app_sneeddao_frontend/src/utils/nftAvatars.js) (unsigned query calls, one batch per collection, 10-minute cache).
 
 ### 1.8 Canister names
 
@@ -199,6 +204,7 @@ export async function namesFor(principals) {
       verified: info.verified,
       avatar: avatarUrl(info.avatar),
       nftAvatar: info.nft_avatar[0] ?? null,       // check ownership before showing (1.7)
+      nftAvatarStandard: info.nft_avatar_standard?.[0] ?? null, // 'ICRC-7' | 'EXT': how to check it
       kind: 'account' in info.kind ? 'account' : 'canister',
       runBy: info.run_by[0]?.name[0] ?? null,      // canisters only
     };
@@ -318,6 +324,10 @@ const r = await pidNames.set_my_nft_avatar([{ collection: Principal.fromText(COL
 //         "The collection did not answer: …",
 //         "You do not own that NFT (its owner is not one of your account's principals)"
 await pidNames.set_my_nft_avatar([]);  // stop showing it
+
+// an EXT card (e.g. Sneed Diamond Club): token_id is the EXT token index; the caller's (or another
+// member's) default account must hold it. Errors as above, plus "The collection refused: …"
+await pidNames.set_my_ext_nft_avatar([{ collection: Principal.fromText('gjv36-laaaa-aaaah-adyza-cai'), token_id: 42n }]);
 ```
 
 Then, when displaying any account's `nft_avatar`, re-check ownership (1.7).
@@ -411,8 +421,11 @@ Owners only. Errors: `Avatar link too long (max 512 characters)`, `Avatar links 
 **`set_my_nft_avatar(nft : opt NftRef) → Result`**
 See 1.7 and 3.7. Owners only. `[]` stops showing it (`NFT avatar cleared`).
 
+**`set_my_ext_nft_avatar(nft : opt NftRef) → Result`**
+The same for an EXT NFT (`token_id` = token index); see 1.7. Owners only. `[]` stops showing any NFT avatar.
+
 **`refresh_nft_avatar(account : AccountId) → Result`**
-Anyone signed in. Asks the collection; clears the NFT avatar if it changed hands or is gone. `ok`: `No NFT avatar`, `Still owned`, `Cleared: the NFT changed hands`. `err`: the collection's failure (`The collection did not answer: …`).
+Anyone signed in. Asks the collection (`icrc7_owner_of` or `bearer`, by the avatar's standard); clears the NFT avatar if it changed hands or is gone. `ok`: `No NFT avatar`, `Still owned`, `Cleared: the NFT changed hands`. `err`: the collection's failure (`The collection did not answer: …`).
 
 **`add_hotkey(hotkey : principal) → Result`**
 Owners only; creates the caller's account if needed. Errors: `Not a principal`, `That is you`, `That principal is already in this account`, `At most N hotkeys per account`. `ok`: `Hotkey added`, `Already a hotkey`.
@@ -553,7 +566,7 @@ The logs started with the import from the backend: one `import` block per import
 | `sneednames_account_delete` | `account`, `name` (if it had one) |
 | `sneednames_name_set` | `account`, `old_name`, `name` (absent when cleared), `verification_cleared` = 1 when the rename removed a checkmark |
 | `sneednames_avatar_set` | `account` or `canister`, `avatar` (`{ url }` or `{ blob }`; absent when cleared); `merged_from` when a merge carried the avatar over |
-| `sneednames_nft_avatar_set` | `account`, then either `nft_avatar` `{ collection; token_id; owner }` or `reason` (`cleared by owner`, `no longer owned`, `cleared by admin`) |
+| `sneednames_nft_avatar_set` | `account`, then either `nft_avatar` `{ collection; token_id; owner; standard }` (`standard` `"ICRC-7"` or `"EXT"`; blocks from before EXT avatars have none and mean ICRC-7) or `reason` (`cleared by owner`, `no longer owned`, `cleared by admin`) |
 | `sneednames_member_link` | `account`, `principal`, `role`, `via`, `dapp` |
 | `sneednames_member_unlink` | `account`, `principal` |
 | `sneednames_member_update` | `account`, `principal`, `role`, `dapp` |
@@ -596,6 +609,7 @@ type NftAvatar = record { collection : principal; token_id : nat; owner : princi
 type NameInfo = record {
   name : opt text; verified : bool; avatar : opt AvatarRef;
   nft_avatar : opt NftAvatar;             // accounts only
+  nft_avatar_standard : opt text;         // "ICRC-7" or "EXT" while nft_avatar is set
   kind : variant { account : AccountId; canister };
   dapp : opt DappId;                      // this principal's dapp label
   run_by : opt RunBy;                     // canisters only
@@ -603,7 +617,7 @@ type NameInfo = record {
 type RunBy = record { account : AccountId; name : opt text };
 type AccountView = record {
   id : AccountId; name : opt text; verified : bool; verification : opt Verification;
-  avatar : opt AvatarRef; nft_avatar : opt NftAvatar; members : vec Member;
+  avatar : opt AvatarRef; nft_avatar : opt NftAvatar; nft_avatar_standard : opt text; members : vec Member;
   hotkeys : vec principal;                // empty unless the caller manages the account
   created_at : nat64; updated_at : nat64;
 };
@@ -612,7 +626,7 @@ type CanisterView = record {
   avatar : opt AvatarRef; run_by : opt RunBy; set_by : principal; updated_at : nat64;
 };
 type SearchHit = record {
-  name : text; verified : bool; avatar : opt AvatarRef; nft_avatar : opt NftAvatar;
+  name : text; verified : bool; avatar : opt AvatarRef; nft_avatar : opt NftAvatar; nft_avatar_standard : opt text;
   target : variant {
     account : record { id : AccountId; members : vec record { "principal" : principal; dapp : opt DappId } };
     canister : principal;
@@ -640,7 +654,7 @@ The Candid files linked at the top are authoritative.
 - [ ] Test against the **staging** canisters first; they have their own names.
 - [ ] Look names up in batches with `get_names` (up to 500 principals per query), not one call per row.
 - [ ] Show the checkmark only when `verified` is true; never infer it from `verification` alone (it may belong to an older name).
-- [ ] For `nft_avatar`, check `icrc7_owner_of` on the collection before showing it, and fall back to `avatar`.
+- [ ] For `nft_avatar`, check ownership on the collection before showing it (`icrc7_owner_of`, or `bearer` when `nft_avatar_standard` is `"EXT"`), and fall back to `avatar`.
 - [ ] Resolve `AvatarRef.blob` to `https://ev5f4-4yaaa-aaaad-qmk3q-cai.raw.icp0.io/<hex>`; cache freely (content-addressed).
 - [ ] Before a user sets a public name, tell them a name with a blacklisted word gets them banned.
 - [ ] Before a merge or `link_by_neuron`, tell users the link between their principals becomes public.

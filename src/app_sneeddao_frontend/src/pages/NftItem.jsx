@@ -19,7 +19,7 @@ import { accountId as extAccountId, isSavedExtCollection, addExtCollection } fro
 import { customStyles } from '../health/TreeView.jsx';
 import LockGas from '../components/LockGas';
 import { canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
-import { namingServiceEnabled, setMyNftAvatar } from '../utils/NamingService';
+import { namingServiceEnabled, setMyNftAvatar, setMyExtNftAvatar } from '../utils/NamingService';
 import { useNaming } from '../NamingContext';
 
 const primary = '#a18cd1';
@@ -71,7 +71,7 @@ function NftItem() {
     const [avatarState, setAvatarState] = useState(null); // null | 'saving' | 'done' | error text
     const useAsAvatar = async () => {
         setAvatarState('saving');
-        const r = await setMyNftAvatar(identity, collection, idText);
+        const r = isExt ? await setMyExtNftAvatar(identity, collection, idText) : await setMyNftAvatar(identity, collection, idText);
         if ('ok' in r) { setAvatarState('done'); setKnownAvatar?.(me, img); } else setAvatarState(r.err);
     };
 
@@ -163,7 +163,7 @@ function NftItem() {
                                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
                                         {!isExt && <Link to={`/sneedex_create?nft=${collection}:${idText}`} style={btn('#a78bfa')}><FaTag /> Sell on Sneedex</Link>}
                                         <Link to="/nft" onClick={() => { if (!inWallet) addToWallet(); }} style={btn()}><FaWallet /> {inWallet ? 'Open in wallet' : 'Add collection to wallet'}</Link>
-                                        {namingServiceEnabled && img && !isExt && (
+                                        {namingServiceEnabled && img && (
                                             <button type="button" onClick={useAsAvatar} disabled={avatarState === 'saving' || avatarState === 'done'} style={btn()} title="Show this NFT next to your name while you own it">
                                                 <FaUserCircle /> {avatarState === 'saving' ? 'Setting…' : avatarState === 'done' ? 'Your avatar now' : 'Use as my avatar'}
                                             </button>
