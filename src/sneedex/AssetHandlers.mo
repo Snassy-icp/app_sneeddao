@@ -548,13 +548,30 @@ module {
     };
     
     /// Transfer all tokens from a subaccount minus the fee
-    /// Use this when reclaiming escrowed tokens where we want to return everything
+    /// Use this when reclaiming escrowed tokens where we want to return everything.
+    /// Answers the ledger block index, or 0 when there was nothing to move (see sweepTokens,
+    /// which tells the two apart).
     public func reclaimAllTokens(
         ledgerCanisterId : Principal,
         sneedex : Principal,
         fromSubaccount : Blob,
         toAccount : T.Account
     ) : async* T.Result<Nat> {
+        switch (await* sweepTokens(ledgerCanisterId, sneedex, fromSubaccount, toAccount)) {
+            case (#ok(?(_, blockIndex))) { #ok(blockIndex) };
+            case (#ok(null)) { #ok(0) };
+            case (#err(e)) { #err(e) };
+        };
+    };
+
+    /// reclaimAllTokens with the details for the activity log: `?(amount, blockIndex)` of the
+    /// transfer, or null when the balance did not cover the fee and nothing was moved.
+    public func sweepTokens(
+        ledgerCanisterId : Principal,
+        sneedex : Principal,
+        fromSubaccount : Blob,
+        toAccount : T.Account
+    ) : async* T.Result<?(Nat, Nat)> {
         let ledger = getICRC1Ledger(ledgerCanisterId);
         
         try {
@@ -570,7 +587,7 @@ module {
             // Check if there's enough to cover the fee
             if (balance <= fee) {
                 // Nothing to transfer (or dust amount)
-                return #ok(0);
+                return #ok(null);
             };
             
             let transferAmount = balance - fee;
@@ -586,7 +603,7 @@ module {
             });
             
             switch (result) {
-                case (#Ok(blockIndex)) { #ok(blockIndex) };
+                case (#Ok(blockIndex)) { #ok(?(transferAmount, blockIndex)) };
                 case (#Err(e)) {
                     let errorMsg = switch (e) {
                         case (#GenericError(g)) { g.message };

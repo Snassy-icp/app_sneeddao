@@ -74,6 +74,16 @@ git archive "$SNEEDEX_PREV_COMMIT" src/sneedex src/PremiumClient.mo src/IngressG
 rm -rf "$PREV_SRC"
 test -s "$OUT/sneedex_prev.wasm"
 
+# sneedex as production runs it before the ICRC-3 log, for the test that upgrades from it
+SNEEDEX_PROD_COMMIT=b483932c
+echo "== sneedex at $SNEEDEX_PROD_COMMIT (moc, for the ICRC-3 upgrade test)"
+PREV_SRC="$(mktemp -d)"
+git archive "$SNEEDEX_PROD_COMMIT" src/sneedex src/PremiumClient.mo src/IngressGuard.mo | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS "$PREV_SRC/src/sneedex/main.mo" -o "$OUT/sneedex_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneedex_prod.wasm"
+
 # sneedapp from before the user wallet (bookmarks in the legacy userRegistrations map) and as it was
 # before the 2026-10-20 fixes (legacy staking bots filed under "icp-staking-bot"), for the tests that
 # upgrade from them

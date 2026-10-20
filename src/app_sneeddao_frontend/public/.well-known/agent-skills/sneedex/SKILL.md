@@ -1,6 +1,6 @@
 ---
 name: sneedex
-description: Integrate Sneedex, Sneed DAO's on-chain escrow marketplace on the Internet Computer (7bvk3-ryaaa-aaaal-qtykq-cai), where canisters (including Sneed staking and trading bots), SNS neurons, ICRC-1 tokens, ICRC-7 NFTs and Sneed Lock locks are sold by auction or buyout for any ICRC-1 token. Use when a user or developer wants to list an asset, bid, buy out, accept a bid, claim, reclaim or refund on Sneedex, read offers and bids, or understand how Sneedex escrow works.
+description: Integrate Sneedex, Sneed DAO's on-chain escrow marketplace on the Internet Computer (7bvk3-ryaaa-aaaal-qtykq-cai), where canisters (including Sneed staking and trading bots), SNS neurons, ICRC-1 tokens, ICRC-7 NFTs and Sneed Lock locks are sold by auction or buyout for any ICRC-1 token. Use when a user or developer wants to list an asset, bid, buy out, accept a bid, claim, reclaim or refund on Sneedex, read offers and bids, audit the market through its ICRC-3 log, or understand how Sneedex escrow works.
 license: MIT
 metadata:
   publisher: Sneed DAO
@@ -29,6 +29,7 @@ Canisters: production `7bvk3-ryaaa-aaaal-qtykq-cai`, staging `igm46-laaaa-aaaae-
 9. **Private offers**: `approved_bidders = [vec principal]`; only those (and the creator) can bid; they are notified on activation. Public offers have `approved_bidders = null`.
 10. **`cancelOffer`** works in Draft, PendingEscrow and Active; confirmed bids are marked Lost and refunded, assets return to the seller.
 11. **`note_to_buyer`** is visible only to the creator and, once won, the winning bidder; `public_note` to everyone. Max 4000 chars each.
+12. **Every market action is logged as an ICRC-3 block** (`btype` prefixed `sneedex_`, hash-chained via `phash`, tip certified): offers, escrow, bids, each asset handed over, cuts, seller payments, refunds, creation fees, admin changes. Transfers carry their ledger block (`ledger_tx` / `icp_tx`); timer-driven steps have `via = "timer"` instead of `caller`. `note_to_buyer` is never logged. The log starts with the release that added it (no import of older offers). Catalogue: https://app.sneeddao.com/api-docs/sneedex.md section 8.
 
 ## Procedures
 
@@ -53,6 +54,10 @@ Canisters: production `7bvk3-ryaaa-aaaal-qtykq-cai`, staging `igm46-laaaa-aaaae-
 
 ### Seller decisions
 `acceptBid(offerId)` completes with the current highest bid before expiry. `cancelOffer(offerId)` (fact 10).
+
+### Audit the history (ICRC-3 activity log)
+- `icrc3_log_status()` → `log_length`, archives. `icrc3_get_blocks([{start; length}])` → live blocks plus `archived_blocks` callbacks for older ranges (max 1000 blocks per response).
+- Verify `icrc3_get_tip_certificate` and walk `phash` (the verifier script in the Sneed Lock reference, section 8.4, works with Sneedex's canister id). History of an offer: blocks whose `tx.offer_id` matches.
 
 ### Read state
 - `getOfferFeed({start_id, length, filter: [{states, asset_types, creator, has_bids, public_only, viewer}]})` → `{offers, has_more, next_start_id}`, newest first; continue with `start_id = next_start_id`.

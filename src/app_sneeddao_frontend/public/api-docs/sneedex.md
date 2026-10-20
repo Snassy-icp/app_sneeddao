@@ -563,6 +563,7 @@ Restricted to the canister's controllers (the Sneed SNS on production) and `conf
 | `getCreationFeePaymentLog(offset, limit)`, `getCutPaymentLog(offset, limit)`, `getCreationFeePaymentLogCount()`, `getCutPaymentLogCount()` | Payment logs, newest first, at most 1,000 per page. |
 | `adminReclaimStuckTokens(offerId)` | Retries returning every escrowed asset of an offer to its creator and reports each result as text. |
 | `adminReturnMisplacedNft(collection, tokenId, to)` | Returns an NFT a non-compliant collection put in Sneedex's default account. Refused while any open offer has the token escrowed. |
+| `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`, `admin_set_icrc3_proposal_neuron`, `admin_icrc3_register_archives_now`, `admin_icrc3_reset_archive_registration` | The activity log's archives and their SNS registration (section 8). |
 
 ---
 
@@ -681,7 +682,99 @@ type Config = record {
 
 ---
 
-## 8. Integration checklist
+## 8. Activity log (ICRC-3)
+
+Every action that changes the market is recorded as a block in a hash-chained, certified log, readable through the standard [ICRC-3](https://github.com/dfinity/ICRC-1/tree/main/standards/ICRC-3) interface: offers, assets and their escrow, bids, every asset handed over, every payment out of an escrow, creation fees, and every admin action that moves assets or changes fees and settings. Each block carries the hash of the previous block (`phash`), and the canister certifies the index and hash of the latest block, so anyone can download the history and prove it complete and untampered without trusting Sneed DAO or this app. Old blocks move to archive canisters that Sneedex creates; the chain of archives grows on its own.
+
+The log is an audit trail, not a ledger: amounts in it are what Sneedex moved, and each transfer names its ledger block (`ledger_tx`, `icp_tx`) so it can be checked on the token's own ledger. It uses the same library as [Sneed Lock's log](/api/sneed_lock#8-activity-log-icrc-3) ([src/icrc3](https://github.com/Snassy-icp/app_sneeddao/tree/main/src/icrc3)); the design is in [spec/sneedex_icrc3.md](https://github.com/Snassy-icp/app_sneeddao/blob/main/spec/sneedex_icrc3.md). The log starts empty with the release that introduced it; offers and bids from before are not imported (their state is in `queryOffer`, `getOfferView` and `queryBid`).
+
+### 8.1 Endpoints
+
+| Method | Type | Returns |
+|---|---|---|
+| `icrc3_get_blocks(vec record { start : nat; length : nat })` | query | `{ log_length; blocks : vec { id; block }; archived_blocks : vec { args; callback } }`. Live blocks come back directly; for archived ranges call `callback` (that archive's own `icrc3_get_blocks`) with `args`. At most 1000 blocks or about 1.5 MB per response. |
+| `icrc3_get_archives(record { from : opt principal })` | query | Every archive canister with the first and last block index it holds, in index order. |
+| `icrc3_get_tip_certificate()` | query | `opt { certificate; hash_tree }`: the IC certificate over the canister's certified data and the CBOR hash tree with `last_block_index` (unsigned LEB128) and `last_block_hash`. Null until the first block exists. |
+| `icrc3_supported_block_types()` | query | Every `btype` below, each with the url of [8.3](#83-block-types). |
+| `icrc10_supported_standards()` | query | ICRC-3 and ICRC-10. |
+| `icrc3_log_status()` | query | Log length, live blocks, hash of the last block, archives with their ranges, spill settings. `history_imported` is always false (there is no import). |
+| `icrc3_registration_status()` | query | Per archive, the SNS proposal that registered it as a DAO canister (submitted automatically through a hotkeyed neuron once one is configured). |
+
+Admin only: `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`, `admin_set_icrc3_proposal_neuron`, `admin_icrc3_register_archives_now`, `admin_icrc3_reset_archive_registration` (as on Sneed Lock). Archives are controlled by Sneedex and the Sneed SNS root until a `RegisterDappCanisters` proposal hands them to SNS root alone.
+
+### 8.2 Block format
+
+A block is a `Map` with `btype` (Text), `ts` (Nat, ns since epoch: when the block was appended, which is when the action happened), `phash` (Blob, absent on block 0) and `tx` (Map). Inside `tx`:
+
+- Principals are `Blob` (raw principal bytes); ICRC-1 accounts are `Array [owner, subaccount?]`.
+- Amounts are `Nat` in the token's base units; ids and expirations are `Nat`.
+- `caller` is the principal that made the call. Actions done by a Sneedex timer (auto-delivery, auto-payment, auto-refund, auto-reclaim, the expiration worker) have no `caller` but `via` = `"timer"`.
+- Flags are `Nat` 0 or 1. Optional fields are omitted when absent.
+- `asset` describes one asset as listed: a `Map` with `type` and its fields: `canister` (`canister_id`, `canister_kind`, `controllers_snapshot` once escrowed), `sns_neuron` (`governance`, `neuron_id`, `hotkeys_snapshot` once escrowed), `icrc1` (`ledger`, `amount`), `icrc7` (`collection`, `token_ids`), `sneed_lock` (`lock_id`, `kind` = `token` or `position`, `ledger` and `amount` or `pool` and `position_id`, `expiry`).
+- Nothing private is logged: `note_to_buyer` never appears. Public notes and canister titles and descriptions are left out too. Everything in the log is already public through the queries; nothing on the IC is anonymous.
+
+The block hash is the ICRC-3 representation-independent hash, as in [Sneed Lock's 8.2](/api/sneed_lock#82-block-format).
+
+### 8.3 Block types
+
+All types carry the `sneedex_` prefix. A block is appended only once its action is final, in the message that records it: after the ledger, governance or Sneed Lock call succeeded. A failed transfer appends nothing; its retry appends the block. Flows with several steps log each step that completed.
+
+Offers:
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `sneedex_offer_create` | `createOffer` recorded a Draft offer. | `caller`, `offer_id`, `price_ledger`, `fee_rate_bps` (cut locked in); `min_bid`, `buyout`, `expiration`, `min_increment_fee_multiple` when set; `approved_bidders` (private offer); `creation_fee_e8s`, `creation_fee_icp_tx` when a fee was paid |
+| `sneedex_asset_add` | `addAsset` | `caller`, `offer_id`, `asset_index`, `asset` |
+| `sneedex_offer_finalize` | `finalizeAssets` (to PendingEscrow) | `caller`, `offer_id`, `asset_count` |
+| `sneedex_asset_escrow` | An `escrow*` call confirmed custody of one asset. | `caller`, `offer_id`, `asset_index`, `asset` (with snapshots); `pulled` (1 when Sneedex pulled NFTs through an ICRC-37 approval) |
+| `sneedex_offer_activate` | `activateOffer` | `caller`, `offer_id` |
+| `sneedex_offer_cancel` | `cancelOffer` | `caller`, `offer_id`, `from_state` (`draft`, `pending_escrow`, `active`) |
+| `sneedex_offer_expire` | An Active offer passed its expiration without bids (`processExpiration` by anyone, or the expiration worker). | `offer_id`; `caller` or `via` |
+| `sneedex_offer_complete` | The offer got its winner (the bid becomes Won). | `offer_id`, `bid_id`, `buyer`, `price_ledger`, `amount`, `reason` (`buyout`, `accept`, `expiry`); `caller` or `via` |
+| `sneedex_asset_deliver` | One asset reached its recipient. | `offer_id`, `asset_index`, `asset`, `to`, `side` (`buyer` or `seller`); for tokens `amount` and `ledger_tx` when a transfer happened; for NFTs `moved` (tokens moved); `recovered` = 1 when handed over from an offer already Claimed / Reclaimed; `caller` or `via` |
+| `sneedex_offer_settle` | Every asset arrived; the offer is now Claimed or Reclaimed. | `offer_id`, `outcome` (`claimed` or `reclaimed`), `to`; `caller` or `via` |
+
+Bids and payments:
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `sneedex_bid_reserve` | `reserveBid` | `caller`, `bid_id`, `offer_id` |
+| `sneedex_bid_excess_refund` | `confirmBid` sent back what the escrow held above the effective bid. | `caller`, `bid_id`, `offer_id`, `ledger`, `amount`, `to`, `ledger_tx` |
+| `sneedex_bid_confirm` | `confirmBid` recorded the bid. | `caller`, `bid_id`, `offer_id`, `ledger`, `amount` (effective bid, capped at the buyout) |
+| `sneedex_bid_lost` | A bid became Lost. | `bid_id`, `offer_id`, `bidder`, `amount`, `escrowed` (0 for a reservation never confirmed), `reason` (`outbid`, `offer_completed`, `offer_cancelled`, `offer_closed`: confirmed after the offer closed, `buyout_race`: another buyout won) |
+| `sneedex_bid_refund` | A Lost bid's escrow went back to the bidder (`refundBid` or the auto-refund). | `bid_id`, `offer_id`, `bidder`, `ledger`, `amount`, `to`, `ledger_tx`; `caller` or `via` |
+| `sneedex_bid_escrow_withdraw` | `withdrawBidEscrow` | `caller`, `bid_id`, `offer_id`, `ledger`, `amount`, `to`, `ledger_tx` |
+| `sneedex_cut_pay` | The marketplace cut left the winning escrow. | `offer_id`, `bid_id`, `ledger`, `cut` (charged), `amount` (transferred: cut less one ledger fee), `fee_rate_bps`, `to`, `ledger_tx`; `caller` or `via` |
+| `sneedex_seller_pay` | The seller was paid (the bid becomes ClaimedBySeller). | `offer_id`, `bid_id`, `seller`, `ledger`, `bid_amount`, `cut`, `amount`, `to`, `ledger_tx`; `caller` or `via` |
+| `sneedex_creation_fee_pay` | The offer creation fee left the payer's payment subaccount. | `caller`, `payer`, `fee_e8s`, `amount_e8s` (transferred), `to`, `icp_tx` |
+| `sneedex_creation_payment_withdraw` | `withdrawOfferCreationPayment` | `caller`, `amount_e8s`, `to`, `icp_tx` |
+
+Admin (controllers and admins only):
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `sneedex_admin_asset_return` | `adminReclaimStuckTokens` handed one escrowed asset back to the seller. | `caller`, `offer_id`, `asset_index`, `asset`, `to`; for tokens `amount`, `ledger_tx` |
+| `sneedex_admin_nft_return` | `adminReturnMisplacedNft` | `caller`, `collection`, `token_id`, `to` (account) |
+| `sneedex_config_update` | A setting changed. | `caller`, `key`, `value`; `old_value` when known |
+
+`sneedex_config_update` keys: `admin_added`, `admin_removed`; one block per changed field of the configuration (`admins`, `min_offer_duration_ns`, `max_assets_per_offer`, `min_increment_usd_range_min`, `min_increment_usd_range_max`, `min_increment_usd_target`, `min_increment_fallback_tokens`); `marketplace_fee_rate_bps`, `premium_auction_cut_bps`, `offer_creation_fee_e8s`, `premium_offer_creation_fee_e8s`, `fee_recipient` (account), `ledger_fee_recipient` (Map `ledger`, `account`), `ledger_fee_recipient_removed`; `sneed_premium_canister_id`, `backend_canister_id`, `neuron_manager_factory_canister_id`, `sneed_sms_canister_id` (principal, or Text `none`), `sneed_lock_canister_id`; `asset_type_added` (Map `id`, `name`), `asset_type_deactivated`, `asset_type_reactivated`; `expiration_timer` (`on` / `off`), `expiration_check_interval_seconds`, `neuron_info_cache_staleness_seconds`; `icrc3_proposal_neuron` and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
+
+Not logged: notification settings, the staking-bot info cache, cached stakes, wallet registration in Sneed Hub, and reads.
+
+### 8.4 Verifying the log
+
+The procedure and the Node.js script of [Sneed Lock's 8.4](/api/sneed_lock#84-verifying-the-log) work unchanged for Sneedex: set the canister id to `7bvk3-ryaaa-aaaal-qtykq-cai` (or staging `igm46-laaaa-aaaae-qgwra-cai`). In short: verify `icrc3_get_tip_certificate` against the IC root key and read `last_block_index` and `last_block_hash`; download every block, following `archived_blocks` callbacks; recompute each hash and check every `phash` link and the certified last hash; check every `btype` against `icrc3_supported_block_types`. No Sneed DAO service is involved.
+
+### 8.5 Using the log
+
+- **Browse it:** [app.sneeddao.com/tools/icrc3?canister=7bvk3-ryaaa-aaaal-qtykq-cai](https://app.sneeddao.com/tools/icrc3?canister=7bvk3-ryaaa-aaaal-qtykq-cai), the generic ICRC-3 browser.
+- **History of one offer:** keep the blocks whose `tx.offer_id` matches; for a bid, `tx.bid_id`.
+- **Check a payment on its ledger:** every transfer block has the ledger (`ledger`, or ICP for `icp_tx`) and the block index there.
+- **Monitoring:** poll `icrc3_log_status().log_length` and fetch only the new blocks.
+
+---
+
+## 9. Integration checklist
 
 - Read state with `getOfferFeed` (paged) rather than the unpaged lists once you show more than a handful of offers.
 - Before `createOffer`, show the user `getEffectiveOfferCreationFee(me)` and top up `getOfferCreationPaymentSubaccount(me)`; after a timeout, look for the draft with `getOffersByCreator(me)` before retrying.
@@ -693,4 +786,5 @@ type Config = record {
 - Bids: reserve, send exactly the amount, confirm. Handle `BidTooLow` and `BidIncrementTooSmall` by showing `minimum` / `minimum_next`. If confirmation fails, offer `withdrawBidEscrow(bidId, balance − fee)`.
 - After completion wait for `Claimed` and `ClaimedBySeller`; offer `claimAssets` / `claimWinningBid` buttons if they do not come within a minute (an offer that stays `Completed` has an asset whose hand-over failed; `claimAssets` retries it and its error says which).
 - Private offers restrict bidding, they do not hide anything; everything except `note_to_buyer` is public.
+- To audit or index the market, read the ICRC-3 log (section 8) and verify its tip certificate instead of polling every offer.
 - Test on staging (`igm46-laaaa-aaaae-qgwra-cai`) first; it uses real tokens.

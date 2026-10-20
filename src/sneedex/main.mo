@@ -20,6 +20,9 @@ import AssetHandlers "AssetHandlers";
 import PremiumClient "../PremiumClient";
 import IngressGuard "../IngressGuard";
 import ApiDoc "ApiDoc";
+import Icrc3Log "../icrc3/Log";
+import Icrc3Sns "../icrc3/SnsRegister";
+import T3 "../icrc3/Types";
 
 shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this {
     // ============================================
@@ -172,6 +175,94 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // In-flight guard for asset settlement, per offer (transient, like bidEscrowLocks): the
     // auto-delivery timers and the manual claim/reclaim must not hand over the same offer at once.
     transient var settlementLocks = Map.new<T.OfferId, ()>();
+
+    // ICRC-3 activity log: a hash-chained, certified block per market action, with archive
+    // canisters for old blocks. Library src/icrc3; design and block catalogue: spec/sneedex_icrc3.md.
+    var icrc3 : Icrc3Log.State = Icrc3Log.init();
+    transient let icrc3_rt : Icrc3Log.Runtime = Icrc3Log.runtime();
+    // SNS registration of archives (skipped until a hotkeyed neuron is configured)
+    var icrc3_sns : Icrc3Sns.State = Icrc3Sns.init();
+    transient let icrc3_sns_rt : Icrc3Sns.Runtime = Icrc3Sns.runtime();
+    transient let SNEED_SNS_ROOT : Principal = Principal.fromText("fp274-iaaaa-aaaaq-aacha-cai");
+    transient let SNEED_GOVERNANCE : Principal = Principal.fromText("fi3zi-fyaaa-aaaaq-aachq-cai");
+    transient var icrc3_next_cid : Nat = 0; // groups the canister-log lines of one spill run
+
+    /// Append one block for an action that has just been committed to local state.
+    func icrc3_add(btype : Text, tx : [(Text, T3.Value)]) {
+        ignore Icrc3Log.append(icrc3, btype, Int.abs(Time.now()), tx);
+    };
+    func pv(p : Principal) : T3.Value { Icrc3Log.principal(p) };
+    func acctV(a : T.Account) : T3.Value { Icrc3Log.account(a.owner, a.subaccount) };
+    func flagV(b : Bool) : T3.Value { #Nat(if (b) { 1 } else { 0 }) };
+    /// `caller` for an action someone called, `via = "timer"` for one a Sneedex timer did.
+    func whoV(caller : ?Principal) : (Text, T3.Value) {
+        switch (caller) { case (?c) { ("caller", pv(c)) }; case null { ("via", #Text("timer")) } };
+    };
+    func optNatF(key : Text, v : ?Nat) : [(Text, T3.Value)] {
+        switch (v) { case (?n) { [(key, #Nat(n))] }; case null { [] } };
+    };
+    func optPrincipalV(v : ?Principal) : T3.Value {
+        switch (v) { case (?p) { pv(p) }; case null { #Text("none") } };
+    };
+    /// The asset as listed (with the escrow snapshots once taken); notes, titles and descriptions are left out.
+    func assetV(asset : T.Asset) : T3.Value {
+        let principals = func(ps : [Principal]) : T3.Value { #Array(Array.map<Principal, T3.Value>(ps, pv)) };
+        switch (asset) {
+            case (#Canister(c)) {
+                let f = Buffer.Buffer<(Text, T3.Value)>(4);
+                f.add(("type", #Text("canister")));
+                f.add(("canister_id", pv(c.canister_id)));
+                switch (c.canister_kind) { case (?k) { f.add(("canister_kind", #Nat(k))) }; case null {} };
+                switch (c.controllers_snapshot) { case (?s) { f.add(("controllers_snapshot", principals(s))) }; case null {} };
+                #Map(Buffer.toArray(f));
+            };
+            case (#SNSNeuron(n)) {
+                let base : [(Text, T3.Value)] = [("type", #Text("sns_neuron")), ("governance", pv(n.governance_canister_id)), ("neuron_id", #Blob(n.neuron_id.id))];
+                #Map(switch (n.hotkeys_snapshot) { case (?s) { Array.append(base, [("hotkeys_snapshot", principals(s))]) }; case null { base } });
+            };
+            case (#ICRC1Token(t)) {
+                #Map([("type", #Text("icrc1")), ("ledger", pv(t.ledger_canister_id)), ("amount", #Nat(t.amount))]);
+            };
+            case (#ICRC7NFT(n)) {
+                #Map([("type", #Text("icrc7")), ("collection", pv(n.collection_canister_id)), ("token_ids", #Array(Array.map<Nat, T3.Value>(n.token_ids, func(i) { #Nat(i) })))]);
+            };
+            case (#SneedLock(l)) {
+                switch (l.lock) {
+                    case (#Token(t)) {
+                        #Map([("type", #Text("sneed_lock")), ("lock_id", #Nat(l.lock_id)), ("kind", #Text("token")), ("ledger", pv(t.ledger_canister_id)), ("amount", #Nat(t.amount)), ("expiry", Icrc3Log.nat64(t.expiry))]);
+                    };
+                    case (#Position(q)) {
+                        #Map([("type", #Text("sneed_lock")), ("lock_id", #Nat(l.lock_id)), ("kind", #Text("position")), ("pool", pv(q.swap_canister_id)), ("position_id", #Nat(q.position_id)), ("expiry", Icrc3Log.nat64(q.expiry))]);
+                    };
+                };
+            };
+        };
+    };
+    func icrc3_config(caller : Principal, key : Text, value : T3.Value, old_value : ?T3.Value) {
+        let base : [(Text, T3.Value)] = [("caller", pv(caller)), ("key", #Text(key)), ("value", value)];
+        icrc3_add("sneedex_config_update", switch (old_value) { case (?o) { Array.append(base, [("old_value", o)]) }; case null { base } });
+    };
+    /// One config-update block per field of the Config record that changed.
+    func icrc3_config_changes(caller : Principal, old : T.Config, new : T.Config) {
+        let principals = func(ps : [Principal]) : T3.Value { #Array(Array.map<Principal, T3.Value>(ps, pv)) };
+        let samePrincipals = func(a : [Principal], b : [Principal]) : Bool {
+            a.size() == b.size() and Array.foldLeft<Principal, Bool>(a, true, func(acc, p) { acc and Utils.principalInList(p, b) }) and Array.foldLeft<Principal, Bool>(b, true, func(acc, p) { acc and Utils.principalInList(p, a) });
+        };
+        if (not samePrincipals(old.admins, new.admins)) { icrc3_config(caller, "admins", principals(new.admins), ?principals(old.admins)) };
+        let nat = func(key : Text, o : Nat, n : Nat) { if (o != n) { icrc3_config(caller, key, #Nat(n), ?#Nat(o)) } };
+        nat("min_offer_duration_ns", old.min_offer_duration_ns, new.min_offer_duration_ns);
+        nat("max_assets_per_offer", old.max_assets_per_offer, new.max_assets_per_offer);
+        nat("min_increment_usd_range_min", old.min_increment_usd_range_min, new.min_increment_usd_range_min);
+        nat("min_increment_usd_range_max", old.min_increment_usd_range_max, new.min_increment_usd_range_max);
+        nat("min_increment_usd_target", old.min_increment_usd_target, new.min_increment_usd_target);
+        nat("min_increment_fallback_tokens", old.min_increment_fallback_tokens, new.min_increment_fallback_tokens);
+    };
+    func icrc3_bid_lost(bid : T.Bid, reason : Text) {
+        icrc3_add("sneedex_bid_lost", [
+            ("bid_id", #Nat(bid.id)), ("offer_id", #Nat(bid.offer_id)), ("bidder", pv(bid.bidder)), ("amount", #Nat(bid.amount)),
+            ("escrowed", flagV(bid.tokens_escrowed)), ("reason", #Text(reason)),
+        ]);
+    };
 
     // ============================================
     // PRIVATE HELPERS
@@ -803,7 +894,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 case (#err(_e)) {
                                     // Transfer failed - user can manually refund later
                                 };
-                                case (#ok(_)) {
+                                case (#ok(txId)) {
                                     // Update bid state to Refunded
                                     let updatedBid : T.Bid = {
                                         id = bid.id;
@@ -815,6 +906,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         tokens_escrowed = bid.tokens_escrowed;
                                     };
                                     updateBid(bid.id, updatedBid);
+                                    icrc3_add("sneedex_bid_refund", [
+                                        ("bid_id", #Nat(bid.id)), ("offer_id", #Nat(bid.offer_id)), ("bidder", pv(bid.bidder)),
+                                        ("ledger", pv(offer.price_token_ledger)), ("amount", #Nat(refundAmount)),
+                                        ("to", acctV({ owner = bid.bidder; subaccount = null })), ("ledger_tx", #Nat(txId)), whoV(null),
+                                    ]);
                                 };
                             };
                         };
@@ -893,8 +989,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     /// owner and a token sweep are each one call that happens whole or not at all (re-adding a
     /// neuron permission that was already added is harmless), and NFTs are moved only while they
     /// are still in the offer's escrow subaccount.
-    func deliverAsset(offer : T.Offer, assetIndex : Nat, recipient : Principal, toBuyer : Bool) : async* T.Result<()> {
+    /// Answers the details of the hand-over for its activity-log block (the amount and ledger
+    /// block of a token transfer, how many NFTs moved; nothing for the other kinds).
+    func deliverAsset(offer : T.Offer, assetIndex : Nat, recipient : Principal, toBuyer : Bool) : async* T.Result<[(Text, T3.Value)]> {
         let escrowSub = Utils.offerEscrowSubaccount(offer.creator, offer.id);
+        func plain(r : T.Result<()>) : T.Result<[(Text, T3.Value)]> {
+            switch (r) { case (#ok(_)) { #ok([]) }; case (#err(e)) { #err(e) } };
+        };
         switch (offer.assets[assetIndex].asset) {
             case (#Canister(asset)) {
                 let ckind = switch (asset.canister_kind) { case (?k) { k }; case null { 0 } };
@@ -909,7 +1010,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         };
                         case (#err(_)) {};
                     };
-                    r;
+                    plain(r);
                 } else {
                     // restore botkeys BEFORE releasing controllers (nothing to do once restored)
                     if (ckind == T.CANISTER_KIND_ICP_NEURON_MANAGER) {
@@ -918,39 +1019,40 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         await restoreTradingBotState(asset.canister_id);
                     };
                     switch (asset.controllers_snapshot) {
-                        case (?snapshot) { await* AssetHandlers.releaseCanister(asset.canister_id, snapshot) };
-                        case null { await* AssetHandlers.transferCanister(asset.canister_id, [recipient]) };
+                        case (?snapshot) { plain(await* AssetHandlers.releaseCanister(asset.canister_id, snapshot)) };
+                        case null { plain(await* AssetHandlers.transferCanister(asset.canister_id, [recipient])) };
                     };
                 };
             };
             case (#SNSNeuron(asset)) {
                 if (toBuyer) {
-                    await* AssetHandlers.transferNeuron(asset.governance_canister_id, asset.neuron_id, self(), [recipient]);
+                    plain(await* AssetHandlers.transferNeuron(asset.governance_canister_id, asset.neuron_id, self(), [recipient]));
                 } else {
                     switch (asset.hotkeys_snapshot) {
                         case (?snapshot) {
-                            await* AssetHandlers.releaseNeuron(asset.governance_canister_id, asset.neuron_id, self(), neuronRestorePermissions(offer, assetIndex, snapshot));
+                            plain(await* AssetHandlers.releaseNeuron(asset.governance_canister_id, asset.neuron_id, self(), neuronRestorePermissions(offer, assetIndex, snapshot)));
                         };
                         case null {
-                            await* AssetHandlers.transferNeuron(asset.governance_canister_id, asset.neuron_id, self(), [recipient]);
+                            plain(await* AssetHandlers.transferNeuron(asset.governance_canister_id, asset.neuron_id, self(), [recipient]));
                         };
                     };
                 };
             };
             case (#ICRC1Token(asset)) {
-                switch (await* AssetHandlers.reclaimAllTokens(asset.ledger_canister_id, self(), escrowSub, { owner = recipient; subaccount = null })) {
-                    case (#ok(_)) { #ok() };
+                switch (await* AssetHandlers.sweepTokens(asset.ledger_canister_id, self(), escrowSub, { owner = recipient; subaccount = null })) {
+                    case (#ok(?(amount, blockIndex))) { #ok([("amount", #Nat(amount)), ("ledger_tx", #Nat(blockIndex))]) };
+                    case (#ok(null)) { #ok([]) };
                     case (#err(e)) { #err(e) };
                 };
             };
             case (#ICRC7NFT(asset)) {
                 switch (await* AssetHandlers.deliverEscrowedNfts(asset.collection_canister_id, self(), escrowSub, { owner = recipient; subaccount = null }, asset.token_ids)) {
-                    case (#ok(_)) { #ok() };
+                    case (#ok(n)) { #ok([("moved", #Nat(n))]) };
                     case (#err(e)) { #err(e) };
                 };
             };
             case (#SneedLock(asset)) {
-                await* AssetHandlers.transferSneedLock(sneedLockCanisterId, asset, recipient);
+                plain(await* AssetHandlers.transferSneedLock(sneedLockCanisterId, asset, recipient));
             };
         };
     };
@@ -964,27 +1066,29 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     ///  - NFTs: only the tokens still in this offer's escrow subaccount
     ///  - canisters, neurons, locks: custody is not per offer, so only when no other offer names
     ///    the asset and Sneedex is its sole controller / sole permission holder / owner
-    func recoverAsset(offer : T.Offer, assetIndex : Nat, recipient : Principal, toBuyer : Bool) : async* T.Result<Bool> {
+    /// Answers null when nothing was handed over, else the details for the activity log (as deliverAsset).
+    func recoverAsset(offer : T.Offer, assetIndex : Nat, recipient : Principal, toBuyer : Bool) : async* T.Result<?[(Text, T3.Value)]> {
         let entry = offer.assets[assetIndex];
         let escrowSub = Utils.offerEscrowSubaccount(offer.creator, offer.id);
         switch (entry.asset) {
             case (#ICRC1Token(asset)) {
                 let bal = await* AssetHandlers.getTokenBalance(asset.ledger_canister_id, self(), ?escrowSub);
                 let fee = await* AssetHandlers.getTokenFee(asset.ledger_canister_id);
-                if (bal <= fee or (toBuyer and bal < asset.amount)) { return #ok(false) };
-                switch (await* AssetHandlers.reclaimAllTokens(asset.ledger_canister_id, self(), escrowSub, { owner = recipient; subaccount = null })) {
-                    case (#ok(_)) { #ok(true) };
+                if (bal <= fee or (toBuyer and bal < asset.amount)) { return #ok(null) };
+                switch (await* AssetHandlers.sweepTokens(asset.ledger_canister_id, self(), escrowSub, { owner = recipient; subaccount = null })) {
+                    case (#ok(?(amount, blockIndex))) { #ok(?[("amount", #Nat(amount)), ("ledger_tx", #Nat(blockIndex))]) };
+                    case (#ok(null)) { #ok(?[]) };
                     case (#err(e)) { #err(e) };
                 };
             };
             case (#ICRC7NFT(asset)) {
                 switch (await* AssetHandlers.deliverEscrowedNfts(asset.collection_canister_id, self(), escrowSub, { owner = recipient; subaccount = null }, asset.token_ids)) {
-                    case (#ok(n)) { #ok(n > 0) };
+                    case (#ok(n)) { #ok(if (n > 0) { ?[("moved", #Nat(n))] } else { null }) };
                     case (#err(e)) { #err(e) };
                 };
             };
             case (_) {
-                if (otherOfferListsAsset(offer.id, entry.asset)) { return #ok(false) };
+                if (otherOfferListsAsset(offer.id, entry.asset)) { return #ok(null) };
                 let held = switch (entry.asset) {
                     case (#Canister(a)) { await* AssetHandlers.isSoleCanisterController(a.canister_id, self()) };
                     case (#SNSNeuron(a)) { await* AssetHandlers.isSoleNeuronHolder(a.governance_canister_id, a.neuron_id, self()) };
@@ -996,9 +1100,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     };
                     case (_) { false };
                 };
-                if (not held) { return #ok(false) };
+                if (not held) { return #ok(null) };
                 switch (await* deliverAsset(offer, assetIndex, recipient, toBuyer)) {
-                    case (#ok(_)) { #ok(true) };
+                    case (#ok(d)) { #ok(?d) };
                     case (#err(e)) { #err(e) };
                 };
             };
@@ -1014,7 +1118,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     /// `winningBid`: never hand assets to the winner while the seller is still owed and the
     /// winning escrow no longer holds what the seller is due (the bid less any cut already paid).
     /// Serialized per offer. Returns how many assets this call handed over.
-    func settleAssets(offerId : T.OfferId, toBuyer : Bool, recover : Bool, recipient : Principal, winningBid : ?T.Bid) : async* T.Result<Nat> {
+    /// `caller`: who asked (null for the auto-delivery timers), for the activity log.
+    func settleAssets(offerId : T.OfferId, toBuyer : Bool, recover : Bool, recipient : Principal, winningBid : ?T.Bid, caller : ?Principal) : async* T.Result<Nat> {
         if (Map.has(settlementLocks, nhash, offerId)) {
             return #err(#InvalidState("A hand-over of this offer's assets is already in progress; try again shortly"));
         };
@@ -1056,20 +1161,31 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
 
             let failures = Buffer.Buffer<Text>(0);
             var handedOver = 0;
+            // one block per asset that arrived, written in the message that records it
+            func logDelivered(assetIndex : Nat, recovered : Bool, details : [(Text, T3.Value)]) {
+                let base : [(Text, T3.Value)] = [
+                    ("offer_id", #Nat(offerId)), ("asset_index", #Nat(assetIndex)), ("asset", assetV(offer.assets[assetIndex].asset)),
+                    ("to", pv(recipient)), ("side", #Text(if (toBuyer) { "buyer" } else { "seller" })),
+                ];
+                let flags : [(Text, T3.Value)] = if (recovered) { [("recovered", #Nat(1))] } else { [] };
+                icrc3_add("sneedex_asset_deliver", Array.append(Array.append(Array.append(base, flags), details), [whoV(caller)]));
+            };
             for (assetIndex in offer.assets.keys()) {
                 let entry = offer.assets[assetIndex];
                 let pending = (toBuyer or entry.escrowed) and (recover or not isAssetDelivered(offerId, assetIndex));
                 if (pending) {
                     if (recover) {
                         switch (await* recoverAsset(offer, assetIndex, recipient, toBuyer)) {
-                            case (#ok(moved)) { if (moved) { handedOver += 1 } };
+                            case (#ok(?details)) { handedOver += 1; logDelivered(assetIndex, true, details) };
+                            case (#ok(null)) {};
                             case (#err(e)) { failures.add("asset " # Nat.toText(assetIndex) # ": " # errorText(e)) };
                         };
                     } else {
                         switch (await* deliverAsset(offer, assetIndex, recipient, toBuyer)) {
-                            case (#ok(_)) {
+                            case (#ok(details)) {
                                 markAssetDelivered(offerId, assetIndex);
                                 handedOver += 1;
+                                logDelivered(assetIndex, false, details);
                             };
                             case (#err(e)) { failures.add("asset " # Nat.toText(assetIndex) # ": " # errorText(e)) };
                         };
@@ -1083,6 +1199,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             if (not recover) {
                 setOfferState(offerId, if (toBuyer) { #Claimed } else { #Reclaimed });
                 clearDeliveredAssets(offerId);
+                icrc3_add("sneedex_offer_settle", [
+                    ("offer_id", #Nat(offerId)), ("outcome", #Text(if (toBuyer) { "claimed" } else { "reclaimed" })), ("to", pv(recipient)), whoV(caller),
+                ]);
             };
             #ok(handedOver);
         } finally {
@@ -1122,7 +1241,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         switch (getBid(completion.winning_bid_id)) {
                             case null {};
                             case (?bid) {
-                                switch (await* settleAssets(offerId, true, false, bid.bidder, ?bid)) {
+                                switch (await* settleAssets(offerId, true, false, bid.bidder, ?bid, null)) {
                                     case (#ok(_)) { scheduleWalletRegistration<system>(offer, bid.bidder, true) };
                                     case (#err(_)) {};
                                 };
@@ -1155,7 +1274,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     /// to the fee recipient of the price ledger, the rest less one ledger fee to the seller.
     /// A cut no bigger than one ledger fee could not be sent, so it is not taken at all.
     /// Shared by claimWinningBid and the auto-delivery timer; serialized per bid.
-    func payWinningBidToSeller(offer : T.Offer, bid : T.Bid) : async* T.Result<()> {
+    func payWinningBidToSeller(offer : T.Offer, bid : T.Bid, caller : ?Principal) : async* T.Result<()> {
         if (bid.state != #Won) {
             return #err(#InvalidState("Bid is not in won state"));
         };
@@ -1177,10 +1296,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
 
             if (marketplaceFee > 0 and alreadyPaidCut == 0) {
                 // The escrow pays the cut less one fee, plus that ledger fee: marketplaceFee in all.
+                let cutRecipient = getFeeRecipientForLedger(offer.price_token_ledger);
                 let feeTransferResult = await* AssetHandlers.transferTokens(
                     offer.price_token_ledger,
                     ?subaccount,
-                    getFeeRecipientForLedger(offer.price_token_ledger),
+                    cutRecipient,
                     marketplaceFee - fee
                 );
                 switch (feeTransferResult) {
@@ -1197,6 +1317,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             bid.amount,
                             offer.fee_rate_bps
                         );
+                        icrc3_add("sneedex_cut_pay", [
+                            ("offer_id", #Nat(offer.id)), ("bid_id", #Nat(bid.id)), ("ledger", pv(offer.price_token_ledger)),
+                            ("cut", #Nat(marketplaceFee)), ("amount", #Nat(marketplaceFee - fee)), ("fee_rate_bps", #Nat(offer.fee_rate_bps)),
+                            ("to", acctV(cutRecipient)), ("ledger_tx", #Nat(txId)), whoV(caller),
+                        ]);
                     };
                 };
             };
@@ -1215,7 +1340,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             );
             switch (transferResult) {
                 case (#err(e)) { #err(e) };
-                case (#ok(_)) {
+                case (#ok(sellerTx)) {
                     let updatedBid : T.Bid = {
                         id = bid.id;
                         offer_id = bid.offer_id;
@@ -1226,6 +1351,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         tokens_escrowed = bid.tokens_escrowed;
                     };
                     updateBid(bid.id, updatedBid);
+                    icrc3_add("sneedex_seller_pay", [
+                        ("offer_id", #Nat(offer.id)), ("bid_id", #Nat(bid.id)), ("seller", pv(offer.creator)), ("ledger", pv(offer.price_token_ledger)),
+                        ("bid_amount", #Nat(bid.amount)), ("cut", #Nat(marketplaceFee)), ("amount", #Nat(sellerTransferAmount)),
+                        ("to", acctV({ owner = offer.creator; subaccount = null })), ("ledger_tx", #Nat(sellerTx)), whoV(caller),
+                    ]);
                     #ok();
                 };
             };
@@ -1245,7 +1375,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     case (?bid) {
                         if (bid.state != #Won) { return }; // Already claimed
                         // Errors (a payout in flight, a failed transfer) leave the seller to claim by hand.
-                        ignore await* payWinningBidToSeller(offer, bid);
+                        ignore await* payWinningBidToSeller(offer, bid, null);
                     };
                 };
             };
@@ -1261,7 +1391,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 if (offer.state != #Expired and offer.state != #Cancelled) {
                     return; // Wrong state
                 };
-                switch (await* settleAssets(offerId, false, false, offer.creator, null)) {
+                switch (await* settleAssets(offerId, false, false, offer.creator, null, null)) {
                     case (#ok(_)) { scheduleWalletRegistration<system>(offer, offer.creator, false) };
                     case (#err(_)) {};
                 };
@@ -1459,7 +1589,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             case (?highest) {
                                 // Complete with highest bid
                                 Debug.print("Expiration worker: Completing offer #" # Nat.toText(offer.id) # " with winning bid #" # Nat.toText(highest.id));
-                                ignore await completeOfferInternal(offer.id, highest.id);
+                                ignore await completeOfferInternal(offer.id, highest.id, "expiry", null);
                             };
                             case null {
                                 // No bids - mark as expired
@@ -1487,6 +1617,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 notifyExpiration<system>(offer);
                                 
                                 // Schedule auto-reclaim of assets
+                                icrc3_add("sneedex_offer_expire", [("offer_id", #Nat(offer.id)), whoV(null)]);
                                 scheduleAutoReclaimAssets<system>(offer.id);
                             };
                         };
@@ -1623,6 +1754,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
         
         assetTypes := Array.append(assetTypes, [newType]);
+        icrc3_config(caller, "asset_type_added", #Map([("id", #Nat(id)), ("name", #Text(name))]), null);
         
         #ok(id);
     };
@@ -1633,11 +1765,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             return #err(#NotAuthorized);
         };
         
+        let known = Array.find<T.AssetType>(assetTypes, func(t) { t.id == assetTypeId }) != null;
         assetTypes := Array.map<T.AssetType, T.AssetType>(assetTypes, func(t : T.AssetType) : T.AssetType {
             if (t.id == assetTypeId) {
                 { id = t.id; name = t.name; description = t.description; active = false };
             } else { t };
         });
+        if (known) { icrc3_config(caller, "asset_type_deactivated", #Nat(assetTypeId), null) };
         
         #ok();
     };
@@ -1655,6 +1789,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 { id = t.id; name = t.name; description = t.description; active = true };
             } else { t };
         });
+        icrc3_config(caller, "asset_type_reactivated", #Nat(assetTypeId), null);
         #ok();
     };
 
@@ -1895,6 +2030,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
         
         // Check and collect offer creation fee
+        var creationFeePaid : ?(Nat, Nat) = null; // (fee charged, ICP block), for the offer's block
         let effectiveFee = await getEffectiveOfferCreationFee(caller);
         if (effectiveFee > 0) {
             let paymentSubaccount = Utils.userPaymentSubaccount(caller);
@@ -1942,6 +2078,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         creationFeePaymentLog := Array.append(creationFeePaymentLog, [paymentEntry]);
                         nextCreationFeePaymentId += 1;
                         totalCreationFeesCollectedE8s += requiredAmount;
+                        creationFeePaid := ?(requiredAmount, txId);
+                        icrc3_add("sneedex_creation_fee_pay", [
+                            ("caller", pv(caller)), ("payer", pv(caller)), ("fee_e8s", #Nat(requiredAmount)), ("amount_e8s", #Nat(transferAmount)),
+                            ("to", acctV(icpFeeRecipient)), ("icp_tx", #Nat(txId)),
+                        ]);
                     };
                 };
             };
@@ -1983,6 +2124,15 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
         
         offers := Array.append(offers, [offer]);
+        icrc3_add("sneedex_offer_create", Array.flatten<(Text, T3.Value)>([
+            [("caller", pv(caller)), ("offer_id", #Nat(offerId)), ("price_ledger", pv(offer.price_token_ledger)), ("fee_rate_bps", #Nat(offerFeeRateBps))],
+            optNatF("min_bid", offer.min_bid_price),
+            optNatF("buyout", offer.buyout_price),
+            optNatF("expiration", switch (offer.expiration) { case (?e) { ?Int.abs(e) }; case null { null } }),
+            optNatF("min_increment_fee_multiple", offer.min_bid_increment_fee_multiple),
+            switch (offer.approved_bidders) { case (?list) { [("approved_bidders", #Array(Array.map<Principal, T3.Value>(list, pv)))] }; case null { [] } },
+            switch (creationFeePaid) { case (?(fee, tx)) { [("creation_fee_e8s", #Nat(fee)), ("creation_fee_icp_tx", #Nat(tx))] }; case null { [] } },
+        ]));
         
         #ok(offerId);
     };
@@ -2156,6 +2306,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 };
                 
                 updateOffer(request.offer_id, updatedOffer);
+                icrc3_add("sneedex_asset_add", [
+                    ("caller", pv(caller)), ("offer_id", #Nat(offer.id)), ("asset_index", #Nat(offer.assets.size())), ("asset", assetV(request.asset)),
+                ]);
                 #ok();
             };
         };
@@ -2197,6 +2350,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 };
                 
                 updateOffer(offerId, updatedOffer);
+                icrc3_add("sneedex_offer_finalize", [("caller", pv(caller)), ("offer_id", #Nat(offerId)), ("asset_count", #Nat(offer.assets.size()))]);
                 #ok();
             };
         };
@@ -2292,6 +2446,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         };
                                         
                                         updateOffer(offerId, updatedOffer);
+                                        icrc3_add("sneedex_asset_escrow", [("caller", pv(caller)), ("offer_id", #Nat(offerId)), ("asset_index", #Nat(assetIndex)), ("asset", assetV(updatedAsset))]);
                                         
                                         // Deregister canister from seller's wallet (best effort, non-blocking)
                                         ignore Timer.setTimer<system>(#seconds 0, func () : async () {
@@ -2416,6 +2571,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         };
                                         
                                         updateOffer(offerId, updatedOffer);
+                                        icrc3_add("sneedex_asset_escrow", [("caller", pv(caller)), ("offer_id", #Nat(offerId)), ("asset_index", #Nat(assetIndex)), ("asset", assetV(updatedAsset))]);
                                         #ok();
                                     };
                                 };
@@ -2496,6 +2652,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 };
                                 
                                 updateOffer(offerId, updatedOffer);
+                                icrc3_add("sneedex_asset_escrow", [("caller", pv(caller)), ("offer_id", #Nat(offerId)), ("asset_index", #Nat(assetIndex)), ("asset", assetV(assetEntry.asset))]);
                                 #ok();
                             };
                         };
@@ -2581,6 +2738,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     activated_at = offer2.activated_at;
                                 };
                                 updateOffer(offerId, updatedOffer);
+                                icrc3_add("sneedex_asset_escrow", [("caller", pv(caller)), ("offer_id", #Nat(offerId)), ("asset_index", #Nat(assetIndex)), ("asset", assetV(updatedEntry.asset))]);
                                 #ok();
                             };
                         };
@@ -2643,6 +2801,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     activated_at = offer.activated_at;
                                 };
                                 updateOffer(offerId, updatedOffer);
+                                icrc3_add("sneedex_asset_escrow", [("caller", pv(caller)), ("offer_id", #Nat(offerId)), ("asset_index", #Nat(assetIndex)), ("asset", assetV(assetEntry.asset)), ("pulled", flagV(pull))]);
                                 #ok();
                             };
                         };
@@ -2702,6 +2861,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 };
                 
                 updateOffer(offerId, updatedOffer);
+                icrc3_add("sneedex_offer_activate", [("caller", pv(caller)), ("offer_id", #Nat(offerId))]);
                 
                 // Schedule caching of asset stakes (SNS neurons and neuron managers)
                 scheduleCacheAssetStakes<system>(offerId);
@@ -2774,6 +2934,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 };
                 
                 bids := Array.append(bids, [bid]);
+                icrc3_add("sneedex_bid_reserve", [("caller", pv(caller)), ("bid_id", #Nat(bidId)), ("offer_id", #Nat(offerId))]);
                 
                 #ok(bidId);
             };
@@ -2894,7 +3055,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     // Only refund if excess is greater than fee
                                     if (excessAmount > fee) {
                                         let refundAmount = excessAmount - fee;
-                                        let _ = await ledger.icrc1_transfer({
+                                        let excessResult = await ledger.icrc1_transfer({
                                             from_subaccount = ?subaccount;
                                             to = { owner = caller; subaccount = null };
                                             amount = refundAmount;
@@ -2902,6 +3063,15 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             memo = ?Text.encodeUtf8("Excess bid refund");
                                             created_at_time = ?Nat64.fromNat(Int.abs(Time.now()));
                                         });
+                                        switch (excessResult) {
+                                            case (#Ok(txId)) {
+                                                icrc3_add("sneedex_bid_excess_refund", [
+                                                    ("caller", pv(caller)), ("bid_id", #Nat(bidId)), ("offer_id", #Nat(bid.offer_id)), ("ledger", pv(offer.price_token_ledger)),
+                                                    ("amount", #Nat(refundAmount)), ("to", acctV({ owner = caller; subaccount = null })), ("ledger_tx", #Nat(txId)),
+                                                ]);
+                                            };
+                                            case (#Err(_)) {};
+                                        };
                                     };
                                 };
 
@@ -2929,6 +3099,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         tokens_escrowed = true;
                                     };
                                     updateBid(bidId, lostBid);
+                                    icrc3_bid_lost(lostBid, "offer_closed");
                                     scheduleAutoRefund<system>(bidId);
                                     return #err(#InvalidState("Offer is no longer active; your escrowed tokens will be refunded"));
                                 };
@@ -2945,6 +3116,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 };
 
                                 updateBid(bidId, updatedBid);
+                                icrc3_add("sneedex_bid_confirm", [
+                                    ("caller", pv(caller)), ("bid_id", #Nat(bidId)), ("offer_id", #Nat(bid.offer_id)),
+                                    ("ledger", pv(offer.price_token_ledger)), ("amount", #Nat(effectiveAmount)),
+                                ]);
                                 
                                 // Mark all lower confirmed bids as Lost (outbid) and schedule auto-refund
                                 // This allows outbid users to reclaim their funds immediately
@@ -2964,6 +3139,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             tokens_escrowed = otherBid.tokens_escrowed;
                                         };
                                         updateBid(otherBid.id, lostBid);
+                                        icrc3_bid_lost(lostBid, "outbid");
                                         
                                         // Schedule auto-refund via Timer (best effort)
                                         scheduleAutoRefund<system>(otherBid.id);
@@ -2987,7 +3163,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             // bidder's tokens are already escrowed, so mark the bid
                                             // Lost and refund it rather than returning a misleading
                                             // success and stranding the payment.
-                                            switch (await completeOfferInternal(bid.offer_id, bidId)) {
+                                            switch (await completeOfferInternal(bid.offer_id, bidId, "buyout", ?caller)) {
                                                 case (#ok()) { /* won the buyout */ };
                                                 case (#err(_)) {
                                                     switch (getBid(bidId)) {
@@ -3003,6 +3179,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                                                     tokens_escrowed = currentBid.tokens_escrowed;
                                                                 };
                                                                 updateBid(bidId, lostBid);
+                                                                icrc3_bid_lost(lostBid, "buyout_race");
                                                                 if (currentBid.tokens_escrowed) {
                                                                     scheduleAutoRefund<system>(bidId);
                                                                 };
@@ -3035,7 +3212,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // ============================================
     
     /// Internal function to complete an offer with a winning bid
-    func completeOfferInternal(offerId : T.OfferId, winningBidId : T.BidId) : async T.Result<()> {
+    /// `reason` (buyout, accept, expiry) and `caller` (null for the expiration worker) are for the activity log.
+    func completeOfferInternal(offerId : T.OfferId, winningBidId : T.BidId, reason : Text, caller : ?Principal) : async T.Result<()> {
         switch (getOffer(offerId)) {
             case null { return #err(#OfferNotFound) };
             case (?offer) {
@@ -3086,12 +3264,18 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             tokens_escrowed = bid.tokens_escrowed;
                         };
                         updateBid(winningBidId, updatedBid);
+                        icrc3_add("sneedex_offer_complete", [
+                            ("offer_id", #Nat(offerId)), ("bid_id", #Nat(winningBidId)), ("buyer", pv(bid.bidder)),
+                            ("price_ledger", pv(offer.price_token_ledger)), ("amount", #Nat(bid.amount)), ("reason", #Text(reason)), whoV(caller),
+                        ]);
                         
                         // Notify seller of sale and winner of win (fire-and-forget)
                         notifySale<system>(offer, updatedBid);
                         notifyWin<system>(offer, updatedBid);
                     };
-                    case null {};
+                    case null {
+                        icrc3_add("sneedex_offer_complete", [("offer_id", #Nat(offerId)), ("bid_id", #Nat(winningBidId)), ("reason", #Text(reason)), whoV(caller)]);
+                    };
                 };
                 
                 // Mark all other bids as lost and schedule auto-refunds
@@ -3108,6 +3292,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         };
                         updateBid(bid.id, updatedBid);
                         
+                        icrc3_bid_lost(updatedBid, "offer_completed");
                         // Schedule auto-refund for lost bid (best effort)
                         if (bid.tokens_escrowed) {
                             scheduleAutoRefund<system>(bid.id);
@@ -3142,7 +3327,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         return #err(#InvalidState("No bids to accept"));
                     };
                     case (?highest) {
-                        await completeOfferInternal(offerId, highest.id);
+                        await completeOfferInternal(offerId, highest.id, "accept", ?caller);
                     };
                 };
             };
@@ -3150,7 +3335,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     };
     
     /// Process expiration for an offer (can be called by anyone)
-    public shared func processExpiration(offerId : T.OfferId) : async T.Result<()> {
+    public shared ({ caller }) func processExpiration(offerId : T.OfferId) : async T.Result<()> {
         switch (getOffer(offerId)) {
             case null { return #err(#OfferNotFound) };
             case (?offer) {
@@ -3171,7 +3356,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         switch (getHighestBid(offerId)) {
                             case (?highest) {
                                 // Complete with highest bid
-                                await completeOfferInternal(offerId, highest.id);
+                                await completeOfferInternal(offerId, highest.id, "expiry", ?caller);
                             };
                             case null {
                                 // No bids - mark as expired
@@ -3194,6 +3379,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 };
                                 
                                 updateOffer(offerId, updatedOffer);
+                                icrc3_add("sneedex_offer_expire", [("offer_id", #Nat(offerId)), whoV(?caller)]);
                                 
                                 // Notify seller of expiration (fire-and-forget)
                                 notifyExpiration<system>(offer);
@@ -3245,6 +3431,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 };
                 
                 updateOffer(offerId, updatedOffer);
+                icrc3_add("sneedex_offer_cancel", [
+                    ("caller", pv(caller)), ("offer_id", #Nat(offerId)),
+                    ("from_state", #Text(switch (offer.state) { case (#Draft) { "draft" }; case (#PendingEscrow) { "pending_escrow" }; case (_) { "active" } })),
+                ]);
                 
                 // Schedule auto-reclaim of assets back to seller (best effort)
                 scheduleAutoReclaimAssets<system>(offerId);
@@ -3263,6 +3453,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             tokens_escrowed = bid.tokens_escrowed;
                         };
                         updateBid(bid.id, updatedBid);
+                        icrc3_bid_lost(updatedBid, "offer_cancelled");
                         scheduleAutoRefund<system>(bid.id);
                         
                         // Notify bidder of cancellation (fire-and-forget)
@@ -3300,7 +3491,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 // paid: while the bid is #Won its escrow must hold what the seller is due.
                                 // Once the seller is paid (#ClaimedBySeller) the escrow is legitimately
                                 // empty and the buyer must still be able to claim. (In settleAssets.)
-                                switch (await* settleAssets(offerId, true, false, caller, ?bid)) {
+                                switch (await* settleAssets(offerId, true, false, caller, ?bid, ?caller)) {
                                     case (#err(e)) { #err(e) };
                                     case (#ok(_)) {
                                         scheduleWalletRegistration<system>(offer, caller, true);
@@ -3329,7 +3520,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         switch (findWinningBid(offer)) {
                             case (?bid) {
                                 if (Principal.equal(caller, bid.bidder)) {
-                                    switch (await* settleAssets(offerId, true, true, caller, ?bid)) {
+                                    switch (await* settleAssets(offerId, true, true, caller, ?bid, ?caller)) {
                                         case (#err(e)) { return #err(e) };
                                         case (#ok(n)) {
                                             if (n > 0) {
@@ -3364,7 +3555,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     case (#Completed(_) or #Claimed) {
                         switch (findWinningBid(offer)) {
                             case null { #err(#BidNotFound) };
-                            case (?bid) { await* payWinningBidToSeller(offer, bid) };
+                            case (?bid) { await* payWinningBidToSeller(offer, bid, ?caller) };
                         };
                     };
                     case (_) {
@@ -3389,7 +3580,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 };
                 switch (offer.state) {
                     case (#Expired or #Cancelled) {
-                        switch (await* settleAssets(offerId, false, false, offer.creator, null)) {
+                        switch (await* settleAssets(offerId, false, false, offer.creator, null, ?caller)) {
                             case (#err(e)) { #err(e) };
                             case (#ok(_)) {
                                 scheduleWalletRegistration<system>(offer, offer.creator, false);
@@ -3398,7 +3589,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         };
                     };
                     case (#Reclaimed) {
-                        switch (await* settleAssets(offerId, false, true, offer.creator, null)) {
+                        switch (await* settleAssets(offerId, false, true, offer.creator, null, ?caller)) {
                             case (#err(e)) { return #err(e) };
                             case (#ok(n)) {
                                 if (n > 0) {
@@ -3464,7 +3655,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
 
                             switch (transferResult) {
                                 case (#err(e)) { return #err(e) };
-                                case (#ok(_)) {
+                                case (#ok(txId)) {
                                     let updatedBid : T.Bid = {
                                         id = bid.id;
                                         offer_id = bid.offer_id;
@@ -3476,6 +3667,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     };
 
                                     updateBid(bid.id, updatedBid);
+                                    icrc3_add("sneedex_bid_refund", [
+                                        ("bid_id", #Nat(bid.id)), ("offer_id", #Nat(bid.offer_id)), ("bidder", pv(bid.bidder)),
+                                        ("ledger", pv(offer.price_token_ledger)), ("amount", #Nat(refundAmount)),
+                                        ("to", acctV({ owner = caller; subaccount = null })), ("ledger_tx", #Nat(txId)), whoV(?caller),
+                                    ]);
                                     #ok();
                                 };
                             };
@@ -3563,7 +3759,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
 
                             switch (transferResult) {
                                 case (#err(e)) { return #err(e) };
-                                case (#ok(txId)) { return #ok(txId) };
+                                case (#ok(txId)) {
+                                    icrc3_add("sneedex_bid_escrow_withdraw", [
+                                        ("caller", pv(caller)), ("bid_id", #Nat(bid.id)), ("offer_id", #Nat(bid.offer_id)), ("ledger", pv(offer.price_token_ledger)),
+                                        ("amount", #Nat(amount)), ("to", acctV({ owner = caller; subaccount = null })), ("ledger_tx", #Nat(txId)),
+                                    ]);
+                                    return #ok(txId);
+                                };
                             };
                         } finally {
                             // Always release the lock, including on early return or trap.
@@ -4025,7 +4227,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             return #err(#NotAuthorized);
         };
         
+        let old = config;
         config := newConfig;
+        icrc3_config_changes(caller, old, newConfig);
         #ok();
     };
     
@@ -4040,6 +4244,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             return #err(#NotAuthorized);
         };
         
+        let wasAdmin = Utils.principalInList(newAdmin, config.admins);
         config := {
             admins = Utils.addPrincipal(newAdmin, config.admins);
             min_offer_duration_ns = config.min_offer_duration_ns;
@@ -4049,6 +4254,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             min_increment_usd_target = config.min_increment_usd_target;
             min_increment_fallback_tokens = config.min_increment_fallback_tokens;
         };
+        if (not wasAdmin) { icrc3_config(caller, "admin_added", pv(newAdmin), null) };
         
         #ok();
     };
@@ -4059,6 +4265,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             return #err(#NotAuthorized);
         };
         
+        let wasAdmin = Utils.principalInList(admin, config.admins);
         config := {
             admins = Utils.removePrincipal(admin, config.admins);
             min_offer_duration_ns = config.min_offer_duration_ns;
@@ -4068,6 +4275,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             min_increment_usd_target = config.min_increment_usd_target;
             min_increment_fallback_tokens = config.min_increment_fallback_tokens;
         };
+        if (wasAdmin) { icrc3_config(caller, "admin_removed", pv(admin), null) };
         
         #ok();
     };
@@ -4105,6 +4313,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             return #err(#InvalidPrice("Target must be between range min and max"));
         };
         
+        let old = config;
         config := {
             admins = config.admins;
             min_offer_duration_ns = config.min_offer_duration_ns;
@@ -4114,6 +4323,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             min_increment_usd_target = usd_target;
             min_increment_fallback_tokens = fallback_tokens;
         };
+        icrc3_config_changes(caller, old, config);
         
         #ok();
     };
@@ -4139,7 +4349,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             return #err(#InvalidAsset("Fee rate cannot exceed 50% (5000 bps)"));
         };
         
+        let old = marketplaceFeeRateBps;
         marketplaceFeeRateBps := rateBps;
+        icrc3_config(caller, "marketplace_fee_rate_bps", #Nat(rateBps), ?#Nat(old));
         #ok();
     };
     
@@ -4154,7 +4366,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             return #err(#NotAuthorized);
         };
         
+        let old = feeRecipient;
         feeRecipient := account;
+        icrc3_config(caller, "fee_recipient", acctV(account), ?acctV(old));
         #ok();
     };
     
@@ -4170,6 +4384,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             return #err(#NotAuthorized);
         };
         
+        let oldOverride = Array.find<(Principal, T.Account)>(ledgerFeeRecipients, func((l, _)) { Principal.equal(l, ledger) });
         // Update or add the ledger-specific recipient
         var found = false;
         ledgerFeeRecipients := Array.map<(Principal, T.Account), (Principal, T.Account)>(
@@ -4188,6 +4403,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         if (not found) {
             ledgerFeeRecipients := Array.append(ledgerFeeRecipients, [(ledger, account)]);
         };
+        icrc3_config(caller, "ledger_fee_recipient", #Map([("ledger", pv(ledger)), ("account", acctV(account))]),
+            switch (oldOverride) { case (?(_, a)) { ?#Map([("ledger", pv(ledger)), ("account", acctV(a))]) }; case null { null } });
         
         #ok();
     };
@@ -4199,12 +4416,14 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             return #err(#NotAuthorized);
         };
         
+        let hadOverride = Array.find<(Principal, T.Account)>(ledgerFeeRecipients, func((l, _)) { Principal.equal(l, ledger) }) != null;
         ledgerFeeRecipients := Array.filter<(Principal, T.Account)>(
             ledgerFeeRecipients,
             func ((l, _) : (Principal, T.Account)) : Bool {
                 not Principal.equal(l, ledger);
             }
         );
+        if (hadOverride) { icrc3_config(caller, "ledger_fee_recipient_removed", pv(ledger), null) };
         
         #ok();
     };
@@ -4254,7 +4473,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         if (not isAdmin(caller)) {
             return #err(#NotAuthorized);
         };
+        let old = offerCreationFeeE8s;
         offerCreationFeeE8s := feeE8s;
+        icrc3_config(caller, "offer_creation_fee_e8s", Icrc3Log.nat64(feeE8s), ?Icrc3Log.nat64(old));
         #ok();
     };
     
@@ -4263,7 +4484,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         if (not isAdmin(caller)) {
             return #err(#NotAuthorized);
         };
+        let old = premiumOfferCreationFeeE8s;
         premiumOfferCreationFeeE8s := feeE8s;
+        icrc3_config(caller, "premium_offer_creation_fee_e8s", Icrc3Log.nat64(feeE8s), ?Icrc3Log.nat64(old));
         #ok();
     };
     
@@ -4277,7 +4500,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         if (rateBps > 5000) {
             return #err(#InvalidAsset("Fee rate cannot exceed 50% (5000 bps)"));
         };
+        let old = premiumAuctionCutBps;
         premiumAuctionCutBps := rateBps;
+        icrc3_config(caller, "premium_auction_cut_bps", #Nat(rateBps), ?#Nat(old));
         #ok();
     };
     
@@ -4286,7 +4511,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         if (not isAdmin(caller)) {
             return #err(#NotAuthorized);
         };
+        let old = sneedPremiumCanisterId;
         sneedPremiumCanisterId := canisterId;
+        icrc3_config(caller, "sneed_premium_canister_id", optPrincipalV(canisterId), ?optPrincipalV(old));
         #ok();
     };
     
@@ -4336,7 +4563,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         });
         
         switch (result) {
-            case (#Ok(_)) { #ok(withdrawAmount) };
+            case (#Ok(txId)) {
+                icrc3_add("sneedex_creation_payment_withdraw", [
+                    ("caller", pv(caller)), ("amount_e8s", #Nat(withdrawAmount)), ("to", acctV({ owner = caller; subaccount = null })), ("icp_tx", #Nat(txId)),
+                ]);
+                #ok(withdrawAmount);
+            };
             case (#Err(e)) { #err(#TransferFailed(debug_show(e))) };
         };
     };
@@ -4371,7 +4603,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         if (not isAdmin(caller)) {
             return #err(#NotAuthorized);
         };
+        let old = backendCanisterId;
         backendCanisterId := canisterId;
+        icrc3_config(caller, "backend_canister_id", optPrincipalV(canisterId), ?optPrincipalV(old));
         #ok();
     };
     
@@ -4385,13 +4619,17 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         if (not isAdmin(caller)) {
             return #err(#NotAuthorized);
         };
+        let old = neuronManagerFactoryCanisterId;
         neuronManagerFactoryCanisterId := canisterId;
+        icrc3_config(caller, "neuron_manager_factory_canister_id", optPrincipalV(canisterId), ?optPrincipalV(old));
         #ok();
     };
     
     public shared ({ caller }) func setSneedLockCanisterId(canisterId : Principal) : async T.Result<()> {
         if (not isAdmin(caller)) { return #err(#NotAuthorized) };
+        let old = sneedLockCanisterId;
         sneedLockCanisterId := canisterId;
+        icrc3_config(caller, "sneed_lock_canister_id", pv(canisterId), ?pv(old));
         #ok();
     };
     public query func getSneedLockCanisterId() : async Principal { sneedLockCanisterId };
@@ -4406,7 +4644,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         if (not isAdmin(caller)) {
             return #err(#NotAuthorized);
         };
+        let old = sneedSmsCanisterId;
         sneedSmsCanisterId := canisterId;
+        icrc3_config(caller, "sneed_sms_canister_id", optPrincipalV(canisterId), ?optPrincipalV(old));
         #ok();
     };
     
@@ -4457,6 +4697,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             return #err(#NotAuthorized);
         };
         startExpirationTimerInternal<system>();
+        icrc3_config(caller, "expiration_timer", #Text("on"), null);
         #ok();
     };
     
@@ -4465,7 +4706,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         if (not isAdmin(caller)) {
             return #err(#NotAuthorized);
         };
+        let wasRunning = expirationTimerId != null;
         stopExpirationTimerInternal();
+        if (wasRunning) { icrc3_config(caller, "expiration_timer", #Text("off"), null) };
         #ok();
     };
     
@@ -4477,7 +4720,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         if (intervalSeconds < 60) {
             return #err(#InvalidInput("Interval must be at least 60 seconds"));
         };
+        let old = expirationCheckIntervalSeconds;
         expirationCheckIntervalSeconds := intervalSeconds;
+        icrc3_config(caller, "expiration_check_interval_seconds", #Nat(intervalSeconds), ?#Nat(old));
         
         // If timer is running, restart it with new interval
         switch (expirationTimerId) {
@@ -4559,7 +4804,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
         switch (await* AssetHandlers.transferNftsFromDefault(collection, to, [tokenId])) {
             case (#err(e)) { #err(e) };
-            case (#ok(_)) { #ok("Token " # Nat.toText(tokenId) # " returned") };
+            case (#ok(_)) {
+                icrc3_add("sneedex_admin_nft_return", [("caller", pv(caller)), ("collection", pv(collection)), ("token_id", #Nat(tokenId)), ("to", acctV(to))]);
+                #ok("Token " # Nat.toText(tokenId) # " returned");
+            };
         };
     };
 
@@ -4575,6 +4823,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             case null { return #err(#OfferNotFound) };
             case (?offer) {
                 var message = "Results for offer #" # Nat.toText(offerId) # ":\n";
+                func returned(assetIndex : Nat, asset : T.Asset, details : [(Text, T3.Value)]) {
+                    icrc3_add("sneedex_admin_asset_return", Array.append<(Text, T3.Value)>([
+                        ("caller", pv(caller)), ("offer_id", #Nat(offerId)), ("asset_index", #Nat(assetIndex)), ("asset", assetV(asset)), ("to", pv(offer.creator)),
+                    ], details));
+                };
                 
                 for (assetIndex in offer.assets.keys()) {
                     let entry = offer.assets[assetIndex];
@@ -4582,15 +4835,20 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         switch (entry.asset) {
                             case (#ICRC1Token(asset)) {
                                 let subaccount = Utils.offerEscrowSubaccount(offer.creator, offerId);
-                                let result = await* AssetHandlers.reclaimAllTokens(
+                                let result = await* AssetHandlers.sweepTokens(
                                     asset.ledger_canister_id,
                                     self(),
                                     subaccount,
                                     { owner = offer.creator; subaccount = null }
                                 );
                                 switch (result) {
-                                    case (#ok(blockIndex)) {
+                                    case (#ok(swept)) {
+                                        let blockIndex = switch (swept) { case (?(_, b)) { b }; case null { 0 } };
                                         message := message # "Token transfer succeeded, block: " # Nat.toText(blockIndex) # "\n";
+                                        switch (swept) {
+                                            case (?(amount, b)) { returned(assetIndex, entry.asset, [("amount", #Nat(amount)), ("ledger_tx", #Nat(b))]) };
+                                            case null {};
+                                        };
                                     };
                                     case (#err(e)) {
                                         let errMsg = switch (e) {
@@ -4619,7 +4877,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             snapshot
                                         );
                                         switch (result) {
-                                            case (#ok(_)) { message := message # "Canister released successfully\n"; };
+                                            case (#ok(_)) { message := message # "Canister released successfully\n"; returned(assetIndex, entry.asset, []) };
                                             case (#err(e)) {
                                                 let errMsg = switch (e) {
                                                     case (#TransferFailed(msg)) { msg };
@@ -4635,7 +4893,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             [offer.creator]
                                         );
                                         switch (result) {
-                                            case (#ok(_)) { message := message # "Canister transferred successfully\n"; };
+                                            case (#ok(_)) { message := message # "Canister transferred successfully\n"; returned(assetIndex, entry.asset, []) };
                                             case (#err(e)) {
                                                 let errMsg = switch (e) {
                                                     case (#TransferFailed(msg)) { msg };
@@ -4649,7 +4907,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             };
                             case (#SneedLock(asset)) {
                                 switch (await* AssetHandlers.transferSneedLock(sneedLockCanisterId, asset, offer.creator)) {
-                                    case (#ok(_)) { message := message # "Lock returned to the seller\n"; };
+                                    case (#ok(_)) { message := message # "Lock returned to the seller\n"; returned(assetIndex, entry.asset, []) };
                                     case (#err(e)) {
                                         let errMsg = switch (e) { case (#TransferFailed(msg)) { msg }; case _ { "Unknown error" } };
                                         message := message # "Lock transfer failed: " # errMsg # "\n";
@@ -4666,7 +4924,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             neuronRestorePermissions(offer, assetIndex, snapshot)
                                         );
                                         switch (result) {
-                                            case (#ok(_)) { message := message # "Neuron released successfully\n"; };
+                                            case (#ok(_)) { message := message # "Neuron released successfully\n"; returned(assetIndex, entry.asset, []) };
                                             case (#err(e)) {
                                                 let errMsg = switch (e) {
                                                     case (#GovernanceError(msg)) { msg };
@@ -4684,7 +4942,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             [offer.creator]
                                         );
                                         switch (result) {
-                                            case (#ok(_)) { message := message # "Neuron transferred successfully\n"; };
+                                            case (#ok(_)) { message := message # "Neuron transferred successfully\n"; returned(assetIndex, entry.asset, []) };
                                             case (#err(e)) {
                                                 let errMsg = switch (e) {
                                                     case (#GovernanceError(msg)) { msg };
@@ -4827,7 +5085,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         if (not isAdmin(caller)) {
             return #err(#NotAuthorized);
         };
+        let old = neuronInfoCacheStalenessSeconds;
         neuronInfoCacheStalenessSeconds := seconds;
+        icrc3_config(caller, "neuron_info_cache_staleness_seconds", #Nat(seconds), ?#Nat(old));
         #ok();
     };
     
@@ -4889,6 +5149,173 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     };
 
     // ============================================
+    // ICRC-3 ACTIVITY LOG (library src/icrc3, design spec/sneedex_icrc3.md)
+    // ============================================
+
+    transient let icrc3_catalogue : Icrc3Log.Config = {
+        block_types_url = "https://app.sneeddao.com/api/sneedex#block-types";
+        block_types = [
+            "sneedex_offer_create",
+            "sneedex_asset_add",
+            "sneedex_offer_finalize",
+            "sneedex_asset_escrow",
+            "sneedex_offer_activate",
+            "sneedex_offer_cancel",
+            "sneedex_offer_expire",
+            "sneedex_offer_complete",
+            "sneedex_asset_deliver",
+            "sneedex_offer_settle",
+            "sneedex_bid_reserve",
+            "sneedex_bid_excess_refund",
+            "sneedex_bid_confirm",
+            "sneedex_bid_lost",
+            "sneedex_bid_refund",
+            "sneedex_bid_escrow_withdraw",
+            "sneedex_cut_pay",
+            "sneedex_seller_pay",
+            "sneedex_creation_fee_pay",
+            "sneedex_creation_payment_withdraw",
+            "sneedex_admin_asset_return",
+            "sneedex_admin_nft_return",
+            "sneedex_config_update",
+        ];
+    };
+
+    func icrc3_cid() : Nat { icrc3_next_cid += 1; icrc3_next_cid };
+    // Sneedex has no text log; the library's lines go to the canister log
+    func icrc3_print(cid : Nat, message : Text) { Debug.print("[icrc3 " # Nat.toText(cid) # "] " # message) };
+
+    func icrc3_env() : Icrc3Log.Environment {
+        {
+            self = self();
+            archive_controllers = [SNEED_SNS_ROOT];
+            cycle_reserve = 2_000_000_000_000; // never spend this canister's balance below 2 T
+            new_correlation_id = icrc3_cid;
+            log_info = icrc3_print;
+            log_error = icrc3_print;
+        };
+    };
+
+    func icrc3_sns_env() : Icrc3Sns.Environment {
+        {
+            governance = SNEED_GOVERNANCE;
+            name = "Sneedex";
+            doc_url = "https://app.sneeddao.com/api/sneedex#activity-log-icrc-3";
+            new_correlation_id = icrc3_cid;
+            log_info = icrc3_print;
+            log_error = icrc3_print;
+            describe = null;
+        };
+    };
+
+    // ---- standard ICRC-3 read interface ----
+
+    public query func icrc3_get_blocks(args : T3.GetBlocksArgs) : async T3.GetBlocksResult {
+        Icrc3Log.getBlocks(icrc3, args);
+    };
+
+    public query func icrc3_get_archives(args : T3.GetArchivesArgs) : async T3.GetArchivesResult {
+        Icrc3Log.getArchives(icrc3, args);
+    };
+
+    public query func icrc3_get_tip_certificate() : async ?T3.DataCertificate {
+        Icrc3Log.tipCertificate(icrc3);
+    };
+
+    public query func icrc3_supported_block_types() : async [T3.BlockType] {
+        Icrc3Log.supportedBlockTypes(icrc3_catalogue);
+    };
+
+    public query func icrc10_supported_standards() : async [T3.SupportedStandard] {
+        Icrc3Log.supportedStandards();
+    };
+
+    public query func icrc3_log_status() : async T3.LogStatus {
+        Icrc3Log.status(icrc3, icrc3_rt);
+    };
+
+    // ---- administration ----
+
+    public shared ({ caller }) func admin_set_icrc3_settings(update : T3.SettingsUpdate) : async { #Ok : T3.Settings; #Err : Text } {
+        if (not isAdmin(caller)) { return #Err("Only admins can change the ICRC-3 settings") };
+        switch (Icrc3Log.applySettings(icrc3, update)) {
+            case (#Err(e)) { #Err(e) };
+            case (#Ok(changes)) {
+                for ((key, old_value, new_value) in changes.vals()) {
+                    icrc3_config(caller, key, #Nat(new_value), ?#Nat(old_value));
+                };
+                #Ok(icrc3.settings);
+            };
+        };
+    };
+
+    /// Move every live block to the archives now (creating archives as needed). Returns the number of blocks moved.
+    public shared ({ caller }) func admin_icrc3_spill_now() : async { #Ok : Nat; #Err : Text } {
+        if (not isAdmin(caller)) { return #Err("Only admins can trigger a spill") };
+        if (icrc3_rt.spilling) { return #Err("A spill is already in progress") };
+        let moved = await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), true);
+        ignore await* Icrc3Sns.registerMissing(icrc3_sns, icrc3_sns_rt, icrc3.archives, icrc3_sns_env());
+        #Ok(moved);
+    };
+
+    /// Re-apply the intended controllers (this canister and SNS root) to every archive.
+    public shared ({ caller }) func admin_icrc3_repair_archive_controllers() : async [(Principal, { #Ok; #Err : Text })] {
+        if (not isAdmin(caller)) { Debug.trap("Only admins can repair archive controllers") };
+        await* Icrc3Log.repairArchiveControllers(icrc3, icrc3_env());
+    };
+
+    // ---- SNS registration of archives ----
+
+    /// Where each archive stands with its RegisterDappCanisters proposal.
+    public query func icrc3_registration_status() : async Icrc3Sns.Status {
+        Icrc3Sns.status(icrc3_sns, icrc3_sns_env());
+    };
+
+    /// The SNS neuron (32-byte id) that has this canister as a hotkey and submits the
+    /// registration proposals; null switches the step off.
+    public shared ({ caller }) func admin_set_icrc3_proposal_neuron(neuron : ?Blob) : async { #Ok; #Err : Text } {
+        if (not isAdmin(caller)) { return #Err("Only admins can set the proposal neuron") };
+        let old = icrc3_sns.neuron;
+        switch (Icrc3Sns.setNeuron(icrc3_sns, neuron)) {
+            case (#Err(e)) { #Err(e) };
+            case (#Ok) {
+                let asValue = func(n : ?Blob) : T3.Value { switch (n) { case (?b) { #Blob(b) }; case null { #Text("none") } } };
+                icrc3_config(caller, "icrc3_proposal_neuron", asValue(neuron), ?asValue(old));
+                #Ok;
+            };
+        };
+    };
+
+    /// Submit the pending registration proposals now instead of at the next spill check.
+    public shared ({ caller }) func admin_icrc3_register_archives_now() : async { #Ok : Nat; #Err : Text } {
+        if (not isAdmin(caller)) { return #Err("Only admins can submit registration proposals") };
+        #Ok(await* Icrc3Sns.registerMissing(icrc3_sns, icrc3_sns_rt, icrc3.archives, icrc3_sns_env()));
+    };
+
+    /// Forget an archive's proposal (after a rejection) so a new one is submitted.
+    public shared ({ caller }) func admin_icrc3_reset_archive_registration(canister_id : Principal) : async { #Ok : Bool; #Err : Text } {
+        if (not isAdmin(caller)) { return #Err("Only admins can reset a registration") };
+        #Ok(Icrc3Sns.reset(icrc3_sns, canister_id));
+    };
+
+    // ---- background work ----
+
+    func icrc3_timer_job() : async () {
+        ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false);
+        ignore await* Icrc3Sns.registerMissing(icrc3_sns, icrc3_sns_rt, icrc3.archives, icrc3_sns_env());
+    };
+
+    func ensure_icrc3_timer<system>() {
+        Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job);
+    };
+
+    // Republish the certified tip after an upgrade (certified data does not survive one).
+    system func postupgrade() {
+        Icrc3Log.certify(icrc3);
+        ensure_icrc3_timer<system>();
+    };
+
+    // ============================================
     // TIMERS AFTER AN UPGRADE
     // ============================================
     // Timers do not survive an upgrade, but the stored timer id and worker flag do. The actor
@@ -4903,6 +5330,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     if (expirationWorkerRunning) {
         scheduleExpirationWorker<system>();
     };
+    // the ICRC-3 spill check (every 15 minutes; started once, also on upgrades)
+    ensure_icrc3_timer<system>();
 
     // Limits of the ingress guard below (the notes and NFT limits are createOffer's and addAsset's own)
     transient let MAX_OFFER_NOTE : Nat = 4_000;
@@ -4926,6 +5355,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         #addAssetType : Any;
         #adminReclaimStuckTokens : Any;
         #adminReturnMisplacedNft : Any;
+        #admin_icrc3_register_archives_now : Any;
+        #admin_icrc3_repair_archive_controllers : Any;
+        #admin_icrc3_reset_archive_registration : Any;
+        #admin_icrc3_spill_now : Any;
+        #admin_set_icrc3_proposal_neuron : Any;
+        #admin_set_icrc3_settings : Any;
         #cancelOffer : Any;
         #claimAssets : Any;
         #claimWinningBid : Any;
@@ -4985,6 +5420,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         #getSneedPremiumCanisterId : Any;
         #getSneedSmsCanisterId : Any;
         #getUserOfferCreationBalance : Any;
+        #icrc10_supported_standards : Any;
+        #icrc3_get_archives : Any;
+        #icrc3_get_blocks : Any;
+        #icrc3_get_tip_certificate : Any;
+        #icrc3_log_status : Any;
+        #icrc3_registration_status : Any;
+        #icrc3_supported_block_types : Any;
         #isExpirationTimerRunning : Any;
         #isExpirationWorkerRunning : Any;
         #processExpiration : Any;
@@ -5062,6 +5504,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 or #getSneedLockCanisterId _
                 or #getSneedPremiumCanisterId _
                 or #getSneedSmsCanisterId _
+                or #icrc10_supported_standards _
+                or #icrc3_get_archives _
+                or #icrc3_get_blocks _
+                or #icrc3_get_tip_certificate _
+                or #icrc3_log_status _
+                or #icrc3_registration_status _
+                or #icrc3_supported_block_types _
                 or #isExpirationTimerRunning _
                 or #isExpirationWorkerRunning _
                 or #queryBid _

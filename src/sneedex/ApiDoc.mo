@@ -47,9 +47,13 @@ Calls are authorised by the signing principal. The creator manages an offer; the
 - `getBidEscrowBalance`, `getUserOfferCreationBalance` and `getEffectiveOfferCreationFee` are update calls.
 - Locks listed must stay locked past the offer's `expiration`; token locks need gas to be delivered.
 
+## Activity log (ICRC-3)
+
+Every market action is a block in a hash-chained, certified ICRC-3 log: offers, escrow, bids, each asset handed over, cuts and seller payments, refunds, creation fees and admin changes (block types `sneedex_*`, documented at https://app.sneeddao.com/api/sneedex#block-types). Read `icrc3_get_blocks` (follow `archived_blocks` callbacks into the archives) and verify `icrc3_get_tip_certificate`. Transfers name their ledger block (`ledger_tx`); automatic steps carry `via = \"timer\"` instead of `caller`. The log starts with the release that added it.
+
 ## Start with these methods
 
-`getOfferFeed`, `getOfferView`, `queryOffer`, `queryBid`, `getFeeConfig`, `getEffectiveOfferCreationFee`, `getOfferCreationPaymentSubaccount`, `createOffer`, `addAsset`, `reserveBid`, `getBidEscrowSubaccount`, `confirmBid`, `claimAssets`, `getConfig`.
+`getOfferFeed`, `getOfferView`, `queryOffer`, `queryBid`, `getFeeConfig`, `getEffectiveOfferCreationFee`, `getOfferCreationPaymentSubaccount`, `createOffer`, `addAsset`, `reserveBid`, `getBidEscrowSubaccount`, `confirmBid`, `claimAssets`, `getConfig`, `icrc3_get_blocks`.
 
 ## Full reference
 

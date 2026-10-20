@@ -2,6 +2,8 @@ Sneedex Marketplace
 
 Status (2026-10-20): built and live (production `7bvk3-ryaaa-aaaal-qtykq-cai`, staging `igm46-laaaa-aaaae-qgwra-cai`). The design below is the original brief; notes marked "Changed from the original plan" or "Status" record where the code went another way or further. The integrator reference with every method and error is src/app_sneeddao_frontend/public/api-docs/sneedex.md.
 
+Activity log: every market action is recorded in an ICRC-3 block log with archive canisters; design and block catalogue in spec/sneedex_icrc3.md.
+
 We're going to build a marketplace called Sneedex. It will be based on offers that can hold one or more assets, and bids. The assets will be held in escrow in the marketplace canister. 
 
 The core of an offer is these three fields: minimum bid price, buyout price, expiration date. 
