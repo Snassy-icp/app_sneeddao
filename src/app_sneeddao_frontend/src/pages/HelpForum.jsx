@@ -131,8 +131,16 @@ export default function HelpForum() {
                     <Li>Pick one of the tokens in your wallet and enter an amount, or press <B>MAX</B>. The dialog shows your <B>Available Balance</B> and the token's <B>Transaction Fee</B>.</Li>
                     <Li>Press <B>Send Tip</B>. The app first transfers the tokens (<B>Sending Tip...</B>), then records the tip in the forum (<B>Registering Tip...</B>).</Li>
                 </Steps>
+                <Info title="Every tip is checked on the ledger">
+                    When a tip is recorded, the forum looks up the transfer on the token's own ledger and only accepts it if it really
+                    moved that amount from the tipper to the post's author. Each transfer counts for one tip only. Posts, the
+                    tip counters, notifications and <L to="/tips">Tips</L> show checked tips only; tips the forum could not confirm
+                    (for example, recorded before it checked tips) are left out until they are verified. "Checked" means the
+                    token's ledger records the transfer, not that the token is worth anything.
+                </Info>
                 <Warning title="Tips are real transfers">
                     A tip sends real tokens and can't be undone. The ledger's transaction fee is paid on top of the amount.
+                    If the forum refuses to record a tip, the tokens have still been sent: don't send them again.
                     Tips are public: who tipped whom, which token and how much show on the post and on <L to="/tips">Tips</L>.
                 </Warning>
                 <Tip title="Tip again with one click">

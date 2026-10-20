@@ -1,10 +1,10 @@
 // sneed_sns_forum → sneed_notifications: with a notifications canister set, a reply notifies the
 // author of the post (or thread) it answers, a mention notifies the person mentioned (once, not
-// also as a reply), a tip notifies the person tipped; only members who allowed Sneed Hub get
+// also as a reply), a tip the ledger confirms notifies the person tipped (an unverified one does not); only members who allowed Sneed Hub get
 // anything, and a forum without the setting sends nothing.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Principal } from '@icp-sdk/core/principal';
-import { createPic, install, actorAs, admin, alice, bob, carol, user, SNEED_SNS_ROOT, SNEED_GOVERNANCE, unwrap, errOf, refusedAtIngress, asUpdates } from '../lib/pic.js';
+import { createPic, install, actorAs, account, admin, alice, bob, carol, user, SNEED_SNS_ROOT, SNEED_GOVERNANCE, unwrap, errOf, refusedAtIngress, asUpdates } from '../lib/pic.js';
 import { idlFactory as forumIdl } from '../build/sneed_sns_forum.did.js';
 import { idlFactory as notifIdl } from '../build/sneed_notifications.did.js';
 
@@ -23,6 +23,7 @@ describe('sneed_sns_forum: notifications', () => {
     ({ pic } = await createPic());
     await install(pic, { name: 'MockForumSnsW', targetCanisterId: SNS_W });
     const govId = await install(pic, { name: 'MockForumGovernance' });
+    await install(pic, { name: 'MockIcpLedger', targetCanisterId: ledger }); // tips are read on it
     forumId = await install(pic, { name: 'sneed_sns_forum' });
     notifId = await install(pic, { name: 'sneed_notifications' });
     await actorAs(pic, directoryIdl, SNS_W, admin).set_instances([[SNEED_SNS_ROOT, govId]]);
@@ -81,11 +82,20 @@ describe('sneed_sns_forum: notifications', () => {
     expect((await history(carol)).filter(([t]) => t === 'mention').length).toBe(1);
   });
 
-  it('notifies the person tipped', async () => {
+  it('notifies the person tipped when the ledger confirms the tip, and not for a tip it cannot confirm', async () => {
     const P = unwrap(await fas(bob).create_post(TH, [], [], 'tip me'));
+    const before = (await history(bob)).length;
+    // claims without a transfer behind them: recorded as unverified (no block) or refused (no such block); no notification
     unwrap(await fas(carol).create_tip(bob, P, ledger, 100n, []));
+    expect(JSON.stringify(errOf(await fas(carol).create_tip(bob, P, ledger, 100n, [424242n])))).toMatch(/no block/);
+    await settle();
+    expect((await history(bob)).length).toBe(before);
+    const icp = actorAs(pic, ({ IDL }) => IDL.Service({ icrc1_transfer: IDL.Func([IDL.Record({ from_subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)), to: IDL.Record({ owner: IDL.Principal, subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)) }), amount: IDL.Nat, fee: IDL.Opt(IDL.Nat), memo: IDL.Opt(IDL.Vec(IDL.Nat8)), created_at_time: IDL.Opt(IDL.Nat64) })], [IDL.Variant({ Ok: IDL.Nat, Err: IDL.Reserved })], []) }), ledger, carol);
+    const block = unwrap(await icp.icrc1_transfer({ from_subaccount: [], to: account(bob), amount: 100n, fee: [], memo: [], created_at_time: [] }));
+    unwrap(await fas(carol).create_tip(bob, P, ledger, 100n, [block]));
     await settle();
     expect((await history(bob))[0]).toEqual(['tip', 'Your post got a tip']);
+    expect((await history(bob)).length).toBe(before + 1);
   });
 
   it('guards the new methods at ingress', async () => {

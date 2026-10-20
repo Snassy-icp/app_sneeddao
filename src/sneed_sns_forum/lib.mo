@@ -2262,6 +2262,12 @@ module {
         #ok(id)
     };
 
+    /// The ledger confirmed this tip (TipVerify.mo). Counts, sums, stats and notifications count
+    /// only these; lists show every tip with its `verified` flag.
+    public func tip_verified(state: ForumState, id: Nat) : Bool {
+        switch (Map.get(state.tip_checks, Map.nhash, id)) { case (?c) c.status == #verified; case null false };
+    };
+
     public func get_tip(state: ForumState, id: Nat) : ?TipResponse {
         switch (Map.get(state.tips, Map.nhash, id)) {
             case (?tip) {
@@ -2289,6 +2295,8 @@ module {
                     transaction_block_index = tip.transaction_block_index;
                     created_at = tip.created_at;
                     created_by = created_by_principal;
+                    verified = switch (Map.get(state.tip_checks, Map.nhash, tip.id)) { case (?c) ?(c.status == #verified); case null null };
+                    verification_note = switch (Map.get(state.tip_checks, Map.nhash, tip.id)) { case (?c) c.note; case null null };
                 }
             };
             case null null;
@@ -2383,7 +2391,7 @@ module {
                 let token_counts = Map.new<Principal, Nat>();
                 
                 for (tip_id in Vector.vals(tip_ids)) {
-                    switch (Map.get(state.tips, Map.nhash, tip_id)) {
+                    switch (if (tip_verified(state, tip_id)) Map.get(state.tips, Map.nhash, tip_id) else null) {
                         case (?tip) {
                             let token_principal = tip.token_ledger_principal;
                             
@@ -2446,8 +2454,8 @@ module {
                 for (tip_id in Vector.vals(tip_ids)) {
                     switch (get_tip(state, tip_id)) {
                         case (?tip_response) {
-                            // Only include tips created after the since_timestamp
-                            if (tip_response.created_at > since_timestamp) {
+                            // Only include verified tips created after the since_timestamp
+                            if (tip_response.created_at > since_timestamp and tip_response.verified == ?true) {
                                 new_tips.add(tip_response);
                             }
                         };
@@ -2481,8 +2489,8 @@ module {
                 for (tip_id in Vector.vals(tip_ids)) {
                     switch (get_tip(state, tip_id)) {
                         case (?tip_response) {
-                            // Only count tips created after the since_timestamp
-                            if (tip_response.created_at > since_timestamp) {
+                            // Only count verified tips created after the since_timestamp
+                            if (tip_response.created_at > since_timestamp and tip_response.verified == ?true) {
                                 count += 1;
                             }
                         };
@@ -2603,8 +2611,8 @@ module {
                 for (tip_id in Vector.vals(tip_ids)) {
                     switch (get_tip(state, tip_id)) {
                         case (?tip_response) {
-                            // Only include tips created after the since_timestamp
-                            if (tip_response.created_at > since_timestamp) {
+                            // Only include verified tips created after the since_timestamp
+                            if (tip_response.created_at > since_timestamp and tip_response.verified == ?true) {
                                 new_tips.add(tip_response);
                             }
                         };
@@ -2640,10 +2648,11 @@ module {
     };
 
     public func get_tip_stats(state: ForumState) : TipStats {
-        let total_tips = Map.size(state.tips);
+        var total_tips = 0;
         let token_amounts = Map.new<Principal, Nat>();
         
-        for (tip in Map.vals(state.tips)) {
+        for (tip in Map.vals(state.tips)) if (tip_verified(state, tip.id)) {
+            total_tips += 1;
             let current_amount = switch (Map.get(token_amounts, Map.phash, tip.token_ledger_principal)) {
                 case (?amount) amount;
                 case null 0;

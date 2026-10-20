@@ -255,6 +255,7 @@ module {
         tips_given: Map.Map<Nat32, Vector.Vector<Nat>>; // from_principal_index -> [tip_ids]
         tips_received: Map.Map<Nat32, Vector.Vector<Nat>>; // to_principal_index -> [tip_ids]
         user_last_seen_tips: Map.Map<Nat32, Int>; // user_index -> last_seen_timestamp
+        tip_checks: Map.Map<Nat, TipCheck>; // tip_id -> what the ledger said (none: recorded before the forum checked tips)
         user_last_seen_replies: Map.Map<Nat32, Int>; // user_index -> last_seen_timestamp for replies
         thread_polls: Map.Map<Nat, Vector.Vector<Nat>>; // thread_id -> [poll_ids]
         post_polls: Map.Map<Nat, Vector.Vector<Nat>>; // post_id -> [poll_ids]
@@ -529,6 +530,19 @@ module {
         created_by: Nat32; // Same as from_principal
     };
 
+    // What the forum found when it read a tip's block on the token's ledger (TipVerify.mo).
+    // Kept beside the tips (keyed by tip id) so the stable Tip type stays as it was.
+    public type TipCheckStatus = {
+        #verified;   // the block is a plain transfer of exactly this amount from the tipper to the post's author
+        #rejected;   // the block contradicts the tip (another sender, recipient or amount, not a transfer, used by another tip)
+        #unchecked;  // it could not be read (no block index, the ledger did not answer); verify_tip retries
+    };
+    public type TipCheck = {
+        status: TipCheckStatus;
+        note: ?Text; // why it is not verified
+        checked_at: Int;
+    };
+
     // Composite key type for tips (post_id, tip_id) for efficient post-based queries
     public type TipKey = (Nat, Nat);
 
@@ -553,6 +567,10 @@ module {
         transaction_block_index: ?Nat;
         created_at: Int;
         created_by: Principal;
+        // ?true: the forum read the transfer on the ledger; ?false: it could not confirm it (see
+        // verification_note); null: recorded before the forum checked tips and not checked since
+        verified: ?Bool;
+        verification_note: ?Text;
     };
 
     // Token summary for efficient wallet integration

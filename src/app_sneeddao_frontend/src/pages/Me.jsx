@@ -39,7 +39,8 @@ import {
     getPostsByUser,
     getThreadsByUser,
     getTipsGivenByUser,
-    getTipsReceivedByUser
+    getTipsReceivedByUser,
+    verifiedTips
 } from '../utils/BackendUtils';
 import { useForum } from '../contexts/ForumContext';
 import { getMentionSms, setMentionSms } from '../utils/mentions';
@@ -861,8 +862,8 @@ export default function Me() {
                 setUserStats({
                     postsCount: posts?.length || 0,
                     threadsCount: threads?.length || 0,
-                    tipsGivenCount: tipsGiven?.length || 0,
-                    tipsReceivedCount: tipsReceived?.length || 0,
+                    tipsGivenCount: verifiedTips(tipsGiven).length,
+                    tipsReceivedCount: verifiedTips(tipsReceived).length,
                     loadingStats: false
                 });
             } catch (err) {

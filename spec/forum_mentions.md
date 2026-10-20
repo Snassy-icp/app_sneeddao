@@ -74,7 +74,8 @@ All new state is in new stable variables, and the queries join the ingress guard
   300-character excerpt, a link to the post or thread) to the canister set by
   `admin_set_notifications`, without waiting for the answer. A new post also sends a `reply`
   notification to the author of the post or thread it answers, unless that is the poster or
-  someone mentioned in it. Neither can make the save fail.
+  someone mentioned in it. Neither can make the save fail. A `tip` notification goes out only for
+  a tip whose transfer the forum confirmed on the ledger (spec/forum_tips.md).
 - **Header:** a pink "@ n" chip next to replies, under the same "Reply Notifications" setting. It
   links to the new **Mentions** tab on `/posts`; opening the tab marks mentions seen.
 - **SMS (opt-in, "SMS When Mentioned" on /me):**

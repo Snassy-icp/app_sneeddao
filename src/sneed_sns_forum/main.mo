@@ -12,6 +12,8 @@ import Lib "lib";
 import PremiumClient "../PremiumClient";
 import IngressGuard "../IngressGuard";
 import Mentions "Mentions";
+import TipVerify "TipVerify";
+import ApiDoc "ApiDoc";
 
 persistent actor SneedSNSForum {
     // NNS SNS-W canister interface for getting deployed SNS instances
@@ -121,6 +123,17 @@ persistent actor SneedSNSForum {
     // also sent there, for members who allowed Sneed Hub to notify them. Best effort: the forum
     // never waits on it.
     var stable_notifications : ?Principal = null;
+
+    // Tip verification (TipVerify.mo): what the ledger said about each tip recorded since the
+    // forum checks tips (none: recorded before), and which (ledger, block) pairs tips have used,
+    // so one transfer backs one tip only. Blocks of tips recorded before are added once, on the
+    // first upgrade to this build.
+    let stable_tip_checks = Map.new<Nat, T.TipCheck>();
+    let stable_tip_blocks = Map.new<Text, Nat>(); // TipVerify.blockKey(ledger, block) -> tip id
+    var stable_tip_blocks_backfilled : Bool = false;
+    // blocks being checked right now: reserved before the ledger call, so two calls interleaving
+    // over the await cannot both accept the same block
+    transient let pending_tip_blocks = Map.new<Text, ()>();
     
     // Premium configuration and cache
     var stable_premium_config : T.PremiumConfig = {
@@ -158,6 +171,7 @@ persistent actor SneedSNSForum {
         tips_given = stable_tips_given;
         tips_received = stable_tips_received;
         user_last_seen_tips = stable_user_last_seen_tips;
+        tip_checks = stable_tip_checks;
         user_last_seen_replies = stable_user_last_seen_replies;
         proposal_topics = stable_proposal_topics;
         proposal_threads = stable_proposal_threads;
@@ -451,6 +465,14 @@ persistent actor SneedSNSForum {
     };
 
     // Tip API endpoints
+
+    /// Records a tip the caller has already sent: `transaction_block_index` is the block of an
+    /// ICRC-1 transfer of exactly `amount` from the caller's main account to the post author's
+    /// main account on `token_ledger_principal`. The forum reads that block on the ledger once
+    /// (TipVerify.mo). A block that contradicts the tip, a block another tip already used and a
+    /// recipient who is not the post's author are refused; a tip whose block cannot be read (no
+    /// block index, the ledger did not answer) is recorded as unverified, and verify_tip retries it.
+    /// Only verified tips notify the author and count in stats and totals.
     public shared ({ caller }) func create_tip(
         to_principal: Principal,
         post_id: Nat,
@@ -461,21 +483,99 @@ persistent actor SneedSNSForum {
         if (Principal.isAnonymous(caller)) {
             return #err(#Unauthorized("Authentication required to create tips"));
         };
-        let input : T.CreateTipInput = {
-            to_principal;
-            post_id;
-            token_ledger_principal;
-            amount;
-            transaction_block_index;
+        let post = switch (Map.get(state.posts, Map.nhash, post_id)) {
+            case (?p) p;
+            case null return #err(#NotFound("Post not found"));
         };
+        if (authorOf(post.created_by) != ?to_principal) {
+            return #err(#InvalidInput("A tip goes to the post's author: to_principal must be the author of post " # Nat.toText(post_id)));
+        };
+        let input : T.CreateTipInput = { to_principal; post_id; token_ledger_principal; amount; transaction_block_index };
+        let ?block = transaction_block_index else {
+            return recordTip(caller, input, #unchecked, ?"No block index was given", null);
+        };
+        let key = TipVerify.blockKey(token_ledger_principal, block);
+        switch (Map.get(stable_tip_blocks, Map.thash, key)) {
+            case (?other) return #err(#AlreadyExists("Block " # Nat.toText(block) # " of this ledger is already the transfer of tip " # Nat.toText(other)));
+            case null {};
+        };
+        if (Map.has(pending_tip_blocks, Map.thash, key)) {
+            return #err(#AlreadyExists("Block " # Nat.toText(block) # " of this ledger is being registered by another call"));
+        };
+        Map.set(pending_tip_blocks, Map.thash, key, ());
+        let outcome = await* TipVerify.verify(token_ledger_principal, block, caller, to_principal, amount);
+        Map.delete(pending_tip_blocks, Map.thash, key);
+        switch (outcome) {
+            case (#rejected reason) #err(#InvalidInput("Tip not recorded: " # reason));
+            case (#unchecked reason) recordTip(caller, input, #unchecked, ?reason, ?key);
+            case (#verified) {
+                let r = recordTip(caller, input, #verified, null, ?key);
+                switch (r) {
+                    case (#ok _) if (to_principal != caller) await* sendNotifications([{
+                        user = to_principal; topic = "tip"; title = "Your post got a tip"; body = "Someone tipped your post in " # threadName(post.thread_id) # ".";
+                        link = ?postLink(post_id); dedupe = null; sponsored = false }]);
+                    case _ {};
+                };
+                r
+            };
+        };
+    };
+
+    /// Records a tip with what the ledger said, and claims its block for it.
+    func recordTip(caller : Principal, input : T.CreateTipInput, status : T.TipCheckStatus, note : ?Text, key : ?Text) : T.Result<Nat, T.ForumError> {
         let r = Lib.create_tip(state, caller, input);
-        switch (r, Map.get(state.posts, Map.nhash, post_id)) {
-            case (#ok _, ?post) if (to_principal != caller) await* sendNotifications([{
-                user = to_principal; topic = "tip"; title = "Your post got a tip"; body = "Someone tipped your post in " # threadName(post.thread_id) # ".";
-                link = ?postLink(post_id); dedupe = null; sponsored = false }]);
+        switch (r) {
+            case (#ok id) {
+                Map.set(stable_tip_checks, Map.nhash, id, { status; note; checked_at = Time.now() });
+                switch (key) { case (?k) Map.set(stable_tip_blocks, Map.thash, k, id); case null {} };
+            };
             case _ {};
         };
         r
+    };
+
+    /// Checks a tip on the ledger again: a tip recorded unverified because its block could not be
+    /// read, or one recorded before the forum checked tips. Anyone signed in may ask; a verified or
+    /// rejected tip is final. Answers whether the tip is now verified (the reason is in the tip's
+    /// verification_note). No notification is sent for a tip verified later.
+    public shared ({ caller }) func verify_tip(tip_id : Nat) : async T.Result<Bool, T.ForumError> {
+        if (Principal.isAnonymous(caller)) return #err(#Unauthorized("Authentication required"));
+        let ?tip = Map.get(state.tips, Map.nhash, tip_id) else return #err(#NotFound("Tip not found"));
+        switch (Map.get(stable_tip_checks, Map.nhash, tip_id)) {
+            case (?{ status = #verified }) return #ok(true);
+            case (?{ status = #rejected }) return #ok(false);
+            case _ {};
+        };
+        let set = func(status : T.TipCheckStatus, note : ?Text) { Map.set(stable_tip_checks, Map.nhash, tip_id, { status; note; checked_at = Time.now() }) };
+        let ?block = tip.transaction_block_index else { set(#unchecked, ?"No block index was given"); return #ok(false) };
+        let (?from, ?to) = (authorOf(tip.from_principal), authorOf(tip.to_principal)) else return #err(#InternalError("Unknown principal index"));
+        let post_author = switch (Map.get(state.posts, Map.nhash, tip.post_id)) { case (?p) authorOf(p.created_by); case null null };
+        if (post_author != ?to) { set(#rejected, ?"The recipient is not the post's author"); return #ok(false) };
+        let key = TipVerify.blockKey(tip.token_ledger_principal, block);
+        switch (Map.get(stable_tip_blocks, Map.thash, key)) {
+            case (?other) if (other != tip_id) {
+                set(#rejected, ?("Block " # Nat.toText(block) # " of this ledger is the transfer of tip " # Nat.toText(other)));
+                return #ok(false);
+            };
+            case _ {};
+        };
+        if (Map.has(pending_tip_blocks, Map.thash, key)) return #err(#AlreadyExists("This tip's block is being checked by another call"));
+        Map.set(pending_tip_blocks, Map.thash, key, ());
+        let outcome = await* TipVerify.verify(tip.token_ledger_principal, block, from, to, tip.amount);
+        Map.delete(pending_tip_blocks, Map.thash, key);
+        // another tip may have claimed the block while we waited
+        switch (Map.get(stable_tip_blocks, Map.thash, key)) {
+            case (?other) if (other != tip_id) {
+                set(#rejected, ?("Block " # Nat.toText(block) # " of this ledger is the transfer of tip " # Nat.toText(other)));
+                return #ok(false);
+            };
+            case _ {};
+        };
+        switch (outcome) {
+            case (#verified) { set(#verified, null); Map.set(stable_tip_blocks, Map.thash, key, tip_id); #ok(true) };
+            case (#rejected reason) { set(#rejected, ?reason); #ok(false) };
+            case (#unchecked reason) { set(#unchecked, ?reason); #ok(false) };
+        };
     };
 
     public query func get_tip(id: Nat) : async ?T.TipResponse {
@@ -969,7 +1069,23 @@ persistent actor SneedSNSForum {
         // State is already initialized with stable values.
         // Put right the poll counts of builds before f9df91bf (first votes went uncounted).
         ignore Lib.recount_poll_votes(state);
+        // Tips recorded before the forum checked them keep their blocks: the first tip to name a
+        // (ledger, block) owns it, so no later tip can reuse that transfer.
+        if (not stable_tip_blocks_backfilled) {
+            for (tip in Map.vals(stable_tips)) switch (tip.transaction_block_index) {
+                case (?b) {
+                    let key = TipVerify.blockKey(tip.token_ledger_principal, b);
+                    if (not Map.has(stable_tip_blocks, Map.thash, key)) Map.set(stable_tip_blocks, Map.thash, key, tip.id);
+                };
+                case null {};
+            };
+            stable_tip_blocks_backfilled := true;
+        };
     };
+
+    /// A short Markdown guide to this canister for AI agents and developers (ApiDoc.mo), following
+    /// the ICP service-discoverability guide; the full reference is linked from it.
+    public query func get_api_doc() : async Text { ApiDoc.text };
 
     // Limits of the ingress guard below
     transient let MAX_POLL_OPTIONS : Nat = 100;
@@ -1030,6 +1146,7 @@ persistent actor SneedSNSForum {
         #delete_thread : Any;
         #delete_topic : Any;
         #get_admins : Any;
+        #get_api_doc : Any;
         #get_notifications_canister : Any;
         #admin_set_notifications : Any;
         #get_current_counter : Any;
@@ -1121,11 +1238,13 @@ persistent actor SneedSNSForum {
         #vote_on_poll_with_neurons : () -> (Nat, Nat, [T.NeuronId]);
         #vote_on_post : Any;
         #vote_on_post_with_neurons : () -> (Nat, T.VoteType, [T.NeuronId]);
+        #verify_tip : Any;
     } }) : Bool {
         switch (msg) {
             case (
                 #get_notifications_canister _ or
                 #get_admins _
+                or #get_api_doc _
                 or #get_current_counter _
                 or #get_feed _
                 or #get_forum _

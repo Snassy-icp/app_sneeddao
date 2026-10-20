@@ -14,7 +14,7 @@ import { useTextLimits } from '../hooks/useTextLimits';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 import TipModal from './TipModal';
 import TipDisplay from './TipDisplay';
-import { createTip, getTipsByPost } from '../utils/BackendUtils';
+import { createTip, getTipsByPost, verifiedTips, tipErrorMessage } from '../utils/BackendUtils';
 import { useTokens } from '../hooks/useTokens';
 import { formatError } from '../utils/errorUtils';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
@@ -473,7 +473,7 @@ function Discussion({
         try {
             const tipPromises = posts.map(async (post) => {
                 try {
-                    const tips = await getTipsByPost(forumActor, Number(post.id));
+                    const tips = verifiedTips(await getTipsByPost(forumActor, Number(post.id)));
                     return { postId: post.id.toString(), tips };
                 } catch (err) {
                     return { postId: post.id.toString(), tips: [] };
@@ -1488,7 +1488,7 @@ function Discussion({
             });
 
             if ('ok' in tipResult) {
-                const tips = await getTipsByPost(forumActor, Number(postId));
+                const tips = verifiedTips(await getTipsByPost(forumActor, Number(postId)));
                 setPostTips(prev => ({
                     ...prev,
                     [postId.toString()]: tips
@@ -1502,7 +1502,7 @@ function Discussion({
                     onError('');
                 }
             } else {
-                throw new Error('Failed to register tip: ' + JSON.stringify(tipResult.err));
+                throw new Error('The tokens were sent, but the forum did not record the tip: ' + tipErrorMessage(tipResult.err));
             }
         } catch (error) {
             let userMessage = error.message;

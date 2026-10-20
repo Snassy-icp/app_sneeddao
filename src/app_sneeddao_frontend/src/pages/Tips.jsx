@@ -11,7 +11,8 @@ import {
     getTipsGivenByUser,
     getRecentTipsCount,
     getLastSeenTipTimestamp,
-    markTipsSeenUpTo
+    markTipsSeenUpTo,
+    isTipVerified
 } from '../utils/BackendUtils';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay } from '../utils/PrincipalUtils';
@@ -238,6 +239,8 @@ const Tips = () => {
     
     const [tipsReceived, setTipsReceived] = useState([]);
     const [tipsGiven, setTipsGiven] = useState([]);
+    // tips the forum could not confirm on the token's ledger: not shown, not counted
+    const [unverifiedCount, setUnverifiedCount] = useState(0);
     const [activeTab, setActiveTab] = useState('received');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -327,9 +330,10 @@ const Tips = () => {
                 getTipsGivenByUser(forumActor, userPrincipal)
             ]);
 
-            // Sort tips newest first
-            const sortedReceived = received.sort((a, b) => Number(b.created_at) - Number(a.created_at));
-            const sortedGiven = given.sort((a, b) => Number(b.created_at) - Number(a.created_at));
+            // Only tips the forum confirmed on the ledger; sort newest first
+            setUnverifiedCount([...received, ...given].filter((t) => !isTipVerified(t)).length);
+            const sortedReceived = received.filter(isTipVerified).sort((a, b) => Number(b.created_at) - Number(a.created_at));
+            const sortedGiven = given.filter(isTipVerified).sort((a, b) => Number(b.created_at) - Number(a.created_at));
             
             console.log('📊 FETCHED TIPS DATA:', { receivedCount: sortedReceived.length, givenCount: sortedGiven.length });
 
@@ -1057,6 +1061,12 @@ const Tips = () => {
                                     )}
                                 </span>
                             </div>
+                            {unverifiedCount > 0 && (
+                                <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}
+                                    title="The forum reads every tip's transfer on the token's ledger. Tips it could not confirm (and tips recorded before it checked them, until they are verified) are not shown or counted.">
+                                    {unverifiedCount} unverified {unverifiedCount === 1 ? 'tip' : 'tips'} not shown
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

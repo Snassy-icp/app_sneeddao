@@ -435,45 +435,51 @@ describe('sneed_sns_forum', () => {
   });
 
   let tipIds;
-  it('tips: recorded as claimed (no ledger check), indexed by post, thread, giver and receiver', async () => {
+  // the ledger check itself is in forum-tips.test.js; here ledger1/ledger2 are no canisters, so every
+  // tip is recorded as unverified: listed with its flag, counted nowhere
+  it('tips: recorded unverified when the ledger cannot be read, indexed by post, thread, giver and receiver', async () => {
     expect(err(await fAlice.create_tip(bob, 99n, ledger1, 1n, []))).toMatch(/NotFound: Post not found/);
     const t1 = unwrap(await fAlice.create_tip(bob, P2, ledger1, 100n, [5n]));
     const t2 = unwrap(await fCarol.create_tip(bob, P2, ledger1, 50n, []));
     const t3 = unwrap(await fAlice.create_tip(carol, P3, ledger2, 7n, []));
-    // anonymous callers are refused; any signed-in caller records any tip to anyone (the recipient need not be the author)
+    // anonymous callers are refused; the recipient must be the post's author
     expect(err(await fAnon.create_tip(eve, P2, ledger2, 1n, []))).toMatch(/Unauthorized: Authentication required to create tips/);
-    const t4 = unwrap(await fDave.create_tip(eve, P2, ledger2, 1_000_000n, [123n]));
+    expect(err(await fDave.create_tip(eve, P2, ledger2, 1_000_000n, [123n]))).toMatch(/InvalidInput: A tip goes to the post's author/);
+    const t4 = unwrap(await fDave.create_tip(bob, P2, ledger2, 1_000_000n, [123n]));
     tipIds = [t1, t2, t3, t4];
     const t = (await f.get_tip(t1))[0];
-    expect([text(t.from_principal), text(t.to_principal), text(t.created_by), t.post_id, t.thread_id, text(t.token_ledger_principal), t.amount, t.transaction_block_index])
-      .toEqual([text(alice), text(bob), text(alice), P2, TH1, text(ledger1), 100n, [5n]]);
+    expect([text(t.from_principal), text(t.to_principal), text(t.created_by), t.post_id, t.thread_id, text(t.token_ledger_principal), t.amount, t.transaction_block_index, t.verified])
+      .toEqual([text(alice), text(bob), text(alice), P2, TH1, text(ledger1), 100n, [5n], [false]]);
+    expect(t.verification_note[0]).toMatch(/Could not read the ledger/);
+    expect((await f.get_tip(t2))[0].verification_note).toEqual(['No block index was given']);
     expect(await f.get_tip(99n)).toEqual([]);
     expect(idsOf(await f.get_tips_by_post(P2))).toEqual([t1, t2, t4]);
     expect(idsOf(await f.get_tips_by_thread(TH1))).toEqual([t1, t2, t3, t4]);
     expect(await f.get_tips_by_thread(THb)).toEqual([]);
     expect(idsOf(await f.get_tips_given_by_user(alice))).toEqual([t1, t3]);
-    expect(idsOf(await f.get_tips_received_by_user(bob))).toEqual([t1, t2]);
+    expect(idsOf(await f.get_tips_received_by_user(bob))).toEqual([t1, t2, t4]);
     expect(await f.get_tips_given_by_user(user('stranger'))).toEqual([]);
-    expect(await f.get_tip_tokens_received_by_user(bob)).toEqual([{ token_ledger_principal: ledger1, total_amount: 150n, tip_count: 2n }]);
+    // unverified tips count nowhere
+    expect(await f.get_tip_tokens_received_by_user(bob)).toEqual([]);
     expect(await f.get_tip_tokens_received_by_user(user('stranger'))).toEqual([]);
-    const stats = await f.get_tip_stats();
-    expect(stats.total_tips).toBe(4n);
-    expect(stats.total_tip_amount_by_token.map(([p, a]) => [text(p), a]).sort()).toEqual([[text(ledger1), 150n], [text(ledger2), 1_000_007n]].sort());
+    expect(await f.get_tip_stats()).toEqual({ total_tips: 0n, total_tip_amount_by_token: [] });
   });
 
   it('tip and reply notifications: counts since the last-seen mark, marks only for known users', async () => {
-    expect(idsOf(await f.get_recent_tips_received(bob)).length).toBe(2);
-    expect(await f.get_recent_tips_count(bob)).toBe(2n);
+    // only verified tips count as news (forum-tips.test.js); these are unverified
+    expect(await f.get_recent_tips_received(bob)).toEqual([]);
+    expect(await f.get_recent_tips_count(bob)).toBe(0n);
     expect(await f.get_last_seen_tip_timestamp(bob)).toEqual([]);
     const latest = (await f.get_tips_received_by_user(bob)).reduce((m, t) => (t.created_at > m ? t.created_at : m), 0n);
     await fBob.mark_tips_seen_up_to(latest);
     expect(await f.get_last_seen_tip_timestamp(bob)).toEqual([latest]);
     expect(await f.get_recent_tips_count(bob)).toBe(0n);
     expect(await f.get_recent_tips_received(bob)).toEqual([]);
-    expect(idsOf(await f.get_tips_received_since(bob, 0n)).length).toBe(2);
+    expect(await f.get_tips_received_since(bob, 0n)).toEqual([]);
     expect(await f.get_tips_received_since(bob, latest)).toEqual([]);
     const t5 = unwrap(await fCarol.create_tip(bob, P2, ledger1, 1n, []));
-    expect(idsOf(await f.get_recent_tips_received(bob))).toEqual([t5]);
+    expect(await f.get_recent_tips_received(bob)).toEqual([]);
+    expect(idsOf(await f.get_tips_received_by_user(bob))).toContain(t5);
     expect(await f.get_recent_tips_count(user('stranger'))).toBe(0n);
     await actorAs(pic, forumIdl, forumId, user('stranger')).mark_tips_seen_up_to(5n); // unknown principal: no-op
     expect(await f.get_last_seen_tip_timestamp(user('stranger'))).toEqual([]);
@@ -790,7 +796,7 @@ describe('sneed_sns_forum', () => {
     expect(err(await fAlice.create_post(TH1, [], [], ''))).toMatch(/empty/);
     expect(await f.get_current_counter()).toBe(c0);
     const p = unwrap(await fAlice.create_post(TH1, [], [], 'count me'));
-    const t = unwrap(await fAlice.create_tip(bob, p, ledger1, 1n, []));
+    const t = unwrap(await fBob.create_tip(alice, p, ledger1, 1n, []));
     const th = unwrap(await fAlice.create_thread({ topic_id: T1, title: [], body: 'count me too' }));
     const poll = unwrap(await fAlice.create_poll(pollInput({ thread_id: th, end_timestamp: (await nowNs(pic)) + HOUR_NS })));
     expect([p, t, th, poll]).toEqual([c0, c0 + 1n, c0 + 2n, c0 + 3n]);

@@ -7,9 +7,9 @@ The Sneed Forum is the discussion canister behind the forum on Sneed Hub. One ca
 | Production canister | `mcigm-4aaaa-aaaad-qhlkq-cai` |
 | Staging canister | `nrtf2-wiaaa-aaaad-aankq-cai` (separate state, same code line; use it to test) |
 | Candid interface | [sneed_sns_forum.did](/api-docs/sneed_sns_forum.did) · [JavaScript IDL factory](/api-docs/sneed_sns_forum.did.js) |
-| Source | [src/sneed_sns_forum/main.mo](https://github.com/Snassy-icp/app_sneeddao/blob/main/src/sneed_sns_forum/main.mo) · [lib.mo](https://github.com/Snassy-icp/app_sneeddao/blob/main/src/sneed_sns_forum/lib.mo) · [Types.mo](https://github.com/Snassy-icp/app_sneeddao/blob/main/src/sneed_sns_forum/Types.mo) · [Mentions.mo](https://github.com/Snassy-icp/app_sneeddao/blob/main/src/sneed_sns_forum/Mentions.mo) |
+| Source | [src/sneed_sns_forum/main.mo](https://github.com/Snassy-icp/app_sneeddao/blob/main/src/sneed_sns_forum/main.mo) · [lib.mo](https://github.com/Snassy-icp/app_sneeddao/blob/main/src/sneed_sns_forum/lib.mo) · [Types.mo](https://github.com/Snassy-icp/app_sneeddao/blob/main/src/sneed_sns_forum/Types.mo) · [Mentions.mo](https://github.com/Snassy-icp/app_sneeddao/blob/main/src/sneed_sns_forum/Mentions.mo) · [TipVerify.mo](https://github.com/Snassy-icp/app_sneeddao/blob/main/src/sneed_sns_forum/TipVerify.mo) |
 | Reference frontend | [app.sneeddao.com/forum](https://app.sneeddao.com/forum) ([source](https://github.com/Snassy-icp/app_sneeddao/tree/main/src/app_sneeddao_frontend)) |
-| This document | [rendered](/api/sneed_sns_forum) · [raw Markdown](/api-docs/sneed_sns_forum.md) |
+| This document | [rendered](/api/sneed_sns_forum) · [raw Markdown](/api-docs/sneed_sns_forum.md) · short agent guide on-chain: `get_api_doc()` |
 
 Upgrades are decided by Sneed DAO proposals; the production canister is controlled by the Sneed SNS. The method set below matches the source on `main` and the interface the production and staging canisters publish.
 
@@ -25,7 +25,7 @@ Forum            one per SNS (sns_root_canister_id)
    └─ Thread     title optional, body required
       └─ Post    reply_to_post_id = null: a reply to the thread; otherwise a reply to that post
          ├─ Votes  one per (post, neuron): upvote or downvote, weighted by voting power
-         ├─ Tips   records of ICRC-1 transfers to the post's author
+         ├─ Tips   ICRC-1 transfers to the post's author, checked on the token's ledger
          └─ Poll   at most one per post
       └─ Poll      at most one per thread
 ```
@@ -37,7 +37,7 @@ Forum            one per SNS (sns_root_canister_id)
 | Thread | Any signed-in principal | The author or an admin | Admins |
 | Post | Any signed-in principal | The author or an admin | The author or an admin |
 | Poll | The author of the thread or post it belongs to | — | — |
-| Tip | Any signed-in principal | — | — |
+| Tip | Any signed-in principal, for a transfer it made to the post's author (checked on the ledger) | — | — |
 
 ### 1.2 One id counter for everything
 
@@ -167,7 +167,7 @@ const mine = await forum.get_thread_votes_for_neurons(threadId, myNeuronIds);
 
 ### 2.5 Tip a post
 
-A tip is two steps: the client transfers the tokens to the author with an ordinary ICRC-1 transfer, then records the tip with the block index. The forum does not move or check funds.
+A tip is two steps: the client transfers the tokens from the tipper's main account to the author's main account with an ordinary ICRC-1 transfer, then records the tip with the block index. The forum never moves funds, but it reads that block on the ledger before recording the tip (3.11). The transfer is irreversible: if `create_tip` fails, the tokens were still sent, so never repeat the transfer; retry only `create_tip`.
 
 ```js
 async function tipPost({ identity, forum, ledgerActor, ledgerId, post, amount }) {
@@ -266,7 +266,7 @@ When an admin has set a notifications canister (`get_notifications_canister()`; 
 |---|---|---|---|
 | New post | Author of the post replied to, or of the thread for a root-level post; not the poster, not someone mentioned in the same post | `reply` | `https://app.sneeddao.com/post?postid=<id>` |
 | New mention (thread or post, created or edited) | Each newly mentioned principal | `mention` | the post, or `https://app.sneeddao.com/thread?threadid=<id>` |
-| Tip | The tip's `to_principal`, unless it is the tipper | `tip` | the post |
+| Tip the ledger confirmed (3.11) | The tip's `to_principal`, unless it is the tipper | `tip` | the post |
 
 The call is fire-and-forget with a 60-second bounded wait: the forum never waits for or depends on the answer, and Sneed Notifications decides, by the member's own settings, whether anything is delivered. See the Sneed Notifications API document for how members allow and receive these.
 
@@ -347,9 +347,27 @@ Without a mark, everything counts as new. The `mark_*` methods set the caller's 
 
 ### 3.11 Tips
 
-`create_tip(to_principal, post_id, token_ledger_principal, amount, transaction_block_index)` stores a tip record against a post and returns its id. The canister checks only that the caller is signed in and the post exists. It **does not** verify the transfer, the recipient, the amount or the ledger: a tip is the tipper's public claim, with `transaction_block_index` as the evidence. Anyone who displays tips as value received should verify the block on the ledger (`get_transactions` / ICRC-3 `icrc3_get_blocks` on `token_ledger_principal`) before trusting it.
+`create_tip(to_principal, post_id, token_ledger_principal, amount, transaction_block_index)` records a tip against a post and returns its id. The tipper must already have sent the tokens. Before recording, the forum reads block `transaction_block_index` on `token_ledger_principal`, once:
 
-Reading: `get_tip(id)`, `get_tips_by_post(post_id)`, `get_tips_by_thread(thread_id)`, `get_tips_given_by_user(user)`, `get_tips_received_by_user(user)`, `get_tip_tokens_received_by_user(user)` (per token: `total_amount`, `tip_count`, for wallets), `get_tip_stats()` (count and totals per token, across the forum).
+- ICRC ledgers: ICRC-3 `icrc3_get_blocks`; a ledger without it is read with the ledger suite's `get_transactions`. The ICP ledger (`ryjl3-tyaaa-aaaaa-aaaba-cai`): `query_blocks` with account identifiers. A block that has moved to an archive is read through the archive callback the ledger returns. That is one call to the ledger, plus one to an archive when needed; every call is a bounded-wait call.
+- The block must be a plain transfer (not a mint, burn, approval or a transfer made with an approval) from the caller's main account (no subaccount) to `to_principal`'s main account, of exactly `amount` (the fee is separate), and `to_principal` must be the author of the post.
+- Each `(ledger, block)` pair backs one tip only. The block is reserved before the ledger is asked, so two calls racing for the same block cannot both record it.
+
+| Outcome | Result | Recorded |
+|---|---|---|
+| The block confirms the tip | `ok(tip_id)` | yes, `verified = ?true`; the author is notified (3.6) |
+| The block contradicts it (no such block, another sender, recipient or amount, not a plain transfer) | `InvalidInput("Tip not recorded: <reason>")` | no |
+| `to_principal` is not the post's author | `InvalidInput("A tip goes to the post's author: ...")` | no |
+| The block is already used by a tip, or being checked by another call | `AlreadyExists("Block <n> of this ledger is already the transfer of tip <id>")` / `("... is being registered by another call")` | no |
+| The block could not be read (no block index given, the ledger did not answer or has neither method) | `ok(tip_id)` | yes, `verified = ?false` with the reason in `verification_note`; no notification |
+
+`verify_tip(tip_id)` (any signed-in caller) reads the block again for a tip that is not verified yet: one recorded unverified, or one recorded before the forum checked tips. It answers `ok(true)` when the tip is now verified and `ok(false)` otherwise (reason in `verification_note`); a verified or rejected tip is final. A tip verified later sends no notification.
+
+`TipResponse.verified` is `?true` (the ledger confirmed it), `?false` (not confirmed; see `verification_note`) or null (recorded before the forum checked tips, not checked since). Tips recorded before the upgrade keep their blocks: the first tip that named a block owns it.
+
+**What counts.** `get_tip_stats`, `get_tip_tokens_received_by_user`, `get_recent_tips_count`, `get_recent_tips_received` and `get_tips_received_since` count verified tips only. `get_tip`, `get_tips_by_post`, `get_tips_by_thread`, `get_tips_given_by_user` and `get_tips_received_by_user` list every tip with its `verified` flag: show or count only `verified = ?true` (Sneed Hub does).
+
+"Verified" means the token's own ledger, the one the tipper named, records the transfer. It says nothing about what the token is worth: anyone can make a ledger.
 
 ---
 
@@ -378,9 +396,9 @@ Other bounds: 10 counted mentions per text, 100 mentions per `get_mentions_of_us
 
 **Inter-canister calls.** Posting, voting, poll voting and the proposal setup may call SNS-W and SNS governance; editing and posting may call Sneed Premium. A failure there surfaces as `InternalError(...)` (voting) or as the default limits being applied (premium), and nothing is written. These calls are safe to retry.
 
-**Idempotency.** `create_thread`, `create_post`, `create_tip` and `create_poll` are not idempotent: two successful calls make two items. After a timeout, look for the item (`get_posts_by_user`, `get_tips_given_by_user`, `get_polls_by_thread`) before retrying. Votes, retractions, read marks, seen marks, the SMS opt-in and the proposal setup are idempotent. `create_proposal_thread*` refuses a second thread for the same proposal.
+**Idempotency.** `create_thread`, `create_post` and `create_poll` are not idempotent: two successful calls make two items. `create_tip` with a block index is: a second call for the same block answers `AlreadyExists` naming the tip. After a timeout, look for the item (`get_posts_by_user`, `get_tips_given_by_user`, `get_polls_by_thread`) before retrying. Votes, retractions, read marks, seen marks, the SMS opt-in and the proposal setup are idempotent. `create_proposal_thread*` refuses a second thread for the same proposal.
 
-**Interleaving.** Each update runs to completion between its awaits; a vote computed from SNS governance is written in one step after the awaits. Two votes by the same neuron in flight at once both succeed, and the later write wins.
+**Interleaving.** Each update runs to completion between its awaits; `create_tip` reserves its `(ledger, block)` before asking the ledger, so a concurrent call for the same block is refused; a vote computed from SNS governance is written in one step after the awaits. Two votes by the same neuron in flight at once both succeed, and the later write wins.
 
 ---
 
@@ -461,14 +479,15 @@ Types are in section 7. "Caller" means the principal signing the call. Methods m
 
 | Method | Kind | Returns |
 |---|---|---|
-| `create_tip(to_principal, post_id, token_ledger_principal, amount, transaction_block_index : opt nat)` | update | `Result_1` (tip id). Errors: `Unauthorized("Authentication required to create tips")`, `NotFound("Post not found")`. |
+| `create_tip(to_principal, post_id, token_ledger_principal, amount, transaction_block_index : opt nat)` | update | `Result_1` (tip id). Errors: `Unauthorized("Authentication required to create tips")`, `NotFound("Post not found")`, and the ledger check's (3.11). |
+| `verify_tip(tip_id)` | update | `variant { ok : bool; err : ForumError }`: whether the tip is verified now. `Unauthorized("Authentication required")`, `NotFound("Tip not found")`. |
 | `get_tip(id)` | query | `opt TipResponse` |
 | `get_tips_by_post(post_id)` / `get_tips_by_thread(thread_id)` | query | `vec TipResponse` |
 | `get_tips_given_by_user(user)` / `get_tips_received_by_user(user)` | query | `vec TipResponse` |
-| `get_tips_received_since(user, since : int)` | query | `vec TipResponse` (strictly newer) |
-| `get_recent_tips_received(user)` / `get_recent_tips_count(user)` | query | since the user's tip mark |
-| `get_tip_tokens_received_by_user(user)` | query | `vec TipTokenSummary` |
-| `get_tip_stats()` | query | `TipStats` |
+| `get_tips_received_since(user, since : int)` | query | `vec TipResponse` (strictly newer; verified only) |
+| `get_recent_tips_received(user)` / `get_recent_tips_count(user)` | query | since the user's tip mark; verified only |
+| `get_tip_tokens_received_by_user(user)` | query | `vec TipTokenSummary` (verified only) |
+| `get_tip_stats()` | query | `TipStats` (verified only) |
 
 ### 6.7 Mentions, read state and seen marks
 
@@ -504,6 +523,7 @@ Types are in section 7. "Caller" means the principal signing the call. Methods m
 
 | Method | Kind | Returns |
 |---|---|---|
+| `get_api_doc()` | query | `text`: a short Markdown guide for AI agents (units, authentication, irreversible actions, polling, pitfalls) linking this document and `https://app.sneeddao.com/llms.txt` |
 | `check_user_premium_status(user)` | update | `bool` |
 | `get_notifications_canister()` | query | `opt principal` |
 | `get_admins()` | query | `vec AdminInfo` (the listed admins; Sneed governance and the controllers are admins without being listed) |
@@ -598,6 +618,8 @@ type TipResponse = record {
   id : nat; from_principal : principal; to_principal : principal; post_id : nat; thread_id : nat;
   token_ledger_principal : principal; amount : nat; transaction_block_index : opt nat;
   created_at : int; created_by : principal;
+  verified : opt bool;            // true: confirmed on the ledger; false: not confirmed; null: recorded before tips were checked
+  verification_note : opt text;   // why it is not verified
 };
 type TipTokenSummary = record { token_ledger_principal : principal; total_amount : nat; tip_count : nat };
 type TipStats = record { total_tips : nat; total_tip_amount_by_token : vec record { principal; nat } };
@@ -666,7 +688,7 @@ The Candid file names some of these differently (`Result_1` and friends are gene
 - [ ] Sign query calls that use the caller (unread counts, read marks), or every post looks unread.
 - [ ] Build reply trees from `reply_to_post_id`; hide or grey out `deleted` items where a method may return them.
 - [ ] Vote with neurons: show users which reachable neurons will vote (`get_thread_votes_for_neurons` for their current votes) and pass explicit ids for polls.
-- [ ] For tips, transfer first, then `create_tip` with the block index; verify the block before showing received tips as value.
+- [ ] For tips, transfer from the user's main account to the author's main account first, then `create_tip` with the block index; if it fails, never repeat the transfer. Show and count only tips with `verified = ?true`.
 - [ ] Write mentions as `[@Name](https://app.sneeddao.com/principal?id=<principal>)`; if you send mention SMS, ask `get_mention_sms_opted_in` and send them from the poster's principal.
 - [ ] Move the seen marks (`mark_*_seen_up_to`) when the user has seen replies, tips and mentions; set read marks with `set_last_read_post`.
 - [ ] Link to `https://app.sneeddao.com/thread?threadid=<id>` and `https://app.sneeddao.com/post?postid=<id>` for the public views.

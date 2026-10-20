@@ -51,6 +51,7 @@ const TipModal = ({
     userPrincipal,
     identity,
     tippingState = 'idle', // 'idle', 'transferring', 'registering', 'success', 'error'
+    tippingError = null, // what went wrong, for the 'error' state (e.g. the forum's reason for refusing the tip)
     defaultToken = null, // Optional: preselect a token by principal string
     targetPillSelector = null, // CSS selector for target tip pill for flying animation
     onAnimationComplete = null // Callback when flying animation completes
@@ -811,7 +812,7 @@ const TipModal = ({
                     }}>
                         {tippingState === 'transferring' 
                             ? 'Processing your token transfer...' 
-                            : 'Recording your tip in the forum...'
+                            : 'The forum is checking your transfer on the ledger and recording your tip...'
                         }
                     </p>
                     <div style={{
@@ -852,7 +853,7 @@ const TipModal = ({
                         fontSize: '16px',
                         lineHeight: '1.5'
                     }}>
-                        We encountered an error while processing your tip. Please try again.
+                        {tippingError || 'We encountered an error while processing your tip. Please try again.'}
                     </p>
                     <button
                         onClick={onClose}

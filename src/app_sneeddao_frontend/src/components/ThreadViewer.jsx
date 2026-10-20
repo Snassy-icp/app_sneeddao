@@ -21,6 +21,9 @@ import { FaThumbsUp, FaThumbsDown, FaReply, FaCoins, FaEnvelope, FaEdit, FaTrash
 import { 
     getTipsByPost, 
     createTip,
+    verifiedTips,
+    isTipVerified,
+    tipErrorMessage,
     updatePost,
     deletePost,
     updateThread,
@@ -886,6 +889,7 @@ function ThreadViewer({
 
     // Tipping state
     const [tipModalOpen, setTipModalOpen] = useState(false);
+    const [tipError, setTipError] = useState(null); // shown by TipModal in its error state
     const [selectedPostForTip, setSelectedPostForTip] = useState(null);
     const [tippingState, setTippingState] = useState('idle'); // 'idle', 'transferring', 'registering', 'success', 'error'
     
@@ -1341,7 +1345,7 @@ function ThreadViewer({
 
         try {
             const tipsPromises = posts.map(async (post) => {
-                const tips = await getTipsByPost(forumActor, Number(post.id));
+                const tips = verifiedTips(await getTipsByPost(forumActor, Number(post.id)));
                 return { postId: Number(post.id), tips };
             });
 
@@ -1934,6 +1938,7 @@ function ThreadViewer({
     }, []);
 
     const closeTipModal = useCallback(() => {
+        setTipError(null);
         setTipModalOpen(false);
         setSelectedPostForTip(null);
         setDefaultTipToken(null);
@@ -1944,6 +1949,7 @@ function ThreadViewer({
         if (!forumActor || !selectedPostForTip) return;
 
         try {
+            setTipError(null);
             setTippingState('transferring');
             console.log('handleTip called with:', { tokenPrincipal, amount, recipientPrincipal, postId });
 
@@ -1967,6 +1973,7 @@ function ThreadViewer({
 
             if ('Err' in transferResult) {
                 console.error('Transfer failed:', transferResult.Err);
+                setTipError('The transfer failed, nothing was sent: ' + tipErrorMessage(transferResult.Err));
                 setTippingState('error');
                 return;
             }
@@ -1985,6 +1992,14 @@ function ThreadViewer({
 
             if ('ok' in tipResult) {
                 console.log('Tip registered successfully:', tipResult.ok);
+                // recorded, but the ledger could not be read (rare): it is not shown until verified
+                const [recorded] = await forumActor.get_tip(tipResult.ok).catch(() => []);
+                if (recorded && !isTipVerified(recorded)) {
+                    setTipError('The tokens were sent (do not send them again) and the tip is recorded, but the forum could not confirm it on the ledger yet: '
+                        + (recorded.verification_note?.[0] || 'no reason given') + '. It is shown once verified.');
+                    setTippingState('error');
+                    return;
+                }
                 
                 const postIdNum = Number(selectedPostForTip.id);
                 const tokenPrincipalStr = tokenPrincipal.toString();
@@ -2034,7 +2049,10 @@ function ThreadViewer({
                 
                 // Don't auto-close modal - let user close it manually from the success screen
             } else {
+                // the transfer went through; the forum refused to record it (e.g. the ledger
+                // shows something else) — say so, the tokens are with the recipient
                 console.error('Failed to register tip:', tipResult.err);
+                setTipError('The tokens were sent (do not send them again), but the forum did not record the tip: ' + tipErrorMessage(tipResult.err));
                 setTippingState('error');
             }
         } catch (error) {
@@ -3616,6 +3634,7 @@ function ThreadViewer({
                     isSubmitting={tippingState === 'transferring' || tippingState === 'registering'}
                     identity={identity}
                     tippingState={tippingState}
+                    tippingError={tipError}
                     defaultToken={defaultTipToken}
                     targetPillSelector={
                         lastTippedInfo 

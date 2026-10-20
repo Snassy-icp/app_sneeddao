@@ -543,6 +543,21 @@ export const updateTextLimits = async (forumActor, textLimitsInput) => {
 };
 
 // Tip-related functions for forum
+
+// The forum reads each tip's transfer on the token's ledger when it is recorded (TipVerify.mo):
+// `verified` is [true] when the ledger confirmed it, [false] when it could not, [] for tips recorded
+// before the forum checked tips. Sneed Hub shows and counts confirmed tips only. A forum canister
+// older than tip verification sends no `verified` field; its tips are shown as before.
+export const isTipVerified = (tip) => tip?.verified === undefined || tip?.verified?.[0] === true;
+export const verifiedTips = (tips) => (tips || []).filter(isTipVerified);
+
+// create_tip's error as a sentence for people (the tokens were already sent when it fails)
+export const tipErrorMessage = (err) => {
+    if (!err) return 'Unknown error';
+    const [kind, text] = Object.entries(err)[0] || [];
+    return text ? String(text) : String(kind);
+};
+
 export const createTip = async (forumActor, tipInput) => {
     try {
         const result = await forumActor.create_tip(
