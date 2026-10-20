@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
 import { useSearchParams, Link } from 'react-router-dom';
+import CardTopUpLink from '../components/CardTopUpLink';
 import Header from '../components/Header';
 import PrincipalInput from '../components/PrincipalInput';
 import { useTheme } from '../contexts/ThemeContext';
@@ -2057,6 +2058,9 @@ export default function CanisterPage() {
                                                 <strong style={{ color: theme.colors.primaryText }}>Current Rate:</strong> 1 ICP ≈ {formatCycles(conversionRate.cyclesPerIcp)} cycles
                                             </div>
                                         )}
+                                        <div style={{ marginBottom: '12px', fontSize: '12px', color: theme.colors.mutedText, display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                            No ICP? <CardTopUpLink canisterId={canisterIdParam} theme={theme} label="Top up with a card, Apple Pay or Google Pay" style={{ fontSize: '12px' }} /> (CyclePay, $5 to $100)
+                                        </div>
                                         
                                         {/* Amount Input */}
                                         <div style={{ marginBottom: '12px' }}>

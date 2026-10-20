@@ -7,6 +7,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
+import CardTopUpLink from './CardTopUpLink';
 import { formatCyclesCompact, parseCyclesInput } from '../utils/NeuronManagerSettings';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
@@ -800,6 +801,7 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                                                     +{icpForThis.toFixed(4)} ICP
                                                 </span>
                                             )}
+                                            <CardTopUpLink canisterId={c.canisterId} theme={theme} style={{ marginLeft: 'auto' }} />
                                         </div>
                                     </div>
 
