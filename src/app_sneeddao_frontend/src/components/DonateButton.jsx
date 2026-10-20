@@ -11,6 +11,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useDenomination } from '../contexts/DenominationContext';
 import { useNaming, useAvatar } from '../NamingContext';
 import { useStoreVersion } from '../utils/revenueStore';
+import { formatAmountRaw } from '../utils/StringUtils';
 import { loadTokenMeta, tokenMeta, loadPrice, priceOf } from '../utils/revenueData';
 import { PrincipalDisplay, AvatarImage, getPrincipalDisplayInfoFromContext, computeAccountId } from '../utils/PrincipalUtils';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
@@ -240,7 +241,7 @@ export function DonateDialog({ onClose }) {
                 <TokenSelector value={ledger} onChange={(id) => { setLedger(id); setAmountText(''); }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: c.mutedText, margin: '6px 2px 14px' }}>
                     <span>{balance != null && meta ? <>Balance: <b style={{ color: c.secondaryText }}>{formatUnits(balance, meta.decimals)} {sym}</b></> : ' '}</span>
-                    {balance != null && fee != null && balance > fee && meta && <button type="button" onClick={() => setAmountText((Number(balance - fee) / 10 ** meta.decimals).toFixed(meta.decimals).replace(/\.?0+$/, ''))} style={{ background: 'none', border: 'none', color: c.accent, cursor: 'pointer', fontSize: 12, padding: 0 }}>Max</button>}
+                    {balance != null && fee != null && balance > fee && meta && <button type="button" onClick={() => setAmountText(formatAmountRaw(balance - fee, meta.decimals))} style={{ background: 'none', border: 'none', color: c.accent, cursor: 'pointer', fontSize: 12, padding: 0 }}>Max</button>}
                 </div>
                 <span style={label}>Amount</span>
                 {presets.length > 0 && (

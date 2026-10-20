@@ -456,6 +456,27 @@ const formatTokenAmount = (raw, decimals) => {
     return (n / Math.pow(10, decimals)).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: decimals });
 };
 
+/** Exact plain-digit text for a raw amount, for amount inputs (MAX buttons): no float
+ *  rounding (which can land above the balance) and no thousands separators. */
+const rawToInputText = (raw, decimals) => {
+    const v = BigInt(raw);
+    const d = Number(decimals);
+    if (v <= 0n) return '0';
+    const div = 10n ** BigInt(d);
+    const frac = (v % div).toString().padStart(d, '0').replace(/0+$/, '');
+    return frac ? `${v / div}.${frac}` : `${v / div}`;
+};
+
+/** Raw units from typed amount text: exact string parsing for plain decimals (extra
+ *  decimals cut off); other notations fall back to float rounding as before. */
+const inputTextToRaw = (text, decimals) => {
+    const t = String(text ?? '').trim();
+    const d = Number(decimals);
+    const m = /^(\d*)(?:\.(\d*))?$/.exec(t);
+    if (m && (m[1] || m[2])) return BigInt((m[1] || '0') + (m[2] || '').padEnd(d, '0').slice(0, d));
+    return BigInt(Math.round(parseFloat(t) * (10 ** d)));
+};
+
 /** Parse a human-readable token amount to raw units (string). */
 const parseTokenAmount = (humanStr, decimals) => {
     const n = parseFloat(humanStr);
@@ -4603,7 +4624,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
         try {
             const bot = await getReadyBotActor();
             const dec = getDecimals(opToken);
-            const amount = BigInt(Math.round(parseFloat(opAmount) * (10 ** dec)));
+            const amount = inputTextToRaw(opAmount, dec);
             if (amount <= 0n) { setError('Amount must be greater than 0'); setOpExecuting(false); return; }
             const tokenPrincipal = Principal.fromText(opToken);
             const fromSub = currentSubaccountNum != null ? [BigInt(currentSubaccountNum)] : [];
@@ -5229,7 +5250,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                                                 return tid === opToken;
                                             })?.fee || 0n;
                                             const maxRaw = BigInt(opTokenBalance) > BigInt(fee) ? BigInt(opTokenBalance) - BigInt(fee) : 0n;
-                                            setOpAmount((Number(maxRaw) / (10 ** dec)).toString());
+                                            setOpAmount(rawToInputText(maxRaw, dec));
                                         }} style={{ ...btnStyle, padding: '4px 6px', fontSize: '0.65rem' }}>Max</button>
                                     )}
                                 </div>
@@ -9020,7 +9041,7 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
         try {
             const bot = await getReadyBotActor();
             const dec = tokDecimals(opToken);
-            const amount = BigInt(Math.round(parseFloat(opAmount) * (10 ** dec)));
+            const amount = inputTextToRaw(opAmount, dec);
             if (amount <= 0n) { setError('Amount must be greater than 0'); setOpExecuting(false); return; }
             const tokenPrincipal = Principal.fromText(opToken);
 
@@ -9090,7 +9111,7 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
         try {
             const bot = await getReadyBotActor();
             const dec = tokDecimals(fundToken);
-            const raw = BigInt(Math.round(parseFloat(fundAmount) * (10 ** Number(dec))));
+            const raw = inputTextToRaw(fundAmount, Number(dec));
             const tokenPrincipal = typeof fundToken === 'string' ? Principal.fromText(fundToken) : fundToken;
             if (fundSource === 'wallet') {
                 const tokId = typeof fundToken === 'string' ? fundToken : fundToken.toText();
@@ -9125,7 +9146,7 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
         try {
             const bot = await getReadyBotActor();
             const dec = tokDecimals(reclaimToken);
-            const raw = BigInt(Math.round(parseFloat(reclaimAmount) * (10 ** Number(dec))));
+            const raw = inputTextToRaw(reclaimAmount, Number(dec));
             const result = await bot.reclaimFromPurse(reclaimTarget, typeof reclaimToken === 'string' ? Principal.fromText(reclaimToken) : reclaimToken, raw);
             if ('Err' in result) { setError(typeof result.Err === 'string' ? result.Err : JSON.stringify(result.Err)); return; }
             setSuccess(`Reclaimed ${reclaimAmount} ${tokLabel(reclaimToken)} from ${choreLabel(reclaimTarget)}`);
@@ -9144,7 +9165,7 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
         try {
             const bot = await getReadyBotActor();
             const dec = tokDecimals(withdrawToken);
-            const raw = BigInt(Math.round(parseFloat(withdrawAmount) * (10 ** Number(dec))));
+            const raw = inputTextToRaw(withdrawAmount, Number(dec));
             const tokenPrincipal = typeof withdrawToken === 'string' ? Principal.fromText(withdrawToken) : withdrawToken;
             const userPrincipal = identity.getPrincipal();
             const result = await bot.manualSend(tokenPrincipal, [withdrawTarget], userPrincipal, [], raw);
@@ -9175,12 +9196,12 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                 const bal = BigInt(await ledgerActor.icrc1_balance_of({ owner: userPrincipal, subaccount: [] }));
                 const fee = BigInt(tokFee(fundToken));
                 const max = bal > fee ? bal - fee : 0n;
-                setFundAmount((Number(max) / (10 ** Number(dec))).toString());
+                setFundAmount(rawToInputText(max, dec));
             } catch (e) { console.warn('Failed to fetch wallet balance', e); }
         } else {
             const tokId = typeof fundToken === 'string' ? fundToken : fundToken?.toText?.() || '';
             const entry = mainPurseEntries.find(e => e.token === tokId);
-            if (entry) setFundAmount((Number(entry.balance) / (10 ** Number(dec))).toString());
+            if (entry) setFundAmount(rawToInputText(entry.balance, dec));
         }
     };
 
@@ -9192,7 +9213,7 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
             const p = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
             return p === tokId;
         });
-        if (entry) setReclaimAmount((Number(entry.balance) / (10 ** Number(dec))).toString());
+        if (entry) setReclaimAmount(rawToInputText(entry.balance, dec));
     };
 
     const handleMaxWithdrawPurse = (choreBalances) => {
@@ -9205,9 +9226,10 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
             return p === tokId;
         });
         if (entry) {
-            const raw = Number(entry.balance);
-            const max = raw > fee ? raw - fee : 0;
-            setWithdrawAmount((max / (10 ** Number(dec))).toString());
+            const raw = BigInt(entry.balance);
+            const feeRaw = BigInt(fee || 0);
+            const max = raw > feeRaw ? raw - feeRaw : 0n;
+            setWithdrawAmount(rawToInputText(max, dec));
         }
     };
 
@@ -9654,7 +9676,7 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                                                 return tid === opToken;
                                             })?.fee || 0n;
                                             const maxRaw = BigInt(opTokenBalance) > BigInt(fee) ? BigInt(opTokenBalance) - BigInt(fee) : 0n;
-                                            setOpAmount((Number(maxRaw) / (10 ** dec)).toString());
+                                            setOpAmount(rawToInputText(maxRaw, dec));
                                         }} style={{ ...btnStyle, padding: '4px 6px', fontSize: '0.65rem' }}>Max</button>
                                     )}
                                 </div>
@@ -10182,7 +10204,7 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
         try {
             const actor = await getReadyBotActor();
             const dec = tokDecimals(fundToken);
-            const raw = BigInt(Math.round(parseFloat(fundAmount) * (10 ** Number(dec))));
+            const raw = inputTextToRaw(fundAmount, Number(dec));
             const tokenPrincipal = typeof fundToken === 'string' ? Principal.fromText(fundToken) : fundToken;
             if (fundSource === 'wallet') {
                 const tokId = typeof fundToken === 'string' ? fundToken : fundToken.toText();
@@ -10220,7 +10242,7 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
         try {
             const actor = await getReadyBotActor();
             const dec = tokDecimals(reclaimToken);
-            const raw = BigInt(Math.round(parseFloat(reclaimAmount) * (10 ** Number(dec))));
+            const raw = inputTextToRaw(reclaimAmount, Number(dec));
             const result = await actor.reclaimFromPurse(instanceId, typeof reclaimToken === 'string' ? Principal.fromText(reclaimToken) : reclaimToken, raw);
             if ('Err' in result) { setError(result.Err); return; }
             setSuccess('Reclaimed successfully');
@@ -10239,7 +10261,7 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
         try {
             const actor = await getReadyBotActor();
             const dec = tokDecimals(withdrawToken);
-            const raw = BigInt(Math.round(parseFloat(withdrawAmount) * (10 ** Number(dec))));
+            const raw = inputTextToRaw(withdrawAmount, Number(dec));
             const tokenPrincipal = typeof withdrawToken === 'string' ? Principal.fromText(withdrawToken) : withdrawToken;
             const userPrincipal = identity.getPrincipal();
             const result = await actor.manualSend(tokenPrincipal, [instanceId], userPrincipal, [], raw);
@@ -10286,12 +10308,12 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
                 const bal = BigInt(await ledgerActor.icrc1_balance_of({ owner: userPrincipal, subaccount: [] }));
                 const fee = BigInt(tokFee(fundToken));
                 const max = bal > fee ? bal - fee : 0n;
-                setFundAmount((Number(max) / (10 ** Number(dec))).toString());
+                setFundAmount(rawToInputText(max, dec));
             } catch (e) { console.warn('Failed to fetch wallet balance', e); }
         } else {
             const tokId = typeof fundToken === 'string' ? fundToken : fundToken?.toText?.() || '';
             const entry = mainPurseBalances.find(b => { const p = typeof b.token === 'string' ? b.token : b.token?.toText?.() || ''; return p === tokId; });
-            if (entry) setFundAmount((Number(entry.balance) / (10 ** Number(dec))).toString());
+            if (entry) setFundAmount(rawToInputText(entry.balance, dec));
         }
     };
     const handleMaxReclaim = () => {
@@ -10299,7 +10321,7 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
         const dec = tokDecimals(reclaimToken);
         const tokId = typeof reclaimToken === 'string' ? reclaimToken : reclaimToken?.toText?.() || '';
         const entry = purseBalances.find(b => { const p = typeof b.token === 'string' ? b.token : b.token?.toText?.() || ''; return p === tokId; });
-        if (entry) setReclaimAmount((Number(entry.balance) / (10 ** Number(dec))).toString());
+        if (entry) setReclaimAmount(rawToInputText(entry.balance, dec));
     };
     const handleMaxWithdraw = () => {
         if (!withdrawToken) return;
@@ -10308,9 +10330,10 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
         const tokId = typeof withdrawToken === 'string' ? withdrawToken : withdrawToken?.toText?.() || '';
         const entry = purseBalances.find(b => { const p = typeof b.token === 'string' ? b.token : b.token?.toText?.() || ''; return p === tokId; });
         if (entry) {
-            const raw = Number(entry.balance);
-            const max = raw > fee ? raw - fee : 0;
-            setWithdrawAmount((max / (10 ** Number(dec))).toString());
+            const raw = BigInt(entry.balance);
+            const feeRaw = BigInt(fee || 0);
+            const max = raw > feeRaw ? raw - feeRaw : 0n;
+            setWithdrawAmount(rawToInputText(max, dec));
         }
     };
 

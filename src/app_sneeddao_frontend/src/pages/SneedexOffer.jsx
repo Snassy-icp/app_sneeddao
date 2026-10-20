@@ -40,6 +40,7 @@ import {
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import { getCanisterInfo as getCanisterInfoViaBackend } from '../utils/BackendUtils';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
+import { formatAmountRaw, parseAmountToBigInt } from '../utils/StringUtils';
 import priceService from '../services/PriceService';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createNeuronManagerActor } from 'declarations/sneed_icp_staking_bot';
@@ -1658,28 +1659,46 @@ function SneedexOffer() {
     const handleWithdraw = async () => {
         if (!identity || !pendingBid) return;
         
-        const currentBalance = pendingBid.escrowBalance || 0n;
+        const currentBalance = BigInt(pendingBid.escrowBalance || 0n);
         
-        // For pending (unconfirmed) bids, user can withdraw everything
-        // Backend handles the actual validation including fee reservation for confirmed bids
-        const maxWithdrawable = currentBalance;
+        // A pending (unconfirmed) bid reserves nothing, but the withdrawal is a ledger
+        // transfer out of the escrow, which costs one fee on top of the amount.
+        let fee = tokenFee;
+        if (fee == null) {
+            try {
+                const ledgerActor = await createLedgerActor(offer.price_token_ledger.toString(), identity);
+                fee = BigInt(await ledgerActor.icrc1_fee());
+            } catch (e) {
+                console.warn('Could not load the ledger fee:', e);
+                fee = 0n;
+            }
+        }
+        const maxWithdrawable = currentBalance > fee ? currentBalance - fee : 0n;
         
         if (maxWithdrawable <= 0n) {
-            setError('No funds available to withdraw');
+            setError('No funds available to withdraw (the escrow does not cover the transfer fee)');
             return;
         }
         
-        // Ask user how much to withdraw
+        // Ask user how much to withdraw (exact digits, so the default never rounds up)
+        const maxText = formatAmountRaw(maxWithdrawable, tokenInfo.decimals);
         const amountStr = window.prompt(
-            `How much ${tokenInfo.symbol} to withdraw?\nAvailable: ${formatAmount(maxWithdrawable, tokenInfo.decimals)} ${tokenInfo.symbol}`,
-            formatAmount(maxWithdrawable, tokenInfo.decimals)
+            `How much ${tokenInfo.symbol} to withdraw?\nAvailable after the transfer fee: ${maxText} ${tokenInfo.symbol}`,
+            maxText
         );
         
         if (!amountStr) return;
         
-        const withdrawAmount = parseAmount(parseFloat(amountStr), tokenInfo.decimals);
+        let withdrawAmount;
+        try {
+            const t = amountStr.trim();
+            if (!/^\d*\.?\d*$/.test(t)) throw new Error('not a number');
+            withdrawAmount = parseAmountToBigInt(t, tokenInfo.decimals);
+        } catch {
+            withdrawAmount = 0n;
+        }
         if (withdrawAmount <= 0n || withdrawAmount > maxWithdrawable) {
-            setError(`Invalid amount. Max: ${formatAmount(maxWithdrawable, tokenInfo.decimals)} ${tokenInfo.symbol}`);
+            setError(`Invalid amount. Max: ${maxText} ${tokenInfo.symbol}`);
             return;
         }
         

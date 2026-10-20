@@ -76,9 +76,9 @@ export default function HelpLiquidStaking() {
                         On <B>Neuron Created Successfully!</B> choose <B>View Neuron</B>, <B>Go to Wallet</B> or <B>Stake Another</B>.
                     </Li>
                 </Steps>
-                <Tip title="Leave room for the fee">
-                    The ledger charges its transfer fee on top of the stake. <B>MAX</B> fills in your whole balance, which leaves nothing
-                    for the fee, so lower the amount slightly or the transfer fails with insufficient funds.
+                <Tip title="The fee comes on top">
+                    The ledger charges its transfer fee on top of the stake. <B>MAX</B> fills in your balance minus that fee, so the
+                    transfer goes through; if you type an amount yourself, leave room for the fee too.
                 </Tip>
                 <Sub>What you end up with</Sub>
                 <List>

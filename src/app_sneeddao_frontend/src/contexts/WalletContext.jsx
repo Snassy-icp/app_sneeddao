@@ -12,6 +12,8 @@ import { createActor as createFactoryActor, canisterId as factoryCanisterId } fr
 import { createActor as createManagerActor } from 'declarations/sneed_icp_staking_bot';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { getTokenLogo, get_token_conversion_rate, get_token_icp_rate, get_available, get_available_backend } from '../utils/TokenUtils';
+import { parseAmountToBigInt } from '../utils/StringUtils';
+import { planSend } from '../utils/sendPlan';
 import { fetchUserNeuronsForSns, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { fetchUserNnsNeurons, NNS_GOVERNANCE_CANISTER_ID } from '../utils/NnsUtils';
 import { getTipTokensReceivedByUser, getTrackedCanisters, getCanisterGroups, convertGroupsFromBackend, getCanisterInfo } from '../utils/BackendUtils';
@@ -3012,30 +3014,11 @@ export const WalletProvider = ({ children }) => {
         fetchAllSnsNeurons();
     }, [fetchIcpPrice, fetchCompactWalletTokens, fetchCompactPositions, fetchNeuronManagers, fetchTrackedCanisters, fetchAllSnsNeurons]);
 
-    // Helper to calculate send amounts (frontend vs backend balance)
+    // Split a send between the Sneed Lock subaccount and the wallet; each
+    // transfer pays its own fee (see utils/sendPlan.js). Zero amounts mean the
+    // send cannot be made.
     const calcSendAmounts = useCallback((token, bigintAmount) => {
-        const available = BigInt(token.available || token.balance || 0n);
-        const balance = BigInt(token.balance || token.available || 0n);
-        const available_backend = BigInt(token.available_backend || 0n);
-        const fee = BigInt(token.fee || 0n);
-
-        let send_from_frontend = 0n;
-        let send_from_backend = 0n;
-
-        if (available_backend > 0n) {
-            // Has backend balance, prefer sending from backend first
-            if (bigintAmount <= available_backend) {
-                send_from_backend = bigintAmount;
-            } else {
-                send_from_backend = available_backend;
-                send_from_frontend = bigintAmount - available_backend;
-            }
-        } else {
-            // No backend balance, send from frontend only
-            send_from_frontend = bigintAmount;
-        }
-
-        return { send_from_frontend, send_from_backend };
+        return planSend(token, bigintAmount) || { send_from_frontend: 0n, send_from_backend: 0n };
     }, []);
 
     // Send token function - can be used from anywhere
@@ -3049,10 +3032,9 @@ export const WalletProvider = ({ children }) => {
         }
         const ledgerCanisterId = Principal.fromText(ledgerCanisterIdText);
 
-        const decimals = token.decimals || 8;
-        const amountFloat = parseFloat(amount);
-        const scaledAmount = amountFloat * (10 ** decimals);
-        const bigintAmount = BigInt(Math.floor(scaledAmount));
+        const decimals = token.decimals ?? 8;
+        // String parsing, no float math: a float can land a unit above the balance.
+        const bigintAmount = parseAmountToBigInt(amount, decimals);
 
         // ICP Account ID transfer (legacy transfer method)
         if (accountId && !recipient) {
@@ -3132,12 +3114,15 @@ export const WalletProvider = ({ children }) => {
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
             const recipientPrincipal = Principal.fromText(recipient);
             
-            await sneedLockActor.transfer_tokens(
+            const backendResult = await sneedLockActor.transfer_tokens(
                 recipientPrincipal,
                 subaccount,
                 ledgerCanisterId,
                 sendAmounts.send_from_backend
             );
+            if (backendResult && 'Err' in backendResult) {
+                throw new Error(`Transfer from your Sneed Lock balance failed: ${JSON.stringify(backendResult.Err, (k, v) => typeof v === 'bigint' ? v.toString() : v)}`);
+            }
         }
 
         // Send from frontend if needed
@@ -3148,7 +3133,7 @@ export const WalletProvider = ({ children }) => {
 
             const recipientPrincipal = Principal.fromText(recipient);
             
-            await ledgerActor.icrc1_transfer({
+            const frontendResult = await ledgerActor.icrc1_transfer({
                 to: { owner: recipientPrincipal, subaccount: subaccount },
                 fee: [],
                 memo: [],
@@ -3156,6 +3141,13 @@ export const WalletProvider = ({ children }) => {
                 created_at_time: [],
                 amount: sendAmounts.send_from_frontend
             });
+            if (frontendResult && 'Err' in frontendResult) {
+                const detail = JSON.stringify(frontendResult.Err, (k, v) => typeof v === 'bigint' ? v.toString() : v);
+                if (sendAmounts.send_from_backend > 0n) refreshWallet();
+                throw new Error(sendAmounts.send_from_backend > 0n
+                    ? `The Sneed Lock part of the send went through, but the wallet part failed: ${detail}`
+                    : `Transfer failed: ${detail}`);
+            }
         }
 
         // Refresh wallet after send

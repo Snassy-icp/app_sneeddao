@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { formatAmount, getUSD, computeUsdValue } from './utils/StringUtils';
+import { formatAmount, formatAmountRaw, parseAmountToBigInt, getUSD, computeUsdValue } from './utils/StringUtils';
 import { useDenomination } from './contexts/DenominationContext';
 import { dateToReadable, format_duration } from './utils/DateUtils'
 import { rewardAmountOrZero, availableOrZero, get_available_backend } from './utils/TokenUtils';
@@ -31,6 +31,19 @@ import { isUntilDissolved } from './utils/lockTime';
 import { LockUntil, LockTimeLeftAtLeast, LockAge } from './components/LockUntil';
 import LockGas from './components/LockGas';
 import MintTokenDialog, { useIsMinter } from './components/MintTokenDialog';
+
+// Amount text to base units by string parsing (commas ignored, no float math, extra
+// decimals cut off); null when it is not a positive number.
+const amountTextToBaseUnits = (text, decimals) => {
+    const t = String(text ?? '').trim().replace(/,/g, '');
+    if (!/^\d*\.?\d*$/.test(t) || t === '' || t === '.') return null;
+    try {
+        const v = parseAmountToBigInt(t, decimals);
+        return v > 0n ? v : null;
+    } catch {
+        return null;
+    }
+};
 
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
@@ -604,12 +617,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     };
 
     const splitNeuron = async (neuronIdHex) => {
-        if (!splitNeuronAmount || parseFloat(splitNeuronAmount) <= 0) {
+        const amountE8s = amountTextToBaseUnits(splitNeuronAmount, token.decimals);
+        if (amountE8s === null) {
             alert('Please enter a valid amount to split');
             return;
         }
-        
-        const amountE8s = BigInt(Math.floor(parseFloat(splitNeuronAmount) * Math.pow(10, token.decimals)));
         
         setNeuronActionBusy(true);
         setManagingNeuronId(neuronIdHex);
@@ -4348,7 +4360,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 />
                                 <button
                                     onClick={() => {
-                                        setIncreaseStakeAmount(formatAmount(maxStakeAmount, token.decimals));
+                                        setIncreaseStakeAmount(formatAmountRaw(maxStakeAmount, token.decimals));
                                     }}
                                     disabled={neuronActionBusy}
                                     style={{
@@ -4392,8 +4404,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         {increaseStakeAmount ? 
                                             (() => {
                                                 try {
-                                                    const stakeFloat = parseFloat(increaseStakeAmount);
-                                                    const stakeE8s = BigInt(Math.floor(stakeFloat * Math.pow(10, token.decimals)));
+                                                    const stakeE8s = amountTextToBaseUnits(increaseStakeAmount, token.decimals);
+                                                    if (stakeE8s === null) return '—';
                                                     const total = stakeE8s + tokenFee;
                                                     return `${formatAmount(total, token.decimals)} ${token.symbol}`;
                                                 } catch {
@@ -4430,12 +4442,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 <button
                                     onClick={() => {
                                         try {
-                                            const stakeFloat = parseFloat(increaseStakeAmount);
-                                            if (isNaN(stakeFloat) || stakeFloat <= 0) {
+                                            const stakeE8s = amountTextToBaseUnits(increaseStakeAmount, token.decimals);
+                                            if (stakeE8s === null) {
                                                 alert('Please enter a valid amount');
                                                 return;
                                             }
-                                            const stakeE8s = BigInt(Math.floor(stakeFloat * Math.pow(10, token.decimals)));
                                             const total = stakeE8s + tokenFee;
                                             if (total > maxAvailable) {
                                                 alert(`Insufficient balance. You need ${formatAmount(total, token.decimals)} ${token.symbol} (including fee) but only have ${formatAmount(maxAvailable, token.decimals)} ${token.symbol}`);
@@ -4481,7 +4492,10 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
 
                 if (!neuron) return null;
 
-                const stake = BigInt(neuron.cached_neuron_stake_e8s || 0n);
+                // Governance checks the split against the stake net of neuron fees
+                const cachedStake = BigInt(neuron.cached_neuron_stake_e8s || 0n);
+                const neuronFees = BigInt(neuron.neuron_fees_e8s || 0n);
+                const stake = cachedStake > neuronFees ? cachedStake - neuronFees : 0n;
                 const minStakeE8s = nervousSystemParameters?.neuron_minimum_stake_e8s?.[0] || 0n;
                 const transactionFeeE8s = nervousSystemParameters?.transaction_fee_e8s?.[0] || 0n;
                 
@@ -4599,7 +4613,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 />
                                 <button
                                     onClick={() => {
-                                        setSplitNeuronAmount(formatAmount(maxSplitAmount, token.decimals));
+                                        setSplitNeuronAmount(formatAmountRaw(maxSplitAmount, token.decimals));
                                     }}
                                     disabled={neuronActionBusy || maxSplitAmount === 0n}
                                     style={{
@@ -4658,12 +4672,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 <button
                                     onClick={() => {
                                         try {
-                                            const splitFloat = parseFloat(splitNeuronAmount);
-                                            if (isNaN(splitFloat) || splitFloat <= 0) {
+                                            const splitE8s = amountTextToBaseUnits(splitNeuronAmount, token.decimals);
+                                            if (splitE8s === null) {
                                                 alert('Please enter a valid amount');
                                                 return;
                                             }
-                                            const splitE8s = BigInt(Math.floor(splitFloat * Math.pow(10, token.decimals)));
                                             if (splitE8s < minSplitAmount) {
                                                 alert(`The split amount must be at least ${formatAmount(minSplitAmount, token.decimals)} ${token.symbol} (minimum stake + transaction fee)`);
                                                 return;
@@ -4828,7 +4841,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     />
                                     <button
                                         onClick={() => {
-                                            setCreateNeuronAmount(formatAmount(maxStakeAmount, token.decimals));
+                                            setCreateNeuronAmount(formatAmountRaw(maxStakeAmount, token.decimals));
                                         }}
                                         disabled={neuronActionBusy}
                                         style={{
@@ -4871,8 +4884,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             {createNeuronAmount ? 
                                                 (() => {
                                                     try {
-                                                        const stakeFloat = parseFloat(createNeuronAmount);
-                                                        const stakeE8s = BigInt(Math.floor(stakeFloat * Math.pow(10, token.decimals)));
+                                                        const stakeE8s = amountTextToBaseUnits(createNeuronAmount, token.decimals);
+                                                        if (stakeE8s === null) return '—';
                                                         const total = stakeE8s + tokenFee;
                                                         return `${formatAmount(total, token.decimals)} ${token.symbol}`;
                                                     } catch {
@@ -5145,12 +5158,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     onClick={() => {
                                         try {
                                             // Validate stake amount
-                                            const stakeFloat = parseFloat(createNeuronAmount);
-                                            if (isNaN(stakeFloat) || stakeFloat <= 0) {
+                                            const stakeE8s = amountTextToBaseUnits(createNeuronAmount, token.decimals);
+                                            if (stakeE8s === null) {
                                                 alert('Please enter a valid stake amount');
                                                 return;
                                             }
-                                            const stakeE8s = BigInt(Math.floor(stakeFloat * Math.pow(10, token.decimals)));
                                             
                                             // Check minimum stake
                                             if (stakeE8s < minStakeE8s) {

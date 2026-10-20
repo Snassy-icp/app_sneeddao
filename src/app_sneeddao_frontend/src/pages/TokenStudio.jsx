@@ -91,7 +91,8 @@ function TokenStudio({ intent = null }) {
     const navigate = useNavigate();
     const { ledgerId: routeLedger, tab: routeTab } = useParams();
     const [searchParams] = useSearchParams();
-    const isLaunch = routeLedger === 'launch' || (!routeLedger && !intent);
+    // Bare /studio opens on Check (the safety report); Launch only at /studio/launch
+    const isLaunch = routeLedger === 'launch';
     const isIndexPicker = routeLedger === 'index';
     const ledgerId = !isLaunch && !isIndexPicker && parsePrincipal(routeLedger) ? routeLedger : null;
     const tab = isLaunch ? 'launch' : isIndexPicker ? 'index' : ['harden', 'handover', 'index'].includes(routeTab) ? routeTab : (!ledgerId && intent) ? intent : 'check';
@@ -166,6 +167,9 @@ function TokenStudio({ intent = null }) {
                     <div style={{ display: tab === 'check' ? 'block' : 'none' }}>
                         <CheckPanel ledgerId={ledgerId} onRating={onRating} indexOverride={indexOverride} />
                     </div>
+                )}
+                {!ledgerId && tab === 'check' && (
+                    <div style={{ ...card, color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Pick a token above, or paste any ledger canister id, to get its safety report.</div>
                 )}
                 {ledgerId && tab === 'harden' && <HardenPanel ledgerId={ledgerId} header={header} theme={theme} />}
                 {/* Launch, index and hand-over open once the custody canisters are live (admins preview them) */}

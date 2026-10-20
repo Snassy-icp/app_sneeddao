@@ -4,6 +4,7 @@ import './SendTokenModal.css';
 import { Principal } from "@dfinity/principal";
 import { HttpAgent } from "@dfinity/agent";
 import { formatAmount, formatAmountRaw, parseAmountToBigInt } from './utils/StringUtils';
+import { maxSendable, planSend, planFeeCount } from './utils/sendPlan';
 import { useTheme } from './contexts/ThemeContext';
 import PrincipalInput from './components/PrincipalInput';
 import { PrincipalDisplay } from './utils/PrincipalUtils';
@@ -197,13 +198,12 @@ function SendTokenModal({ show, onClose, onSend, token }) {
     }
   }, [reviewData]);
 
+  // MAX = what each source (wallet, Sneed Lock subaccount) can give after its
+  // own transfer fee; the same plan decides the split when sending.
+  // ICP sends to an account id are legacy transfers from the wallet only.
   const handleSetMax = () => {
-    const willNeedSplit = token.available > token.balance;
-    const feesNeeded = willNeedSplit ? 2n * token.fee : token.fee;
-
-    var max = token.available - feesNeeded;
-    if (max < 0n) { max = 0n; }
-    setAmount(formatAmountRaw(max, token.decimals));
+    const frontendOnly = !!(isICP && detectedAccountId);
+    setAmount(formatAmountRaw(maxSendable(token, { frontendOnly }), token.decimals));
   };
 
   const handleConvertToExtendedAddress = () => {
@@ -280,17 +280,16 @@ function SendTokenModal({ show, onClose, onSend, token }) {
       return;
     }
 
-    const willNeedSplit = token.available > token.balance;
-    const feesNeeded = willNeedSplit ? 2n * BigInt(token.fee) : BigInt(token.fee);
-    const maxAllowed = BigInt(token.available) - feesNeeded;
-
-    if (bigIntAmount > maxAllowed) {
-      const feeMsg = willNeedSplit ?
-        "Remember that sending requires 2 transaction fees when splitting between wallets." :
-        "Remember that sending requires 1 transaction fee.";
-      setErrorText(`Insufficient available balance! ${feeMsg}`);
+    const plan = planSend(token, bigIntAmount, { frontendOnly: !!isAccountIdSend });
+    if (!plan) {
+      const maxAllowed = maxSendable(token, { frontendOnly: !!isAccountIdSend });
+      const feeMsg = isAccountIdSend
+        ? "Sends to an ICP account ID come from your wallet only and pay 1 transaction fee."
+        : "Each transfer pays a fee: 1 when sending from one source, 2 when the send is split between your wallet and your Sneed Lock balance.";
+      setErrorText(`Insufficient available balance! The most you can send is ${formatAmountRaw(maxAllowed, token.decimals)} ${token.symbol}. ${feeMsg}`);
       return;
     }
+    const feeTotal = BigInt(token.fee) * BigInt(planFeeCount(plan));
 
     if (isAccountIdSend) {
       // Account ID send (ICP only, legacy transfer)
@@ -301,7 +300,8 @@ function SendTokenModal({ show, onClose, onSend, token }) {
         accountId: detectedAccountId,
         amount: amount,
         amountBigInt: bigIntAmount,
-        fee: token.fee,
+        fee: feeTotal,
+        feeCount: planFeeCount(plan),
         subaccountForTransfer: []
       });
     } else {
@@ -319,7 +319,8 @@ function SendTokenModal({ show, onClose, onSend, token }) {
         accountId: recipientAccountId || null,
         amount: amount,
         amountBigInt: bigIntAmount,
-        fee: token.fee,
+        fee: feeTotal,
+        feeCount: planFeeCount(plan),
         subaccountForTransfer
       });
     }
@@ -543,7 +544,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
               color: theme.colors.mutedText,
               fontSize: '0.75rem'
             }}>
-              + {formatAmount(reviewData.fee, token.decimals)} {token.symbol} fee
+              + {formatAmount(reviewData.fee, token.decimals)} {token.symbol} {reviewData.feeCount > 1 ? `fees (${reviewData.feeCount} transfers: Sneed Lock balance and wallet)` : 'fee'}
             </div>
           </div>
 
@@ -1550,7 +1551,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
             color: theme.colors.secondaryText,
             fontSize: '0.9rem'
           }}>
-            Fee: {formatAmount(token.fee, token.decimals)} {token.symbol}
+            Fee: {formatAmount(token.fee, token.decimals)} {token.symbol} per transfer · Max you can send: {formatAmountRaw(maxSendable(token, { frontendOnly: !!(isICP && detectedAccountId) }), token.decimals)} {token.symbol}
           </label>
         </div>
 

@@ -10,6 +10,7 @@ import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import Header from '../components/Header';
 import TokenSelector from '../components/TokenSelector';
 import { useTheme } from '../contexts/ThemeContext';
+import { formatAmountRaw } from '../utils/StringUtils';
 import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
@@ -4379,8 +4380,9 @@ function IcpNeuronManager() {
                                             <button
                                                 onClick={() => {
                                                     if (userIcpBalance) {
-                                                        const maxAmount = Math.max(0, (userIcpBalance - ICP_FEE * 2) / E8S);
-                                                        setTopUpAmount(maxAmount.toFixed(4));
+                                                        // The top-up is one ICP transfer to the CMC: balance minus one fee, exact
+                                                        const maxE8s = BigInt(userIcpBalance) - BigInt(ICP_FEE);
+                                                        setTopUpAmount(maxE8s > 0n ? formatAmountRaw(maxE8s, 8) : '0');
                                                     }
                                                 }}
                                                 disabled={toppingUp || !userIcpBalance}

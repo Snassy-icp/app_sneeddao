@@ -523,7 +523,7 @@ export default function Premium() {
                 const err = purchaseResult.err;
                 let errorMessage = 'Purchase failed after transfer';
                 if ('InsufficientPayment' in err) {
-                    errorMessage = `Unexpected error: deposit not detected. Please try "Complete Purchase" button.`;
+                    errorMessage = `Your ICP was sent, but the purchase found no deposit to use; it may already have been applied (for example from another tab). Refresh this page and check your membership status before pressing "Pay Now" again.`;
                 } else if ('InternalError' in err) {
                     errorMessage = err.InternalError;
                 } else {

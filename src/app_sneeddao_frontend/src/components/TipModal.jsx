@@ -6,6 +6,7 @@ import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/P
 import { NamingContext } from '../NamingContext';
 import { get_token_conversion_rate } from '../utils/TokenUtils';
 import { useDenomination } from '../contexts/DenominationContext';
+import { formatAmountRaw, parseAmountToBigInt } from '../utils/StringUtils';
 
 // Add CSS animations
 const animationStyles = `
@@ -588,9 +589,16 @@ const TipModal = ({
         return Number(maxInSmallestUnit) / Math.pow(10, decimals);
     };
 
+    // Balance minus the one transfer fee, as exact digits (a float's toString can
+    // round up or print an exponent)
     const handleMaxClick = () => {
-        const maxAmount = getMaxAmount();
-        setAmount(maxAmount.toString());
+        if (!selectedToken || !tokenBalances[selectedToken] || !tokenMetadata[selectedToken]) {
+            setAmount('0');
+            return;
+        }
+        const balance = BigInt(tokenBalances[selectedToken]);
+        const fee = BigInt(tokenMetadata[selectedToken].fee);
+        setAmount(balance > fee ? formatAmountRaw(balance - fee, tokenMetadata[selectedToken].decimals) : '0');
     };
 
     const handleSubmit = async (e) => {
@@ -623,14 +631,26 @@ const TipModal = ({
             symbol
         });
 
-        // Convert amount to smallest unit (e.g., e8s for ICP)
-        const amountInSmallestUnit = Math.floor(parseFloat(amount) * Math.pow(10, decimals));
+        // Convert amount to smallest unit (e.g., e8s for ICP) by string parsing, no float math
+        let amountInSmallestUnit;
+        try {
+            const t = String(amount).trim();
+            if (!/^\d*\.?\d*$/.test(t)) throw new Error('not a number');
+            amountInSmallestUnit = parseAmountToBigInt(t, decimals);
+        } catch {
+            setError('Please enter a valid amount');
+            return;
+        }
+        if (amountInSmallestUnit <= 0n) {
+            setError('Please enter a valid amount');
+            return;
+        }
 
         // Check balance from our fetched balances
         const currentBalance = tokenBalances[selectedToken] || BigInt(0);
         
         // We need to account for transaction fees
-        const totalNeeded = BigInt(amountInSmallestUnit) + tokenFee;
+        const totalNeeded = amountInSmallestUnit + BigInt(tokenFee);
         
         console.log('Balance check:', {
             amountInSmallestUnit,

@@ -14,7 +14,7 @@ import { resolveTokenLogo } from '../utils/TokenUtils';
 import TokenSelector from '../components/TokenSelector';
 import SwapPoolPicker, { SwapPoolSummary, describeSwapPool } from '../components/SwapPoolPicker';
 import PositionTransferGuide, { WalletPrincipalBox } from '../components/PositionTransferGuide';
-import { formatAmount } from '../utils/StringUtils';
+import { formatAmount, formatAmountRaw, parseAmountToBigInt } from '../utils/StringUtils';
 import { get_short_timezone, format_duration, dateToReadable, getInitialExpiry } from '../utils/DateUtils';
 import { formatNsDuration } from '../utils/lockTime';
 import ConfirmationModal from '../ConfirmationModal';
@@ -254,9 +254,37 @@ function LockWizard() {
     // Parse the amount typed in step 3 as e8s-style integer (0n when not valid yet)
     const parsedLockAmount = () => {
         if (lockType !== 'token' || !selectedToken) return 0n;
-        const amountFloat = parseFloat(lockAmount);
-        if (isNaN(amountFloat) || amountFloat <= 0) return 0n;
-        return BigInt(Math.floor(amountFloat * (10 ** selectedToken.decimals)));
+        return lockAmountToBaseUnits() ?? 0n;
+    };
+
+    // The typed lock amount in base units by string parsing (no float math, commas
+    // ignored, extra decimals cut off); null when it is not a positive number.
+    const lockAmountToBaseUnits = () => {
+        if (!selectedToken) return null;
+        const t = String(lockAmount ?? '').trim().replace(/,/g, '');
+        if (!/^\d*\.?\d*$/.test(t) || t === '' || t === '.') return null;
+        try {
+            const v = parseAmountToBigInt(t, selectedToken.decimals);
+            return v > 0n ? v : null;
+        } catch {
+            return null;
+        }
+    };
+
+    // Most that can be locked: the unlocked Sneed Lock balance, plus what the wallet
+    // can deposit after the one deposit fee. When locking ICP with a lock fee still
+    // to pay, keep that fee and its transfer fee in the wallet as well.
+    const maxLockable = () => {
+        if (!selectedToken) return 0n;
+        const backend = BigInt(selectedToken.available_backend);
+        let walletPart = BigInt(selectedToken.available) - backend - BigInt(selectedToken.fee);
+        if (selectedToken.ledgerId === ICP_LEDGER_ID) {
+            const fee = BigInt(requiredFee);
+            const need = fee > paymentBalance ? fee - paymentBalance : 0n;
+            if (need > 0n) walletPart -= need + ICP_TX_FEE;
+        }
+        const max = backend + (walletPart > 0n ? walletPart : 0n);
+        return max > 0n ? max : 0n;
     };
 
     // Decide where the ICP for the lock fee comes from. The Sneed wallet's ICP (the user's
@@ -685,15 +713,8 @@ function LockWizard() {
     const handleSetMax = () => {
         if (!selectedToken) return;
         
-        let max = selectedToken.available_backend;
-        if (selectedToken.available > selectedToken.available_backend) {
-            let frontendMax = selectedToken.available - selectedToken.available_backend - selectedToken.fee;
-            if (frontendMax < 0n) frontendMax = 0n;
-            max += frontendMax;
-        }
-        if (max < 0n) max = 0n;
-        
-        setLockAmount(formatAmount(max, selectedToken.decimals));
+        // Plain digits (formatAmount adds thousands commas, which parseFloat cut short)
+        setLockAmount(formatAmountRaw(maxLockable(), selectedToken.decimals));
     };
 
     const validateLock = () => {
@@ -705,17 +726,18 @@ function LockWizard() {
                 return false;
             }
             
-            const amountFloat = parseFloat(lockAmount);
-            if (isNaN(amountFloat) || amountFloat <= 0) {
+            const bigIntAmount = lockAmountToBaseUnits();
+            if (bigIntAmount === null) {
                 setLockError("Please enter a valid positive amount.");
                 return false;
             }
             
-            const scaledAmount = amountFloat * (10 ** selectedToken.decimals);
-            const bigIntAmount = BigInt(Math.floor(scaledAmount));
-            
-            if (bigIntAmount > selectedToken.available) {
-                setLockError("Insufficient available balance.");
+            // Beyond the unlocked Sneed Lock balance, the rest is deposited from the
+            // wallet, which costs one ledger fee.
+            const backend = BigInt(selectedToken.available_backend);
+            if (bigIntAmount > backend
+                && bigIntAmount - backend + BigInt(selectedToken.fee) > BigInt(selectedToken.available) - backend) {
+                setLockError(`Insufficient available balance (moving tokens from your wallet into Sneed Lock costs a ${formatAmountRaw(selectedToken.fee, selectedToken.decimals)} ${selectedToken.symbol} fee). The most you can lock is ${formatAmountRaw(maxLockable(), selectedToken.decimals)} ${selectedToken.symbol}.`);
                 return false;
             }
         }
@@ -841,9 +863,8 @@ function LockWizard() {
         const ledgerActor = createLedgerActor(selectedToken.ledgerId, { agentOptions: { identity } });
         const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
         
-        const amountFloat = parseFloat(lockAmount);
-        const scaledAmount = amountFloat * (10 ** selectedToken.decimals);
-        const bigIntAmount = BigInt(Math.floor(scaledAmount));
+        const bigIntAmount = lockAmountToBaseUnits();
+        if (bigIntAmount === null) throw new Error('Invalid lock amount');
         const amountToSendToBackend = bigIntAmount - backendAvailable;
         
         // Transfer to backend if needed

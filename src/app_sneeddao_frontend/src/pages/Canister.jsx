@@ -5,6 +5,7 @@ import CardTopUpLink from '../components/CardTopUpLink';
 import Header from '../components/Header';
 import PrincipalInput from '../components/PrincipalInput';
 import { useTheme } from '../contexts/ThemeContext';
+import { formatAmountRaw } from '../utils/StringUtils';
 import { Principal } from '@dfinity/principal';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { getCanisterInfo, setCanisterName, setPrincipalNickname } from '../utils/BackendUtils';
@@ -2095,9 +2096,9 @@ export default function CanisterPage() {
                                                 <button
                                                     onClick={() => {
                                                         if (userIcpBalance) {
-                                                            // Max is balance minus fee, with a small buffer
-                                                            const maxAmount = Math.max(0, (userIcpBalance - ICP_FEE * 2) / E8S);
-                                                            setTopUpAmount(maxAmount.toFixed(4));
+                                                            // The top-up is one ICP transfer to the CMC: balance minus one fee, exact
+                                                            const maxE8s = BigInt(userIcpBalance) - BigInt(ICP_FEE);
+                                                            setTopUpAmount(maxE8s > 0n ? formatAmountRaw(maxE8s, 8) : '0');
                                                         }
                                                     }}
                                                     disabled={toppingUp || !userIcpBalance}

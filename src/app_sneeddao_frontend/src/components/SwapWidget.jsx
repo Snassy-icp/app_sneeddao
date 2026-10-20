@@ -369,13 +369,14 @@ function filterMatchingAuctions(auctions, inputToken, outputToken) {
 
 /**
  * Build "buyout quotes" from matching auctions that qualify as better-than-swap deals.
- * Qualifying: has buyout_price, buyout_price <= inputAmount, rate > best swap rate.
+ * Qualifying: has buyout_price, buyout_price + one input transfer fee <= inputAmount, rate > best swap rate.
+ * (The buyout transfers buyout_price to the bid escrow, which costs buyout_price + fee.)
  *
  * @returns {{ qualifyingBuyouts: Array, allBuyouts: Array }}
  *   qualifyingBuyouts: sorted by rate desc, each with { offer, outputAmount, buyoutPrice, rate }
  *   allBuyouts: same but without the rate filter (for ads section)
  */
-function buildBuyoutQuotes(matchingAuctions, inputAmount, outputToken, bestSwapRate, inputDecimals, outputDecimals) {
+function buildBuyoutQuotes(matchingAuctions, inputAmount, outputToken, bestSwapRate, inputDecimals, outputDecimals, inputFee = 0n) {
   const all = [];
   for (const offer of matchingAuctions) {
     if (!offer.buyout_price?.[0]) continue;
@@ -402,8 +403,9 @@ function buildBuyoutQuotes(matchingAuctions, inputAmount, outputToken, bestSwapR
   // Sort by rate descending (best deal first)
   all.sort((a, b) => b.rate - a.rate);
 
-  // Filter qualifying: buyout_price <= inputAmount AND rate > bestSwapRate
-  const qualifying = all.filter(b => b.buyoutPrice <= inputAmount && b.rate > bestSwapRate);
+  // Filter qualifying: buyout_price + transfer fee <= inputAmount AND rate > bestSwapRate
+  const fee = BigInt(inputFee || 0n);
+  const qualifying = all.filter(b => b.buyoutPrice + fee <= inputAmount && b.rate > bestSwapRate);
 
   return { qualifyingBuyouts: qualifying, allBuyouts: all };
 }
@@ -866,13 +868,16 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
     let totalBuyoutOutput = 0n;
     let totalBuyoutCost = 0n;
 
+    // Each buyout is its own transfer to a bid escrow: it costs the price plus one fee.
+    // (Swap quotes already count their fees inside the input amount.)
+    const buyoutFee = BigInt(inputTokenInfo.fee || 0n);
     for (const b of auctionBuyouts.qualifyingBuyouts) {
       if (remaining <= 0n) break;
-      if (b.buyoutPrice > remaining) continue; // Can't afford this one
+      if (b.buyoutPrice + buyoutFee > remaining) continue; // Can't afford this one
       usedBuyouts.push(b);
       totalBuyoutCost += b.buyoutPrice;
       totalBuyoutOutput += b.outputAmount;
-      remaining -= b.buyoutPrice;
+      remaining -= b.buyoutPrice + buyoutFee;
     }
 
     if (usedBuyouts.length === 0) return null;
@@ -1181,6 +1186,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
     const result = buildBuyoutQuotes(
       matchingAuctions, inputAmount, outputToken,
       bestSwapRate, inputTokenInfo.decimals, outputTokenInfo.decimals,
+      inputTokenInfo.fee,
     );
     setAuctionBuyouts(result);
   }, [matchingAuctions, quotes, inputAmountStr, inputTokenInfo, outputTokenInfo, outputToken]);

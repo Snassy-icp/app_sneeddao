@@ -14,12 +14,12 @@ import {
     getBidStateString,
     getAssetType,
     getErrorMessage,
-    parseAmount,
     calculateUsdValue,
     SNEEDEX_CANISTER_ID
 } from '../utils/SneedexUtils';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { formatAmountRaw, parseAmountToBigInt } from '../utils/StringUtils';
 import priceService from '../services/PriceService';
 import { Principal } from '@dfinity/principal';
 import { fetchAndCacheSnsData, getAllSnses } from '../utils/SnsUtils';
@@ -656,7 +656,7 @@ function SneedexMy() {
         }
     };
     
-    const handleWithdrawExcess = async (bid, escrowBalance) => {
+    const handleWithdrawExcess = async (bid, escrowBalance, priceLedgerId) => {
         if (!identity) return;
         
         const excess = escrowBalance - bid.amount;
@@ -665,18 +665,42 @@ function SneedexMy() {
             return;
         }
         
+        // The withdrawal is a ledger transfer out of the escrow, which costs one fee on top
+        // of the amount; for a confirmed bid Sneedex also keeps bid + one fee there for the
+        // later payout. So the most that can leave is escrow - (bid + fee) - fee.
+        const { decimals, symbol } = priceLedgerId ? getTokenInfo(priceLedgerId) : { decimals: 8, symbol: 'tokens' };
+        let fee = 0n;
+        try {
+            if (priceLedgerId) fee = BigInt(await createLedgerActor(priceLedgerId, { agentOptions: { identity } }).icrc1_fee());
+        } catch (e) {
+            console.warn('Could not load the ledger fee:', e);
+        }
+        const reserve = bid.tokens_escrowed ? bid.amount + fee : 0n;
+        const maxRaw = escrowBalance > reserve + fee ? escrowBalance - reserve - fee : 0n;
+        if (maxRaw <= 0n) {
+            showInfo('The excess in escrow does not cover the transfer fee', 'warning');
+            return;
+        }
+        
         // Ask user how much to withdraw
-        const maxWithdrawable = Number(excess) / 1e8;
+        const maxText = formatAmountRaw(maxRaw, decimals);
         const amountStr = window.prompt(
-            `How much to withdraw?\nExcess available: ${maxWithdrawable.toFixed(8)} tokens\n(Leave some for potential fees if needed)`,
-            maxWithdrawable.toFixed(8)
+            `How much to withdraw?\nAvailable after fees: ${maxText} ${symbol}`,
+            maxText
         );
         
         if (!amountStr) return;
         
-        const withdrawAmount = parseAmount(parseFloat(amountStr), 8);
-        if (withdrawAmount <= 0n || withdrawAmount > excess) {
-            showInfo(`Invalid amount. Max: ${maxWithdrawable.toFixed(8)}`, 'error');
+        let withdrawAmount;
+        try {
+            const t = amountStr.trim();
+            if (!/^\d*\.?\d*$/.test(t)) throw new Error('not a number');
+            withdrawAmount = parseAmountToBigInt(t, decimals);
+        } catch {
+            withdrawAmount = 0n;
+        }
+        if (withdrawAmount <= 0n || withdrawAmount > maxRaw) {
+            showInfo(`Invalid amount. Max: ${maxText} ${symbol}`, 'error');
             return;
         }
         
@@ -1759,7 +1783,7 @@ function SneedexMy() {
                                                         background: theme.colors.success,
                                                         color: theme.colors.primaryBg
                                                     }}
-                                                    onClick={() => handleWithdrawExcess(bid, escrowBalance)}
+                                                    onClick={() => handleWithdrawExcess(bid, escrowBalance, offerInfo?.price_token_ledger)}
                                                     disabled={actionLoading === `withdraw-${bid.id}`}
                                                 >
                                                     {actionLoading === `withdraw-${bid.id}` ? 'Processing...' : 'Withdraw'}

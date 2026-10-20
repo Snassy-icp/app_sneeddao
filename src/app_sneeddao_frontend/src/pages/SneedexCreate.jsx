@@ -714,6 +714,7 @@ function SneedexCreate() {
     const [newAssetTokenDecimals, setNewAssetTokenDecimals] = useState('8');
     const [newAssetTokenLogo, setNewAssetTokenLogo] = useState('');
     const [newAssetTokenBalance, setNewAssetTokenBalance] = useState(null);
+    const [newAssetTokenFee, setNewAssetTokenFee] = useState(null); // icrc1_fee of the selected asset token
     // ICRC-7 NFT asset: a collection and the token ids to sell (picked from what the wallet owns, or typed)
     const [newAssetNftCollection, setNewAssetNftCollection] = useState('');
     const [newAssetNftTokens, setNewAssetNftTokens] = useState([]); // strings
@@ -823,14 +824,20 @@ function SneedexCreate() {
             }
             
             const ledgerActor = createLedgerActor(ledgerId, { agent });
-            const balance = await ledgerActor.icrc1_balance_of({
-                owner: identity.getPrincipal(),
-                subaccount: [],
-            });
+            setNewAssetTokenFee(null);
+            const [balance, fee] = await Promise.all([
+                ledgerActor.icrc1_balance_of({
+                    owner: identity.getPrincipal(),
+                    subaccount: [],
+                }),
+                ledgerActor.icrc1_fee().catch(() => null),
+            ]);
             setNewAssetTokenBalance(balance);
+            setNewAssetTokenFee(fee);
         } catch (e) {
             console.error('Failed to fetch token balance:', e);
             setNewAssetTokenBalance(null);
+            setNewAssetTokenFee(null);
         } finally {
             setLoadingTokenBalance(false);
         }
@@ -4790,7 +4797,8 @@ function SneedexCreate() {
                                                             onClick={() => {
                                                                 const decimals = parseInt(newAssetTokenDecimals) || 8;
                                                                 const token = whitelistedTokens.find(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)) === newAssetTokenLedger);
-                                                                const fee = token?.fee ? BigInt(token.fee) : 10000n;
+                                                                // The escrow is one transfer: leave the ledger's own fee (custom tokens are not in the whitelist)
+                                                                const fee = newAssetTokenFee != null ? BigInt(newAssetTokenFee) : token?.fee ? BigInt(token.fee) : 10000n;
                                                                 const maxAmount = BigInt(newAssetTokenBalance) - fee;
                                                                 if (maxAmount > 0n) {
                                                                     setNewAssetTokenAmount(formatAmountRaw(maxAmount, decimals));

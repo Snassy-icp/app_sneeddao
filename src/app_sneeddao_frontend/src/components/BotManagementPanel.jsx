@@ -30,6 +30,7 @@ import { createActor as createFactoryActor, canisterId as factoryCanisterId } fr
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import { useTheme } from '../contexts/ThemeContext';
+import { formatAmountRaw } from '../utils/StringUtils';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import PrincipalInput from './PrincipalInput';
@@ -1886,8 +1887,9 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                                     placeholder="0.0" disabled={toppingUp} style={inputStyle} />
                                                 <button onClick={() => {
                                                     if (userIcpBalance) {
-                                                        const maxAmount = Math.max(0, (userIcpBalance - ICP_FEE * 2) / E8S);
-                                                        setTopUpAmount(maxAmount.toFixed(4));
+                                                        // The top-up is one ICP transfer to the CMC: balance minus one fee, exact
+                                                        const maxE8s = BigInt(userIcpBalance) - BigInt(ICP_FEE);
+                                                        setTopUpAmount(maxE8s > 0n ? formatAmountRaw(maxE8s, 8) : '0');
                                                     }
                                                 }} disabled={toppingUp || !userIcpBalance}
                                                     style={{ ...secondaryButtonStyle, padding: '10px 12px' }}>MAX</button>

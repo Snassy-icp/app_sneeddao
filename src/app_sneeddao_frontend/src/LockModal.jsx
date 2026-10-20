@@ -281,16 +281,26 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
         // frontend_available: available - backend_available
         // max: backend_available + frontend_available - fee
 
-        var max = token.available_backend;
-        if (token.available > token.available_backend) {
-            var frontend_max = (token.available - token.available_backend - token.fee);
-            if (frontend_max < 0n) { frontend_max = 0n; }
-            max += frontend_max;
-        }
+        // The deposit from the wallet pays one fee; when locking ICP, the lock
+        // fee payment (also ICP, from the wallet, plus its transfer fee) goes first.
+        var max = BigInt(token.available_backend);
+        const walletPart = BigInt(token.available) - BigInt(token.available_backend);
+        var frontend_max = walletPart - BigInt(token.fee) - icpLockPaymentCost();
+        if (frontend_max > 0n) { max += frontend_max; }
 
         if (max < 0n) { max = 0n; }
         setNewLockAmount(formatAmountRaw(max, token.decimals));
     };
+
+    // ICP the lock fee payment takes from the wallet before the deposit, when
+    // the locked token is ICP itself (0 otherwise).
+    function icpLockPaymentCost() {
+        const ledgerId = token?.ledger_canister_id?.toText?.() || token?.ledger_canister_id?.toString?.() || token?.principal || '';
+        if (ledgerId !== ICP_LEDGER_ID) return 0n;
+        const fee = BigInt(requiredFee);
+        if (fee === 0n || paymentBalance >= fee) return 0n;
+        return fee - paymentBalance + 10_000n;
+    }
     
     // Helper function to pay the fee
     const payFeeIfNeeded = async () => {
@@ -372,7 +382,7 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
         }
 
         if (bigIntAmount > token.available_backend) {
-            if (bigIntAmount > BigInt(token.available) - BigInt(token.fee)) {
+            if (bigIntAmount > BigInt(token.available) - BigInt(token.fee) - icpLockPaymentCost()) {
                 setErrorText("Insufficient available balance! Please enter an amount less than or equal to your available balance.");
                 return;
             }

@@ -14,6 +14,14 @@ import { useNeuronsOptional } from '../contexts/NeuronsContext';
 import { useAuth } from '../AuthContext';
 import { fetchAndCacheSnsData, getSnsById, fetchSnsLogo } from '../utils/SnsUtils';
 import { formatAmount } from '../utils/SneedexUtils';
+import { formatAmountRaw, parseAmountToBigInt } from '../utils/StringUtils';
+
+// Amount text to base units by string parsing (no float math, extra decimals cut off); null when not a number.
+const toBaseUnits = (text, decimals) => {
+    const t = String(text ?? '').trim();
+    if (!/^\d*\.?\d*$/.test(t) || t === '' || t === '.') return null;
+    try { return parseAmountToBigInt(t, decimals); } catch { return null; }
+};
 
 // Custom CSS for animations
 const customStyles = `
@@ -386,8 +394,8 @@ export default function SnsNeuronWizard() {
         setStakingProgress('Registering token...');
         
         try {
-            const amountFloat = parseFloat(stakeAmount);
-            const amountE8s = BigInt(Math.floor(amountFloat * (10 ** tokenDecimals)));
+            const amountE8s = toBaseUnits(stakeAmount, tokenDecimals);
+            if (amountE8s === null || amountE8s <= 0n) throw new Error('Invalid stake amount');
             const dissolveDelaySeconds = dissolveDelayDays ? Number(dissolveDelayDays) * 24 * 60 * 60 : 0;
             
             // Step 1: Register token silently
@@ -518,22 +526,21 @@ export default function SnsNeuronWizard() {
             errors.push('Enter stake amount');
             return { valid: false, errors };
         }
-        const amount = parseFloat(stakeAmount);
-        if (isNaN(amount) || amount <= 0) {
+        // Amount in base units (string parsing, no float rounding)
+        const amountE8s = toBaseUnits(stakeAmount, tokenDecimals);
+        if (amountE8s === null || amountE8s <= 0n) {
             errors.push('Stake amount must be greater than 0');
             return { valid: false, errors };
         }
-        
-        // Calculate amount in e8s
-        const amountE8s = BigInt(Math.floor(amount * (10 ** tokenDecimals)));
         
         // Must have sufficient balance
         if (tokenBalance === null) {
             errors.push('Loading balance...');
             return { valid: false, errors };
         }
-        if (amountE8s > tokenBalance) {
-            errors.push('Insufficient balance');
+        // The transfer to the neuron account costs amount + one ledger fee
+        if (amountE8s + tokenFee > tokenBalance) {
+            errors.push(`Insufficient balance (amount + ${formatAmountRaw(tokenFee, tokenDecimals)} ${tokenSymbol} fee)`);
             return { valid: false, errors };
         }
         
@@ -568,17 +575,15 @@ export default function SnsNeuronWizard() {
         }
         
         return { valid: true, errors: [] };
-    }, [stakeAmount, tokenDecimals, tokenBalance, minStakeE8s, dissolveDelayDays, minDissolveDelaySeconds, maxDissolveDelaySeconds, tokenSymbol]);
+    }, [stakeAmount, tokenDecimals, tokenBalance, tokenFee, minStakeE8s, dissolveDelayDays, minDissolveDelaySeconds, maxDissolveDelaySeconds, tokenSymbol]);
     
     const canProceedStep2 = step2Validation.valid;
 
+    // The stake is one icrc1_transfer to the neuron account: leave room for its fee.
     const handleSetMax = () => {
         if (tokenBalance === null) return;
-        if (tokenBalance <= 0n) {
-            setStakeAmount('0');
-        } else {
-            setStakeAmount(formatAmount(tokenBalance, tokenDecimals));
-        }
+        const max = tokenBalance - tokenFee;
+        setStakeAmount(max > 0n ? formatAmountRaw(max, tokenDecimals) : '0');
     };
 
     const handleSnsSelect = (sns) => {
@@ -1267,8 +1272,8 @@ export default function SnsNeuronWizard() {
             </div>
                     {stakeAmount && minStakeE8s !== null && (
                         (() => {
-                            const amountE8s = BigInt(Math.floor(parseFloat(stakeAmount) * (10 ** tokenDecimals)));
-                            if (amountE8s < minStakeE8s) {
+                            const amountE8s = toBaseUnits(stakeAmount, tokenDecimals);
+                            if (amountE8s !== null && amountE8s < minStakeE8s) {
                                 return (
                                     <div style={{ marginTop: '6px', fontSize: '0.85rem', color: theme.colors.error }}>
                                         ⚠️ Below minimum stake of {formatAmount(minStakeE8s, tokenDecimals)} {tokenSymbol}

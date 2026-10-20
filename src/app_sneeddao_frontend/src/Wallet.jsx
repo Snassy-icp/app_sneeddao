@@ -37,6 +37,7 @@ import DappCardModal from './components/DappCardModal';
 import PositionCardModal from './components/PositionCardModal';
 import PositionCard from './PositionCard';
 import { get_available, get_available_backend, getTokenLogo, resolveTokenLogo, get_token_conversion_rate, get_token_icp_rate, getTokenTVL, getTokenMetaForSwap, rewardAmountOrZero, availableOrZero } from './utils/TokenUtils';
+import { planSend } from './utils/sendPlan';
 import { registerTrackedCanister, unregisterTrackedCanister, getCanisterInfo } from './utils/BackendUtils';
 import { getPositionTVL, isLockedPosition } from "./utils/PositionUtils";
 import { principalText } from './utils/IdUtils';
@@ -3557,94 +3558,12 @@ function Wallet() {
 
     // Note: Total ICP value from manager neurons is now calculated in WalletContext
 
+    // Split a send between the Sneed Lock subaccount and the wallet; each
+    // transfer pays its own fee (see utils/sendPlan.js). Zero amounts mean the
+    // send cannot be made.
     const calc_send_amounts = (token, amount) => {
-        console.log('=== calc_send_amounts START ===');
-        
-        var send_from_frontend = BigInt(0);
-        var send_from_backend = BigInt(0);
-        const avail_backend = get_available_backend(token);
-        const avail_tot = BigInt(get_available(token));
-        const full_amount = amount + BigInt(token.fee);
-        const fuller_amount = full_amount + BigInt(token.fee);
-        
-        console.log('calc_send_amounts values:', {
-            amount: amount.toString(),
-            tokenFee: token.fee.toString(),
-            tokenBalance: token.balance.toString(),
-            tokenAvailable: token.available.toString(),
-            avail_backend: avail_backend.toString(),
-            avail_tot: avail_tot.toString(),
-            full_amount: full_amount.toString(),
-            fuller_amount: fuller_amount.toString()
-        });
-        
-        // New logic: Try backend first, then frontend, then split
-        const backendUsable = avail_backend - BigInt(token.fee); // Backend balance minus 1 tx fee
-        const frontendUsable = BigInt(token.balance) - BigInt(token.fee); // Frontend balance minus 1 tx fee
-        
-        console.log('Send logic calculations:', {
-            amount: amount.toString(),
-            backendBalance: avail_backend.toString(),
-            frontendBalance: token.balance.toString(),
-            backendUsable: backendUsable.toString(),
-            frontendUsable: frontendUsable.toString(),
-            txFee: token.fee.toString()
-        });
-
-        if (amount <= backendUsable && backendUsable > 0n) {
-            // Rule 1: Send entirely from backend
-            send_from_backend = amount;
-            console.log('Rule 1: Sending entirely from backend:', amount.toString());
-            
-        } else if (amount <= frontendUsable && frontendUsable > 0n) {
-            // Rule 2: Send entirely from frontend  
-            send_from_frontend = amount;
-            console.log('Rule 2: Sending entirely from frontend:', amount.toString());
-            
-        } else {
-            // Rule 3: Split send - backend first, then frontend
-            console.log('Rule 3: Need to split send');
-            
-            if (backendUsable > 0n) {
-                send_from_backend = backendUsable; // Send max possible from backend
-                const remaining = amount - backendUsable;
-                
-                if (remaining <= frontendUsable && frontendUsable > 0n) {
-                    send_from_frontend = remaining; // Send remainder from frontend
-                    console.log('Split send successful:', {
-                        backendSend: send_from_backend.toString(),
-                        frontendSend: send_from_frontend.toString(),
-                        remaining: remaining.toString()
-                    });
-                } else {
-                    console.log('ERROR: Cannot send remainder from frontend');
-                    console.log('Remaining needed:', remaining.toString(), 'Frontend usable:', frontendUsable.toString());
-                    // Reset to 0 since we can't complete the transaction
-                    send_from_backend = 0n;
-                    send_from_frontend = 0n;
-                }
-            } else if (frontendUsable > 0n) {
-                // Backend can't help, try frontend only
-                if (amount <= frontendUsable) {
-                    send_from_frontend = amount;
-                    console.log('Backend unavailable, sending from frontend only');
-                } else {
-                    console.log('ERROR: Amount exceeds frontend capacity');
-                }
-            } else {
-                console.log('ERROR: Neither backend nor frontend can send this amount');
-            }
-        }
-        
-        console.log('calc_send_amounts result:', {
-            send_from_frontend: send_from_frontend.toString(),
-            send_from_backend: send_from_backend.toString()
-        });
-        
-        return {
-            send_from_frontend : send_from_frontend,
-            send_from_backend : send_from_backend
-        };
+        const plan = planSend(token, amount);
+        return plan || { send_from_frontend: 0n, send_from_backend: 0n };
     };
 
     const handleSendToken = async (token, recipient, amount, subaccount = [], accountId = undefined) => {
@@ -3785,6 +3704,9 @@ function Wallet() {
                 });
                 
                 console.log('Backend transfer result:', resultJson);
+                if (result && 'Err' in result) {
+                    throw new Error(`Transfer from your Sneed Lock balance failed: ${resultJson}`);
+                }
             }
 
             if (send_amounts.send_from_frontend > 0) {
@@ -3819,6 +3741,11 @@ function Wallet() {
                 });
                 
                 console.log('Frontend transfer result:', resultJson);
+                if (result && 'Err' in result) {
+                    throw new Error(send_amounts.send_from_backend > 0n
+                        ? `The Sneed Lock part of the send went through, but the wallet part failed: ${resultJson}`
+                        : `Transfer failed: ${resultJson}`);
+                }
             }
 
             console.log('Refreshing token balances...');
@@ -4130,6 +4057,9 @@ function Wallet() {
                 }
                 return value;
             }));
+            if (result && 'Err' in result) {
+                throw new Error('Withdrawal failed: ' + JSON.stringify(result.Err, (k, v) => typeof v === 'bigint' ? v.toString() : v));
+            }
 
             // Refresh the token balance
             await fetchBalancesAndLocks(token.ledger_canister_id);
@@ -4202,6 +4132,9 @@ function Wallet() {
                 }
                 return value;
             }));
+            if (result && 'Err' in result) {
+                throw new Error('Deposit failed: ' + JSON.stringify(result.Err, (k, v) => typeof v === 'bigint' ? v.toString() : v));
+            }
 
             // Refresh the token balance
             await fetchBalancesAndLocks(token.ledger_canister_id);

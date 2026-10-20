@@ -11,7 +11,7 @@ import { useNaming } from './NamingContext';
 import { useWalletOptional } from './contexts/WalletContext';
 import { useWalletLayout } from './contexts/WalletLayoutContext';
 import { computeAccountId, PrincipalDisplay, getPrincipalDisplayInfoFromContext, isSnsCanisterType, getCanisterTypeIcon } from './utils/PrincipalUtils';
-import { formatAmount } from './utils/StringUtils';
+import { formatAmount, parseAmountToBigInt } from './utils/StringUtils';
 import { get_available, get_available_backend } from './utils/TokenUtils';
 import { normalizeId } from './hooks/useNeuronsCache';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
@@ -787,10 +787,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             const ledgerActor = createLedgerActor(ledgerPrincipal, { agentOptions: { identity } });
             const decimals = await ledgerActor.icrc1_decimals();
             
-            // Convert to BigInt safely - handle decimal inputs
-            const amountFloat = parseFloat(amount);
-            const scaledAmount = amountFloat * (10 ** decimals);
-            const bigIntAmount = BigInt(Math.floor(scaledAmount));
+            // Convert to BigInt by string parsing (no float math)
+            const bigIntAmount = parseAmountToBigInt(amount, decimals);
             
             // Get backend balance - use 0n if not available (compact wallet may not have this)
             let available_balance_backend = 0n;
