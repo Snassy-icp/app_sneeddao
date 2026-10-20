@@ -104,6 +104,16 @@ import HelpSneedex from './pages/HelpSneedex';
 import HelpCanisterManager from './pages/HelpCanisterManager';
 import HelpSnsJailbreak from './pages/HelpSnsJailbreak';
 import HelpTradingBot from './pages/HelpTradingBot';
+import HelpForum from './pages/HelpForum';
+import HelpSms from './pages/HelpSms';
+import HelpNotifications from './pages/HelpNotifications';
+import HelpNames from './pages/HelpNames';
+import HelpDao from './pages/HelpDao';
+import HelpProposals from './pages/HelpProposals';
+import HelpTokenStudio from './pages/HelpTokenStudio';
+import HelpTools from './pages/HelpTools';
+import HelpSneedapp from './pages/HelpSneedapp';
+import HelpLiquidStaking from './pages/HelpLiquidStaking';
 import Canister from './pages/Canister';
 import Canisters from './pages/Canisters';
 import Apps from './pages/Apps';
@@ -210,6 +220,16 @@ function App() {
                     <Route path="/help/canister-manager" element={<HelpCanisterManager />} /> {/* Backwards compat */}
                     <Route path="/help/sns_jailbreak" element={<HelpSnsJailbreak />} />
                     <Route path="/help/trading_bot" element={<HelpTradingBot />} />
+                    <Route path="/help/forum" element={<HelpForum />} />
+                    <Route path="/help/sms" element={<HelpSms />} />
+                    <Route path="/help/notifications" element={<HelpNotifications />} />
+                    <Route path="/help/names" element={<HelpNames />} />
+                    <Route path="/help/dao" element={<HelpDao />} />
+                    <Route path="/help/proposals" element={<HelpProposals />} />
+                    <Route path="/help/token-studio" element={<HelpTokenStudio />} />
+                    <Route path="/help/tools" element={<HelpTools />} />
+                    <Route path="/help/sneedapp" element={<HelpSneedapp />} />
+                    <Route path="/help/liquid-staking" element={<HelpLiquidStaking />} />
                     <Route path="/api" element={<Api />} />
                     <Route path="/api/:slug" element={<ApiDoc />} />
                     <Route path="/rll" element={<RLL />} />

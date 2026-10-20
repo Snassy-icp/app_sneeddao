@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Header from '../components/Header';
 import PositionTransferPanel from '../components/PositionTransferPanel';
@@ -8,7 +7,8 @@ import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId 
 import { 
     FaLock, FaArrowLeft, FaMagic, FaCoins, FaWater, FaUnlock, 
     FaExchangeAlt, FaDollarSign, FaClock, FaShieldAlt, 
-    FaLightbulb, FaQuestionCircle, FaSpinner, FaStar
+    FaQuestionCircle, FaSpinner, FaStar, FaHourglassHalf, FaGem,
+    FaGasPump, FaSearch
 } from 'react-icons/fa';
 
 // Custom CSS for animations
@@ -197,7 +197,6 @@ const getStyles = (theme) => ({
 
 function HelpSneedlock() {
     const { theme } = useTheme();
-    const { identity, isAuthenticated } = useAuth();
     const styles = getStyles(theme);
     
     // State for lock fees
@@ -308,7 +307,7 @@ function HelpSneedlock() {
                         maxWidth: '600px',
                         lineHeight: '1.6',
                     }}>
-                        Trustless time-locking for tokens and liquidity positions on the Internet Computer
+                        Time-locking for tokens and liquidity positions on the Internet Computer: lock dates, dissolve delays, and locks you can send as NFTs
                     </p>
                 </div>
             </div>
@@ -320,7 +319,7 @@ function HelpSneedlock() {
                 </Link>
 
                 {/* Lock Wizard CTA */}
-                <div style={styles.wizardBox} className="lock-help-fade-in">
+                <div style={styles.wizardBox} className="lock-help-fade-in" id="wizard">
                     <div style={styles.sectionHeader}>
                         <div style={styles.sectionIcon(lockPrimary)}>
                             <FaMagic size={20} color={lockPrimary} />
@@ -328,9 +327,11 @@ function HelpSneedlock() {
                         <h3 style={styles.subheading}>Get Started with the Lock Wizard</h3>
                     </div>
                     <p style={styles.paragraph}>
-                        New to locking? The Lock Wizard provides a guided, step-by-step experience that walks you through 
-                        choosing between token locks and LP position locks, selecting assets, handling ICP payment, and 
-                        setting up your lock parameters.
+                        New to locking? The Lock Wizard walks you through three steps: <strong style={styles.strong}>Type</strong> (token
+                        lock or LP position lock), <strong style={styles.strong}>Select</strong> (the token, or the ICPSwap position) and
+                        {' '}<strong style={styles.strong}>Lock</strong> (amount, end date and an optional dissolve delay). Before you press
+                        {' '}<strong style={styles.strong}>Create Lock</strong> it shows the ICP lock fee and where it will be paid from, and a
+                        confirmation sums up exactly what will happen.
                     </p>
                     <Link to="/lock_wizard" style={styles.ctaButton}>
                         <FaMagic size={16} />
@@ -339,7 +340,7 @@ function HelpSneedlock() {
                 </div>
 
                 {/* What is Sneedlock */}
-                <div style={styles.section} className="lock-help-fade-in">
+                <div style={styles.section} className="lock-help-fade-in" id="overview">
                     <div style={styles.sectionHeader}>
                         <div style={styles.sectionIcon()}>
                             <FaLock size={20} color={lockPrimary} />
@@ -347,133 +348,262 @@ function HelpSneedlock() {
                         <h2 style={styles.subheading}>What is Sneedlock?</h2>
                     </div>
                     <p style={styles.paragraph}>
-                        Sneedlock is a canister (smart contract) that holds tokens and liquidity positions on your behalf 
-                        until a predetermined expiration date. Once locked, assets cannot be accessed by anyone—including you—until 
-                        the lock expires.
+                        Sneedlock is a canister (smart contract) that holds tokens and ICPSwap liquidity positions on your behalf
+                        while they are locked. A lock can follow one of two time rules:
+                    </p>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>A plain lock</strong> unlocks by itself at the date you chose.
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>A lock with a dissolve delay</strong> works like an NNS neuron: it does not unlock
+                            by itself. Once its lock period is over, its owner starts dissolving it, and it unlocks when the delay has
+                            run out. See <a href="#dissolve-delay" style={styles.link}>Dissolve delays</a>.
+                        </li>
+                    </ul>
+                    <p style={styles.paragraph}>
+                        Every lock is also an ICRC-7 NFT. Whoever holds the NFT owns the lock, so locks can be sent, sold and shown
+                        in NFT wallets while the assets inside stay locked.
                     </p>
                     <div style={styles.infoBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            <strong style={styles.strong}>Key Feature:</strong> Locks are immutable and trustless. Even the 
-                            Sneedlock canister itself cannot release your assets early—enforced at the protocol level.
+                            <strong style={styles.strong}>Key Feature:</strong> Sneed Lock has no way to release a lock early or to
+                            shorten it, not even for its owner. A lock can only be made stricter: its lock period extended, or its
+                            dissolve delay increased.
                         </p>
                     </div>
                 </div>
 
                 {/* Why Lock Assets */}
-                <div style={styles.section} className="lock-help-fade-in">
+                <div style={styles.section} className="lock-help-fade-in" id="why">
                     <div style={styles.sectionHeader}>
                         <div style={styles.sectionIcon('#10b981')}>
                             <FaShieldAlt size={20} color="#10b981" />
                         </div>
                         <h2 style={styles.subheading}>Why Lock Assets?</h2>
                     </div>
-                    
+
                     <h4 style={styles.subsubheading}>Demonstrate Commitment</h4>
                     <p style={styles.paragraph}>
-                        Verifiable proof for project founders, team members, and investors showing long-term alignment.
+                        Verifiable on-chain proof for project teams and holders that tokens or liquidity will stay put.
                     </p>
-                    
+
                     <h4 style={styles.subsubheading}>Vesting Schedules</h4>
                     <p style={styles.paragraph}>
-                        Create custom vesting for team token allocations, investor tokens, or grant distributions with milestone unlocks.
+                        Create several locks with different end dates for team allocations or grants, and send each lock to its recipient.
                     </p>
-                    
+
                     <h4 style={styles.subsubheading}>Liquidity Provision</h4>
                     <p style={styles.paragraph}>
-                        Lock LP positions to stabilize trading pairs and build trust with traders and other LPs.
+                        Lock LP positions to show that the liquidity cannot be pulled, while the position keeps earning trading fees.
                     </p>
-                    
-                    <h4 style={styles.subsubheading}>Governance Participation</h4>
+
+                    <h4 style={styles.subsubheading}>Open-Ended Commitments</h4>
                     <p style={styles.paragraph}>
-                        Some DAOs incentivize locking as a prerequisite for governance, ensuring voters have long-term skin in the game.
+                        With a dissolve delay, a lock stays locked until its owner decides to start dissolving, and even then it
+                        takes the full delay to unlock. Anyone watching gets that much warning.
                     </p>
                 </div>
 
                 {/* How to Lock Tokens */}
-                <div style={styles.section} className="lock-help-fade-in">
+                <div style={styles.section} className="lock-help-fade-in" id="token-locks">
                     <div style={styles.sectionHeader}>
                         <div style={styles.sectionIcon('#3b82f6')}>
                             <FaCoins size={20} color="#3b82f6" />
                         </div>
                         <h2 style={styles.subheading}>How to Lock Tokens</h2>
                     </div>
-                    
+
+                    <h4 style={styles.subsubheading}>With the Lock Wizard</h4>
                     <ol style={styles.stepList}>
-                        <li style={styles.stepItem}><strong style={styles.strong}>Navigate to Wallet:</strong> Go to the Wallet page and find the token</li>
-                        <li style={styles.stepItem}><strong style={styles.strong}>Open Lock Modal:</strong> Expand the token card and click "Lock"</li>
-                        <li style={styles.stepItem}><strong style={styles.strong}>Configure:</strong> Enter amount and expiration date</li>
-                        <li style={styles.stepItem}><strong style={styles.strong}>Confirm:</strong> Review and execute the lock</li>
+                        <li style={styles.stepItem}>Open the <Link to="/lock_wizard" style={styles.link}>Lock Wizard</Link> and choose a token lock</li>
+                        <li style={styles.stepItem}>Select the token from your wallet</li>
+                        <li style={styles.stepItem}>Enter the <strong style={styles.strong}>Amount to Lock</strong> (or press MAX), a <strong style={styles.strong}>Lock Until</strong> date, and optionally a <strong style={styles.strong}>Dissolve delay in days</strong>. With a dissolve delay the date is optional.</li>
+                        <li style={styles.stepItem}>Press <strong style={styles.strong}>Create Lock</strong>, read the confirmation and confirm</li>
                     </ol>
-                    
+
+                    <h4 style={styles.subsubheading}>From your Wallet</h4>
+                    <ol style={styles.stepList}>
+                        <li style={styles.stepItem}>On the <Link to="/wallet" style={styles.link}>Wallet</Link> page, open the token's card and its <strong style={styles.strong}>Locks</strong> tab</li>
+                        <li style={styles.stepItem}>Click <strong style={styles.strong}>Lock</strong>, enter the amount and the expiration date</li>
+                        <li style={styles.stepItem}>Confirm. The wallet's lock dialog makes plain locks; for a dissolve delay use the wizard, or add one later on the lock's page</li>
+                    </ol>
+
                     <div style={styles.tipBox}>
                         <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>
-                            <strong style={styles.strong}>Transaction Fees:</strong>
+                            <strong style={styles.strong}>Transaction Fees</strong> (on top of the ICP lock fee):
                         </p>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}>
-                                <strong style={styles.strong}>Already-deposited tokens:</strong> FREE! No transaction fee for locking deposited tokens.
+                                <strong style={styles.strong}>Already-deposited tokens:</strong> no ledger fee for locking tokens that are already deposited in Sneed Lock.
                             </li>
                             <li style={styles.listItem}>
-                                <strong style={styles.strong}>From wallet:</strong> 1 transaction fee (auto-deposits first).
+                                <strong style={styles.strong}>From wallet:</strong> 1 transaction fee (the missing amount is deposited first).
                             </li>
                         </ul>
                         <p style={{ ...styles.paragraph, marginBottom: 0, marginTop: '0.5rem' }}>
-                            <strong style={styles.strong}>Tip:</strong> Creating multiple locks? Batch deposit all tokens first—then lock for free!
+                            <strong style={styles.strong}>Tip:</strong> Creating several locks of one token? Deposit the total once, then each lock costs no ledger fee.
                         </p>
                     </div>
-                    
+
                     <div style={styles.warningBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            <strong style={styles.strong}>⚠️ Important:</strong> Once created, locks cannot be canceled, modified, or unlocked early. 
-                            Verify amount and date before confirming!
+                            <strong style={styles.strong}>Important:</strong> Once created, a lock cannot be canceled, shortened or unlocked early.
+                            These are real tokens: check the amount, the date and the delay before confirming.
                         </p>
                     </div>
                 </div>
 
                 {/* How to Lock LP Positions */}
-                <div style={styles.section} className="lock-help-fade-in">
+                <div style={styles.section} className="lock-help-fade-in" id="position-locks">
                     <div style={styles.sectionHeader}>
                         <div style={styles.sectionIcon('#14b8a6')}>
                             <FaWater size={20} color="#14b8a6" />
                         </div>
                         <h2 style={styles.subheading}>How to Lock Liquidity Positions</h2>
                     </div>
-                    
+
                     <ol style={styles.stepList}>
                         <li style={styles.stepItem}><strong style={styles.strong}>Pick the pool:</strong> In the Lock Wizard, choose the two tokens of your pair (or enter the ICPSwap pool canister id). The pool is added to your wallet automatically.</li>
                         <li style={styles.stepItem}><strong style={styles.strong}>Transfer Position:</strong> On ICPSwap, open the position under Liquidity, choose Details, then "Transfer position" to your Sneed Wallet principal. The wizard shows the exact steps and your principal.</li>
-                        <li style={styles.stepItem}><strong style={styles.strong}>Select Position:</strong> Pick the position in the wizard (or from the Liquidity Positions section of your wallet)</li>
-                        <li style={styles.stepItem}><strong style={styles.strong}>Lock:</strong> Set the expiration date and confirm. The lock fee is paid as part of this step.</li>
+                        <li style={styles.stepItem}><strong style={styles.strong}>Select Position:</strong> Pick the position in the wizard. You can also start from the position's card in the Liquidity tab of your wallet (its <strong style={styles.strong}>Locks</strong> tab, then <strong style={styles.strong}>Lock</strong>), or from <strong style={styles.strong}>Lock in Sneed Lock</strong> on the <Link to="/position" style={styles.link}>position page</Link>.</li>
+                        <li style={styles.stepItem}><strong style={styles.strong}>Lock:</strong> Set the end date (and, in the wizard, an optional dissolve delay) and confirm. The lock fee is paid as part of this step.</li>
                     </ol>
 
                     <div style={{ margin: '0 0 1.25rem' }}>
                         <PositionTransferPanel compact title="Move a position to your Sneed wallet now" />
                     </div>
-                    
+
+                    <p style={styles.paragraph}>
+                        For a position that is already locked, the <strong style={styles.strong}>Lock</strong> button on its wallet card lets you
+                        set a later end date.
+                    </p>
+
                     <div style={styles.successBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            <strong style={styles.strong}>💰 Claim Fees from Locked Positions:</strong> Locked LP positions continue earning trading fees. 
-                            You can claim those fees directly from your wallet even while the position remains locked. Claimed fees are
-                            delivered to your Sneed wallet and forwarded to your frontend wallet when the amount covers the transfer fee.
+                            <strong style={styles.strong}>Claim Fees from Locked Positions:</strong> Locked LP positions keep earning trading fees.
+                            Press <strong style={styles.strong}>Claim Fees</strong> on the position's wallet card while it stays locked. Only the
+                            current holder of the lock can claim. Claimed fees are delivered to your Sneed wallet and forwarded to your
+                            wallet when the amount covers the transfer fee.
                         </p>
                     </div>
 
                     <div style={{ ...styles.successBox, marginTop: '1rem' }}>
                         <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>
-                            <strong style={styles.strong}>➕ Add Liquidity to a Locked Position:</strong> You can grow a position while it stays locked.
+                            <strong style={styles.strong}>Add Liquidity to a Locked Position:</strong> You can grow a position while it stays locked.
                             Open the locked position in your wallet and choose "Add Liquidity". Enter the amounts of each token; the wizard
                             uses tokens already in your Sneed wallet first and tops up the rest from your frontend wallet.
                         </p>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}>Liquidity is added within the position's existing price range, so it must be in range for both tokens to be used. Out of range, only one token is accepted and the rest is returned.</li>
                             <li style={styles.listItem}>Whatever ICPSwap does not use is returned to your Sneed wallet. Amounts below a token's transfer fee cannot be returned and stay in the pool.</li>
-                            <li style={styles.listItem}>The lock itself is unchanged: same position, same expiry. The added liquidity is locked with it.</li>
+                            <li style={styles.listItem}>The lock itself is unchanged: same position, same lock rules. The added liquidity is locked with it.</li>
                         </ul>
                     </div>
                 </div>
 
+                {/* Dissolve delays */}
+                <div style={styles.section} className="lock-help-fade-in" id="dissolve-delay">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#f97316')}>
+                            <FaHourglassHalf size={20} color="#f97316" />
+                        </div>
+                        <h2 style={styles.subheading}>Dissolve Delays</h2>
+                    </div>
+                    <p style={styles.paragraph}>
+                        A lock can have a dissolve delay, like an NNS neuron. It then has two parts: a <strong style={styles.strong}>lock period</strong>
+                        {' '}(the date you chose, or none) and a <strong style={styles.strong}>delay</strong>. When the lock period is over, the owner
+                        can start dissolving, and the lock unlocks once the delay has run out. Until dissolving starts, nothing counts down.
+                    </p>
+                    <div style={styles.infoBox}>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            <strong style={styles.strong}>Example:</strong> a lock with a 1 hour lock period and a 1 hour delay is free 2 hours from
+                            now at the soonest, and later if dissolving is not started right away.
+                        </p>
+                    </div>
+
+                    <h4 style={styles.subsubheading}>Managing it on the lock's page</h4>
+                    <p style={styles.paragraph}>
+                        Open a lock (the <strong style={styles.strong}>View</strong> link next to its Lock ID in your wallet) to see the
+                        {' '}<strong style={styles.strong}>Lock period and dissolve delay</strong> panel: its status, when the lock period ends,
+                        the delay, when it is free (or free at the soonest), when it was created, and Sneed Lock's limits. The owner gets these buttons:
+                    </p>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}><strong style={styles.strong}>Start dissolving:</strong> available once the lock period has ended, for a lock with a delay.</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Stop dissolving:</strong> the time left becomes the delay again.</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Add to the dissolve delay</strong> (or <strong style={styles.strong}>Give it a dissolve delay</strong> for a plain lock): enter a number of hours. The delay can only grow.</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Extend the lock period:</strong> pick a later end date. Not possible while dissolving; stop dissolving first.</li>
+                    </ul>
+                    <p style={styles.paragraph}>
+                        In lock lists, a lock with a delay that is not dissolving shows its date as "at the soonest", with its delay
+                        next to it, and its time left as "≥". A dissolving lock can still be sent; its delay and dissolving state go with it.
+                    </p>
+                </div>
+
+                {/* Locks as NFTs */}
+                <div style={styles.section} className="lock-help-fade-in" id="nft">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#a78bfa')}>
+                            <FaGem size={20} color="#a78bfa" />
+                        </div>
+                        <h2 style={styles.subheading}>Locks as NFTs</h2>
+                    </div>
+                    <p style={styles.paragraph}>
+                        Every token lock and locked LP position is an NFT in the Sneed Lock collection (ICRC-7, with ICRC-37
+                        approvals). Whoever holds the NFT owns the lock: for a token lock, the tokens once it unlocks; for a position,
+                        the position, its lock and its fees. Wallets and marketplaces that speak ICRC-7 can show, send and list it.
+                    </p>
+                    <h4 style={styles.subsubheading}>Ways to send a lock</h4>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}><strong style={styles.strong}>Wallet, token lock:</strong> in the token's Locks tab, press <strong style={styles.strong}>Transfer Ownership</strong> on the lock.</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Wallet, locked position:</strong> press <strong style={styles.strong}>Transfer</strong> on the position's card.</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Lock page:</strong> the NFT card shows the image, NFT number, who holds it (and the subaccount, if any); its holder can <strong style={styles.strong}>Send</strong> it from there.</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Sneedex:</strong> <strong style={styles.strong}>Sell on Sneedex</strong> on a lock or locked position creates an offer with it as the asset (see <Link to="/help/sneedex" style={styles.link}>Sneedex help</Link>).</li>
+                    </ul>
+                    <p style={styles.paragraph}>
+                        Each send asks for a recipient principal and an optional recipient subaccount (64 hex characters). Leave the
+                        subaccount empty to send to a normal wallet. Sending a locked position has no fee; a token lock costs one ledger
+                        fee of its token (see <a href="#gas" style={styles.link}>Gas</a>).
+                    </p>
+                    <div style={styles.warningBox}>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            <strong style={styles.strong}>Wallet compatibility:</strong> only send a lock to a wallet that supports ICRC-7 NFTs
+                            (the Sneed wallet does). An exchange or a wallet without ICRC-7 support may be unable to show it or send it on,
+                            which can mean losing access to it.
+                        </p>
+                    </div>
+                </div>
+
+                {/* Gas */}
+                <div style={styles.section} className="lock-help-fade-in" id="gas">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#f59e0b')}>
+                            <FaGasPump size={20} color="#f59e0b" />
+                        </div>
+                        <h2 style={styles.subheading}>Gas for Token Locks</h2>
+                    </div>
+                    <p style={styles.paragraph}>
+                        Sending a token lock to another principal moves the locked tokens on the ledger, so it costs one ledger fee of
+                        that token. Moving it between subaccounts of your own principal is free, and position locks never need gas.
+                        The fee is paid from the owner's free (deposited) balance of the token in Sneed Lock, or, when there is none,
+                        from the lock's own <strong style={styles.strong}>gas</strong> account, which pays two fees per transfer.
+                    </p>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}>Token lock rows in the wallet, the lock page, the token lock page and the NFT page show <strong style={styles.strong}>Gas</strong>: its balance and about how many transfers it covers.</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Add gas</strong> works for anyone and any lock: choose 1, 5 or 20 transfers or type an amount. It is paid from your wallet (plus one ledger fee). Gas is a gift to whoever owns the lock, and only they can take it back.</li>
+                        <li style={styles.listItem}>When you are not logged in, the dialog shows the gas account so you can send the token to it from any wallet.</li>
+                        <li style={styles.listItem}>When you send a token lock from the wallet and have less than one fee deposited, the wallet first sends one fee from your wallet, so the transfer costs two fees in total. The dialog shows the exact cost.</li>
+                    </ul>
+                    <div style={styles.tipBox}>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            <strong style={styles.strong}>Tip:</strong> if a send fails because the lock needs gas, add some (anyone can), or keep a
+                            little of the token free in your Sneed wallet.
+                        </p>
+                    </div>
+                </div>
+
                 {/* Liquid Locking */}
-                <div style={styles.section} className="lock-help-fade-in">
+                <div style={styles.section} className="lock-help-fade-in" id="liquid-locking">
                     <div style={styles.sectionHeader}>
                         <div style={styles.sectionIcon('#ec4899')}>
                             <FaExchangeAlt size={20} color="#ec4899" />
@@ -481,52 +611,76 @@ function HelpSneedlock() {
                         <h2 style={styles.subheading}>Liquid Locking: Transferring Locked Assets</h2>
                     </div>
                     <p style={styles.paragraph}>
-                        One of Sneedlock's most powerful features—transfer ownership of locked assets while they remain locked. 
-                        This creates liquidity without compromising security.
+                        Because locks can change hands while they stay locked, a lock is still useful to its holder before it ends.
                     </p>
-                    
+
                     <div style={styles.successBox}>
-                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>Why Liquid Locking Changes Everything</h4>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>What the recipient gets</h4>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}>
-                                <strong style={styles.strong}>Locked LP Positions:</strong> Recipients can't pull liquidity but CAN claim trading fees
+                                <strong style={styles.strong}>Locked LP Positions:</strong> recipients can't pull the liquidity but can claim its trading fees
                             </li>
                             <li style={styles.listItem}>
-                                <strong style={styles.strong}>Locked Tokens:</strong> Recipients can hold or transfer but can't sell until expiry
+                                <strong style={styles.strong}>Locked Tokens:</strong> recipients can hold the lock or send it on, but can't move the tokens until it unlocks
                             </li>
                             <li style={styles.listItem}>
-                                <strong style={styles.strong}>Result:</strong> Greater liquidity AND greater safety—no rugs possible!
+                                <strong style={styles.strong}>The lock rules stay:</strong> same end date, same dissolve delay, whoever holds it
                             </li>
                         </ul>
                     </div>
-                    
+
                     <h4 style={styles.subsubheading}>Use Cases</h4>
                     <ul style={styles.list}>
-                        <li style={styles.listItem}><strong style={styles.strong}>Team token distribution:</strong> Create locks and transfer to team members—simple vesting!</li>
-                        <li style={styles.listItem}><strong style={styles.strong}>Secondary market:</strong> Sell locked positions at a discount—buyers get exposure, sellers get liquidity</li>
-                        <li style={styles.listItem}><strong style={styles.strong}>DAO treasuries:</strong> Transfer locked LP positions while keeping commitment guarantees</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Team token distribution:</strong> create locks and send them to team members for simple vesting</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Secondary market:</strong> offer locks on Sneedex or any ICRC-7 marketplace</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>DAO treasuries:</strong> move locked LP positions while keeping the commitment</li>
                     </ul>
-                    
-                    <div style={styles.warningBox}>
-                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            <strong style={styles.strong}>⚠️ Wallet Compatibility:</strong> Only transfer to Sneed Wallet principals. Transferring to 
-                            incompatible wallets may result in permanent loss of access.
-                        </p>
+                </div>
+
+                {/* Viewing locks */}
+                <div style={styles.section} className="lock-help-fade-in" id="browse">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#0ea5e9')}>
+                            <FaSearch size={20} color="#0ea5e9" />
+                        </div>
+                        <h2 style={styles.subheading}>Finding and Sharing Locks</h2>
                     </div>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}>
+                            <Link to="/sneedlock_info" style={styles.link}>SneedLock Dashboard</Link>: total value locked, every lock grouped by token,
+                            with <strong style={styles.strong}>My Locks</strong>, filters by owner and by token, and <strong style={styles.strong}>Active</strong> and
+                            {' '}<strong style={styles.strong}>Expired</strong> tabs.
+                        </li>
+                        <li style={styles.listItem}>
+                            <Link to="/tokenlocksoverview" style={styles.link}>Token locks overview</Link>: enter a token's ledger canister id to see its
+                            token locks and position locks.
+                        </li>
+                        <li style={styles.listItem}>
+                            The <strong style={styles.strong}>Link</strong> button on a token's or position's Locks tab in your wallet opens a public page
+                            for those locks that you can share with anyone.
+                        </li>
+                        <li style={styles.listItem}>
+                            Each lock has its own page (the <strong style={styles.strong}>View</strong> link next to its Lock ID) with its details, the dissolve
+                            panel, its NFT and its gas.
+                        </li>
+                        <li style={styles.listItem}>
+                            <Link to="/dashboard" style={styles.link}>All locks list</Link>: a simple list of every token lock and position lock.
+                        </li>
+                    </ul>
                 </div>
 
                 {/* Fees and Limits */}
-                <div style={styles.section} className="lock-help-fade-in">
+                <div style={styles.section} className="lock-help-fade-in" id="fees">
                     <div style={styles.sectionHeader}>
                         <div style={styles.sectionIcon('#6366f1')}>
                             <FaDollarSign size={20} color="#6366f1" />
                         </div>
                         <h2 style={styles.subheading}>Fees and Limits</h2>
                     </div>
-                    
+
                     <div style={styles.infoBox}>
                         <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>
-                            <strong style={styles.strong}>💰 Current Lock Fees:</strong>
+                            <strong style={styles.strong}>Current Lock Fees</strong> (paid in ICP when you create a lock):
                         </p>
                         {loadingFees ? (
                             <p style={{ ...styles.paragraph, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -549,12 +703,27 @@ function HelpSneedlock() {
                             </p>
                         )}
                     </div>
-                    
+
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}>
+                            The Lock Wizard pays the fee from ICP you already deposited for fees first, then from your Sneed wallet's
+                            deposited ICP, then from your ICP wallet, and shows any ledger transfer fees on top. If a lock fails after the
+                            fee was paid, the deposit is kept and used when you try again.
+                        </li>
+                        <li style={styles.listItem}>
+                            Sending a locked position costs nothing; sending a token lock costs one ledger fee of its token (see Gas above).
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Limits:</strong> the lock period plus the dissolve delay must stay between Sneed Lock's
+                            minimum and maximum lock length. The lock page shows the current limits.
+                        </li>
+                    </ul>
+
                     <div style={styles.successBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0, display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
                             <FaStar size={16} color="#10b981" style={{ flexShrink: 0, marginTop: '2px' }} />
                             <span>
-                                <strong style={styles.strong}>Save with Sneed Premium!</strong> <Link to="/premium" style={styles.link}>Premium</Link> members 
+                                <strong style={styles.strong}>Save with Sneed Premium!</strong> <Link to="/premium" style={styles.link}>Premium</Link> members
                                 enjoy reduced lock fees.
                                 {lockFees && lockFees.token_lock_fee_icp_e8s > lockFees.premium_token_lock_fee_icp_e8s && (
                                     <span> That's a savings of {formatIcp(lockFees.token_lock_fee_icp_e8s - lockFees.premium_token_lock_fee_icp_e8s)} per token lock
@@ -568,29 +737,36 @@ function HelpSneedlock() {
                 </div>
 
                 {/* Unlocking */}
-                <div style={styles.section} className="lock-help-fade-in">
+                <div style={styles.section} className="lock-help-fade-in" id="unlocking">
                     <div style={styles.sectionHeader}>
                         <div style={styles.sectionIcon('#10b981')}>
                             <FaUnlock size={20} color="#10b981" />
                         </div>
-                        <h2 style={styles.subheading}>Unlocking Assets After Expiration</h2>
+                        <h2 style={styles.subheading}>Unlocking Assets</h2>
                     </div>
-                    
+                    <p style={styles.paragraph}>
+                        A plain lock unlocks at its date. A lock with a dissolve delay unlocks when dissolving has finished; if you never
+                        start dissolving, it stays locked.
+                    </p>
+
                     <h4 style={styles.subsubheading}>Unlocking Tokens</h4>
                     <p style={styles.paragraph}>
-                        When a token lock expires, it automatically disappears—no action needed! Tokens appear in your 
-                        "Liquid" balance as deposited tokens. You can use them immediately or withdraw to your wallet.
+                        When a token lock unlocks, no action is needed: the tokens show up in your "Liquid" balance as deposited tokens.
+                        You can send them right away or press <strong style={styles.strong}>Withdraw</strong> to move them to your wallet.
                     </p>
-                    
+
                     <h4 style={styles.subsubheading}>Unlocking LP Positions</h4>
                     <p style={styles.paragraph}>
-                        For expired position locks, the position remains deposited but becomes unlocked. You can then 
-                        Send the position or Withdraw it back to your wallet.
+                        An unlocked position stays deposited in Sneed Lock. You can then <strong style={styles.strong}>Send</strong> it or press
+                        {' '}<strong style={styles.strong}>Withdraw to Wallet</strong> on its card.
+                    </p>
+                    <p style={styles.paragraph}>
+                        Once a lock has unlocked it can no longer be sent as an NFT; you move the tokens or the position itself instead.
                     </p>
                 </div>
 
                 {/* Security */}
-                <div style={styles.section} className="lock-help-fade-in">
+                <div style={styles.section} className="lock-help-fade-in" id="security">
                     <div style={styles.sectionHeader}>
                         <div style={styles.sectionIcon('#ef4444')}>
                             <FaShieldAlt size={20} color="#ef4444" />
@@ -599,52 +775,65 @@ function HelpSneedlock() {
                     </div>
                     <ul style={styles.list}>
                         <li style={styles.listItem}>
-                            <strong style={styles.strong}>No One Can Access Early:</strong> Not you, not operators, not anyone—enforced by the IC.
+                            <strong style={styles.strong}>No Early Access:</strong> Sneed Lock offers no way to release or shorten a lock, for you or anyone else.
                         </li>
                         <li style={styles.listItem}>
-                            <strong style={styles.strong}>Publicly Verifiable:</strong> All locks are on-chain and independently verifiable.
+                            <strong style={styles.strong}>Publicly Verifiable:</strong> All locks, their owners and their history are on-chain and public.
                         </li>
                         <li style={styles.listItem}>
-                            <strong style={styles.strong}>Immutable:</strong> Lock parameters cannot be changed after creation.
+                            <strong style={styles.strong}>Only Stricter:</strong> After creation a lock can only be extended or given a longer delay; starting and stopping dissolving is up to its owner.
                         </li>
                     </ul>
                     <div style={styles.successBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            <strong style={styles.strong}>✓ Safe and Secure:</strong> Sneed Lock canister code is open-source. Your locked 
-                            assets are protected by the Internet Computer's SNS DAO security guarantees.
+                            <strong style={styles.strong}>Open and DAO-governed:</strong> The Sneed Lock canister code is open source, and changes to
+                            it go through Sneed DAO proposals.
                         </p>
                     </div>
                 </div>
 
                 {/* Common Questions */}
-                <div style={styles.section} className="lock-help-fade-in">
+                <div style={styles.section} className="lock-help-fade-in" id="faq">
                     <div style={styles.sectionHeader}>
                         <div style={styles.sectionIcon(theme.colors.accent)}>
                             <FaQuestionCircle size={20} color={theme.colors.accent} />
                         </div>
                         <h2 style={styles.subheading}>Common Questions</h2>
                     </div>
-                    
+
                     <h4 style={styles.subsubheading}>Can I cancel or shorten a lock?</h4>
                     <p style={styles.paragraph}>
-                        No. Locks are immutable—this ensures commitment and trust. Always verify before confirming.
+                        No. You can only make it longer: extend the lock period, or add to the dissolve delay. Always verify before confirming.
                     </p>
-                    
+
                     <h4 style={styles.subsubheading}>What if I forget about my lock?</h4>
                     <p style={styles.paragraph}>
-                        Assets remain safely in Sneedlock indefinitely after expiry. No time limit for claiming.
+                        Unlocked assets stay in Sneedlock for you with no time limit. A lock with a dissolve delay simply stays locked
+                        until you start dissolving it.
                     </p>
-                    
+
+                    <h4 style={styles.subsubheading}>Why does my lock say "at the soonest"?</h4>
+                    <p style={styles.paragraph}>
+                        It has a dissolve delay and is not dissolving, so it has no unlock date yet. The date shown is the earliest it
+                        could be free if dissolving started as soon as it is allowed.
+                    </p>
+
                     <h4 style={styles.subsubheading}>Do locked assets earn rewards?</h4>
                     <p style={styles.paragraph}>
-                        Locked tokens don't earn staking rewards (held in Sneedlock, not staked). Locked LP positions 
-                        continue earning trading fees—and you can claim them while locked!
+                        Locked tokens don't earn staking rewards (held in Sneedlock, not staked). Locked LP positions
+                        keep earning trading fees, and the lock's holder can claim them while it is locked.
                     </p>
-                    
+
                     <h4 style={styles.subsubheading}>Can I add more tokens to an existing lock?</h4>
                     <p style={styles.paragraph}>
-                        For token locks, no. Each lock is independent. Create new locks for additional tokens—you can have multiple locks per token.
+                        For token locks, no. Each lock is independent. Create new locks for additional tokens; you can have many locks per token.
                         For locked liquidity positions, yes: use "Add Liquidity" on the position in your wallet to add more to the locked position.
+                    </p>
+
+                    <h4 style={styles.subsubheading}>Where do I see my lock NFTs?</h4>
+                    <p style={styles.paragraph}>
+                        Your locks show on their token and position cards in the <Link to="/wallet" style={styles.link}>Wallet</Link>. To see them as NFTs,
+                        add the Sneed Lock collection on the <Link to="/nft" style={styles.link}>NFTs</Link> page.
                     </p>
                 </div>
 
@@ -665,6 +854,9 @@ function HelpSneedlock() {
                         </li>
                         <li style={styles.listItem}>
                             <Link to="/sneedlock_info" style={styles.link}>SneedLock Dashboard</Link> — View all locks and aggregate statistics
+                        </li>
+                        <li style={styles.listItem}>
+                            <Link to="/help/sneedex" style={styles.link}>Sneedex</Link> — Sell or buy locks and other assets
                         </li>
                         <li style={styles.listItem}>
                             <Link to="/help" style={styles.link}>Help Center</Link> — Browse all help topics

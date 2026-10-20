@@ -4,7 +4,8 @@ import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { 
     FaCubes, FaArrowLeft, FaServer, FaFolderOpen, FaHeartbeat, FaCogs, 
-    FaPlus, FaEye, FaShieldAlt, FaUpload, FaLightbulb, FaQuestionCircle, FaStar
+    FaPlus, FaEye, FaShieldAlt, FaUpload, FaLightbulb, FaQuestionCircle, FaStar,
+    FaBolt, FaCreditCard, FaWallet, FaSearch
 } from 'react-icons/fa';
 
 // Custom CSS for animations
@@ -280,8 +281,10 @@ function HelpCanisterManager() {
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
                         <FaStar size={16} color={canisterPrimary} style={{ flexShrink: 0, marginTop: '2px' }} />
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            <strong style={styles.strong}>Premium Feature:</strong> Full custom app tracking is available 
-                            exclusively to Sneed DAO staking members. ICP Staking Bots are always visible to all users.
+                            <strong style={styles.strong}>Premium:</strong> Everyone who is logged in can track apps and use groups, up to a limit on 
+                            the number of groups, apps per group and apps in total. <Link to="/premium" style={styles.link}>Sneed Premium</Link> members 
+                            get higher limits (the <strong style={styles.strong}>Upgrade to Premium</strong> window shows the exact numbers when you reach a limit). 
+                            Your ICP Staking Bots and wallet apps are always shown.
                         </p>
                     </div>
                 </div>
@@ -300,11 +303,12 @@ function HelpCanisterManager() {
                             <FaFolderOpen size={14} color={canisterPrimary} />
                             <Link to="/apps" style={styles.link}>App Manager</Link> (/apps)
                         </h4>
-                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>Main dashboard showing all tracked apps:</p>
+                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>Main dashboard showing all tracked apps (you need to be logged in):</p>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
-                            <li style={styles.listItem}>ICP Staking Bots section with version tracking</li>
-                            <li style={styles.listItem}>Custom Apps with folder organization</li>
-                            <li style={styles.listItem}>Health status indicators (cycle monitoring)</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Add an app to track</strong> at the top: enter any app canister id and click <strong style={styles.strong}>Add</strong></li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Groups</strong>: your tracked apps in folders and subfolders, plus <strong style={styles.strong}>Ungrouped</strong></li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Wallet</strong>: the apps in your wallet, with a <strong style={styles.strong}>Sneedapp</strong> part for your bots (ICP Staking Bots and other Sneedapp bots, with version tracking) and an <strong style={styles.strong}>Other Apps</strong> part</li>
+                            <li style={styles.listItem}>Health lamps (cycles, and for bots also the version), an overall status summary, and banners for bots that can be upgraded and canisters low on cycles</li>
                         </ul>
                     </div>
                     
@@ -317,9 +321,22 @@ function HelpCanisterManager() {
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}>Status (running/stopped/stopping)</li>
                             <li style={styles.listItem}>Cycles balance and memory usage</li>
+                            <li style={styles.listItem}>Top up with cycles (anyone who is logged in)</li>
+                            <li style={styles.listItem}>Public name and private nickname</li>
                             <li style={styles.listItem}>Controller management</li>
                             <li style={styles.listItem}>WASM upgrades and reinstallation</li>
                         </ul>
+                    </div>
+
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaSearch size={14} color="#14b8a6" />
+                            <Link to="/canisters" style={styles.link}>Canister Explorer</Link> (/canisters)
+                        </h4>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            Browse all canisters that have a public name or one of your nicknames, filter by name type, search by 
+                            name or canister id, or enter a canister id to open its details.
+                        </p>
                     </div>
                 </div>
 
@@ -339,15 +356,15 @@ function HelpCanisterManager() {
                         <ul style={{ ...styles.list, listStyleType: 'none', marginLeft: 0, marginBottom: 0 }}>
                             <li style={{ ...styles.listItem, display: 'flex', alignItems: 'center' }}>
                                 <span style={styles.statusLamp('#ef4444')} />
-                                <strong style={{ color: '#ef4444' }}>Critical (Red)</strong> — Cycles below 1T. Needs immediate top-up!
+                                <strong style={{ color: '#ef4444' }}>Critical (Red)</strong> — Cycles below the critical level (1T by default). Needs a top-up soon.
                             </li>
                             <li style={{ ...styles.listItem, display: 'flex', alignItems: 'center' }}>
                                 <span style={styles.statusLamp('#f59e0b')} />
-                                <strong style={{ color: '#f59e0b' }}>Warning (Orange)</strong> — Cycles below 5T. Consider topping up soon.
+                                <strong style={{ color: '#f59e0b' }}>Low (Orange)</strong> — Cycles below the warning level (5T by default), or a bot running an outdated version.
                             </li>
                             <li style={{ ...styles.listItem, display: 'flex', alignItems: 'center' }}>
                                 <span style={styles.statusLamp('#22c55e')} />
-                                <strong style={{ color: '#22c55e' }}>Healthy (Green)</strong> — Cycles at 5T or above. Good to go!
+                                <strong style={{ color: '#22c55e' }}>Healthy (Green)</strong> — Cycles at or above the warning level (and, for bots, an up-to-date version).
                             </li>
                             <li style={{ ...styles.listItem, display: 'flex', alignItems: 'center' }}>
                                 <span style={{ ...styles.statusLamp('#6b7280'), boxShadow: 'none' }} />
@@ -356,6 +373,12 @@ function HelpCanisterManager() {
                         </ul>
                     </div>
                     
+                    <p style={styles.paragraph}>
+                        The levels are yours to set: click <strong style={styles.strong}>Customize →</strong> in the cycle status legend on /apps, 
+                        or open <Link to="/me?tab=settings" style={styles.link}>your settings</Link> and use <strong style={styles.strong}>App Cycle Thresholds</strong> (for 
+                        apps) and <strong style={styles.strong}>ICP Staking Bot Cycle Thresholds</strong> (for bots). They are saved in this browser.
+                    </p>
+
                     <div style={styles.tipBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
                             <strong style={styles.strong}>Folder Status:</strong> Folders display the worst status of all apps 
@@ -375,19 +398,27 @@ function HelpCanisterManager() {
                     
                     <h4 style={styles.subsubheading}>Adding Apps</h4>
                     <ol style={styles.stepList}>
-                        <li style={styles.stepItem}>Enter a valid app canister id in the "Add App" field</li>
-                        <li style={styles.stepItem}>Click "Add" or press Enter</li>
-                        <li style={styles.stepItem}>The app appears in "Ungrouped" or your chosen folder</li>
+                        <li style={styles.stepItem}>Enter a valid app canister id in <strong style={styles.strong}>Add an app to track</strong> (it suggests named canisters as you type)</li>
+                        <li style={styles.stepItem}>Click <strong style={styles.strong}>Add</strong> or press Enter</li>
+                        <li style={styles.stepItem}>The app appears in <strong style={styles.strong}>Ungrouped</strong>. To add straight into a folder, use the add button on that folder</li>
                     </ol>
+                    <p style={styles.paragraph}>
+                        If you add the root canister of an SNS, the app shows up as that DAO, with separate health lamps for its 
+                        system canisters, dapps and archives.
+                    </p>
                     
                     <h4 style={styles.subsubheading}>Organizing with Folders</h4>
                     <ul style={styles.list}>
-                        <li style={styles.listItem}><strong style={styles.strong}>Create Folder:</strong> Click "New Group" for top-level folders</li>
-                        <li style={styles.listItem}><strong style={styles.strong}>Create Subfolder:</strong> Click folder icon on any folder for nested folders</li>
-                        <li style={styles.listItem}><strong style={styles.strong}>Rename:</strong> Click edit icon to rename</li>
-                        <li style={styles.listItem}><strong style={styles.strong}>Delete:</strong> Click trash icon (apps move to Ungrouped)</li>
-                        <li style={styles.listItem}><strong style={styles.strong}>Move Apps:</strong> Use "Move to..." dropdown to relocate</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Create Folder:</strong> Click <strong style={styles.strong}>New Group</strong> in the Groups header for a top-level folder</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Create Subfolder:</strong> Use <strong style={styles.strong}>Add subgroup</strong> on any folder</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Rename / Delete:</strong> Use <strong style={styles.strong}>Rename group</strong> or <strong style={styles.strong}>Delete group</strong> on the folder</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Move and reorder:</strong> Drag apps and folders between folders, into Ungrouped, or within a list to reorder them</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Move to the wallet:</strong> Drag an app onto the <strong style={styles.strong}>Wallet</strong> section (or a bot onto <strong style={styles.strong}>Sneedapp</strong>); you can drag it back to Groups the same way</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Expand / collapse:</strong> Buttons in the Groups summary open or close all folders at once</li>
                     </ul>
+                    <p style={styles.paragraph}>
+                        The Groups summary shows how many groups and apps you use out of your limit, and a <strong style={styles.strong}>PREMIUM</strong> badge if you are a member.
+                    </p>
                 </div>
 
                 {/* Individual App View */}
@@ -406,6 +437,17 @@ function HelpCanisterManager() {
                         <li style={styles.listItem}>Memory Usage</li>
                         <li style={styles.listItem}>Module Hash for version verification</li>
                         <li style={styles.listItem}>Controllers list</li>
+                        <li style={styles.listItem}>Links to the ICP Dashboard and the Candid UI</li>
+                    </ul>
+                    <p style={styles.paragraph}>
+                        Status, cycles, memory and module hash are only shown in full when you are a controller; otherwise the page shows 
+                        the basic information anyone can read from the IC.
+                    </p>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}><strong style={styles.strong}>Public Name:</strong> a controller can set a name everyone sees</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Nickname:</strong> your own label for the canister, shown only to you</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Top Up with Cycles:</strong> click <strong style={styles.strong}>Add Cycles</strong>, enter an amount of ICP and click <strong style={styles.strong}>Top Up Canister</strong>. 
+                            Under <strong style={styles.strong}>No ICP?</strong> there is a link to pay by card instead (see Topping Up Cycles below)</li>
                     </ul>
                     
                     <h4 style={styles.subsubheading}>
@@ -417,7 +459,7 @@ function HelpCanisterManager() {
                     </p>
                     <div style={styles.warningBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            <strong style={styles.strong}>⚠️ Caution:</strong> Controllers have full power. Never remove yourself as 
+                            <strong style={styles.strong}>Caution:</strong> Controllers have full power. Never remove yourself as 
                             the last controller, and only add principals you completely trust.
                         </p>
                     </div>
@@ -427,11 +469,75 @@ function HelpCanisterManager() {
                         WASM Management
                     </h4>
                     <ul style={styles.list}>
-                        <li style={styles.listItem}><strong style={styles.strong}>Upload WASM:</strong> Upload a WASM file from your computer</li>
-                        <li style={styles.listItem}><strong style={styles.strong}>WASM URL:</strong> Provide a URL to download and install</li>
-                        <li style={styles.listItem}><strong style={styles.strong}>Upgrade Mode:</strong> Install new code while preserving stable memory</li>
-                        <li style={styles.listItem}><strong style={styles.strong}>Reinstall Mode:</strong> Fresh install, clearing all state</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Upload File:</strong> Upload a WASM file from your computer</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>From URL:</strong> Provide a URL to download and install</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Init Arguments:</strong> None (empty), a principal, an optional principal, DIDC text or raw hex Candid</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Upgrade:</strong> Install new code while preserving stable memory</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Reinstall:</strong> Fresh install, clearing all state</li>
                     </ul>
+                    <div style={styles.warningBox}>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            <strong style={styles.strong}>Reinstall deletes everything:</strong> all canister state, including stable memory, is 
+                            permanently deleted. This cannot be undone. The page only offers <strong style={styles.strong}>Upgrade Canister</strong> when you are a controller.
+                        </p>
+                    </div>
+                </div>
+
+                {/* Topping up cycles */}
+                <div style={styles.section} className="canister-help-fade-in" id="top-up">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#ef4444')}>
+                            <FaBolt size={20} color="#ef4444" />
+                        </div>
+                        <h2 style={styles.subheading}>Topping Up Cycles</h2>
+                    </div>
+                    <p style={styles.paragraph}>
+                        When some of your canisters are below their critical level, Sneed Hub shows a <strong style={styles.strong}>low on cycles</strong> notice: 
+                        a banner with a <strong style={styles.strong}>Top Up</strong> button on /apps, an indicator in the header, and notices in 
+                        the quick wallet and on the <Link to="/wallet" style={styles.link}>Wallet</Link> page. All of them open the same top-up dialog, which lists 
+                        those canisters (all selected; use <strong style={styles.strong}>Select all</strong> / <strong style={styles.strong}>Deselect</strong> or tick them one by one).
+                    </p>
+                    <h4 style={styles.subsubheading}>How much to send</h4>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}><strong style={styles.strong}>Top up each to a target cycle level:</strong> works out what each canister needs to reach the level you set (with a 10% margin); quick buttons set it just above critical or to healthy</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Split equally:</strong> divide one total amount among the selected canisters</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Same amount for each:</strong> send the same amount to every selected canister</li>
+                    </ul>
+                    <p style={styles.paragraph}>The dialog shows your balance, the estimated cycles per canister and the total needed including fees.</p>
+
+                    <h4 style={styles.subsubheading}><FaWallet size={14} color={canisterPrimary} /> Three ways to pay</h4>
+                    <div style={styles.featureCard}>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            <strong style={styles.strong}>Pay with ICP</strong> (the default): for each canister, ICP from your wallet goes to the 
+                            Cycles Minting Canister (CMC), which turns it into cycles for that canister at the current rate. Each transfer costs the 
+                            ICP ledger fee (0.0001 ICP).
+                        </p>
+                    </div>
+                    <div style={styles.featureCard}>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            <strong style={styles.strong}>Pay with ck-USDC</strong>: pays from your ck-USDC balance through 
+                            CyclePay (cyclepay.org), an outside service that is not run by Sneed. For each canister you approve 
+                            CyclePay to take the amount, CyclePay takes it and delivers the cycles; the dialog waits for the delivery. Amounts are 
+                            in whole cents, within CyclePay's limits per canister (shown in the dialog), and each payment costs two ck-USDC ledger 
+                            fees (the approval and the transfer). The cycle amounts shown are estimates at the protocol price (1T cycles per XDR). 
+                            If CyclePay's daily limit holds a payment, it says so and CyclePay delivers the cycles later.
+                        </p>
+                    </div>
+                    <div style={styles.featureCard}>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            <FaCreditCard size={12} color={theme.colors.accent} /> <strong style={styles.strong}>Pay by card</strong>: a link next to each canister 
+                            (and under <strong style={styles.strong}>No ICP?</strong> on the canister page) opens CyclePay's own checkout in a new tab, 
+                            where you can pay with a card, Apple Pay or Google Pay (Stripe). It takes $5 to $100 without signing in, and the card 
+                            fee is 2.9% + $0.30. The cycles go straight to that canister. You don't need ICP or a Sneed Hub login for this.
+                        </p>
+                    </div>
+                    <div style={styles.warningBox}>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            <strong style={styles.strong}>Cycles can't be taken back:</strong> once a canister has the cycles, they stay there, and 
+                            payments are real tokens or real money. Check the canister id before you pay. Card and ck-USDC payments go through 
+                            CyclePay, so their terms and limits are CyclePay's.
+                        </p>
+                    </div>
                 </div>
 
                 {/* Best Practices */}
@@ -469,7 +575,7 @@ function HelpCanisterManager() {
                     
                     <h4 style={styles.subsubheading}>Why can't I see cycle balances for some apps?</h4>
                     <p style={styles.paragraph}>
-                        You can only see detailed status for app canisters where you're a controller. Others show "unknown" status.
+                        You can only see detailed status for app canisters where you're a controller. Others show the gray "unknown" lamp.
                     </p>
                     
                     <h4 style={styles.subsubheading}>What happens if I remove an app from tracking?</h4>
@@ -482,9 +588,14 @@ function HelpCanisterManager() {
                         Yes! You can track any app canister by id, but you'll only see limited information and can't perform management actions.
                     </p>
                     
-                    <h4 style={styles.subsubheading}>Why is Custom Apps a premium feature?</h4>
+                    <h4 style={styles.subsubheading}>I hit a limit on groups or apps. What now?</h4>
                     <p style={styles.paragraph}>
-                        It helps support Sneed Hub development. ICP Staking Bots are always accessible to all users.
+                        Groups have a free limit. <Link to="/premium" style={styles.link}>Sneed Premium</Link> raises it. Your bots and wallet apps don't count towards it.
+                    </p>
+
+                    <h4 style={styles.subsubheading}>Can I top up a canister I don't control?</h4>
+                    <p style={styles.paragraph}>
+                        Yes. Anyone can send cycles to any canister; on the canister page, top-up works for anyone who is logged in, and the card link works without a login.
                     </p>
                 </div>
 

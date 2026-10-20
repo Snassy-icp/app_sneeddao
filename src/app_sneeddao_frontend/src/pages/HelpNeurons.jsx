@@ -384,7 +384,10 @@ function HelpNeurons() {
                         Vote on Proposals
                     </h4>
                     <p style={styles.paragraph}>
-                        Cast votes on governance proposals to influence decisions about the DAO's treasury, upgrades, and strategic direction.
+                        Vote on the DAO's proposals from the <Link to="/proposals" style={styles.link}>Proposals</Link> page or a 
+                        single proposal's page, with every neuron you can vote with. The proposal list shows a small yes/no bar for 
+                        each proposal. Votes are public. See the <Link to="/help/proposals" style={styles.link}>proposals and voting 
+                        help</Link> for details.
                     </p>
                     
                     <h4 style={styles.subsubheading}>
@@ -392,15 +395,18 @@ function HelpNeurons() {
                         Follow Other Neurons
                     </h4>
                     <p style={styles.paragraph}>
-                        Set up automatic following to copy votes from trusted neurons—never miss voting rewards when you're away.
+                        On the neuron page, <strong style={styles.strong}>Followees</strong> lets you add one or more neurons to follow 
+                        on chosen topics (Governance, Community, SNS Framework, Dapp, App Logic, Treasury, Critical). Your neuron then 
+                        votes the way its followees vote, so it keeps voting while you're away.
                     </p>
                     
                     <h4 style={styles.subsubheading}>
                         <FaClock size={14} color="#f59e0b" />
-                        Increase Dissolve Delay
+                        Set or Increase Dissolve Delay
                     </h4>
                     <p style={styles.paragraph}>
-                        Extend your dissolve delay to increase voting power and demonstrate long-term commitment.
+                        A longer dissolve delay gives more voting power. The delay can only go up, never down, and each SNS has a 
+                        minimum delay for voting and a maximum.
                     </p>
                     
                     <h4 style={styles.subsubheading}>
@@ -408,31 +414,50 @@ function HelpNeurons() {
                         Start/Stop Dissolving
                     </h4>
                     <p style={styles.paragraph}>
-                        Control when your staked tokens become available. Start dissolving to begin the countdown, or stop to maintain voting power.
+                        Start dissolving to begin the countdown to unlocking the stake; stop dissolving to lock it again at the 
+                        remaining delay.
                     </p>
                     
                     <h4 style={styles.subsubheading}>
                         <FaMinusCircle size={14} color="#ef4444" />
-                        Disburse Neurons
+                        Disburse and Maturity
                     </h4>
                     <p style={styles.paragraph}>
-                        Once fully dissolved (dissolve delay at zero), withdraw your staked tokens plus any accumulated rewards.
+                        When a neuron is fully dissolved, <strong style={styles.strong}>Disburse to Wallet</strong> sends its stake to 
+                        your wallet. Voting rewards build up as maturity: <strong style={styles.strong}>Disburse Maturity</strong> turns 
+                        it into tokens (the neuron shows the pending amount and when it arrives), or tick{' '}
+                        <strong style={styles.strong}>Automatically stake new maturity</strong> to add new rewards to the neuron instead.
                     </p>
                     
                     <h4 style={styles.subsubheading}>
                         <FaKey size={14} color="#14b8a6" />
-                        Add/Remove Hotkeys
+                        Manage Principals and Hotkeys
                     </h4>
                     <p style={styles.paragraph}>
-                        Configure hotkeys that can manage and vote with your neuron without having the ability to disburse it.
+                        Add other principals (hotkeys or more) with the permissions you choose, for example to vote from another 
+                        app without giving it the right to disburse.
                     </p>
                     
                     <h4 style={styles.subsubheading}>
                         <FaPlusCircle size={14} color="#6366f1" />
-                        Split Neurons
+                        Split, Increase Stake and Send
                     </h4>
                     <p style={styles.paragraph}>
-                        Divide a neuron into multiple neurons with different configurations for varied voting strategies.
+                        <strong style={styles.strong}>Split Neuron</strong> moves part of the stake into a new neuron (the amount must 
+                        include the transaction fee, and both neurons must keep the SNS's minimum stake). <strong style={styles.strong}>Increase 
+                        Stake</strong> adds tokens from your wallet. <strong style={styles.strong}>Send</strong> hands the whole neuron to 
+                        another principal: the recipient gets full permissions, then every other principal (including you) is 
+                        removed. That cannot be undone, so check the recipient carefully.
+                    </p>
+
+                    <h4 style={styles.subsubheading}>
+                        <FaCheckCircle size={14} color="#8b5cf6" />
+                        Names and Nicknames
+                    </h4>
+                    <p style={styles.paragraph}>
+                        A <strong style={styles.strong}>Name</strong> is public: everyone sees it next to the neuron (a check mark means 
+                        the name is verified). A <strong style={styles.strong}>Nickname</strong> (set on the neuron page or the Me page) 
+                        is shown only to you. Inappropriate public names can get you banned.
                     </p>
                 </div>
 
@@ -445,8 +470,17 @@ function HelpNeurons() {
                         <h2 style={styles.subheading}>Understanding Hotkeys</h2>
                     </div>
                     <p style={styles.paragraph}>
-                        Hotkeys are additional principals that can perform most neuron operations (voting, following, adjusting dissolve delay) 
-                        without being able to disburse the neuron or change critical security settings.
+                        Every SNS neuron has a list of principals, each with its own set of permissions. A "hotkey" in the NNS app 
+                        sense is a principal with only the Vote and Submit Proposal permissions: it can vote and make proposals but 
+                        cannot disburse the neuron or change its principals. On the neuron page Sneed Hub labels each principal by 
+                        what it can do: <strong style={styles.strong}>Full Owner</strong>, <strong style={styles.strong}>Manager</strong> (can 
+                        manage principals), <strong style={styles.strong}>Hotkey</strong>, <strong style={styles.strong}>Voter</strong>,{' '}
+                        <strong style={styles.strong}>Financial</strong> (can disburse) or <strong style={styles.strong}>Custom</strong>.
+                    </p>
+                    <p style={styles.paragraph}>
+                        With the Manage Principals permission you can <strong style={styles.strong}>Add Principal</strong> with exactly 
+                        the permissions you choose (as far as the SNS allows), edit or remove principals. Sneed Hub will not let you 
+                        remove the last principal that can manage the neuron.
                     </p>
                     
                     <div style={styles.infoBox}>
@@ -481,31 +515,50 @@ function HelpNeurons() {
                     
                     <h4 style={styles.subsubheading}>Wallet Page</h4>
                     <p style={styles.paragraph}>
-                        The <Link to="/wallet" style={styles.link}>Wallet page</Link> is your all-in-one hub showing neurons across all SNSes.
-                        Create neurons, add stake, set dissolve time, disburse, and send neurons to other users.
+                        The <Link to="/wallet" style={styles.link}>Wallet page</Link> shows your neurons under each SNS token's card. 
+                        From there you can <strong style={styles.strong}>Create New Neuron</strong> (stake amount and dissolve delay; the 
+                        button is disabled for SNSes that don't allow managing neuron permissions, since such a neuron would be stuck in 
+                        this wallet), <strong style={styles.strong}>Increase Stake</strong>, <strong style={styles.strong}>Set</strong> or{' '}
+                        <strong style={styles.strong}>Increase Dissolve Delay</strong>, <strong style={styles.strong}>Start</strong> /{' '}
+                        <strong style={styles.strong}>Stop Dissolving</strong>, <strong style={styles.strong}>Disburse to Wallet</strong>,{' '}
+                        <strong style={styles.strong}>Disburse Maturity</strong>, tick <strong style={styles.strong}>Automatically stake new 
+                        maturity</strong>, <strong style={styles.strong}>Split Neuron</strong> and <strong style={styles.strong}>Send</strong> the 
+                        neuron. <strong style={styles.strong}>Manage</strong> opens the neuron's own page.
                     </p>
                     
                     <h4 style={styles.subsubheading}>Me Page</h4>
                     <p style={styles.paragraph}>
-                        The <Link to="/me" style={styles.link}>Me page</Link> provides a focused view of your neurons for the selected SNS only.
+                        The <Link to="/me" style={styles.link}>Me page</Link> lists your neurons for the SNS selected in the header 
+                        (optionally including neurons you can only reach as a hotkey). Here you can give a neuron a public{' '}
+                        <strong style={styles.strong}>Name</strong> or a <strong style={styles.strong}>Nickname</strong> (see Names and 
+                        Nicknames above).
                     </p>
                     
                     <h4 style={styles.subsubheading}>Neurons Page</h4>
                     <p style={styles.paragraph}>
-                        The <Link to="/neurons" style={styles.link}>Neurons page</Link> is a public browser to explore all neurons in the selected SNS—research 
-                        governance and find neurons to follow.
+                        The <Link to="/neurons" style={styles.link}>Neurons page</Link> is a public browser for the selected SNS, with 
+                        two tabs: <strong style={styles.strong}>Neurons</strong> (filter by dissolve state, owners or hotkeys, named or 
+                        verified neurons; sort by stake or voting power; <strong style={styles.strong}>Export CSV</strong>) and{' '}
+                        <strong style={styles.strong}>Stakers</strong> (each principal with its neurons, total and owned stake). Use it to 
+                        research governance and find neurons to follow.
                     </p>
                     
-                    <h4 style={styles.subsubheading}>Neuron Detail Page</h4>
+                    <h4 style={styles.subsubheading}>Neuron Page</h4>
                     <p style={styles.paragraph}>
-                        Access any neuron via <span style={styles.code}>/neuron?neuronid=NEURON_ID</span> for detailed inspection, 
-                        permissions management, and following configuration.
+                        Open any neuron from a list, or search by ID, name or nickname on{' '}
+                        <span style={styles.code}>/neuron?sns=ROOT_ID&amp;neuronid=NEURON_ID</span>. It shows stake, maturity, voting 
+                        power, age, dissolve state, auto-stake and the neuron's stake account (send tokens there to increase the stake), 
+                        with <strong style={styles.strong}>Details</strong> and <strong style={styles.strong}>Transactions</strong> tabs. If you 
+                        have the right permissions you can also <strong style={styles.strong}>Increase Delay</strong>,{' '}
+                        <strong style={styles.strong}>Start</strong> / <strong style={styles.strong}>Stop Dissolving</strong>, manage{' '}
+                        <strong style={styles.strong}>Permissions</strong> and <strong style={styles.strong}>Followees</strong>, and see the 
+                        neuron's <strong style={styles.strong}>Voting History</strong> (each vote links to its proposal).
                     </p>
                     
                     <div style={styles.infoBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            <strong style={styles.strong}>Unique Features:</strong> Sneed Hub allows sending neurons to other users and 
-                            configuring granular permissions—features not available on the NNS dApp!
+                            <strong style={styles.strong}>Unique Features:</strong> Sneed Hub lets you send neurons to other users, split them and 
+                            give principals exactly the permissions you choose, which the NNS dApp does not offer.
                         </p>
                     </div>
                 </div>
@@ -611,12 +664,12 @@ function HelpNeurons() {
                     
                     <h4 style={styles.subsubheading}>Can I increase my neuron's stake?</h4>
                     <p style={styles.paragraph}>
-                        Yes! Use the "Add Stake" feature on the Wallet page to add more tokens to existing neurons.
+                        Yes. Use <strong style={styles.strong}>Increase Stake</strong> on the neuron in your <Link to="/wallet" style={styles.link}>Wallet</Link>, or send tokens to the stake account shown on the neuron page (anyone can do this, even without permissions on the neuron).
                     </p>
                     
                     <h4 style={styles.subsubheading}>What happens to my rewards?</h4>
                     <p style={styles.paragraph}>
-                        Voting rewards accumulate as "maturity." You can disburse maturity to claim liquid tokens or auto-stake to compound voting power.
+                        Voting rewards accumulate as maturity. Use <strong style={styles.strong}>Disburse Maturity</strong> to turn it into tokens in your wallet, or turn on <strong style={styles.strong}>Automatically stake new maturity</strong> to add it to the neuron's voting power.
                     </p>
                     
                     <h4 style={styles.subsubheading}>Can I decrease my dissolve delay?</h4>
@@ -624,9 +677,11 @@ function HelpNeurons() {
                         Not directly. Start dissolving to begin the countdown—the delay decreases automatically over time until zero.
                     </p>
                     
-                    <h4 style={styles.subsubheading}>Why don't I see my NNS neurons on Sneed Hub?</h4>
+                    <h4 style={styles.subsubheading}>Why don't I see the SNS neurons I staked in the NNS app?</h4>
                     <p style={styles.paragraph}>
-                        You need to add your Sneed Hub principal as a hotkey on NNS. See the cross-platform management section above.
+                        Neurons staked in the NNS app belong to your NNS identity. Add your Sneed Hub principal as a hotkey on them 
+                        (see Understanding Hotkeys above) to see and vote with them here. To get full control in Sneed Hub (for example 
+                        to send or sell the neuron), use the <Link to="/tools/sns_jailbreak" style={styles.link}>SNS Jailbreak</Link> wizard.
                     </p>
                     
                     <h4 style={styles.subsubheading}>What if I lose access to my principal?</h4>
@@ -649,6 +704,18 @@ function HelpNeurons() {
                         </li>
                         <li style={styles.listItem}>
                             <Link to="/help/icp-neuron-manager" style={styles.link}>ICP Staking Bot App Canisters</Link> — Dedicated app canisters for ICP neurons
+                        </li>
+                        <li style={styles.listItem}>
+                            <Link to="/help/proposals" style={styles.link}>Proposals and Voting</Link> — Reading proposals and voting with your neurons
+                        </li>
+                        <li style={styles.listItem}>
+                            <Link to="/help/sns_jailbreak" style={styles.link}>SNS Jailbreak</Link> — Full control of neurons staked in the NNS app
+                        </li>
+                        <li style={styles.listItem}>
+                            <Link to="/help/liquid-staking" style={styles.link}>Liquid Staking</Link> — Neurons that stay transferable
+                        </li>
+                        <li style={styles.listItem}>
+                            <Link to="/help/sneedex" style={styles.link}>Sneedex</Link> — Buy and sell SNS neurons
                         </li>
                         <li style={styles.listItem}>
                             <Link to="/forum" style={styles.link}>Forum</Link> — Ask questions and discuss with other users

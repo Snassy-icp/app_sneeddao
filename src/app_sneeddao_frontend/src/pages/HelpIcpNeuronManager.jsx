@@ -8,7 +8,7 @@ import {
     FaCoins, FaKey, FaCut, FaShieldAlt, FaCogs, FaRocket, 
     FaLightbulb, FaQuestionCircle, FaCheckCircle, FaExclamationTriangle,
     FaRobot, FaClock, FaPlay, FaPause, FaStop, FaExchangeAlt, FaSyncAlt,
-    FaHandshake, FaBrain, FaUserShield, FaDownload, FaClipboardList, FaArrowUp
+    FaHandshake, FaBrain, FaUserShield, FaDownload, FaClipboardList, FaArrowUp, FaBolt
 } from 'react-icons/fa';
 
 // Custom CSS for animations
@@ -359,15 +359,24 @@ function HelpIcpNeuronManager() {
                         <h2 style={styles.subheading}>Creating a Staking Bot</h2>
                     </div>
                     <ol style={styles.stepList}>
-                        <li style={styles.stepItem}>Navigate to the <Link to="/create_icp_neuron" style={styles.link}>Create ICP Neuron</Link> page</li>
-                        <li style={styles.stepItem}>Click "Pay" to send the required ICP creation fee</li>
-                        <li style={styles.stepItem}>Once payment is confirmed, click "Create" to deploy your app canister</li>
-                        <li style={styles.stepItem}>Your app canister is created with you as the controller, funded with cycles</li>
+                        <li style={styles.stepItem}>Log in and open the <Link to="/create_icp_neuron" style={styles.link}>ICP Staking Bot</Link> page. It shows the latest bot version and the creation fee in ICP (<Link to="/premium" style={styles.link}>Sneed Premium</Link> members may see a discount)</li>
+                        <li style={styles.stepItem}>Click <strong style={styles.strong}>Create Staking Bot</strong>. A short wizard opens with four steps</li>
+                        <li style={styles.stepItem}><strong style={styles.strong}>Fund Wallet:</strong> check that your ICP balance covers the fee (sending from an exchange? <strong style={styles.strong}>Show Account ID</strong> gives you the address to use)</li>
+                        <li style={styles.stepItem}><strong style={styles.strong}>Configure Gas:</strong> base gas (cycles) is included in the fee and should last several months of normal use; you can add extra ICP for gas</li>
+                        <li style={styles.stepItem}><strong style={styles.strong}>Stake ICP:</strong> choose <strong style={styles.strong}>Stake Now</strong> to create a neuron right after the bot (min 1 ICP, dissolve delay between 183 days and 2 years), or <strong style={styles.strong}>Stake Later</strong></li>
+                        <li style={styles.stepItem}><strong style={styles.strong}>Confirm &amp; Create:</strong> review and click <strong style={styles.strong}>Create Staking Bot</strong>. The wizard pays the fee, creates the canister, tops it up with any extra gas and stakes the neuron, showing each step</li>
                     </ol>
                     <div style={styles.tipBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            <strong style={styles.strong}>What You Get:</strong> A dedicated app canister you fully control, pre-funded 
-                            with cycles and ready to create/manage ICP neurons immediately.
+                            <strong style={styles.strong}>What You Get:</strong> A dedicated app canister with you as the controller, funded 
+                            with cycles. Save the new canister id it shows, then click <strong style={styles.strong}>Open Manager</strong>. 
+                            If the gas top-up or the staking step fails, the bot is still created and you can do that step later from the bot's page.
+                        </p>
+                    </div>
+                    <div style={styles.warningBox}>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            <strong style={styles.strong}>Real ICP:</strong> the creation fee is paid when you create the bot and is not refunded. 
+                            ICP staked in a neuron stays locked until the neuron has dissolved.
                         </p>
                     </div>
                 </div>
@@ -425,26 +434,28 @@ function HelpIcpNeuronManager() {
                             Voting & Following
                         </h4>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
-                            <li style={styles.listItem}>Vote on NNS proposals</li>
-                            <li style={styles.listItem}>Submit NNS proposals (Make Proposal)</li>
-                            <li style={styles.listItem}>Set following for automatic voting</li>
+                            <li style={styles.listItem}>Set following for automatic voting (the page itself has no buttons for voting on single proposals: your neurons vote through following, or through a hotkey in the NNS dApp)</li>
                             <li style={styles.listItem}>Configure different followees by topic with quick-select options (All, Critical Only, Non-Critical Only)</li>
-                            <li style={styles.listItem}>Confirm following to keep voting rewards active</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Confirm Following</strong> to keep voting rewards active</li>
                         </ul>
+                        <p style={{ ...styles.paragraph, marginBottom: 0, marginTop: '0.5rem', fontSize: '0.85rem' }}>
+                            The bot canister's own interface can also vote and submit NNS proposals for controllers and botkeys with the 
+                            <strong style={styles.strong}> Vote</strong> or <strong style={styles.strong}>Make Proposal</strong> permission, for example from scripts.
+                        </p>
                     </div>
                     
                     <div style={styles.featureCard}>
                         <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
                             <FaKey size={14} color="#ec4899" />
-                            Hotkey Management
+                            Hotkey Management (Hot Keys tab)
                         </h4>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
-                            <li style={styles.listItem}>Add hotkeys for voting access</li>
+                            <li style={styles.listItem}>Add hotkeys: they can vote and manage following for the neuron, but cannot disburse or change dissolve settings</li>
                             <li style={styles.listItem}>Remove hotkeys as needed</li>
                         </ul>
                         <div style={{ ...styles.tipBox, marginTop: '0.5rem', marginBottom: 0 }}>
                             <p style={{ ...styles.paragraph, marginBottom: 0, fontSize: '0.85rem' }}>
-                                <strong style={styles.strong}>💡 Tip:</strong> Add your NNS principal as a hotkey to vote directly 
+                                <strong style={styles.strong}>Tip:</strong> Add your NNS principal as a hotkey to vote directly 
                                 from the <a href="https://nns.ic0.app" target="_blank" rel="noopener noreferrer" style={styles.link}>NNS dApp</a>!
                             </p>
                         </div>
@@ -551,7 +562,7 @@ function HelpIcpNeuronManager() {
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}><strong style={styles.strong}>Full Permissions</strong> — all permissions, including any added in future updates</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Manage Permissions</strong> — add/remove other botkey principals and their permissions</li>
-                            <li style={styles.listItem}><strong style={styles.strong}>View Neurons</strong> — view neuron info, list neurons, and check balances</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>View Neuron</strong> — view neuron info, list neurons, and check balances</li>
                         </ul>
                     </div>
 
@@ -569,7 +580,7 @@ function HelpIcpNeuronManager() {
                             <li style={styles.listItem}><strong style={styles.strong}>Disburse Maturity</strong> — disburse accumulated maturity</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Stake / Merge / Spawn Maturity</strong> — manage maturity as stake</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Split / Merge Neurons</strong> — restructure neurons</li>
-                            <li style={styles.listItem}><strong style={styles.strong}>Manage Neuron Hotkeys</strong> — add/remove NNS hotkeys on neurons</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Manage NNS Hotkeys</strong> — add/remove NNS hotkeys on neurons</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Auto-Stake Maturity</strong> — toggle automatic maturity staking</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Manage Visibility</strong> — change neuron visibility settings</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Withdraw Funds</strong> — withdraw ICP or tokens held by the canister</li>
@@ -581,16 +592,17 @@ function HelpIcpNeuronManager() {
                             Chore Permissions
                         </h4>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
-                            <li style={styles.listItem}><strong style={styles.strong}>Manage [Chore]</strong> — start, stop, pause, resume, trigger, and set the interval for a specific chore (one permission per chore)</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Manage Confirm Following / Refresh Stake / Collect Maturity / Distribute Funds</strong> — start, stop, pause, resume and configure that chore (one permission per chore)</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Configure Collect Maturity</strong> — set the maturity threshold and destination account</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Configure Distribution</strong> — add, edit, and remove distribution lists</li>
                             <li style={styles.listItem}><strong style={styles.strong}>View Chores</strong> — view chore statuses and configurations (read-only)</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>View Events / Manage Events</strong> — see, or configure, event emission, subscriptions and reaction rules (see Bot Events below)</li>
                         </ul>
                     </div>
 
                     <div style={styles.tipBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0, fontSize: '0.85rem' }}>
-                            <strong style={styles.strong}>💡 Use Case:</strong> Grant a trusted friend "Vote" permission so they 
+                            <strong style={styles.strong}>Use Case:</strong> Grant a trusted friend "Vote" permission so they 
                             can vote on your behalf during vacations, without giving them access to disburse or transfer funds.
                         </p>
                     </div>
@@ -720,7 +732,7 @@ function HelpIcpNeuronManager() {
                         </ul>
                         <div style={{ ...styles.tipBox, marginBottom: 0 }}>
                             <p style={{ ...styles.paragraph, marginBottom: 0, fontSize: '0.85rem' }}>
-                                <strong style={styles.strong}>💡 Percentage Math:</strong> Targets with no percentage set split equally 
+                                <strong style={styles.strong}>Percentage Math:</strong> Targets with no percentage set split equally 
                                 what's left after the assigned targets. If assigned percentages exceed 100%, they are automatically 
                                 renormalized. The actual calculated share for each target is displayed in the configuration UI.
                             </p>
@@ -733,7 +745,7 @@ function HelpIcpNeuronManager() {
                         Chore Lifecycle
                     </h4>
                     <p style={styles.paragraph}>
-                        Each chore can be in one of three states, and you control transitions through five actions:
+                        Each chore can be running, paused or stopped, and you control it with these actions in the chore's <strong style={styles.strong}>Controls</strong>:
                     </p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '1rem' }}>
                         <div style={styles.featureCard}>
@@ -767,11 +779,17 @@ function HelpIcpNeuronManager() {
                         <div style={styles.featureCard}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <FaSyncAlt size={12} color="#8b5cf6" />
-                                <strong style={{ ...styles.strong, fontSize: '0.9rem' }}>Run Now</strong>
+                                <strong style={{ ...styles.strong, fontSize: '0.9rem' }}>Run Now / Run Once</strong>
                                 <span style={{ ...styles.paragraph, margin: 0, fontSize: '0.85rem' }}>— triggers a one-off run without changing the regular schedule</span>
                             </div>
                         </div>
                     </div>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}><strong style={styles.strong}>Schedule a start:</strong> the small arrow next to <strong style={styles.strong}>Start</strong> lets you pick the date and time of the first run</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Next Scheduled Run:</strong> you can move the next run to another time with <strong style={styles.strong}>Set</strong></li>
+                        <li style={styles.listItem}><strong style={styles.strong}>More than one instance:</strong> the <strong style={styles.strong}>+</strong> button next to a chore's tabs adds another named instance of that chore (for example a second distribution), each with its own settings and schedule</li>
+                        <li style={styles.listItem}>Each chore shows its interval, last completed run, success and failure counts, and the last error</li>
+                    </ul>
 
                     {/* Status Lamps */}
                     <h4 style={styles.subsubheading}>
@@ -831,10 +849,17 @@ function HelpIcpNeuronManager() {
                     </p>
                     <div style={styles.infoBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            <strong style={styles.strong}>Top Up:</strong> Navigate to your ICP staking bot page, find "Top Up Cycles", 
-                            and enter ICP amount. The CMC converts ICP to cycles automatically.
+                            <strong style={styles.strong}>Top Up:</strong> On your bot's <strong style={styles.strong}>Info</strong> tab, open <strong style={styles.strong}>Top Up Cycles</strong>, 
+                            enter an amount of ICP and click <strong style={styles.strong}>Top Up Canister</strong>. The Cycles Minting Canister (CMC) converts it to cycles; 
+                            the ICP transfer fee (0.0001 ICP) applies.
                         </p>
                     </div>
+                    <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                        When a bot runs low, Sneed Hub also shows a <strong style={styles.strong}>low on cycles</strong> notice (on <Link to="/apps" style={styles.link}>/apps</Link>, in the 
+                        header and in your wallet) that opens a top-up dialog for all low canisters at once, where you can pay with ICP, ck-USDC or a card. 
+                        See <Link to="/help/dapp-manager#top-up" style={styles.link}>Topping Up Cycles</Link>. You can name your bot (a private nickname or a public name) 
+                        under <strong style={styles.strong}>Name Your Staking Bot</strong> on the same page.
+                    </p>
                 </div>
 
                 {/* Upgrade Canister */}
@@ -851,12 +876,13 @@ function HelpIcpNeuronManager() {
                     </p>
                     <ul style={styles.list}>
                         <li style={styles.listItem}><strong style={styles.strong}>Upgrade:</strong> Updates the canister code while preserving all stable memory (neurons, chore settings, botkeys, etc.)</li>
-                        <li style={styles.listItem}><strong style={styles.strong}>Install Official Version:</strong> If your canister has unverified WASM, you can install the official version</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Install Official Version:</strong> If your canister has unverified WASM or reports a different version than its hash, you can install the latest official version (only if you are sure it is a staking bot)</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Several bots at once:</strong> on <Link to="/apps" style={styles.link}>/apps</Link>, a banner says when bots can be upgraded and opens the <strong style={styles.strong}>Upgrade Apps</strong> dialog</li>
                         <li style={styles.listItem}><strong style={styles.strong}>Module Hash:</strong> The Info tab shows your current module hash and verifies it against the official release</li>
                     </ul>
                     <div style={styles.tipBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0, fontSize: '0.85rem' }}>
-                            <strong style={styles.strong}>💡 Tip:</strong> After upgrading, all running chores resume automatically. 
+                            <strong style={styles.strong}>Tip:</strong> After upgrading, all running chores resume automatically. 
                             Check the release notes linked in the Info tab to see what's new in each version.
                         </p>
                     </div>
@@ -889,6 +915,27 @@ function HelpIcpNeuronManager() {
                     </div>
                 </div>
 
+                {/* Bot Events */}
+                <div style={styles.section} className="icp-help-fade-in" id="events">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#6366f1')}>
+                            <FaBolt size={20} color="#6366f1" />
+                        </div>
+                        <h2 style={styles.subheading}>Bot Events</h2>
+                    </div>
+                    <p style={styles.paragraph}>
+                        Bots can tell each other what they did. The <strong style={styles.strong}>Events</strong> tab (needs the View Events or 
+                        Manage Events permission) has two parts:
+                    </p>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}><strong style={styles.strong}>Source (Outgoing):</strong> turn <strong style={styles.strong}>Event Emission</strong> on or off, see the event types this bot can send, the other bots registered as listeners, and the recent events it sent</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Listener (Incoming):</strong> add <strong style={styles.strong}>Event Subscriptions</strong> to another bot's events (source bot and event types), and <strong style={styles.strong}>Reaction Rules</strong> that run an action of this bot when a matching event arrives, with a log of what each rule did</li>
+                    </ul>
+                    <p style={{ ...styles.paragraph, marginBottom: 0, fontSize: '0.85rem' }}>
+                        Reaction rules act on their own with this bot's funds and neurons, so test them carefully and grant Manage Events only to principals you trust.
+                    </p>
+                </div>
+
                 {/* Canister Logs */}
                 <div style={styles.section} className="icp-help-fade-in">
                     <div style={styles.sectionHeader}>
@@ -911,7 +958,7 @@ function HelpIcpNeuronManager() {
                     </ul>
                     <div style={styles.tipBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0, fontSize: '0.85rem' }}>
-                            <strong style={styles.strong}>💡 Tip:</strong> If a chore isn't working as expected, check the logs 
+                            <strong style={styles.strong}>Tip:</strong> If a chore isn't working as expected, check the logs 
                             filtered to "chore" source at Debug level to see step-by-step what happened.
                         </p>
                     </div>
@@ -945,7 +992,7 @@ function HelpIcpNeuronManager() {
                         by changing app canister controllers rather than each neuron individually.
                     </p>
                     
-                    <h4 style={styles.subsubheading}>Can I have multiple neuron managers?</h4>
+                    <h4 style={styles.subsubheading}>Can I have multiple staking bots?</h4>
                     <p style={styles.paragraph}>
                         Yes! Create as many as you want for separating different neuron sets or having different controller configurations.
                     </p>

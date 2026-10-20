@@ -321,7 +321,7 @@ function HelpTradingBot() {
                             <li style={styles.listItem}><strong style={styles.strong}>Automated Scheduling:</strong> Set up chores to run on configurable intervals — trades execute even while you sleep</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Multi-Strategy:</strong> Run DCA, range trading, rebalancing, fund distribution, and more in parallel</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Fund Isolation:</strong> Purses keep each chore's funds separated — one strategy can't accidentally spend another's budget</li>
-                            <li style={styles.listItem}><strong style={styles.strong}>Upgradeable:</strong> Update your bot to the latest version without losing configuration or funds</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Upgradeable:</strong> Update your bot to the latest version without losing configuration or funds. When a bot is several versions behind, the upgrade steps through every published version in between, showing progress for each step</li>
                         </ul>
                     </div>
                 </div>
@@ -336,8 +336,8 @@ function HelpTradingBot() {
                     </div>
                     <ol style={styles.stepList}>
                         <li style={styles.stepItem}>Navigate to the <Link to="/sneedapp" style={styles.link}>Sneedapp</Link> page</li>
-                        <li style={styles.stepItem}>Find the <strong style={styles.strong}>Sneed Trading Bot</strong> app and click <strong style={styles.strong}>Mint</strong></li>
-                        <li style={styles.stepItem}>Pay the creation fee to deploy your own trading bot canister</li>
+                        <li style={styles.stepItem}>Find the <strong style={styles.strong}>Sneed Trading Bot</strong> app and click <strong style={styles.strong}>Mint Bot</strong></li>
+                        <li style={styles.stepItem}>Pay the creation fee (real tokens, shown before you pay) to deploy your own trading bot canister</li>
                         <li style={styles.stepItem}>Once minted, the bot appears in your wallet — click it to start configuring</li>
                     </ol>
 
@@ -347,11 +347,13 @@ function HelpTradingBot() {
                             Setup Wizard
                         </h4>
                         <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>
-                            When you open a new bot for the first time, the <strong style={styles.strong}>Setup Wizard</strong> launches automatically to help you get started quickly. It offers two guided flows:
+                            When you open a new bot for the first time, the <strong style={styles.strong}>Setup Wizard</strong> launches automatically to help you get started quickly (you can open it again later with the <strong style={styles.strong}>Setup Wizard</strong> button). Under <strong style={styles.strong}>Choose a Strategy</strong> it offers four guided flows:
                         </p>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}><strong style={styles.strong}>DCA (Dollar-Cost Average):</strong> Set up a recurring swap — pick an input and output token, trade size, interval, and optional budget limit. The wizard handles token registration, chore creation, and purse setup for you.</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Range Trade:</strong> Trade between two tokens based on price ranges — buy when cheap, sell when expensive. Includes an optional stop-loss action that halts the chore if price drops below a threshold.</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Self-Balancing Portfolio:</strong> Pick target allocations across several tokens and the rebalancer settings; the wizard creates a rebalance chore that trades when the drift exceeds your threshold.</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>AI Script (SneedScript):</strong> Copy the LLM Guide into your AI chat, optionally send tokens to the bot, use <strong style={styles.strong}>Export &amp; Copy State</strong>, then paste the script your AI writes back, review it and execute it (see SneedScript below).</li>
                         </ul>
                     </div>
 
@@ -776,11 +778,11 @@ function HelpTradingBot() {
                         </h4>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}><strong style={styles.strong}>Portfolio Value:</strong> Current total value of all tokens in the bot (ICP and USD)</li>
-                            <li style={styles.listItem}><strong style={styles.strong}>Net Capital Deployed:</strong> Total capital deposited minus withdrawals — tracks your cost basis</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Net Capital Deployed:</strong> Total capital deposited minus withdrawals — tracks your cost basis. The edit button next to it (<strong style={styles.strong}>Adjust capital deployed</strong>) lets you correct it by hand</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Trading P&amp;L:</strong> Current portfolio value minus net capital deployed, with absolute and percentage display</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Equity Curve:</strong> Detailed area chart of portfolio value over time, or daily OHLC candlestick view</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Capital Flows:</strong> Per-token breakdown of total inflows and outflows</li>
-                            <li style={styles.listItem}><strong style={styles.strong}>Price History:</strong> Detailed and daily OHLC price charts for each token pair</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Price History:</strong> Detailed and daily OHLC price charts for each token pair; <strong style={styles.strong}>Flip pair direction</strong> shows the inverse price, and pairs without their own quotes can be shown as derived prices through other pairs</li>
                         </ul>
                     </div>
 
@@ -1114,6 +1116,7 @@ function HelpTradingBot() {
                             <li style={styles.listItem}>Skipped entries include the reason: cumulative limit reached, frequency limit, purse locked, token frozen, balance/price out of range, trailing stop not triggered, no viable route, and more</li>
                             <li style={styles.listItem}>Includes: tokens, amounts, price, price impact, slippage, DEX used, error messages</li>
                             <li style={styles.listItem}>Filterable by chore, action type, token pair, status, and time range</li>
+                            <li style={styles.listItem}>Tokens sent to or taken from the bot outside its own actions show up as <strong style={styles.strong}>Detected Inflow</strong> / <strong style={styles.strong}>Detected Outflow</strong> entries, which count towards capital deployed. If one is wrong (for example counted twice), remove it with the remove button on the entry, which also reverses its capital impact</li>
                             <li style={styles.listItem}>Live swap progress cards show real-time status of in-flight trades</li>
                         </ul>
                     </div>
@@ -1317,7 +1320,7 @@ function HelpTradingBot() {
                             but your tokens remain in the canister's accounts.
                         </p>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
-                            <li style={styles.listItem}>Top up cycles to unfreeze the canister and resume operations</li>
+                            <li style={styles.listItem}>Top up cycles to unfreeze the canister and resume operations: with ICP, ck-USDC or a card from the low-cycles top-up dialog (see <Link to="/help/dapp-manager" style={styles.link}>App Manager help</Link>)</li>
                             <li style={styles.listItem}>Chores will resume once the canister is running again</li>
                             <li style={styles.listItem}>You remain the controller even while frozen</li>
                         </ul>

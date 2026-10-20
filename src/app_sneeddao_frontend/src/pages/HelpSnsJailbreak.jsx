@@ -5,7 +5,7 @@ import Header from '../components/Header';
 import { 
     FaUnlock, FaArrowRight, FaArrowLeft, FaExclamationTriangle, FaCheckCircle, 
     FaLightbulb, FaKey, FaShieldAlt, FaExchangeAlt, FaCode, FaTerminal,
-    FaQuestionCircle, FaRocket
+    FaQuestionCircle, FaRocket, FaList
 } from 'react-icons/fa';
 
 // Custom CSS for animations
@@ -428,7 +428,7 @@ function HelpSnsJailbreak() {
                             <span style={styles.stepTitle}>Select Your SNS</span>
                         </div>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            Choose which SNS DAO your neuron belongs to. Only SNSes that support full hotkey permissions can be jailbroken.
+                            Choose which SNS DAO your neuron belongs to. The wizard checks each SNS and only offers those that let hotkeys be granted every permission; the others are listed under Unsupported SNSes.
                         </p>
                     </div>
                     
@@ -438,7 +438,7 @@ function HelpSnsJailbreak() {
                             <span style={styles.stepTitle}>Select Your Neuron</span>
                         </div>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            Pick the neuron you want to jailbreak. Select from neurons already hotkeyed to your Sneed Wallet, or enter any neuron ID manually.
+                            Pick the neuron you want to jailbreak. The wizard lists neurons where your Sneed Wallet already has hotkey access (add it as a hotkey in the NNS app first to see the neuron here), or you can type the neuron ID (hex) manually.
                         </p>
                     </div>
                     
@@ -448,17 +448,22 @@ function HelpSnsJailbreak() {
                             <span style={styles.stepTitle}>Choose Target Principal</span>
                         </div>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            Your Sneed Wallet principal is pre-selected. You can change this to any principal ID if needed.
+                            Your logged-in Sneed Wallet principal is pre-selected. You can change it to another principal, but whichever principal you enter gets full control of the neuron, including the right to disburse it.
                         </p>
                     </div>
                     
                     <div style={styles.stepCard}>
                         <div style={styles.stepHeader}>
                             <span style={styles.stepNumber}>4</span>
-                            <span style={styles.stepTitle}>Generate & Run Script</span>
+                            <span style={styles.stepTitle}>Generate &amp; Run Script</span>
                         </div>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            The wizard generates a customized JavaScript script. Copy it, then paste and run it in your browser's developer console while logged into the NNS app.
+                            Review the summary and the <strong style={styles.strong}>Script Fee</strong> (paid in ICP; Sneed Premium 
+                            members get a discount, and it can be free). Click <strong style={styles.strong}>Pay ... ICP &amp; Generate 
+                            Script</strong> (or <strong style={styles.strong}>Generate Script (Free)</strong>): the ICP goes from your wallet 
+                            to a payment account and the configuration is saved. The wizard then loads the script from GitHub and fills 
+                            in your choices. Copy it, then paste and run it in your browser's developer console while logged into the 
+                            NNS app.
                         </p>
                     </div>
                     
@@ -468,7 +473,10 @@ function HelpSnsJailbreak() {
                             <span style={styles.stepTitle}>Verify Success</span>
                         </div>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            Check that your Sneed Wallet principal appears as a controller with full permissions on your neuron.
+                            Click <strong style={styles.strong}>I've Done It</strong>. The wizard reads the neuron and checks that the 
+                            principal now has all permissions (<strong style={styles.strong}>Neuron Jailbroken!</strong>), only some 
+                            (<strong style={styles.strong}>Partially Verified</strong>) or none yet (<strong style={styles.strong}>Verification 
+                            Failed</strong>, with tips). It also adds the SNS token to your wallet so the neuron shows up there.
                         </p>
                     </div>
                 </div>
@@ -538,10 +546,30 @@ function HelpSnsJailbreak() {
                             <FaCheckCircle size={18} color="#10b981" style={{ flexShrink: 0, marginTop: '2px' }} />
                             <div>
                                 <strong style={styles.strong}>Pro Tip:</strong> After jailbreaking, visit your{' '}
-                                <Link to="/me" style={styles.link}>Me page</Link> to see all your neurons for the selected SNS—make sure to select the relevant SNS in the header dropdown! You can also see your neurons in the <Link to="/" style={styles.link}>Wallet</Link> by expanding the token card for the SNS token.
+                                <Link to="/me" style={styles.link}>Me page</Link> to see your neurons for the selected SNS (pick the SNS in the header dropdown). You can also find them in your <Link to="/wallet" style={styles.link}>Wallet</Link> by expanding the SNS token's card.
                             </div>
                         </div>
                     </div>
+                </div>
+
+                {/* Saved scripts */}
+                <div style={styles.section} className="jailbreak-help-fade-in" id="saved-scripts">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#3b82f6')}>
+                            <FaList size={20} color="#3b82f6" />
+                        </div>
+                        <h2 style={styles.subheading}>Your Saved Scripts</h2>
+                    </div>
+                    <p style={styles.paragraph}>
+                        Every configuration you pay for is saved. Open <Link to="/tools/sns_jailbreak_list" style={styles.link}>My 
+                        Jailbreak Scripts</Link> (the <strong style={styles.strong}>View my saved scripts</strong> link in the wizard) to 
+                        regenerate the script for a neuron without paying again, open the neuron's page, or delete a saved configuration. 
+                        Running the wizard again for the same SNS, neuron and principal also reuses the saved configuration.
+                    </p>
+                    <p style={styles.paragraph}>
+                        If ICP is left in the payment account (for example after an interrupted payment), the wizard uses it for 
+                        the next payment and lets you withdraw it back to your wallet.
+                    </p>
                 </div>
 
                 {/* Supported SNSes */}
@@ -579,7 +607,7 @@ function HelpSnsJailbreak() {
                     
                     <h4 style={styles.subsubheading}>Is this safe?</h4>
                     <p style={styles.paragraph}>
-                        Yes! The script is open source and only adds a controller—it doesn't remove your existing access or modify your neuron in any other way.
+                        The script is open source and only adds permissions for one principal; it does not remove your existing access or change the neuron in any other way. Read it before you run it, and double-check the principal: it gets every permission, including disbursing the neuron.
                     </p>
                     
                     <h4 style={styles.subsubheading}>Will I lose my NNS access?</h4>
@@ -589,7 +617,7 @@ function HelpSnsJailbreak() {
                     
                     <h4 style={styles.subsubheading}>Can I undo a jailbreak?</h4>
                     <p style={styles.paragraph}>
-                        Yes. Since you have full control from both identities, you can remove any controller you've added.
+                        Yes. Both identities have full control, so either can remove the permissions of the other, for example from the neuron's page on Sneed Hub.
                     </p>
                     
                     <h4 style={styles.subsubheading}>Why do I need to run a script?</h4>
@@ -617,6 +645,9 @@ function HelpSnsJailbreak() {
                         </li>
                         <li style={styles.listItem}>
                             <Link to="/help/sneedex" style={styles.link}>Sneedex Marketplace</Link> — Trade jailbroken neurons
+                        </li>
+                        <li style={styles.listItem}>
+                            <Link to="/premium" style={styles.link}>Sneed Premium</Link> — Membership with discounted fees
                         </li>
                         <li style={styles.listItem}>
                             <Link to="/help" style={styles.link}>Help Center</Link> — Browse all help topics

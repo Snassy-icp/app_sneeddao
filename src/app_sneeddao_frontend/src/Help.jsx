@@ -4,7 +4,9 @@ import Header from './components/Header';
 import { useTheme } from './contexts/ThemeContext';
 import { FaMobileAlt, 
     FaQuestionCircle, FaBook, FaWallet, FaBrain, FaLock, FaServer, 
-    FaCubes, FaStore, FaUnlock, FaArrowRight, FaLifeRing, FaChartLine 
+    FaCubes, FaStore, FaUnlock, FaArrowRight, FaLifeRing, FaChartLine,
+    FaIdBadge, FaLandmark, FaVoteYea, FaWater, FaComments, FaEnvelope, FaBell,
+    FaRocket, FaFlask, FaTools, FaRobot, FaCode
 } from 'react-icons/fa';
 
 // Custom CSS for animations
@@ -47,69 +49,55 @@ const customAnimations = `
 const helpPrimary = '#06b6d4';
 const helpSecondary = '#22d3ee';
 
-const helpTopics = [
+const helpGroups = [
     {
-        path: '/help/app',
-        icon: FaMobileAlt,
-        title: 'Sneed Hub on Your Phone',
-        description: 'Install Sneed Hub as an app and log in there by pairing it with your browser',
-        color: '#3498db',
+        title: 'Getting started',
+        topics: [
+            { path: '/help/app', icon: FaMobileAlt, title: 'Sneed Hub on Your Phone', description: 'Install Sneed Hub as an app and log in there by pairing it with your browser', color: '#3498db' },
+            { path: '/help/wallet', icon: FaWallet, title: 'Understanding Your Wallet', description: 'Tokens, liquidity positions, locks, neurons, apps and NFTs', color: '#10b981' },
+            { path: '/help/names', icon: FaIdBadge, title: 'Names, Profiles and Settings', description: 'Log in, your principal, public names and private nicknames, verified names, NFT avatars, profiles and your settings', color: '#f97316' },
+        ],
     },
     {
-        path: '/help/wallet',
-        icon: FaWallet,
-        title: 'Understanding Your Wallet',
-        description: 'Learn how to manage tokens, positions, and neurons in your wallet',
-        color: '#10b981',
+        title: 'Sneed DAO and governance',
+        topics: [
+            { path: '/help/dao', icon: FaLandmark, title: 'Sneed DAO', description: 'The DAO, its revenue loop, voting rewards, Premium, donations, feedback, Mr Sneed and the lore', color: '#06b6d4' },
+            { path: '/help/proposals', icon: FaVoteYea, title: 'Proposals and Voting', description: 'Browse SNS and NNS proposals, read the vote bars and details, and vote with your hotkeyed neurons', color: '#7c3aed' },
+            { path: '/help/neurons', icon: FaBrain, title: 'Understanding SNS Neurons', description: 'Stake, vote, follow, dissolve, split, send and name your SNS neurons', color: '#8b5cf6' },
+            { path: '/help/liquid-staking', icon: FaWater, title: 'Liquid Staking', description: 'Create SNS neurons and ICP staking bots you can send or sell, plus the SNS directory', color: '#0ea5e9' },
+        ],
     },
     {
-        path: '/help/neurons',
-        icon: FaBrain,
-        title: 'Understanding SNS Neurons',
-        description: 'Governance, voting, hotkeys, and cross-platform management',
-        color: '#8b5cf6',
+        title: 'Community',
+        topics: [
+            { path: '/help/forum', icon: FaComments, title: 'Forum, Feed and Tips', description: 'Discuss with every SNS community: threads, post voting with neurons, polls, tips and @-mentions', color: '#6366f1' },
+            { path: '/help/sms', icon: FaEnvelope, title: 'Sneed SMS Messages', description: 'Direct messages between principals: compose, reply, threads, limits and who can read them', color: '#ec4899' },
+            { path: '/help/notifications', icon: FaBell, title: 'Notifications', description: 'Choose which apps may notify you and where: Sneed SMS, phone push or Discord; levels, quiet hours, balance and history', color: '#f59e0b' },
+        ],
     },
     {
-        path: '/help/sneedlock',
-        icon: FaLock,
-        title: 'Understanding Sneedlock',
-        description: 'Time-lock tokens and LP positions for commitment and vesting',
-        color: '#f59e0b',
+        title: 'Locking and trading',
+        topics: [
+            { path: '/help/sneedlock', icon: FaLock, title: 'Understanding Sneedlock', description: 'Lock tokens and LP positions: lock dates, dissolve delays, locks as NFTs, gas and fees', color: '#f59e0b' },
+            { path: '/help/sneedex', icon: FaStore, title: 'Sneedex Marketplace', description: 'Buy and sell apps, bots, SNS neurons, NFTs, Sneed Locks and tokens through escrow', color: '#14b8a6' },
+            { path: '/help/sns_jailbreak', icon: FaUnlock, title: 'SNS Jailbreak', description: 'Give your Sneed Wallet full control of SNS neurons staked in the NNS app', color: '#ef4444' },
+        ],
     },
     {
-        path: '/help/icp-neuron-manager',
-        icon: FaServer,
-        title: 'ICP Staking Bot App Canisters',
-        description: 'Create and manage dedicated app canisters for your ICP neurons',
-        color: '#3b82f6',
+        title: 'Apps and bots',
+        topics: [
+            { path: '/help/sneedapp', icon: FaRocket, title: 'Sneedapp App Store', description: 'Browse apps and mint your own app canister that you alone control, then keep your bots upgraded', color: '#d946ef' },
+            { path: '/help/dapp-manager', icon: FaCubes, title: 'App Manager', description: 'Track your apps, check cycle health, manage controllers and top up cycles with ICP, ck-USDC or a card', color: '#ec4899' },
+            { path: '/help/icp-neuron-manager', icon: FaServer, title: 'ICP Staking Bot App Canisters', description: 'Create a bot canister that controls your NNS neurons, with chores, events and botkeys', color: '#3b82f6' },
+            { path: '/help/trading_bot', icon: FaChartLine, title: 'Sneed Trading Bot', description: 'Automated swaps, rebalancing, purses, circuit breakers and SneedScript', color: '#10b981' },
+        ],
     },
     {
-        path: '/help/trading_bot',
-        icon: FaChartLine,
-        title: 'Sneed Trading Bot',
-        description: 'Automate token swaps, portfolio rebalancing, and fund distribution',
-        color: '#10b981',
-    },
-    {
-        path: '/help/dapp-manager',
-        icon: FaCubes,
-        title: 'App Manager',
-        description: 'Track, organize, and monitor all your Internet Computer apps',
-        color: '#ec4899',
-    },
-    {
-        path: '/help/sneedex',
-        icon: FaStore,
-        title: 'Sneedex Marketplace',
-        description: 'Trade canisters, neurons, and tokens on the decentralized marketplace',
-        color: '#14b8a6',
-    },
-    {
-        path: '/help/sns_jailbreak',
-        icon: FaUnlock,
-        title: 'SNS Jailbreak',
-        description: 'Add full controller access to your SNS neurons for trading',
-        color: '#ef4444',
+        title: 'Tools',
+        topics: [
+            { path: '/help/token-studio', icon: FaFlask, title: 'Token Studio and Token Safety', description: 'Check any token from public chain data, read its safety rating and fix what the report flags', color: '#10b981' },
+            { path: '/help/tools', icon: FaTools, title: 'Tools and Explorers', description: 'Swap, account tool, ICRC-3 browser, follow the money, wallet scan, transactions and the NFT browser', color: '#64748b' },
+        ],
     },
 ];
 
@@ -135,9 +123,17 @@ const getStyles = (theme) => ({
         lineHeight: '1.7',
         margin: 0,
     },
+    groupTitle: {
+        fontSize: '0.85rem',
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: '0.06em',
+        color: theme.colors.mutedText || theme.colors.secondaryText,
+        margin: '0 0 0.75rem 0.25rem',
+    },
     topicsGrid: {
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))',
         gap: '1rem',
     },
     topicCard: (color) => ({
@@ -311,43 +307,71 @@ function Help() {
                     </div>
                     <p style={styles.introParagraph}>
                         Welcome to the Sneed Hub Help Center! Browse the topics below to learn about 
-                        managing your wallet, participating in governance, locking assets, and more.
+                        managing your wallet, taking part in governance, talking with the community, locking assets,
+                        running apps and bots, and more.
                     </p>
                 </div>
 
-                {/* Help Topics Grid */}
-                <div style={styles.topicsGrid}>
-                    {helpTopics.map((topic, index) => {
-                        const IconComponent = topic.icon;
-                        return (
-                            <Link
-                                key={topic.path}
-                                to={topic.path}
-                                style={styles.topicCard(topic.color)}
-                                className="help-fade-in help-topic-card"
-                                onMouseEnter={(e) => {
-                                    e.currentTarget.style.borderColor = `${topic.color}60`;
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.currentTarget.style.borderColor = theme.colors.border;
-                                }}
-                            >
-                                <div style={{ ...styles.decorativeGlow(topic.color) }} />
-                                <div style={styles.topicHeader}>
-                                    <div style={styles.topicIcon(topic.color)} className="help-topic-icon">
-                                        <IconComponent size={24} color="#fff" />
-                                    </div>
-                                    <h3 style={styles.topicTitle}>{topic.title}</h3>
-                                </div>
-                                <p style={styles.topicDescription}>{topic.description}</p>
-                                <div style={styles.topicArrow(topic.color)}>
-                                    <span>Learn more</span>
-                                    <FaArrowRight size={12} />
-                                </div>
-                            </Link>
-                        );
-                    })}
-                </div>
+                {/* Help Topics, grouped */}
+                {helpGroups.map((group) => (
+                    <section key={group.title} style={{ marginBottom: '1.75rem' }}>
+                        <h2 style={styles.groupTitle}>{group.title}</h2>
+                        <div style={styles.topicsGrid}>
+                            {group.topics.map((topic) => {
+                                const IconComponent = topic.icon;
+                                return (
+                                    <Link
+                                        key={topic.path}
+                                        to={topic.path}
+                                        style={styles.topicCard(topic.color)}
+                                        className="help-fade-in help-topic-card"
+                                        onMouseEnter={(e) => {
+                                            e.currentTarget.style.borderColor = `${topic.color}60`;
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.currentTarget.style.borderColor = theme.colors.border;
+                                        }}
+                                    >
+                                        <div style={{ ...styles.decorativeGlow(topic.color) }} />
+                                        <div style={styles.topicHeader}>
+                                            <div style={styles.topicIcon(topic.color)} className="help-topic-icon">
+                                                <IconComponent size={24} color="#fff" />
+                                            </div>
+                                            <h3 style={styles.topicTitle}>{topic.title}</h3>
+                                        </div>
+                                        <p style={styles.topicDescription}>{topic.description}</p>
+                                        <div style={styles.topicArrow(topic.color)}>
+                                            <span>Learn more</span>
+                                            <FaArrowRight size={12} />
+                                        </div>
+                                    </Link>
+                                );
+                            })}
+                        </div>
+                    </section>
+                ))}
+
+                {/* For AI agents and developers */}
+                <section style={{ marginBottom: '1.75rem' }}>
+                    <h2 style={styles.groupTitle}>For AI agents and developers</h2>
+                    <div style={{ ...styles.introSection, textAlign: 'left', marginBottom: 0 }} className="help-fade-in">
+                        <div style={styles.topicHeader}>
+                            <div style={styles.topicIcon('#64748b')}>
+                                <FaRobot size={24} color="#fff" />
+                            </div>
+                            <h3 style={styles.topicTitle}>Ask your AI agent</h3>
+                        </div>
+                        <p style={{ ...styles.topicDescription, fontSize: '0.95rem' }}>
+                            Point your AI agent at <a href="/llms.txt" style={{ color: theme.colors.accent, fontWeight: 600 }}>app.sneeddao.com/llms.txt</a>:
+                            it lists what Sneed Hub and the Sneed DAO canisters do and how to call them.
+                            Developers can browse the canister interfaces in the <Link to="/api" style={{ color: theme.colors.accent, fontWeight: 600 }}>API docs</Link>.
+                        </p>
+                        <div style={styles.topicArrow('#64748b')}>
+                            <FaCode size={12} />
+                            <Link to="/api" style={{ color: 'inherit', textDecoration: 'none' }}>Open the API docs</Link>
+                        </div>
+                    </div>
+                </section>
             </main>
         </div>
     );
