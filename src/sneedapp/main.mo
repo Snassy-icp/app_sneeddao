@@ -50,6 +50,17 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Multiple users can register the same canister
     var userRegistrationsStable: [(Principal, [Principal])] = [];
     transient var userRegistrations = HashMap.HashMap<Principal, [Principal]>(10, Principal.equal, Principal.hash);
+    // Set once the legacy userRegistrations have been merged into the wallet.
+    // Before 2026-10-20 the merge ran on every upgrade, so a bookmark a user had
+    // removed (or moved with transferManager) came back after the next upgrade.
+    // The legacy data itself is kept (for a rollback); it is just not merged again.
+    var legacyRegistrationsMerged: Bool = false;
+
+    // The ICP staking bot's slug in the app catalogue. The legacy createNeuronManager
+    // flow and the wallet migrations filed its canisters under LEGACY_STAKING_BOT_APP_ID
+    // until 2026-10-20; postupgrade relabels those wallet and mint-log entries.
+    transient let STAKING_BOT_APP_ID = "sneed-icp-staking-bot";
+    transient let LEGACY_STAKING_BOT_APP_ID = "icp-staking-bot";
     
     // Authorized callers for "for" methods (e.g., Sneedex)
     var authorizedForCallersStable: [Principal] = [];
@@ -445,16 +456,43 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         // Migration: If there's data in old managersStable, migrate it to userWalletMap
         if (managersStable.size() > 0) {
             for ((canisterId, info) in managersStable.vals()) {
-                walletAdd(info.owner, canisterId, "icp-staking-bot");
+                walletAdd(info.owner, canisterId, STAKING_BOT_APP_ID);
             };
             managersStable := [];
         };
         
-        // Migration: Migrate old userRegistrations into userWalletMap
-        for ((owner, canisterIds) in userRegistrations.entries()) {
-            for (canisterId in canisterIds.vals()) {
-                walletAdd(owner, canisterId, "icp-staking-bot");
+        // Migration: merge the old userRegistrations into userWalletMap, once.
+        // Nothing writes to userRegistrations any more, so merging again on a later
+        // upgrade would only bring back bookmarks their users have since removed.
+        if (not legacyRegistrationsMerged) {
+            for ((owner, canisterIds) in userRegistrations.entries()) {
+                for (canisterId in canisterIds.vals()) {
+                    walletAdd(owner, canisterId, STAKING_BOT_APP_ID);
+                };
             };
+            legacyRegistrationsMerged := true;
+        };
+
+        // Migration (idempotent): staking bots filed under the legacy slug move to the catalogue slug
+        relabelLegacyStakingBotEntries();
+    };
+
+    // Wallet and mint-log entries filed under "icp-staking-bot" (the legacy flow's
+    // slug, which no catalogue app has) are relabelled "sneed-icp-staking-bot", so
+    // getMyWalletForApp, getMintLog(appIdFilter) and getMintLogCountForApp find them.
+    // Only the label changes; the entries keep their place, index and every other field.
+    func relabelLegacyStakingBotEntries() {
+        for ((user, entries) in Iter.toArray(userWalletMap.entries()).vals()) {
+            if (Array.find<UserCanisterEntry>(entries, func(e) { e.appId == LEGACY_STAKING_BOT_APP_ID }) != null) {
+                userWalletMap.put(user, Array.map<UserCanisterEntry, UserCanisterEntry>(entries, func(e) {
+                    if (e.appId == LEGACY_STAKING_BOT_APP_ID) { { canisterId = e.canisterId; appId = STAKING_BOT_APP_ID } } else { e };
+                }));
+            };
+        };
+        if (Array.find<MintLogEntry>(mintLog, func(e) { e.appId == LEGACY_STAKING_BOT_APP_ID }) != null) {
+            mintLog := Array.map<MintLogEntry, MintLogEntry>(mintLog, func(e) {
+                if (e.appId == LEGACY_STAKING_BOT_APP_ID) { { e with appId = STAKING_BOT_APP_ID } } else { e };
+            });
         };
     };
 
@@ -464,7 +502,8 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
     // -- Wallet Helpers --
 
-    func walletAdd(user: Principal, canisterId: Principal, appId: Text) {
+    func walletAdd(user: Principal, canisterId: Principal, appIdIn: Text) {
+        let appId = if (appIdIn == LEGACY_STAKING_BOT_APP_ID) { STAKING_BOT_APP_ID } else { appIdIn };
         let entry: UserCanisterEntry = { canisterId = canisterId; appId = appId };
         switch (userWalletMap.get(user)) {
             case null {
@@ -1792,7 +1831,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             };
 
             // Step 2: create the canister and install the manager
-            let newId = switch (await* createAndInstall(caller, "icp-staking-bot", wasm)) {
+            let newId = switch (await* createAndInstall(caller, STAKING_BOT_APP_ID, wasm)) {
                 case (#Err(msg)) {
                     let stuck = await* undoPaymentTransfers(userSubaccount, [(null, cyclesLeg)]);
                     return #Err(#CanisterCreationFailed(paymentAbortMessage(msg, stuck)));
@@ -1814,7 +1853,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 switch (feeTransfer) {
                     case (#Err(_)) {
                         // Discard the canister and undo step 1 so the caller is not left partially charged.
-                        await* discardCanister(newId, caller, "icp-staking-bot", "creation fee transfer failed");
+                        await* discardCanister(newId, caller, STAKING_BOT_APP_ID, "creation fee transfer failed");
                         let stuck = await* undoPaymentTransfers(userSubaccount, [(null, cyclesLeg)]);
                         return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer creation fee", stuck)));
                     };
@@ -1823,7 +1862,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             };
 
             // Step 4: the caller becomes the only controller
-            switch (await* handOver(newId, caller, "icp-staking-bot")) {
+            switch (await* handOver(newId, caller, STAKING_BOT_APP_ID)) {
                 case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
                 case (#Ok) {};
             };
@@ -1845,11 +1884,11 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             };
         } else {
             // Payment turned off by an admin: the factory pays the cycles
-            let newId = switch (await* createAndInstall(caller, "icp-staking-bot", wasm)) {
+            let newId = switch (await* createAndInstall(caller, STAKING_BOT_APP_ID, wasm)) {
                 case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
                 case (#Ok(id)) { id };
             };
-            switch (await* handOver(newId, caller, "icp-staking-bot")) {
+            switch (await* handOver(newId, caller, STAKING_BOT_APP_ID)) {
                 case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
                 case (#Ok) {};
             };
@@ -1867,7 +1906,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
         // Register the manager to the caller's wallet
         let createdAt = Time.now();
-        walletAdd(caller, canisterId, "icp-staking-bot");
+        walletAdd(caller, canisterId, STAKING_BOT_APP_ID);
         
         // Add to creation log
         let logEntry: T.CreationLogEntry = {
@@ -1905,7 +1944,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         totalCyclesSpentOnCreation += trackedCyclesSpentOnCreation;
 
         // Bridge: Record in immutable mint log
-        addMintLogEntry(canisterId, caller, "icp-staking-bot", 0, 0, currentVersion.major, currentVersion.minor, currentVersion.patch, trackedIcpPaidE8s, wasPremium, trackedIcpProfitE8s, 0);
+        addMintLogEntry(canisterId, caller, STAKING_BOT_APP_ID, 0, 0, currentVersion.major, currentVersion.minor, currentVersion.patch, trackedIcpPaidE8s, wasPremium, trackedIcpProfitE8s, 0);
 
         #Ok({
             canisterId = canisterId;
@@ -2075,6 +2114,12 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     public shared ({ caller }) func addApp(publisherId: Nat, input: AddAppInput): async { #Ok: Nat; #Err: Text } {
         if (not isPublisherOwnerOrAdmin(caller, publisherId)) { return #Err("Not authorized") };
         if (getAppById(input.appId) != null) { return #Err("App ID already exists") };
+        if (input.appId == LEGACY_STAKING_BOT_APP_ID) { return #Err("App ID is reserved") };
+        // A slug that an app removed before 2026-10-20 left versions or mints behind
+        // under can only be re-added by an admin, so no other publisher inherits them.
+        if ((getVersionsForApp(input.appId).size() > 0 or mintCountForSlug(input.appId) > 0) and not isAdmin(caller)) {
+            return #Err("App ID was used by a removed app; ask an admin");
+        };
         switch (publisherMap.get(publisherId)) {
             case null { return #Err("Publisher not found") };
             case (?pub) {
@@ -2154,17 +2199,39 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     };
 
     // Remove an app (admin only)
+    //
+    // Refused while the mint log has canisters minted from the app: their owners
+    // upgrade from its version list, and a later app re-using the slug would
+    // inherit those versions (disable the app with setAppEnabled instead). An app
+    // nobody minted goes together with its versions and WASM blobs, so nothing is
+    // left keyed by its slug.
     public shared ({ caller }) func removeApp(numericAppId: Nat): async { #Ok; #Err: Text } {
         assert(isAdmin(caller));
         switch (appByNumericId.get(numericAppId)) {
             case null { #Err("App not found") };
             case (?app) {
+                let minted = mintCountForSlug(app.appId);
+                if (minted > 0) {
+                    return #Err(Nat.toText(minted) # " canister(s) were minted from this app and their owners rely on its versions; disable it with setAppEnabled instead");
+                };
+                for (v in getVersionsForApp(app.appId).vals()) {
+                    appVersionWasmsMap.delete(makeVersionKey(app.appId, v.major, v.minor, v.patch));
+                };
+                appVersions := Array.filter<(Text, [AppVersion])>(appVersions, func(pair) { pair.0 != app.appId });
                 apps := Array.filter<AppInfo>(apps, func(a) { a.numericAppId != numericAppId });
                 appByNumericId.delete(numericAppId);
                 appByStringId.delete(app.appId);
                 #Ok;
             };
         };
+    };
+
+    func mintCountForSlug(appId: Text): Nat {
+        var count = 0;
+        for (entry in mintLog.vals()) {
+            if (entry.appId == appId) { count += 1 };
+        };
+        count;
     };
 
     // Enable/disable minting (publisher owner or admin)

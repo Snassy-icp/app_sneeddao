@@ -256,7 +256,7 @@ async function upgradeTo(agent, canisterId, version) {
 
 ### 3.7 Wallet bookmarks
 
-- `registerCanister(canisterId, appId)` adds an entry (no ownership check; an existing entry with `appId = ""` gets the given `appId`). Always `Ok`.
+- `registerCanister(canisterId, appId)` adds an entry (no ownership check; an existing entry with `appId = ""` gets the given `appId`; the legacy `"icp-staking-bot"` is stored as `"sneed-icp-staking-bot"`). Always `Ok`.
 - `deregisterCanister(canisterId)` removes it; `Err("Canister not found in wallet")` otherwise.
 - `transferManager(canisterId, newOwner)` moves the caller's bookmark (with its `appId`) to `newOwner`'s list; `Err("Canister is not in your registered list")`. It only moves the bookmark: change the canister's controllers separately.
 - `registerCanisterFor(user, canisterId, appId)` / `deregisterCanisterFor(user, canisterId)` do the same for another user and are reserved for authorised canisters (`getAuthorizedForCallers()`, e.g. Sneedex, which moves bookmarks when a canister changes hands in a trade) and admins. Errors: `Not authorized`, `Cannot register for anonymous`, `Cannot deregister for anonymous`.
@@ -365,7 +365,7 @@ All return `variant { Ok; Err : text }` unless noted; owners or admins may call 
 | `removePublisherOwner(publisherId, owner)` | `Cannot remove the last owner`, `Principal is not an owner`. |
 | `addPublisherFamily(publisherId, family)` | `Family already exists`. |
 | `removePublisherFamily(publisherId, family)` | Also removes the tag from all the publisher's apps. |
-| `addApp(publisherId, AddAppInput) → Ok(numericAppId)` | `App ID already exists`, `Family '<f>' not in publisher's families`. Starts disabled. |
+| `addApp(publisherId, AddAppInput) → Ok(numericAppId)` | `App ID already exists`, `App ID is reserved` (`"icp-staking-bot"`), `App ID was used by a removed app; ask an admin` (versions or mints of an app removed before 2026-10-20 remain under that slug; only an admin may re-add it), `Family '<f>' not in publisher's families`. Starts disabled. |
 | `updateApp(numericAppId, UpdateAppInput)` | Replaces the editable fields (prices included). |
 | `setAppEnabled(numericAppId, enabled)` | |
 | `setAppPricing(numericAppId, mintPrice, premiumMintPrice)` | e8s. |
@@ -395,7 +395,7 @@ Revenue reads: `getPublisherRevenueBalance(publisherId)`, `getAppRevenueBalance(
 
 The canister's original flow, kept for compatibility. New integrations should use `mintCanister("sneed-icp-staking-bot", ...)`.
 
-- **`createNeuronManager() → CreateManagerResult`** installs the separately uploaded manager WASM (`hasManagerWasm`, `getManagerWasmSize`, `getCurrentVersion`) for `getPaymentConfig().creationFeeE8s` (or `getPremiumCreationFee()` for premium members), with the same payment, rollback and hand-over sequence as 3.1, and bookmarks the canister under app id `"icp-staking-bot"`. Errors: `CanisterCreationFailed(text)` (also when no WASM is uploaded: `No manager WASM uploaded. Admin must upload WASM first.`), `InsufficientCycles`, `InsufficientPayment`, `TransferFailed(text)`. `AlreadyExists`, `CyclesTopUpFailed` and `NotAuthorized` exist in the type but are not returned.
+- **`createNeuronManager() → CreateManagerResult`** installs the separately uploaded manager WASM (`hasManagerWasm`, `getManagerWasmSize`, `getCurrentVersion`) for `getPaymentConfig().creationFeeE8s` (or `getPremiumCreationFee()` for premium members), with the same payment, rollback and hand-over sequence as 3.1, and bookmarks and logs the canister under app id `"sneed-icp-staking-bot"` (`numericAppId` 0, publisher 0). Until 2026-10-20 it used `"icp-staking-bot"`; an upgrade relabels those older wallet and mint-log entries, so per-app queries for `"sneed-icp-staking-bot"` include them. Errors: `CanisterCreationFailed(text)` (also when no WASM is uploaded: `No manager WASM uploaded. Admin must upload WASM first.`), `InsufficientCycles`, `InsufficientPayment`, `TransferFailed(text)`. `AlreadyExists`, `CyclesTopUpFailed` and `NotAuthorized` exist in the type but are not returned.
 - **`getManagerByCanisterId(canisterId)`** always returns `null`; **`updateManagerNeuronId(...)`** does nothing. Ask the manager canister itself for its neuron.
 
 ### 5.8 Admin methods
@@ -409,7 +409,7 @@ Restricted to Sneedapp admins (`getAdmins()`); those marked † also accept the 
 | `setPaymentConfig`†, `setCreationFee`†, `setTargetCycles`†, `setFeeDestination`†, `setPaymentRequired`†, `setPremiumCreationFee`†, `setCanisterCreationCycles`†, `setSneedPremiumCanisterId`† | Payment and cycles configuration. |
 | `verifyPublisher`, `unverifyPublisher` | Allow or stop minting of a publisher's apps. |
 | `setPublisherDaoCut`, `setAppDaoCut` | DAO cut in basis points (app override `null` = publisher default). |
-| `removeApp` | Delete an app from the catalogue. |
+| `removeApp(numericAppId)` | Delete an app from the catalogue together with its versions and WASM blobs. `Err("N canister(s) were minted from this app ...")` while the mint log has canisters minted from it: their owners upgrade from its versions, so disable it with `setAppEnabled` instead. |
 | `addAuthorizedForCaller`†, `removeAuthorizedForCaller`† | Canisters allowed to call the `*For` wallet methods. |
 | `setManagerWasm`†, `clearManagerWasm`†, `setCurrentVersion`† | Legacy manager WASM. |
 | `addOfficialVersion`, `updateOfficialVersion`, `removeOfficialVersion`, `setOfficialVersions` | Legacy official versions registry. |

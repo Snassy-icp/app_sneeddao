@@ -148,6 +148,31 @@ describe('sneed_guardian', () => {
     expect(open.length).toBe(0);
   });
 
+  it('runs an op once when execute_op is called twice at the same time, sweeping the fee once; cancel waits too', async () => {
+    const op = unwrap(await gAlice.stage_op(childId, { set_policy: policy({ vetoes_to_block: 0n, oks_required: 0n, window_ns: 0n, auto_upgrade: true }) }, 'twice', []));
+    await payFee(guardianId, op); await payFee(guardianId, op); // overpaid: the account could pay the fee twice
+    unwrap(await gDao.approve_op(op.id));
+    const feeBefore = await icp.icrc1_balance_of(account(carol));
+    const deferred = pic.createDeferredActor({ idlFactory: guardianIdl, canisterId: guardianId });
+    deferred.setPrincipal(alice);
+    // the first call starts and waits on the ICP ledger (another subnet); the second call and a
+    // cancel arrive while it is in flight
+    const first = await deferred.execute_op(op.id);
+    await pic.tick();
+    const second = await deferred.execute_op(op.id);
+    const cancel = await deferred.cancel_op(op.id);
+    const [r1, r2, rc] = [await first(), await second(), await cancel()];
+    expect(Object.keys(unwrap(r1).state)[0]).toBe('executed');
+    expect(errOf(r2)).toMatch(/already being executed/);
+    expect(errOf(rc)).toMatch(/being executed/);
+    expect((await icp.icrc1_balance_of(account(carol))) - feeBefore).toBe(100_000_000n); // one sweep
+    const after = (await g.get_op(op.id))[0];
+    expect(Object.keys(after.state)[0]).toBe('executed');
+    expect(after.fee_paid_e8s).toBe(100_000_000n);
+    // the surplus is the payer's
+    expect(unwrap(await gAlice.refund_op(op.id))).toBe(100_000_000n);
+  });
+
   it('auto-upgrades one step along the blessed path and reports the new hash', async () => {
     const before = (await g.get_child(childId))[0];
     expect(sameHash(before.status[0].module_hash[0], V1)).toBe(true);

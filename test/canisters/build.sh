@@ -73,6 +73,20 @@ git archive "$SNEEDEX_PREV_COMMIT" src/sneedex src/PremiumClient.mo src/IngressG
 "$MOC" $PKGS "$PREV_SRC/src/sneedex/main.mo" -o "$OUT/sneedex_prev.wasm" 2>&1 | grep -i "error" | head -5 || true
 rm -rf "$PREV_SRC"
 test -s "$OUT/sneedex_prev.wasm"
+
+# sneedapp from before the user wallet (bookmarks in the legacy userRegistrations map) and as it was
+# before the 2026-10-20 fixes (legacy staking bots filed under "icp-staking-bot"), for the tests that
+# upgrade from them
+for pair in 0532de6d:prewallet e6e01c4e:prev; do
+  commit="${pair%%:*}"; tag="${pair##*:}"
+  echo "== sneedapp at $commit (moc, for the upgrade tests)"
+  PREV_SRC="$(mktemp -d)"
+  git archive "$commit" src | tar -x -C "$PREV_SRC"
+  # shellcheck disable=SC2086
+  "$MOC" $PKGS "$PREV_SRC/src/sneedapp/main.mo" -o "$OUT/sneedapp_$tag.wasm" 2>&1 | grep -i "error" | head -5 || true
+  rm -rf "$PREV_SRC"
+  test -s "$OUT/sneedapp_$tag.wasm"
+done
 for c in MockLedger MockLedgerV2 MockLedgerFaulty MockRejectLedger MockSwapPool MockDexPool MockIcpswapFactory MockKongSwap \
          MockSnsGovernance MockSnsNeurons MockHubSns MockForumGovernance MockForumSnsW MockRllGovernance MockNnsGovernance \
          MockCmc MockSnsWasm MockPremium MockSneedApp MockIcpSwapList MockIcpSwapTokenList MockNamesModerator MockIcpLedger MockMrSneedGov MockNotifySender Icrc3Demo; do

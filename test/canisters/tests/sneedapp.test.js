@@ -356,7 +356,7 @@ describe('sneedapp catalogue, publishers, wallet and admin', () => {
     expect(versions.map(ver)).toEqual(['1.1.0', '1.0.0']);
   });
 
-  it('removing an app leaves its versions behind: an app re-added under the same id inherits them', async () => {
+  it('removing an app nobody minted takes its versions and wasm blobs with it: an app re-added under the same id starts empty', async () => {
     unwrap(await fAlice.addApp(1n, appInput({ appId: 'tmp', name: 'Temp' })));
     const tmpId = (await f.getApp('tmp'))[0].numericAppId;
     await fAlice.addAppVersion('tmp', versionInput(1n, 0n, 0n, { wasmHash: sha256hex(wasmV1) }));
@@ -365,13 +365,14 @@ describe('sneedapp catalogue, publishers, wallet and admin', () => {
     expect(await f.getApp('tmp')).toEqual([]);
     expect(await f.getAppByNumericId(tmpId)).toEqual([]);
     expect((await f.getApps()).map((a) => a.appId)).toEqual(['demo', 'dao-app']);
-    // NOTE (current behaviour): removeApp deletes the app record only; the
-    // version list and the wasm blob stay keyed by the app id string.
-    expect((await f.getAppVersions('tmp')).map(ver)).toEqual(['1.0.0']);
-    expect(await f.hasAppVersionWasm('tmp', 1n, 0n, 0n)).toBe(true);
+    expect(await f.getAppVersions('tmp')).toEqual([]);
+    expect(await f.hasAppVersionWasm('tmp', 1n, 0n, 0n)).toBe(false);
     unwrap(await f.addApp(0n, appInput({ appId: 'tmp', name: 'Temp again', families: [] })));
-    expect(ver((await f.getLatestAppVersion('tmp'))[0])).toBe('1.0.0'); // inherited by a different publisher's app
+    expect(await f.getLatestAppVersion('tmp')).toEqual([]); // nothing inherited from the removed app
+    expect(await f.getAppVersions('tmp')).toEqual([]);
     unwrap(await f.removeApp((await f.getApp('tmp'))[0].numericAppId));
+    // the legacy staking-bot slug is reserved (its entries are relabelled to the catalogue slug)
+    expect(errOf(await f.addApp(0n, appInput({ appId: 'icp-staking-bot', families: [] })))).toMatch(/reserved/);
   });
 
   it('wallet: users bookmark canisters, filter by app, transfer and remove them; only admins read other wallets', async () => {

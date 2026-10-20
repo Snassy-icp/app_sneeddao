@@ -280,7 +280,8 @@ ledger-suite wasms. The pad is deployed on staging (symdn-ciaaa-aaaal-qxobq-cai)
 (`get_index_quote`, `create_index`, `list_index_launches`, `get_indexes_of_ledger`), on the
 blessed index code with the same payment and control choices. It offers a sixth control
 choice, `#guardian { canister; policy }`, which hands the canisters to a custody canister and
-registers them there. The handover fee (`sneed_dao_control_fee_e8s`, 5 ICP) applies to
+registers them there (fixed 2026-10-20: an index from `create_index` for a ledger the custody
+canister already holds now joins that ledger's suite; it was registered with `suite = null`). The handover fee (`sneed_dao_control_fee_e8s`, 5 ICP) applies to
 `#sneed_dao`, `#guardian`, and `#sns` when the root is Sneed's. Minting policy is `#nobody` (the
 ledger itself is the minting account), `#sneed_dao` or `#principal`. Not built: tiers 4–5
 (locks and liquidity from the pad) and plan-then-pay across stages. The pad is still on

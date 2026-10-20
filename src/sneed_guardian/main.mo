@@ -92,6 +92,12 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
   transient var status_running : Bool = false;
   transient var upgrade_running : Bool = false;
   transient var blessed_running : Bool = false;
+  // Ops whose execute_op is in flight (between its first await and its last state write). Every
+  // await is a commit point, so without this a second execute_op of the same op could run the action
+  // (and sweep the fee) again; cancel and veto wait for the outcome too. Transient on purpose: an
+  // upgrade stops the canister first, and a call cut short by an upgrade must not stay marked.
+  transient var executing : [Nat] = [];
+  private func isExecuting(id : Nat) : Bool { Array.find<Nat>(executing, func(x) { x == id }) != null };
 
   transient let ic : T.Management = actor ("aaaaa-aa");
   private func icp_ledger() : T.IcpLedger { actor (Principal.toText(icp_ledger_id)) };
@@ -403,6 +409,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     let op = switch (findOp(id)) { case (?o) { current(o) }; case null { return #Err("no op " # Nat.toText(id)) } };
     let pol = policyOf(op);
     if (not has(pol.guardians, caller)) { return #Err("only a guardian of this child can do that") };
+    if (isExecuting(id)) { return #Err("op " # Nat.toText(id) # " is being executed") };
     switch (op.state) { case (#pending or #approved(_)) {}; case (s) { return #Err("op is " # debug_show(s)) } };
     if (ok) {
       if (has(op.oks, caller)) { return #Err("already ok'd") };
@@ -429,6 +436,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
   public shared ({ caller }) func cancel_op(id : Nat) : async { #Ok : T.Op; #Err : Text } {
     let op = switch (findOp(id)) { case (?o) { current(o) }; case null { return #Err("no op " # Nat.toText(id)) } };
     if (caller != op.staged_by and not isApprover(caller)) { return #Err("only the stager or an approver can cancel") };
+    if (isExecuting(id)) { return #Err("op " # Nat.toText(id) # " is being executed") };
     switch (op.state) { case (#pending or #approved(_)) {}; case (s) { return #Err("op is " # debug_show(s)) } };
     let u = { op with state = #cancelled }; putOp(u);
     icrc3_add("guardian_op_cancel", [("cid", #Nat(newCid())), ("caller", pv(caller)), ("op", #Nat(id))]);
@@ -452,6 +460,13 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     if (Principal.isAnonymous(caller)) { return #Err("log in first") };
     let op = switch (findOp(id)) { case (?o) { current(o) }; case null { return #Err("no op " # Nat.toText(id)) } };
     switch (notReady(op)) { case (?e) { return #Err(e) }; case null {} };
+    if (isExecuting(id)) { return #Err("op " # Nat.toText(id) # " is already being executed") };
+    executing := Array.append(executing, [id]);
+    try { await* executeApproved(caller, id, op) } finally {
+      executing := Array.filter<Nat>(executing, func(x) { x != id });
+    };
+  };
+  private func executeApproved(caller : Principal, id : Nat, op : T.Op) : async* { #Ok : T.Op; #Err : Text } {
     let cid = newCid();
     // the fee first: it pays for the attempt, so a failed op keeps it (stage a new one)
     if (op.fee_e8s > 0 and op.fee_paid_e8s < op.fee_e8s) {

@@ -127,11 +127,11 @@ Changed from the original plan: only pending and approved ops expire, since veto
   are short. First the fee is swept from the payment subaccount to the fee destination
   (the RLL): it pays for the attempt, so a failed op keeps it. Then the action runs;
   the result is recorded. A failed op stays failed; stage a new one. Execution is not
-  refused while paused. **Known issue:** nothing marks an op as in flight. The op stays
-  `#approved` across the awaits, so two concurrent `execute_op` calls can both run the
-  action, and both sweep a fee if the subaccount holds two. A second `#install` fails on the
-  one-step rule and `#set_controllers` is idempotent, so the main risk is a double fee
-  sweep from an overpaid op.
+  refused while paused. **Fixed 2026-10-20:** nothing marked an op as in flight, so two
+  concurrent `execute_op` calls could both run the action and both sweep a fee from an
+  overpaid op. The guardian now keeps a (transient) list of ops being executed: a second
+  `execute_op` of the same op gets `#Err("op N is already being executed")`, and
+  `cancel_op` and `veto_op` refuse with `op N is being executed` until it has finished.
 - `refund_op(id)`: any signed-in caller, for an op that is no longer open (vetoed, failed, expired,
   cancelled, or executed with a surplus): whatever is left in the payment subaccount
   goes to the recorded payer. Anyone may pay on the payer's behalf; the guardian never
@@ -242,7 +242,7 @@ Guardians act directly; everybody else's calls are permissionless.
 Status of these (2026-10-20): both panels are built (`pages/studio/HandoverPanel.jsx`,
 `IndexPanel.jsx`; the pad's `create_index`, `get_index_quote`, `get_indexes_of_ledger`), behind the
 "coming soon" gate. The pad's launch wizard offers `#guardian { canister; policy }` as a control choice,
-and the pad registers the new canisters with the custody canister (`register`).
+and the pad registers the new canisters with the custody canister (`register`). Fixed 2026-10-20: an index made by `create_index` was registered with `suite = null` even when the custody canister holds its ledger; the pad now asks the custody canister (`get_child(ledger)`) and passes the ledger as the suite when it is a registered ledger there, and `null` otherwise (the guardian refuses a suite that is not one of its ledgers), so `get_suite(ledger)` lists the index.
 
 ## Not in v1
 

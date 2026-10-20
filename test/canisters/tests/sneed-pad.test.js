@@ -303,7 +303,21 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
     expect(index.suite[0].toText()).toBe(launch.ledger[0].toText());
     expect((await pic.getControllers(launch.ledger[0])).map((p) => p.toText())).toEqual([guardianId.toText()]);
     expect((await guardian.get_cycles_report([])).some((r) => r.canister_id.toText() === launch.ledger[0].toText() && r.cycles > 0n)).toBe(true);
-  }, 180_000);
+    // an index made later for that ledger joins its suite at the custody canister ...
+    const control = { guardian: { canister: guardianId, policy } };
+    const iq = unwrap(await padAlice.get_index_quote({ ledger: launch.ledger[0], control }));
+    unwrap(await icpAlice.icrc2_approve({ from_subaccount: [], spender: account(padId), amount: 2n * (iq.total_e8s + ICP_FEE), expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] }));
+    const il = unwrap(await padAlice.create_index({ ledger: launch.ledger[0], control }));
+    expect(il.steps.map(([s]) => s)).toContain('guardian_registered');
+    const idx2 = (await guardian.get_child(il.index[0]))[0];
+    expect(Object.keys(idx2.kind)[0]).toBe('index');
+    expect(idx2.suite.map((p) => p.toText())).toEqual([launch.ledger[0].toText()]);
+    expect((await guardian.get_suite(launch.ledger[0])).map((c) => c.canister_id.toText())).toContain(il.index[0].toText());
+    // ... and one for a ledger the custody canister does not hold stands alone (it would refuse that suite)
+    const loose = (await padAlice.get_launches_by_creator(alice)).find((l) => l.ledger.length && l.controllers.some((p) => p.toText() === alice.toText()));
+    const il2 = unwrap(await padAlice.create_index({ ledger: loose.ledger[0], control }));
+    expect((await guardian.get_child(il2.index[0]))[0].suite).toEqual([]);
+  }, 240_000);
 
   it('creates an index for a ledger that already exists and lists it in the wallet', async () => {
     const existing = (await padAlice.get_launches_by_creator(alice)).filter((l) => l.ledger.length).at(-1);
@@ -323,7 +337,7 @@ describe.skipIf(!haveWasms)('sneed_pad', () => {
     const indexes = await padAlice.get_indexes_of_ledger(ledger);
     expect(indexes.map((p) => p.toText())).toContain(launch.index[0].toText());
     expect((await sneedApp.get_entries()).some(([owner, canister, app]) => owner.toText() === alice.toText() && canister.toText() === launch.index[0].toText() && app === 'icrc-index')).toBe(true);
-    expect(Number((await padAlice.list_index_launches(0n, 10n)).total)).toBe(1);
+    expect(Number((await padAlice.list_index_launches(0n, 10n)).total)).toBe(3); // two more were made for the custody test above
   }, 180_000);
 
   it('keeps every launch across an upgrade', async () => {

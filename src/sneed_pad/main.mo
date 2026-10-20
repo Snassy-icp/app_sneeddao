@@ -583,7 +583,12 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
         let guardian : T.GuardianActor = actor (Principal.toText(g.canister));
         try { await ic.update_settings({ canister_id = indexId; settings = { controllers = ?[self, g.canister]; compute_allocation = null; memory_allocation = null; freezing_threshold = null }; sender_canister_version = null }) }
         catch (e) { return ifail(cid, launch, "installed, but adding the custody canister as a controller failed: " # Error.message(e)) };
-        let r = try { await guardian.register(indexId, #index, g.policy, null, symbol # " index") } catch (e) { return ifail(cid, launch, "installed, but the custody canister could not be reached: " # Error.message(e)) };
+        // the index joins its ledger's suite when the custody canister holds that ledger (it refuses a
+        // suite that is not one of its registered ledgers, so otherwise the index stands alone)
+        let suite : ?Principal = try {
+          switch (await guardian.get_child(c.ledger)) { case (?ch) { if (ch.kind == #ledger) { ?c.ledger } else { null } }; case null { null } };
+        } catch (_) { null };
+        let r = try { await guardian.register(indexId, #index, g.policy, suite, symbol # " index") } catch (e) { return ifail(cid, launch, "installed, but the custody canister could not be reached: " # Error.message(e)) };
         switch (r) { case (#Err(e)) { return ifail(cid, launch, "installed, but the custody canister refused it: " # e) }; case (#Ok(_)) {} };
         launch := istep(launch, "guardian_registered");
       };

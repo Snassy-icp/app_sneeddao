@@ -50,6 +50,7 @@ const FLOGQ = { startIndex: [], limit: [], canisterFilter: [], fromTime: [], toT
 
 let pic, icpId, factoryId, premiumId;
 let icp, fault, cmc, premium, f, fAlice, fBob, fCarol, fDave;
+const legacyIds = []; // canisters made by the legacy createNeuronManager
 
 const depositAccount = (p) => account(factoryId, principalToSubaccount(p));
 const deposit = (p, amount) => icp.mint(depositAccount(p), amount);
@@ -451,7 +452,7 @@ describe('sneedapp minting and payments', () => {
     }
   }, 120_000);
 
-  it('the legacy createNeuronManager installs the real ICP staking bot, charges the creation fee and logs it as an icp-staking-bot mint', async () => {
+  it('the legacy createNeuronManager installs the real ICP staking bot, charges the creation fee and logs it under the staking bot\'s catalogue slug', async () => {
     await f.setManagerWasm(wasm('sneed_icp_staking_bot'));
     await f.setCurrentVersion({ major: 7n, minor: 8n, patch: 9n });
     await deposit(alice, 50_000_000n);
@@ -467,13 +468,16 @@ describe('sneedapp minting and payments', () => {
     const bot = actorAs(pic, stakingBotIdl, id, alice);
     const v = await bot.getVersion();
     expect(typeof v.major).toBe('bigint');
-    expect(await fAlice.getMyWalletForApp('icp-staking-bot')).toEqual([{ canisterId: id, appId: 'icp-staking-bot' }]);
-    expect((await f.lookupMintedCanister(id))[0]).toMatchObject({ appId: 'icp-staking-bot', publisherId: 0n, numericAppId: 0n, versionMajor: 7n, versionMinor: 8n, versionPatch: 9n, icpPaidE8s: ICP });
+    legacyIds.push(id);
+    expect(await fAlice.getMyWalletForApp('sneed-icp-staking-bot')).toEqual([{ canisterId: id, appId: 'sneed-icp-staking-bot' }]);
+    expect(await f.getMintLogCountForApp('sneed-icp-staking-bot')).toBe(1n);
+    expect((await f.lookupMintedCanister(id))[0]).toMatchObject({ appId: 'sneed-icp-staking-bot', publisherId: 0n, numericAppId: 0n, versionMajor: 7n, versionMinor: 8n, versionPatch: 9n, icpPaidE8s: ICP });
     // members pay the premium creation fee
     const now = BigInt(Math.round(await pic.getTime())) * 1_000_000n;
     await premium.set_member(alice, now + 3_600n * 1_000_000_000n);
     await deposit(alice, 50_000_000n);
     const res2 = unwrap(await fAlice.createNeuronManager());
+    legacyIds.push(res2.canisterId);
     expect((await f.lookupMintedCanister(res2.canisterId))[0]).toMatchObject({ icpPaidE8s: 50_000_000n, wasPremium: true });
   }, 180_000);
 
@@ -539,8 +543,19 @@ describe('sneedapp minting and payments', () => {
     expect(pub1.totalRevenueE8s).toBe(pub1Mints.reduce((s, e) => s + e.publisherRevenueE8s, 0n));
     expect((await f.getAllAppRevenueStats()).length >= 2).toBe(true);
     // NOTE (current behaviour): legacy createNeuronManager mints are in the mint log but not in the publisher stats
-    const legacy = all.entries.filter((e) => e.appId === 'icp-staking-bot').length;
+    const legacy = all.entries.filter((e) => legacyIds.some((id) => id.toText() === e.canisterId.toText())).length;
+    expect(legacy).toBe(2);
     expect((await f.getPublisherStats(0n))[0].totalMintCount).toBe(BigInt(all.entries.filter((e) => e.publisherId === 0n).length - legacy));
+  });
+
+  it('removeApp refuses an app canisters were minted from (their owners upgrade from its versions); disabling it is the way', async () => {
+    const demo = (await f.getApp('demo'))[0];
+    const minted = await f.getMintLogCountForApp('demo');
+    expect(minted > 0n).toBe(true);
+    expect(errOf(await f.removeApp(demo.numericAppId))).toMatch(/minted from this app/);
+    expect((await f.getApp('demo'))[0].numericAppId).toBe(demo.numericAppId);
+    expect((await f.getAppVersions('demo')).length > 0).toBe(true);
+    expect(await f.hasAppVersionWasm('demo', 1n, 0n, 0n)).toBe(true);
   });
 
   it('admin ICP tools: withdraw from the main account and top up cycles through the CMC, admins only', async () => {

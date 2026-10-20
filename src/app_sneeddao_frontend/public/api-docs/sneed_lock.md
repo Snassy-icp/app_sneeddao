@@ -270,7 +270,7 @@ What if a position is transferred to Sneed Lock without a claim? Nobody can act 
 
 A locked position keeps earning swap fees. `claim_position_fees(pool, position_id)`:
 
-1. Requires the caller's claim and a lock record on the position.
+1. Requires the caller's claim and a lock record on the position. An expired lock still has its record until it is archived (`clear_expired_position_locks`, or the caller's next lock call or `transfer_position`), so its owner can still claim through Sneed Lock until then; the fees go only to the owner's own Sneed wallet, which they could take anyway.
 2. Reads both ledger fees and the position's `tokensOwed0/1` from the pool. If neither side exceeds its ledger fee the call fails with `Insufficient rewards to claim...` and nothing happens (the pool would swallow such amounts).
 3. Calls the pool's `claimToSubaccount` with the caller's `wallet_subaccount`. ICPSwap then transfers the fees to the user's Sneed wallet itself, from its own delivery queue, usually within a second or two. Sneed Lock never holds the fees.
 4. Returns `{ request_id, amount0, amount1, token0, token1 }` with the **gross** amounts. What arrives is `amount − ledger fee` per side; a side at or below its fee is not delivered at all.

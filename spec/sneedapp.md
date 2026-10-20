@@ -69,7 +69,7 @@ setAppEnabled(appId: Text, enabled: Bool) : async ()             // Admin: enabl
 setAppPricing(appId: Text, mintPriceE8s: Nat64, premiumMintPriceE8s: Nat64) : async ()
 ```
 
-Changed from the original plan: this API was replaced by the publisher-aware one in section 13.5 (apps are addressed by `numericAppId` for management, return `{ #Ok; #Err : Text }`, and a new app starts **disabled**). `removeApp` does not check for minted canisters.
+Changed from the original plan: this API was replaced by the publisher-aware one in section 13.5 (apps are addressed by `numericAppId` for management, return `{ #Ok; #Err : Text }`, and a new app starts **disabled**). `removeApp` refuses an app that canisters were minted from (since 2026-10-20; see section 13).
 
 ---
 
@@ -243,7 +243,7 @@ On `postupgrade`:
 2. Each legacy `Principal` (canister ID) becomes a `UserCanisterEntry` with `appId = "icp-staking-bot"` (default assumption).
 3. After migration, `userRegistrationsStable` is cleared.
 
-Changed from the original plan: the migration runs on every upgrade, without the "wallet is empty" condition, and also folds in the even older `managersStable` records. `walletAdd` deduplicates, so a canister already in the wallet is not added twice. **Known issue:** the legacy `userRegistrations` map is restored in `postupgrade` and saved again in `preupgrade` but never emptied, so if it still holds entries they are merged back on every upgrade, and a bookmark the user removed (`deregisterCanister`) or moved (`transferManager`) comes back. Nothing writes to the map any more; clearing it after the merge fixes this.
+Changed from the original plan: the migration runs on every upgrade, without the "wallet is empty" condition, and also folds in the even older `managersStable` records. `walletAdd` deduplicates, so a canister already in the wallet is not added twice. **Fixed 2026-10-20:** the legacy `userRegistrations` map was merged back on every upgrade, so a bookmark the user removed (`deregisterCanister`) or moved (`transferManager`) came back. The merge now runs once, guarded by the stable flag `legacyRegistrationsMerged`; the legacy data is kept (for a rollback) but not merged again. The upgrade that ships the fix still merges one last time, so bookmarks removed since the previous upgrade come back once. Merged bookmarks are filed under `"sneed-icp-staking-bot"` (see section 9).
 
 ### API
 
@@ -420,7 +420,7 @@ When `createNeuronManager` successfully creates a canister, it should also:
 
 This ensures the new mint log is a complete record of all canisters ever minted.
 
-As built: `createNeuronManager` uses the same create, pay, roll back and hand over sequence as `mintCanister` (section 14.4), bookmarks the canister, and logs it with `appId = "icp-staking-bot"`, `numericAppId = 0` and `publisherId = 0`. **Known issue:** the staking bot is registered in the catalogue as `"sneed-icp-staking-bot"` (the slug the frontend and `mintCanister` use), so legacy mints are filed under a slug that no app has, and `getMyWalletForApp("sneed-icp-staking-bot")` and `getMintLogCountForApp` miss them. The same `"icp-staking-bot"` slug is used by the wallet migration (section 5). Whether `numericAppId` 0 is really the staking bot depends on the order the apps were added.
+As built: `createNeuronManager` uses the same create, pay, roll back and hand over sequence as `mintCanister` (section 14.4), bookmarks the canister, and logs it with `appId = "icp-staking-bot"`, `numericAppId = 0` and `publisherId = 0`. **Fixed 2026-10-20:** legacy mints and migrated bookmarks were filed under `"icp-staking-bot"`, a slug no catalogue app has, so `getMyWalletForApp("sneed-icp-staking-bot")`, `getMintLog` with `appIdFilter` and `getMintLogCountForApp` missed them. `createNeuronManager` and the wallet migrations now use `"sneed-icp-staking-bot"`, `walletAdd` maps the old slug to it (so `registerCanister(id, "icp-staking-bot")` does too), `addApp` refuses `"icp-staking-bot"` as reserved, and every `postupgrade` relabels wallet and mint-log entries still carrying the old slug (only the label changes; index, numeric ids and amounts stay). On production app 0 is the staking bot, so `numericAppId = 0` on those entries is right; production had no mint-log entries under the old slug (2026-10-20), only wallet entries.
 
 ---
 
@@ -744,7 +744,7 @@ App management is now split between **publisher owners** and **admins**:
 | Upload WASM blobs | Yes | Yes |
 | Verify a publisher (lets its apps mint) | No | Yes |
 
-An app can be minted only when it is enabled and its publisher is verified or is publisher 0, so anyone can list an app but only admin-verified publishers make the factory spend its cycles. **Known issue:** `removeApp` deletes only the catalogue entry. The app's versions and WASM blobs (keyed by the slug) stay, so a publisher that later adds an app with the same slug inherits them, together with the old mint-log and wallet references to that slug.
+An app can be minted only when it is enabled and its publisher is verified or is publisher 0, so anyone can list an app but only admin-verified publishers make the factory spend its cycles. **Fixed 2026-10-20:** `removeApp` deleted only the catalogue entry, so the app's versions and WASM blobs (keyed by the slug) stayed and a publisher that later added an app with the same slug inherited them. Now `removeApp` returns `#Err` while the mint log has canisters minted from the app (their owners upgrade from its version list; disable the app with `setAppEnabled` instead), and otherwise removes the app together with its versions and WASM blobs. A slug that an app removed before the fix left versions or mints under can be re-added by an admin only, so no other publisher inherits them.
 
 ### 13.5 Updated App API
 
@@ -770,7 +770,7 @@ setAppPaymentAccount(numericAppId: Nat, account: ?Account) : async { #Ok; #Err: 
 
 // Admin-only
 setAppDaoCut(numericAppId: Nat, basisPoints: ?Nat) : async ()
-removeApp(numericAppId: Nat) : async { #Ok; #Err: Text }   // as built (traps for non-admins)
+removeApp(numericAppId: Nat) : async { #Ok; #Err: Text }   // as built (traps for non-admins; #Err while minted canisters exist)
 
 // Version management — publisher owner or admin (same signatures as before,
 // but now checks publisher ownership in addition to admin)

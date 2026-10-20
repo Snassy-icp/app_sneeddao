@@ -55,6 +55,8 @@ module {
   public type GuardianKind = { #ledger; #index; #archive };
   public type GuardianActor = actor {
     register : shared (Principal, GuardianKind, GuardianPolicy, ?Principal, Text) -> async { #Ok : Any; #Err : Text };
+    // only the field the pad reads; the guardian's Child record has more
+    get_child : shared query Principal -> async ?{ kind : GuardianKind };
   };
   public type TokenConfig = {
     name : Text;
