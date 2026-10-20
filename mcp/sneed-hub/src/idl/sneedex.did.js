@@ -1,4 +1,6 @@
 export const idlFactory = ({ IDL }) => {
+  const GetBlocksResult = IDL.Rec();
+  const Value = IDL.Rec();
   const Config = IDL.Record({
     'min_increment_usd_range_max' : IDL.Nat,
     'min_increment_usd_range_min' : IDL.Nat,
@@ -47,6 +49,10 @@ export const idlFactory = ({ IDL }) => {
     'canister_kind' : IDL.Opt(CanisterKindId),
     'cached_total_stake_e8s' : IDL.Opt(IDL.Nat64),
   });
+  const EXTNFTAsset = IDL.Record({
+    'token_indices' : IDL.Vec(IDL.Nat32),
+    'collection_canister_id' : IDL.Principal,
+  });
   const ICRC1TokenAsset = IDL.Record({
     'ledger_canister_id' : IDL.Principal,
     'amount' : IDL.Nat,
@@ -80,6 +86,7 @@ export const idlFactory = ({ IDL }) => {
   });
   const Asset = IDL.Variant({
     'Canister' : CanisterAsset,
+    'EXTNFT' : EXTNFTAsset,
     'ICRC1Token' : ICRC1TokenAsset,
     'SneedLock' : SneedLockAsset,
     'ICRC7NFT' : ICRC7NFTAsset,
@@ -92,6 +99,22 @@ export const idlFactory = ({ IDL }) => {
   const Account = IDL.Record({
     'owner' : IDL.Principal,
     'subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+  });
+  const SettingsUpdate = IDL.Record({
+    'archive_top_up_threshold' : IDL.Opt(IDL.Nat),
+    'archive_max_blocks' : IDL.Opt(IDL.Nat),
+    'max_live_blocks' : IDL.Opt(IDL.Nat),
+    'archive_initial_cycles' : IDL.Opt(IDL.Nat),
+    'spill_batch_size' : IDL.Opt(IDL.Nat),
+    'archive_top_up_amount' : IDL.Opt(IDL.Nat),
+  });
+  const Settings = IDL.Record({
+    'archive_top_up_threshold' : IDL.Nat,
+    'archive_max_blocks' : IDL.Nat,
+    'max_live_blocks' : IDL.Nat,
+    'archive_initial_cycles' : IDL.Nat,
+    'spill_batch_size' : IDL.Nat,
+    'archive_top_up_amount' : IDL.Nat,
   });
   const BidId = IDL.Nat;
   const Time = IDL.Int;
@@ -266,6 +289,71 @@ export const idlFactory = ({ IDL }) => {
     'bids' : IDL.Vec(Bid),
     'highest_bid' : IDL.Opt(Bid),
   });
+  const SupportedStandard = IDL.Record({ 'url' : IDL.Text, 'name' : IDL.Text });
+  const GetArchivesArgs = IDL.Record({ 'from' : IDL.Opt(IDL.Principal) });
+  const ArchiveRange = IDL.Record({
+    'end' : IDL.Nat,
+    'canister_id' : IDL.Principal,
+    'start' : IDL.Nat,
+  });
+  const GetArchivesResult = IDL.Vec(ArchiveRange);
+  const BlockRange = IDL.Record({ 'start' : IDL.Nat, 'length' : IDL.Nat });
+  const GetBlocksArgs = IDL.Vec(BlockRange);
+  Value.fill(
+    IDL.Variant({
+      'Int' : IDL.Int,
+      'Map' : IDL.Vec(IDL.Tuple(IDL.Text, Value)),
+      'Nat' : IDL.Nat,
+      'Blob' : IDL.Vec(IDL.Nat8),
+      'Text' : IDL.Text,
+      'Array' : IDL.Vec(Value),
+    })
+  );
+  const Block = IDL.Record({ 'id' : IDL.Nat, 'block' : Value });
+  const ArchivedBlocks = IDL.Record({
+    'args' : GetBlocksArgs,
+    'callback' : IDL.Func([GetBlocksArgs], [GetBlocksResult], ['query']),
+  });
+  GetBlocksResult.fill(
+    IDL.Record({
+      'log_length' : IDL.Nat,
+      'blocks' : IDL.Vec(Block),
+      'archived_blocks' : IDL.Vec(ArchivedBlocks),
+    })
+  );
+  const DataCertificate = IDL.Record({
+    'certificate' : IDL.Vec(IDL.Nat8),
+    'hash_tree' : IDL.Vec(IDL.Nat8),
+  });
+  const ArchiveInfo = IDL.Record({
+    'canister_id' : IDL.Principal,
+    'start' : IDL.Nat,
+    'length' : IDL.Nat,
+    'max_blocks' : IDL.Nat,
+  });
+  const LogStatus = IDL.Record({
+    'live_blocks' : IDL.Nat,
+    'live_first_index' : IDL.Nat,
+    'history_imported' : IDL.Bool,
+    'spilling' : IDL.Bool,
+    'settings' : Settings,
+    'log_length' : IDL.Nat,
+    'last_block_hash' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'archives' : IDL.Vec(ArchiveInfo),
+  });
+  const Registration = IDL.Record({
+    'last_error' : IDL.Opt(IDL.Text),
+    'canister_id' : IDL.Principal,
+    'attempts' : IDL.Nat,
+    'start' : IDL.Nat,
+    'proposal_id' : IDL.Opt(IDL.Nat64),
+  });
+  const Status = IDL.Record({
+    'neuron' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    'registrations' : IDL.Vec(Registration),
+    'governance' : IDL.Principal,
+  });
+  const BlockType = IDL.Record({ 'url' : IDL.Text, 'block_type' : IDL.Text });
   const Result_2 = IDL.Variant({ 'ok' : BidId, 'err' : SneedexError });
   const TradingBotVersion = IDL.Record({
     'major' : IDL.Nat,
@@ -279,9 +367,51 @@ export const idlFactory = ({ IDL }) => {
     'addAsset' : IDL.Func([AddAssetRequest], [Result_1], []),
     'addAssetType' : IDL.Func([IDL.Text, IDL.Text], [Result_6], []),
     'adminReclaimStuckTokens' : IDL.Func([OfferId], [Result_5], []),
+    'adminReturnMisplacedExtNft' : IDL.Func(
+        [IDL.Principal, IDL.Nat32, IDL.Opt(OfferId), IDL.Principal],
+        [Result_5],
+        [],
+      ),
     'adminReturnMisplacedNft' : IDL.Func(
         [IDL.Principal, IDL.Nat, Account],
         [Result_5],
+        [],
+      ),
+    'admin_icrc3_register_archives_now' : IDL.Func(
+        [],
+        [IDL.Variant({ 'Ok' : IDL.Nat, 'Err' : IDL.Text })],
+        [],
+      ),
+    'admin_icrc3_repair_archive_controllers' : IDL.Func(
+        [],
+        [
+          IDL.Vec(
+            IDL.Tuple(
+              IDL.Principal,
+              IDL.Variant({ 'Ok' : IDL.Null, 'Err' : IDL.Text }),
+            )
+          ),
+        ],
+        [],
+      ),
+    'admin_icrc3_reset_archive_registration' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Variant({ 'Ok' : IDL.Bool, 'Err' : IDL.Text })],
+        [],
+      ),
+    'admin_icrc3_spill_now' : IDL.Func(
+        [],
+        [IDL.Variant({ 'Ok' : IDL.Nat, 'Err' : IDL.Text })],
+        [],
+      ),
+    'admin_set_icrc3_proposal_neuron' : IDL.Func(
+        [IDL.Opt(IDL.Vec(IDL.Nat8))],
+        [IDL.Variant({ 'Ok' : IDL.Null, 'Err' : IDL.Text })],
+        [],
+      ),
+    'admin_set_icrc3_settings' : IDL.Func(
+        [SettingsUpdate],
+        [IDL.Variant({ 'Ok' : Settings, 'Err' : IDL.Text })],
         [],
       ),
     'cancelOffer' : IDL.Func([OfferId], [Result_1], []),
@@ -307,6 +437,7 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'escrowCanister' : IDL.Func([OfferId, IDL.Nat], [Result_1], []),
+    'escrowEXTNFTs' : IDL.Func([OfferId, IDL.Nat], [Result_1], []),
     'escrowICRC1Tokens' : IDL.Func([OfferId, IDL.Nat], [Result_1], []),
     'escrowICRC7NFTs' : IDL.Func([OfferId, IDL.Nat], [Result_1], []),
     'escrowICRC7NFTsByApproval' : IDL.Func([OfferId, IDL.Nat], [Result_1], []),
@@ -413,6 +544,11 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(IDL.Nat8)],
         ['query'],
       ),
+    'getOfferEscrowAccountId' : IDL.Func(
+        [IDL.Principal, OfferId],
+        [IDL.Text],
+        ['query'],
+      ),
     'getOfferEscrowSubaccount' : IDL.Func(
         [IDL.Principal, OfferId],
         [IDL.Vec(IDL.Nat8)],
@@ -457,6 +593,34 @@ export const idlFactory = ({ IDL }) => {
       ),
     'getSneedSmsCanisterId' : IDL.Func([], [IDL.Opt(IDL.Principal)], ['query']),
     'getUserOfferCreationBalance' : IDL.Func([IDL.Principal], [IDL.Nat], []),
+    'get_api_doc' : IDL.Func([], [IDL.Text], ['query']),
+    'icrc10_supported_standards' : IDL.Func(
+        [],
+        [IDL.Vec(SupportedStandard)],
+        ['query'],
+      ),
+    'icrc3_get_archives' : IDL.Func(
+        [GetArchivesArgs],
+        [GetArchivesResult],
+        ['query'],
+      ),
+    'icrc3_get_blocks' : IDL.Func(
+        [GetBlocksArgs],
+        [GetBlocksResult],
+        ['query'],
+      ),
+    'icrc3_get_tip_certificate' : IDL.Func(
+        [],
+        [IDL.Opt(DataCertificate)],
+        ['query'],
+      ),
+    'icrc3_log_status' : IDL.Func([], [LogStatus], ['query']),
+    'icrc3_registration_status' : IDL.Func([], [Status], ['query']),
+    'icrc3_supported_block_types' : IDL.Func(
+        [],
+        [IDL.Vec(BlockType)],
+        ['query'],
+      ),
     'isExpirationTimerRunning' : IDL.Func([], [IDL.Bool], ['query']),
     'isExpirationWorkerRunning' : IDL.Func([], [IDL.Bool], ['query']),
     'processExpiration' : IDL.Func([OfferId], [Result_1], []),
