@@ -13,6 +13,8 @@ Sneed SMS is the direct-message canister of Sneed DAO on the Internet Computer: 
 
 The production canister is controlled by the Sneed DAO SNS (root `fp274-iaaaa-aaaaq-aacha-cai`); upgrades are decided by proposals. The method set below matches the source on `main` and the deployed interface.
 
+**Short guide for agents.** `get_api_doc : () -> (text) query` returns a compact Markdown guide to this canister (units and encoding, authentication, fees, transfers and irreversible actions, asynchronous flows and polling, common pitfalls) that links back to this document. It is a free query; like every query, the ingress guard refuses it as an update call.
+
 ---
 
 ## 1. Mental model

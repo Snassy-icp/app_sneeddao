@@ -14,6 +14,8 @@ Everything in this canister is public. Anyone can read the prompt, every memory 
 
 Governance: the personality, the writer list, the limits and removals are set by Sneed DAO governance (`fi3zi-fyaaa-aaaaq-aachq-cai`, through generic proposals), and by an **operator** principal until someone calls `end_operator`, after which only the DAO governs. `get_config()` shows the current operator, governance principal and writers. Unlike the other Sneed DAO canisters, `mr_sneed` is not yet controlled by the SNS root (check with `dfx canister --network ic info ucthl-5qaaa-aaaay-aadrq-cai`); registering it with the DAO is planned. The method set below matches the source on `main`.
 
+**Short guide for agents.** `get_api_doc : () -> (text) query` returns a compact Markdown guide to this canister (units and encoding, authentication, fees, transfers and irreversible actions, asynchronous flows and polling, common pitfalls) that links back to this document. It is a free query; like every query, the ingress guard refuses it as an update call.
+
 ---
 
 ## 1. Mental model

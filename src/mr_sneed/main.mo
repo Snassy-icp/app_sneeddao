@@ -13,6 +13,7 @@ import Map "mo:map/Map";
 import Sha256 "mo:sha2/Sha256";
 
 import IngressGuard "../IngressGuard";
+import ApiDoc "ApiDoc";
 import Icrc3Log "../icrc3/Log";
 import T3 "../icrc3/Types";
 import TextLog "../sneed_names/TextLog";
@@ -674,6 +675,10 @@ shared (deployer) persistent actor class MrSneed() = this {
     ensure_icrc3_timer<system>();
   };
 
+  // get_api_doc (ICP service discoverability): a short Markdown guide for agents and integrators,
+  // with the full reference at https://app.sneeddao.com/api-docs/. A static text: no state read.
+  public query func get_api_doc() : async Text { ApiDoc.text };
+
   // ---------------------------------------------------------------------------------------------
   // Ingress guard (src/IngressGuard.mo)
   // ---------------------------------------------------------------------------------------------
@@ -681,6 +686,7 @@ shared (deployer) persistent actor class MrSneed() = this {
   transient let MEMORY_ARG : Nat = IngressGuard.textArg(BODY_MAX_BYTES + TITLE_MAX + PATH_MAX + TAGS_MAX * TAG_MAX + LINKS_MAX * LINK_MAX + PROJECT_MAX);
 
   system func inspect({ caller : Principal; arg : Blob; msg : {
+    #get_api_doc : Any;
     #admin_icrc3_spill_now : Any;
     #end_operator : Any;
     #forget : Any;
@@ -717,7 +723,7 @@ shared (deployer) persistent actor class MrSneed() = this {
   } }) : Bool {
     switch msg {
       // queries are free as queries; as updates the canister would pay for consensus
-      case (#get_config _ or #get_memory _ or #get_personality _ or #get_prompt _ or #get_stats _ or #icrc10_supported_standards _ or #icrc3_get_archives _ or #icrc3_get_blocks _ or #icrc3_get_tip_certificate _ or #icrc3_log_status _ or #icrc3_supported_block_types _ or #list_folders _ or #list_memories _ or #list_personalities _ or #memories_about _ or #search_memories _ or #session_brief _ or #validate_remove_memory _ or #validate_set_limits _ or #validate_set_personality _ or #validate_set_writers _) false;
+      case (#get_api_doc _ or #get_config _ or #get_memory _ or #get_personality _ or #get_prompt _ or #get_stats _ or #icrc10_supported_standards _ or #icrc3_get_archives _ or #icrc3_get_blocks _ or #icrc3_get_tip_certificate _ or #icrc3_log_status _ or #icrc3_supported_block_types _ or #list_folders _ or #list_memories _ or #list_personalities _ or #memories_about _ or #search_memories _ or #session_brief _ or #validate_remove_memory _ or #validate_set_limits _ or #validate_set_personality _ or #validate_set_writers _) false;
       // governance calls these inter-canister; by ingress only the operator, while there is one
       case (#set_personality _) isOperator(caller) and arg.size() <= IngressGuard.textArg(PERSONALITY_MAX_BYTES + REASON_MAX);
       case (#set_writers _ or #set_limits _ or #remove_memory _ or #end_operator _ or #operator_set_config _) isOperator(caller) and arg.size() <= IngressGuard.textArg(REASON_MAX + WRITERS_MAX * 32);

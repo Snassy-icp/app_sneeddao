@@ -17,6 +17,7 @@ import Map "mo:map/Map";
 import Sha256 "mo:sha2/Sha256";
 
 import IngressGuard "../IngressGuard";
+import ApiDoc "ApiDoc";
 import PremiumClient "../PremiumClient";
 
 /// Avatar images for the naming service (spec/sneed_names.md §7): content-addressed by SHA-256,
@@ -309,11 +310,16 @@ shared (deployer) persistent actor class SneedAvatars() = this {
     #ok(hash);
   };
 
+  // get_api_doc (ICP service discoverability): a short Markdown guide for agents and integrators,
+  // with the full reference at https://app.sneeddao.com/api-docs/. A static text: no state read.
+  public query func get_api_doc() : async Text { ApiDoc.text };
+
   // ---------------------------------------------------------------------------------------------
   // Ingress guard (src/IngressGuard.mo)
   // ---------------------------------------------------------------------------------------------
 
   system func inspect({ caller : Principal; arg : Blob; msg : {
+    #get_api_doc : Any;
     #admin_add_admin : Any;
     #admin_remove : Any;
     #admin_remove_admin : Any;
@@ -331,7 +337,7 @@ shared (deployer) persistent actor class SneedAvatars() = this {
   } }) : Bool {
     switch msg {
       // queries are free as queries; as updates the canister would pay for consensus
-      case (#get_admins _ or #get_config _ or #get_images _ or #get_info _ or #http_request _ or #my_images _ or #stats _) false;
+      case (#get_api_doc _ or #get_admins _ or #get_config _ or #get_images _ or #get_info _ or #http_request _ or #my_images _ or #stats _) false;
       case (#admin_set_config _) isAdmin(caller) and arg.size() <= IngressGuard.textArg(1_000);
       case (#admin_add_admin _ or #admin_remove _ or #admin_remove_admin _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       case (#admin_upload_for _) isAdmin(caller) and arg.size() <= IngressGuard.MEDIUM_ARG;

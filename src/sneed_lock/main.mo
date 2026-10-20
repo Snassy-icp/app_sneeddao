@@ -28,6 +28,7 @@ import T "Types";
 import CircularBuffer "CircularBuffer";
 import PremiumClient "../PremiumClient";
 import IngressGuard "../IngressGuard";
+import ApiDoc "ApiDoc";
 import Timer "mo:base/Timer";
 
 import Icrc3Log "../icrc3/Log";
@@ -4595,9 +4596,14 @@ shared (deployer) persistent actor class SneedLock() = this {
   func nftBatchOk(arg : Blob, items : Nat) : Bool =
     items <= N.MAX_UPDATE_BATCH and arg.size() <= IngressGuard.SMALL_ARG + N.MAX_UPDATE_BATCH * (N.MAX_MEMO + 512);
 
+  // get_api_doc (ICP service discoverability): a short Markdown guide for agents and integrators,
+  // with the full reference at https://app.sneeddao.com/api-docs/. A static text: no state read.
+  public query func get_api_doc() : async Text { ApiDoc.text };
+
   // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
   // would go through consensus at our cost, and arguments are capped in size.
   system func inspect({ arg : Blob; msg : {
+    #get_api_doc : Any;
     #add_liquidity_to_locked_position : Any;
     #admin_add_admin : Any;
     #admin_clear_completed_claim_requests : Any;
@@ -4712,7 +4718,8 @@ shared (deployer) persistent actor class SneedLock() = this {
   } }) : Bool {
     switch (msg) {
       case (
-        #admin_get_payment_log _
+        #get_api_doc _
+        or #admin_get_payment_log _
         or #admin_get_payment_log_count _
         or #getPaymentSubaccount _
         or #get_admin_list _

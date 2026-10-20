@@ -14,6 +14,8 @@ This document covers what integrators can use. Administrative methods are listed
 
 The production canister is controlled by the Sneed SNS (root `fp274-iaaaa-aaaaq-aacha-cai`); upgrades are decided by Sneed DAO proposals. The method set below matches the source on `main`.
 
+**Short guide for agents.** `get_api_doc : () -> (text) query` returns a compact Markdown guide to this canister (units and encoding, authentication, fees, transfers and irreversible actions, asynchronous flows and polling, common pitfalls) that links back to this document. It is a free query; like every query, the ingress guard refuses it as an update call.
+
 ---
 
 ## 1. Mental model

@@ -14,6 +14,8 @@ Sneed Notifications lets any dapp on the Internet Computer notify its users, and
 
 The production canister's controllers include the Sneed DAO SNS root (`fp274-iaaaa-aaaaq-aacha-cai`); check the current list with `dfx canister --network ic info vuy7a-iaaaa-aaaay-aaduq-cai`. The method set below matches the source on `main` and the deployed interface. This is the first version of the service: Sneed SMS delivery runs inside the canister; relays for Discord and push are registered on production (see `get_config().relays`), the other kinds have none yet.
 
+**Short guide for agents.** `get_api_doc : () -> (text) query` returns a compact Markdown guide to this canister (units and encoding, authentication, fees, transfers and irreversible actions, asynchronous flows and polling, common pitfalls) that links back to this document. It is a free query; like every query, the ingress guard refuses it as an update call.
+
 ---
 
 ## 1. Mental model

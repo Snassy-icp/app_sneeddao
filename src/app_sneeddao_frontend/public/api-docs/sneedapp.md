@@ -16,6 +16,8 @@ Anyone can integrate: browsing, paying, minting and bookmarking are authorised b
 
 The production canister is controlled by the Sneed DAO SNS; upgrades are decided by proposals. The service type in the Candid file is still called `IcpNeuronManagerFactory`, after the canister's first job (minting ICP neuron manager canisters, today the Sneed ICP Staking Bot). The method set below matches the source on `main`.
 
+**Short guide for agents.** `get_api_doc : () -> (text) query` returns a compact Markdown guide to this canister (units and encoding, authentication, fees, transfers and irreversible actions, asynchronous flows and polling, common pitfalls) that links back to this document. It is a free query; like every query, the ingress guard refuses it as an update call.
+
 ---
 
 ## 1. Mental model

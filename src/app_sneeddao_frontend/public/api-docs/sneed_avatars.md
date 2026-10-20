@@ -10,3 +10,5 @@
 | Source | [src/sneed_avatars](https://github.com/Snassy-icp/app_sneeddao/tree/main/src/sneed_avatars) |
 
 The whole naming service is documented in one place: **[Sneed Names API](/api/sneed_names)** ([raw Markdown](/api-docs/sneed_names.md)). This canister's methods are in [section 5](/api/sneed_names#58-sneedavatars).
+
+**Short guide for agents.** `get_api_doc : () -> (text) query` returns a compact Markdown guide to this canister that links to the Sneed Names API. It is a free query; the ingress guard refuses it as an update call.

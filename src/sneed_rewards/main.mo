@@ -24,6 +24,7 @@ import Hash "mo:base/Hash";
 
 import T "Types";
 import IngressGuard "../IngressGuard";
+import ApiDoc "ApiDoc";
 
 shared (deployer) persistent actor class SneedRLL() = this {
 
@@ -3694,9 +3695,14 @@ shared (deployer) persistent actor class SneedRLL() = this {
     Iter.toArray(claimed_amounts.entries())
   };
 
+  // get_api_doc (ICP service discoverability): a short Markdown guide for agents and integrators,
+  // with the full reference at https://app.sneeddao.com/api-docs/. A static text: no state read.
+  public query func get_api_doc() : async Text { ApiDoc.text };
+
   // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
   // would go through consensus at our cost, and arguments are capped in size.
   system func inspect({ arg : Blob; msg : {
+    #get_api_doc : Any;
     #acceptsVote : Any;
     #add_admin : Any;
     #add_known_token : Any;
@@ -3793,7 +3799,8 @@ shared (deployer) persistent actor class SneedRLL() = this {
   } }) : Bool {
     switch (msg) {
       case (
-        #acceptsVote _
+        #get_api_doc _
+        or #acceptsVote _
         or #all_token_balances _
         or #balance_of _
         or #balance_reconciliation_from_balances _

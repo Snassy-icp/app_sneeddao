@@ -3,6 +3,7 @@ import Debug "mo:base/Debug";
 import Principal "mo:base/Principal";
 
 import IngressGuard "../IngressGuard";
+import ApiDoc "ApiDoc";
 import Nicknames "../sneed_names/Nicknames";
 import T "../sneed_names/Types";
 
@@ -100,11 +101,16 @@ shared (deployer) persistent actor class SneedPidNicknames() = this {
     #ok("Import closed");
   };
 
+  // get_api_doc (ICP service discoverability): a short Markdown guide for agents and integrators,
+  // with the full reference at https://app.sneeddao.com/api-docs/. A static text: no state read.
+  public query func get_api_doc() : async Text { ApiDoc.text };
+
   // ---------------------------------------------------------------------------------------------
   // Ingress guard (src/IngressGuard.mo)
   // ---------------------------------------------------------------------------------------------
 
   system func inspect({ caller : Principal; arg : Blob; msg : {
+    #get_api_doc : Any;
     #admin_add_admin : Any;
     #admin_finish_import : Any;
     #admin_import_nicknames : Any;
@@ -122,7 +128,7 @@ shared (deployer) persistent actor class SneedPidNicknames() = this {
   } }) : Bool {
     switch msg {
       // queries are free as queries; as updates the canister would pay for consensus
-      case (#get_admins _ or #get_config _ or #get_my_nicknames _ or #get_my_nicknames_for _ or #my_nickname_count _ or #search_my_nicknames _ or #stats _) false;
+      case (#get_api_doc _ or #get_admins _ or #get_config _ or #get_my_nicknames _ or #get_my_nicknames_for _ or #my_nickname_count _ or #search_my_nicknames _ or #stats _) false;
       case (#admin_import_nicknames _) isAdmin(caller) and arg.size() <= 2_000_000;
       case (#admin_set_config _) isAdmin(caller) and arg.size() <= IngressGuard.textArg(1_000);
       case (#admin_add_admin _ or #admin_finish_import _ or #admin_remove_admin _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;

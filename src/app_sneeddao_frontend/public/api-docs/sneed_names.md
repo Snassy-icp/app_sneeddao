@@ -25,6 +25,8 @@ Staging runs the same code with its own state (and its own admins); use it to te
 
 **Where names lived before.** Names, nicknames and avatars used to live in the Sneed backend (`g7s5u-tqaaa-aaaad-qhktq-cai`). They were imported into these canisters (every import is closed), and the backend's naming writes are frozen: they answer `Names are moving to the new naming service; please try again shortly`. The backend's naming queries still answer from the frozen copy for old clients, but that copy no longer changes. New integrations use the canisters on this page.
 
+**Short guide for agents.** Each of the six canisters answers `get_api_doc : () -> (text) query` with a compact Markdown guide to that canister (units and encoding, authentication, fees and irreversible actions, polling, common pitfalls) that links back to this document. It is a free query; like every query, the ingress guard refuses it as an update call.
+
 ---
 
 ## 1. Mental model

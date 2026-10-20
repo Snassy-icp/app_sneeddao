@@ -18,6 +18,7 @@ import Sha256 "mo:sha2/Sha256";
 import T "../sneed_bots/sneed_icp_staking_bot/Types";
 import PremiumClient "../PremiumClient";
 import IngressGuard "../IngressGuard";
+import ApiDoc "ApiDoc";
 
 shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
@@ -3702,9 +3703,14 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         case (?app) isPublisherOwnerOrAdmin(caller, app.publisherId);
     });
 
+    // get_api_doc (ICP service discoverability): a short Markdown guide for agents and integrators,
+    // with the full reference at https://app.sneeddao.com/api-docs/. A static text: no state read.
+    public query func get_api_doc() : async Text { ApiDoc.text };
+
     // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
     // would go through consensus at our cost, and arguments are capped in size.
     system func inspect({ caller : Principal; arg : Blob; msg : {
+        #get_api_doc : Any;
         #addAdmin : Any;
         #addApp : () -> (Nat, AddAppInput);
         #addAppVersion : () -> (Text, AppVersionInput);
@@ -3837,7 +3843,8 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     } }) : Bool {
         switch (msg) {
             case (
-                #getAdmins _
+                #get_api_doc _
+                or #getAdmins _
                 or #getAllAppRevenueStats _
                 or #getAllPublisherStats _
                 or #getAllRegistrations _

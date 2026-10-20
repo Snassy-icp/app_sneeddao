@@ -13,6 +13,8 @@ Sneed Lock is the time-locking canister of Sneed DAO on the Internet Computer. I
 
 Upgrades are decided by Sneed DAO proposals; the canister is controlled by the SNS. The method set below matches the source on `main`.
 
+**Short guide for agents.** `get_api_doc : () -> (text) query` returns a compact Markdown guide to this canister (units and encoding, authentication, fees, transfers and irreversible actions, asynchronous flows and polling, common pitfalls) that links back to this document. It is a free query; like every query, the ingress guard refuses it as an update call.
+
 ---
 
 ## 1. Mental model

@@ -12,6 +12,7 @@ import Buffer "mo:base/Buffer";
 import Array "mo:base/Array";
 import PremiumClient "../PremiumClient";
 import IngressGuard "../IngressGuard";
+import ApiDoc "ApiDoc";
 
 persistent actor SneedSMS {
     // Types
@@ -1121,9 +1122,14 @@ persistent actor SneedSMS {
     // Limit of the ingress guard below: a reply names the message(s) it answers
     transient let MAX_REPLY_TO : Nat = 100;
 
+    // get_api_doc (ICP service discoverability): a short Markdown guide for agents and integrators,
+    // with the full reference at https://app.sneeddao.com/api-docs/. A static text: no state read.
+    public query func get_api_doc() : async Text { ApiDoc.text };
+
     // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
     // would go through consensus at our cost, and arguments are capped in size.
     system func inspect({ caller : Principal; arg : Blob; msg : {
+        #get_api_doc : Any;
         #add_admin : Any;
         #add_authorized_sender : Any;
         #get_admins : Any;
@@ -1154,7 +1160,8 @@ persistent actor SneedSMS {
     } }) : Bool {
         switch (msg) {
             case (
-                #get_admins _
+                #get_api_doc _
+                or #get_admins _
                 or #get_all_messages _
                 or #get_all_messages_admin _
                 or #get_authorized_senders _

@@ -13,6 +13,7 @@ import Timer "mo:base/Timer";
 import Map "mo:map/Map";
 
 import IngressGuard "../IngressGuard";
+import ApiDoc "ApiDoc";
 import Control "../sneed_names/Control";
 import SnsDirectory "../sneed_names/SnsDirectory";
 import T "Types";
@@ -834,11 +835,16 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     };
   };
 
+  // get_api_doc (ICP service discoverability): a short Markdown guide for agents and integrators,
+  // with the full reference at https://app.sneeddao.com/api-docs/. A static text: no state read.
+  public query func get_api_doc() : async Text { ApiDoc.text };
+
   // ---------------------------------------------------------------------------------------------
   // Ingress guard (src/IngressGuard.mo)
   // ---------------------------------------------------------------------------------------------
 
   system func inspect({ caller : Principal; arg : Blob; msg : {
+    #get_api_doc : Any;
     #add_channel : Any;
     #admin_add_admin : Any;
     #admin_register_app : Any;
@@ -876,7 +882,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     #verify_channel : Any;
   } }) : Bool {
     switch msg {
-      case (#get_relay_keys _ or #get_admins _ or #get_app _ or #get_app_balance _ or #get_app_of _ or #get_config _ or #get_my_apps _ or #get_my_history _ or #get_my_requests _ or #get_my_settings _ or #get_receipts _ or #list_apps _ or #stats _) false;
+      case (#get_api_doc _ or #get_relay_keys _ or #get_admins _ or #get_app _ or #get_app_balance _ or #get_app_of _ or #get_config _ or #get_my_apps _ or #get_my_history _ or #get_my_requests _ or #get_my_settings _ or #get_receipts _ or #list_apps _ or #stats _) false;
       // apps call these from their canisters, never by ingress
       case (#notify _ or #notify_batch _ or #request_permission _) false;
       case (#admin_add_admin _ or #admin_remove_admin _ or #admin_remove_app _ or #admin_set_app_verified _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;

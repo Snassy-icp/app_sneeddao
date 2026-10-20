@@ -10,6 +10,7 @@ import Random "mo:base/Random";
 import T "Types";
 import Utils "Utils";
 import IngressGuard "../IngressGuard";
+import ApiDoc "ApiDoc";
 
 shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = this {
     // ============================================
@@ -1196,9 +1197,14 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
     // Limit of the ingress guard below
     transient let MAX_PROMO_CODE : Nat = 64;
 
+    // get_api_doc (ICP service discoverability): a short Markdown guide for agents and integrators,
+    // with the full reference at https://app.sneeddao.com/api-docs/. A static text: no state read.
+    public query func get_api_doc() : async Text { ApiDoc.text };
+
     // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
     // would go through consensus at our cost, and arguments are capped in size.
     system func inspect({ caller : Principal; arg : Blob; msg : {
+        #get_api_doc : Any;
         #addAdmin : Any;
         #addIcpTier : Any;
         #addVpTier : Any;
@@ -1245,7 +1251,8 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
     } }) : Bool {
         switch (msg) {
             case (
-                #checkMembership _
+                #get_api_doc _
+                or #checkMembership _
                 or #getActivePremiumMembers _
                 or #getAllIcpTiers _
                 or #getAllMemberships _

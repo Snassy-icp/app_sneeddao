@@ -19,6 +19,7 @@ import Utils "Utils";
 import AssetHandlers "AssetHandlers";
 import PremiumClient "../PremiumClient";
 import IngressGuard "../IngressGuard";
+import ApiDoc "ApiDoc";
 
 shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this {
     // ============================================
@@ -4910,9 +4911,14 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     transient let MAX_ASSET_LIST : Nat = 100; // token ids, or controllers / hotkeys in a snapshot
     transient let MAX_PRINCIPAL_BYTES : Nat = 32;
 
+    // get_api_doc (ICP service discoverability): a short Markdown guide for agents and integrators,
+    // with the full reference at https://app.sneeddao.com/api-docs/. A static text: no state read.
+    public query func get_api_doc() : async Text { ApiDoc.text };
+
     // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
     // would go through consensus at our cost, and arguments are capped in size.
     system func inspect({ caller : Principal; arg : Blob; msg : {
+        #get_api_doc : Any;
         #acceptBid : Any;
         #activateOffer : Any;
         #addAdmin : Any;
@@ -5016,7 +5022,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     } }) : Bool {
         switch (msg) {
             case (
-                #debugGetAllOffers _
+                #get_api_doc _
+                or #debugGetAllOffers _
                 or #getActiveOffers _
                 or #getAssetTypes _
                 or #getBackendCanisterId _

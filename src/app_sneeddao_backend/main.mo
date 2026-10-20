@@ -18,6 +18,7 @@ import Timer "mo:base/Timer";
 import T "Types";
 import PremiumClient "../PremiumClient";
 import IngressGuard "../IngressGuard";
+import ApiDoc "ApiDoc";
 import Donations "Donations";
 
 shared (deployer) persistent actor class AppSneedDaoBackend() = this {
@@ -4251,9 +4252,14 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   transient let MAX_GROUP_BYTES : Nat = 1_024; // a folder's id, name and record
   func nameOk(arg : Blob, name : Text) : Bool = arg.size() <= IngressGuard.textArg(MAX_NAME_LENGTH) and IngressGuard.text(name, MAX_NAME_LENGTH);
 
+  // get_api_doc (ICP service discoverability): a short Markdown guide for agents and integrators,
+  // with the full reference at https://app.sneeddao.com/api-docs/. A static text: no state read.
+  public query func get_api_doc() : async Text { ApiDoc.text };
+
   // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
   // would go through consensus at our cost, and arguments are capped in size.
   system func inspect({ caller : Principal; arg : Blob; msg : {
+    #get_api_doc : Any;
     #add_admin : Any;
     #add_authorized_for_caller : Any;
     #add_blacklisted_word : Any;
@@ -4388,7 +4394,8 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   } }) : Bool {
     switch (msg) {
       case (
-        #caller_is_admin _
+        #get_api_doc _
+        or #caller_is_admin _
         or #check_ban_status _
         or #get_admins _
         or #get_all_jailbreak_configs_count _

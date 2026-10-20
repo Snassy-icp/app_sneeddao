@@ -14,6 +14,7 @@ import Dedup "mo:dedup";
 import Map "mo:map/Map";
 
 import IngressGuard "../IngressGuard";
+import ApiDoc "ApiDoc";
 import Icrc3Log "../icrc3/Log";
 import T3 "../icrc3/Types";
 import Moderation "../sneed_names/Moderation";
@@ -586,11 +587,16 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
     ensure_icrc3_timer<system>();
   };
 
+  // get_api_doc (ICP service discoverability): a short Markdown guide for agents and integrators,
+  // with the full reference at https://app.sneeddao.com/api-docs/. A static text: no state read.
+  public query func get_api_doc() : async Text { ApiDoc.text };
+
   // ---------------------------------------------------------------------------------------------
   // Ingress guard (src/IngressGuard.mo)
   // ---------------------------------------------------------------------------------------------
 
   system func inspect({ caller : Principal; arg : Blob; msg : {
+    #get_api_doc : Any;
     #admin_add_admin : Any;
     #admin_clear_avatar : Any;
     #admin_finish_import : Any;
@@ -629,7 +635,7 @@ shared (deployer) persistent actor class SneedNeuronNames() = this {
   } }) : Bool {
     switch msg {
       // queries are free as queries; as updates the canister would pay for consensus
-      case (#changes_since _ or #get_admins _ or #get_config _ or #get_log _ or #get_name _ or #get_names _ or #icrc10_supported_standards _ or #icrc3_get_archives _ or #icrc3_get_blocks _ or #icrc3_get_tip_certificate _ or #icrc3_log_status _ or #icrc3_supported_block_types _ or #list_by_sns _ or #search _ or #stats _ or #validate_unverify_by_dao _ or #validate_verify_by_dao _) false;
+      case (#get_api_doc _ or #changes_since _ or #get_admins _ or #get_config _ or #get_log _ or #get_name _ or #get_names _ or #icrc10_supported_standards _ or #icrc3_get_archives _ or #icrc3_get_blocks _ or #icrc3_get_tip_certificate _ or #icrc3_log_status _ or #icrc3_supported_block_types _ or #list_by_sns _ or #search _ or #stats _ or #validate_unverify_by_dao _ or #validate_verify_by_dao _) false;
       // only governance canisters call these, never by ingress
       case (#verify_by_dao _ or #unverify_by_dao _ or #verify_by_sns _ or #unverify_by_sns _) false;
       case (#admin_import_names _) isAdmin(caller) and arg.size() <= 2_000_000;
