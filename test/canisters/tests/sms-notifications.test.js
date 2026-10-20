@@ -89,18 +89,17 @@ describe('sneed_sms: notifications for direct messages', () => {
     expect((await sms.get_notifications_canister())[0].toText()).toBe(notifId.toText());
   });
 
-  it('notifies each recipient once, on their own channels and never Sneed SMS, without the text', async () => {
+  it('notifies each recipient once, on their own channels and never Sneed SMS, with a 100-character preview', async () => {
     const before = new Set((await inbox(alice)).map((m) => m.id)).size;
     // alice twice, the sender himself, and dave, who never allowed Sneed Hub
     const id = unwrap(await send(bob, [alice, carol, alice, dave, bob], 'Lunch?', 'the private text'));
     await settle();
     const [h, ...rest] = await history(alice);
     expect(rest).toEqual([]);
-    expect([h.topic, h.title, h.body, h.link]).toEqual(['direct_message', `New message from ${short(bob)}`, 'Lunch?', [`https://app.sneeddao.com/msg/${id}`]]);
+    expect([h.topic, h.title, h.body, h.link]).toEqual(['direct_message', `New message from ${short(bob)}`, 'Lunch?\nthe private text', [`https://app.sneeddao.com/msg/${id}`]]);
     expect(h.deliveries.map((d) => Object.keys(d.kind)[0])).toEqual(['discord']); // not her chosen nor her copy Sneed SMS channel
     const jobs = await relayed();
-    expect(jobs.map((j) => [j.title, j.body])).toEqual([[`New message from ${short(bob)}`, 'Lunch?']]);
-    expect(jobs.map((j) => j.title + j.body).join()).not.toMatch(/private text/);
+    expect(jobs.map((j) => [j.title, j.body])).toEqual([[`New message from ${short(bob)}`, 'Lunch?\nthe private text']]);
     const c = await history(carol); // allowed, no channel of her own but Sneed SMS: recorded, delivered nowhere
     expect(c.map((x) => [x.topic, x.deliveries.length])).toEqual([['direct_message', 0]]);
     expect(await history(dave)).toEqual([]);
@@ -168,4 +167,20 @@ describe('sneed_sms: notifications for direct messages', () => {
     const upd = actorAs(pic, asUpdates(smsIdl), smsId, bob);
     expect(await refusedAtIngress(upd.get_notifications_canister())).toBe(true);
   });
+  it('cuts the preview at 100 characters, and leaves it out for someone who turned previews off', async () => {
+    const long = 'x'.repeat(150);
+    expect(await smsAs(alice).get_notification_preview()).toBe(true); // on by default
+    unwrap(await send(bob, [alice], 'Long one', long));
+    await settle();
+    expect((await history(alice))[0].body).toBe('Long one\n' + 'x'.repeat(100) + '…');
+    await relayed();
+    unwrap(await smsAs(alice).set_notification_preview(false));
+    expect(await smsAs(alice).get_notification_preview()).toBe(false);
+    unwrap(await send(bob, [alice], 'Quiet', 'secret words'));
+    await settle();
+    expect((await history(alice))[0].body).toBe('Quiet');
+    expect((await relayed()).map((j) => j.body).join()).not.toMatch(/secret words/);
+    unwrap(await smsAs(alice).set_notification_preview(true));
+  });
+
 });

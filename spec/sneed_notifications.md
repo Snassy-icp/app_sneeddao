@@ -262,7 +262,7 @@ pays for every member getting a real SMS whenever a canister runs low.
   installed app on iPhone and Android.
   Status (2026-10-20): partly built: the forum sends replies, mentions and tips (`notify_batch`,
   best effort); Sneed SMS sends `direct_message` ("New message from <short principal>", the
-  subject only, never the text; link to /msg/<id>; dedupe per message; not sponsored), once per
+  subject plus the first 100 characters of the text, or the subject only for recipients who turn previews off; link to /msg/<id>; dedupe per message; not sponsored), once per
   recipient, when `admin_set_notifications` is set on sneed_sms; the other topics are not wired.
 - **Unicycle:** cycles running low, top-ups done, drain alerts. Status (2026-10-20): not started.
 - **Mr Sneed:** go-ahead requests to the DAO's operators (today: Sneed SMS plus a Discord DM).

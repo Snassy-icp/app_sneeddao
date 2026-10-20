@@ -116,7 +116,7 @@ export default function HelpSms() {
                     <Li>On your Me page you can also choose which Sneedex events reach you by direct message.</Li>
                     <Li>
                         You can also get a heads-up on your phone or Discord when a new message arrives: allow Sneed Hub and add a channel
-                        on <L to="/notifications">Notifications</L>. It says who it's from and shows the subject, <B>never the message text</B>.
+                        on <L to="/notifications">Notifications</L>. It says who it's from and shows the subject and the first 100 characters. Turn the preview off on Notifications if you'd rather it didn't show on your lock screen or in Discord.
                     </Li>
                     <Li>For alerts beyond Sneed Hub itself, see <L to="/notifications">Notifications</L> and its <L to="/help/notifications">help page</L>.</Li>
                 </List>

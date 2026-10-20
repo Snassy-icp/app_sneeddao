@@ -43,7 +43,7 @@ export default function HelpNotifications() {
                     <Li><B>Tips</B>: someone tipped one of your posts ("Your post got a tip").</Li>
                     <Li>
                         <B>Direct messages</B>: someone sent you a <L to="/sms">Sneed SMS</L> ("New message from ..."). It shows the subject and a
-                        link to the message, <B>never the message text</B>. It goes to your other channels (phone, Discord...) only, not to your
+                        link to the message, and the first 100 characters of the text unless you turn previews off on this page. It goes to your other channels (phone, Discord...) only, not to your
                         Sneed SMS inbox: the message is there already.
                     </Li>
                 </List>

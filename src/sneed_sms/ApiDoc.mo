@@ -28,7 +28,7 @@ Direct messages (\"SMS\") from one principal to one or more others: a subject, a
 - Limits (read at run time from `get_config()` and, for Sneed Premium members, `get_premium_config()`): minutes between messages, subject and body length, recipients per message. Admins are exempt from the rate limit.
 
 ## Notifications for new messages
-- When admins set a Sneed Notifications canister (`get_notifications_canister()`), each `send_message` also notifies every recipient once (never the sender) through it: app Sneed Hub (the recipient must allow it), topic `direct_message`, title `New message from <short principal>`, body the subject only (never the message text), link `https://app.sneeddao.com/msg/<id>`, paid by the recipient. Fire-and-forget: sending never waits on it or fails because of it.
+- When admins set a Sneed Notifications canister (`get_notifications_canister()`), each `send_message` also notifies every recipient once (never the sender) through it: app Sneed Hub (the recipient must allow it), topic `direct_message`, title `New message from <short principal>`, body the subject plus the first 100 characters of the text (only the subject for a recipient who called `set_notification_preview(false)`; `get_notification_preview()` reads it, default on), link `https://app.sneeddao.com/msg/<id>`, paid by the recipient. Fire-and-forget: sending never waits on it or fails because of it.
 - `send_system_notification` never notifies, and Sneed Notifications never copies these notices back into Sneed SMS: no loop.
 
 ## Asynchronous lifecycle and polling

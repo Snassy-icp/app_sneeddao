@@ -9,6 +9,7 @@ import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { notificationsEnabled, notificationsActor, LEVELS, CHANNEL_KINDS, kindOf, levelOf, topUp, formatIcp, relayKeys, addDiscordChannel, addPushChannel, pushSupported } from '../utils/NotificationsService';
 import { isStandaloneApp, isIOS } from '../utils/pairing';
+import { createActor as createSmsActor, canisterId as smsCanisterId } from 'declarations/sneed_sms';
 
 const accent = '#f59e0b';
 const opt = (x) => (x && x.length ? x[0] : null);
@@ -34,6 +35,8 @@ export default function Notifications() {
     const [discordId, setDiscordId] = useState('');
     const [codes, setCodes] = useState({}); // channel id -> code typed
     const [lowAlert, setLowAlert] = useState(''); // ICP, '' until loaded
+    const [smsPreview, setSmsPreview] = useState(null); // Sneed SMS: start of messages in notifications (null: unknown)
+    const smsActor = useMemo(() => (identity && smsCanisterId ? createSmsActor(smsCanisterId, { agentOptions: { identity, host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943' } }) : null), [identity]);
 
     const actor = useMemo(() => (identity && notificationsEnabled ? notificationsActor(identity) : null), [identity]);
     const load = useCallback(async () => {
@@ -45,7 +48,8 @@ export default function Notifications() {
         setLive(kinds);
         const la = await actor.get_low_balance_alert().catch(() => null); // an older canister has no alert
         if (la) setLowAlert(String(Number(la.threshold_e8s) / 1e8));
-    }, [actor, identity]);
+        if (smsActor) setSmsPreview(await smsActor.get_notification_preview().catch(() => null)); // an older SMS canister has no setting
+    }, [actor, identity, smsActor]);
     useEffect(() => { load().catch((e) => setMsg({ err: e.message || String(e) })); }, [load]);
     // a code from a tapped notification (/notifications?code=123456) fills the channels waiting for one
     const codeFromLink = useMemo(() => { const c = new URLSearchParams(window.location.search).get('code'); return /^\d{6}$/.test(c || '') ? c : null; }, []);
@@ -259,6 +263,12 @@ export default function Notifications() {
                     </div>
                 ))}
                 <p style={{ ...muted }}>Sneed SMS is your inbox: messages land in <Link to="/sms" style={{ color: accent }}>Sneed SMS</Link> and the bell in the header.</p>
+                {smsPreview !== null && (
+                    <label style={{ ...muted, display: 'flex', gap: 8, alignItems: 'center', cursor: busy ? 'default' : 'pointer' }}>
+                        <input type="checkbox" checked={smsPreview} disabled={busy} onChange={(e) => { const on = e.target.checked; run(async () => { await smsActor.set_notification_preview(on); setSmsPreview(on); }, on ? 'New-message notifications show the first 100 characters' : 'New-message notifications show only who wrote and the subject'); }} />
+                        Show the first 100 characters of new direct messages in notifications (they show on your lock screen, and Discord can read its DMs)
+                    </label>
+                )}
                 {live.push && (
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
                         {pushSupported() && (!isIOS() || isStandaloneApp())
