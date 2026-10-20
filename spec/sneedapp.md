@@ -4,6 +4,13 @@
 
 The **Sneedapp** canister (`IcpNeuronManagerFactory`) currently serves as a factory for a single app — the ICP Staking Bot. This spec extends it to support **any number of apps**, each with its own versioned WASM registry, pricing, and minting configuration.
 
+> **Status (2026-10-20): built and deployed** (`src/sneedapp/main.mo`; production `sfamc-kyaaa-aaaau-adnpq-cai`, staging `34e6r-ayaaa-aaaad-adkoa-cai`). Every section below is implemented, including publishers, families, revenue split and withdrawals (sections 11–15). Sections 2–9 were the first design and were partly superseded by sections 11–16; where they disagree, the later section and the notes marked "Changed from the original plan" describe the code. The integrator-facing reference, checked against the code, is `src/app_sneeddao_frontend/public/api-docs/sneedapp.md`.
+>
+> Not in the code, by design:
+> - **No upgrade method.** Sneedapp hands a minted canister to the minter as its only controller and keeps no power over it. Owners upgrade through the management canister (`install_code`, mode upgrade, empty argument), stepping through every published version in order, since each version's migration is written against the one before it (the frontend does this; see api-docs section 3.6).
+> - `getManagerByCanisterId` always returns `null` and `updateManagerNeuronId` does nothing (legacy stubs; ask the manager canister for its neuron).
+> - Ingress guard (`inspect`): query methods are refused as update calls, arguments are size-capped, and publisher/app/version mutations are accepted at ingress only from the publisher's owners and admins.
+
 ### Goals
 
 - **Multi-app support**: Admin can register named apps, each with independent versions, pricing, and WASM blobs.
@@ -61,6 +68,8 @@ removeApp(appId: Text) : async ()                                // Admin: remov
 setAppEnabled(appId: Text, enabled: Bool) : async ()             // Admin: enable/disable minting
 setAppPricing(appId: Text, mintPriceE8s: Nat64, premiumMintPriceE8s: Nat64) : async ()
 ```
+
+Changed from the original plan: this API was replaced by the publisher-aware one in section 13.5 (apps are addressed by `numericAppId` for management, return `{ #Ok; #Err : Text }`, and a new app starts **disabled**). `removeApp` does not check for minted canisters.
 
 ---
 
@@ -122,6 +131,12 @@ clearAppVersionWasm(appId: Text, major: Nat, minor: Nat, patch: Nat) : async () 
 `AppVersionInfo` is the same as `AppVersion` but with `wasmBlob` replaced by a boolean `hasWasm: Bool`.
 
 `AppVersionInput` omits `wasmBlob`, `wasmSize`, and `wasmHash` (hash is computed on upload).
+
+Changed from the original plan:
+- `AppVersion` has no `wasmBlob` field. Blobs live in a separate map keyed `"<appId>:<major>.<minor>.<patch>"` (`appVersionWasmsStable` / `appVersionWasmsMap`), and `wasmSize` records the size.
+- `AppVersionInput` carries `major`, `minor`, `patch` and a declared `wasmHash`. On upload Sneedapp checks the WASM/gzip magic bytes and computes the SHA-256: an empty declared hash is filled in, a different one makes the upload trap. With a blob stored, `updateAppVersion` must keep the matching hash.
+- Versions are kept highest first (not by release date); `getLatestAppVersion` is the highest version with a blob.
+- The version mutations return `()` and trap on a refusal (unknown app or version, not authorised, duplicate version, bad WASM) rather than returning a result.
 
 ---
 
@@ -191,6 +206,8 @@ MintLogResult = {
 }
 ```
 
+As built: entries are oldest first; `startIndex` counts within the filtered list; `limit` defaults to 50 (at most 100); `fromTime`/`toTime` are inclusive nanoseconds. The entry type gained publisher and revenue fields (section 15.6).
+
 ---
 
 ## 5. User Wallet (Enhanced Bookmarks)
@@ -226,6 +243,8 @@ On `postupgrade`:
 2. Each legacy `Principal` (canister ID) becomes a `UserCanisterEntry` with `appId = "icp-staking-bot"` (default assumption).
 3. After migration, `userRegistrationsStable` is cleared.
 
+Changed from the original plan: the migration runs on every upgrade, without the "wallet is empty" condition, and also folds in the even older `managersStable` records. `walletAdd` deduplicates, so a canister already in the wallet is not added twice. **Known issue:** the legacy `userRegistrations` map is restored in `postupgrade` and saved again in `preupgrade` but never emptied, so if it still holds entries they are merged back on every upgrade, and a bookmark the user removed (`deregisterCanister`) or moved (`transferManager`) comes back. Nothing writes to the map any more; clearing it after the merge fixes this.
+
 ### API
 
 ```motoko
@@ -244,6 +263,12 @@ getMyManagers() : async [Principal]                   // Returns just canister I
 registerManager(canisterId: Principal) : ...          // Delegates with appId = ""
 deregisterManager(canisterId: Principal) : ...        // Unchanged
 ```
+
+Changed from the original plan:
+- `transferCanister` is called `transferManager(canisterId, newOwner)`. It moves the bookmark (with its `appId`) to the new owner's list and does not touch the canister's controllers.
+- `getMyWalletForApp(appId)` was added. `registerCanister` always returns `#Ok`, does not check ownership, and fills in the `appId` of an existing entry whose `appId` is `""`.
+- The `*For` methods accept only the authorised canisters (`getAuthorizedForCallers()`, for example Sneedex moving bookmarks after a trade) and admins.
+- The legacy `getManagersByOwner`, `registerManagerFor`, `deregisterManagerFor` and `getManagerCount` read and write the same wallet. The old `userRegistrations` list is no longer written.
 
 ---
 
@@ -274,8 +299,12 @@ MintError = {
     #InsufficientCycles;
     #CanisterCreationFailed: Text;
     #TransferFailed: Text;
+    #PublisherNotFound;               // added with publishers
+    #PublisherNotVerified;            // added with publishers
 }
 ```
+
+`accountId` is the 32-byte ICP account identifier of the new canister's default account.
 
 ### Minting Flow
 
@@ -288,6 +317,8 @@ MintError = {
 7. **Record in mint log**: Append immutable entry.
 8. **Add to user wallet**: Auto-register in user's wallet.
 9. **Return result**.
+
+Changed from the original plan: the app's publisher must exist and be verified (or be publisher 0) before anything is charged. The WASM must start with the WASM or gzip magic bytes, and the factory must hold the creation cycles. The canister is created with Sneedapp as its sole controller and handed to the minter only at the end, and the payment steps are ordered so that every step can be undone (section 14.4).
 
 ### Payment Details
 
@@ -328,10 +359,12 @@ Used when an app doesn't have a custom `mintUrl`.
 4. **Config**: Global settings (target cycles, fee destination, premium canister ID, etc.).
 5. **Legacy**: Link to existing `/admin/icp_neuron_manager` for old admin functions.
 
+Changed from the original plan: the dashboard lives at `/admin/sneedapp`, with the tabs Publishers, Apps, Versions, Mint log, Revenue, Network (payment and cycles configuration), Admins, Stats (factory aggregates) and Migration. The legacy admin page is `/admin/neuron-manager-factory`. Other pages: `/sneedapp/app/:appId` (app detail) and `/sneedapp/publisher/:publisherId` (publisher management, with revenue withdrawal).
+
 ### Existing pages — Unchanged
 
 - `/create_icp_neuron` — Existing ICP Staking Bot creation page (unchanged).
-- `/admin/icp_neuron_manager` — Existing admin page (unchanged).
+- `/admin/icp_neuron_manager` — Existing admin page (unchanged; it is now at `/admin/neuron-manager-factory`).
 - All existing routes continue to work.
 
 ---
@@ -362,6 +395,8 @@ transient var mintLogIndexMap = HashMap<Principal, Nat>(...);     // Fast lookup
 transient var userWalletMap = HashMap<Principal, [UserCanisterEntry]>(...); // Fast lookup from userWallet
 ```
 
+As built: the stable names are `mintLogIndexStable`, `userWalletStable` and `appVersionWasmsStable` (the WASM blobs, see section 3). The actor is `persistent`, and the HashMaps are copied to these arrays in `preupgrade` and rebuilt in `postupgrade`, which then empties the arrays.
+
 ---
 
 ## 9. Backward Compatibility
@@ -384,6 +419,8 @@ When `createNeuronManager` successfully creates a canister, it should also:
 2. Add a `UserCanisterEntry` to the minter's wallet.
 
 This ensures the new mint log is a complete record of all canisters ever minted.
+
+As built: `createNeuronManager` uses the same create, pay, roll back and hand over sequence as `mintCanister` (section 14.4), bookmarks the canister, and logs it with `appId = "icp-staking-bot"`, `numericAppId = 0` and `publisherId = 0`. **Known issue:** the staking bot is registered in the catalogue as `"sneed-icp-staking-bot"` (the slug the frontend and `mintCanister` use), so legacy mints are filed under a slug that no app has, and `getMyWalletForApp("sneed-icp-staking-bot")` and `getMintLogCountForApp` miss them. The same `"icp-staking-bot"` slug is used by the wallet migration (section 5). Whether `numericAppId` 0 is really the staking bot depends on the order the apps were added.
 
 ---
 
@@ -438,6 +475,8 @@ const viewLink = app.viewUrl.replace('CANISTER_ID', canisterId.toText());
 ```
 
 ## Appendix B: Example Apps Configuration
+
+(Illustrative. Apps are added at runtime, not in code. The live slugs are `"sneed-icp-staking-bot"` and `"sneed-trading-bot"`. Read prices and URLs with `getApps()`.)
 
 ```
 ICP Staking Bot:
@@ -554,6 +593,8 @@ setPublisherDaoCut(publisherId: Nat, basisPoints: Nat) : async ()   // 0-10000
 adminUpdatePublisher(publisherId: Nat, info: PublisherInfo) : async ()  // Full override
 ```
 
+Changed from the original plan: `adminUpdatePublisher` was not built. Admins can call every owner method on any publisher (except the revenue withdrawals, section 14.5). `verifyPublisher`, `unverifyPublisher` and `setPublisherDaoCut` trap when the caller is not an admin. `createPublisher` refuses anonymous callers, and the new publisher has no families.
+
 ```
 CreatePublisherInput = {
     name: Text;
@@ -595,6 +636,8 @@ Publisher 0 is pre-created on canister initialization with:
 ```
 
 When `publisherId == 0`, the payment flow is simplified: the entire profit goes to `feeDestination` with no split. This preserves exact backward compatibility with the existing behavior.
+
+As built: `ensurePublisher0Exists()` runs at install and on every upgrade, creating publisher 0 only when it is missing. Its `owners` and `defaultPaymentAccount` therefore keep the admins and fee destination of the time it was created.
 
 ---
 
@@ -699,6 +742,9 @@ App management is now split between **publisher owners** and **admins**:
 | Remove app | No | Yes |
 | Manage app versions | Yes | Yes |
 | Upload WASM blobs | Yes | Yes |
+| Verify a publisher (lets its apps mint) | No | Yes |
+
+An app can be minted only when it is enabled and its publisher is verified or is publisher 0, so anyone can list an app but only admin-verified publishers make the factory spend its cycles. **Known issue:** `removeApp` deletes only the catalogue entry. The app's versions and WASM blobs (keyed by the slug) stay, so a publisher that later adds an app with the same slug inherits them, together with the old mint-log and wallet references to that slug.
 
 ### 13.5 Updated App API
 
@@ -724,14 +770,16 @@ setAppPaymentAccount(numericAppId: Nat, account: ?Account) : async { #Ok; #Err: 
 
 // Admin-only
 setAppDaoCut(numericAppId: Nat, basisPoints: ?Nat) : async ()
-removeApp(numericAppId: Nat) : async ()
+removeApp(numericAppId: Nat) : async { #Ok; #Err: Text }   // as built (traps for non-admins)
 
 // Version management — publisher owner or admin (same signatures as before,
 // but now checks publisher ownership in addition to admin)
-addAppVersion(appId: Text, input: AppVersionInput) : async { #Ok; #Err: Text }
-uploadAppVersionWasm(appId: Text, major: Nat, minor: Nat, patch: Nat, wasm: Blob) : async { #Ok; #Err: Text }
+addAppVersion(appId: Text, input: AppVersionInput) : async ()          // as built: traps on refusal
+uploadAppVersionWasm(appId: Text, major: Nat, minor: Nat, patch: Nat, wasm: Blob) : async ()  // as built
 // ... etc (see Section 3)
 ```
+
+Changed from the original plan: the version methods kept the trap-on-refusal shape of section 3 instead of returning `{ #Ok; #Err }`. `addApp` creates the app **disabled**, and `updateApp` replaces all editable fields, prices included.
 
 ```
 AddAppInput = {
@@ -869,6 +917,13 @@ When `mintCanister(appId, ...)` is called:
 
 7. **Record**: Mint log, creation log, financial log, update stats.
 
+Changed from the original plan (the order and the undo path):
+- The caller's payment subaccount is **locked per caller** for the whole payment phase. A second mint, a `createNeuronManager` or a `withdrawUserPayment` by the same caller is refused while the lock is held (`TransferFailed("A payment operation is already in progress…")` or `TemporarilyUnavailable`).
+- The cycles portion is planned before anything moves: enough ICP to buy at least `canisterCreationCycles` and at most `targetCyclesAmount` at the current CMC rate, plus 5% headroom. If the rate is unavailable, or the fee cannot cover the creation cycles and ledger fees, the mint is refused and nothing is charged.
+- The transfers run in this order: (1) ICP for cycles to the factory's main account; (2) for a third-party app, the publisher share to its revenue subaccount; (3) create the canister with the factory as sole controller and install the WASM with an empty argument; (4) the DAO share (all the profit for publisher 0, the DAO cut otherwise) to `feeDestination`, the only transfer that leaves Sneedapp, and only after the install succeeded; (5) set the minter as the only controller; (6) send the cycles ICP to the CMC to top up the factory.
+- If a step fails, the canister is stopped and deleted and everything already moved goes back to the payment subaccount, less ledger fees. A canister that can be neither deleted nor handed over is recorded in `orphanCanisters` (`getOrphanCanisters`, admins) to settle by hand.
+- With `paymentRequired = false` (an admin switch), the payment steps are skipped and the factory pays the cycles.
+
 ### 14.5 Publisher Revenue Withdrawal
 
 Publisher owners can withdraw accumulated revenue from their revenue subaccounts.
@@ -890,6 +945,8 @@ withdrawAppFunds(publisherId: Nat, appNumericId: Nat) : async { #Ok: Nat; #Err: 
     // Returns amount transferred.
 ```
 
+As built: only publisher **owners** can withdraw; admins cannot. `withdrawUserPayment()` sends the caller's whole deposit, less one ledger fee, to `{ owner = caller; subaccount = null }`.
+
 ### 14.6 Payment Query Helpers
 
 ```motoko
@@ -908,6 +965,8 @@ getAppRevenueBalance(publisherId: Nat, appNumericId: Nat) : async Nat
 // Get effective DAO cut for an app (in basis points)
 getEffectiveDaoCut(appId: Text) : async Nat
 ```
+
+Changed from the original plan: the DAO-cut query is `getEffectiveDaoCutForApp(appId)` and returns 1000 for an unknown app. `getUserPaymentBalance`, `getPublisherRevenueBalance` and `getAppRevenueBalance` are update calls because they read the ledger. `getAppMintPrice(appId, user)` (update, because it asks Sneed Premium) returns `{ regular; premium; applicable; isPremium }`.
 
 ---
 
@@ -970,6 +1029,8 @@ getDaoRevenueStats() : async DaoRevenueStats
 getAllPublisherStats() : async [PublisherStats]
 getAllAppRevenueStats() : async [AppRevenueStats]
 ```
+
+Changed from the original plan: `getAllPublisherStats` and `getAllAppRevenueStats` are public queries (revenue transparency), not admin-only.
 
 ### 15.6 Updated MintLogEntry
 
@@ -1045,6 +1106,10 @@ transient var appRevenueStatsMap = HashMap<Nat, AppRevenueStats>(...);
 - Implement SHA-256 (trivial extension of existing SHA-224).
 - Implement `userPaymentSubaccount()`, `publisherRevenueSubaccount()`, `appRevenueSubaccount()`.
 - Add payment query helpers.
+
+(As built: no hashing is needed for the subaccounts, which are byte-packed (section 14.3). The user deposit subaccount is the existing `principalToSubaccount`. SHA-256, from `mo:sha2`, is used only for the WASM hashes.)
+
+**Status (2026-10-20): all phases (1a–6) are built.**
 
 ### Phase 3: Payment Flow Update
 - Update `mintCanister()` with publisher-aware payment split.

@@ -3,6 +3,13 @@
 Status: design, October 2026. Replaces the naming code in `app_sneeddao_backend`
 (principal names, neuron names, canister names, nicknames, avatars).
 
+**Status (2026-10-20): built and live on production.** All six canisters are deployed (production
+ids in `canister_ids.json`, controlled by the Sneed SNS root), the backend's names were imported
+and every import is closed, the backend's naming writes are frozen, and the frontend uses the new
+canisters. NFT avatars (§4.1a) were added after the first design. Still open: see §12. The public
+API reference, checked against the code, is
+`src/app_sneeddao_frontend/public/api-docs/sneed_names.md`.
+
 ## 1. Goals
 
 - **Scale.** Millions of names. No method returns "everything"; every list is paged
@@ -27,7 +34,7 @@ Status: design, October 2026. Replaces the naming code in `app_sneeddao_backend`
 
 | Canister | Holds | Public log |
 |---|---|---|
-| `sneed_pid_names` | accounts (name, verification, avatar, linked principals, hotkeys), canister names, the search index | ICRC-3 |
+| `sneed_pid_names` | accounts (name, verification, avatar, NFT avatar, linked principals, hotkeys), canister names, the search index | ICRC-3 |
 | `sneed_neuron_names` | SNS neuron names per SNS, verification, avatar, the search index | ICRC-3 |
 | `sneed_pid_nicknames` | each user's private labels for principals (+ avatar) | none |
 | `sneed_neuron_nicknames` | each user's private labels for neurons (+ avatar) | none |
@@ -43,8 +50,10 @@ All of them:
   writing); indexes live there because reads and writes are cheapest there.
   Bulky data (ICRC-3 archives, avatar bytes) lives in stable memory (up to ~500 GiB)
   through `Region`.
-- **The ingress guard** (`src/IngressGuard.mo`): queries refused as updates, every
-  argument capped, texts compared with the canister's limits.
+- **The ingress guard** (`src/IngressGuard.mo`): queries refused as updates, the anonymous
+  principal refused for every update, every argument capped (4 KiB for most calls, about 6 KiB
+  with an avatar link, 64 KiB for an avatar upload), `admin_*` / `verify` / `unverify` only from
+  admins, and the methods governance canisters call (`*_by_dao`, `*_by_sns`) never by ingress.
 - **Admins**: the canister's controllers (the Sneed SNS root in prod) plus an
   admin list the controllers manage (staging: the dev principals). Sneed DAO
   governance may call the `*_by_dao` methods (generic nervous system functions).
@@ -87,9 +96,12 @@ Migration: the one existing collision in prod principal names
 
 ### 3.3 Search index
 
-A sorted map (red-black tree, `mo:base/OrderedMap`, with a lower-bound iterator
-of our own) from `(suffix, normalized)` to the owner, where `suffix` runs from
-each word start of the normalized name to its end:
+Two sorted maps (red-black trees, `mo:base/OrderedMap`, with a lower-bound iterator
+of our own, `src/sneed_names/NameIndex.mo`): the unique index from the normalized name to
+the owner, and a word index from `(suffix, normalized)` to the owner, where `suffix` runs from
+each later word start of the normalized name to its end (the whole name is the unique key).
+Both keys start with a scope: 0 in `sneed_pid_names`, the SNS's root index in
+`sneed_neuron_names`:
 
 ```
 "sneed whale"  →  ("sneed whale", "sneed whale"), ("whale", "sneed whale")
@@ -103,7 +115,8 @@ and walks forward while keys start with it, skipping owners already returned,
 until `limit` results (max 50) or 2,000 steps. Cost: O(log n + steps), no
 matter how many names there are. Results come in alphabetical order of the
 matched word; names starting with the prefix come first (a first pass over the
-unique index, then the word index).
+unique index, then the word index). The prefix is lowercased, leading spaces dropped and runs of
+spaces collapsed; a trailing space is kept ("sneed " finds "Sneed Whale" but not "Sneedy").
 
 Why not a trie: a Motoko trie allocates one heap object per character (each a
 few words), many times the size of the names themselves, and does nothing a
@@ -116,7 +129,7 @@ A checkmark belongs to an exact name:
 ```motoko
 type Verification = {
   name : Text;            // the exact name that was verified
-  source : VerifySource;  // #admin(Principal) | #dao | #sns_governance(Principal)
+  source : VerifySource;  // #admin(Principal) | #dao | #sns_governance(Principal) | #import_
   at : Nat64;             // ns
 };
 ```
@@ -130,8 +143,10 @@ clears the verification (and logs it). Sources:
   `validate_verify_by_dao(target, expected_name)`. The expected name is part of
   the proposal so a rename between proposal and execution makes it fail instead
   of verifying the new name.
-- `#sns_governance(root)`: an SNS's governance canister verifying the names of its
-  own neurons (`sneed_neuron_names`), as `can_verify_names` allows today.
+- `#sns_governance(governance)`: an SNS's governance canister verifying the names of its
+  own neurons (`sneed_neuron_names`, `verify_by_sns` / `unverify_by_sns`), as
+  `can_verify_names` allowed in the backend. The SNS must be listed by SNS-W.
+- `#import_`: the backend's verified flag, carried over by the migration (§10).
 
 The frontend keeps showing its computed checkmark for SNS canisters (listed by
 SNS-W); a permissionless on-chain source for that can come later.
@@ -173,9 +188,34 @@ without having an account gets one, with itself as the only owner.
   model: add your Sneed Hub principal as a hotkey on TACO, and from Sneed Hub you
   see and change your TACO principal's name, with nothing to accept.
 - The last owner cannot leave or be removed while other members remain. An account
-  with no name, no avatar, no hotkeys and at most one member is deleted (its
+  with no name, no avatar, no NFT avatar, no hotkeys and at most one member is deleted (its
   principal simply has no name); when the last member leaves, the account is
   deleted and its name freed.
+- Hotkeys may manage an account (rename it, change its avatar, set members' dapp labels,
+  remove non-owner members, merge it into their own account). Only owners rename through
+  `set_my_name`, change the avatar through `set_my_avatar` / `set_my_nft_avatar`, add hotkeys,
+  link principals and change roles.
+
+### 4.1a NFT avatars
+
+Added after the first design (built 2026-10-19). An account may show an ICRC-7 NFT as its
+avatar, kept in its own map (not in `Account`) and returned as an optional `nft_avatar` field
+in `NameInfo`, `AccountView` and `SearchHit`, so existing clients that decode `AvatarRef` are
+not broken:
+
+```motoko
+type NftRef = { collection : Principal; token_id : Nat };
+type NftAvatar = { collection : Principal; token_id : Nat; owner : Principal; set_at : Nat64 };
+```
+
+- `set_my_nft_avatar(opt NftRef)` (owners; `null` clears): the canister calls the collection's
+  `icrc7_owner_of` (a bounded wait of 10 s) and accepts the NFT only if its owner, in any
+  subaccount, is one of the account's member principals; `owner` records which.
+- **Must own, checked again at display.** NFTs change hands, so clients show the NFT only while
+  `owner` still owns it and otherwise fall back to `avatar`, which is kept for that case.
+  `refresh_nft_avatar(account)` (anyone signed in) clears an NFT avatar that changed hands.
+- ICRC-3 block `sneednames_nft_avatar_set`. Admins clear it with `admin_clear_avatar`; a merge
+  deletes the merged account's NFT avatar.
 
 ### 4.2 Linking principals: hotkeys and merging
 
@@ -201,7 +241,8 @@ proofs exist:
    - the principal still has `ManagePrincipals` on it and the caller has a
      permission on it (the principal, or someone it trusted, gave the caller a
      hotkey);
-   - the principal is in no account yet.
+   - the principal is in no account yet, is a person's principal (not a canister) and is not
+     the caller; the caller is an owner of its account (one is created if needed).
 
    The frontend finds the memo by trying memos from 0 upwards against the neuron
    id. Why not today's rule ("the caller is a hotkey of a neuron where the
@@ -244,8 +285,13 @@ type CanisterName = {
   the canister.
 - An SNS-controlled canister (a controller is an SNS root, which never calls other
   canisters on its own) may also be named by that SNS's governance canister, through
-  a generic proposal of that SNS; the governance id is read from the root's
-  `list_sns_canisters`. Admins can name any canister (`admin_set_name`).
+  a generic proposal of that SNS. The (root, governance) pairs come from SNS-W's
+  `list_deployed_snses`, cached and refreshed at most once a minute
+  (`src/sneed_names/Control.mo`, `SnsDirectory.mo`). Changed from the original plan: SNS-W, not
+  the root's `list_sns_canisters`, so a made-up root cannot vouch for a governance canister.
+  Admins can name any canister (`admin_set_name`).
+- `set_canister_avatar` and `set_canister_run_by` need the canister to be named first; clearing
+  the name deletes the entry with its avatar and `run_by`.
 - Canister names share the unique name space and the search index with accounts.
 
 Principals in the migrated data are split by class: opaque ids (canisters) become
@@ -268,6 +314,7 @@ Queries (anyone):
 ```candid
 get_names : (vec principal) -> (vec opt NameInfo) query;          // max 500
 // NameInfo = record { name : opt text; verified : bool; avatar : opt AvatarRef;
+//   nft_avatar : opt NftAvatar;     // accounts only (§4.1a)
 //   kind : variant { account : nat; canister };
 //   dapp : opt nat;                 // the dapp label of this principal in its account
 //   run_by : opt record { account : nat; name : opt text } }
@@ -289,6 +336,8 @@ Updates (signed in):
 ```candid
 set_my_name : (text) -> (Result);                    // "" clears; creates the account if needed
 set_my_avatar : (opt AvatarRef) -> (Result);
+set_my_nft_avatar : (opt NftRef) -> (Result);         // owners; §4.1a
+refresh_nft_avatar : (nat) -> (Result);              // anyone signed in; clears a sold NFT avatar
 set_account_name : (nat, text) -> (Result);          // owners and hotkeys
 set_account_avatar : (nat, opt AvatarRef) -> (Result);
 add_hotkey : (principal) -> (Result);                // owners, on their own account
@@ -306,7 +355,7 @@ Admin and DAO:
 
 ```candid
 admin_set_name : (principal, text) -> (Result);   // a principal's account (created if needed) or a canister
-admin_clear_avatar : (principal) -> (Result);
+admin_clear_avatar : (principal) -> (Result);    // also clears the NFT avatar
 verify : (principal, text expected_name) -> (Result);
 unverify : (principal) -> (Result);
 verify_by_dao / validate_verify_by_dao, unverify_by_dao / validate_unverify_by_dao
@@ -317,11 +366,18 @@ admin_set_icrc3_settings, admin_icrc3_spill_now, admin_icrc3_repair_archive_cont
 
 ### 4.6 ICRC-3 block types (prefix `sneednames_`)
 
-`account_create`, `account_delete`, `name_set`, `avatar_set`, `member_link`
+`account_create`, `account_delete`, `name_set`, `avatar_set`, `nft_avatar_set`, `member_link`
 (with proof), `member_unlink`, `member_update`, `hotkey_add`, `hotkey_remove`,
 `account_merge`, `verify`, `unverify`, `canister_name_set`, `canister_run_by`,
 `config_update`, `import` (one block per imported record, so the log starts
-complete). Every block has `caller`.
+complete). Every block has `caller`. `nft_avatar_set` carries either `nft_avatar`
+(`collection`, `token_id`, `owner`) or a `reason` (`cleared by owner`, `no longer owned`,
+`cleared by admin`).
+
+Known issue: `merge_account` copies the merged account's avatar (when the target has none) and
+its checkmark (with its name) into the target account without an `avatar_set` or `verify` block;
+the log shows only `name_set` and `account_merge`, so the avatar and checkmark cannot be
+replayed from the log alone (`src/sneed_pid_names/main.mo`, `merge_account`).
 
 ## 5. `sneed_neuron_names`
 
@@ -330,15 +386,18 @@ Key: `(sns_root, neuron_id)`. SNS roots are deduplicated to `Nat32` with `mo:ded
 
 ```motoko
 type NeuronName = { var name : Text; var verification : ?Verification; var avatar : ?AvatarRef;
-                    var set_by : Principal; var updated_at : Nat64; var last_seq : Nat };
+                    var set_by : Principal; var updated_at : Nat64 };
 ```
 
 - Set / clear / avatar: the caller has any permission on the neuron (as today),
-  checked with the SNS governance `get_neuron` (exact, no 100-neuron window).
+  checked with the SNS governance `get_neuron` (exact, no 100-neuron window). The root must be
+  a deployed SNS listed by SNS-W; a neuron id is 1 to 64 bytes. Admins may name any neuron
+  without the SNS check (`admin_set_name`). An avatar needs a name first.
 - Unique per SNS by normalized name; the search index key is
   `(root_index, suffix, normalized)`, so search is per SNS:
   `search({ sns_root; prefix; limit })`.
-- Verification: admins, Sneed DAO, or that SNS's governance canister.
+- Verification: admins, Sneed DAO (`verify_by_dao`), or that SNS's governance canister
+  (`verify_by_sns(key, expected_name)` / `unverify_by_sns(key)`).
 - `get_names(vec record { sns_root; neuron_id })`, `list_by_sns({ sns_root; start_after; limit })`,
   `changes_since`, ICRC-3 (`sneedneuronnames_*`).
 
@@ -355,11 +414,13 @@ type NeuronName = { var name : Text; var verification : ?Verification; var avata
 - Value: `{ nickname : Text; avatar : ?AvatarRef; updated_at : Nat64 }`.
 - `get_my_nicknames({ start_after; limit })` (limit 500: usually everything in one
   call), `get_my_nicknames_for(vec target)`, `search_my_nicknames(prefix, limit)`
-  (a scan over the caller's own range; nickname counts are bounded by the limits).
-- `set_nickname(target, text)` ("" clears), `set_nickname_avatar(target, opt AvatarRef)`.
+  (a scan over the caller's own range, at most 50 results; nickname counts are bounded by the
+  limits), `my_nickname_count()` (count, max_free, max_premium).
+- `set_nickname(target, text)` ("" clears; the avatar is kept while the nickname exists),
+  `set_nickname_avatar(target, opt AvatarRef)` (needs a nickname first).
 - Limits: 10 per user, 100 with Sneed Premium, configurable, as today.
 - Validation: the name rules of §3.1; the blacklist is checked without banning
-  (nicknames are only seen by their owner, as today).
+  (nicknames are only seen by their owner, as today), and a banned user cannot set nicknames.
 - **No public log.** A nickname is *unpublished*, not *secret*: the canister only
   returns a user's nicknames to that user, but the data is not encrypted and node
   providers can in principle read canister state. The UI never calls them private
@@ -371,44 +432,62 @@ type NeuronName = { var name : Text; var verification : ?Verification; var avata
 
 - `#url`: an `https://` link, at most 512 characters (as today).
 - `#blob`: an image stored in `sneed_avatars`: PNG, JPEG, WebP or GIF, at most
-  48 KiB (today's inline limit is 32,768 base64 characters, about 24 KiB).
+  48 KiB (the backend's inline limit was 32,768 base64 characters, about 24 KiB). The
+  type is read from the bytes, not taken from the client.
 
 The store:
 
 - Bytes in stable memory (`Region`), indexed by hash on the heap; identical images
   are stored once.
-- Each principal *holds* the blobs it uploaded (`upload(bytes, content_type) -> hash`,
-  `release(hash)`), at most 20 held blobs per principal (200 with premium). A blob
+- Each principal *holds* the blobs it uploaded (`upload(bytes) -> hash`, `release(hash)`,
+  `my_images()`), at most 20 held blobs per principal (200 with premium). Changed from the
+  original plan: `upload` takes no content type; the canister detects it. A blob
   is freed when nobody holds it. The name canisters do not call the avatar store:
   a record pointing at a freed blob simply shows the default avatar. This keeps the
   canisters independent and needs no cross-canister reference counting.
 - Served at `https://<sneed_avatars>.raw.icp0.io/<hex hash>` with
   `Cache-Control: public, max-age=31536000, immutable` (content-addressed, so it
-  never changes), and by `get_blobs(vec blob)` for clients that prefer a query.
+  never changes), and by `get_images(vec blob)` (at most 20 a call) for clients that prefer a
+  query; `get_info(vec blob)` (up to 500) answers type, size, holders and creation time.
   Serving from the certified domain needs response certification of each blob;
   that is a later step (the hash in the URL already lets a client check the bytes).
+  Status (2026-10-20): not built; images are served from the raw domain only.
 - Admins can remove an abusive image (`admin_remove(hash)`), which frees it for
-  every holder.
+  every holder and blocks the same bytes from being uploaded again. `admin_upload_for(owner,
+  bytes)` uploads an image held by another principal (used by the migration).
 
 ## 7a. `sneed_profiles`
 
 Phase 1 holds the dapp registry; phase 2 adds profile fields (bio, links, banner),
-kept out of the name canisters so lookups stay small.
+kept out of the name canisters so lookups stay small. Status (2026-10-20): phase 1 built and
+deployed; phase 2 planned.
 
 ### 7a.1 Dapp registry
 
 ```motoko
 type DappId = Nat;
 type Dapp = { id : DappId; name : Text; url : Text; logo : ?AvatarRef;
-              canisters : [Principal]; verified : Bool; registered_by : Principal; created_at : Nat64 };
+              canisters : [Principal]; verified : Bool; hidden : Bool;
+              registered_by : Principal; created_at : Nat64; updated_at : Nat64 };
 ```
 
 - `register_dapp`: a controller of at least one of the listed canisters (checked
-  with `canister_info`) registers it; at most 10 canisters a dapp.
+  with `canister_info`), or the governance canister of an SNS whose root controls one,
+  registers it; 1 to 10 canisters a dapp. The name follows §3.1, is unique regardless of
+  capitals and is moderated as a public name; the url starts with `https://`, at most 200
+  characters.
+- `update_dapp(id, DappInput)`: same rules; a new name loses the checkmark.
+  Known issue: the control check runs against the *new* canister list, not the dapp's
+  current one (`src/sneed_profiles/main.mo:175`), so anyone who controls some canister can
+  rewrite any dapp entry, and keep its checkmark if the name stays the same. It should require
+  control of one of the existing canisters (or admin).
 - `verify_dapp` / `verify_dapp_by_dao`: admins or a Sneed DAO proposal mark it
   verified (shown with a checkmark in the picker; unverified dapps are shown
   greyed).
-- Admins can edit or hide abusive entries.
+- Admins can edit any entry and hide abusive ones (`admin_hide_dapp`); hidden dapps are left out
+  of `list_dapps` and `search_dapps`, and `get_dapps` returns them flagged.
+- Queries: `list_dapps` (paged by id), `get_dapps` (up to 500), `search_dapps(prefix, limit)`.
+- ICRC-3 (`sneedprofiles_`): `dapp_register`, `dapp_update`, `dapp_verify`, `config_update`.
 
 The registry is small (hundreds of entries). Member dapp labels in
 `sneed_pid_names` hold a `DappId` from here; the name canisters do not check it
@@ -418,7 +497,8 @@ The registry is small (hundreds of entries). Member dapp labels in
 
 The backend keeps the ban list and the word blacklist (also used for the forum
 and messages), and gets one new method, callable only by the naming canisters
-(a list the backend admins set):
+(a list the backend admins set with `admin_set_names_canisters`, at most 20; any other caller
+traps):
 
 ```candid
 names_moderate : (record { user : principal; text : text; is_public : bool }) ->
@@ -429,9 +509,16 @@ It answers whether `user` is banned (with the remaining time), and whether `text
 contains a blacklisted word; with `is_public = true` a blacklisted word also bans
 the user, exactly as setting a public name does today. One inter-canister call per
 name write; names change rarely, so this costs little. Clearing a name makes no
-call. If the backend cannot be reached the write is refused.
+call. If the backend cannot be reached the write is refused. It is asked for account,
+canister, neuron and dapp names (public) and for nicknames (not public).
 
 ## 9. Frontend
+
+Status (2026-10-20): the frontend talks to the naming service through
+`src/app_sneeddao_frontend/src/utils/NamingService.js`, which answers the backend-shaped naming
+calls from the new canisters once they have ids on the build's network, so most pages did not
+change. It runs in small-service mode (below): names are mirrored with `changes_since`, and
+`PrincipalInput` searches the mirror. The per-key resolver and server-side search are planned.
 
 - **`NamingContext` becomes a resolver.** `useName(principal)` / `useNeuronName(root, id)`
   return what is cached and register the key; every 20 ms the resolver fetches the
@@ -442,12 +529,17 @@ call. If the backend cannot be reached the write is refused.
   The resolver works the same way either way.
 - **`PrincipalInput`** searches as you type: the caller's own nicknames
   (`search_my_nicknames`) and public names (`search`), merged, debounced ~120 ms.
+- **NFT avatars** (§4.1a): a picker on the Me page, "use as my avatar" on an NFT's page,
+  and an ownership re-check at display (`utils/nftAvatars.js`).
 - **Me page**: account management (name, avatar, linked principals with dapp
   labels, hotkeys, owners, merging), canister names, nicknames.
 - Display: the account's name with the checkmark; the dapp logo where it helps
   (profile, hover card); canisters as "Name · run by Account".
 
 ## 10. Migration
+
+Status (2026-10-20): done on production. Every import is closed (`admin_finish_import`), and
+the backend's naming writes are frozen. The TACO PR (step 6) is still open.
 
 Prod data (16 Oct 2026): 153 principal names (4 verified), 15 neuron names,
 nicknames and avatars for a few users.
@@ -460,7 +552,10 @@ nicknames and avatars for a few users.
      *every user's* nicknames (today's `get_all_*_nicknames` return only the
      caller's), avatars;
    - a `names_frozen` flag: when set, every naming write in the backend answers
-     "Names are moving to the new naming service" (reads keep working);
+     "Names are moving to the new naming service; please try again shortly" (reads keep
+     working). It is set with `admin_set_names_frozen` (backend admins) and read with
+     `get_names_frozen`; it covers principal, neuron and canister names, nicknames, avatars and
+     verification;
    - the backend's stable naming state is kept, never removed.
 3. **Freeze** the backend's naming writes (admin call).
 4. **Import**: `scripts/migrate_names.py` (dry run by default; `--apply`, `--verify`,
@@ -471,7 +566,9 @@ nicknames and avatars for a few users.
    and a checksum per canister, compared with the backend.
    - Principal names: self-authenticating principals become one-owner accounts;
      opaque ids become canister names (`set_by` = the importing admin).
-   - Verified flags are imported as `#admin` verifications of the current name.
+   - Verified flags are imported as verifications of the current name with source `#import_`.
+     Changed from the original plan: `#import_` rather than `#admin`, so the log and the
+     views say where the checkmark came from.
    - Collisions by capitals: a verified name wins; the other needs a decision
      (`rename` or `drop` in the decisions file) before `--apply` runs. Prod today:
      "Diavolo" (az6nt…, verified) and "diavolo" (r24bn…).
@@ -502,9 +599,15 @@ nicknames and avatars for a few users.
 Status 16 Oct 2026: steps 1–6 done (canisters, backend support, migration script rehearsed on a
 local replica, `scripts/configure_names.sh`), step 7 done for the data layer and the Me page's
 account panel (the frontend switches to the naming service when the canisters have ids for its
-network). Not deployed anywhere yet. Still open: an admin panel for the new canisters, search on
-the server in PrincipalInput (the frontend mirrors all names for now), the link-by-neuron UI (it
-searches the memo), certified avatar responses, the TACO PR.
+network).
+
+Status (2026-10-20): steps 1–7 done and live on staging and production (names imported,
+backend writes frozen); step 8 phase 1 (the dapp registry) built and deployed; NFT avatars
+(§4.1a) added. Admin lists for the six canisters are managed on the hub's admins page, and
+the names admin page verifies through the new canisters. Still open: search on the server in
+PrincipalInput (the frontend mirrors all names for now), the link-by-neuron UI (it searches the
+memo), certified avatar responses, profile fields (phase 2), splitting beyond one canister
+(§11), the TACO PR.
 
 
 1. `src/sneed_names/`: shared modules (name rules, sorted index with lower-bound

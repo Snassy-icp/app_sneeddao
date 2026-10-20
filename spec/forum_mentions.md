@@ -4,6 +4,12 @@ Written 2026-10-18. Members write "@" and pick a name in a forum thread or post;
 mentioned is told. Mr Sneed reads his mentions the same way, so members can call him into a
 discussion.
 
+**Status (2026-10-20): built.** Parser `src/sneed_sns_forum/Mentions.mo`, state and methods in
+`src/sneed_sns_forum/main.mo`; frontend `utils/mentions.js`, `components/MentionTextarea.jsx`,
+`components/MarkdownBody.jsx` (renders a mention with the member's current name),
+`hooks/useMentionNotifications.js`. Since this spec the forum also hands mentions to Sneed
+Notifications (below). Mr Sneed's on-chain timer reading mentions is still planned.
+
 ## The mention
 
 A Markdown link whose text starts with "@" and whose target is a principal page:
@@ -18,9 +24,10 @@ A Markdown link whose text starts with "@" and whose target is a principal page:
   and links the member's page, so a rename never breaks a mention.
 - **Every client shows a working link**, including TACO DAO's forum view and raw API reads.
 - The relative form `/principal?id=…` counts too.
-- **Ignored:** plain "@name" text, link text over 64 characters, other hosts, and principals that
-  are malformed or not in canonical lowercase form (checked without trapping:
-  `Mentions.principalOfText`).
+- **Ignored:** plain "@name" text, link text over 64 characters (or containing "]" or a line
+  break), other hosts, and principals that are malformed or not in canonical lowercase form
+  (checked without trapping: `Mentions.principalOfText`). The anonymous principal is never
+  recorded.
 
 ## The editor
 
@@ -31,6 +38,8 @@ page, thread view, proposal discussions, feedback):
   as a search aid);
 - picking one inserts the link with the **public** name, or a short principal when there is
   none, so private nicknames never leak into posts.
+- the picker is PrincipalInput's (Private / Public / All tabs, users and canisters); in the
+  query "_" and "-" stand for spaces.
 
 ## The forum (sneed_sns_forum, additive)
 
@@ -49,12 +58,23 @@ New methods:
 | `get_mentions_of_user(user, before, limit)` | newest first, paged by index, at most 100; deleted threads and posts drop out |
 | `get_recent_mentions_count(user)` | since the user last marked them seen |
 | `mark_mentions_seen_up_to(ts)` / `get_last_seen_mentions_timestamp(user)` | as for replies |
-| `set_mention_sms(bool)` / `get_mention_sms(user)` / `get_mention_sms_opted_in(users)` | the SMS opt-in |
+| `set_mention_sms(bool)` / `get_mention_sms(user)` / `get_mention_sms_opted_in(users)` | the SMS opt-in; the last answers at most 10 |
+| `admin_set_notifications(?canister)` / `get_notifications_canister()` | where the forum sends notifications (null: nowhere) |
+
+`get_mentions_of_user` treats a `limit` of 0 as 100 and scans at most 1,000 entries per call;
+its answer is `{ items; next }`, where `next` is the `before` of the following page. Each item
+carries the thread title, the post's title and a 200-character excerpt.
 
 All new state is in new stable variables, and the queries join the ingress guard's refused list.
 
 ## Notifications
 
+- **Sneed Notifications** (added after this spec): after a save, the forum itself sends each
+  newly mentioned member a notification with topic `mention` ("You were mentioned in …", a
+  300-character excerpt, a link to the post or thread) to the canister set by
+  `admin_set_notifications`, without waiting for the answer. A new post also sends a `reply`
+  notification to the author of the post or thread it answers, unless that is the poster or
+  someone mentioned in it. Neither can make the save fail.
 - **Header:** a pink "@ n" chip next to replies, under the same "Reply Notifications" setting. It
   links to the new **Mentions** tab on `/posts`; opening the tab marks mentions seen.
 - **SMS (opt-in, "SMS When Mentioned" on /me):**
@@ -63,8 +83,9 @@ All new state is in new stable variables, and the queries join the ingress guard
   - SMS rate limits apply as usual, the forum pays no cycles, and recipients can reply to the
     poster.
 - **Mr Sneed:** each session starts by reading `get_mentions_of_user(tksci…)` and answers in the
-  thread. Once he runs on-chain, his timer reads the same method.
+  thread. Once he runs on-chain, his timer reads the same method. *(Planned: the `mr_sneed`
+  canister does not read mentions yet.)*
 
 ## Later
 
-Mentions in SMS messages, using the same parser.
+Mentions in SMS messages, using the same parser. *(Not started.)*

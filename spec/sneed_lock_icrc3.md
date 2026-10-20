@@ -5,6 +5,11 @@ canister, exposed through the ICRC-3 block log interface, with an extensible cha
 archive canisters. Written 2026-10-12; implementation follows this document unless a
 section says otherwise.
 
+**Status (2026-10-20): built and live.** The library is `src/icrc3` (Log.mo, Archive.mo,
+Hash.mo, SnsRegister.mo); `sneed_lock` uses it. On mainnet the history import has run and the
+log holds its blocks live (no archive created yet). Sneed Lock v2 (spec/sneed_lock_v2.md) added
+block types, listed below with the original catalogue.
+
 ## Goals
 
 - Every state-changing action in Sneed Lock produces one structured block: lock
@@ -109,21 +114,38 @@ Token locks:
 
 | btype | when | tx fields |
 |-------|------|-----------|
-| `sneedlock_token_lock_create` | `create_lock` succeeded | `cid`, `caller`, `owner`, `ledger`, `lock_id`, `amount`, `expiry` |
-| `sneedlock_token_lock_transfer` | `transfer_token_lock_ownership` moved the lock and the tokens | `cid`, `caller`, `from`, `to`, `ledger`, `lock_id`, `amount`, `expiry`, `ledger_tx` Nat (ledger block index), `outcome` Text: `ok`, or `uncertain` when the ledger call threw with an ambiguous code and the lock is held for both parties |
+| `sneedlock_token_lock_create` | `create_lock` succeeded | `cid`, `caller`, `owner`, `ledger`, `lock_id`, `amount`, `expiry` (the requested `expires_at`); `dissolve_delay` when the lock has one (v2) |
+| `sneedlock_token_lock_transfer` | `transfer_token_lock_ownership` or an NFT transfer of a token lock moved the lock and the tokens | `cid`, `caller`, `from`, `to`, `ledger`, `lock_id`, `amount`, `expiry`, `ledger_tx` Nat (ledger block index), `outcome` Text: `ok`, or `uncertain` when the ledger call threw with an ambiguous code and the lock is held for both parties (then without `ledger_tx`); with `ok`, also `gas_source` Text (`owner` or `tank`) and `fee` Nat (v2) |
 | `sneedlock_token_withdraw` | `transfer_tokens` moved tokens out of the caller's Sneed wallet | `cid`, `caller`, `ledger`, `amount`, `to` Account, `ledger_tx` |
 
 Positions:
 
 | btype | when | tx fields |
 |-------|------|-----------|
-| `sneedlock_position_claim` | `claim_position` verified ownership and mapped the position to the caller | `cid`, `caller`, `owner`, `pool`, `position_id` |
-| `sneedlock_position_lock_create` | `create_position_lock` succeeded | `cid`, `caller`, `owner`, `pool`, `position_id`, `lock_id`, `expiry`, `token0`, `token1`, `dex` |
-| `sneedlock_position_lock_extend` | `update_position_lock` moved the expiry later | `cid`, `caller`, `owner`, `pool`, `position_id`, `lock_id`, `old_expiry`, `expiry` |
+| `sneedlock_position_claim` | `claim_position` verified ownership and mapped the position to the caller | `cid`, `caller`, `owner`, `pool`, `position_id`; `removed_claims` Array of Blob when claims left by earlier owners were dropped |
+| `sneedlock_position_lock_create` | `create_position_lock` succeeded | `cid`, `caller`, `owner`, `pool`, `position_id`, `lock_id`, `expiry`, `token0`, `token1`, `dex`; `dissolve_delay` when the lock has one (v2) |
+| `sneedlock_position_lock_extend` | `update_position_lock` moved the expiry later | `cid`, `caller`, `owner`, `pool`, `position_id`, `lock_id`, `old_expiry`, `expiry`. When written by `extend_lock` (v2) the fields are those of the lock-change blocks below (no `position_id`) |
 | `sneedlock_position_transfer` | `transfer_position_ownership` succeeded (liquid locking) | `cid`, `caller`, `from`, `to`, `pool`, `position_id`; plus `lock_id` and `expiry` when a lock moved with it |
 | `sneedlock_position_withdraw` | `transfer_position` moved the position out to ICPSwap | `cid`, `caller`, `owner`, `to`, `pool`, `position_id` |
 | `sneedlock_fees_claim` | `claim_position_fees` (or `request_claim_and_withdraw`) succeeded | `cid`, `caller`, `owner`, `pool`, `position_id`, `token0`, `token1`, `amount0`, `amount1` (gross claimed), `delivered0`, `delivered1` (net the pool delivers), `request_id` |
 | `sneedlock_liquidity_add` | `add_liquidity_to_locked_position` returned `Ok` | `cid`, `caller`, `owner`, `pool`, `position_id`, `token0`, `token1`, `amount0`, `amount1`, `credited0`, `credited1`, `used0`, `used1`, `returned0`, `returned1`; `increase_error` Text when the pool refused |
+
+Lock changes (v2, spec/sneed_lock_v2.md):
+
+| btype | when | tx fields |
+|-------|------|-----------|
+| `sneedlock_dissolve_start` | `start_dissolving` | `cid`, `caller`, `owner`, `lock_id`, `kind` Text (`token` or `position`), `ledger` or `pool`, `old_expiry`, `expiry` (the effective expiry), `lock_end`; `dissolve_delay` and `dissolving_until` when set |
+| `sneedlock_dissolve_stop` | `stop_dissolving` | as above |
+| `sneedlock_dissolve_delay_increase` | `increase_dissolve_delay` | as above |
+| `sneedlock_token_lock_extend` | `extend_lock` on a token lock | as above |
+| `sneedlock_gas_withdraw` | `withdraw_lock_gas` | `cid`, `caller`, `lock_id`, `ledger`, `amount`, `to` Account, `ledger_tx` |
+
+NFTs (v2): the standard ICRC-7 and ICRC-37 blocks `7mint`, `7burn`, `7xfer`, `37approve`,
+`37approve_coll`, `37revoke`, `37revoke_coll` and `37xfer` share the log, with the standards'
+fields (`tid`, `from`, `to`, `spender`, `memo`, `ts`, `exp`; `7mint` carries `meta` with
+`sneedlock:kind` and `sneedlock:minted_by`). `icrc3_supported_block_types` lists them with the
+ICRC-7 and ICRC-37 standard URLs instead of the Sneed Lock catalogue URL. An ICRC-7 or ICRC-37
+call answers the index of its block as the transaction id.
 
 Fees:
 
@@ -144,12 +166,13 @@ Admin and configuration (only callable by admins, governance or controllers):
 `sneedlock_config_update` keys: `max_lock_length_ns`, `token_lock_fee_icp_e8s`,
 `position_lock_fee_icp_e8s`, `premium_token_lock_fee_icp_e8s`,
 `premium_position_lock_fee_icp_e8s`, `icp_fee_recipient` (Text account),
-`sneed_premium_canister_id`, `admin_added`, `admin_removed`, `claim_history_cleared`
-(value = number of entries), `icrc3_proposal_neuron` (Blob, or Text `none`), and the
+`sneed_premium_canister_id`, `admin_added`, `admin_removed`, `claim_history_cleared` and
+`failed_claim_history_cleared` (value = number of entries), `icrc3_proposal_neuron` (Blob, or Text `none`), and the
 ICRC-3 settings below (`icrc3_max_live_blocks` and so on).
 
 Housekeeping (`clear_expired_locks`, archiving expired locks) is not logged: expiry is
-implied by the `expiry` field of the create block.
+implied by the `expiry` field of the create block. Since v2 the archiving of an expired token
+lock writes a `7burn` for its NFT.
 
 ## Endpoints on `sneed_lock`
 
@@ -160,7 +183,7 @@ icrc3_get_blocks : (vec record { start : nat; length : nat }) -> (GetBlocksResul
 icrc3_get_archives : (record { from : opt principal }) -> (vec record { canister_id : principal; start : nat; end : nat }) query;
 icrc3_get_tip_certificate : () -> (opt record { certificate : blob; hash_tree : blob }) query;
 icrc3_supported_block_types : () -> (vec record { block_type : text; url : text }) query;
-icrc10_supported_standards : () -> (vec record { name : text; url : text }) query;  // lists ICRC-3 and ICRC-10
+icrc10_supported_standards : () -> (vec record { name : text; url : text }) query;  // lists ICRC-3 and ICRC-10, and since v2 ICRC-7 and ICRC-37
 ```
 
 `icrc3_get_blocks` serves blocks from the live store directly and returns one
@@ -181,6 +204,11 @@ admin_set_icrc3_settings : (record { max_live_blocks : opt nat; spill_batch_size
 admin_icrc3_spill_now : () -> (variant { Ok : nat; Err : text });    // moves every live block now; returns blocks moved
 admin_icrc3_import_history : () -> (variant { Ok : nat; Err : text }); // idempotent; blocks written
 admin_icrc3_repair_archive_controllers : () -> (vec record { principal; variant { Ok; Err : text } }); // re-applies [sneed_lock, SNS root]
+// SNS registration of archives (next sections):
+icrc3_registration_status : () -> (SnsRegister.Status) query;
+admin_set_icrc3_proposal_neuron : (opt blob) -> (variant { Ok; Err : text });
+admin_icrc3_register_archives_now : () -> (variant { Ok : nat; Err : text });
+admin_icrc3_reset_archive_registration : (principal) -> (variant { Ok : bool; Err : text });
 ```
 
 ## Archive canister
@@ -340,6 +368,10 @@ icrc3_settings : Icrc3Settings
 icrc3_history_imported : Bool
 ```
 
+Changed from the original plan: these are fields of one stable record, `stable var icrc3 :
+Log.State` (`live`, `log_length`, `last_hash`, `archives`, `settings`, `history_imported`),
+plus `stable var icrc3_sns : SnsRegister.State` for archive registration.
+
 The live store is a growable array of encoded blocks on the heap; bounded by the
 spill threshold it stays around 2000 × ~300 bytes, so upgrade serialisation cost is
 negligible. Blocks are stored already encoded (Candid bytes of the `Value`) so the
@@ -410,7 +442,9 @@ catalogue designed and documented before instrumentation.
 ## Follow-ups outside this change
 
 - Frontend: show the log on `/sneedlock_info` and on each `/lock/<id>` page (blocks
-  mentioning that lock id), with a link to verify.
+  mentioning that lock id), with a link to verify. *Not done (2026-10-20); the generic ICRC-3
+  viewer at `/tools/icrc3` can read the log.*
 - API docs and the agent skill: document the endpoints and the block catalogue at
-  `https://app.sneeddao.com/api/sneed_lock#block-types`.
+  `https://app.sneeddao.com/api/sneed_lock#block-types`. *Done: section 8 of
+  `public/api-docs/sneed_lock.md`; the `#block-types` anchor resolves to "8.3 Block types".*
 - Whitepaper: describe the verifiable log.

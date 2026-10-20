@@ -1,425 +1,257 @@
 # SneedLock Claim and Withdraw API
 
+**Status (2026-10-20): rebuilt.** The queue described in the first version of this document
+was retired on 2026-10-11 (commit ff3146c3). Claims are now one synchronous call that uses
+ICPSwap's `claimToSubaccount`; the pool delivers the fees straight to the owner's Sneed wallet.
+This document describes the current code (`claim_position_fees` and its helpers in
+`src/sneed_lock/main.mo`). Changed from the original plan: no queue, no timer, no batch pauses,
+no balance-before/after accounting, no admin queue controls; see "Changelog".
+
 ## Overview
 
-The SneedLock canister provides a queue-based system for claiming and withdrawing trading fees from locked ICPSwap positions. This system ensures safe, sequential processing to prevent fund commingling while allowing position owners to claim their rewards even while positions remain locked.
+The SneedLock canister lets the owner of a locked ICPSwap position claim the position's trading fees while it stays locked. Sneed Lock asks the pool to claim the fees **to the owner's subaccount on Sneed Lock** (the owner's Sneed wallet, also called the backend wallet), so the fees never pass through an account Sneed Lock shares with anyone. That is what makes the old sequential queue unnecessary.
 
 ## Key Features
 
-- ✅ **Sequential Processing** - Processes one claim at a time to avoid fund commingling on ICPSwap
-- ✅ **Automatic Withdrawals** - Claims rewards AND withdraws them to user's subaccount on SneedLock backend
-- ✅ **Fee Management** - Automatically deducts transaction fees from withdrawn amounts
-- ✅ **Smart Validation** - Checks if rewards are worth claiming before processing
-- ✅ **Comprehensive Tracking** - Full status visibility through request lifecycle
-- ✅ **Persistent State** - All state survives canister upgrades
-- ✅ **Circular Buffer** - Maintains last 1000 completed requests for history
+- ✅ **One call** - `claim_position_fees` claims and answers the amounts; no polling of a request
+- ✅ **Direct delivery** - the pool sends the fees to the owner's wallet subaccount on SneedLock itself, from its own withdraw queue, usually within seconds
+- ✅ **No commingling** - fees never land in an account shared between positions, so no balance tracking is needed
+- ✅ **Smart Validation** - refuses when neither side is worth delivering (would be swallowed by the ledger fee)
+- ✅ **Per-pool serialisation** - one fee claim or liquidity addition per pool at a time; others get a "Busy" error and retry
+- ✅ **Bounded history** - the last 1000 completed and the last 1000 failed claims, plus a `sneedlock_fees_claim` ICRC-3 block per claim
 
 ## Prerequisites
 
 Before you can claim rewards:
-1. Position must be **locked** (have a position lock)
-2. Position must be **owned by the SneedLock backend** on ICPSwap
-3. Caller must be the **registered owner** in SneedLock's internal records
-4. Each token must have at least **2x its transaction fee** in claimable rewards
+1. Position must have a **position lock record** for the caller (active, or expired but not yet archived)
+2. Position must be **owned by the SneedLock canister** on ICPSwap
+3. Caller must be the **only claimant** of the position in SneedLock's records
+4. At least one token must have **more than its transaction fee** in claimable rewards
 
 ## API Methods
 
-### 1. Request Claim and Withdraw
+### 1. Claim Position Fees
 
-Submit a request to claim and withdraw rewards from a locked position.
+```motoko
+public shared ({ caller }) func claim_position_fees(
+  swap_canister_id : Principal,
+  position_id : Nat
+) : async {
+  #Ok : { request_id : Nat; amount0 : Nat; amount1 : Nat; token0 : Principal; token1 : Principal };
+  #Err : Text;
+}
+```
+
+`amount0` / `amount1` are the gross amounts the pool claimed. What arrives in the wallet is each amount minus one ledger fee (nothing for an amount at or below the fee).
+
+**Example:**
+```motoko
+switch (await sneed_lock.claim_position_fees(swap_canister, position_id)) {
+  case (#Ok(r)) { Debug.print("Claimed " # debug_show(r.amount0) # " / " # debug_show(r.amount1)) };
+  case (#Err(msg)) { Debug.print("Failed: " # msg) };
+};
+```
+
+**Validation performed:**
+- Caller is the only claimant of the position
+- Caller has a lock record on the position (token0 and token1 are read from it)
+- No other fee claim or liquidity addition is running on the same pool
+
+### 2. Request Claim and Withdraw (compatibility)
 
 ```motoko
 public shared ({ caller }) func request_claim_and_withdraw(
   swap_canister_id : Principal,
   position_id : Nat
-) : async {
-  #Ok : Nat;  // Returns request_id
-  #Err : Text; // Error message
+) : async { #Ok : Nat; #Err : Text }
+```
+
+Kept for older frontends. It performs the same synchronous claim and answers the history id (`request_id`), which `get_claim_request_status` then reports as completed or failed.
+
+### 3. Query Request Status
+
+```motoko
+public query func get_claim_request_status(request_id : Nat) : async ?{
+  #Active : ClaimRequest;    // never answered any more; kept for interface compatibility
+  #Completed : ClaimRequest;
+  #Failed : ClaimRequest;
 }
 ```
 
-**Example:**
-```motoko
-let swap_canister = Principal.fromText("...");
-let position_id = 42;
+Searches the completed and failed history. Changed from the original plan: `#Completed` carries the request record, not text, and there is a `#Failed` case.
 
-let result = await sneed_lock.request_claim_and_withdraw(swap_canister, position_id);
+Also: `get_completed_claim_request(id)` and `get_failed_claim_request(id)`.
 
-switch (result) {
-  case (#Ok(request_id)) {
-    // Store request_id to track status
-    Debug.print("Request submitted: " # debug_show(request_id));
-  };
-  case (#Err(msg)) {
-    Debug.print("Failed: " # msg);
-  };
-};
-```
-
-**Validation performed:**
-- Caller owns the position in SneedLock records
-- Position is locked
-- Token0 and token1 info retrieved from position lock
-
-### 2. Query Request Status
-
-Get the current status of a request (searches both active and completed).
+### 4. History
 
 ```motoko
-public query func get_claim_request_status(
-  request_id : Nat
-) : async ?{
-  #Active : ClaimRequest;
-  #Completed : Text;
-}
+public query ({ caller }) func get_my_claim_history() : async [ClaimRequest]   // caller's completed and failed claims
+public query func get_claim_requests_page(q : {
+  failed : Bool;      // the failed history, else the completed one
+  prev : ?Nat;        // ascending request ids after this one
+  take : ?Nat;        // default 100, at most 500
+}) : async [ClaimRequest]
 ```
 
-**Example:**
-```motoko
-let status = await sneed_lock.get_claim_request_status(request_id);
-
-switch (status) {
-  case (?#Active(request)) {
-    // Request is still processing
-    switch (request.status) {
-      case (#Pending) { "Waiting in queue" };
-      case (#Processing) { "Processing started" };
-      case (#BalanceRecorded(_)) { "Recording balances..." };
-      case (#ClaimAttempted(_)) { "Claiming rewards..." };
-      case (#ClaimVerified(_)) { "Claim verified, withdrawing..." };
-      case (_) { "Processing..." };
-    };
-  };
-  case (?#Completed(text)) {
-    // Request finished - parse text for details
-    Debug.print("Completed: " # text);
-  };
-  case (null) {
-    // Request not found
-  };
-};
-```
-
-### 3. Get User's Active Requests
-
-Get all active (pending/processing) requests for the caller.
-
-```motoko
-public query ({ caller }) func get_my_active_claim_requests() : async [ClaimRequest]
-```
-
-**Example:**
-```motoko
-let my_requests = await sneed_lock.get_my_active_claim_requests();
-
-for (request in my_requests.vals()) {
-  Debug.print("Request #" # debug_show(request.request_id) # 
-              " for position " # debug_show(request.position_id) # 
-              " - Status: " # debug_show(request.status));
-};
-```
-
-### 4. Get Queue Status
-
-Get overall queue statistics.
-
-```motoko
-public query func get_claim_queue_status() : async {
-  processing_state : { #Active; #Paused : Text };
-  pending_count : Nat;
-  processing_count : Nat;
-  active_total : Nat;
-  completed_buffer_count : Nat;
-}
-```
-
-**Example:**
-```motoko
-let stats = await sneed_lock.get_claim_queue_status();
-
-Debug.print("Queue state: " # debug_show(stats.processing_state));
-Debug.print("Pending: " # debug_show(stats.pending_count));
-Debug.print("Processing: " # debug_show(stats.processing_count));
-Debug.print("Completed (last 1000): " # debug_show(stats.completed_buffer_count));
-```
+Changed from the original plan: `get_my_active_claim_requests` and `get_claim_queue_status` no longer exist.
 
 ## Request Lifecycle
 
 ### Status Flow
 
+A claim record is created with `#Processing` and archived when the call ends, in one of two terminal states:
+
 ```
-#Pending
+#Processing
   ↓
-#Processing (30 min timeout starts)
-  ↓
-#BalanceRecorded { balance0_before, balance1_before }
-  ↓
-#ClaimAttempted { balance0_before, balance1_before, claim_attempt }
-  ↓
-#ClaimVerified { balance0_before, balance1_before, amount0_claimed, amount1_claimed }
-  ↓
-#Withdrawn { amount0_claimed, amount1_claimed }
-  ↓
-#Completed
+#Completed { amount0_claimed, amount1_claimed, amount0_transferred, amount1_transferred,
+             transfer0_tx_id = null, transfer1_tx_id = null }
+  or
+#Failed(Text)
 ```
 
-**Terminal States:**
-- `#Completed` - Success
-- `#Failed(Text)` - Permanent failure
-- `#TimedOut` - Request exceeded 30 minutes (queue pauses)
+`amountN_transferred` is the amount the pool delivers (claimed minus one ledger fee, or 0). The tx ids are always null: the pool performs the ledger transfers.
+
+The other variants of `ClaimRequestStatus` (`#Pending`, `#BalanceRecorded`, `#ClaimAttempted`, `#ClaimVerified`, `#Withdrawn`, `#TimedOut`) are kept in the type for stable compatibility and old history entries; new claims never use them.
 
 ### Processing Details
 
 #### Step 0: Validation
-- Get token fees for both tokens
-- Check position's `tokensOwed0` and `tokensOwed1`
-- Verify at least ONE token has >= 2x its fee in rewards
-- Fail early if both tokens have insufficient rewards
+- Get the ledger fee of both tokens (`icrc1_fee`)
+- Read the position's `tokensOwed0` and `tokensOwed1` (`getUserPosition`)
+- Fail with "Insufficient rewards to claim..." if neither side exceeds its fee
 
-#### Step 1: Record Balance
-- Query backend's balance on swap canister before claiming
-- Records `balance0_before` and `balance1_before`
+#### Step 1: Claim
+- Call `claimToSubaccount({ positionId; subaccount })` on the pool, with the caller's wallet subaccount on Sneed Lock
+- On `#ok`: record the claim as `#Completed`, log `sneedlock_fees_claim`, answer the amounts
+- On `#err` or a thrown call: record `#Failed`. A thrown call has an unknown outcome; either way Sneed Lock never holds the funds, and the pool either rolled back or will still deliver to the owner's subaccount
 
-#### Step 2: Claim
-- Call `claim()` on ICPSwap swap canister
-- If claim returns error, check if balance changed anyway
-- Verify claim succeeded by comparing balances
-
-#### Step 3: Withdraw
-- For each token where `amount_claimed > fee`:
-  - Withdraw `amount_claimed - fee` to caller's subaccount
-  - Uses `withdrawToSubaccount()` on ICPSwap
-- Tokens are now in caller's subaccount on SneedLock backend
-- Skip withdrawal if amount <= fee (log reason)
+#### Step 2: Delivery (by the pool)
+- The pool's withdraw queue transfers each amount above the fee to the owner's wallet subaccount
+- Amounts at or below the fee stay in Sneed Lock's account on the pool as dust; Sneed Lock notes them so later add-liquidity checks are not confused
 
 ## Fee Handling
 
 ### Transaction Fees
 
-Each token has a transaction fee that must be accounted for:
+The pool charges the ledger fee on delivery:
 
 ```
 Token0 Fee: 10 tokens
 Claimed: 1000 tokens
 
-Withdrawal:
-- Amount withdrawn: 990 tokens
+Delivery:
+- Amount delivered: 990 tokens
 - Fee charged: 10 tokens
-- Total deducted from swap canister: 1000 tokens ✓
-- User receives: 990 tokens in their subaccount
+- User receives: 990 tokens in their Sneed wallet subaccount
 ```
 
 ### Minimum Claimable Amount
 
-Each token needs at least **2x its transaction fee**:
-- 1x fee - consumed during claim operation
-- 1x fee - needed for withdrawal
+A side is worth claiming when it is **more than 1x its transaction fee** (one fee is consumed by the delivery). Changed from the original plan: this document said 2x (one fee for the claim, one for the withdrawal); the code never required more than 1x, and with `claimToSubaccount` only one fee is charged.
 
 **Examples:**
 
 ✅ **Sufficient:**
 ```
-Token0: 1000 owed, fee = 10 (1000 >= 20) → Will withdraw 990
-Token1: 500 owed, fee = 5 (500 >= 10) → Will withdraw 495
+Token0: 1000 owed, fee = 10 (1000 > 10) → delivers 990
+Token1: 500 owed, fee = 5 (500 > 5) → delivers 495
 ```
 
 ✅ **One token insufficient:**
 ```
-Token0: 1000 owed, fee = 10 (1000 >= 20) → Will withdraw 990
-Token1: 8 owed, fee = 5 (8 < 10) → Will skip, log reason
-Status: Success (claimed token0)
+Token0: 1000 owed, fee = 10 → delivers 990
+Token1: 4 owed, fee = 5 (4 <= 5) → claimed, not delivered (dust on the pool)
+Status: Completed
 ```
 
 ❌ **Both insufficient:**
 ```
-Token0: 15 owed, fee = 10 (15 < 20) → Cannot withdraw
-Token1: 8 owed, fee = 5 (8 < 10) → Cannot withdraw
-Status: Immediate failure, request not processed
+Token0: 10 owed, fee = 10 (10 <= 10)
+Token1: 5 owed, fee = 5 (5 <= 5)
+Status: Failed immediately, nothing claimed
 ```
 
 ## Queue Processing
 
-### Automatic Processing
+Changed from the original plan: there is no queue. The retired stable variables (`stable_claim_requests`, `claim_queue_processing_state`, `enforce_zero_balance_before_claim`, the timer and batch counters) are kept with their types so the stable signature does not change, and nothing reads or writes them.
 
-- Processes oldest request first (FIFO)
-- Zero-second timer for immediate processing
-- Handles up to **10 requests** per batch
-- After 10 requests, pauses for **10 minutes**
-- Continues until queue is empty
+### Concurrency
 
-### Timeout Handling
+- Claims and liquidity additions take a per-pool lock (`pool_op_locks`). A second operation on the same pool while one is awaiting the pool fails with `Busy: another operation is in progress on this pool; please retry in a few seconds`.
+- While a pool operation is running, an NFT transfer of a position in that pool is refused (`GenericError` 3), so a sale cannot race a fee claim.
+- Different pools run in parallel.
 
-If a request takes longer than **30 minutes**:
-1. Request marked as `#TimedOut`
-2. Queue state changes to `#Paused`
-3. Processing stops
-4. Admin must investigate and resume
+### Why no commingling check is needed
 
-### Sequential Processing (Anti-Commingling)
-
-Requests are processed **one at a time** because:
-1. All locked positions share the same backend principal on ICPSwap
-2. Claiming rewards increases the backend's balance on the swap canister
-3. Without sequential processing, we couldn't tell which rewards belong to which position
-4. Balance tracking before/after each claim ensures accurate attribution
-
-### Zero Balance Safety Check
-
-**Default: Enabled**
-
-Before processing each claim, the system checks if the backend's balance on the swap canister is zero:
-
-```
-✅ Balance = 0 → Safe to proceed (previous claims fully withdrawn)
-❌ Balance ≠ 0 → Fail and pause queue (incomplete withdrawal detected)
-```
-
-**Why this matters:**
-- If processing is truly sequential and all withdrawals succeed
-- Then the balance should always be 0 before the next claim
-- Non-zero balance indicates something went wrong with a previous claim
-- Could mean partial withdrawal, failed withdrawal, or processing error
-
-**When check fails:**
-1. Request marked as `#Failed` with detailed error
-2. Queue automatically pauses
-3. Admin must investigate and resolve
-4. Admin can then resume queue
-
-**Admin controls:**
-```motoko
-// Disable check temporarily (e.g., during recovery)
-await admin_set_enforce_zero_balance_before_claim(false);
-
-// Re-enable check
-await admin_set_enforce_zero_balance_before_claim(true);
-
-// Query current status
-let enabled = await get_enforce_zero_balance_before_claim();
-```
-
-**When to disable:**
-- During recovery operations
-- When manually resolving stuck funds
-- Temporary workarounds (re-enable ASAP)
+The old design claimed into Sneed Lock's own (shared) pool balance and had to attribute the increase to one position, hence the sequential queue, balance snapshots and the zero-balance safety check. With `claimToSubaccount` the pool sends each owner's fees to that owner's subaccount, so there is nothing to attribute.
 
 ## Error Handling
 
 ### Common Errors
 
-**"Caller does not own position"**
-- Position not registered to caller in SneedLock
+**"Caller does not own position X on swap canister Y"**
+- No claim by the caller, or another principal also holds a claim
 - Solution: Call `claim_position()` first
 
 **"Position X is not locked"**
-- Position doesn't have a position lock
-- Solution: Create a position lock first
+- The caller has no lock record on the position (never locked, or the expired lock was archived)
+- After expiry: withdraw the position with `transfer_position` and claim on ICPSwap directly
 
-**"Insufficient rewards to claim"**
-- Both tokens have < 2x their fee in rewards
+**"Insufficient rewards to claim. ..."**
+- Neither token has more than its fee in rewards
 - Wait for more trading fees to accumulate
 
-**"Safety check failed: Backend balance is not zero before claim"**
-- Previous claim's withdrawal incomplete
-- Queue automatically pauses to prevent commingling
-- Admin must investigate, resolve stuck funds, then resume
-- If check is incorrect, admin can temporarily disable it
+**"Busy: another operation is in progress on this pool; please retry in a few seconds"**
+- Retry shortly
 
-**"Failed to get position info"**
-- ICPSwap query failed
-- May be transient, request can be retried by admin
+**"Failed to get position info: ..." / "Failed to query fees or position: ..."**
+- Pool or ledger query failed; may be transient, retry
 
-**"Failed to withdraw tokenX"**
-- Withdrawal transaction failed
-- Tokens may be stuck on swap canister
-- Admin can investigate and resolve
-
-**Request timed out**
-- Request took > 30 minutes
-- Queue automatically pauses
-- Admin must investigate and resume
+**"Claim failed: ..." / "Claim call failed with unknown outcome: ..."**
+- The pool refused, or the call threw. Check the wallet balance before retrying: after an unknown outcome the pool may still deliver
 
 ## Admin Functions
 
-### Resume Queue (After Timeout/Pause)
+Changed from the original plan: `admin_resume_claim_queue`, `admin_pause_claim_queue`, `admin_clear_completed_claim_requests_buffer`, `admin_remove_active_claim_request` and `admin_set_enforce_zero_balance_before_claim` / `get_enforce_zero_balance_before_claim` no longer exist.
+
+### Clear History
 
 ```motoko
-public shared ({ caller }) func admin_resume_claim_queue() : async ()
+public shared ({ caller }) func admin_clear_completed_claim_requests() : async Nat
+public shared ({ caller }) func admin_clear_failed_claim_requests() : async Nat
 ```
 
-Resumes processing from the oldest pending request.
+Empty the completed or failed history (answer the count removed). Logged as `sneedlock_config_update` with key `claim_history_cleared` / `failed_claim_history_cleared`.
 
-### Pause Queue
+### Recovery
 
-```motoko
-public shared ({ caller }) func admin_pause_claim_queue(reason : Text) : async ()
-```
-
-Manually pause processing with a reason.
-
-### Clear Completed Buffer
-
-```motoko
-public shared ({ caller }) func admin_clear_completed_claim_requests_buffer() : async Nat
-```
-
-Clears the circular buffer of completed requests (returns count cleared).
-
-### Remove Active Request
-
-```motoko
-public shared ({ caller }) func admin_remove_active_claim_request(request_id : Nat) : async Bool
-```
-
-Removes a pending/processing request from the queue.
-
-### Set Zero Balance Enforcement
-
-```motoko
-public shared ({ caller }) func admin_set_enforce_zero_balance_before_claim(enforce : Bool) : async ()
-```
-
-Enable or disable the zero balance safety check. Default is `true` (enabled).
-
-**Use cases:**
-- Disable temporarily during recovery operations
-- Disable if stuck funds need manual resolution
-- Re-enable after issue is resolved
-
-**Important:** Always re-enable after resolving issues to maintain safety.
+`admin_rescue_stuck_tokens`, `admin_get_pool_unused_balance`, `admin_pool_deposit` and `admin_withdraw_pool_balance_to_user` move funds left on Sneed Lock's main account or its pool balance (see `public/api-docs/sneed_lock.md`).
 
 ## Best Practices
 
 ### For Users
 
-1. **Check queue status** before submitting to see if processing is active
-2. **Store request_id** immediately after successful submission
-3. **Poll status periodically** (every few seconds while active)
-4. **Handle all terminal states** (#Completed, #Failed, #TimedOut)
-5. **Verify rewards in subaccount** after completion
+1. **Expect delivery a few seconds after the call** returns
+2. **Verify rewards in your Sneed wallet** (backend wallet) balance
+3. **Retry on "Busy"** after a few seconds
 
 ### For Integrators
 
-1. **Show clear status** to users based on request.status
-2. **Implement retry logic** for transient failures
-3. **Display estimated time** based on queue position
-4. **Alert on timeout** if request exceeds expected time
-5. **Provide feedback** on insufficient rewards (show required amounts)
+1. **Snapshot the owner's wallet balance** before the call, then poll it after to show the arrival
+2. **Optionally forward** the delivered fees to the user's own wallet with `transfer_tokens`
+3. **Implement retry logic** for "Busy" and transient query failures
+4. **Provide feedback** on insufficient rewards (show the fees)
 
 ### For Frontend
 
+Sneed Hub does exactly this: `handleClaimLockedPositionFees` in `Wallet.jsx` and the collectibles flow in `hooks/useCollectiblesNotifications.js` call `claim_position_fees`, then `utils/FeeForwarding.js` (`readBackendWalletBaselines`, `forwardClaimedFees`, waiting up to 30 s for delivery) moves the fees on to the frontend wallet, best effort. Anything not forwarded stays in the Sneed wallet.
+
 ```typescript
-// Example status display mapping
-const statusDisplay = {
-  Pending: "⏳ Waiting in queue...",
-  Processing: "⚙️ Processing started",
-  BalanceRecorded: "📊 Recording balances...",
-  ClaimAttempted: "🎯 Claiming rewards...",
-  ClaimVerified: "✓ Verified, withdrawing...",
-  Completed: "✅ Completed successfully",
-  Failed: "❌ Failed",
-  TimedOut: "⏱️ Request timed out"
-};
+// Example status display
+onStatusUpdate('🎯 Claiming rewards...');
+onStatusUpdate('⏳ Waiting for the pool to deliver...');
+onStatusUpdate(`✅ ${describeForwarding(forwarding)}`);
 ```
 
 ## Technical Details
@@ -438,80 +270,65 @@ type ClaimRequest = {
   created_at: Timestamp;
   started_processing_at: ?Timestamp;
   completed_at: ?Timestamp;
+  retry_count: Nat;            // always 1 for synchronous claims
+  last_attempted_at: ?Timestamp;
 };
 ```
 
 ### Storage
 
-- **Active requests**: Stored in stable array `stable_claim_requests`
-- **Completed requests**: Stored in circular buffer (last 1000)
-- **All state persists** through canister upgrades
+- **Completed claims**: stable array `completed_claim_requests`, last 1000
+- **Failed claims**: stable array `failed_claim_requests`, last 1000
+- **Ids**: `next_claim_request_id`, one per attempt (failed attempts take an id too)
+- **Retired queue state**: kept, unused (see "Queue Processing")
 
 ### Performance
 
-- **Query operations**: Fast, O(n) where n = active requests or buffer size
-- **Processing**: Sequential, ~30-60 seconds per request (due to ICPSwap calls)
-- **Batch size**: 10 requests per batch, then 10-minute pause
+- **One call**: a few inter-canister calls (two `icrc1_fee`, `getUserPosition`, `claimToSubaccount`)
+- **Delivery**: by the pool, usually within seconds
 
 ## Example Integration
 
 ### Complete Flow
 
 ```motoko
-// 1. Submit request
-let result = await sneed_lock.request_claim_and_withdraw(swap_canister, position_id);
-let request_id = switch (result) {
-  case (#Ok(id)) { id };
-  case (#Err(msg)) { 
-    Debug.print("Error: " # msg);
-    return;
-  };
+// 1. Claim
+let r = switch (await sneed_lock.claim_position_fees(swap_canister, position_id)) {
+  case (#Ok(r)) { r };
+  case (#Err(msg)) { Debug.print("Error: " # msg); return };
 };
 
-// 2. Poll for status
-label polling loop {
-  await async_sleep(5_000_000_000); // 5 seconds
-  
-  let status = await sneed_lock.get_claim_request_status(request_id);
-  switch (status) {
-    case (?#Active(req)) {
-      Debug.print("Status: " # debug_show(req.status));
-      // Continue polling
-    };
-    case (?#Completed(text)) {
-      Debug.print("Completed: " # text);
-      break polling;
-    };
-    case (null) {
-      Debug.print("Request not found");
-      break polling;
-    };
-  };
-};
+// 2. Wait for delivery: poll icrc1_balance_of on token0 / token1 for
+//    { owner = sneed_lock; subaccount = wallet_subaccount(me) } until it has risen
+//    by amount - fee (or give up after ~30 s; the fees still arrive).
 
-// 3. Verify rewards in subaccount
-// Rewards are now in caller's subaccount on SneedLock backend
-// Can be transferred out using transfer_tokens()
+// 3. Optionally move them out
+ignore await sneed_lock.transfer_tokens(me, null, r.token0, delivered0 - fee0);
 ```
 
 ## Security Considerations
 
-1. **Only position owner** can submit claim requests
-2. **Position must be locked** to prevent unauthorized claims
-3. **Backend retains custody** - tokens go to user's subaccount on SneedLock
-4. **No direct ICPSwap transfers** - all withdrawals to subaccounts
-5. **Sequential processing** prevents fund commingling
-6. **Timeout protection** prevents infinite processing
+1. **Only the position's sole claimant** can claim
+2. **A lock record is required**; unlocked positions are withdrawn and claimed on ICPSwap directly
+3. **Sneed Lock never holds the fees** - the pool delivers to the owner's subaccount
+4. **Per-pool lock** prevents concurrent claims and liquidity additions racing on one pool
+5. **Unclaimed fees travel with the position** when its NFT or ownership is transferred: whoever owns it when the claim runs collects them
 
 ## Support
 
 For issues or questions:
-- Check queue status: `get_claim_queue_status()`
-- View error logs on the canister
-- Contact admin if request timeout occurs
+- Check the claim in `get_my_claim_history()` or `get_claim_request_status(id)`
+- View error logs on the canister (`get_error_entries`), joined to the ICRC-3 block by correlation id
 - Verify position ownership and lock status
 
 ## Changelog
+
+### Version 2.0 (2026-10-11)
+- Synchronous `claim_position_fees` using ICPSwap `claimToSubaccount`; delivery straight to the owner's wallet subaccount
+- Queue, timer, batch pauses, timeout and zero-balance check retired (state kept for stable compatibility)
+- Minimum claimable: more than 1x the ledger fee (previously at least 1x)
+- `request_claim_and_withdraw` kept as a synchronous compatibility wrapper
+- Later (Sneed Lock v2): `get_claim_requests_page` replaced the whole-history queries; each claim logged as `sneedlock_fees_claim` in the ICRC-3 log
 
 ### Version 1.0
 - Initial implementation
@@ -519,4 +336,3 @@ For issues or questions:
 - Automatic fee handling
 - Circular buffer for completed requests
 - Comprehensive status tracking
-

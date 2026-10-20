@@ -14,6 +14,13 @@ Plan agreed on 2026-10-12. Three deliverables, built in this order:
 Principles: the creator pays the cycles, fees go to the RLL, and the rating must stay
 honest, including for Sneed's own tokens.
 
+> **Status (2026-10-20)**, in the plan order rating page → `sneed_wasm_registry` → `sneed_guardian` → `sneed_pad`:
+> 1. **Rating page: built.** It is the Check tab of the Token Studio at `/studio/<ledger>` (`pages/TokenSafety.jsx` `CheckPanel`, `tokensafety/checks.js`). `/tools/token_safety[/<ledger>]` redirects there, and the `/token-safety/<ledger>` route this plan names never existed. It ships without the registry: hashes are compared with the SNS wasm canister's history and a built-in list of official DFINITY ledger-suite releases (`tokensafety/dfinityReleases.js`).
+> 2. **`sneed_wasm_registry`: planned, not started.** No canister and no code.
+> 3. **`sneed_guardian`: built, staging only** (`src/sneed_guardian`, three deployments, see `spec/custody.md`). It was built ahead of the registry: it vets code against the NNS-blessed hashes itself.
+> 4. **`sneed_pad`: partly built, staging only** (`src/sneed_pad`, `symdn-ciaaa-aaaal-qxobq-cai`). Tiers 1–3 are built (bare ledger, index, the control choices including custody) plus indexes for existing ledgers. Tiers 4–5 (locks and liquidity through the pad) are not built. The Launch, Index and Hand over tabs sit behind the "coming soon" gate (admins preview them).
+> 5. **Scanner canister: not built.** Holders are rebuilt in the browser, off the main thread in a web worker (`tokensafety/scan.worker.js`).
+
 ## 1. The rating model
 
 The seven checks are not equal peers. The first two are **gates**: every query answer a
@@ -37,6 +44,23 @@ Blackholed is not strictly better than DAO-controlled: the ledger suite gets rea
 upgrades (ICRC-3, ICRC-2 fixes, stable-memory migrations). Show "frozen feature set"
 for blackholed ledgers.
 
+As built (`classifyControllers`), each canister of the trio is graded alone:
+
+| Controllers | Grade |
+|---|---|
+| None | pass |
+| Only one of the custody canisters (`sneed_guardian*`) | pass, with the child's rules shown; warn when the canister is not registered there |
+| Only blackhole canisters (v0 `e3mmv-…`, v2 `5vdms-…`) | pass |
+| Only NNS root | pass |
+| Only the root of any NNS-deployed SNS | pass |
+| A mix including one of the above, or anything else | fail |
+
+Changed from the original plan: the gate does not grade SNS maturity or check that the
+canister is registered with the SNS. A sole SNS root passes, and the DAO's quality is
+judged by "The DAO behind it" group, where a captured DAO caps the rating. NNS root
+control was added. The "frozen feature set" note for blackholed ledgers is not shown
+yet (planned).
+
 **Code** (module hash through `read_state`, compared with the registry):
 
 | Hash | Grade |
@@ -50,6 +74,16 @@ for blackholed ledgers.
 The ledger is a trio: ledger, archives (spawned by the ledger; their controller is set
 in the ledger's archive options) and the index wallets read. All three are checked.
 The archive chain is verified through the ICRC-3 tip certificate.
+
+As built (`classifyHash`): pass for a hash in the SNS wasm canister's version list for
+that kind, or in the built-in list of official DFINITY ledger-suite releases; warn for a
+DFINITY ledger-suite wasm of another kind (an archive wasm installed as the ledger, say);
+pass for an unknown hash when NNS root is the controller (installed by NNS proposal);
+otherwise fail ("unknown wasm"). The "reproduced", "known source" and "flagged" grades
+need the registry and are **planned**. The index is found through ICRC-106, the SNS
+registry or the pad's own launch records; `?index=` names one by hand. The code group also
+lists the announced standards (`code:standards`) and checks the ICRC-3 tip certificate
+(`code:tip`).
 
 ### Dimensions (behind the gates)
 
@@ -105,7 +139,32 @@ Presentation: the same tree as `/health` (gates on top, dimensions below, each r
 stating what would raise the score). Scores are computed in the page from the raw
 evidence, never stored, so the page can always show why.
 
+Status of the dimensions (2026-10-20):
+
+| Dimension | Status | Leaves |
+|---|---|---|
+| Minting | built | `mint:account`, `mint:untracked` (supply outside the log), `mint:history`; the fee collector appears in the details |
+| Distribution | built | `dist:recon`, `dist:top1`, `dist:top10`, `dist:count`, known accounts tagged; NatLabs `get_transactions` ledgers walked sequentially |
+| Locked supply | built | `locks:total`, `locks:sneedlock`, `locks:neurons`, `locks:treasury` (the SNS treasury, shown apart), `locks:cliffs` |
+| Liquidity | built | `lp:exists` / `lp:none`, `lp:depth`, `lp:control` (Sneed Lock, DAO, burned and immutable owners matched by account identifier) |
+| The DAO behind it | built | `dao:info`, `dao:top`, `dao:following`, `dao:votable`, `dao:genesis`, `dao:participation` |
+| Distribution by origin | built | `dist:folded`, `dist:fanout`, `dist:origin`; the money graph at `/tools/money` |
+| Cycles and memory | built | via the blackhole, SNS root, a custody canister or NNS root; otherwise "not observable" |
+| Allowances | **planned** | not checked yet |
+| Age and upgrade history | partly | `supply:age` (age from block 0) is built; module-hash change history is planned |
+
+The headline rating (`rateTree`): **Unverifiable** when either gate fails; **Captured DAO**
+when the DAO group fails; otherwise over minting, distribution, locks, liquidity and
+cycles: **Strong** (no failure, at most one warning), **Fair** (at most one failure), **Weak**.
+The thresholds (`tokensafety/config.js`: holder shares, lock length, liquidity depth, DAO
+shares, the maximum blocks to scan (500,000 by default), cycle levels) can be changed in the page
+and are stored per browser. A finished report is cached in the tab for 30 minutes.
+
 ## 2. `sneed_wasm_registry`
+
+**Status (2026-10-20): planned, not started.** Until it exists, the rating page uses the
+SNS wasm canister's history and its built-in DFINITY release list, and the custody canisters
+and the pad trust only NNS-blessed hashes.
 
 Three layers:
 
@@ -179,6 +238,8 @@ Tiers that map directly to the score, each an upgrade the creator can buy later:
 4. Allocations locked with vesting through `sneed_lock`.
 5. ICPSwap position created and locked through `sneed_lock`.
 
+(Status 2026-10-20: tiers 1–3 built, 4–5 planned; see the status notes below.)
+
 Defaults: ledger-suite wasms held by the pad and installed with the creator's init
 args; minting account set to a principal that cannot act unless the creator opts into
 DAO minting; archive controller set to the same controller as the ledger; a cycle
@@ -190,12 +251,18 @@ the registry's vetted set (initially "present in the SNS wasm canister", widened
 DAO proposal); tops up cycles; exposes public canister status. Blackhole-grade safety
 with patchability.
 
+Changed from the original plan: `sneed_guardian` was built as the custody canister of
+`spec/custody.md` (2026-10-14). It installs only NNS-blessed ledger-suite hashes, one step
+at a time (no registry widening). Changes go through DAO-approved ops with per-child veto
+councils, and it publishes each child's status and cycles. It does **not** top up cycles;
+that is left to ic-unicycle and anyone else.
+
 ### Status (2026-10-13)
 
 `src/sneed_pad` implements stages 1 and 2: `get_quote`, `create_token` (one
 ICRC-2 pull of the quoted total; cycles through the CMC with the pad fronting
 them; ledger and optional index installed from SNS-W wasms; control kept,
-blackholed, or handed to Sneed DAO with an automatic registration proposal),
+blackholed, or handed to Sneed DAO with an automatic registration proposal; changed the same day: the pad files no proposals, see "Control choices" below),
 launch records, an ICRC-3 log, DAO/admin configuration. The wasm hashes need
 nobody: a daily timer (and a first run one second after install) asks SNS-W
 for the latest NNS-approved SNS version and adopts its ledger and index
@@ -209,6 +276,16 @@ through the shared PremiumClient against the premium canister), both set by
 PocketIC tests in test/canisters/tests/sneed-pad.test.js use the real
 ledger-suite wasms. The pad is deployed on staging (symdn-ciaaa-aaaal-qxobq-cai).
 
+**Status update (2026-10-20):** the pad also creates indexes for existing ledgers
+(`get_index_quote`, `create_index`, `list_index_launches`, `get_indexes_of_ledger`), on the
+blessed index code with the same payment and control choices. It offers a sixth control
+choice, `#guardian { canister; policy }`, which hands the canisters to a custody canister and
+registers them there. The handover fee (`sneed_dao_control_fee_e8s`, 5 ICP) applies to
+`#sneed_dao`, `#guardian`, and `#sns` when the root is Sneed's. Minting policy is `#nobody` (the
+ledger itself is the minting account), `#sneed_dao` or `#principal`. Not built: tiers 4–5
+(locks and liquidity from the pad) and plan-then-pay across stages. The pad is still on
+staging only.
+
 **Token Studio (2026-10-13):** the front end for all of this is one page,
 `/studio`, with three tabs. Check is the rating (was /tools/token_safety),
 with a fix button on every failing or weak line (src/tokensafety/fixes.js maps
@@ -219,6 +296,15 @@ blackhole or an SNS (commands today; filed from the studio with the user's
 own hotkeyed neuron next), add an index (pad stage, next), minting (cannot
 change after install), cycles (ic-unicycle integration, see below). Launch is the pad (was
 /tools/pad). The old routes redirect.
+
+Status (2026-10-20): the studio now has five tabs, at `/studio/<ledger>[/harden|/handover|/index]`
+and `/studio/launch`: Check, Harden, **Hand over** (`/custody` opens it without a ledger) and
+**Index** (`/studio/index` without a ledger) were added for the custody canisters, and Launch.
+Hand over, Index and Launch are behind the "coming soon" gate. Harden still shows dfx commands
+for blackholing or handing to an SNS; filing RegisterDappCanisters from the studio and the
+ic-unicycle integration are still marked "next" or "coming". The fix buttons (`tokensafety/fixes.js`)
+send controller failures to Hand over, index failures to Index, and the rest to Harden sections
+or the lock wizard.
 
 **Control choices (2026-10-13):** `#keep` (creator), `#keep_with [principals]`
 (creator plus up to ten more; adding an SNS root here lets that DAO register the
@@ -236,6 +322,9 @@ runs ic-unicycle, a member-built monitor that watches cycles, tops canisters up 
 can file treasury proposals for SNS-controlled canisters; the studio integrates with
 it for ledgers, archives and indexes. `sneed_guardian` in section 3, if it is built
 at all, is only the code-vetting controller (installs registry-trusted hashes only).
+(It was built the next day as the custody canister, which vets against NNS-blessed hashes
+and reports cycles without topping up; see section 4 and `spec/custody.md`. The ic-unicycle
+integration is not built yet.)
 Planned next: adopt existing ledgers, lock and liquidity stages, plan-then-pay
 across stages (one approval, staged execution), index canisters for existing
 ICRC-3 ledgers.
@@ -251,3 +340,7 @@ ICRC-3 ledgers.
 3. `sneed_guardian`.
 4. `sneed_pad`, tier by tier, with its own front-end ("Sneed Fun" as a brand if wanted).
 5. Scanner canister for holders once in-browser reconstruction is too slow.
+
+Status (2026-10-20): 1 built; 2 not started; 3 built (staging); 4 tiers 1–3 built (staging),
+4–5 not; 5 not started (the in-browser scan moved to a web worker). Steps 2 and 3 were done
+out of order: the guardian was built first, against the NNS-blessed list.

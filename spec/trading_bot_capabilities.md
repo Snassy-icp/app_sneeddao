@@ -8,6 +8,8 @@ The **Sneed Trading Bot** is a fully on-chain, autonomous trading bot running as
 **Language**: Motoko (backend), React (frontend)
 **Architecture**: Each user owns their own canister instance — no shared custody, no centralized server.
 
+> **Status (2026-10-20): built** (`src/sneed_bots/sneed_trading_bot/`, version 0.9.3). Items not built are marked inline. Full technical detail and known issues: `spec/trading_bot.md`.
+
 ---
 
 ## 1. Supported DEXes
@@ -43,12 +45,14 @@ Each Trade Chore instance contains an **ordered list of actions** that execute s
   - Percentage of balance: trade a percentage (in basis points) of the current token balance, clamped by min/max
 - **Preferred DEX selection**: choose a specific DEX or let the bot pick the best quote across all enabled DEXes
 - **Trade size denomination**: express trade sizes in any registered token (e.g., "trade $50 worth" using ckUSDC denomination)
+- **Trailing stop / take profit**: optional threshold in basis points; the bot tracks a peak (stop loss) or trough (take profit) watermark and only trades once price moves that far from it; the watermark resets after execution unless configured not to
+- **Fallback routing**: per trade chore, an ordered list of intermediary tokens for two-leg routes when no direct route passes the impact/slippage checks (same mechanism as the rebalancer, 4.3)
 
 ### 3.2 Trade Conditions (all optional per action)
 
 - **Balance conditions**: only trade if the input token balance is above a minimum or below a maximum, with optional denomination in any token
 - **Price conditions**: only trade if the spot price of the output token is within a min/max range, with optional denomination (e.g., "only buy if SNEED < 50 ckUSDC")
-- **Frequency control**: min and max seconds between executions of each individual action (independent of the chore interval)
+- **Frequency control**: minimum seconds between executions of each individual action (independent of the chore interval). A `maxFrequencySeconds` field exists but is not enforced yet
 - **Max price impact**: reject trades where price impact exceeds a configurable threshold (in basis points)
 - **Max slippage**: reject trades where expected slippage exceeds a configurable threshold (in basis points)
 
@@ -58,6 +62,8 @@ Each Trade Chore instance contains an **ordered list of actions** that execute s
 - **Max cumulative input**: budget cap — chore halts when total input spent across all runs reaches the limit
 - **Max cumulative output**: output cap — chore halts when total output received reaches the limit
 - **Max executions**: execution count cap — chore halts after N successful executions
+- **All actions exhausted**: when every enabled action has hit one of its limits, the chore stops itself
+- "Halts" means the chore is stopped (not paused); a `ChoreHalted` event is emitted
 - **Cumulative tracking**: the bot tracks cumulative input spent, output received, and execution count per action across all runs
 - **Reset stats**: cumulative counters can be reset per action via the API
 
@@ -84,8 +90,8 @@ Each Trade Chore instance contains an **ordered list of actions** that execute s
 ### 3.8 Action Ordering
 
 - Actions within a chore execute in a user-defined order
-- Drag-and-drop reordering in the frontend
-- API supports reordering by action ID list
+- API supports reordering by action ID list (`reorderTradeActions`)
+- Reordering in the frontend: not built yet (Status (2026-10-20): planned)
 
 ---
 
@@ -142,12 +148,12 @@ Automatically distributes funds to multiple recipients based on configurable per
 ### 6.1 Distribution Lists
 
 - Multiple distribution lists per chore instance
-- Each list specifies: source token, threshold amount (minimum balance to trigger), max distribution amount per round
-- **Distribution targets**: multiple recipients with configurable basis point allocations; recipient addresses use autocomplete principal input with name/nickname search and optional subaccount targeting
+- Each list specifies: token, source purse (main purse by default), threshold amount (minimum balance to trigger), min and max distribution amount per round
+- **Distribution targets**: multiple recipients with configurable basis point allocations; a target is either an external account (on-chain transfer; recipient addresses use autocomplete principal input with name/nickname search and optional subaccount targeting) or another chore's purse (bookkeeping credit, no fee)
 - **Auto-split**: targets without assigned percentages evenly split the remainder
-- **Renormalization**: if assigned percentages exceed 100%, they are proportionally scaled down
-- **Hard minimum**: distributions are skipped if the smallest recipient would receive less than one transaction fee
-- Amount mode support: fixed amount or percentage of balance
+- **Amount modes**: random amount between min and max (capped by balance), or a percentage of the balance capped by the max
+- External targets whose share would not exceed one transaction fee are skipped
+- Not in the trading bot (unlike the staking bot): renormalization when assigned percentages exceed 100%, and a list-wide hard minimum. Over-100% lists are a known issue, as are ignored transfer errors (see `spec/trading_bot.md`, Known issues)
 
 ### 6.2 Multi-Instance Support
 
@@ -163,6 +169,7 @@ A dedicated chore for continuous data collection even when trading chores are in
 
 - **Phase 0**: Refresh token metadata for all registered tokens
 - **Phase 1**: Fetch prices for all registered token pairs
+- **Phase 1** prices are each registered token → ICP, plus ICP → ckUSDC
 - **Phase 2**: Take balance snapshots for all tokens across main account and all enabled chore purses
 - **Phase 3**: Archive daily summaries (OHLC aggregation)
 
@@ -181,7 +188,7 @@ A reusable, three-level timer hierarchy for safe execution of long-running tasks
 ### 8.1 Architecture
 
 - **Scheduler (Level 1)**: fires on a recurring schedule, starts the Conductor
-- **Conductor (Level 2)**: orchestrates execution, manages task lifecycle via polling
+- **Conductor (Level 2)**: orchestrates execution, manages task lifecycle via polling (fixed heartbeat: 5 s idle, 10 s while a task runs, plus an immediate re-tick when a task completes)
 - **Task (Level 3)**: performs discrete units of work, self-splits across timer invocations to stay within IC instruction limits
 
 ### 8.2 Chore Lifecycle States
@@ -203,7 +210,7 @@ A reusable, three-level timer hierarchy for safe execution of long-running tasks
 
 ### 8.4 Task Timeout & Recovery
 
-- Configurable task timeout per chore (default: 5 minutes)
+- Configurable task timeout per chore (defaults per chore type: 5 minutes for trade and move-funds, 10 minutes for rebalance, distribute-funds and snapshot)
 - Automatic detection of hung/trapped tasks
 - Conductor recovers from stuck tasks and can retry or skip
 
@@ -289,7 +296,8 @@ Start actions enable powerful cross-chore orchestration — for example, a circu
 
 ### 10.4 Integration
 
-- Evaluated once per chore run, before trade execution
+- Evaluated once per trade/rebalance chore run, before trade execution, and before each queued one-off trade
+- The current run is aborted only if the triggered actions stop or pause that chore
 - Trade and rebalance chore pipelines augment their price/metadata fetch phases with circuit breaker data requirements
 - Start actions use deferred scheduling (queued and processed on the next conductor tick within seconds) since circuit breaker evaluation runs in a context without direct timer capabilities
 - Manual reset required for pause/stop actions: affected chores/tokens stay paused/stopped until manually resumed or started by another circuit breaker rule
@@ -347,8 +355,7 @@ Built-in backend DEX aggregator for quoting and executing swaps:
 - Log levels: Off, Error, Warning, Info (default), Debug, Trace
 - Filterable by: level, source, caller, time range, ID range
 - Paginated queries
-- Configurable max entries (circular buffer, default: 10,000)
-- Per-chore logging overrides
+- Max entries 10,000 (circular buffer; the trading bot has no API to change it, unlike the staking bot's `setMaxLogEntries`)
 
 ### 14.2 Trade Log
 
@@ -356,7 +363,7 @@ Built-in backend DEX aggregator for quoting and executing swaps:
 - Fields: timestamp, chore/action source, action type, tokens, amounts, price, price impact, slippage, DEX, status, error message, transaction ID, destination
 - Filterable by: chore, action type, token pair, status, time range
 - Paginated queries
-- Configurable max entries (circular buffer, default: 10,000)
+- Configurable max entries (circular buffer, default: 10,000), on/off master switch, and per-chore on/off overrides (`LoggingSettings`, `ChoreLoggingOverrides`, shared with the portfolio snapshot log)
 
 ### 14.3 Portfolio Snapshot Log
 
@@ -409,6 +416,8 @@ Fine-grained, role-based access control for delegated bot management.
 | 2 | View Chores | View chore statuses and configurations |
 | 3 | View Logs | Read log entries |
 | 4 | Manage Logs | Set log level, clear logs |
+| 5 | Manage Events | Manage event listeners, subscriptions, reaction rules |
+| 6 | View Events | View event listeners, subscriptions, reaction rules, event logs |
 | 200 | View Portfolio | View balances, purses, portfolio state |
 | 202 | Manage Trades | Configure trade chore actions |
 | 203 | Manage Rebalancer | Configure rebalancer targets and parameters |
@@ -423,6 +432,7 @@ Fine-grained, role-based access control for delegated bot management.
 | 212 | Manage Snapshot Chore | Start/stop/pause/resume/trigger snapshot chores |
 | 213 | Manage Circuit Breaker | Configure circuit breaker rules |
 | 214 | Manage Purses | Enable/disable chore purses, fund/reclaim |
+| 215 | Execute One-Off Trade | Submit, view, and cancel one-off trades |
 
 ### 16.2 Features
 
@@ -439,7 +449,7 @@ Fine-grained, role-based access control for delegated bot management.
 ### 17.1 Setup Wizard
 
 - Guided multi-step wizard for initial bot configuration
-- Steps: register tokens, fund the bot, create a trade or rebalance chore, configure actions
+- Paths: DCA, Range Trade, Rebalance, and AI Script (configuration DSL with an LLM guide); DCA can enable and fund an isolated purse and auto-start the chore
 - Animated wizard character with sparkle effects
 
 ### 17.2 Bot Management Panel (Shared Component)
@@ -454,8 +464,10 @@ Fine-grained, role-based access control for delegated bot management.
 - **Portfolio overview**: token balances with USD/ICP values, main purse vs. chore purse breakdown
 - **Portfolio value chart**: area chart of portfolio value over time (detailed snapshots + daily OHLC), with per-purse scope selector
 - **Price charts**: per-token-pair price history and daily OHLC candles
-- **Trade Chore configuration**: action list with drag-and-drop reordering, per-action forms for all parameters
-- **Rebalancer configuration**: target allocation management, portfolio status visualization with current vs. target allocations, deviation indicators
+- **Trade Chore configuration**: action list with per-action forms for all parameters (no reordering control yet)
+- **Script tab**: export the bot's configuration as DSL text and import DSL programs (review, then execute)
+- **Quick Trade**: one-off trades through a queue (main purse or any enabled chore purse)
+- **Rebalancer configuration**: target allocation management (drag-and-drop ordering), portfolio status visualization computed in the frontend with current vs. target allocations, deviation indicators
 - **Move Funds configuration**: action list for scheduled fund movements
 - **Distribution configuration**: distribution list management with target recipient rows using autocomplete principal input and subaccount dialog
 - **Circuit Breaker tab**: rule builder with condition/action forms, event log, global enable/disable
@@ -471,7 +483,7 @@ Visual health monitoring at multiple granularities:
 - Per-timer-level lamps (Scheduler, Conductor, Task)
 - Per-chore summary lamps
 - All-chores summary lamp
-- Color states: Gray (off), Green (OK/Active with pulse), Amber (overdue), Red (error)
+- Color states: Gray (off), Green (OK/Active with pulse), Amber (overdue), Orange pulsing (stopped/paused by a circuit breaker), Red (error)
 
 ---
 
@@ -494,9 +506,8 @@ Visual health monitoring at multiple granularities:
 
 ### 18.3 Cycle Management
 
-- Bot monitors its own cycle balance
-- Low-cycle warnings logged
-- Canister status queryable (memory, cycles, controller list)
+- Cycle balance, memory and controllers shown by the frontend (Bot Management Panel)
+- In-canister cycle monitoring and low-cycle log warnings: not built (Status (2026-10-20): planned)
 
 ### 18.4 Escrow Support
 
@@ -526,8 +537,8 @@ Visual health monitoring at multiple granularities:
 
 | Chore Type | ID | Default Interval | Multi-Instance | Description |
 |---|---|---|---|---|
-| Trade | `trade` | 5 min | Yes | Conditional trades with action lists |
-| Rebalance | `rebalance` | 1 hour | Yes | Portfolio rebalancing toward targets |
+| Trade | `trade` | 5 min (random up to 10 min) | Yes | Conditional trades with action lists |
+| Rebalance | `rebalance` | 1 hour (random up to 2 hours) | Yes | Portfolio rebalancing toward targets |
 | Move Funds | `move-funds` | 1 hour | Yes | Scheduled fund movements (no trading) |
 | Distribute Funds | `distribute-funds` | 1 day | Yes | Percentage-based fund distribution |
 | Snapshot | `snapshot` | 1 hour | Yes | Periodic data collection and archival |

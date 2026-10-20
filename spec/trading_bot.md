@@ -1,5 +1,7 @@
 # Sneed Trading Bot — Specification
 
+> **Status (2026-10-20): built.** Code: `src/sneed_bots/sneed_trading_bot/` (`main.mo`, `Types.mo`), version 0.9.3, on the shared `src/sneed_bots/Bot*` modules. Items still open are marked inline; known issues are collected in the "Known issues" section at the end.
+
 ## 1. Overview
 
 The **Sneed Trading Bot** is an autonomous trading canister on the Internet Computer that executes token swaps on supported DEXes (ICPSwap, KongSwap, and future additions). It reuses the shared bot infrastructure — **Botkeys** (fine-grained permissions), **Bot Chores** (recurring scheduled work), and **Botlog** (structured logging) — established by the Sneed ICP Staking Bot.
@@ -52,9 +54,12 @@ The Trading Bot uses the shared base permissions (0–99) plus its own bot-speci
 | 209 | `#WithdrawFunds`         | Send tokens from the bot to external accounts |
 | 210 | `#ConfigureDistribution` | Add/update/remove distribution lists |
 | 211 | `#ManageDistributeFunds` | Start/stop/pause/resume/trigger distribute-funds chore |
+| 212 | `#ManageSnapshotChore`   | Start/stop/pause/resume/trigger snapshot chores |
 | 213 | `#ManageCircuitBreaker`  | Create/update/delete/enable CB rules and global toggle |
 | 214 | `#ManagePurses`          | Enable/disable chore purses; fund and reclaim operations |
 | 215 | `#ExecuteOneOffTrade`    | Submit, view, and cancel one-off trades |
+
+ID 201 is unused. Chore control methods resolve the instance's type and require that type's manage permission (204/205/206/211/212); `stopAllChores` requires `#FullPermissions`. Note that reading action and rebalancer configuration (`getTradeActions`, `getMoveFundsActions`, `getRebalanceTargets`, `getRebalanceSettings`) requires the matching *manage* permission (202/203), not `#ViewPortfolio`.
 
 ---
 
@@ -64,7 +69,7 @@ The bot maintains a list of **supported tokens** (ICRC-1 ledger canisters). Each
 
 ```
 Stable var per token (stored as array of records):
-  tokenLedgerCanisterId: Principal  — The ledger canister
+  ledgerCanisterId: Principal       — The ledger canister
   symbol: Text                      — e.g. "ICP", "SNEED", "ckUSDC"
   decimals: Nat8                    — e.g. 8
   fee: Nat                          — Transfer fee in smallest unit
@@ -72,7 +77,7 @@ Stable var per token (stored as array of records):
 
 The token registry is stored as a single stable var: `var tokenRegistry: [TokenRegistryEntry]`.
 
-Tokens can be added and removed via admin API. The bot needs token metadata (symbol, decimals, fee) for proper amount calculations, display, and fee deduction.
+Tokens can be added, removed and reordered (`reorderTokenRegistry`) via admin API. The bot needs token metadata (symbol, decimals, fee) for proper amount calculations, display, and fee deduction.
 
 ### Scan for Tokens
 
@@ -109,15 +114,16 @@ The circuit breaker is an automated safety system that can pause or stop bot act
 
 #### Concepts
 
-- **Rules**: Independent circuit breaker rules, each with conditions (AND-gated) and actions.
-- **Conditions**: Three types — Price (token pair), Value (sum of multiple sources), Balance (specific token in account/purse).
+- **Rules**: Independent circuit breaker rules, each with conditions and actions. Each rule has a `topLevelOperator` (0 = AND, all conditions; 1 = OR, any condition).
+- **Conditions**: Three leaf types — Price (token pair), Value (sum of multiple sources), Balance (specific token in account/purse) — plus AND groups (type 3) and OR groups (type 4) holding nested `children`.
+  - Changed from the original plan: rules were AND-gated only; top-level AND/OR and nested groups were added.
 - **Operators**: Greater than, Less than, Inside range, Outside range, Percentage change.
 - **Percentage Change**: Compares current value against historical data from a specified lookback period. Supports up/down/either direction.
 - **Value Sources**: Specific token in account, all tokens in a chore's purse, all tokens in an account. Multiple sources are de-duplicated by token and summed.
-- **Balance Sources**: Purse-aware. Can reference:
-  - **Full on-chain balance** of the main account (actual ICRC-1 balance).
-  - **Main purse balance** (on-chain minus all chore purse allocations).
-  - **A specific chore's purse balance**.
+- **Balance Sources**: Purse-aware, selected by `balanceChoreInstanceId`:
+  - **Full on-chain balance** of the main account (actual ICRC-1 balance) — `"__main__"`.
+  - **Main purse balance** (on-chain minus all chore purse allocations) — `null`.
+  - **A specific chore's purse balance** — the chore's instance ID.
 - **Actions**: Pause token in rebal chore, pause/freeze token globally, stop/pause/start chore, stop/pause/start all chores by type, stop/pause/start all chores.
 - **Start Actions**: Start actions enable stopped chores or resume paused ones. The actual timer scheduling is deferred to the next conductor tick via the choreEngine's `queueStart` mechanism (since circuit breaker evaluation runs in a context without timer capabilities). This means a started chore will begin within seconds of the circuit breaker triggering.
 - **Manual Reset**: When a circuit breaker triggers, affected chores/tokens remain paused/stopped until manually resumed by the user (or by a circuit breaker start action).
@@ -131,12 +137,15 @@ The circuit breaker check runs **once per chore run**:
 
 Both conductors augment their metadata/price fetch phases with tokens and pairs required by enabled CB rules, ensuring fresh data is available for condition evaluation.
 
-If any rule triggers, the current chore run is aborted (returns `#Done`), and the specified actions execute.
+If a rule triggers, its actions execute. The current chore run is aborted (returns `#Done`) only when those actions stop or pause the chore that is running (directly, by type, or all chores); otherwise the run continues. One-off trades also evaluate CB rules before each queued trade (Section 19).
+
+Changed from the original plan: any trigger used to abort the current run.
 
 #### Data Model
 
 ```motoko
-// Condition types: 0=price, 1=value, 2=balance
+// Condition types: 0=price, 1=value, 2=balance, 3=AND group, 4=OR group
+// Rule topLevelOperator: 0=AND, 1=OR
 // Operators: 0=greaterThan, 1=lessThan, 2=insideRange, 3=outsideRange, 4=percentChange
 // Change directions: 0=up, 1=down, 2=either
 // Value source types: 0=specificToken, 1=allTokensInPurse, 2=allTokensInAccount
@@ -152,7 +161,7 @@ See `Types.mo` for full type definitions: `CircuitBreakerCondition`, `CircuitBre
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `circuitBreakerEnabled` | `Bool` | Global enable/disable for all CB evaluation |
+| `circuitBreakerEnabled` | `Bool` | Global enable/disable for all CB evaluation (default: true) |
 | `circuitBreakerRules` | `[CircuitBreakerRule]` | All configured rules |
 | `circuitBreakerNextRuleId` | `Nat` | Auto-increment counter for rule IDs |
 | `circuitBreakerLog` | `[CircuitBreakerEvent]` | Event log (circular buffer) |
@@ -245,12 +254,14 @@ type KongSwapActor = actor {
 The bot exposes these **internal functions** (not public API — called by chore logic):
 
 ```
-getQuote(dexId: Nat, inputToken: Principal, outputToken: Principal, amount: Nat) : async* ?SwapQuote
+getICPSwapQuote(inputToken: Principal, outputToken: Principal, amount: Nat) : async* ?SwapQuote
+getKongQuote(inputToken: Principal, outputToken: Principal, amount: Nat) : async* ?SwapQuote
 getAllQuotes(inputToken: Principal, outputToken: Principal, amount: Nat) : async* [SwapQuote]
 getBestQuote(inputToken: Principal, outputToken: Principal, amount: Nat) : async* ?SwapQuote
 executeSwap(quote: SwapQuote, slippageBps: Nat) : async* SwapResult
-getSpotPrice(dexId: Nat, inputToken: Principal, outputToken: Principal) : async* ?Nat
 ```
+
+Spot prices come from the quotes (`spotPriceE8s`) and are cached in a transient price cache seeded from the persisted `lastKnownPrices` (see staleness settings in Section 11). Changed from the original plan: there is no per-DEX `getQuote(dexId, …)` or separate `getSpotPrice` helper.
 
 ### Impact-Aware Quote Selection
 
@@ -266,7 +277,7 @@ SwapQuote = {
     inputAmount: Nat;
     effectiveInputAmount: Nat;
     expectedOutput: Nat;
-    spotPrice: Nat;
+    spotPriceE8s: Nat;          // output per 1 input token, scaled to 1e8
     priceImpactBps: Nat;
     dexFeeBps: Nat;
     inputFeesTotal: Nat;
@@ -288,11 +299,14 @@ SwapResult = {
 ### DEX Settings (Stable Vars)
 
 ```
-var enabledDexes: [Nat]
-var defaultSlippageBps: Nat
-var defaultMaxPriceImpactBps: Nat
+var enabledDexes: [Nat]                        // default [0, 1]
+var defaultSlippageBps: Nat                    // default 100 (1%)
+var defaultMaxPriceImpactBps: Nat              // default 300 (3%)
 var icpswapPoolCache: [(Text, Principal)]
+var icpswapTokenStandards: [(Text, Text, Int)] // cached token standard per ledger (decides ICRC-2 vs ICRC-1 path)
 ```
+
+DEX settings API: `getEnabledDexes`, `getSupportedDexes` (returns `[DexInfo]` = id, name, description, enabled), `setDexEnabled(dexId, enabled)`, `setEnabledDexes`, `setDefaultSlippage`, `setDefaultMaxPriceImpact`. There is **no public quote method**; quotes are internal only.
 
 ---
 
@@ -323,7 +337,7 @@ A Trade Chore instance contains an ordered list of **actions** that execute sequ
 
 Chore type ID: `"trade"`
 
-Default interval: 300 seconds (5 minutes), with `maxIntervalSeconds` for randomization.
+Default interval: 300 seconds (5 minutes), with `maxIntervalSeconds` = 600 for randomization; task timeout 300 seconds.
 
 ### Action Types
 
@@ -336,6 +350,8 @@ Actions are stored with a numeric `actionType` field (not an enum):
 | 2       | Reclaim    | Move tokens from source chore's purse to target purse (or main purse) (bookkeeping only) |
 | 3       | Send       | Send tokens from source purse to any external ICRC-1 address (on-chain transfer) |
 
+IDs 4 (`DetectedInflow`) and 5 (`DetectedOutflow`) are reserved for trade-log entries written by balance reconciliation; they are not configurable actions.
+
 ### Unified Action Storage
 
 All action types are stored in a single unified record type to avoid enum-in-stable-var issues:
@@ -343,6 +359,7 @@ All action types are stored in a single unified record type to avoid enum-in-sta
 ```
 ActionConfig = {
     id: Nat;
+    key: Text;                          // Unique within the chore instance (see Section 18 DSL, "Action Key Field")
     actionType: Nat;                    // 0=Trade, 1=FundPurse, 2=Reclaim, 3=Send
     enabled: Bool;
 
@@ -386,10 +403,15 @@ ActionConfig = {
 
     // Frequency control (seconds)
     minFrequencySeconds: ?Nat;
-    maxFrequencySeconds: ?Nat;
+    maxFrequencySeconds: ?Nat;          // Stored but not enforced (see Known issues)
 
     // Trade size denomination (Trade only)
     tradeSizeDenominationToken: ?Principal;
+
+    // Trailing stop / take profit (Trade only)
+    trailingStopBps: ?Nat;              // Threshold in bps (null = disabled, 500 = 5%)
+    trailingStopDirection: ?Nat;        // 0 = stop loss (drop from peak), 1 = take profit (rise from trough)
+    trailingStopResetOnExec: ?Nat;      // 0 = reset watermark after execution (default), 1 = never reset
 
     // Post-execution behavior (halt & cumulative limits)
     haltChoreAfterExecution: Bool;      // If true, stop the chore after this action executes
@@ -402,6 +424,7 @@ ActionConfig = {
     cumulativeInputSpent: Nat;
     cumulativeOutputReceived: Nat;
     executionCount: Nat;
+    trailingStopWatermarkE8s: ?Nat;     // Tracked peak (stop loss) or trough (take profit) price
 }
 ```
 
@@ -411,6 +434,7 @@ The input type for creating/updating actions omits runtime state fields:
 
 ```
 ActionConfigInput = {
+    key: Text;                          // Empty = auto-generate
     actionType: Nat;
     enabled: Bool;
     inputToken: Principal;
@@ -435,6 +459,9 @@ ActionConfigInput = {
     minFrequencySeconds: ?Nat;
     maxFrequencySeconds: ?Nat;
     tradeSizeDenominationToken: ?Principal;
+    trailingStopBps: ?Nat;
+    trailingStopDirection: ?Nat;
+    trailingStopResetOnExec: ?Nat;
     haltChoreAfterExecution: Bool;
     maxCumulativeInput: ?Nat;
     maxCumulativeOutput: ?Nat;
@@ -453,9 +480,11 @@ Actions support post-execution behavior flags that can automatically stop the pa
 
 Pre-checks at the start of `executeTradeAction` skip the action entirely if its cumulative limits are already met, preventing wasted work. Skipped-due-to-limit entries are recorded in the trade log with a `#Skipped` status.
 
-After each successful execution, `updateActionStats` atomically updates `lastExecutedAt`, `cumulativeInputSpent`, `cumulativeOutputReceived`, and `executionCount`. The chore conductor then checks all halt/limit conditions and stops the chore if any are triggered.
+After each successful execution, `updateActionStats` atomically updates `lastExecutedAt`, `cumulativeInputSpent`, `cumulativeOutputReceived`, and `executionCount`. The action's **task** (not the conductor) then checks the halt/limit conditions and stops the chore (`choreEngine.stop`, i.e. a full stop, not a pause) if any are triggered, emitting `ChoreHalted` (and `CumulativeLimitReached` for input/output budgets). The remaining actions of that run do not execute.
 
-Additionally, after all actions in a chore run have been processed, the conductor calls `_allActionsAtLimits` to check whether **every** enabled action in the chore has reached at least one of its cumulative limits. If so, the chore is automatically stopped and a `ChoreHalted` event is emitted. This prevents indefinite scheduling of a chore that can no longer make progress.
+Additionally, whenever an action is **not** executed (skipped), its task calls `_allActionsAtLimits` to check whether **every** enabled action in the chore has reached at least one of its limits. An action with a `maxCumulativeInput` also counts as exhausted when the remaining budget is below its `minAmount`; an action with no limit at all keeps the chore alive. If all are exhausted, the chore is stopped and a `ChoreHalted` event (`reason = allActionsAtLimits`) is emitted. This prevents indefinite scheduling of a chore that can no longer make progress.
+
+Changed from the original plan: the checks run in the task after each action rather than in the conductor after the whole run. When the remaining input budget is at least `minAmount` but below the computed trade size, the trade is capped to finish the budget.
 
 `resetActionStats` API allows resetting cumulative stats for a specific action to re-enable a halted chore.
 
@@ -463,40 +492,51 @@ Additionally, after all actions in a chore run have been processed, the conducto
 
 ```
 Stable var:
-  var tradeChoreActions: [(Text, [ActionConfig])]  — keyed by instanceId
-  var tradeChoreNextActionId: [(Text, Nat)]        — keyed by instanceId
+  var tradeChoreActions: [(Text, [ActionConfig])]        — keyed by instanceId
+  var tradeChoreNextActionId: [(Text, Nat)]              — keyed by instanceId
+  var tradeChoreFallbackRouteTokens: [(Text, [Principal])] — keyed by instanceId (get/setTradeFallbackRouteTokens)
 ```
+
+Trade actions use the same two-leg fallback routing as the rebalancer (Section 7): if no direct quote passes the impact/slippage checks, the bot tries `input → intermediary → output` through the configured fallback tokens, skipping paused/frozen intermediaries.
 
 ### Trade Chore Execution Flow
 
 When a Trade Chore instance fires:
 
-1. **Conductor (tick 0)**: Loads the action list for this instance. Filters to enabled actions.
-2. For each action (sequentially, as Level 3 tasks):
-   a. Check **cumulative limits**: If `maxCumulativeInput` or `maxExecutions` already met, skip.
+1. **Conductor (tick 0)**: Loads the action list for this instance. Filters to enabled actions. Clears any previous circuit-breaker abort flag.
+2. **Phase 0 — metadata refresh** (task): token metadata for all tokens the actions need, plus tokens referenced by enabled CB rules (skipped if fresh per `metadataStalenessSeconds`).
+3. **Phase 1 — price fetch** (task): prices for the needed pairs plus CB pairs (skipped if fresh per `priceStalenessSeconds`).
+4. **Circuit breaker check** (task). If the triggered actions stop/pause this chore, the run ends.
+5. For each action (sequentially, as Level 3 tasks), with a **before-snapshot** task first (portfolio snapshot for swaps, account snapshot for fund/reclaim/send) and an **after-snapshot** task once it completes:
+   a. Check **cumulative limits**: If `maxCumulativeInput`, `maxCumulativeOutput` or `maxExecutions` already met, skip.
    b. Check **frequency**: If `lastExecutedAt + minFrequencySeconds > now`, skip.
-   c. Check **balance conditions**: Query the relevant purse balance. Skip if outside range.
-   d. For **Trade** actions:
+   c. Acquire the **purse lock** on the effective purse; skip if held by another chore.
+   d. Global pause/freeze check on the action's tokens.
+   e. Check **balance conditions**: Query the relevant purse balance. Skip if outside range.
+   f. For **Trade** actions:
+      - Check the **trailing stop / take profit** watermark (if configured); skip if not triggered.
       - Check **price conditions**: Get spot price, convert denomination if needed. Skip if outside range.
       - Calculate trade size: Pick amount based on `amountMode` (random in range or % of balance), adjusted for denomination.
       - Get quotes from all enabled DEXes. **Filter by `maxPriceImpactBps` first**, then select best eligible quote.
       - Check **slippage** tolerance.
       - Execute the swap. Returns `(success, inputSpent, outputReceived)`.
       - On success: update chore purse balances (debit input, credit output) if chore has its own purse.
-   e. For **Fund Purse** actions:
+   g. For **Fund Purse** actions:
       - Move tokens from source purse to target chore's purse (bookkeeping only, no on-chain transfer).
-   f. For **Reclaim** actions:
+   h. For **Reclaim** actions:
       - Move tokens from source chore's purse back to target purse or main purse (bookkeeping only).
-   g. For **Send** actions:
+   i. For **Send** actions:
       - Execute ICRC-1 transfer from the bot's main account. Debit the source purse.
-   h. Update `lastExecutedAt` and cumulative stats via `updateActionStats`.
-   i. Check halt/limit conditions. Stop chore if triggered.
-   j. Log the result (including skipped trades with `#Skipped` status).
-3. **Conductor (done)**: Return `#Done`.
+   j. Update `lastExecutedAt` and cumulative stats via `updateActionStats`.
+   k. Check halt/limit conditions. Stop chore if triggered.
+   l. Log the result (including skipped trades with `#Skipped` status).
+6. **Conductor (done)**: Return `#Done`.
+
+The `N` in the conductor's `#ContinueIn(N)` is ignored by the chore engine: it re-ticks the conductor on a fixed heartbeat (5 s idle, 10 s while a task runs) and immediately after a task completes (see `spec/bot_chores.md`).
 
 ### Trade Log
 
-**Every** trade attempt, skip, and failure is logged to the trade log — nothing is silent. The trade log supports page-based pagination via `getTradeLog(query)` with page/pageSize parameters.
+**Every** trade attempt, skip, and failure is logged to the trade log — nothing is silent. The trade log supports pagination via `getTradeLog(query)`: `TradeLogQuery` has `startId`, `limit` (default 50), `offset`, and filters (`choreId`, `choreTypeId`, `actionType`, `inputToken`, `outputToken`, `status`, `fromTime`, `toTime`). Size and on/off are governed by `LoggingSettings` (`tradeLogEnabled`, `maxTradeLogEntries` default 10,000) and per-chore `ChoreLoggingOverrides`. Also: `getTradeLogStats`, `clearTradeLog`, `deleteTradeLogEntries(ids)`.
 
 Entries use three statuses:
 
@@ -510,6 +550,8 @@ This comprehensive logging covers all paths: cumulative limit skips, frequency l
 
 If an action's `minFrequencySeconds` is less than the chore's `intervalSeconds`, the admin API should return a warning (in the action status). The action will simply run every chore cycle in this case.
 
+Status (2026-10-20): planned. `addTradeAction` returns only the new ID and `updateTradeAction` a `Bool`; no warning is produced.
+
 ---
 
 ## 7. Rebalance Chore
@@ -520,7 +562,9 @@ The Rebalance Chore maintains a portfolio at target allocations by identifying o
 
 Chore type ID: `"rebalance"`
 
-Default interval: 3600 seconds (1 hour), with `maxIntervalSeconds` for randomization.
+Default interval: 3600 seconds (1 hour), with `maxIntervalSeconds` = 7200 for randomization; task timeout 600 seconds.
+
+Pipeline: metadata refresh → price fetch → before-snapshot → circuit breaker check → rebalance trade → after-snapshot → `#Done`.
 
 ### Portfolio Targets
 
@@ -533,16 +577,20 @@ Stable var:
   var rebalanceMaxPriceImpactBps: [(Text, Nat)]
   var rebalanceMaxSlippageBps: [(Text, Nat)]
   var rebalanceThresholdBps: [(Text, Nat)]
+  var rebalanceFallbackRouteTokens: [(Text, [Principal])]
 ```
+
+Defaults when unset: denomination ICP, max trade size 100,000,000 (1 ICP), min trade size 10,000, max price impact 300 bps, max slippage 100 bps, threshold 200 bps. Impact and slippage setters reject values outside 0–10000.
 
 ```
 RebalanceTarget = {
     token: Principal;
     targetBps: Nat;           // Target allocation in basis points (10000 = 100%)
+    paused: Bool;             // If true, token is excluded from rebalancing (per-rebalancer pause)
 }
 ```
 
-The sum of all `targetBps` should equal 10000. The API should warn if it doesn't.
+The sum of all `targetBps` should equal 10000. The API should warn if it doesn't. Status (2026-10-20): not built — `setRebalanceTargets` stores the list without validation or warning.
 
 ### Rebalance Execution Algorithm
 
@@ -560,7 +608,7 @@ When the Rebalance Chore fires:
 
 4. **Calculate Trade Size**: Determine how much of the overweight token to sell, clamped to `[rebalanceMinTradeSize, rebalanceMaxTradeSize]` and to available balance minus transfer fees.
 
-5. **Get Quote & Validate**: Get best quote for the pair (impact-aware). Check price impact and that the expected output moves the underweight token closer to (not past) its target.
+5. **Get Quote & Validate**: Get best quote for the pair (impact-aware). Check price impact and that the expected output moves the underweight token closer to (not past) its target. If the direct quote is insufficient, try two-leg **fallback routes** through the instance's `fallbackRouteTokens` (ordered; paused/frozen intermediaries skipped).
 
 6. **Execute Trade**: If all checks pass, execute the swap. Update chore purse balances if the chore has its own purse.
 
@@ -571,18 +619,21 @@ When the Rebalance Chore fires:
 ```motoko
 getRebalanceTargets(instanceId: Text) : async [RebalanceTarget]
 setRebalanceTargets(instanceId: Text, targets: [RebalanceTarget]) : async ()
-getRebalanceDenominationToken(instanceId: Text) : async Principal
+getRebalanceSettings(instanceId: Text) : async RebalanceSettings   // includes denominationToken and fallbackRouteTokens
 setRebalanceDenominationToken(instanceId: Text, token: Principal) : async ()
-getRebalanceSettings(instanceId: Text) : async RebalanceSettings
 setRebalanceMaxTradeSize(instanceId: Text, amount: Nat) : async ()
 setRebalanceMinTradeSize(instanceId: Text, amount: Nat) : async ()
 setRebalanceMaxPriceImpactBps(instanceId: Text, bps: Nat) : async ()
 setRebalanceMaxSlippageBps(instanceId: Text, bps: Nat) : async ()
 setRebalanceThresholdBps(instanceId: Text, bps: Nat) : async ()
-getPortfolioStatus(instanceId: Text) : async PortfolioStatus
+setRebalanceFallbackRouteTokens(instanceId: Text, tokens: [Principal]) : async ()
 ```
 
+Changed from the original plan: `getRebalanceDenominationToken` and `getPortfolioStatus` do not exist. The denomination token is part of `getRebalanceSettings`; portfolio status (an expensive update with N balance + N quote calls) was removed and is computed in the frontend from ledger balances and the price service.
+
 ### PortfolioStatus Type
+
+(Still defined in `Types.mo`, but no longer returned by any canister method; the frontend computes the same shape.)
 
 ```
 PortfolioStatus = {
@@ -640,6 +691,8 @@ Distribute Funds chores do **not** have their own purses — they source from a 
 
 Chore type ID: `"distribute-funds"`
 
+Default interval: 1 day; task timeout 600 seconds. Per list, the conductor runs a before-snapshot task (account snapshot of the list's token), the distribution task, then an after-snapshot task.
+
 ### Distribution List
 
 ```
@@ -673,12 +726,19 @@ When `choreInstanceId` is set, the distribution credits the target chore's purse
 
 ### Execution Flow
 
-1. Check source purse (or main purse) balance for the distribution token.
-2. If balance >= `thresholdAmount`, calculate distribution amount based on `amountMode`.
-3. For each target (in order):
-   - Calculate target share: `distributionAmount * targetBps / 10000` (or auto-split remainder).
+1. Acquire the purse lock on `sourcePurseId` (or the chore's effective purse); skip the list if locked. Skip if the token is frozen.
+2. Check source purse (or main purse) balance for the distribution token, capped by the on-chain balance.
+3. If balance >= `thresholdAmount`, calculate distribution amount based on `amountMode`:
+   - `0`: random in `[minDistributionAmount, min(balance, maxDistributionAmount)]` (0 if the range is empty).
+   - `1`: `balance × balancePercent / 10000` (100% if null), capped by `maxDistributionAmount`.
+4. Reserve one transfer fee per **external** target; skip if the amount does not cover them. The rest is the net amount.
+5. For each target (in order):
+   - Calculate target share: `net * targetBps / 10000`, or an equal share of the unassigned remainder for auto-split targets.
    - If target has `choreInstanceId`: credit that chore's purse, debit source purse (bookkeeping).
-   - If target is external: execute ICRC-1 transfer, debit source purse by `(amount + fee)`.
+   - If target is external and its share exceeds one fee: execute ICRC-1 transfer, debit source purse by `(amount + fee)`. Shares at or below one fee are skipped (no list-wide hard minimum as in the staking bot).
+6. Emit `DistributionExecuted` (or `DistributionFailed` if the task throws).
+
+Status (2026-10-20): built, with known issues (see the end of this spec): assigned percentages over 100% are not renormalized, transfer errors are ignored, and one early return leaves the purse lock held.
 
 ---
 
@@ -687,6 +747,10 @@ When `choreInstanceId` is set, the distribution credits the target chore's purse
 Takes periodic portfolio snapshots for historical tracking. Snapshot chores do **not** have their own purses. In addition to the main account snapshot, the snapshot chore also captures per-purse snapshots for every enabled chore purse, using cached prices and the chore's virtual balance accounting.
 
 Chore type ID: `"snapshot"`
+
+Default interval: 3600 seconds (1 hour); task timeout 600 seconds. Pipeline: Phase 0 metadata refresh → Phase 1 prices for all registered tokens (each → ICP, plus ICP → ckUSDC) → Phase 2 balance snapshots (main account and enabled purses) → Phase 3 archive daily summaries (OHLC) → `#Done`.
+
+Related settings and queries: `getPortfolioSnapshots`, `getPortfolioSnapshotStats`, `clearPortfolioSnapshots`, `getPursePortfolioSnapshots(purseId, q)`, `listPurseSnapshotPurses`, `getDailyPortfolioSummaries`, `getDailyPriceCandles`, `getPriceHistory`, `getLastKnownPrices`, `get/setPriceStaleness` (default 300 s), `get/setMetadataStaleness` (default 3600 s), `get/setPriceHistoryMaxSize` (default 5000), `getCapitalFlows`, `adjustCapitalDeployed`.
 
 ---
 
@@ -709,6 +773,7 @@ var enabledDexes: [Nat]
 var defaultSlippageBps: Nat
 var defaultMaxPriceImpactBps: Nat
 var icpswapPoolCache: [(Text, Principal)]
+var icpswapTokenStandards: [(Text, Text, Int)]
 
 // Bot Chores (shared framework)
 var choreConfigs: [(Text, BotChoreTypes.ChoreConfig)]
@@ -718,6 +783,7 @@ var choreInstances: [(Text, BotChoreTypes.ChoreInstanceInfo)]
 // Trade Chore
 var tradeChoreActions: [(Text, [ActionConfig])]
 var tradeChoreNextActionId: [(Text, Nat)]
+var tradeChoreFallbackRouteTokens: [(Text, [Principal])]
 
 // Rebalance Chore (per-instance)
 var rebalanceTargets: [(Text, [RebalanceTarget])]
@@ -727,6 +793,7 @@ var rebalanceMinTradeSize: [(Text, Nat)]
 var rebalanceMaxPriceImpactBps: [(Text, Nat)]
 var rebalanceMaxSlippageBps: [(Text, Nat)]
 var rebalanceThresholdBps: [(Text, Nat)]
+var rebalanceFallbackRouteTokens: [(Text, [Principal])]
 
 // Move Funds Chore
 var moveFundsActions: [(Text, [ActionConfig])]
@@ -741,10 +808,32 @@ var botLogNextId: Nat
 var botLogLevel: Nat
 var botLogMaxEntries: Nat
 
-// Trade Log
-var tradeLog: [TradeLogEntry]
+// Trade Log (size and on/off live in loggingSettings)
+var tradeLogEntries: [TradeLogEntry]
 var tradeLogNextId: Nat
-var tradeLogMaxEntries: Nat
+
+// Portfolio snapshots, logging settings
+var portfolioSnapshots: [PortfolioSnapshot]
+var portfolioSnapshotNextId: Nat
+var loggingSettings: LoggingSettings                      // tradeLogEnabled, portfolioLogEnabled, maxTradeLogEntries (10,000), maxPortfolioLogEntries (5,000)
+var choreLoggingOverrides: [(Text, ChoreLoggingOverrides)]
+
+// Balance reconciliation & capital tracking
+var lastKnownBalances: [(Text, Nat)]
+var capitalDeployedIcpE8s: Int
+var capitalDeployedUsdE8s: Int
+var capitalUsdE8sMigrated: Bool
+var tokenCapitalFlows: [(Text, (Nat, Nat))]
+
+// Prices & history
+var lastKnownPrices: [(Text, CachedPrice)]
+var priceHistory: [CachedPrice]
+var priceHistoryNextIdx: Nat
+var priceHistoryMaxSize: Nat                               // Default: 5000
+var priceStalenessSeconds: Nat                             // Default: 300
+var metadataStalenessSeconds: Nat                          // Default: 3600
+var dailyPortfolioSummaries: [DailyPortfolioSummary]
+var dailyPriceCandles: [DailyPriceCandle]
 
 // Circuit Breaker
 var circuitBreakerEnabled: Bool
@@ -758,11 +847,12 @@ var circuitBreakerMaxLogEntries: Nat
 var chorePurseEnabled: [(Text, Bool)]                     // instanceId → enabled
 var chorePurseBalances: [(Text, [(Text, Nat)])]           // instanceId → [(balanceKey, amount)]
 // balanceKey format: "<tokenPrincipal>" (main account only, no subaccount component)
+var choreTradingPurseId: [(Text, Text)]                   // instanceId → purseId (cross-chore override)
 
 // Per-purse portfolio snapshots
 var purseSnapshots: [(Text, PortfolioSnapshot)]           // (purseId, snapshot) pairs
 var purseSnapshotNextId: Nat
-var purseSnapshotMaxEntries: Nat
+var purseSnapshotMaxEntries: Nat                           // Default: 10,000
 
 // One-Off Trades
 var oneOffTradeQueue: [OneOffTradeEntry]
@@ -799,12 +889,16 @@ getCanisterPrincipal() : async Principal
 
 ### Permission Management (shared pattern)
 ```motoko
-getHotkeyPermissions() : async [HotkeyPermissionInfo]
+getHotkeyPermissions(hotkeyPrincipal: Principal) : async [TradingPermissionType]
+listHotkeyPrincipals() : async [HotkeyPermissionInfo]
 addHotkeyPermissions(principal: Principal, permissions: [TradingPermissionType]) : async ()
 removeHotkeyPermissions(principal: Principal, permissions: [TradingPermissionType]) : async ()
-removeHotkey(principal: Principal) : async ()
+removeHotkeyPrincipal(principal: Principal) : async ()
 listPermissionTypes() : async [(Nat, TradingPermissionType)]
-getCallerPermissions() : async [TradingPermissionType]
+callerPermissions() : async [TradingPermissionType]
+checkPermission(permission: TradingPermissionType) : async Bool
+getBotkeySnapshot() : async [(Principal, [Nat])]          // escrow backup
+restoreBotkeySnapshot(data: [(Principal, [Nat])]) : async ()
 ```
 
 ### Token Registry
@@ -812,23 +906,31 @@ getCallerPermissions() : async [TradingPermissionType]
 getTokenRegistry() : async [TokenRegistryEntry]
 addToken(entry: TokenRegistryEntry) : async ()
 removeToken(ledgerCanisterId: Principal) : async ()
+reorderTokenRegistry(orderedIds: [Principal]) : async ()
 refreshTokenMetadata(ledgerCanisterId: Principal) : async ()
+getPausedTokens / getFrozenTokens / pauseToken / unpauseToken / freezeToken / unfreezeToken   // Section 3
 ```
 
 ### Portfolio & Balances
 ```motoko
-getBalances() : async [TokenBalance]                // On-chain balances for main account
-getPortfolioStatus(instanceId: Text) : async PortfolioStatus
+withdrawIcp(...) / withdrawToken(...)               // WithdrawFunds
+manualSend(token, sourcePurseId: ?Text, destinationOwner: Principal, destinationSubaccount: ?Blob, amount: Nat) : async ManualOperationResult
+recoverPoolFunds(token0: Principal, token1: Principal) : async { #Ok: { recovered0: Nat; recovered1: Nat }; #Err: Text }   // pull stranded ICPSwap pool deposits back
 ```
+
+Changed from the original plan: there is no `getBalances` or `getPortfolioStatus`; the frontend reads ledger balances directly and computes portfolio status itself.
 
 ### DEX
 ```motoko
-getQuote(dexId: ?Nat, inputToken: Principal, outputToken: Principal, amount: Nat) : async [SwapQuote]
 getEnabledDexes() : async [Nat]
+getSupportedDexes() : async [DexInfo]
+setDexEnabled(dexId: Nat, enabled: Bool) : async ()
 setEnabledDexes(dexIds: [Nat]) : async ()
 setDefaultSlippage(bps: Nat) : async ()
 setDefaultMaxPriceImpact(bps: Nat) : async ()
 ```
+
+There is no public `getQuote`.
 
 ### Trade Chore Actions
 ```motoko
@@ -837,7 +939,9 @@ addTradeAction(instanceId: Text, config: ActionConfigInput) : async Nat
 updateTradeAction(instanceId: Text, id: Nat, config: ActionConfigInput) : async Bool
 removeTradeAction(instanceId: Text, id: Nat) : async Bool
 reorderTradeActions(instanceId: Text, actionIds: [Nat]) : async Bool
-resetActionStats(instanceId: Text, actionId: Nat) : async Bool
+resetActionStats(instanceId: Text, actionId: Nat) : async Bool   // trade and move-funds actions
+getTradeFallbackRouteTokens(instanceId: Text) : async [Principal]
+setTradeFallbackRouteTokens(instanceId: Text, tokens: [Principal]) : async ()
 ```
 
 ### Move Funds Actions
@@ -859,6 +963,7 @@ setRebalanceMinTradeSize(instanceId: Text, amount: Nat) : async ()
 setRebalanceMaxPriceImpactBps(instanceId: Text, bps: Nat) : async ()
 setRebalanceMaxSlippageBps(instanceId: Text, bps: Nat) : async ()
 setRebalanceThresholdBps(instanceId: Text, bps: Nat) : async ()
+setRebalanceFallbackRouteTokens(instanceId: Text, tokens: [Principal]) : async ()
 ```
 
 ### Distribution (shared pattern)
@@ -873,6 +978,8 @@ removeDistributionList(instanceId: Text, id: Nat) : async ()
 ```motoko
 getChoreStatuses() : async [ChoreStatus]
 getChoreStatus(choreId: Text) : async ?ChoreStatus
+getChoreTypes() : async [ChoreTypeInfo]
+getChoreConfigs() : async [(Text, ChoreConfig)]
 createChoreInstance(typeId: Text, instanceId: Text, label: Text) : async Bool
 deleteChoreInstance(instanceId: Text) : async Bool
 renameChoreInstance(instanceId: Text, newLabel: Text) : async Bool
@@ -897,12 +1004,12 @@ enablePurse(instanceId: Text) : async ()
 disablePurse(instanceId: Text) : async { #Ok; #Err: Text }
 getPurseBalances(instanceId: Text) : async [PurseBalance]
 getPurseBalance(instanceId: Text, token: Principal) : async Nat
-getAllPurseAllocations() : async [(Text, [(Text, Nat)])]    // Fast query: all purses
-getMainPurseBalances() : async [MainPurseBalance]
-getMainPurseBalance(token: Principal) : async { balance: Nat; overcommitted: Bool }
+getAllPurseAllocations() : async [ChorePurseInfo]          // Fast query: { instanceId; enabled; balances: [PurseBalance] } per chore
+getMainPurseBalances() : async [MainPurseBalance]         // update (reads ledgers)
+getMainPurseBalance(token: Principal) : async MainPurseBalance   // { token; balance; overcommitted }
 fundPurse(instanceId: Text, token: Principal, amount: Nat) : async { #Ok; #Err: Text }
 reclaimFromPurse(instanceId: Text, token: Principal, amount: Nat) : async { #Ok; #Err: Text }
-manualSend(token: Principal, to: Account, amount: Nat, sourcePurseId: ?Text) : async { #Ok: Nat; #Err: Text }
+manualSend(token: Principal, sourcePurseId: ?Text, destinationOwner: Principal, destinationSubaccount: ?Blob, amount: Nat) : async ManualOperationResult
 
 // Cross-chore purse sharing
 setTradingPurseId(instanceId: Text, purseId: ?Text) : async { #Ok; #Err: Text }
@@ -921,6 +1028,32 @@ clearOneOffTradeHistory() : async ()
 ### Trade Log
 ```motoko
 getTradeLog(query: TradeLogQuery) : async TradeLogResult   // Paginated
+getTradeLogStats() : async { totalEntries: Nat; nextId: Nat }
+clearTradeLog() : async ()
+deleteTradeLogEntries(ids: [Nat]) : async { ... }
+```
+
+### Snapshots, prices, capital, logging settings
+```motoko
+getPortfolioSnapshots(q: PortfolioSnapshotQuery) : async PortfolioSnapshotResult
+getPortfolioSnapshotStats() : async { totalEntries: Nat; nextId: Nat }
+clearPortfolioSnapshots() : async ()
+getPursePortfolioSnapshots(purseId: Text, q: PortfolioSnapshotQuery) : async PortfolioSnapshotResult
+listPurseSnapshotPurses() : async [Text]
+getDailyPortfolioSummaries(q: DailyPortfolioSummaryQuery) : async { ... }
+getDailyPriceCandles(q: DailyPriceCandleQuery) : async { ... }
+getPriceHistory(q: PriceHistoryQuery) : async PriceHistoryResult
+getLastKnownPrices() : async [(Text, CachedPrice)]
+getPriceStaleness / setPriceStaleness(seconds: Nat)
+getMetadataStaleness / setMetadataStaleness(seconds: Nat)
+getPriceHistoryMaxSize / setPriceHistoryMaxSize(size: Nat)
+getCapitalFlows() : async { ... }
+adjustCapitalDeployed(icpDeltaE8s: Int, usdDeltaE8s: Int) : async ()
+getLoggingSettings() : async LoggingSettings
+setLoggingSettings(settings: LoggingSettings) : async ()
+getChoreLoggingOverrides() : async [(Text, ChoreLoggingOverrides)]
+setChoreLoggingOverride(choreId: Text, overrides: ChoreLoggingOverrides) : async ()
+removeChoreLoggingOverride(choreId: Text) : async ()
 ```
 
 ### Log (shared pattern)
@@ -929,7 +1062,10 @@ getLogs(filter: LogFilter) : async LogResult
 getLogConfig() : async LogConfig
 setLogLevel(level: LogLevel) : async ()
 clearLogs() : async ()
+getLogAlertSummary(sinceId: Nat) : async LogAlertSummary
 ```
+
+(The trading bot has no `setMaxLogEntries`; the bot log keeps `botLogMaxEntries` = 10,000.)
 
 ### Event System (shared pattern)
 ```motoko
@@ -938,6 +1074,7 @@ registerEventListener(req: RegisterListenerRequest) : async { #Ok: Nat; #Err: Te
 unregisterEventListener(listenerId: Nat) : async ()
 updateEventListenerTypes(listenerId: Nat, newEventTypeIds: [Nat]) : async { #Ok; #Err: Text }
 getEventListeners() : async [EventListenerRegistration]
+getEventEmissionEnabled() : async Bool
 setEventEmissionEnabled(enabled: Bool) : async ()
 getEventLog(query: EventLogQuery) : async EventLogResult
 getEventTypes() : async [(Nat, Text)]
@@ -995,12 +1132,12 @@ The bot should prefer ICRC-2 when the token supports it, falling back to ICRC-1.
 - Pre-adjustment of `lastKnownBalance` for input tokens before `await* executeSwap` calls prevents false "Detected Outflow" entries from concurrent `reconcileBalance` calls during active trades.
 
 ### Cycle Management
-- The bot should monitor its own cycle balance and log warnings when low.
-- Inter-canister calls (DEX quotes, swaps) consume cycles. The bot should avoid unnecessary calls.
+- The bot should monitor its own cycle balance and log warnings when low. Status (2026-10-20): planned — the canister has no cycle-balance check or low-cycle warning; cycles are shown by the frontend (Bot Management Panel).
+- Inter-canister calls (DEX quotes, swaps) consume cycles. The bot avoids unnecessary calls through the metadata and price caches (staleness settings).
 
 ### Conductor Resilience
-- The conductor reschedules on error (prevents stuck conductors after transient failures).
-- `triggerChore` force-resets stuck conductors where `conductorActive` is `true` but no progress is being made.
+- The engine schedules the next conductor tick *before* running the conductor (schedule-first heartbeat), so a trap inside a tick does not leave the conductor without a timer. A conductor that returns `#Error` or throws ends the run as failed; the next run comes from the scheduler. Changed from the original plan: there is no "reschedule on error" retry of the same run.
+- `triggerChore` force-resets stuck conductors where `conductorActive` is `true` but there is no timer and no task, or the run has been active for more than 120 seconds.
 
 ### Upgrade Safety
 - All conductor/task closures are transient and re-created on every canister start.
@@ -1254,14 +1391,14 @@ disablePurse(instanceId: Text) : async { #Ok; #Err: Text }
 
 getPurseBalances(instanceId: Text) : async [PurseBalance]
 getPurseBalance(instanceId: Text, token: Principal) : async Nat
-getAllPurseAllocations() : async [(Text, [(Text, Nat)])]
+getAllPurseAllocations() : async [ChorePurseInfo]
 
 getMainPurseBalances() : async [MainPurseBalance]
-getMainPurseBalance(token: Principal) : async { balance: Nat; overcommitted: Bool }
+getMainPurseBalance(token: Principal) : async MainPurseBalance
 
 fundPurse(instanceId: Text, token: Principal, amount: Nat) : async { #Ok; #Err: Text }
 reclaimFromPurse(instanceId: Text, token: Principal, amount: Nat) : async { #Ok; #Err: Text }
-manualSend(token: Principal, to: Account, amount: Nat, sourcePurseId: ?Text) : async { #Ok: Nat; #Err: Text }
+manualSend(token: Principal, sourcePurseId: ?Text, destinationOwner: Principal, destinationSubaccount: ?Blob, amount: Nat) : async ManualOperationResult
 
 // Cross-chore purse sharing
 setTradingPurseId(instanceId: Text, purseId: ?Text) : async { #Ok; #Err: Text }
@@ -1315,12 +1452,17 @@ Each chore card shows:
 - Per-token purse balance table with Fund/Reclaim controls.
 - Action list with cumulative progress indicators (e.g., "42/100 ICP spent") and "Reset Stats" buttons.
 - Collapsible "Limits" section in the action form for halt/cumulative limit configuration.
+- Action order: the `reorderTradeActions` API exists, but the trade-action list has no reorder control in the UI yet (Status (2026-10-20): planned). Drag-and-drop exists only for rebalance targets and token chips; fallback route tokens use up/down buttons.
 
 ### Wizard
 
-The wizard supports creating:
+The wizard (`TradingBotWizard.jsx`) supports creating:
 - **DCA chores**: With optional budget limit (`maxCumulativeInput`), purse isolation toggle (default: on), fund amount, and auto-start toggle (default: yes).
 - **Range Trade chores**: With stop-loss action (`haltChoreAfterExecution: true`), configurable price ranges, impact/slippage tolerance.
+- **Rebalance chores**: targets and settings.
+- **AI Script**: write or paste a configuration DSL program (Section 18 "Configuration DSL") with an LLM guide, then review and execute the resolved operations.
+
+The trading bot page also has a **Script** tab (`TradingBotDSLPanel.jsx`) for export and import of the DSL.
 
 ### Circuit Breaker Tab
 
@@ -1411,8 +1553,8 @@ Event type IDs follow the same range convention as permission IDs. Stored as Nat
 | 4  | `ChoreRunCompleted` | A single chore run finished successfully | choreId, choreTypeId |
 | 5  | `ChoreRunFailed` | A single chore run failed | choreId, choreTypeId, error |
 | 6  | `ChoreHalted` | Chore auto-halted by limit/halt flag | choreId, reason |
-| 10 | `DistributionExecuted` | Distribution list completed | listId, listName, token, totalDistributed |
-| 11 | `DistributionFailed` | Distribution failed | listId, listName, error |
+| 10 | `DistributionExecuted` | Distribution list completed | choreId, list (name), token, amount, externalAmount, purseAmount (trading bot); choreId, list, amount, targets, ledger (staking bot) |
+| 11 | `DistributionFailed` | Distribution failed | choreId, list, error (trading bot); choreId, list, succeeded, failed, ledger (staking bot) |
 
 #### Staking Bot Events (100–199)
 
@@ -2434,8 +2576,10 @@ The implementation lives in:
 | 1   | `#FundPurse`      |
 | 2   | `#Reclaim`        |
 | 3   | `#Send`           |
+| 4   | `DetectedInflow` (trade log only) |
+| 5   | `DetectedOutflow` (trade log only) |
 
-These are NEVER stored as variants in stable storage — only the Nat values are stored.
+In code these are Nat constants in `Types.ActionType` (there is no variant type). These are NEVER stored as variants in stable storage — only the Nat values are stored.
 
 ## Appendix B: Numeric DEX ID Map
 
@@ -2445,3 +2589,12 @@ These are NEVER stored as variants in stable storage — only the Nat values are
 | 1   | `#KongSwap`   |
 
 These are NEVER stored as variants in stable storage — only the Nat values are stored.
+
+## Known issues (2026-10-20)
+
+Found while aligning this spec with the code; these are code issues, not intended behaviour.
+
+1. **Distribute funds: transfer errors ignored.** `_df_makeTaskFn` does `ignore await ledger.icrc1_transfer(...)` (`src/sneed_bots/sneed_trading_bot/main.mo:5989`) and counts the share as distributed: a failed transfer is still debited from the source purse, from `lastKnownBalance` and from capital deployed, and `DistributionExecuted` is emitted.
+2. **Distribute funds: no renormalization above 100%.** Shares are `net * bp / 10000` (`main.mo:5966`) with no scaling when the assigned basis points sum to more than 10000, so the list can try to distribute more than `net` (unlike the staking bot, which renormalizes). With a source purse this can hit the `assert` in `adjustChorePurseBalance` (`main.mo:765`) and trap the task.
+3. **Distribute funds: purse lock leak.** The early `return #Done` when the amount cannot cover the external fees (`main.mo:5946-5947`) does not call `unlockPurse`, so the source purse stays locked for the 5-minute TTL and other chores sharing it skip.
+4. **`maxFrequencySeconds` is not enforced.** It is stored on actions but no execution path reads it; only `minFrequencySeconds` is checked (`main.mo:3341`).

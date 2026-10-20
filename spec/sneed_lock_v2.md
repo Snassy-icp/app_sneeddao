@@ -6,6 +6,13 @@ Everything an integrator will depend on has to be in, and right, before then: th
 layout, the lock lifecycle, the read API and the log. Features that only *use* locks
 (rewards, voting, hotkeys) live in other canisters, which stay upgradable.
 
+**Status (2026-10-20):** sections 1–4 (v2a dissolve delays, v2b LP NFTs with ICRC-37, v2c token
+locks as NFTs with gas) are **built** in `src/sneed_lock` (main.mo, Dissolve.mo, Nft.mo) and
+live on mainnet (`get_lock_limits`, `get_lock_gas` and `icrc7_total_supply` answer). Sections 5
+(`sneed_hotkey`) and 7 (`sneed_gov`) are **planned**: neither canister exists yet. Section 6 is
+partly done (see there). Where the build differs from a decision below, the section says so in a
+"Changed from the original plan" note.
+
 ## Decisions at a glance
 
 | Topic | Decision |
@@ -35,13 +42,20 @@ Locks get the essential mechanics of an NNS/SNS neuron. Three shapes:
 
 ### State
 
-New stable vars only (the stored lock records do not change shape):
+New stable vars only (the stored lock records do not change shape). As built, one map
+(`dissolve_infos` in main.mo, type `Dissolve.Info`) holds the three values, only for locks that
+have or had a delay:
 
 ```
-LockEnd       lock_id → Nat64       // end of the lock period (y). Absent = the stored expiry.
-DissolveDelay lock_id → Nat64       // x in ns. Absent = 0.
-Dissolving    lock_id → Nat64       // the time dissolving finishes. Absent = not dissolving.
+dissolve_infos lock_id → {
+  lock_end : Nat64;            // end of the lock period (y). Absent entry = the stored expiry.
+  delay : Nat64;               // x in ns. Absent entry = 0.
+  dissolving_until : ?Nat64;   // the time dissolving finishes; null = not dissolving.
+}                              // stays set once dissolved
 ```
+
+Changed from the original plan: one map of records instead of three maps (`LockEnd`,
+`DissolveDelay`, `Dissolving`); same meaning.
 
 ### Rules
 
@@ -51,17 +65,26 @@ Dissolving    lock_id → Nat64       // the time dissolving finishes. Absent = 
   `now ≥ lock_end`. Sets `dissolving_until = now + delay`.
 - **stop_dissolving(lock_id)**: owner only; while dissolving and `now < dissolving_until`.
   Sets `delay = dissolving_until − now` and clears `Dissolving`, as the NNS does.
-- **increase_dissolve_delay(lock_id, new_delay)**: owner only, while the lock is locked.
-  - Not dissolving: `new_delay > delay`.
-  - Dissolving: `dissolving_until` moves out by `new_delay − remaining`.
-  - Adding a delay to an existing no-delay lock is allowed while it is still locked.
-- **extend_lock(lock_id, new_end)**: owner only, while not dissolving; `new_end > lock_end`.
-  This is new for token locks, which today cannot be extended at all. Position locks already
-  extend through `update_position_lock`, which follows the same rule.
+- **increase_dissolve_delay(lock_id, additional_ns)**: owner only, while the lock is locked.
+  Adds `additional_ns` (> 0) to the delay.
+  - Dissolving: `dissolving_until` moves out by the same amount.
+  - Adding a delay to an existing no-delay lock is allowed while it is still locked; its stored
+    expiry then becomes its lock end.
+  - Changed from the original plan: the argument is the increase, not the new total delay
+    (`new_delay`); the effect is the same.
+- **extend_lock(lock_id, new_end)**: owner only, while not dissolving; `new_end > lock_end` and
+  `new_end > now`. This is new for token locks, which before v2 could not be extended at all.
+  It works for position locks too (logged as `sneedlock_position_lock_extend`);
+  `update_position_lock` still extends position locks as before.
+- All four changes answer `LockOpResult` (`#Ok : LockState` or `#Err` of `#NotFound`,
+  `#NotOwner`, `#InProgress`, `#Invalid : Text`). `#InProgress` while an ownership transfer of
+  the lock, or another token operation of its owner, is running.
 - **The limits** apply to lock period + delay. On mainnet the minimum is 5 seconds (the code's
-  default; the user remembered 5 minutes) and the maximum about 10 years (locks expiring in
-  2035 exist; the DAO sets it with `set_max_lock_length_days`).
-  - At creation: `min ≤ (lock_end − now) + delay ≤ max`.
+  default; the user remembered 5 minutes) and the maximum 3,652 days, about 10 years
+  (`get_lock_limits` on 2026-10-20 answers `max_lock_length_ns = 315_532_800_000_000_000`; the
+  DAO sets it with `set_max_lock_length_days`).
+  - At creation: `min ≤ (lock_end − now) + delay ≤ max` for a lock with a delay. A lock
+    without one keeps the old checks (`now + min ≤ expires_at ≤ now + max`).
   - After any change: `max(lock_end − now, 0) + delay ≤ max`, or `dissolving_until − now ≤ max`
     while dissolving.
   - A new `get_lock_limits()` query exposes both, since today nothing does.
@@ -132,12 +155,17 @@ labelled "at the soonest", wherever a plain lock shows its expiry.
 per lock id in a stable map, set when the lock is created and kept after it is archived.
 On the upgrade that adds it, the canister fills it in once from the `*_lock_create` blocks
 of its ICRC-3 log, so every lock created since the log began (October 2026) has its time.
+(The backfill reads only blocks still held by `sneed_lock`, not archived ones; no archive
+existed when it ran on mainnet, so nothing was missed.)
 Older locks have none (`null`), and GUIs say so. Re-locking or extending a position keeps its
 lock id and so its age. Whether an age bonus survives an NFT transfer is an open question
 (below); `created_at` itself never changes.
 
 Plus a batch form and paged forms per owner and per ledger. This is the single query
-`sneed_gov` and integrators build on.
+`sneed_gov` and integrators build on. As built: `get_lock_states(ids)` (at most 100 ids) and
+`get_lock_states_page(q)` with filters `owner`, `ledger`, `swap_canister_id`, `token`, `kind`,
+`status` (`#Active` / `#Expired`) and `include_archived`, ascending ids after `prev`, `take`
+100 by default and at most 500. `LockState` also carries `dex` for position locks.
 
 ### Log
 
@@ -147,7 +175,12 @@ New ICRC-3 block types:
 - `sneedlock_dissolve_delay_increase`
 - `sneedlock_token_lock_extend`
 
-The existing create blocks gain an optional `dissolve_delay` field.
+`extend_lock` on a position lock writes the existing `sneedlock_position_lock_extend`. All five
+carry `cid`, `caller`, `owner`, `lock_id`, `kind`, `ledger` or `pool`, `old_expiry`, `expiry`
+(effective), `lock_end`, and `dissolve_delay` / `dissolving_until` when the lock has them.
+
+The existing create blocks gain an optional `dissolve_delay` field. Their `expiry` field is the
+`expires_at` the caller asked for (the lock end), not the stored effective expiry.
 
 ---
 
@@ -162,9 +195,12 @@ The existing create blocks gain an optional `dissolve_delay` field.
   Existing positions are assigned at upgrade from their current lock.
 - **Minted** when a position is first locked (`7mint`), and once for every existing one when
   phase 1 activates. That is a bounded batch on a timer, logged as `7mint` with
-  `"meta": "activation"`.
+  `"meta": "activation"`. Changed from the original plan: activation runs once, in a single
+  message right after the ICRC-3 history import, and the reason is
+  `meta.sneedlock:minted_by = "activation"` (see "As built" below).
 - **Burned** when the position leaves Sneed Lock (`claim_position`, withdrawal): `7burn`.
-  `icrc7_owner_of` then answers `null`.
+  `icrc7_owner_of` then answers `null`. As built, the burn happens in `transfer_position`
+  (the withdrawal); `claim_position` only records the caller's claim and burns nothing.
 - Phase 1 token locks are **not** in the collection: `icrc7_owner_of` answers `null`, and the
   supply and the lists leave them out.
 
@@ -253,6 +289,10 @@ TokenApprovals      token_id → [(spender : Account, expires_at : ?Nat64, creat
 CollectionApprovals owner Account → [(spender : Account, expires_at : ?Nat64, created_at : Nat64)]  // ≤ 8 per account
 ```
 
+Changed from the original plan: the limit is 10 per token and 10 per account
+(`icrc37_max_approvals_per_token_or_collection`), and the lists hold the full ICRC-37
+`ApprovalInfo` (spender, from_subaccount, expires_at, memo, created_at_time).
+
 **Rules:**
 - **Token approvals are cleared on every transfer**, including `transfer_from` and a burn, as
   the standard requires. Collection approvals stay with the owner's account.
@@ -263,9 +303,15 @@ CollectionApprovals owner Account → [(spender : Account, expires_at : ?Nat64, 
     token or for the collection of the `from` account;
   - `from` must be the current owner account;
   - the same recipient checks as `icrc7_transfer` apply.
-- Expired approvals are refused, and pruned when touched and by a daily sweep.
+- Expired approvals are refused, and pruned when touched and by a daily sweep. As built there
+  is no sweep: expired approvals are ignored by every check and read, and dropped the next time
+  that token's or account's approvals are written (approve, revoke, transfer, burn).
 - `created_at_time` is checked against a 24-hour window, as for transfers. Duplicates within
-  the window are refused (`Duplicate`), using a bounded recent-transactions set.
+  the window are refused (`Duplicate`), using a bounded recent-transactions set. As built,
+  duplicate detection covers `icrc7_transfer` and `icrc37_transfer_from` (the set is pruned to
+  the window on each transfer call); approvals and revocations are only time-checked, and an
+  approval for an already-approved spender replaces it.
+- An approval whose `expires_at` is already past is refused (`GenericError` 4).
 - Logged as `37approve`, `37approve_coll`, `37revoke`, `37revoke_coll` and `37xfer`, each with
   the standard fields.
 
@@ -337,7 +383,9 @@ fee `F` to the sending account. The lock's amount never changes: whatever counts
   `0xFE`, bytes 1–3 = `"GAS"`, bytes 24–31 = the lock id big-endian, zero elsewhere. Byte 0 of a
   Sneed wallet subaccount is the principal's length (at most 29) and the payment subaccount keeps
   that layout, so no gas account can be anyone's wallet. A query `get_lock_gas_account(lock_id)`
-  answers it, and clients may also derive it.
+  answers it, and clients may also derive it. Changed from the original plan: the query is
+  `get_lock_gas(lock_id)` and answers `?{ account; ledger; transfer_fee : ?Nat }` (null for ids
+  that are not token locks, live or archived).
 - **Funding:** a plain ICRC-1 transfer by anyone: the sender when listing or sending (the
   frontend offers "add gas for about N transfers"), the recipient, a marketplace. No call to
   Sneed Lock is needed, and no state: the balance lives on the ledger.
@@ -358,10 +406,13 @@ fee `F` to the sending account. The lock's amount never changes: whatever counts
 - **Whose it is:** the lock's current owner's, whoever funded it. Gas travels with the lock.
 - **Taking it back:** `withdraw_lock_gas(lock_id, to : Account)`, the lock's owner only (the last
   owner once the lock is archived), sends the tank's balance minus one fee. Serialised by the
-  owner's token-op guard. Logged as `sneedlock_gas_withdraw`.
+  owner's token-op guard. Logged as `sneedlock_gas_withdraw`. Answers `#Ok` with the ledger block
+  index or `#Err : Text` (also when the tank holds no more than one fee).
 - **Read:** NFT metadata is served by a query, which cannot read the ledger, so the metadata
   carries `sneedlock:gas_account` (the account) and `sneedlock:transfer_fee` (the ledger fee when
-  last seen), and wallets read the balance themselves. The Sneed frontend shows "gas for about
+  last seen), and wallets read the balance themselves. Changed from the original plan: the
+  account is two fields, `sneedlock:gas_owner` (Text, the Sneed Lock principal) and
+  `sneedlock:gas_subaccount` (Blob). The Sneed frontend shows "gas for about
   N transfers" (`floor(balance / 2F)`) plus whether the owner's free balance covers one.
 
 ### The NFT
@@ -390,7 +441,8 @@ fee `F` to the sending account. The lock's amount never changes: whatever counts
   and answers each separately (`icrc7_atomic_batch_transfers` stays `false`).
 - **Metadata:** `icrc7:name` ("1,000 SNEED lock"), `icrc7:image` (the same on-the-fly SVG card),
   `sneedlock:kind = token`, `sneedlock:ledger`, `sneedlock:amount`, the lock fields as for
-  positions, `sneedlock:gas_account`, `sneedlock:transfer_fee`.
+  positions, `sneedlock:gas_owner`, `sneedlock:gas_subaccount`, `sneedlock:transfer_fee` (the
+  fee only when Sneed Lock has seen it: symbol cache or a gas withdrawal).
 
 ### As built (v2c, 2026-10-15)
 
@@ -434,6 +486,9 @@ but a funded tank.
 
 ## 5 · Hotkeys: a separate `sneed_hotkey` registry
 
+**Status (2026-10-20): planned.** No `sneed_hotkey` canister exists. Sneed Lock grants hotkeys
+nothing, as decided.
+
 **What hotkeys are for here:** acting for a lock without being able to move it, which mostly
 means voting in `sneed_gov`. NNS hotkeys cannot disburse or change dissolve state, and
 Sneed Lock has nothing else a hotkey could do. So **Sneed Lock needs no hotkeys at all**.
@@ -462,8 +517,11 @@ always act directly.
 
 ## 6 · What must be right before ossifying (integrator surface)
 
+**Status (2026-10-20): partly done.** The read API, the paged queries, the log blocks and the
+token-lock money layout are built; admin retirement is not finished.
+
 - `get_lock_state` (single, batch, paged by owner and by ledger, and by swap for positions),
-  with stable field names.
+  with stable field names. Built: `get_lock_state`, `get_lock_states`, `get_lock_states_page`.
 - The ICRC-3 log complete for every state change, including the new dissolve and NFT blocks.
   `sneed_gov` and indexers should be able to follow the log instead of scanning.
 - ~~Paged versions of every list query.~~ Done (2026-10-15): the whole-store queries
@@ -474,17 +532,25 @@ always act directly.
   500 entries. Per-owner queries (`get_token_locks`, `get_claimed_positions_for_principal`,
   `get_position_ownerships`, `get_summed_locks`) stay: Sneedex calls `get_token_locks`, and they
   grow only with one owner's locks.
-- Stable error variants on the new methods (`#Err` with codes, not only text).
-- The token-lock money layout (section 4).
+- Stable error variants on the new methods (`#Err` with codes, not only text). As built: the
+  dissolve methods answer `LockOpError` variants; the ICRC-7/37 methods use `GenericError`
+  codes (1 batch too large, 2 memo too long, 3 busy, 4 approval already expired, 5 too many
+  approvals, 6 bad subaccount, 7 needs gas, 8 unlocked, 9 other). `withdraw_lock_gas` and the
+  older methods still answer text.
+- The token-lock money layout (section 4). Built.
 - Admin retirement first (the hard-coded admin is already gone; the admin list is next): configuration (max lock
-  length, fees) moves to governance-approved calls, then custody or the blackhole.
-- Confirm the current mainnet `max_lock_length_ns` (the default in code is 7 days, settable in
-  days by `set_max_lock_length_days`). It now caps lock period + dissolve delay, so it decides
-  how neuron-like a lock can be.
+  length, fees) moves to governance-approved calls, then custody or the blackhole. Not done:
+  configuration is still open to SNS governance **or** any principal on the admin list
+  (`admin_add_admin` / `admin_remove_admin`).
+- ~~Confirm the current mainnet `max_lock_length_ns`.~~ Confirmed 2026-10-20: 3,652 days (the
+  default in code is 7 days, settable in days by `set_max_lock_length_days`). It now caps lock
+  period + dissolve delay, so it decides how neuron-like a lock can be.
 
 ---
 
 ## 7 · Built on top: `sneed_gov` (outline; own spec next)
+
+**Status (2026-10-20): planned.** No `sneed_gov` canister or spec exists yet.
 
 `sneed_gov` turns Sneed Lock into a staking and governance module for any token,
 permissionlessly. It reads Sneed Lock and never holds locks.
@@ -554,11 +620,13 @@ different rewards, rules and purposes: each DAO is its own canister and its own 
 ## 8 · Phasing and testing
 
 1. **Sneed Lock v2a:** dissolve delays, token-lock extension, `get_lock_state`, paged queries,
-   new log blocks.
+   new log blocks. *Built, live.*
 2. **Sneed Lock v2b:** ICRC-7 for LP locks, labels, ICRC-37, the activation mint, the symbol
-   cache, the card image.
-3. **Sneed Lock v2c:** token locks as NFTs (layout A or B).
+   cache, the card image. *Built, live.*
+3. **Sneed Lock v2c:** token locks as NFTs (layout A or B). *Built, live, on today's layout
+   with gas (section 4).*
 4. **`sneed_hotkey`**, then **`sneed_gov`** (rewards, then voting, then treasury and custody).
+   *Planned.*
 
 Each Sneed Lock phase:
 - ships by SNS proposal after staging;

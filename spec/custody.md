@@ -2,6 +2,8 @@
 
 Agreed on 2026-10-14. One canister codebase, `sneed_guardian`, deployed three times:
 
+> **Status (2026-10-20): v1 is built** (`src/sneed_guardian/main.mo`, `Types.mo`; PocketIC tests in `test/canisters`). The three deployments were renamed from `sneed_hole` / `sneed_accord` on 2026-10-19 and are declared in `dfx.json`. Only `sneed_guardian` is deployed, on staging (`ri7jl-6iaaa-aaaal-qxojq-cai`). The blackhole and multi-DAO deployments and every mainnet deployment are **planned**; no GNSF is registered yet. In the frontend, the console (`/guardian`) and the hand-over and index panels in the Token Studio are built but sit behind the "coming soon" gate (admins can preview them) until a deployment is marked `live` in `tokensafety/guardianIdl.js`.
+
 | Deployment | Controllers | Approvers | Who trusts whom |
 |---|---|---|---|
 | `sneed_guardian` | Sneed SNS root | Sneed governance | the project trusts Sneed DAO: the DAO can upgrade the guardian itself and so bypass any veto |
@@ -38,22 +40,42 @@ Policy    = { guardians : [Principal];   // may veto an op and give go-aheads
               window_ns : Nat;           // time an approved op waits for vetoes before it may execute
               auto_upgrade : Bool }      // follow the blessed path without a vote
 Child     = { canister_id; kind; suite : ?Principal (the ledger an index/archive belongs to);
-              label; policy; registered_at; registered_by; status : ?Status }
+              title; policy; registered_at; registered_by; status : ?Status;
+              last_upgrade : ?{ at; from : ?Blob; to : Blob; by : Text };  // by = "auto" or "op <id>"
+              last_upgrade_error : ?Text }
 Status    = { at; cycles; memory_size; module_hash; controllers; running; idle_cycles_burned_per_day;
-              freezing_threshold; error }        // last canister_status read
-Op        = { id; child; kind : OpKind; staged_by; staged_at; memo; fee_paid_e8s;
+              freezing_threshold; error }        // last canister_status read; on a failed read the
+                                                 // previous fields stay and `error` is set
+Op        = { id; child; kind : OpKind; staged_by; staged_at; memo;
+              payer;                             // refunds and surplus go here
+              fee_e8s;                           // the fee due, fixed at staging
+              fee_paid_e8s; refunded_e8s;
               approvals : [Principal]; oks : [Principal]; vetoes : [Principal]; state }
 OpKind    = #set_controllers : [Principal]       // self not in the list = release the child
-          | #install : { hash : Blob; arg : ?Blob }   // next blessed hash for the kind
+          | #install : { hash : Blob; arg : ?Blob }   // next blessed hash for the kind, or the
+                                                      // current hash with an arg (reconfiguration)
           | #set_policy : Policy
           | #set_config : ConfigUpdate            // child = the guardian itself
           | #set_approvers : { approvers; threshold }
 OpState   = #pending | #approved : Int | #vetoed | #executed : Int | #failed : Text | #expired | #cancelled
+ConfigUpdate = { op_fee_e8s; premium_op_fee_e8s; fee_destination; op_ttl_ns; self_window_ns;
+                 status_interval_s; low_cycles_threshold; cycle_reserve; paused;
+                 approve_function_id : ??Nat64 }  // every field optional
+Init      = { name; approvers; threshold; archive_controllers;  // the last: of the ICRC-3 log's archives
+              admins; sneed_premium : ?Principal; fee_destination : ?Account;
+              icp_ledger : ?Principal; sns_wasm : ?Principal }  // tests point these at mocks
 ```
+
+Changed from the original plan: the child's `label` is called `title` (at most 64 characters). Ops record `payer`, `fee_e8s` and `refunded_e8s` for the payment-subaccount flow. The install argument fixes everything a blackholed deployment cannot change later.
+
+Limits enforced by `validatePolicy` and `validateOp`: at most 20 guardians, none anonymous; `vetoes_to_block` and `oks_required` at most the number of guardians; `window_ns` at most 90 days, and non-zero when vetoes are on. `#set_controllers` takes 1 to 10 controllers, none anonymous. `#set_approvers` needs at least one approver and a threshold from 1 to the number of approvers. `#set_config` and `#set_approvers` must target the guardian itself; the other kinds must target a registered child.
+
+Every state change is also a block in the guardian's own ICRC-3 log (`guardian_register`, `guardian_op_stage`, `guardian_op_approve`, `guardian_op_ok`, `guardian_op_veto`, `guardian_op_cancel`, `guardian_op_fee`, `guardian_op_execute`, `guardian_op_fail`, `guardian_op_refund`, `guardian_release`, `guardian_upgrade`, `guardian_policy_set`, `guardian_approvers_set`, `guardian_config_update`). A text log is kept as well (`get_text_log`).
 
 ## Registration (permissionless, free)
 
-`register(canister_id, kind, policy, suite, label)`:
+`register(canister_id, kind, policy, suite, title)` (signed-in callers, refused while paused; `suite`
+must name a registered ledger and is given only for an index or archive):
 
 1. the guardian must already be a controller of the canister: `canister_status`
    succeeds only then;
@@ -66,7 +88,8 @@ else about the child, changes only through ops. The registrant drops themselves 
 the controller list whenever they are ready; the guardian never does that for them.
 Archives that a registered ledger spawns are discovered by the status timer (through
 the ledger's `archives` query) and registered under the ledger's policy when the
-guardian controls them and their hash is blessed.
+guardian controls them and their hash is blessed. The guardian is then the registrant,
+and the archive's title is the ledger's title plus " archive".
 
 Anyone may register any ledger they control, and anyone may stage and pay for an op
 on any child: nothing about registering or staging favours the caller, the rules
@@ -79,38 +102,51 @@ stage ──► pending ──approvals ≥ threshold──► approved(at) ─�
             │                                   │    ▲                     │
             │ vetoes ≥ vetoes_to_block           │    │ oks ≥ oks_required  └─► failed(text)
             └───────────────────────────────────┴──► vetoed
-          (any state but executed) ──ttl──► expired;  staged_by / approver ──► cancelled
+          (pending or approved) ──ttl──► expired;  staged_by / approver ──► cancelled
 ```
 
-- `stage_op(child, kind, memo, payer)`: anyone, free. Validates the op against the
-  child's kind and the blessed lists, records the payer (the caller unless named) and
-  the fee due (the premium rate for Sneed Premium members; 0 for ops on the guardian
-  itself). The fee is then paid by a plain transfer to the op's **payment subaccount**
+Changed from the original plan: only pending and approved ops expire, since vetoed, failed and cancelled are already final. Expiry is applied lazily, when the op is next read.
+
+- `stage_op(child, kind, memo, payer)`: any signed-in caller, free; refused while paused;
+  memo at most 500 characters; an empty `#set_config` is refused. Validates the op against the
+  child's kind and the blessed lists, records the payer (the caller unless named; never
+  anonymous) and the fee due (the premium rate when the **payer** is a Sneed Premium
+  member; 0 for ops on the guardian itself). The fee is then paid by a plain transfer to the op's **payment subaccount**
   of the guardian ('o', version 1, op id big-endian in the last 8 bytes), which only
-  the guardian can move. `get_op_payment(id)` tells where and how much.
+  the guardian can move. `get_op_payment(id)` tells where and how much: the amount to send is
+  the fee plus one ICP ledger fee, which pays for the later sweep.
 - `approve_op(id)`: approvers only (the governance canisters, which call it through a
-  GNSF when a proposal passes). At `threshold` approvals the op is approved and the
-  veto window starts.
+  GNSF when a proposal passes), on a pending op. At `threshold` approvals the op is approved and the
+  veto window starts. An admin's approval counts as the whole threshold (see "Trial period").
 - `ok_op(id)`, `veto_op(id)`: the child's guardians. Vetoes reaching
   `vetoes_to_block` block the op for good.
 - `validate_approve_op(id)`, the generic function's validator, refuses while the fee is
   not in the payment subaccount, so an approval proposal cannot even be filed for an
   unpaid op. (It is an update method: it reads the ICP ledger.)
-- `execute_op(id)`: anyone, once the window has passed, the oks are in and the vetoes
+- `execute_op(id)`: any signed-in caller, once the window has passed, the oks are in and the vetoes
   are short. First the fee is swept from the payment subaccount to the fee destination
   (the RLL): it pays for the attempt, so a failed op keeps it. Then the action runs;
-  the result is recorded. A failed op stays failed; stage a new one.
-- `refund_op(id)`: anyone, for an op that is no longer open (vetoed, failed, expired,
+  the result is recorded. A failed op stays failed; stage a new one. Execution is not
+  refused while paused. **Known issue:** nothing marks an op as in flight. The op stays
+  `#approved` across the awaits, so two concurrent `execute_op` calls can both run the
+  action, and both sweep a fee if the subaccount holds two. A second `#install` fails on the
+  one-step rule and `#set_controllers` is idempotent, so the main risk is a double fee
+  sweep from an overpaid op.
+- `refund_op(id)`: any signed-in caller, for an op that is no longer open (vetoed, failed, expired,
   cancelled, or executed with a surplus): whatever is left in the payment subaccount
   goes to the recorded payer. Anyone may pay on the payer's behalf; the guardian never
   attributes deposits to senders.
-- `cancel_op(id)`: the stager or an approver, before execution.
-- Ops not executed within `op_ttl_ns` (30 days) expire.
+- `cancel_op(id)`: the stager or an approver, while pending or approved (admins only as approvers).
+- Ops not executed within `op_ttl_ns` (30 days by default; a `#set_config` below one day is ignored) expire.
+- Reads: `get_op`, `list_ops(open, limit)` (newest first), `list_ops_for(canister)`.
 
 Policy changes are ops like any other and pass the rules in force at the time, so a
 veto council cannot be dissolved around its back. Ops on the guardian itself
 (`#set_config`, `#set_approvers`) have no guardians; the approver threshold is their
-whole rule, with a configurable window.
+whole rule, with a configurable window (`self_window_ns`, 0 by default, at most 90 days).
+
+`#set_controllers` refreshes the child's status afterwards. A list without the guardian
+releases the child: it is dropped from the registry and a `guardian_release` block is logged.
 
 ## Auto-upgrade and the blessed path
 
@@ -123,6 +159,16 @@ are kept on the child and in the log. For children without the flag, the same ch
 is exposed as `list_upgradable()` so the frontend can stage one batch of ops and the
 DAO can approve them in one proposal.
 
+As built: the list is read up to 500 steps from the start. It is refreshed 2 seconds
+after install or upgrade, whenever it is older than a day when a registration, an
+`#install` op or the daily auto-upgrade needs it, and on demand through `refresh_blessed()`
+(anyone, at most every ten minutes for non-admins). An empty answer keeps the old list.
+`list_upgradable()` lists every child with a next blessed version, with or without the flag,
+from the last status reading. Without an explicit `arg`, an upgrade passes "no changes"
+(`opt Upgrade(null)` for a ledger, `opt Upgrade(record {})` for an index, `null` for an
+archive). An `#install` with the current hash and an `arg` is a reconfiguration on the same
+code. Auto-upgrade does not run while paused.
+
 ## Cycles
 
 The guardian is the controller, so it is the only party that can read a blackholed
@@ -132,6 +178,13 @@ Queries: `get_child`, `list_children`, `get_cycles_report(threshold)` (children 
 the threshold, plus the guardian's own balance). ic-unicycle and the health page read
 these; topping up is theirs to do (anyone can deposit cycles into any canister).
 `refresh_status(child)` lets anyone force a reading, rate limited.
+
+As built: the status timer runs every `status_interval_s` (6 hours by default, at least 10
+minutes). `refresh_status` is limited to one call a minute across all non-admin callers.
+`get_cycles_report(threshold)` puts the guardian's own row first (flagged `#ledger` in the
+`kind` field) and uses `low_cycles_threshold` (2T) when no threshold is given. `get_suite(ledger)`
+returns a ledger with its index and archives. `cycle_reserve` (2T) is configurable but not
+used by any code path yet.
 
 ## Fees
 
@@ -153,6 +206,15 @@ threshold and admins may run the timers early, so a deployment can be exercised 
 in its first weeks on mainnet without a DAO vote per op. Admins can add admins and remove
 themselves or each other; once the list is empty it cannot be refilled, so maturing a
 deployment is a one-way step. Blackholed deployments are installed with an empty list.
+
+As built: the canister's **controllers also count as admins** (`isAdmin` is controller or
+listed admin), so on `sneed_guardian`, which SNS root controls, an emptied list can be refilled
+by the DAO, which can upgrade the code anyway. Only a blackholed deployment's empty list is final.
+Admin-only methods: `admin_add_admin`, `admin_remove_admin`, `admin_set_approve_function_id`
+(during the trial; afterwards a `#set_config` op), `admin_set_canisters` (point the ICP ledger,
+SNS wasm and premium canister ids at mocks), `admin_run_status`, `admin_run_auto_upgrade`. Admins
+also bypass the rate limits of `refresh_status` and `refresh_blessed`. `paused` (a `#set_config`
+op) stops registration, staging and auto-upgrade; approvals and execution still run.
 
 ## What the DAO registers
 
@@ -177,9 +239,21 @@ Guardians act directly; everybody else's calls are permissionless.
   controller. The safety check accepts an index the user names (`?index=`) and verifies it
   indexes the ledger.
 
+Status of these (2026-10-20): both panels are built (`pages/studio/HandoverPanel.jsx`,
+`IndexPanel.jsx`; the pad's `create_index`, `get_index_quote`, `get_indexes_of_ledger`), behind the
+"coming soon" gate. The pad's launch wizard offers `#guardian { canister; policy }` as a control choice,
+and the pad registers the new canisters with the custody canister (`register`).
+
 ## Not in v1
 
 Custom wasms, non-ledger canisters, paying for cycles, moving children between
 deployments (done by a `#set_controllers` op that adds the other guardian), and the
 frontend's full op console. The pad gets a control choice per deployment, the token
 checker learns to read a child's policy, and the health page reads the cycles report.
+
+Status (2026-10-20): the frontend items are built ahead of plan. `/guardian` is an op console
+(rules, blessed versions, children with cycles and policy, open ops with stage, ok, veto, execute,
+cancel and refund, approval by proposal). The pad's control choice and the token checker's policy
+reading (a custody-controlled ledger passes the controller gate and shows its rules) are in, and
+`/health` reads `get_config` and `get_cycles_report` for every deployment marked `live`. Custom wasms,
+non-ledger canisters, cycles payments and moving children between deployments are still not built.

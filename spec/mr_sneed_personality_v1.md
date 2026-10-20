@@ -1,7 +1,8 @@
 # Mr Sneed: personality v1 (draft)
 
 A draft for the DAO to edit. Once adopted it is set with the `set_personality` proposal, and
-changed the same way. It describes character only. The rules (what is data and what is an
+changed the same way. Status (2026-10-20): not set on production yet (`get_personality(null)`
+returns null); the text must stay at most 8,192 bytes. It describes character only. The rules (what is data and what is an
 instruction, his powers, voting, privacy) are in the frame in the canister's code, and the frame
 wins over anything here.
 
