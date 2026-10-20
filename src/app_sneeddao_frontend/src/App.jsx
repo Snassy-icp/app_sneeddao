@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import StagingBanner from './components/StagingBanner';
 import Login from './Login';
 import Wallet from './Wallet';
 import Nft from './pages/Nft';
@@ -190,6 +191,7 @@ function App() {
                   <FrontendUpdateProvider>
                     <GlobalNamingSetup />
                     <CacheRefreshDialogWrapper />
+                    <StagingBanner />
                     <Layout>
                   <Routes>
                     <Route path="/" element={<Hub />} />
