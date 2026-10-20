@@ -8,6 +8,7 @@ import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import CardTopUpLink from './CardTopUpLink';
+import { cyclePayAvailable, getCkUsdcTerms, getCkUsdcBalance, topUpWithCkUsdc } from '../utils/CyclePayService';
 import { formatCyclesCompact, parseCyclesInput } from '../utils/NeuronManagerSettings';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
@@ -52,8 +53,19 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
     const [rateLoading, setRateLoading] = useState(false);
     const [localRate, setLocalRate] = useState(null);
     const abortRef = useRef(false);
+    // Pay with ICP (through the CMC) or ck-USDC (through CyclePay)
+    const [currency, setCurrency] = useState('icp');
+    const [usdcTerms, setUsdcTerms] = useState(null);
+    const [usdcBalance, setUsdcBalance] = useState(null);
 
-    const effectiveRate = icpToCyclesRate || localRate;
+    const effectiveIcpRate = icpToCyclesRate || localRate;
+    const isUsdc = currency === 'ckusdc';
+    const unit = isUsdc ? 'ckUSDC' : 'ICP';
+    const dp = isUsdc ? 2 : 4;
+    // ck-USDC: the approval and the pull each cost a ledger fee
+    const txFee = isUsdc ? 2 * (usdcTerms?.feeUsd ?? 0.01) : ICP_FEE / E8S_ICP;
+    const effectiveRate = isUsdc ? usdcTerms?.cyclesPerUsd : effectiveIcpRate;
+    const payBalance = isUsdc ? usdcBalance : icpBalance;
 
     const hasSmartPrefilledRef = useRef(false);
 
@@ -71,6 +83,7 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
             setIsProcessing(false);
             setIcpAmount('');
             setMode(MODE_TO_LEVEL);
+            setCurrency('icp');
             // Default target: the max healthy level (will be adjusted by smart prefill below)
             const maxHealthy = Math.max(...lowCyclesCanisters.map(c => c.healthyLevel || c.criticalLevel));
             setTargetCycleLevel(formatCyclesCompact(maxHealthy));
@@ -81,7 +94,7 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
 
     // Smart prefill: once we know the balance and rate, pick the best affordable target
     useEffect(() => {
-        if (!isOpen || hasSmartPrefilledRef.current || !effectiveRate || effectiveRate <= 0 || icpBalance === null) return;
+        if (!isOpen || isUsdc || hasSmartPrefilledRef.current || !effectiveRate || effectiveRate <= 0 || icpBalance === null) return;
         if (lowCyclesCanisters.length === 0) return;
         hasSmartPrefilledRef.current = true;
 
@@ -155,9 +168,18 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
         return () => { cancelled = true; };
     }, [isOpen, identity]);
 
+    // ck-USDC: CyclePay's terms and rate, and the balance, once that currency is picked
+    useEffect(() => {
+        if (!isOpen || !isUsdc || !identity) return;
+        let cancelled = false;
+        getCkUsdcTerms().then(t => { if (!cancelled) setUsdcTerms(t); }).catch(err => console.error('[TopUpDialog] CyclePay terms:', err));
+        getCkUsdcBalance(identity).then(b => { if (!cancelled) setUsdcBalance(b); }).catch(err => console.error('[TopUpDialog] ck-USDC balance:', err));
+        return () => { cancelled = true; };
+    }, [isOpen, isUsdc, identity]);
+
     // Fetch ICP-to-cycles rate if not provided
     useEffect(() => {
-        if (!isOpen || effectiveRate) return;
+        if (!isOpen || effectiveIcpRate) return;
         let cancelled = false;
 
         const fetchRate = async () => {
@@ -182,7 +204,7 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
         };
         fetchRate();
         return () => { cancelled = true; };
-    }, [isOpen, effectiveRate]);
+    }, [isOpen, effectiveIcpRate]);
 
     const toggleSelect = (canisterId) => {
         if (isProcessing) return;
@@ -216,17 +238,20 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
             if (deficit > 0) {
                 // Add 10% buffer to ensure we reach the target level
                 const icpNeeded = (deficit * 1.1) / effectiveRate;
-                amounts[c.canisterId] = Math.max(icpNeeded, 0.001); // minimum 0.001 ICP
+                // minimum 0.001 ICP; ck-USDC: CyclePay's minimum, in whole cents
+                amounts[c.canisterId] = isUsdc
+                    ? Math.max(Math.ceil(icpNeeded * 100) / 100, usdcTerms?.minUsd ?? 1)
+                    : Math.max(icpNeeded, 0.001);
             } else {
                 amounts[c.canisterId] = 0;
             }
         }
         return amounts;
-    }, [selectedCanisters, effectiveRate, parsedTargetLevel]);
+    }, [selectedCanisters, effectiveRate, parsedTargetLevel, isUsdc, usdcTerms]);
 
     const toLevelAmounts = mode === MODE_TO_LEVEL ? computeToLevelAmounts() : {};
     const totalToLevel = Object.values(toLevelAmounts).reduce((sum, v) => sum + v, 0);
-    const totalToLevelWithFees = totalToLevel + (selectedCount * ICP_FEE / E8S_ICP);
+    const totalToLevelWithFees = totalToLevel + (selectedCount * txFee);
 
     // Compute total ICP needed based on mode
     const computeTotalIcp = () => {
@@ -235,15 +260,27 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
         }
         const amt = parseFloat(icpAmount) || 0;
         if (mode === MODE_EACH) {
-            return (amt * selectedCount) + (selectedCount * ICP_FEE / E8S_ICP);
+            return (amt * selectedCount) + (selectedCount * txFee);
         }
         if (mode === MODE_SPLIT_EQUAL) {
-            return amt + (selectedCount * ICP_FEE / E8S_ICP);
+            return amt + (selectedCount * txFee);
         }
         return 0;
     };
     const totalIcpNeeded = computeTotalIcp();
-    const hasEnoughBalance = icpBalance !== null && icpBalance >= totalIcpNeeded;
+    const hasEnoughBalance = payBalance !== null && payBalance >= totalIcpNeeded;
+
+    // The amount each selected canister gets, in the paying currency
+    const amountFor = (canisterId) => mode === MODE_TO_LEVEL
+        ? (toLevelAmounts[canisterId] || 0)
+        : mode === MODE_SPLIT_EQUAL
+            ? ((parseFloat(icpAmount) || 0) / Math.max(selectedCount, 1))
+            : (parseFloat(icpAmount) || 0);
+    // CyclePay takes $1 to $200 per payment, in whole cents
+    const usdcOutOfRange = isUsdc && usdcTerms && selectedCanisters.some(c => {
+        const a = Math.floor(amountFor(c.canisterId) * 100 + 1e-6) / 100;
+        return a > 0 && (a < usdcTerms.minUsd || a > usdcTerms.maxUsd);
+    });
 
     // Handle top-up
     const handleTopUp = async () => {
@@ -259,6 +296,47 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
         setTopUpStatus(initStatus);
         setTopUpErrors({});
         setTopUpResults({});
+
+        if (isUsdc) {
+            // ck-USDC through CyclePay, one payment per canister, in whole cents
+            try {
+                for (const c of selectedCanisters) {
+                    if (abortRef.current) break;
+                    const usd = Math.floor(amountFor(c.canisterId) * 100 + 1e-6) / 100;
+                    if (!usd || usd <= 0) {
+                        setTopUpStatus(prev => ({ ...prev, [c.canisterId]: 'success' }));
+                        setTopUpResults(prev => ({ ...prev, [c.canisterId]: 0 }));
+                        continue;
+                    }
+                    setTopUpStatus(prev => ({ ...prev, [c.canisterId]: 'topping_up' }));
+                    try {
+                        const r = await topUpWithCkUsdc(identity, c.canisterId, usd, { feeAtomic: usdcTerms?.feeAtomic });
+                        if (r.status === 'Delivered') {
+                            setTopUpStatus(prev => ({ ...prev, [c.canisterId]: 'success' }));
+                            setTopUpResults(prev => ({ ...prev, [c.canisterId]: r.cycles }));
+                        } else {
+                            const why = r.status === 'Deferred' ? 'Paid; CyclePay delivers it when your daily limit resets'
+                                : r.status === 'Refunded' || r.status === 'Rejected' ? `${r.status}${r.error ? `: ${r.error}` : ''}`
+                                : `Paid, still being delivered (CyclePay payment ${r.requestId})`;
+                            setTopUpStatus(prev => ({ ...prev, [c.canisterId]: 'error' }));
+                            setTopUpErrors(prev => ({ ...prev, [c.canisterId]: why }));
+                        }
+                    } catch (err) {
+                        console.error(`ck-USDC top-up error for ${c.canisterId}:`, err);
+                        setTopUpStatus(prev => ({ ...prev, [c.canisterId]: 'error' }));
+                        setTopUpErrors(prev => ({ ...prev, [c.canisterId]: err.message || 'Unknown error' }));
+                    }
+                }
+                try { setUsdcBalance(await getCkUsdcBalance(identity)); } catch (_) {}
+            } finally {
+                setIsProcessing(false);
+                if (onTopUpComplete) {
+                    window.dispatchEvent(new Event('neuronManagersRefresh'));
+                    onTopUpComplete();
+                }
+            }
+            return;
+        }
 
         try {
             const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
@@ -393,7 +471,7 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
 
     const canStart = selectedCount > 0 && !isProcessing &&
         (mode === MODE_TO_LEVEL ? (effectiveRate && parsedTargetLevel > 0 && totalToLevel > 0) : (parseFloat(icpAmount) > 0)) &&
-        hasEnoughBalance;
+        hasEnoughBalance && (!isUsdc || (usdcTerms && !usdcOutOfRange));
 
     return (
         <div
@@ -448,15 +526,43 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                 </div>
 
                 <div style={{ padding: '20px' }}>
-                    {/* ICP Balance */}
+                    {/* Pay with */}
+                    {cyclePayAvailable && (
+                        <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+                            {[{ id: 'icp', label: 'Pay with ICP' }, { id: 'ckusdc', label: 'Pay with ck-USDC' }].map(o => (
+                                <button
+                                    key={o.id}
+                                    onClick={() => !isProcessing && setCurrency(o.id)}
+                                    disabled={isProcessing}
+                                    style={{
+                                        flex: 1, padding: '8px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: '600',
+                                        cursor: isProcessing ? 'default' : 'pointer',
+                                        border: `1px solid ${currency === o.id ? theme.colors.accent + '60' : theme.colors.border}`,
+                                        backgroundColor: currency === o.id ? `${theme.colors.accent}15` : 'transparent',
+                                        color: currency === o.id ? theme.colors.accent : theme.colors.secondaryText,
+                                    }}
+                                >{o.label}</button>
+                            ))}
+                        </div>
+                    )}
+                    {isUsdc && (
+                        <div style={{ fontSize: '11px', color: theme.colors.mutedText, marginBottom: '12px', lineHeight: 1.5 }}>
+                            Through <a href="https://www.cyclepay.org" target="_blank" rel="noopener noreferrer" style={{ color: theme.colors.accent }}>CyclePay</a>; the
+                            cycle amounts shown assume the protocol price (1T cycles per XDR). {usdcTerms ? `$${usdcTerms.minUsd} to $${usdcTerms.maxUsd} per canister; ` : ''}each
+                            payment costs two ck-USDC ledger fees (the approval and the transfer).
+                            {usdcTerms?.rateStale && <span style={{ color: '#f59e0b' }}> CyclePay's exchange rate is stale, so the amounts are estimates.</span>}
+                        </div>
+                    )}
+
+                    {/* Balance */}
                     <div style={{
                         padding: '12px 16px', borderRadius: '10px',
                         backgroundColor: theme.colors.secondaryBg, marginBottom: '16px',
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     }}>
-                        <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>Your ICP Balance</span>
+                        <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>Your {unit} Balance</span>
                         <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '14px' }}>
-                            {balanceLoading ? '...' : icpBalance !== null ? `${icpBalance.toFixed(4)} ICP` : 'N/A'}
+                            {(isUsdc ? usdcBalance === null : balanceLoading) ? '...' : payBalance !== null ? `${payBalance.toFixed(dp)} ${unit}` : 'N/A'}
                         </span>
                     </div>
 
@@ -467,9 +573,9 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                             {[
-                                { id: MODE_TO_LEVEL, label: 'Top up each to a target cycle level', desc: 'Auto-calculates the ICP needed to bring each canister to the specified cycle level' },
-                                { id: MODE_SPLIT_EQUAL, label: 'Split ICP equally', desc: 'Divide a total ICP amount equally among selected canisters' },
-                                { id: MODE_EACH, label: 'Same amount for each', desc: 'Send the same ICP amount to each selected canister' },
+                                { id: MODE_TO_LEVEL, label: 'Top up each to a target cycle level', desc: `Auto-calculates the ${unit} needed to bring each canister to the specified cycle level` },
+                                { id: MODE_SPLIT_EQUAL, label: `Split ${unit} equally`, desc: `Divide a total ${unit} amount equally among selected canisters` },
+                                { id: MODE_EACH, label: 'Same amount for each', desc: `Send the same ${unit} amount to each selected canister` },
                             ].map(m => (
                                 <label
                                     key={m.id}
@@ -537,13 +643,13 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                                                 total += (deficit * 1.1) / effectiveRate;
                                             }
                                         }
-                                        return total + (selectedCanisters.length * ICP_FEE / E8S_ICP);
+                                        return total + (selectedCanisters.length * txFee);
                                     };
 
                                     const icpForCritical = computeIcpForLevel(maxCritical);
                                     const icpForHealthy = computeIcpForLevel(maxHealthy);
-                                    const canAffordCritical = icpBalance !== null && icpBalance >= icpForCritical;
-                                    const canAffordHealthy = icpBalance !== null && icpBalance >= icpForHealthy;
+                                    const canAffordCritical = payBalance !== null && payBalance >= icpForCritical;
+                                    const canAffordHealthy = payBalance !== null && payBalance >= icpForHealthy;
 
                                     const btnStyle = (active) => ({
                                         padding: '7px 12px', borderRadius: '8px', border: 'none',
@@ -557,7 +663,7 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                                         <button
                                             onClick={() => !isProcessing && setTargetCycleLevel(formatCyclesCompact(maxCritical))}
                                             disabled={isProcessing}
-                                            title={`Set target to just above critical (${formatCyclesCompact(maxCritical)}) — ${canAffordCritical ? `needs ~${icpForCritical.toFixed(4)} ICP` : 'insufficient balance'}`}
+                                            title={`Set target to just above critical (${formatCyclesCompact(maxCritical)}) — ${canAffordCritical ? `needs ~${icpForCritical.toFixed(dp)} ${unit}` : 'insufficient balance'}`}
                                             style={{
                                                 ...btnStyle(),
                                                 backgroundColor: canAffordCritical ? '#f59e0b20' : '#ef444415',
@@ -569,7 +675,7 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                                         <button
                                             onClick={() => !isProcessing && setTargetCycleLevel(formatCyclesCompact(maxHealthy))}
                                             disabled={isProcessing}
-                                            title={`Set target to healthy (${formatCyclesCompact(maxHealthy)}) — ${canAffordHealthy ? `needs ~${icpForHealthy.toFixed(4)} ICP` : 'insufficient balance'}`}
+                                            title={`Set target to healthy (${formatCyclesCompact(maxHealthy)}) — ${canAffordHealthy ? `needs ~${icpForHealthy.toFixed(dp)} ${unit}` : 'insufficient balance'}`}
                                             style={{
                                                 ...btnStyle(),
                                                 backgroundColor: canAffordHealthy ? '#22c55e20' : '#ef444415',
@@ -589,11 +695,11 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                         </div>
                     )}
 
-                    {/* ICP Amount Input (hidden for to_level mode) */}
+                    {/* Amount Input (hidden for to_level mode) */}
                     {mode !== MODE_TO_LEVEL && (
                         <div style={{ marginBottom: '16px' }}>
                             <div style={{ color: theme.colors.mutedText, fontSize: '11px', textTransform: 'uppercase', marginBottom: '6px', letterSpacing: '0.5px' }}>
-                                {mode === MODE_SPLIT_EQUAL ? 'Total ICP to Split' : 'ICP per Canister'}
+                                {mode === MODE_SPLIT_EQUAL ? `Total ${unit} to Split` : `${unit} per Canister`}
                             </div>
                             <div style={{ display: 'flex', gap: '8px' }}>
                                 <input
@@ -612,17 +718,17 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                                 />
                                 <button
                                     onClick={() => {
-                                        if (icpBalance && !isProcessing) {
-                                            const fees = selectedCount * ICP_FEE / E8S_ICP;
+                                        if (payBalance && !isProcessing) {
+                                            const fees = selectedCount * txFee;
                                             if (mode === MODE_EACH) {
-                                                const maxPerCanister = (icpBalance - fees) / selectedCount;
-                                                setIcpAmount(Math.max(0, maxPerCanister).toFixed(4));
+                                                const maxPerCanister = (payBalance - fees) / selectedCount;
+                                                setIcpAmount((Math.floor(Math.max(0, maxPerCanister) * 10 ** dp) / 10 ** dp).toFixed(dp));
                                             } else {
-                                                setIcpAmount(Math.max(0, icpBalance - fees).toFixed(4));
+                                                setIcpAmount((Math.floor(Math.max(0, payBalance - fees) * 10 ** dp) / 10 ** dp).toFixed(dp));
                                             }
                                         }
                                     }}
-                                    disabled={isProcessing || !icpBalance}
+                                    disabled={isProcessing || !payBalance}
                                     style={{
                                         padding: '10px 16px', borderRadius: '8px', border: 'none',
                                         backgroundColor: theme.colors.accent, color: '#fff',
@@ -654,10 +760,10 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                         }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                    Total ICP needed (incl. fees)
+                                    Total {unit} needed (incl. fees)
                                 </span>
                                 <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '14px' }}>
-                                    {totalToLevelWithFees.toFixed(4)} ICP
+                                    {totalToLevelWithFees.toFixed(dp)} {unit}
                                 </span>
                             </div>
                             {totalToLevel <= 0 && (
@@ -665,9 +771,9 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                                     All selected canisters are already at or above this level
                                 </div>
                             )}
-                            {totalToLevel > 0 && !hasEnoughBalance && icpBalance !== null && (
+                            {totalToLevel > 0 && !hasEnoughBalance && payBalance !== null && (
                                 <div style={{ marginTop: '6px', color: '#ef4444', fontSize: '11px' }}>
-                                    Insufficient balance ({icpBalance.toFixed(4)} ICP available)
+                                    Insufficient balance ({payBalance.toFixed(dp)} {unit} available)
                                 </div>
                             )}
                         </div>
@@ -691,12 +797,12 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                             backgroundColor: theme.colors.secondaryBg,
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                         }}>
-                            <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Total ICP needed (incl. fees)</span>
+                            <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Total {unit} needed (incl. fees)</span>
                             <span style={{
                                 color: hasEnoughBalance ? theme.colors.primaryText : '#ef4444',
                                 fontWeight: '600', fontSize: '13px',
                             }}>
-                                {totalIcpNeeded.toFixed(4)} ICP
+                                {totalIcpNeeded.toFixed(dp)} {unit}
                             </span>
                         </div>
                     )}
@@ -742,11 +848,7 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                             const error = topUpErrors[c.canisterId];
                             const cyclesAdded = topUpResults[c.canisterId];
                             const deficit = c.criticalLevel - (c.cycles || 0);
-                            const icpForThis = mode === MODE_TO_LEVEL
-                                ? (toLevelAmounts[c.canisterId] || 0)
-                                : mode === MODE_SPLIT_EQUAL
-                                    ? ((parseFloat(icpAmount) || 0) / Math.max(selectedCount, 1))
-                                    : (parseFloat(icpAmount) || 0);
+                            const icpForThis = amountFor(c.canisterId);
 
                             return (
                                 <div
@@ -798,7 +900,7 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                                             </span>
                                             {effectiveRate && isSelected && icpForThis > 0 && (
                                                 <span style={{ color: theme.colors.accent }}>
-                                                    +{icpForThis.toFixed(4)} ICP
+                                                    +{icpForThis.toFixed(dp)} {unit}
                                                 </span>
                                             )}
                                             <CardTopUpLink canisterId={c.canisterId} theme={theme} style={{ marginLeft: 'auto' }} />
@@ -826,6 +928,12 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                             );
                         })}
                     </div>
+
+                    {usdcOutOfRange && (
+                        <div style={{ marginTop: '12px', color: '#ef4444', fontSize: '11px' }}>
+                            CyclePay takes ${usdcTerms.minUsd} to ${usdcTerms.maxUsd} per canister: change the amount or the selection.
+                        </div>
+                    )}
 
                     {/* Action Button */}
                     <div style={{ marginTop: '16px' }}>
