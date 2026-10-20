@@ -240,6 +240,18 @@ module {
         #InternalError : Text;
     };
     
+    /// Taking back what is in your own deposit subaccount (withdrawDeposit)
+    public type WithdrawError = {
+        #NotAuthorized;
+        /// The deposit subaccount holds no more than the ledger fee
+        #NothingToWithdraw : { balance : Nat; fee : Nat };
+        /// A purchase or withdrawal of the same caller is still running
+        #InProgress;
+        #TransferFailed : Text;
+    };
+    public type Withdrawal = { amountE8s : Nat; blockIndex : Nat; to : Account };
+    public type WithdrawResult = Result.Result<Withdrawal, WithdrawError>;
+
     public type PurchaseResult = Result.Result<Membership, PurchaseError>;
     public type ClaimResult = Result.Result<Membership, ClaimError>;
     public type AdminResult<T> = Result.Result<T, AdminError>;

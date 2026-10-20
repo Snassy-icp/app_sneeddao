@@ -3,6 +3,9 @@ import Time "mo:base/Time";
 import Array "mo:base/Array";
 import Nat64 "mo:base/Nat64";
 import Int "mo:base/Int";
+import Nat8 "mo:base/Nat8";
+import Error "mo:base/Error";
+import Random "mo:base/Random";
 
 import T "Types";
 import Utils "Utils";
@@ -109,30 +112,32 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         actor(Principal.toText(config.sneedGovernanceId)) : T.SnsGovernance;
     };
     
-    // Generate a random promo code (uppercase letters only, 8 chars)
-    func generatePromoCode() : Text {
-        // Use time-based pseudo-random generation
-        let now = Int.abs(Time.now());
-        let chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-        let charsLen = 26;
+    transient let PROMO_CODE_LENGTH : Nat = 8;
+    transient let PROMO_CODE_LETTERS : [Text] = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
+
+    // A promo code (8 uppercase letters) from the IC's randomness (raw_rand): unguessable, unlike
+    // the time-seeded generator used before 2026-10-20. Bytes of 234 and up are skipped so every
+    // letter is equally likely; null if the entropy runs out first (the caller asks again).
+    func promoCodeFrom(entropy : Blob) : ?Text {
         var code = "";
-        var seed = now;
-        for (_ in [0, 1, 2, 3, 4, 5, 6, 7].vals()) {
-            let idx = seed % charsLen;
-            let char = switch (idx) {
-                case 0 { "A" }; case 1 { "B" }; case 2 { "C" }; case 3 { "D" };
-                case 4 { "E" }; case 5 { "F" }; case 6 { "G" }; case 7 { "H" };
-                case 8 { "I" }; case 9 { "J" }; case 10 { "K" }; case 11 { "L" };
-                case 12 { "M" }; case 13 { "N" }; case 14 { "O" }; case 15 { "P" };
-                case 16 { "Q" }; case 17 { "R" }; case 18 { "S" }; case 19 { "T" };
-                case 20 { "U" }; case 21 { "V" }; case 22 { "W" }; case 23 { "X" };
-                case 24 { "Y" }; case _ { "Z" };
+        var n = 0;
+        for (byte in entropy.vals()) {
+            if (n < PROMO_CODE_LENGTH and Nat8.toNat(byte) < 234) {
+                code #= PROMO_CODE_LETTERS[Nat8.toNat(byte) % 26];
+                n += 1;
             };
-            code := code # char;
-            seed := (seed * 1103515245 + 12345) / 65536;  // Simple LCG
         };
-        code;
+        if (n == PROMO_CODE_LENGTH) ?code else null;
     };
+
+    // Callers with a purchase or withdrawal running: one at a time per caller (awaits interleave)
+    transient var busy : [Principal] = [];
+    func acquire(p : Principal) : Bool {
+        if (Utils.principalInList(p, busy)) return false;
+        busy := Array.append(busy, [p]);
+        true;
+    };
+    func release(p : Principal) { busy := Utils.removePrincipal(p, busy) };
     
     func getPromoCode(code : Text) : ?T.PromoCode {
         for (pc in promoCodes.vals()) {
@@ -323,7 +328,57 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         if (Principal.isAnonymous(caller)) {
             return #err(#NotAuthorized);
         };
-        
+        if (not acquire(caller)) {
+            return #err(#InternalError("A purchase or withdrawal of yours is already in progress"));
+        };
+        try { await* purchase(caller) } finally { release(caller) };
+    };
+
+    /// Take back what is in your own deposit subaccount (getDepositAccount(you)), minus the ledger
+    /// fee, to your default account: for a deposit that matches no tier, or that you changed your
+    /// mind about. Only ever the caller's own subaccount; one purchase or withdrawal at a time.
+    public shared ({ caller }) func withdrawDeposit() : async T.WithdrawResult {
+        if (Principal.isAnonymous(caller)) {
+            return #err(#NotAuthorized);
+        };
+        if (not acquire(caller)) {
+            return #err(#InProgress);
+        };
+        try { await* withdraw(caller) } finally { release(caller) };
+    };
+
+    func withdraw(caller : Principal) : async* T.WithdrawResult {
+        let icpLedger = getIcpLedger();
+        let userSubaccount = Utils.principalToSubaccount(caller);
+        let to : T.Account = { owner = caller; subaccount = null };
+        let (balance, fee) = try {
+            let b = await icpLedger.icrc1_balance_of({ owner = Principal.fromActor(this); subaccount = ?userSubaccount });
+            (b, await icpLedger.icrc1_fee());
+        } catch (e) {
+            return #err(#TransferFailed("Could not reach the ICP ledger: " # Error.message(e)));
+        };
+        if (balance <= fee) {
+            return #err(#NothingToWithdraw({ balance; fee }));
+        };
+        let result = try {
+            await icpLedger.icrc1_transfer({
+                to;
+                fee = ?fee;
+                memo = null;
+                from_subaccount = ?userSubaccount;
+                created_at_time = ?Nat64.fromNat(Int.abs(Time.now()));
+                amount = balance - fee;
+            });
+        } catch (e) {
+            return #err(#TransferFailed("Could not reach the ICP ledger: " # Error.message(e)));
+        };
+        switch (result) {
+            case (#Ok(blockIndex)) #ok({ amountE8s = balance - fee; blockIndex; to });
+            case (#Err(e)) #err(#TransferFailed(debug_show (e)));
+        };
+    };
+
+    func purchase(caller : Principal) : async* T.PurchaseResult {
         let now = Time.now();
         let icpLedger = getIcpLedger();
         let userSubaccount = Utils.principalToSubaccount(caller);
@@ -906,16 +961,22 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             return #err(#InvalidInput("Max claims must be positive"));
         };
         
-        // Generate a unique code
-        var code = generatePromoCode();
+        // Generate a unique code from the IC's randomness
+        var found : ?Text = null;
         var attempts = 0;
-        while (getPromoCode(code) != null and attempts < 100) {
-            code := generatePromoCode();
+        while (found == null and attempts < 10) {
+            let entropy = try { await Random.blob() } catch (e) {
+                return #err(#InvalidInput("Could not get randomness: " # Error.message(e)));
+            };
+            switch (promoCodeFrom(entropy)) {
+                case (?c) if (getPromoCode(c) == null) found := ?c;
+                case null {};
+            };
             attempts += 1;
         };
-        
-        if (attempts >= 100) {
-            return #err(#InvalidInput("Failed to generate unique code"));
+        let code = switch (found) {
+            case (?c) c;
+            case null return #err(#InvalidInput("Failed to generate unique code"));
         };
         
         let now = Time.now();
@@ -1180,6 +1241,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         #updateConfig : Any;
         #updateIcpTier : Any;
         #updateVpTier : Any;
+        #withdrawDeposit : Any;
     } }) : Bool {
         switch (msg) {
             case (

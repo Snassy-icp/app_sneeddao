@@ -14,7 +14,7 @@ There are (for now) two main ways for a user to obtain a premium membership:
 
 Note: the subaccount is the standard `principalToSubAccount` layout (`getDepositAccount(user)` returns the account). `purchaseWithIcp` forwards the whole deposit balance minus one ICP ledger fee to the configured `paymentRecipient`.
 
-Changed from the original plan: the deposit balance must equal an active tier's `amountE8s` exactly (the tier is matched by amount, not chosen by the user); any other balance returns `InvalidTier` and the ICP stays in the deposit account until the user tops it up to a tier amount. There is no refund or withdraw method for the deposit account (see Known issues).
+Changed from the original plan: the deposit balance must equal an active tier's `amountE8s` exactly (the tier is matched by amount, not chosen by the user); any other balance returns `InvalidTier` and the ICP stays in the deposit account until the user tops it up to a tier amount or takes it back with `withdrawDeposit()` (added 2026-10-20: the whole balance of the caller's own deposit subaccount, minus the ledger fee, to the caller's default account). One purchase or withdrawal runs at a time per caller; a second one sent meanwhile gets `InProgress` (withdrawal) or `InternalError` (purchase).
 
 The premium canister should contain a dynamic list (managable by admins) of how long duration of premium membership different levels of ICP will buy. If the user buys say 1 month of membership but already has 2 weeks, they will then have 1 month and 2 weeks. 
 
@@ -26,7 +26,7 @@ Changed from the original plan: voting power claims are not additive. `claimWith
 
 Note: as built, the canister calls Sneed SNS governance `list_neurons` with `of_principal = caller` (first 100 neurons), counts every neuron on which the caller has any permission (owner or hotkey), and computes voting power the way SNS governance does (stake plus staked maturity, dissolve delay and age bonuses, the neuron's voting power multiplier; neurons below the minimum dissolve delay count zero). The best tier the total reaches is granted.
 
-3) By promo code (added, not in the original plan). Admins create codes (8 capital letters, generated from the creation time) with a duration, a maximum number of claims and an optional expiry; `claimPromoCode(code)` adds the code's duration to the membership, once per principal per code. Admins can deactivate, reactivate and delete codes and see who claimed them.
+3) By promo code (added, not in the original plan). Admins create codes (8 capital letters drawn from the IC's randomness, `raw_rand`, since 2026-10-20; before that from the creation time) with a duration, a maximum number of claims and an optional expiry; `claimPromoCode(code)` adds the code's duration to the membership, once per principal per code. Admins can deactivate, reactivate and delete codes and see who claimed them.
 
 Admins (canister controllers plus the `admins` list) can also set or extend a membership directly (`setMembershipAdmin`, `extendMembershipAdmin`) and revoke one. Every purchase and claim goes into an admin-readable claim log and ICP payment log; `getPaymentStats()` publishes the totals.
 
@@ -103,6 +103,6 @@ We will go on to design the user facing frontend experience once this core is in
 - [x] Public `getPaymentStats()` (shown on the revenue page)
 
 ### Known issues (2026-10-20)
-- A deposit that matches no tier amount (too little, too much, or two deposits adding up to something else) cannot be refunded: there is no refund or withdraw method, so the user can only top it up to an exact tier amount (src/sneed_premium/Utils.mo:204 `findIcpTier` matches `amountE8s == balance`). A refund method for the deposit account would close this.
-- Promo codes are not truly random: `generatePromoCode` seeds a simple LCG with `Time.now()` (src/sneed_premium/main.mo:113), so someone who knows roughly when a code was created could guess it. Secure randomness (`Random.blob`) would fix this.
-- The error variants `TierNotActive` and `InternalError` (purchase) and `InternalError` (voting power claim and promo code) are declared but never returned.
+- Fixed 2026-10-20: a deposit that matched no tier amount could not be refunded. `withdrawDeposit()` now returns the caller's own deposit subaccount balance minus the ledger fee to the caller (per-caller lock shared with `purchaseWithIcp`). Not deployed until the canister is upgraded; the frontend has no button for it yet.
+- Fixed 2026-10-20: promo codes came from an LCG seeded with `Time.now()`, guessable from the creation time; they are now drawn from `Random.blob()` (raw_rand). Codes made before the upgrade keep their (guessable) values: deactivate or delete any that are still open.
+- The error variants `TierNotActive` (purchase) and `InternalError` (voting power claim and promo code) are declared but never returned. `InternalError` (purchase) is returned only when the same caller already has a purchase or withdrawal running.

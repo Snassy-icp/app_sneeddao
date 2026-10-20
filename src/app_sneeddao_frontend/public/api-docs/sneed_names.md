@@ -254,7 +254,7 @@ if ('err' in r) throw new Error(r.err);
 - The caller must manage `from` (in practice: be its hotkey) and must not already be in it (`You are in that account already`).
 - If the caller is in an account, it must be an owner of it (`Only owners can merge into their account`); otherwise an account is created for the caller.
 - The members of `from` join as `member` (`via = hotkey`), keeping their dapp labels. Together the accounts may have at most `max_members` principals.
-- If the caller's account has no name it takes the merged account's name (with its checkmark); otherwise the merged name is freed. If it has no avatar it takes the merged account's avatar. The merged account, its hotkeys and its NFT avatar are deleted.
+- If the caller's account has no name it takes the merged account's name (with its checkmark); otherwise the merged name is freed. If it has no avatar it takes the merged account's avatar. The merged account, its hotkeys and its NFT avatar are deleted. The log records a carried-over checkmark and avatar as `verify` and `avatar_set` blocks for the caller's account (with `merged_from`).
 
 Instead of merging, a hotkey can also just manage the other account: `set_account_name`, `set_account_avatar`, `set_member` (dapp labels), `remove_member` (non-owners). `my_hotkey_accounts()` lists the accounts the caller holds a hotkey on.
 
@@ -342,7 +342,7 @@ const r = await profiles.register_dapp({
 const dappId = r.ok;   // then: pidNames.set_member(myTacoPrincipal, { member: null }, [dappId])
 ```
 
-Rules: the name follows 1.2 and is unique regardless of capitals (`A dapp with that name is registered`); `url` starts with `https://` and has at most 200 characters; 1 to 10 canister ids. `update_dapp` follows the same rules; a new name loses the checkmark. Errors include `You must control at least one of the dapp's canisters`. Hidden dapps (hidden by an admin) are left out of `list_dapps` and `search_dapps`, and `get_dapps` returns them with `hidden = true`.
+Rules: the name follows 1.2 and is unique regardless of capitals (`A dapp with that name is registered`); `url` starts with `https://` and has at most 200 characters; 1 to 10 canister ids. `update_dapp` follows the same rules, and the caller must also control one of the dapp's *current* canisters (or be an admin); a new name loses the checkmark, and so does adding a canister unless an admin adds it (removing canisters or changing the url or logo keeps it). Errors include `You must control at least one of the dapp's canisters`, `You must control at least one of the dapp's current canisters` and `The dapp was changed meanwhile; please try again`. Hidden dapps (hidden by an admin) are left out of `list_dapps` and `search_dapps`, and `get_dapps` returns them with `hidden = true`.
 
 ### 3.10 Keeping a copy in sync (`changes_since`)
 
@@ -489,7 +489,7 @@ The two canisters have the same methods; the target is a `principal` in `sneed_p
 | Method | Kind | Returns | Notes |
 |---|---|---|---|
 | `register_dapp(DappInput)` | update | `variant { ok : nat; err : text }` | See 3.9. Admins skip the control check. |
-| `update_dapp(id, DappInput)` | update | `Result` | Caller controls one of the dapp's (new) canisters, or is an admin. `No such dapp`. |
+| `update_dapp(id, DappInput)` | update | `Result` | Caller is an admin, or controls one of the dapp's current canisters and one of the new ones. A new name or an added canister (not by an admin) drops the checkmark. `No such dapp`. |
 | `list_dapps(page : Page)` | query | `{ items : vec DappView; next : opt nat }` | By id, hidden dapps left out. |
 | `get_dapps(ids : vec nat)` | query | `vec opt DappView` | Up to 500, hidden ones included and flagged. |
 | `search_dapps(prefix, limit)` | query | `vec DappView` | Hidden ones left out, at most 50. |
@@ -550,14 +550,14 @@ The logs started with the import from the backend: one `import` block per import
 | `sneednames_account_create` | `account`, `owner`, `via` (`self`, `hotkey`, `admin`, `import`, or a map `{ sns_root; neuron_id; memo }`) |
 | `sneednames_account_delete` | `account`, `name` (if it had one) |
 | `sneednames_name_set` | `account`, `old_name`, `name` (absent when cleared), `verification_cleared` = 1 when the rename removed a checkmark |
-| `sneednames_avatar_set` | `account` or `canister`, `avatar` (`{ url }` or `{ blob }`; absent when cleared) |
+| `sneednames_avatar_set` | `account` or `canister`, `avatar` (`{ url }` or `{ blob }`; absent when cleared); `merged_from` when a merge carried the avatar over |
 | `sneednames_nft_avatar_set` | `account`, then either `nft_avatar` `{ collection; token_id; owner }` or `reason` (`cleared by owner`, `no longer owned`, `cleared by admin`) |
 | `sneednames_member_link` | `account`, `principal`, `role`, `via`, `dapp` |
 | `sneednames_member_unlink` | `account`, `principal` |
 | `sneednames_member_update` | `account`, `principal`, `role`, `dapp` |
 | `sneednames_hotkey_add`, `sneednames_hotkey_remove` | `account`, `hotkey` |
 | `sneednames_account_merge` | `from`, `into`, `principals` (how many moved) |
-| `sneednames_verify` | `account` or `canister`, `name`, `source` (`dao`, `import`, `{ admin }`, `{ sns_governance }`) |
+| `sneednames_verify` | `account` or `canister`, `name`, `source` (`dao`, `import`, `{ admin }`, `{ sns_governance }`); when a merge carried the checkmark over, also `merged_from` (the merged account) and `verified_at` (the original verification time, ns) |
 | `sneednames_unverify` | `account` or `canister` |
 | `sneednames_canister_name_set` | `canister`, `old_name`, `name`, `verification_cleared`, `run_by_cleared` |
 | `sneednames_canister_run_by` | `canister`, `account` (absent when cleared) |
@@ -566,7 +566,7 @@ The logs started with the import from the backend: one `import` block per import
 
 `sneed_neuron_names` (prefix `sneedneuronnames_`): `name_set` (`sns_root`, `neuron_id`, `old_name`, `name`, `verification_cleared`), `avatar_set` (`sns_root`, `neuron_id`, `avatar`), `verify` (`sns_root`, `neuron_id`, `name`, `source`), `unverify`, `config_update`, `import` (`sns_root`, `neuron_id`, `name`, `verified`).
 
-`sneed_profiles` (prefix `sneedprofiles_`): `dapp_register` (`dapp`, `name`, `url`, `canisters`), `dapp_update` (`dapp`, `name`, `url`, `canisters`, or `hidden`), `dapp_verify` (`dapp`, `name`, `verified`), `config_update`.
+`sneed_profiles` (prefix `sneedprofiles_`): `dapp_register` (`dapp`, `name`, `url`, `canisters`), `dapp_update` (`dapp`, `name`, `url`, `canisters`, `verification_cleared` when the update dropped the checkmark; or `dapp`, `hidden`), `dapp_verify` (`dapp`, `name`, `verified`), `config_update`.
 
 ---
 

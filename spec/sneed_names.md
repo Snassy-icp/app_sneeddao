@@ -374,10 +374,12 @@ complete). Every block has `caller`. `nft_avatar_set` carries either `nft_avatar
 (`collection`, `token_id`, `owner`) or a `reason` (`cleared by owner`, `no longer owned`,
 `cleared by admin`).
 
-Known issue: `merge_account` copies the merged account's avatar (when the target has none) and
-its checkmark (with its name) into the target account without an `avatar_set` or `verify` block;
-the log shows only `name_set` and `account_merge`, so the avatar and checkmark cannot be
-replayed from the log alone (`src/sneed_pid_names/main.mo`, `merge_account`).
+Fixed 2026-10-20 (known issue before): `merge_account` copied the merged account's avatar (when
+the target has none) and its checkmark (with its name) into the target account without an
+`avatar_set` or `verify` block, so they could not be replayed from the log alone. It now writes
+an `avatar_set` block and a `verify` block for the target account (both with `merged_from`, the
+merged account's id; the `verify` block keeps the original `source` and adds `verified_at`, the
+original verification time). Merges before the upgrade stay without them.
 
 ## 5. `sneed_neuron_names`
 
@@ -476,11 +478,13 @@ type Dapp = { id : DappId; name : Text; url : Text; logo : ?AvatarRef;
   registers it; 1 to 10 canisters a dapp. The name follows §3.1, is unique regardless of
   capitals and is moderated as a public name; the url starts with `https://`, at most 200
   characters.
-- `update_dapp(id, DappInput)`: same rules; a new name loses the checkmark.
-  Known issue: the control check runs against the *new* canister list, not the dapp's
-  current one (`src/sneed_profiles/main.mo:175`), so anyone who controls some canister can
-  rewrite any dapp entry, and keep its checkmark if the name stays the same. It should require
-  control of one of the existing canisters (or admin).
+- `update_dapp(id, DappInput)`: an admin, or a controller (or SNS governance) of one of the
+  dapp's *current* canisters who also controls one of the new list. A new name loses the
+  checkmark, and so does adding a canister unless an admin does it (removing canisters or
+  changing the url or logo keeps it); the `dapp_update` block then has `verification_cleared`.
+  Fixed 2026-10-20 (known issue before): the control check ran against the new canister list
+  only, so anyone who controlled some canister could rewrite any dapp entry and keep its
+  checkmark.
 - `verify_dapp` / `verify_dapp_by_dao`: admins or a Sneed DAO proposal mark it
   verified (shown with a checkmark in the picker; unverified dapps are shown
   greyed).

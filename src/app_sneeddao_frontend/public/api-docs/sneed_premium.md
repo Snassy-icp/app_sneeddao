@@ -45,7 +45,7 @@ Each user pays from their own deposit account on the premium canister:
 { owner = sneed_premium; subaccount = principalToSubAccount(user) }
 ```
 
-`principalToSubAccount` is the standard 32-byte layout (byte 0 = length of the principal's bytes, then the bytes, then zeros), the same as in `@dfinity/utils`. `getDepositAccount(user)` returns it, so you never need to compute it yourself.
+`principalToSubAccount` is the standard 32-byte layout (byte 0 = length of the principal's bytes, then the bytes, then zeros), the same as in `@dfinity/utils`. `getDepositAccount(user)` returns it, so you never need to compute it yourself. Only the user can take what is in it back out (`withdrawDeposit`, 2.6).
 
 ### 1.5 Public, not private
 
@@ -126,7 +126,7 @@ async function buyPremium({ identity, icpLedger, tier }) {
 }
 ```
 
-The canister matches the **whole balance** of the deposit account against the active tiers. If the balance equals no tier amount (you sent too little, too much, or two deposits that add up to something else), the call returns `InvalidTier` and the ICP stays in the deposit account. Top it up until it equals a tier amount and call again. There is no refund method.
+The canister matches the **whole balance** of the deposit account against the active tiers. If the balance equals no tier amount (you sent too little, too much, or two deposits that add up to something else), the call returns `InvalidTier` and the ICP stays in the deposit account. Top it up until it equals a tier amount and call again, or take it back with `withdrawDeposit()` (2.6).
 
 ### 2.4 Claim membership with staked SNEED
 
@@ -142,6 +142,16 @@ else if ('InsufficientVotingPower' in r.err) console.log(r.err.InsufficientVotin
 ```js
 const r = await premiumActor(identity).claimPromoCode('ABCDEFGH');
 // ok: Membership | err: InvalidCode | CodeInactive | CodeExpired | CodeFullyClaimed | AlreadyClaimed | NotAuthorized | InternalError
+```
+
+### 2.6 Take back a deposit
+
+A deposit that matches no tier (or that the user no longer wants to spend) can be taken back. `withdrawDeposit()` sends the whole balance of the caller's own deposit account, minus the ledger fee, to the caller's default account. It only ever touches the caller's own deposit account.
+
+```js
+const r = await premiumActor(identity).withdrawDeposit();
+if ('ok' in r) console.log('returned', r.ok.amountE8s, 'e8s in block', r.ok.blockIndex);
+else console.log(Object.keys(r.err)[0]);   // NothingToWithdraw, InProgress, TransferFailed, NotAuthorized
 ```
 
 ---
@@ -177,7 +187,7 @@ Hotkeys count: a principal added as hotkey to someone's neuron can claim with th
 
 ### 3.3 Promo codes
 
-Admins create codes (8 random capital letters) with a duration, a maximum number of claims and an optional expiry. `claimPromoCode(code)` refuses the anonymous principal, unknown codes (`InvalidCode`), deactivated codes (`CodeInactive`), codes past their expiry (`CodeExpired`), codes that reached `maxClaims` (`CodeFullyClaimed`) and a second claim of the same code by the same principal (`AlreadyClaimed`). Otherwise it adds the code's duration to the membership.
+Admins create codes (8 capital letters drawn from the IC's randomness, `raw_rand`) with a duration, a maximum number of claims and an optional expiry. `claimPromoCode(code)` refuses the anonymous principal, unknown codes (`InvalidCode`), deactivated codes (`CodeInactive`), codes past their expiry (`CodeExpired`), codes that reached `maxClaims` (`CodeFullyClaimed`) and a second claim of the same code by the same principal (`AlreadyClaimed`). Otherwise it adds the code's duration to the membership.
 
 ### 3.4 Checking membership from a canister
 
@@ -209,7 +219,9 @@ Because a cached answer can outlive an admin revocation, treat a cache as "good 
 
 **Result shapes.** User updates return `variant { ok : Membership; err : … }` with a variant error per method (section 6). Admin methods return `AdminResult` (`ok` or `err : AdminError`, where `AdminError` is `NotAuthorized`, `NotFound` or `InvalidInput(text)`).
 
-**Purchases.** `purchaseWithIcp` consumes the whole deposit balance in one ledger transfer. Retrying after a timeout is safe: if the first call went through, the deposit account is empty and the retry returns `InvalidTier` (or `InsufficientPayment`) without charging anything; check `checkMembership` to see the new expiry. Two simultaneous calls cannot both succeed: the second transfer fails on the ledger and returns `TransferFailed`.
+**Purchases.** `purchaseWithIcp` consumes the whole deposit balance in one ledger transfer. Retrying after a timeout is safe: if the first call went through, the deposit account is empty and the retry returns `InvalidTier` (or `InsufficientPayment`) without charging anything; check `checkMembership` to see the new expiry. One purchase or withdrawal runs at a time per caller: a second one sent while the first is still running returns `InternalError` (purchase) or `InProgress` (withdrawal) without touching the ledger.
+
+**Withdrawals.** `withdrawDeposit` moves the whole deposit balance minus the fee in one ledger transfer to the caller. Retrying after a timeout is safe: if the first call went through, the retry returns `NothingToWithdraw`.
 
 **Voting power claims.** The claim interval is checked before and again after the governance calls, so concurrent claims by one principal grant at most once per interval.
 
@@ -246,7 +258,10 @@ Because a cached answer can outlive an admin revocation, treat a cache as "good 
 ### 5.3 Getting membership (updates)
 
 **`purchaseWithIcp() → PurchaseResult`**
-See 3.1. Errors: `NotAuthorized` (anonymous caller), `InvalidTier` (deposit balance matches no active tier), `InsufficientPayment { required; received }` (balance not above the ledger fee), `TransferFailed(text)` (`Temporarily unavailable`, `Insufficient funds`, `Bad fee`, … or the ledger's generic message). The Candid also lists `TierNotActive` and `InternalError`; the current code does not return them.
+See 3.1. Errors: `NotAuthorized` (anonymous caller), `InvalidTier` (deposit balance matches no active tier), `InsufficientPayment { required; received }` (balance not above the ledger fee), `TransferFailed(text)` (`Temporarily unavailable`, `Insufficient funds`, `Bad fee`, … or the ledger's generic message). `InternalError(text)` when the same caller already has a purchase or withdrawal running. The Candid also lists `TierNotActive`; the current code does not return it.
+
+**`withdrawDeposit() → WithdrawResult`**
+See 2.6. Sends the caller's own deposit balance (`getDepositAccount(caller)`) minus the ledger fee to the caller's default account (`{ owner = caller; subaccount = null }`). `ok`: `{ amountE8s; blockIndex; to }`. Errors: `NotAuthorized` (anonymous caller), `NothingToWithdraw { balance; fee }` (balance not above the fee), `InProgress` (a purchase or withdrawal of the caller is running), `TransferFailed(text)`. Nobody can withdraw from another principal's deposit account.
 
 **`claimWithVotingPower() → ClaimResult`**
 See 3.2. Errors: `NotAuthorized`, `AlreadyClaimedRecently { lastClaimTime; intervalNs; nextClaimTime }`, `NoActiveTiers`, `NoEligibleNeurons`, `InsufficientVotingPower { required; found }`. `InternalError` is in the Candid but not returned today.
@@ -306,6 +321,13 @@ type PurchaseError = variant {
   TransferFailed : text; InternalError : text;
 };
 
+type WithdrawResult = variant { ok : Withdrawal; err : WithdrawError };
+type Withdrawal = record { amountE8s : nat; blockIndex : nat; to : Account };
+type WithdrawError = variant {
+  NotAuthorized; InProgress; TransferFailed : text;
+  NothingToWithdraw : record { balance : nat; fee : nat };
+};
+
 type ClaimResult = variant { ok : Membership; err : ClaimError };
 type ClaimError = variant {
   NotAuthorized; NoActiveTiers; NoEligibleNeurons;
@@ -330,7 +352,7 @@ The complete interface, with the promo code and log types, is in [sneed_premium.
 
 - Gate features with `checkMembership` (or `getActivePremiumMembers` for lists), and cache until `expiration`.
 - Read tiers from `getIcpTiers()` / `getVotingPowerTiers()` every time you show them; they are DAO-managed.
-- For ICP purchases, deposit **exactly** one tier amount to `getDepositAccount(user)` before calling `purchaseWithIcp`; anything else returns `InvalidTier` and waits in the deposit account.
+- For ICP purchases, deposit **exactly** one tier amount to `getDepositAccount(user)` before calling `purchaseWithIcp`; anything else returns `InvalidTier` and waits in the deposit account until topped up or taken back with `withdrawDeposit`.
 - After a timeout, read `checkMembership` before retrying a purchase; a retry never charges twice.
 - Show `nextClaimTime` when a voting power claim returns `AlreadyClaimedRecently`, and tell users that claims refresh, they do not stack.
 - Use the staging canister `sf5tm-dqaaa-aaaae-qgyla-cai` to test; it has its own tiers and members.

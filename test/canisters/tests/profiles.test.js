@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Principal } from '@icp-sdk/core/principal';
 import { createPic, install, actorAs, admin, alice, bob, user, T, unwrap, errOf, wasm, refusedAtIngress, asUpdates } from '../lib/pic.js';
-import { verifyLog, archiveIdl, btype } from '../lib/icrc3.js';
+import { verifyLog, archiveIdl, btype, txField } from '../lib/icrc3.js';
 import { idlFactory as profilesIdl } from '../build/sneed_profiles.did.js';
 
 const anon = Principal.anonymous();
@@ -75,5 +75,37 @@ describe('sneed_profiles: dapp registry', () => {
     expect(await prof.get_dapps([1n, 2n])).toEqual(before);
     expect((await prof.search_dapps('taco', 5n)).length).toBe(1);
     expect(unwrap(await P(alice).register_dapp(dapp('After', [tacoCan])))).toBe(3n);
+  });
+
+  // fixed 2026-10-20: update_dapp used to check control of the *new* canisters only, so anyone
+  // controlling some canister could rewrite a verified entry and keep its checkmark
+  it('lets only managers of the entry as it stands update it; an added canister drops the checkmark', async () => {
+    const id = unwrap(await P(alice).register_dapp(dapp('Alice Dex', [tacoCan])));
+    unwrap(await prof.verify_dapp(id, true));
+    const get = async () => (await prof.get_dapps([id]))[0][0];
+    // bob controls tacoCan2 but none of the entry's canisters: he cannot take it over
+    expect(errOf(await P(bob).update_dapp(id, dapp('Alice Dex', [tacoCan2], { url: 'https://evil.example' })))).toMatch(/current canisters/);
+    expect(errOf(await P(bob).update_dapp(id, dapp('Alice Dex', [tacoCan, tacoCan2])))).toMatch(/current canisters/);
+    expect(await get()).toMatchObject({ name: 'Alice Dex', url: 'https://taco.example', verified: true });
+    expect((await get()).canisters.map(String)).toEqual([tacoCan.toText()]);
+    // alice manages it, but cannot hand it to canisters she has nothing to do with
+    expect(errOf(await P(alice).update_dapp(id, dapp('Alice Dex', [tacoCan2])))).toMatch(/control at least one of the dapp's canisters/);
+    // a change that keeps the canisters keeps the checkmark
+    unwrap(await P(alice).update_dapp(id, dapp('Alice Dex', [tacoCan], { url: 'https://dex.example' })));
+    expect((await get()).verified).toBe(true);
+    // adding a canister (here one she does not control) drops it
+    unwrap(await P(alice).update_dapp(id, dapp('Alice Dex', [tacoCan, tacoCan2])));
+    expect(await get()).toMatchObject({ verified: false });
+    expect((await get()).canisters.map(String)).toEqual([tacoCan.toText(), tacoCan2.toText()]);
+    // removing one keeps it; an admin adding one keeps it too
+    unwrap(await prof.verify_dapp(id, true));
+    unwrap(await P(alice).update_dapp(id, dapp('Alice Dex', [tacoCan])));
+    expect((await get()).verified).toBe(true);
+    unwrap(await prof.update_dapp(id, dapp('Alice Dex', [tacoCan, tacoCan2])));
+    expect((await get()).verified).toBe(true);
+    // the dropped checkmark is in the log
+    const { blocks } = await verifyLog(prof, profId, rootKey, archiveActor);
+    const cleared = blocks.filter((b) => btype(b) === 'sneedprofiles_dapp_update' && txField(b, 'dapp').Nat === id && txField(b, 'verification_cleared'));
+    expect(cleared.length).toBe(1);
   });
 });

@@ -166,29 +166,48 @@ shared (deployer) persistent actor class SneedProfiles() = this {
     #ok(id);
   };
 
-  /// Update a dapp, as a controller of one of its (new) canisters or an admin. A new name loses the checkmark.
+  /// Update a dapp, as a controller of one of its current canisters (or the governance of the SNS
+  /// that controls one) or an admin. New canisters must include one the caller controls too.
+  /// A new name loses the checkmark, and so does adding a canister, unless an admin does it.
   public shared ({ caller }) func update_dapp(id : DappId, d : DappInput) : async Result {
     if (Principal.isAnonymous(caller)) return #err("Please sign in");
     switch (dappProblem(d)) { case (?p) return #err(p); case null {} };
     if (not Map.has(dapps, Map.nhash, id)) return #err("No such dapp");
     if (not nameFree(d.name, id)) return #err("A dapp with that name is registered");
-    if (not isAdmin(caller) and not (await* controlsAny(caller, d.canisters))) return #err("You must control at least one of the dapp's canisters");
+    let current = switch (Map.get(dapps, Map.nhash, id)) { case (?x) x.canisters; case null return #err("No such dapp") };
+    let admin = isAdmin(caller);
+    // the caller must manage the entry as it stands, not just the canisters it would list
+    if (not admin and not (await* controlsAny(caller, current))) return #err("You must control at least one of the dapp's current canisters");
+    if (not admin and not (await* controlsAny(caller, d.canisters))) return #err("You must control at least one of the dapp's canisters");
     let existing = switch (Map.get(dapps, Map.nhash, id)) { case (?x) x; case null return #err("No such dapp") };
+    // checked against the canisters as they were: refuse if they changed while we were asking
+    if (not samePrincipals(existing.canisters, current)) return #err("The dapp was changed meanwhile; please try again");
+    var cleared = false;
     if (d.name != existing.name) {
       switch (await* Moderation.check(config.moderator, caller, d.name, true)) { case (#err(e)) return #err(e); case (#ok) {} };
       if (not nameFree(d.name, id)) return #err("A dapp with that name is registered");
+      if (not samePrincipals(existing.canisters, current)) return #err("The dapp was changed meanwhile; please try again");
       NameIndex.remove<DappId>(dapp_index, 0, existing.name);
       NameIndex.add<DappId>(dapp_index, 0, d.name, id);
+      if (existing.verified) cleared := true;
       existing.verified := false;
+    };
+    // a canister added by anyone but an admin is not covered by the checkmark
+    let added = Array.find<Principal>(d.canisters, func(c) = Array.find<Principal>(existing.canisters, func(x) = x == c) == null) != null;
+    if (added and not admin and existing.verified) {
+      existing.verified := false;
+      cleared := true;
     };
     existing.name := d.name;
     existing.url := d.url;
     existing.logo := d.logo;
     existing.canisters := d.canisters;
     existing.updated_at := now64();
-    block("dapp_update", caller, [("dapp", #Nat(id)), ("name", #Text(d.name)), ("url", #Text(d.url)), ("canisters", #Array(Array.map<Principal, T3.Value>(d.canisters, pv)))]);
+    block("dapp_update", caller, Array.append<(Text, T3.Value)>([("dapp", #Nat(id)), ("name", #Text(d.name)), ("url", #Text(d.url)), ("canisters", #Array(Array.map<Principal, T3.Value>(d.canisters, pv)))], if (cleared) [("verification_cleared", #Nat(1))] else []));
     #ok("Updated");
   };
+
+  func samePrincipals(a : [Principal], b : [Principal]) : Bool = Array.equal<Principal>(a, b, Principal.equal);
 
   func applyVerify(id : DappId, value : Bool, caller : Principal) : Result {
     switch (Map.get(dapps, Map.nhash, id)) {

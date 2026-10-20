@@ -247,6 +247,63 @@ describe('purchasing with ICP', () => {
   });
 });
 
+// added 2026-10-20: a deposit that matches no tier used to be stranded in the deposit subaccount
+describe('withdrawing a deposit', () => {
+  const eve = user('eve');
+  const premiumEve = () => actorAs(pic, premiumIdl, premiumId, eve);
+
+  it('refuses the anonymous principal and a subaccount holding no more than the fee', async () => {
+    expect(errOf(await premiumAnon.withdrawDeposit())).toEqual({ NotAuthorized: null });
+    expect(errOf(await premiumEve().withdrawDeposit())).toEqual({ NothingToWithdraw: { balance: 0n, fee: ICP_FEE } });
+    expect(errOf(await actorAs(pic, premiumIdl, premiumId, dave).withdrawDeposit())).toEqual({ NothingToWithdraw: { balance: ICP_FEE, fee: ICP_FEE } }); // the dust above
+  });
+
+  it('returns an unmatched deposit, minus the fee, to the caller and touches nobody else', async () => {
+    await icp.mint(depositAccount(eve), (7n * ICP) / 10n);
+    await icp.mint(depositAccount(bob), ICP / 3n);
+    const carolBefore = await balance(account(carol));
+    expect(errOf(await premiumEve().purchaseWithIcp())).toEqual({ InvalidTier: null });
+    const w = unwrap(await premiumEve().withdrawDeposit());
+    expect(w.amountE8s).toBe((7n * ICP) / 10n - ICP_FEE);
+    expect(w.to).toEqual(account(eve));
+    const txs = await icp.get_transactions();
+    expect(txs.at(-1).index).toBe(w.blockIndex);
+    expect(await balance(depositAccount(eve))).toBe(0n);
+    expect(await balance(account(eve))).toBe((7n * ICP) / 10n - ICP_FEE);
+    expect(await balance(depositAccount(bob))).toBe(ICP / 3n);
+    expect(await balance(account(carol))).toBe(carolBefore);
+    expect(await premium.checkMembership(eve)).toEqual({ NotFound: null });
+    unwrap(await premiumBob.withdrawDeposit());
+    expect(await balance(depositAccount(bob))).toBe(0n);
+  });
+
+  it('keeps the deposit when the ledger refuses', async () => {
+    await icp.mint(depositAccount(eve), ICP / 5n);
+    await icp.set_paused(true);
+    expect(errOf(await premiumEve().withdrawDeposit())).toHaveProperty('TransferFailed');
+    await icp.set_paused(false);
+    expect(await balance(depositAccount(eve))).toBe(ICP / 5n);
+    unwrap(await premiumEve().withdrawDeposit());
+  });
+
+  it('runs one purchase or withdrawal per caller at a time', async () => {
+    await icp.mint(depositAccount(eve), ICP / 5n);
+    const d = pic.createDeferredActor({ idlFactory: premiumIdl, canisterId: premiumId }); d.setPrincipal(eve);
+    const first = await d.withdrawDeposit();
+    const second = await d.withdrawDeposit();
+    const third = await d.purchaseWithIcp();
+    const [r1, r2, r3] = [await first(), await second(), await third()];
+    expect(r1).toHaveProperty('ok');
+    expect(r2).toEqual({ err: { InProgress: null } });
+    expect(r3.err.InternalError).toMatch(/in progress/);
+    expect(await balance(depositAccount(eve))).toBe(0n);
+    expect(await balance(account(eve))).toBe((7n * ICP) / 10n - ICP_FEE + ICP / 5n - ICP_FEE + ICP / 5n - ICP_FEE);
+    // the lock is released afterwards
+    await icp.mint(depositAccount(eve), ICP / 5n);
+    unwrap(await premiumEve().withdrawDeposit());
+  });
+});
+
 describe('membership over time', () => {
   it('expires and comes back from the active list, and a renewal after expiry starts from now', async () => {
     const before = await premium.checkMembership(bob);
@@ -410,9 +467,26 @@ describe('promo codes', () => {
     expect(pc).toMatchObject({ durationNs: 10n * DAY, maxClaims: 2n, claimCount: 0n, expiration: [], notes: ['launch party'], createdBy: bob, active: true });
     code = pc.code;
     const second = unwrap(await premium.createPromoCode({ durationNs: DAY, maxClaims: 1n, expiration: [], notes: [] }));
-    expect(second.code).not.toBe(code); // the generator is seeded by the time: consecutive rounds give different codes
+    expect(second.code).not.toBe(code);
     limited = second.code;
     expect(unwrap(await premium.getPromoCodes()).map((p) => p.code)).toEqual([code, limited]);
+  });
+
+  // fixed 2026-10-20: codes came from an LCG seeded with Time.now(), i.e. from their createdAt
+  it('are drawn from the IC randomness, not from the creation time', async () => {
+    const fromClock = (t) => {
+      let seed = t; let out = '';
+      for (let i = 0; i < 8; i++) { out += String.fromCharCode(65 + Number(seed % 26n)); seed = (seed * 1103515245n + 12345n) / 65536n; }
+      return out;
+    };
+    const made = [];
+    for (let i = 0; i < 3; i++) made.push(unwrap(await premium.createPromoCode({ durationNs: DAY, maxClaims: 1n, expiration: [], notes: [] })));
+    for (const pc of made) {
+      expect(pc.code).toMatch(/^[A-Z]{8}$/);
+      expect(pc.code).not.toBe(fromClock(pc.createdAt));
+    }
+    expect(new Set(made.map((pc) => pc.code)).size).toBe(3);
+    for (const pc of made) unwrap(await premium.deletePromoCode(pc.code));
   });
 
   it('extend the claimant on top of a running membership, once per principal, up to the claim limit', async () => {

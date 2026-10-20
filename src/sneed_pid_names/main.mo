@@ -826,12 +826,25 @@ shared (deployer) persistent actor class SneedPidNames() = this {
       switch srcName {
         case (?n) if (nameFree(n, #account(dst.id))) {
           applyAccountName(dst, n, caller);
-          switch srcVerification { case (?v) if (v.name == n) dst.verification := ?v; case null {} };
+          switch srcVerification {
+            case (?v) if (v.name == n) {
+              dst.verification := ?v;
+              // the checkmark moves with the name: logged so the log alone replays the state
+              block("verify", caller, [("account", #Nat(dst.id)), ("name", #Text(n)), ("source", sourceValue(v.source)), ("verified_at", Icrc3Log.nat64(v.at)), ("merged_from", #Nat(from))]);
+            };
+            case null {};
+          };
         };
         case null {};
       };
     };
-    if (dst.avatar == null) dst.avatar := src.avatar;
+    if (dst.avatar == null) switch (src.avatar) {
+      case (?av) {
+        dst.avatar := ?av;
+        block("avatar_set", caller, [("account", #Nat(dst.id)), ("avatar", avatarValue(av)), ("merged_from", #Nat(from))]);
+      };
+      case null {};
+    };
     block("account_merge", caller, [("from", #Nat(from)), ("into", #Nat(dst.id)), ("principals", #Nat(moved.size()))]);
     touch(#account(dst.id));
     #ok("Merged");

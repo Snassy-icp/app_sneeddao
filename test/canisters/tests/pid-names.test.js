@@ -170,6 +170,32 @@ describe('sneed_pid_names', () => {
     expect((await names.get_account(info.kind.account))[0].members.map((m) => Object.keys(m.role)[0])).toEqual(['owner', 'member']);
   });
 
+  // fixed 2026-10-20: the checkmark and avatar moved without verify / avatar_set blocks, so the
+  // log alone could not replay the merged account's state
+  it('logs the checkmark and the avatar a merge carries over', async () => {
+    const p3 = user('merge-3'); const p4 = user('merge-4');
+    unwrap(await as(p3).set_my_name('Delta Ray'));
+    unwrap(await names.verify(p3, 'Delta Ray'));
+    unwrap(await as(p3).set_my_avatar([{ url: 'https://example.com/delta.png' }]));
+    unwrap(await as(p3).add_hotkey(p4));
+    const from = (await nameOf(p3)).kind.account;
+    unwrap(await as(p4).merge_account(from));
+    const info = await nameOf(p4);
+    expect(info).toMatchObject({ name: ['Delta Ray'], verified: true, avatar: [{ url: 'https://example.com/delta.png' }] });
+    const into = info.kind.account;
+    const { blocks } = await verifyLog(names, namesId, rootKey, archiveActor);
+    const forInto = (t) => blocks.filter((b) => btype(b) === `sneednames_${t}` && txField(b, 'account')?.Nat === into);
+    const [verify] = forInto('verify');
+    expect(verify).toBeDefined();
+    expect(txField(verify, 'name').Text).toBe('Delta Ray');
+    expect(txField(verify, 'merged_from').Nat).toBe(from);
+    expect(txField(verify, 'source')).toHaveProperty('Map');
+    const [avatar] = forInto('avatar_set');
+    expect(avatar).toBeDefined();
+    expect(txField(avatar, 'avatar').Map).toEqual([['url', { Text: 'https://example.com/delta.png' }]]);
+    expect(txField(avatar, 'merged_from').Nat).toBe(from);
+  });
+
   it('keeps an owner, deletes an emptied account and lets members leave', async () => {
     const o1 = user('own-1'); const o2 = user('own-2');
     unwrap(await as(o1).set_my_name('Owners Club'));
