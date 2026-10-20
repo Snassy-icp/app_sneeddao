@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, Link, useSearchParams, useLocation } from 'react-router-dom';
+import VoteBar from '../components/VoteBar';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { useAuth } from '../AuthContext';
@@ -1766,6 +1767,8 @@ function Proposals() {
                                         >
                                             {proposal.proposal[0]?.title || 'Untitled Proposal'}
                                         </Link>
+
+                                        <VoteBar tally={proposal.latest_tally} theme={theme} />
                                         
                                         {/* Proposer */}
                                         <div style={{

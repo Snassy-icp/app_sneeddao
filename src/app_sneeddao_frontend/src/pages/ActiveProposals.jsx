@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import VoteBar from '../components/VoteBar';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useWallet } from '../contexts/WalletContext';
@@ -1122,6 +1123,8 @@ function ActiveProposals() {
                                                     >
                                                         {proposalTitle}
                                                     </Link>
+
+                                                    <VoteBar tally={proposal.latest_tally} theme={theme} />
                                                     
                                                     {/* Vote Buttons */}
                                                     <div style={{
