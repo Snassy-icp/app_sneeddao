@@ -29,17 +29,17 @@ export default function HelpApp() {
                     <ol style={ol}>
                         <li>Open <strong>app.sneeddao.com</strong> in Safari (or Chrome).</li>
                         <li>Tap the <strong>Share</strong> button, then <strong>Add to Home Screen</strong>, then <strong>Add</strong>.</li>
-                        <li>Open Sneed Hub from your home screen and log in by pairing (below).</li>
+                        <li>Open Sneed Hub from your home screen and log in as usual. If the login doesn't come back to the app, pair it with Safari (below).</li>
                     </ol>
                 </div>
 
                 <div style={card}>
-                    <h2 style={h2}><FaKey /> Logging in on iPhone: pair with Safari</h2>
+                    <h2 style={h2}><FaKey /> If the login doesn't come back: pair with Safari</h2>
                     <p style={p}>
-                        On iPhone, an app on the home screen can't receive Internet Identity's login, so you approve it from Safari instead. It takes a minute, once a week (as long as a login lasts).
+                        Sometimes an app on the iPhone home screen doesn't receive Internet Identity's login: you log in, and it never comes back to the app. Then approve the app from Safari instead. It takes a minute, once a week (as long as a login lasts).
                     </p>
                     <ol style={ol}>
-                        <li>In the app, tap <strong>Log in</strong>. It shows a link and a check code, such as <code>K7Q-2MX</code>.</li>
+                        <li>In the app, tap <strong>Log in</strong>, then <strong>Pair it with Safari</strong>. It shows a link and a check code, such as <code>K7Q-2MX</code>.</li>
                         <li>Tap <strong>Copy link</strong> and open the link in Safari. Log in there as usual.</li>
                         <li>Check that Safari shows the <strong>same code</strong>, then tap <strong>Allow</strong> and <strong>Copy approval</strong>.</li>
                         <li>Go back to the app and tap <strong>Paste approval</strong>. You're logged in.</li>
