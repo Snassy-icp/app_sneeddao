@@ -30,7 +30,7 @@ Lets any dapp on the Internet Computer notify its users, and lets each user deci
 ## Asynchronous lifecycle and polling
 - `notify` returns `#ok({ id; deliveries; deduplicated })` and queues jobs; delivery happens afterwards (Sneed SMS by the canister's own timer, other kinds by relays that pull, deliver and ack; failed attempts are retried up to `max_attempts`).
 - Apps poll `get_receipts(ids)` (at most 500 ids) for `pending`, `delivered`, `failed`, `suppressed`, `expired`; every minute or slower is plenty.
-- Channels: `add_channel` creates an unverified channel and sends a 6-digit code (valid 24 h); the user calls `verify_channel(id, code)`.
+- Channels: `add_channel` creates an unverified channel and sends a 6-digit code (valid 24 h); the user calls `verify_channel(id, code)`. `resend_code(id)` sends a new code (same 5-a-day limit). `set_low_balance_alert(threshold_e8s)` (default 0.0001 ICP, 0 = off): one free alert when the balance falls below it.
 - Users read `get_my_history(limit)` and `get_my_requests()`.
 
 ## Errors, retries and Busy

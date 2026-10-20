@@ -169,10 +169,10 @@ describe('sneed_notifications', () => {
     expect(r2.ok.deliveries).toBe(2n);
     expect((await as(bob).get_my_settings()).balance_e8s).toBe(900_000n - 100n);
     const jobs = await as(relay).relay_pull(10n);
-    expect(jobs.length).toBe(1);
-    expect(jobs[0].title).toBe('Cycles low');
-    expect(jobs[0].app).toBe('Unicycle Test');
-    await as(relay).relay_ack([[jobs[0].id, { ok: null }]]);
+    // the empty balance at r1 also sent bob the (free) low-balance alert on his urgent channel
+    expect(jobs.map((j) => j.title).sort()).toEqual(['Cycles low', 'Your notification balance is low']);
+    expect(jobs.find((j) => j.title === 'Cycles low').app).toBe('Unicycle Test');
+    await as(relay).relay_ack(jobs.map((j) => [j.id, { ok: null }]));
     // info level goes nowhere but the copy channel
     const r3 = await notify({ topic: 'news', title: 'News', dedupe: ['c'] });
     expect(r3.ok.deliveries).toBe(1n);
@@ -247,6 +247,34 @@ describe('sneed_notifications', () => {
     expect(await refusedAtIngress(as(anon).allow_app(appId, true))).toBe(true);
     expect(await refusedAtIngress(as(bob).admin_remove_app(appId))).toBe(true);
     expect(await refusedAtIngress(as(bob).add_channel({ email: null }, 'x', new Uint8Array(20_000)))).toBe(true);
+  });
+
+  it('warns once when the balance falls below the alert threshold, again after a top-up, never when off', async () => {
+    const lowAlerts = async () => (await as(bob).get_my_history(200n)).filter((h) => h.topic === 'low_balance').length;
+    const before = await lowAlerts();
+    const { balance_e8s: b } = await as(bob).get_my_settings();
+    expect((await as(bob).get_low_balance_alert()).default_e8s).toBe(10_000n);
+    unwrap(await as(bob).set_low_balance_alert(b - 50n)); // the next paid delivery (100) crosses it
+    expect(await lowAlerts()).toBe(before); // setting it sends nothing
+    unwrap(await notify({ dedupe: ['low-1'] }));
+    expect(await lowAlerts()).toBe(before + 1);
+    unwrap(await notify({ dedupe: ['low-2'] }));
+    expect(await lowAlerts()).toBe(before + 1); // once
+    await icp.mint(account(bob), 1_000_000n);
+    unwrap(await actorAs(pic, ledgerIdl, icpId, bob).icrc2_approve({ from_subaccount: [], spender: account(notifId), amount: 1_000_000n, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] }));
+    unwrap(await as(bob).top_up(500n)); // back above the threshold: armed again
+    unwrap(await notify({ dedupe: ['low-3'] }));
+    unwrap(await notify({ dedupe: ['low-4'] }));
+    unwrap(await notify({ dedupe: ['low-5'] }));
+    expect(await lowAlerts()).toBe(before + 1); // +500 -300: still above b - 50
+    unwrap(await notify({ dedupe: ['low-5b'] })); // now below it again
+    expect(await lowAlerts()).toBe(before + 2);
+    unwrap(await as(bob).set_low_balance_alert(0n)); // off
+    unwrap(await as(bob).top_up(10_000n));
+    for (const d of ['low-6', 'low-7']) unwrap(await notify({ dedupe: [d] }));
+    expect(await lowAlerts()).toBe(before + 2);
+    const jobs = await as(relay).relay_pull(50n);
+    await as(relay).relay_ack(jobs.map((j) => [j.id, { ok: null }]));
   });
 
   it('keeps everything over an upgrade', async () => {

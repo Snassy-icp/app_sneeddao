@@ -132,7 +132,7 @@ export default function HelpNotifications() {
                 </Steps>
                 <P>
                     A channel waiting for its code shows <B>waiting for the code</B>; a verified one shows <B>ready</B>. The code is valid
-                    for a day. If it expires, <B>Remove</B> the channel and add it again. Five wrong codes also end it, and you
+                    for a day. If it expires or never arrives, press <B>Send a new code</B>. Five wrong codes also end a code, and you
                     can add up to five channels a day: codes go to whatever address is typed in, so this stops anyone using them
                     to pester someone else. If no relay is running, the card lists these
                     channels as coming soon. Telegram and email are also listed as coming soon.
@@ -150,6 +150,7 @@ export default function HelpNotifications() {
                 </P>
                 <List>
                     <Li><B>Not enough balance</B>: the delivery to that channel is skipped, while free channels still get the message.</Li>
+                    <Li><B>Low-balance alert</B>: when your balance falls below the amount set on the <B>Balance</B> card (0.0001 ICP unless you change it), you get one free message on Sneed SMS and your urgent channels. It comes again after a top-up. Set it to 0 to turn it off.</Li>
                     <Li><B>Daily spending cap for this app</B>: skipped once the app's cap for today is used up.</Li>
                     <Li><B>Sponsored messages</B>: an app may pay for a message itself from its own balance. Then nothing is taken from yours.</Li>
                     <Li><B>Failed deliveries</B>: if a delivery finally fails, its price goes back to whoever paid.</Li>

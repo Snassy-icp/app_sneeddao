@@ -3,6 +3,7 @@ import Buffer "mo:base/Buffer";
 import Debug "mo:base/Debug";
 import Error "mo:base/Error";
 import Int "mo:base/Int";
+import Iter "mo:base/Iter";
 import Nat "mo:base/Nat";
 import Nat8 "mo:base/Nat8";
 import Principal "mo:base/Principal";
@@ -85,6 +86,8 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   // new ones are limited: otherwise the relays could be used to message someone over and over.
   let MAX_CODE_MISSES : Nat = 5;
   let MAX_CHANNEL_ADDS_PER_DAY : Nat = 5;
+  // Below this balance a user is told once (free) that paid deliveries will stop; 0 turns it off.
+  let DEFAULT_LOW_BALANCE_E8S : Nat = 10_000;
   let MAX_NAME = 64;
   let MAX_DESCRIPTION = 500;
   let MAX_TOPICS = 50;
@@ -128,6 +131,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   let channel_adds = Map.new<Principal, (Nat, Nat)>(); // user -> (day, channels added that day)
   let settings = Map.new<Principal, Settings>();
   let user_balances = Map.new<Principal, Nat>();
+  let low_balance = Map.new<Principal, (Nat, Bool)>(); // user -> (alert threshold, already alerted); absent: default, not alerted
   let permissions = Map.new<Text, Permission>(); // "user/app"
   let requests = Map.new<Principal, [Nat]>();
   let usage = Map.new<Text, (Nat, Nat, Nat)>(); // "user/app" -> (day, messages, spent e8s)
@@ -418,6 +422,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     };
     if (input.sponsored) Map.set(app_balances, Map.nhash, a.id, appBalanceOf(a.id) - (appSpent + config.notify_price_e8s));
     Map.set(user_balances, Map.phash, user, balance);
+    if (not input.sponsored and (userSpent > spent or Array.find<Nat>(Buffer.toArray(jobIds), func(j) = isSuppressedForBalance(j)) != null)) lowBalanceCheck(user);
     Map.set(usage, Map.thash, k, (uDay, count + 1, userSpent));
     record({ id; app = a.id; user; topic = topic.id; title = input.title; body = input.body; link = input.link; level; created_at = t; jobs = Buffer.toArray(jobIds) });
     let queued = Array.filter<Nat>(Buffer.toArray(jobIds), func(j) = Map.has(pending, Map.nhash, j)).size();
@@ -605,12 +610,55 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     #ok("Saved");
   };
 
+  func lowBalanceSetting(user : Principal) : (Nat, Bool) = switch (Map.get(low_balance, Map.phash, user)) { case (?x) x; case null (DEFAULT_LOW_BALANCE_E8S, false) };
+
+  func isSuppressedForBalance(j : Nat) : Bool = switch (Map.get(jobs, Map.nhash, j)) {
+    case (?job) switch (job.state) { case (#suppressed({ reason })) reason == "not enough balance"; case _ false };
+    case null false;
+  };
+
+  /// Tell the user once, for free, that their balance fell below their threshold: to Sneed SMS and their urgent channels.
+  func lowBalanceCheck(user : Principal) {
+    let (threshold, alerted) = lowBalanceSetting(user);
+    if (threshold == 0 or alerted or balanceOf(user) >= threshold) return;
+    Map.set(low_balance, Map.phash, user, (threshold, true));
+    let s = settingsOf(user);
+    let sms = smsChannel(user);
+    let targets = Array.filter<Channel>(userChannels(user), func(c) = c.id == sms.id or (c.state == #verified and Array.find<Nat>(s.defaults.urgent, func(x) = x == c.id) != null));
+    let n = next_notification_id;
+    next_notification_id += 1;
+    let jobIds = Array.map<Channel, Nat>(targets, func(c) = newJob(n, user, c, now(), 0, true));
+    record({ id = n; app = SYSTEM_APP; user; topic = "low_balance"; title = "Your notification balance is low"; body = "You have " # e8sText(balanceOf(user)) # " ICP left for paid deliveries (phone push, Discord…). When it runs out, those channels stop and only Sneed SMS keeps receiving. Top up in Sneed Hub."; link = ?"https://app.sneeddao.com/notifications"; level = #urgent; created_at = now(); jobs = jobIds });
+  };
+
+  func rearmLowBalance(user : Principal) {
+    let (threshold, _) = lowBalanceSetting(user);
+    if (balanceOf(user) >= threshold) Map.set(low_balance, Map.phash, user, (threshold, false));
+  };
+
+  func e8sText(e8s : Nat) : Text {
+    let frac = Nat.toText(e8s % 100_000_000 + 100_000_000);
+    Nat.toText(e8s / 100_000_000) # "." # Text.fromIter(Iter.fromArray(Array.subArray<Char>(Text.toArray(frac), 1, 8)));
+  };
+
+  /// Your low-balance alert: you're told once when your balance falls below `threshold_e8s` (0 turns it off).
+  public shared ({ caller }) func set_low_balance_alert(threshold_e8s : Nat) : async Result {
+    switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
+    Map.set(low_balance, Map.phash, caller, (threshold_e8s, balanceOf(caller) < threshold_e8s and threshold_e8s > 0));
+    #ok(if (threshold_e8s == 0) "Low-balance alert off" else "Low-balance alert set");
+  };
+
+  public shared query ({ caller }) func get_low_balance_alert() : async { threshold_e8s : Nat; default_e8s : Nat } {
+    { threshold_e8s = lowBalanceSetting(caller).0; default_e8s = DEFAULT_LOW_BALANCE_E8S };
+  };
+
   /// Top up your notification balance with ICP (approve this canister for amount + fee first).
   public shared ({ caller }) func top_up(amount_e8s : Nat) : async ResultNat {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
     switch (await* pull(caller, amount_e8s)) { case (#err(e)) return #err(e); case (#ok) {} };
     let b = balanceOf(caller) + amount_e8s;
     Map.set(user_balances, Map.phash, caller, b);
+    rearmLowBalance(caller);
     #ok(b);
   };
 
@@ -908,9 +956,11 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     #update_app : Any;
     #verify_channel : Any;
     #resend_code : Any;
+    #set_low_balance_alert : Any;
+    #get_low_balance_alert : Any;
   } }) : Bool {
     switch msg {
-      case (#get_api_doc _ or #get_relay_keys _ or #get_admins _ or #get_app _ or #get_app_balance _ or #get_app_of _ or #get_config _ or #get_my_apps _ or #get_my_history _ or #get_my_requests _ or #get_my_settings _ or #get_receipts _ or #list_apps _ or #stats _) false;
+      case (#get_api_doc _ or #get_relay_keys _ or #get_admins _ or #get_app _ or #get_app_balance _ or #get_app_of _ or #get_config _ or #get_my_apps _ or #get_my_history _ or #get_my_requests _ or #get_my_settings _ or #get_low_balance_alert _ or #get_receipts _ or #list_apps _ or #stats _) false;
       // apps call these from their canisters, never by ingress
       case (#notify _ or #notify_batch _ or #request_permission _) false;
       case (#admin_add_admin _ or #admin_remove_admin _ or #admin_remove_app _ or #admin_set_app_verified _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;

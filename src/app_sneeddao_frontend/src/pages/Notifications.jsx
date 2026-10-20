@@ -33,6 +33,7 @@ export default function Notifications() {
     const [live, setLive] = useState({}); // channel kinds with a relay running: { discord: true, push: true }
     const [discordId, setDiscordId] = useState('');
     const [codes, setCodes] = useState({}); // channel id -> code typed
+    const [lowAlert, setLowAlert] = useState(''); // ICP, '' until loaded
 
     const actor = useMemo(() => (identity && notificationsEnabled ? notificationsActor(identity) : null), [identity]);
     const load = useCallback(async () => {
@@ -42,6 +43,8 @@ export default function Notifications() {
         const kinds = {};
         for (const k of ['discord', 'push']) kinds[k] = !!(await relayKeys(identity, k).catch(() => null));
         setLive(kinds);
+        const la = await actor.get_low_balance_alert().catch(() => null); // an older canister has no alert
+        if (la) setLowAlert(String(Number(la.threshold_e8s) / 1e8));
     }, [actor, identity]);
     useEffect(() => { load().catch((e) => setMsg({ err: e.message || String(e) })); }, [load]);
     // a code from a tapped notification (/notifications?code=123456) fills the channels waiting for one
@@ -283,6 +286,14 @@ export default function Notifications() {
                     <button type="button" style={btn(true)} disabled={busy || !(Number(amount) > 0)} onClick={() => run(async () => { await topUp(identity, BigInt(Math.round(Number(amount) * 1e8))); }, 'Topped up')}>Top up</button>
                     <span style={muted}>from your Sneed Hub wallet (plus the 0.0001 ICP ledger fee)</span>
                 </div>
+                {lowAlert !== '' && (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+                        <span style={muted}>Warn me when my balance falls below</span>
+                        <input type="number" min="0" step="0.0001" value={lowAlert} onChange={(e) => setLowAlert(e.target.value)} style={{ ...select, width: 110 }} /> <span style={muted}>ICP</span>
+                        <button type="button" style={btn(false)} disabled={busy || !(Number(lowAlert) >= 0)} onClick={() => run(async () => actor.set_low_balance_alert(BigInt(Math.round(Number(lowAlert) * 1e8))), Number(lowAlert) > 0 ? 'Low-balance alert saved' : 'Low-balance alert turned off')}>Save</button>
+                        <span style={{ ...muted, flexBasis: '100%', fontSize: '0.78rem' }}>Sent once, free, to Sneed SMS and your urgent channels; again after a top-up. 0 turns it off.</span>
+                    </div>
+                )}
             </div>
 
             <div style={card}>

@@ -276,6 +276,8 @@ Receipts disappear with the notification after the retention period. The id `0` 
 
 - `add_channel(kind, name, address)`: for `#sneed_sms` returns the user's SMS channel id (made on first use; every user has exactly one). For other kinds: `name` up to 64 characters, `address` 1 to 2,048 bytes, at most 20 channels per user (the SMS channel counts). The new channel is `#unverified`; a 6-digit code, valid for 24 hours, goes out free through the relay of that kind as an urgent message from app 0. Returns the channel id.
 - `verify_channel(id, code)`: errors `Nothing to verify`, `Not your channel`, `The code expired; remove the channel and add it again`, `Wrong code`. Returns `Verified`.
+- `resend_code(id)`: sends a channel that is still waiting a new 6-digit code (the old one stops working; wrong-code count reset). Counts toward the same 5 per user per UTC day as `add_channel`. Errors `Not your channel`, `This channel needs no code`, `At most 5 codes a day; try again tomorrow`.
+- `set_low_balance_alert(threshold_e8s)` / `get_low_balance_alert() -> { threshold_e8s; default_e8s }` (query): when a paid delivery takes the user's balance below the threshold, or one is skipped for lack of balance, the user gets one free notification (topic `low_balance`, from Sneed Notifications) on Sneed SMS and their urgent channels; a top-up back above the threshold arms it again. Default 10_000 e8s (0.0001 ICP); 0 turns it off.
 - `remove_channel(id)`: deletes the channel and its address, its pending code, and its uses in the caller's settings. Jobs still queued for it fail (`channel removed`, refunded) when its relay next pulls. Error: `Not your channel`.
 
 ### 3.5 Relays
@@ -329,6 +331,9 @@ All refuse the anonymous principal (`Please sign in` where the method checks it)
 | `set_settings(Settings)` | update | `Result` | Errors `Unknown channel`, `Quiet hours in minutes of the day (0-1439), time zone within ±14 h`. |
 | `add_channel(kind, name, address : blob)` | update | `ResultNat` | 3.4. |
 | `verify_channel(id, code : text)` | update | `Result` | 3.4. |
+| `resend_code(id)` | update | `Result` | 3.4. |
+| `set_low_balance_alert(threshold_e8s : nat)` | update | `Result` | 3.4. |
+| `get_low_balance_alert()` | query | `record { threshold_e8s : nat; default_e8s : nat }` | 3.4. |
 | `remove_channel(id)` | update | `Result` | 3.4. |
 | `top_up(amount_e8s)` | update | `ResultNat` | The caller's new balance. |
 | `get_my_settings()` | query | `{ settings; channels; balance_e8s }` | A user who never made an update call gets default settings whose `always_copy` id is not stored yet; call `add_channel({ sneed_sms: null }, '', [])` or `set_settings` once to fix it. |
