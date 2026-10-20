@@ -23,6 +23,9 @@ import { guardianIdl, guardianById, policySummary } from './guardianIdl.js';
 import { NEVER_NS } from '../utils/lockTime';
 import { getLedgerTokenLocks, getTokenPositionLocks } from '../utils/sneedLockLists';
 import { DFINITY_LEDGER_RELEASES } from './dfinityReleases.js';
+import { REPACKAGED_BUILDS } from './repackaged.js';
+import { officialReleasesForRaw } from './wasmVerify.js';
+import { buildControllerTree, describeTreeNode, untrustedEnds } from './controllerTree.js';
 const NEVER_MS = Number(NEVER_NS / 1_000_000n);
 
 export const IDS = {
@@ -312,7 +315,18 @@ async function daoLabel(sns, ctx) {
 }
 
 // ---- controller classification ----
-async function classifyControllers(controllers, ctx) {
+/// The label of a trusted root controller (blackhole, NNS root, Sneed guardian, SNS root), else null.
+async function trustedRoot(id, ctx, snsw) {
+    if (BLACKHOLES[id]) return BLACKHOLES[id];
+    if (id === IDS.nnsRoot) return 'NNS root';
+    const g = guardianById(id);
+    if (g) return g.name;
+    if (snsw.byRoot.has(id)) return daoLabel(snsw.byRoot.get(id), ctx);
+    return null;
+}
+
+/// `self`: the canister whose controllers these are (so a controller loop back to it is seen).
+async function classifyControllers(controllers, ctx, self = null) {
     const snsw = await ctx.load('snsw', loaders.snsw);
     if (controllers.length === 0) return { grade: 'pass', label: 'Blackholed (no controllers)', kind: 'none' };
     if (controllers.length === 1 && guardianById(controllers[0])) {
@@ -325,13 +339,28 @@ async function classifyControllers(controllers, ctx) {
         const sns = snsw.byRoot.get(controllers[0]);
         return { grade: 'pass', label: `Controlled by ${await daoLabel(sns, ctx)}`, kind: 'sns', sns };
     }
-    const named = await Promise.all(controllers.map(async (c) => (BLACKHOLES[c] ? BLACKHOLES[c] : guardianById(c) ? guardianById(c).name : snsw.byRoot.has(c) ? await daoLabel(snsw.byRoot.get(c), ctx) : c === IDS.nnsRoot ? 'NNS root' : c)));
-    const canisters = controllers.filter((c) => c.length === 27);
+    const roots = await Promise.all(controllers.map((c) => trustedRoot(c, ctx, snsw)));
     const users = controllers.filter((c) => c.length !== 27);
-    if (controllers.length > 1 && controllers.some((c) => BLACKHOLES[c] || guardianById(c) || snsw.byRoot.has(c) || c === IDS.nnsRoot)) {
-        return { grade: 'fail', label: `Mixed controllers: ${named.join(', ')}. The DAO or blackhole does not control this alone`, kind: 'mixed' };
+    const canisters = controllers.filter((c, i) => c.length === 27 && !roots[i]);
+    // Canisters nobody has classified: follow their own controllers a few levels up.
+    const tree = canisters.length
+        ? await ctx.load(`ctltree:${self}:${canisters.join(',')}`, () => buildControllerTree(canisters, { self, readStatus: (id) => ctx.load(`status:${id}`, loaders.status(id)), trusted: (id) => trustedRoot(id, ctx, snsw) }))
+        : null;
+    const byId = new Map((tree?.nodes || []).map((n) => [n.id, n]));
+    const named = controllers.map((c, i) => roots[i] || (byId.has(c) ? describeTreeNode(byId.get(c)) : c));
+    const extra = tree ? { tree: tree.lines } : {};
+    if (users.length === 0 && (!tree || tree.ok)) {
+        if (tree && tree.safe) return { grade: 'pass', label: `Controllers: ${named.join(', ')}. Every controlling canister runs known-safe code and answers only to trusted roots`, kind: 'semi', ...extra };
+        if (tree) return { grade: 'warn', label: `Controllers: ${named.join(', ')}. No person can change the controlling canister${canisters.length > 1 ? 's' : ''}, but ${canisters.length > 1 ? 'their' : 'its'} code decides what ${canisters.length > 1 ? 'they' : 'it'} can do to this canister: partial`, kind: 'semi', ...extra };
+        return { grade: 'warn', label: `Several trusted controllers: ${named.join(', ')}. Any one of them can act alone`, kind: 'mixed' };
     }
-    return { grade: 'fail', label: `Controlled by ${users.length ? `${users.length} user principal(s)` : ''}${users.length && canisters.length ? ' and ' : ''}${canisters.length ? `${canisters.length} canister(s)` : ''}: ${named.join(', ')}`, kind: 'other' };
+    if (users.length === 0 && tree && !tree.ok) {
+        return { grade: 'fail', label: `Controllers: ${named.join(', ')}. Through the controlling canisters, ${untrustedEnds(tree).join(', ')} can act on this canister`, kind: 'other', ...extra };
+    }
+    if (controllers.length > 1 && roots.some(Boolean)) {
+        return { grade: 'fail', label: `Mixed controllers: ${named.join(', ')}. The DAO or blackhole does not control this alone`, kind: 'mixed', ...extra };
+    }
+    return { grade: 'fail', label: `Controlled by ${users.length ? `${users.length} user principal(s)` : ''}${users.length && canisters.length ? ' and ' : ''}${canisters.length ? `${canisters.length} canister(s)` : ''}: ${named.join(', ')}`, kind: 'other', ...extra };
 }
 
 function classifyHash(hash, kind, snsw, controllersKind, gitCommit = null) {
@@ -341,6 +370,10 @@ function classifyHash(hash, kind, snsw, controllersKind, gitCommit = null) {
     const rel = DFINITY_LEDGER_RELEASES[hash];
     if (rel && rel.kind === kind) return { grade: 'pass', label: `DFINITY ICRC ledger suite ${kind}, official release ${rel.release}${rel.u256 ? ' (u256)' : ''} (github.com/dfinity/ic)` };
     if (rel) return { grade: 'warn', label: `A DFINITY ICRC ledger suite ${rel.kind} (release ${rel.release}) installed as the ${kind}` };
+    // A recompressed copy of an official build, verified by the Sneed team (see repackaged.js).
+    const rp = REPACKAGED_BUILDS[hash];
+    const off = rp ? officialReleasesForRaw(rp.rawSha).find((r) => r.kind === kind && !!r.u256 === !!rp.u256) : null;
+    if (off) return { grade: 'pass', label: `DFINITY ICRC ledger suite ${kind}, official release ${off.release}${off.u256 ? ' (u256)' : ''}, recompressed by ${rp.packagedBy} (Wasm verified identical)` };
     if (controllersKind === 'nns') return { grade: 'pass', label: 'Installed by NNS proposal (not in the SNS version list)' };
     // The canister says which DFINITY commit it was built from, but its hash is none of the builds known
     // here: someone rebuilt it (or patched it), so the code can't be verified from outside. DFINITY
@@ -444,8 +477,8 @@ export function buildTokenTree(ledgerId, config, header = null) {
             const cid = idOf ? await idOf(ctx) : id;
             if (!cid) return extra?.missing ? skip(extra.missing) : fail('Canister not found');
             const st = await status(ctx, cid);
-            const cls = await classifyControllers(st.controllers, ctx);
-            const details = { canister: cid, controllers: st.controllers, module_hash: st.moduleHash };
+            const cls = await classifyControllers(st.controllers, ctx, cid);
+            const details = { canister: cid, controllers: st.controllers, module_hash: st.moduleHash, ...(cls.tree ? { controller_tree: cls.tree } : {}) };
             if (cls.kind === 'guardian') {
                 const child = await ctx.load(`guardian:${cls.guardian.id}:${cid}`, async () => { const g = await actor(guardianIdl, cls.guardian.id); const r = await g.get_child(Principal.fromText(cid)); return r[0] || null; });
                 if (!child) return { status: 'warn', summary: `${cls.label}, but the canister is not registered there (nobody can act on it until it is)`, details, link: HUB.canister(cid) };
@@ -460,9 +493,10 @@ export function buildTokenTree(ledgerId, config, header = null) {
             const cid = idOf ? await idOf(ctx) : ledgerId;
             if (!cid) return skip('No such canister');
             const [st, snsw] = await Promise.all([status(ctx, cid), ctx.load('snsw', loaders.snsw)]);
-            const cls = await classifyControllers(st.controllers, ctx);
+            const cls = await classifyControllers(st.controllers, ctx, cid);
             const h = classifyHash(st.moduleHash, kind, snsw, cls.kind, st.gitCommit);
-            return { status: h.grade, summary: h.label, details: { canister: cid, module_hash: st.moduleHash, ...(st.gitCommit ? { git_commit_id: st.gitCommit } : {}) }, link: HUB.canister(cid) };
+            // `verify` feeds the "Verify a recompressed build" box under an unknown build
+            return { status: h.grade, summary: h.label, details: { canister: cid, module_hash: st.moduleHash, ...(st.gitCommit ? { git_commit_id: st.gitCommit } : {}) }, link: HUB.canister(cid), ...(h.grade !== 'pass' && st.moduleHash ? { verify: { moduleHash: st.moduleHash, kind } } : {}) };
         },
     });
 
@@ -532,7 +566,8 @@ export function buildTokenTree(ledgerId, config, header = null) {
                     const st = await quiet(status(ctx, owner), null);
                     if (st) {
                         details.minting_canister_controllers = st.controllers;
-                        const cls = await classifyControllers(st.controllers, ctx);
+                        const cls = await classifyControllers(st.controllers, ctx, owner);
+                        if (cls.tree) details.minting_canister_controller_tree = cls.tree;
                         if (cls.grade === 'pass') return pass(`A canister ${cls.label.toLowerCase()}`, details, HUB.canister(owner));
                         return warn(`A canister whose controllers can change it: ${cls.label}`, details, HUB.canister(owner));
                     }
@@ -1090,6 +1125,8 @@ export function rateTree(tree, statusOf) {
     const dims = ['minting', 'distribution', 'locks', 'liquidity', 'cycles'].map((k) => by[k]);
     const fails = dims.filter((s) => s === 'fail').length;
     const warns = dims.filter((s) => s === 'warn').length;
+    // A controlling canister nobody can change still runs code of its own: never "Strong" on top of that.
+    if (gateParts.controllers === 'warn' && fails <= 1) return { label: 'Fair', color: '#f59e0b', note: 'verified code, but its control is only partly locked down (see Controllers)' };
     if (fails === 0 && warns <= 1) return { label: 'Strong', color: '#22c55e', note: 'verified code under immutable or DAO control, with the dimensions behind it in good shape' };
     if (fails <= 1) return { label: 'Fair', color: '#f59e0b', note: 'verified code under safe control, but some dimensions need work' };
     return { label: 'Weak', color: '#ef4444', note: 'verified code under safe control, but several dimensions fail' };

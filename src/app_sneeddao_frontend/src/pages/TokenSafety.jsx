@@ -14,6 +14,7 @@ import { STATUS, Badge, Node, primary } from '../health/TreeView.jsx';
 import MoneyGraph from '../tokensafety/MoneyGraph.jsx';
 import { scanSource } from '../tokensafety/sources.js';
 import { fixFor } from '../tokensafety/fixes.js';
+import VerifyRecompressed from '../tokensafety/VerifyRecompressed.jsx';
 
 function ConfigPanel({ config, setConfig, theme, onClose }) {
     const [draft, setDraft] = useState(config);
@@ -117,6 +118,8 @@ export function CheckPanel({ ledgerId, onHeader, onRating, indexOverride = null 
     const graphSource = useMemo(() => (graphData ? scanSource(graphData.scan, graphData.tags, graphData.origin, { symbol: header?.symbol || graphData.meta?.symbol, decimals: header?.decimals ?? graphData.meta?.decimals ?? 8 }) : null), [graphData, header]);
     const toggle = useCallback((id) => setExpanded((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; }), []);
     const fixes = useCallback((leafId) => fixFor(leafId, ledgerId), [ledgerId]);
+    // code checks that did not pass carry `verify`: offer to check a recompressed build
+    const extras = useCallback((node, result) => (result?.verify ? <VerifyRecompressed key={result.verify.moduleHash} moduleHash={result.verify.moduleHash} kind={result.verify.kind} theme={theme} /> : null), [theme]);
     const counts = state.tree ? countLeaves(state.tree, state.results) : null;
     const total = counts ? Object.values(counts).reduce((a, b) => a + b, 0) : 0;
     const done = counts ? total - counts.pending - counts.running : 0;
@@ -182,7 +185,7 @@ export function CheckPanel({ ledgerId, onHeader, onRating, indexOverride = null 
 
             <div style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 14, overflow: 'hidden', background: theme.colors.cardBg }}>
                 {state.tree ? (
-                    <Node node={state.tree} results={state.results} depth={0} theme={theme} expanded={expanded} toggle={toggle} onlyProblems={onlyProblems} fixFor={fixes} />
+                    <Node node={state.tree} results={state.results} depth={0} theme={theme} expanded={expanded} toggle={toggle} onlyProblems={onlyProblems} fixFor={fixes} extraFor={extras} />
                 ) : (
                     <div style={{ padding: '2rem', textAlign: 'center', color: theme.colors.mutedText }}><FaSpinner className="health-spin" /> Preparing checks…</div>
                 )}

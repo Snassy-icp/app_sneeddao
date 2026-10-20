@@ -59,7 +59,8 @@ export function FixLink({ fix, theme }) {
     return <Link to={fix.href} style={style} onClick={(e) => e.stopPropagation()}>{fix.label}</Link>;
 }
 
-export function Node({ node, results, depth, theme, expanded, toggle, onlyProblems, fixFor }) {
+/// `extraFor(node, result)`: optional element shown under a leaf's details (e.g. a verify box).
+export function Node({ node, results, depth, theme, expanded, toggle, onlyProblems, fixFor, extraFor }) {
     const status = statusOf(node, results);
     const isGroup = !!node.children;
     const open = expanded.has(node.id);
@@ -95,11 +96,12 @@ export function Node({ node, results, depth, theme, expanded, toggle, onlyProble
                 )}
             </div>
             {open && isGroup && node.children.map((ch) => (
-                <Node key={ch.id} node={ch} results={results} depth={depth + 1} theme={theme} expanded={expanded} toggle={toggle} onlyProblems={onlyProblems} fixFor={fixFor} />
+                <Node key={ch.id} node={ch} results={results} depth={depth + 1} theme={theme} expanded={expanded} toggle={toggle} onlyProblems={onlyProblems} fixFor={fixFor} extraFor={extraFor} />
             ))}
             {open && !isGroup && result?.details && (
                 <div className="health-details" style={{ padding: '8px 14px 10px', paddingLeft: 40 + depth * 18, background: theme.colors.secondaryBg, color: theme.colors.secondaryText, borderBottom: `1px solid ${theme.colors.border}` }}>
                     {detailsText(result.details)}
+                    {extraFor?.(node, result)}
                 </div>
             )}
         </div>

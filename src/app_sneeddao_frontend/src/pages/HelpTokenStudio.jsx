@@ -79,6 +79,13 @@ export default function HelpTokenStudio() {
             </Section>
 
             <Section icon={FaDatabase} title="Recent improvements" id="recent">
+                <Sub>Recompressed builds and controllers behind controllers</Sub>
+                <P>
+                    Some launchers upload an official DFINITY .wasm.gz after compressing it again: the Wasm inside is identical, but the module hash is not one DFINITY published. Under a code line that did not pass, "Verify a recompressed build" lets you choose that .wasm.gz (it stays on your computer) or give a GitHub or icp0.io URL: your browser checks that it is the code the canister runs, unpacks it and compares it with every official release. A match is shown to you only; send the file to the Sneed team to have it added to the verified list, after which the line passes for everyone and names who recompressed it.
+                </P>
+                <P>
+                    When a controller is a canister the studio does not recognise, it now reads that canister's own controllers, and theirs, up to three levels. If every path ends at NNS root, an SNS root, a blackhole or a Sneed custody canister, no person can replace that canister's code, but its code still decides what it does with its control, so the line shows a warning (partial) instead of a failure. A path that reaches a personal principal still fails. The tree is in the line's details.
+                </P>
                 <Sub>Official DFINITY ledger suite releases</Sub>
                 <P>
                     Ledgers installed straight from DFINITY's standalone ledger suite releases used to show as "Unknown wasm" when that build had never been listed by the SNS wasm canister. The studio now knows the module hashes of these releases, so such a ledger passes the code gate and the line names the release it came from (marked u256 for the 256-bit builds). If the code is a release of the wrong kind, for example an index build installed as the ledger, you get a warning instead.
