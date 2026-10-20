@@ -499,20 +499,47 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     let added = switch (Map.get(channel_adds, Map.phash, caller)) { case (?(d, n)) if (d == day()) n else 0; case null 0 };
     if (added >= MAX_CHANNEL_ADDS_PER_DAY) return #err("At most 5 new channels a day; try again tomorrow");
     Map.set(channel_adds, Map.phash, caller, (day(), added + 1));
-    let seed = await Random.blob();
-    var code = "";
-    for (b in seed.vals()) if (code.size() < 6) code #= Nat.toText(Nat8.toNat(b) % 10);
+    let code = await newCode();
     ignore smsChannel(caller);
     let c : Channel = { id = next_channel_id; kind; name; address; state = #unverified; created_at = now() };
     next_channel_id += 1;
     Map.set(channels, Map.phash, caller, Array.append(userChannels(caller), [c]));
+    sendCode(caller, c, code);
+    #ok(c.id);
+  };
+
+  func newCode() : async Text {
+    let seed = await Random.blob();
+    var code = "";
+    for (b in seed.vals()) if (code.size() < 6) code #= Nat.toText(Nat8.toNat(b) % 10);
+    code;
+  };
+
+  /// A fresh code for channel `c`, valid a day, sent through the channel's relay (free).
+  func sendCode(user : Principal, c : Channel, code : Text) {
     Map.set(codes, Map.nhash, c.id, (code, now() + DAY_NS));
-    // the code goes out through the channel's relay, free
+    Map.delete(code_misses, Map.nhash, c.id);
     let n = next_notification_id;
     next_notification_id += 1;
-    let j = newJob(n, caller, c, now(), 0, true);
-    record({ id = n; app = SYSTEM_APP; user = caller; topic = "verify"; title = "Your Sneed Notifications code: " # code; body = "Enter this code in Sneed Hub to confirm this channel. If you didn't ask for it, ignore this message."; link = null; level = #urgent; created_at = now(); jobs = [j] });
-    #ok(c.id);
+    let j = newJob(n, user, c, now(), 0, true);
+    record({ id = n; app = SYSTEM_APP; user; topic = "verify"; title = "Your Sneed Notifications code: " # code; body = "Enter this code in Sneed Hub to confirm this channel. If you didn't ask for it, ignore this message."; link = null; level = #urgent; created_at = now(); jobs = [j] });
+  };
+
+  /// Send a channel that is still waiting a new code (the old one stops working). Counts toward the
+  /// same 5 a day as new channels, so it can't be used to message an address over and over.
+  public shared ({ caller }) func resend_code(id : Nat) : async Result {
+    switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
+    let c = switch (Array.find<Channel>(userChannels(caller), func(x) = x.id == id)) { case (?c) c; case null return #err("Not your channel") };
+    if (c.kind == #sneed_sms or c.state != #unverified) return #err("This channel needs no code");
+    let added = switch (Map.get(channel_adds, Map.phash, caller)) { case (?(d, n)) if (d == day()) n else 0; case null 0 };
+    if (added >= MAX_CHANNEL_ADDS_PER_DAY) return #err("At most 5 codes a day; try again tomorrow");
+    Map.set(channel_adds, Map.phash, caller, (day(), added + 1));
+    let code = await newCode();
+    // the channel may have been removed or verified while the randomness was fetched
+    switch (Array.find<Channel>(userChannels(caller), func(x) = x.id == id)) {
+      case (?now_c) if (now_c.state == #unverified) { sendCode(caller, now_c, code); #ok("A new code is on its way") } else #err("This channel needs no code");
+      case null #err("Not your channel");
+    };
   };
 
   public shared ({ caller }) func verify_channel(id : Nat, code : Text) : async Result {
@@ -880,6 +907,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     #top_up_app : Any;
     #update_app : Any;
     #verify_channel : Any;
+    #resend_code : Any;
   } }) : Bool {
     switch msg {
       case (#get_api_doc _ or #get_relay_keys _ or #get_admins _ or #get_app _ or #get_app_balance _ or #get_app_of _ or #get_config _ or #get_my_apps _ or #get_my_history _ or #get_my_requests _ or #get_my_settings _ or #get_receipts _ or #list_apps _ or #stats _) false;

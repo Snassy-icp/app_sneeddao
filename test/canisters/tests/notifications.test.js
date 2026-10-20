@@ -132,6 +132,28 @@ describe('sneed_notifications', () => {
     for (const c of (await as(carol).get_my_settings()).channels.filter((c) => 'discord' in c.kind)) unwrap(await as(carol).remove_channel(c.id));
   });
 
+  it('resends a code to a channel still waiting, counting toward the daily limit', async () => {
+    const ch = unwrap(await as(user(7)).add_channel({ discord: null }, 'phone', new TextEncoder().encode('enc:mine')));
+    const [first] = await as(relay).relay_pull(10n);
+    const oldCode = first.title.match(/(\d{6})/)[1];
+    await as(relay).relay_ack([[first.id, { ok: null }]]);
+    expect(errOf(await as(bob).resend_code(ch))).toMatch(/Not your channel/);
+    unwrap(await as(user(7)).resend_code(ch));
+    const [second] = await as(relay).relay_pull(10n);
+    const newCode = second.title.match(/(\d{6})/)[1];
+    await as(relay).relay_ack([[second.id, { ok: null }]]);
+    if (newCode !== oldCode) expect(errOf(await as(user(7)).verify_channel(ch, oldCode))).toMatch(/Wrong code/); // the old code stops working
+    unwrap(await as(user(7)).verify_channel(ch, newCode));
+    expect(errOf(await as(user(7)).resend_code(ch))).toMatch(/needs no code/); // verified now
+    // resends share the 5 a day with new channels
+    const ch2 = unwrap(await as(user(7)).add_channel({ discord: null }, 'other', new TextEncoder().encode('enc:mine2')));
+    unwrap(await as(user(7)).resend_code(ch2)); // 4 today: add, resend, add, resend
+    unwrap(await as(user(7)).resend_code(ch2)); // 5
+    expect(errOf(await as(user(7)).resend_code(ch2))).toMatch(/At most 5 codes a day/);
+    const rest = await as(relay).relay_pull(50n);
+    await as(relay).relay_ack(rest.map((j) => [j.id, { ok: null }]));
+  });
+
   it('charges paid channels to the user, and skips them without balance', async () => {
     const mine = await as(bob).get_my_settings();
     unwrap(await as(bob).set_settings({ ...mine.settings, defaults: { urgent: [discordCh], normal: [], info: [] } }));

@@ -252,6 +252,7 @@ export default function Notifications() {
                             const s = (await actor.get_my_settings()).settings;
                             return actor.set_settings({ ...s, defaults: { ...s.defaults, urgent: [...s.defaults.urgent, ch.id], normal: [...s.defaults.normal, ch.id] } });
                         }, `${ch.name} is ready: urgent and normal messages go there now`)}>Verify</button>
+                        <button type="button" style={btn(false)} disabled={busy} onClick={() => run(async () => actor.resend_code(ch.id), 'A new code is on its way (the old one stops working)')}>Send a new code</button>
                     </div>
                 ))}
                 <p style={{ ...muted }}>Sneed SMS is your inbox: messages land in <Link to="/sms" style={{ color: accent }}>Sneed SMS</Link> and the bell in the header.</p>
