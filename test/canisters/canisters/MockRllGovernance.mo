@@ -235,6 +235,33 @@ persistent actor MockRllGovernance {
 
   public shared func clear_proposals() : async () { proposals := [] };
 
+  // ---- manage_neuron, for the ICRC-3 archive registration of rll (src/icrc3/SnsRegister.mo):
+  // a MakeProposal from a hotkey of the neuron is accepted and recorded ----
+  public type MakeProposal = { title : Text; url : Text; summary : Text; action : ?{ #RegisterDappCanisters : { canister_ids : [Principal] } } };
+  public type ManageNeuronResponse = { command : ?{ #MakeProposal : { proposal_id : ?{ id : Nat64 } }; #Error : { error_message : Text; error_type : Int32 } } };
+  public type ProposalRecord = { id : Nat64; proposer : Principal; neuron : Blob; title : Text; url : Text; summary : Text; canister_ids : [Principal] };
+  stable var hotkeys : [(Blob, Principal)] = [];
+  stable var made : [ProposalRecord] = [];
+  stable var next_made_id : Nat64 = 100;
+
+  public shared ({ caller }) func manage_neuron(req : { subaccount : Blob; command : ?{ #MakeProposal : MakeProposal } }) : async ManageNeuronResponse {
+    if (Array.find<(Blob, Principal)>(hotkeys, func((n, p)) { n == req.subaccount and p == caller }) == null) {
+      return { command = ?#Error({ error_message = "Caller is not authorized to perform this operation on the neuron"; error_type = 3 }) };
+    };
+    switch (req.command) {
+      case (?#MakeProposal(p)) {
+        let id = next_made_id;
+        next_made_id += 1;
+        let canister_ids = switch (p.action) { case (?#RegisterDappCanisters(r)) { r.canister_ids }; case null { [] } };
+        made := Array.append(made, [{ id; proposer = caller; neuron = req.subaccount; title = p.title; url = p.url; summary = p.summary; canister_ids }]);
+        { command = ?#MakeProposal({ proposal_id = ?{ id } }) };
+      };
+      case null { { command = ?#Error({ error_message = "no command"; error_type = 1 }) } };
+    };
+  };
+  public shared func add_hotkey(neuron : Blob, p : Principal) : async () { hotkeys := Array.append(hotkeys, [(neuron, p)]) };
+  public query func list_proposals() : async [ProposalRecord] { made };
+
   public shared func set_parameters(p : {
     max_dissolve_delay_seconds : Nat64;
     max_dissolve_delay_bonus_percentage : Nat64;

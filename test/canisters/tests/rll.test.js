@@ -13,8 +13,8 @@
 // (canisters/MockRejectLedger.mo), the main loop timer, stopping, the ICPSwap
 // outage, statistics and history queries, and upgrades (the main loop re-armed,
 // an interrupted cycle restarted).
-// rll has no ICRC-3 log: its history is the claim and distribution event
-// buffers, which are checked directly.
+// The claim and distribution event buffers are checked directly here; the
+// ICRC-3 activity log is covered in rll-icrc3.test.js.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Principal } from '@icp-sdk/core/principal';
 import { IDL } from '@icp-sdk/core/candid';

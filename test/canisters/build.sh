@@ -118,6 +118,17 @@ git archive "$PID_NAMES_PROD_COMMIT" src | tar -x -C "$PREV_SRC"
 "$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_pid_names/main.mo" -o "$OUT/sneed_pid_names_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
 rm -rf "$PREV_SRC"
 test -s "$OUT/sneed_pid_names_prod.wasm"
+# rll as production runs it (no ICRC-3 log; `dfx build --network ic rll` of this code gives the
+# production module hash 2d7e3f23…; src/sneed_rewards unchanged from 25b88246 to 75cef0a7), for
+# the test that upgrades from it and starts an empty log (classic persistence, as dfx.json builds it)
+RLL_PROD_COMMIT=75cef0a7
+echo "== rll at $RLL_PROD_COMMIT (moc, for the ICRC-3 upgrade test)"
+PREV_SRC="$(mktemp -d)"
+git archive "$RLL_PROD_COMMIT" src/sneed_rewards src/IngressGuard.mo | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS "$PREV_SRC/src/sneed_rewards/main.mo" -o "$OUT/rll_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/rll_prod.wasm"
 for c in MockLedger MockLedgerV2 MockLedgerFaulty MockRejectLedger MockSwapPool MockDexPool MockIcpswapFactory MockKongSwap \
          MockSnsGovernance MockSnsNeurons MockHubSns MockForumGovernance MockForumSnsW MockRllGovernance MockNnsGovernance \
          MockCmc MockSnsWasm MockPremium MockSneedApp MockIcpSwapList MockIcpSwapTokenList MockNamesModerator MockIcpLedger MockMrSneedGov MockNotifySender MockExt Icrc3Demo; do

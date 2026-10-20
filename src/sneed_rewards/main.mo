@@ -25,6 +25,9 @@ import Hash "mo:base/Hash";
 import T "Types";
 import IngressGuard "../IngressGuard";
 import ApiDoc "ApiDoc";
+import Icrc3Log "../icrc3/Log";
+import Icrc3Sns "../icrc3/SnsRegister";
+import T3 "../icrc3/Types";
 
 shared (deployer) persistent actor class SneedRLL() = this {
 
@@ -34,6 +37,8 @@ shared (deployer) persistent actor class SneedRLL() = this {
     
   // The Sneed SNS governance canister principal
   transient let sneed_governance_canister_id = Principal.fromText("fi3zi-fyaaa-aaaaq-aachq-cai");
+  // The Sneed SNS root: co-controller of the ICRC-3 archive canisters
+  transient let SNEED_SNS_ROOT = Principal.fromText("fp274-iaaaa-aaaaq-aacha-cai");
 
   // ICPSwap's trusted token list: the source of the whitelist (Swaprunner is being retired).
   transient let ICPSWAP_TOKEN_LIST_CANISTER_ID : Text = "k37c6-riaaa-aaaag-qcyza-cai";
@@ -96,6 +101,16 @@ shared (deployer) persistent actor class SneedRLL() = this {
   // from the local balances but still in the canister's ledger balance. Transient: a claim's
   // continuation does not survive an upgrade either.
   transient let in_flight_claims = Map.HashMap<Principal, Nat>(10, Principal.equal, Principal.hash);
+
+  // ICRC-3 activity log: hash-chained, certified blocks for every distribution, credit,
+  // claim, incident, reconciliation and admin change, spilled to archive canisters.
+  // Library src/icrc3; design and block catalogue: spec/rll_icrc3.md. New stable fields
+  // (additive); the runtimes are transient.
+  stable var icrc3 : Icrc3Log.State = Icrc3Log.init();
+  transient let icrc3_rt : Icrc3Log.Runtime = Icrc3Log.runtime();
+  stable var icrc3_sns : Icrc3Sns.State = Icrc3Sns.init();
+  transient let icrc3_sns_rt : Icrc3Sns.Runtime = Icrc3Sns.runtime();
+  transient var icrc3_next_cid : Nat = 0; // groups the canister-log lines of one spill run
 
   private func add_in_flight(token_id : Principal, amount : Nat) {
     let cur = switch (in_flight_claims.get(token_id)) { case (?a) a; case null 0 };
@@ -494,6 +509,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     // Start the main loop and store the timer ID
     main_loop_timer_id := ?Timer.setTimer<system>(#seconds 0, main_loop_tick);
     Debug.print("Started main loop with timer id " # debug_show(main_loop_timer_id));
+    icrc3_config(?caller, "main_loop", #Text("on"), null);
     #ok("Started main loop with timer id " # debug_show(main_loop_timer_id))
   };
 
@@ -506,6 +522,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
         main_loop_timer_id := null;
         main_loop_last_stopped := ?Int.abs(Time.now());
         main_loop_next_scheduled := null;
+        icrc3_config(?caller, "main_loop", #Text("off"), null);
         #ok("Stopped main loop")
       };
       case (null) {
@@ -574,13 +591,19 @@ shared (deployer) persistent actor class SneedRLL() = this {
     current_distribution_token := null;
 
     orchestrator_stage := #idle;
+    icrc3_admin(caller, "distribution_cycle_stop", []);
     #ok("Distribution cycle stopped")
   };
 
   public shared ({ caller }) func start_distribution_cycle() : async Result.Result<Text, Text> {
     assert is_admin(caller);
 
-    await run_distribution_cycle();
+    let result = await run_distribution_cycle();
+    switch (result) {
+      case (#ok(_)) { icrc3_admin(caller, "distribution_cycle_start", []) };
+      case (#err(_)) {};
+    };
+    result;
   };
 
   private func run_distribution_cycle() : async Result.Result<Text, Text> {
@@ -703,7 +726,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
           //if (cntImportedWhitelist == 0) {
             // Start the import
             try {
-              await import_whitelisted_tokens_from_swaprunner_impl();
+              await import_whitelisted_tokens_from_swaprunner_impl(null);
               // Move to balance checking stage
               orchestrator_stage := #checking_balances;
               // Reset counters for balance check
@@ -900,7 +923,9 @@ shared (deployer) persistent actor class SneedRLL() = this {
       // 1. What the canister owes in this token, taken before the balance is read (claims
       //    that complete while the balance call is out only make the balance smaller): the
       //    local balances plus amounts reserved for in-flight claims and unresolved incidents.
-      let total_distributed = local_total_balance(token_id) + reserved_balance(token_id);
+      let claimable = local_total_balance(token_id);
+      let reserved = reserved_balance(token_id);
+      let total_distributed = claimable + reserved;
 
       // 2. Get server balance
       let server_balance = await token_canister.icrc1_balance_of({
@@ -910,10 +935,20 @@ shared (deployer) persistent actor class SneedRLL() = this {
 
       Debug.print("Server balance: " # debug_show(server_balance) # ", total distributed: " # debug_show(total_distributed));
 
+      // ICRC-3: what the ledger holds against what is owed, and what this cycle shares now
+      let icrc3_undistributed : Nat = if (server_balance > total_distributed) { server_balance - total_distributed } else { 0 };
+      icrc3_add("rll_reconciliation", [
+        ("token", Icrc3Log.principal(token_id)), ("ledger_balance", #Nat(server_balance)), ("claimable", #Nat(claimable)),
+        ("reserved", #Nat(reserved)), ("undistributed", #Nat(icrc3_undistributed)),
+        ("underflow", #Nat(if (total_distributed > server_balance) { total_distributed - server_balance } else { 0 })),
+        ("to_distribute", #Nat(if (icrc3_undistributed > 0) { get_distribution_amount(token_id, token_metadata, icrc3_undistributed) } else { 0 })),
+        ("via", #Text("cycle")),
+      ]);
+
       // 3. Calculate undistributed amount
       if (server_balance > total_distributed) {
         let undistributed = server_balance - total_distributed;
-        
+
         // 4. Calculate distribution amount considering min and max limits
         let amount_to_distribute = get_distribution_amount(token_id, token_metadata, undistributed);
 
@@ -986,6 +1021,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     import_next_neuron_id := null;
     neuron_import_timer_id := ?Timer.setTimer<system>(#seconds 0, import_next_neurons_tick);
     //await import_next_neurons_tick();
+    icrc3_admin(caller, "neuron_import_start", [("mode", #Text("all"))]);
     #ok("Started full neuron import")
   };
 
@@ -1004,6 +1040,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
 
     import_neuron_ticks := 0;
     neuron_import_timer_id := ?Timer.setTimer<system>(#seconds 0, import_next_neurons_tick);
+    icrc3_admin(caller, "neuron_import_start", [("mode", #Text("new"))]);
     await import_next_neurons_tick();
     #ok("Started incremental neuron import")
   };
@@ -1025,6 +1062,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     imported_proposal_max := 0;
     proposal_import_timer_id := ?Timer.setTimer<system>(#seconds 0, import_proposals_tick);
     //await import_proposals_tick();
+    icrc3_admin(caller, "proposal_import_start", [("mode", #Text("all")), ("from_proposal", Icrc3Log.nat64(imported_proposal_max + 1))]);
     #ok("Started full proposal import from " # debug_show(imported_proposal_max) # " with timer id " # debug_show(proposal_import_timer_id))
   };
 
@@ -1045,6 +1083,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     imported_proposal_max := getHighestClosedProposalId();
     proposal_import_timer_id := ?Timer.setTimer<system>(#seconds 0, import_proposals_tick);
     //await import_proposals_tick();
+    icrc3_admin(caller, "proposal_import_start", [("mode", #Text("new")), ("from_proposal", Icrc3Log.nat64(imported_proposal_max + 1))]);
     #ok("Started incremental proposal import from " # debug_show(imported_proposal_max) # " with timer id " # debug_show(proposal_import_timer_id))
   };
 
@@ -1057,6 +1096,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
       case (?timer_id) {
         Timer.cancelTimer(timer_id);
         neuron_import_timer_id := null;
+        icrc3_admin(caller, "neuron_import_stop", []);
         #ok("Stopped neuron import process with timer id " # debug_show(timer_id))
       };
       case (null) {
@@ -1075,6 +1115,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
         Timer.cancelTimer(timer_id);
         proposal_import_timer_id := null;
         import_prop_ticks := 0;
+        icrc3_admin(caller, "proposal_import_stop", []);
         #ok("Stopped proposal import process from " # debug_show(imported_proposal_max) # " with timer id " # debug_show(timer_id))
       };
       case (null) {
@@ -1179,6 +1220,12 @@ shared (deployer) persistent actor class SneedRLL() = this {
             case (#Ok(index)) {
                 // Log successful claim with tx_index
                 log_claim(seq, hotkey, icrc1_ledger_canister_id, amount, fee, #Success, null, ?index);
+                icrc3_add("rll_claim", [
+                    ("caller", Icrc3Log.principal(hotkey)), ("token", Icrc3Log.principal(icrc1_ledger_canister_id)),
+                    ("amount", #Nat(amount)), ("fee", #Nat(fee)), ("total", #Nat(total_balance)),
+                    ("owners", icrc3_owner_amounts(owner_balances)), ("to", Icrc3Log.account(hotkey, null)),
+                    ("ledger_tx", #Nat(index)), ("seq", #Nat(seq)),
+                ]);
             };
             case (#Err(err)) {
                 // Log failed claim
@@ -1229,6 +1276,11 @@ shared (deployer) persistent actor class SneedRLL() = this {
             claim_created_at,
             Error.message(e)
         );
+        icrc3_add("rll_claim_incident", [
+            ("incident_id", #Nat(incident_id)), ("caller", Icrc3Log.principal(hotkey)), ("token", Icrc3Log.principal(icrc1_ledger_canister_id)),
+            ("total", #Nat(total_balance)), ("amount", #Nat(amount)), ("fee", #Nat(fee)), ("owners", icrc3_owner_amounts(owner_balances)),
+            ("seq", #Nat(seq)), ("memo", #Blob(claim_memo)), ("created_at_time", Icrc3Log.nat64(claim_created_at)), ("error", #Text(Error.message(e))),
+        ]);
         return #Err(#GenericError {
             error_code = 1;
             message = "Transfer outcome unknown; balances were NOT re-credited. Incident #" # Nat.toText(incident_id) # " recorded for manual reconciliation. Underlying error: " # Error.message(e);
@@ -1269,6 +1321,10 @@ shared (deployer) persistent actor class SneedRLL() = this {
     switch (target) {
       case (null) { #err("Incident #" # Nat.toText(id) # " not found or already resolved"); };
       case (?inc) {
+        icrc3_add("rll_claim_incident_resolve", Array.append<(Text, T3.Value)>([
+          ("caller", Icrc3Log.principal(caller)), ("incident_id", #Nat(id)), ("token", Icrc3Log.principal(inc.token_id)),
+          ("landed", #Nat(if (landed) 1 else 0)), ("recredited", #Nat(if (landed) 0 else inc.total)),
+        ], if (landed) { [] } else { [("owners", icrc3_owner_amounts(inc.owners))] }));
         if (not landed) {
           // Transfer never executed → make the owners whole by restoring exactly
           // what was debited.
@@ -1388,8 +1444,9 @@ shared (deployer) persistent actor class SneedRLL() = this {
   private func distribute_to_local_balances(amount_to_share : Nat, icrc1_ledger_canister_id : Principal, first_proposal_id : T.ProposalId, last_proposal_id : T.ProposalId, exclude_principal : ?Principal) : () {
 
     // get the list of people to distribute to
-    let dist_list = calc_distribution_list(first_proposal_id, last_proposal_id, amount_to_share, exclude_principal);
-    
+    let dist = calc_distribution(first_proposal_id, last_proposal_id, amount_to_share, exclude_principal);
+    let dist_list = dist.shares;
+
     // Only record if we actually distributed something
     if (dist_list.size() > 0) {
       let timestamp = Time.now();
@@ -1428,6 +1485,26 @@ shared (deployer) persistent actor class SneedRLL() = this {
         timestamp = timestamp;
         proposal_range = proposal_range;
       });
+
+      // ICRC-3: every owner is credited (same message, no await since): the summary, then
+      // one block per non-zero credit pointing back at it.
+      let token_v = Icrc3Log.principal(icrc1_ledger_canister_id);
+      var credited_owners = 0;
+      for ((_, amount) in dist_list.vals()) { if (amount > 0) { credited_owners += 1 } };
+      let summary = icrc3_add_i("rll_distribution", [
+        ("token", token_v), ("amount", #Nat(total_distributed)), ("requested", #Nat(amount_to_share)),
+        ("owners", #Nat(credited_owners)), ("neurons", #Nat(dist.neurons)), ("voting_power", Icrc3Log.nat64(dist.vp_total)),
+        ("first_proposal", Icrc3Log.nat64(first_proposal_id.id)), ("last_proposal", Icrc3Log.nat64(last_proposal_id.id)), ("via", #Text("cycle")),
+      ]);
+      for ((owner, amount) in dist_list.vals()) {
+        if (amount > 0) {
+          let vp = switch (dist.owner_vp.get(owner)) { case (?v) v; case null 0 };
+          icrc3_add("rll_credit", [
+            ("owner", Icrc3Log.principal(owner)), ("token", token_v), ("amount", #Nat(amount)),
+            ("voting_power", #Nat(vp)), ("distribution", #Nat(summary)),
+          ]);
+        };
+      };
     };
   };
 
@@ -1495,11 +1572,21 @@ shared (deployer) persistent actor class SneedRLL() = this {
     };
   };
 
-  private func calc_distribution_list(first_proposal_id : T.ProposalId, last_proposal_id : T.ProposalId, amount_to_share : Nat, exclude_principal : ?Principal) : [(Principal, Nat)] {
+  // The shares of a distribution, plus what the ICRC-3 log reports about them: each
+  // owner's cast voting power in the range, the number of neurons that counted and the
+  // total voting power (the basis of every share). The shares are computed as they always were.
+  private func calc_distribution(first_proposal_id : T.ProposalId, last_proposal_id : T.ProposalId, amount_to_share : Nat, exclude_principal : ?Principal) : {
+    shares : [(Principal, Nat)];
+    owner_vp : Map.HashMap<Principal, Nat>;
+    neurons : Nat;
+    vp_total : Nat64;
+  } {
 
     let votes = index_proposal_votes_between(first_proposal_id, last_proposal_id);
-    let vp_total = sum_votes_total(votes, exclude_principal);    
+    let vp_total = sum_votes_total(votes, exclude_principal);
     let shares = Map.HashMap<Principal, Nat>(votes.size(), Principal.equal, Principal.hash);
+    let owner_vp = Map.HashMap<Principal, Nat>(votes.size(), Principal.equal, Principal.hash);
+    var neurons_counted : Nat = 0;
 
     let exclude : Principal = switch (exclude_principal) {
       case (null) { Principal.fromText("2vxsx-fae"); };
@@ -1527,16 +1614,20 @@ shared (deployer) persistent actor class SneedRLL() = this {
                   let share : Float = share_of_total * Float.fromInt(amount_to_share);
                   let floored_share: Nat = Int.abs(Float.toInt(Float.floor(share))) + existing_vp;
 
-                  shares.put(owner, floored_share);                  
+                  shares.put(owner, floored_share);
+
+                  let owner_vp_before : Nat = switch (owner_vp.get(owner)) { case (?v) v; case null 0 };
+                  owner_vp.put(owner, owner_vp_before + Nat64.toNat(vp));
+                  neurons_counted += 1;
 
               };
             };
-          };         
+          };
         };
-      }; 
+      };
     };
 
-    Iter.toArray(shares.entries());
+    { shares = Iter.toArray(shares.entries()); owner_vp; neurons = neurons_counted; vp_total };
   };
 
   private func sum_votes_total(votes : Map.HashMap<Blob, Nat64>, exclude_principal : ?Principal) : Nat64 {
@@ -1942,6 +2033,10 @@ shared (deployer) persistent actor class SneedRLL() = this {
     stable_token_max_distributions := [];
 
     recover_timers_after_upgrade<system>();
+
+    // ICRC-3: certified data does not survive an upgrade; the spill timer is (re)started
+    Icrc3Log.certify(icrc3);
+    ensure_icrc3_timer<system>();
   };
 
   // Timers do not survive an upgrade, but their ids are stable variables: left alone, every
@@ -2003,44 +2098,67 @@ shared (deployer) persistent actor class SneedRLL() = this {
 
 //ADMIN
 
+  // The reset tools log what they removed (ICRC-3 rll_admin_action). Clearing balances
+  // makes what they owed undistributed again: the block lists the totals per token.
   public shared ({ caller }) func clear_balances() : async () { 
     assert is_admin(caller);
+    let owners_before = balances.size();
+    let totals_before = icrc3_ledger_amounts(get_all_token_balances());
     for (key in balances.keys()) { balances.delete(key); }; 
+    icrc3_admin(caller, "clear_balances", [("owners", #Nat(owners_before)), ("totals", totals_before)]);
   };
 
   public shared ({ caller }) func clear_total_distributions() : async () { 
     assert is_admin(caller);
+    let totals_before = icrc3_ledger_amounts(Iter.toArray(total_distributions.entries()));
     for (key in total_distributions.keys()) { total_distributions.delete(key); };
+    icrc3_admin(caller, "clear_total_distributions", [("totals", totals_before)]);
   };
 
   public shared ({ caller }) func clear_user_distributions() : async () { 
     assert is_admin(caller);
+    let count = user_distributions.size();
     for (key in user_distributions.keys()) { user_distributions.delete(key); };
+    icrc3_admin(caller, "clear_user_distributions", [("count", #Nat(count))]);
   };
 
   public shared ({ caller }) func clear_user_distribution_events() : async () { 
     assert is_admin(caller);
+    let count = user_distribution_events.size();
     user_distribution_events.clear(); 
+    icrc3_admin(caller, "clear_user_distribution_events", [("count", #Nat(count))]);
   };
 
   public shared ({ caller }) func clear_distribution_events() : async () { 
     assert is_admin(caller);
+    let count = distribution_events.size();
     distribution_events.clear(); 
+    icrc3_admin(caller, "clear_distribution_events", [("count", #Nat(count))]);
   };
 
   public shared ({ caller }) func clear_claim_events() : async () { 
     assert is_admin(caller);
+    let count = claim_events.size();
     claim_events.clear(); 
+    icrc3_admin(caller, "clear_claim_events", [("count", #Nat(count))]);
   };
   
   public shared ({ caller }) func clear_all_balances_and_distributions() : async () { 
     assert is_admin(caller);
+    let owners_before = balances.size();
+    let totals_before = icrc3_ledger_amounts(get_all_token_balances());
+    let counts = [
+      ("distribution_events", #Nat(distribution_events.size()) : T3.Value),
+      ("user_distribution_events", #Nat(user_distribution_events.size())),
+      ("claim_events", #Nat(claim_events.size())),
+    ];
     for (key in balances.keys()) { balances.delete(key); }; 
     for (key in total_distributions.keys()) { total_distributions.delete(key); };
     for (key in user_distributions.keys()) { user_distributions.delete(key); };
     user_distribution_events.clear(); 
     distribution_events.clear(); 
     claim_events.clear(); 
+    icrc3_admin(caller, "clear_all_balances_and_distributions", Array.append<(Text, T3.Value)>([("owners", #Nat(owners_before)), ("totals", totals_before)], counts));
   };
 
 
@@ -2054,15 +2172,21 @@ shared (deployer) persistent actor class SneedRLL() = this {
 
   public shared ({ caller }) func clear_imported_neurons() : async () { 
     assert is_admin(caller);
+    let count = neurons.size();
     for (key in neurons.keys()) { neurons.delete(key); }; 
+    icrc3_admin(caller, "clear_imported_neurons", [("count", #Nat(count))]);
   };
   public shared ({ caller }) func clear_imported_owners() : async () { 
     assert is_admin(caller);
+    let count = owners.size();
     for (key in owners.keys()) { owners.delete(key); }; 
+    icrc3_admin(caller, "clear_imported_owners", [("count", #Nat(count))]);
   };
   public shared ({ caller }) func clear_imported_props() : async () {
     assert is_admin(caller);
+    let count = props.size();
     for (key in props.keys()) { props.delete(key); }; 
+    icrc3_admin(caller, "clear_imported_props", [("count", #Nat(count))]);
   };
 
 /*
@@ -2199,6 +2323,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
       };
 
       known_tokens.put(token_ledger_id, metadata);
+      icrc3_config(?caller, "known_token_added", icrc3_token_value(token_ledger_id, metadata, null), null);
     } catch e {
       throw Error.reject("Failed to fetch token metadata: " # Error.message(e));
     };
@@ -2206,7 +2331,10 @@ shared (deployer) persistent actor class SneedRLL() = this {
 
   public shared ({ caller }) func remove_known_token(token_ledger_id : Principal) : async () {
     assert is_admin(caller);
-    known_tokens.delete(token_ledger_id);
+    switch (known_tokens.remove(token_ledger_id)) {
+      case (?_) { icrc3_config(?caller, "known_token_removed", Icrc3Log.principal(token_ledger_id), null) };
+      case null {};
+    };
   };
 
   public query func get_known_tokens() : async [(Principal, T.TokenMetadata)] {
@@ -2462,16 +2590,20 @@ shared (deployer) persistent actor class SneedRLL() = this {
 
   public shared  ({ caller }) func clear_whitelisted_tokens() : async () {
     assert(is_admin(caller));
+    let count = whitelisted_tokens.size();
     for (key in whitelisted_tokens.keys()) {
       whitelisted_tokens.delete(key);
     };
+    if (count > 0) { icrc3_config(?caller, "whitelist_cleared", #Nat(count), null) };
   };
 
   public shared  ({ caller }) func clear_known_tokens() : async () {
     assert(is_admin(caller));
+    let count = known_tokens.size();
     for (key in known_tokens.keys()) {
       known_tokens.delete(key);
     };
+    if (count > 0) { icrc3_config(?caller, "known_tokens_cleared", #Nat(count), null) };
   };
 
   transient var import_whitelisted_running = false;
@@ -2483,16 +2615,17 @@ shared (deployer) persistent actor class SneedRLL() = this {
   /// Import ICPSwap's trusted token list (admin). The old name below is kept for callers.
   public shared ({ caller }) func import_whitelisted_tokens_from_icpswap() : async () {
     assert(is_admin(caller));
-    await import_whitelisted_tokens_from_swaprunner_impl();
+    await import_whitelisted_tokens_from_swaprunner_impl(?caller);
   };
 
   public shared ({ caller }) func import_whitelisted_tokens_from_swaprunner() : async () {    
     assert(is_admin(caller));
 
-    await import_whitelisted_tokens_from_swaprunner_impl();
+    await import_whitelisted_tokens_from_swaprunner_impl(?caller);
   };
 
-  private func import_whitelisted_tokens_from_swaprunner_impl() : async () {    
+  // `by`: the admin who asked for the import, or null for the distribution cycle's own.
+  private func import_whitelisted_tokens_from_swaprunner_impl(by : ?Principal) : async () {    
     if (import_whitelisted_running) {
       return;
     };
@@ -2505,6 +2638,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
         case (#err(e)) { throw Error.reject("ICPSwap token list: " # e) };
       };
 
+      let added = Buffer.Buffer<Principal>(0);
       for (t in tokens.vals()) {
         if (not import_whitelisted_running) {
           return;
@@ -2523,12 +2657,23 @@ shared (deployer) persistent actor class SneedRLL() = this {
                     fee = t.fee;
                     decimals = Nat8.fromNat(t.decimals);
                   });
+                  added.add(ledger_id);
                 };
               };
             };
           };
           case null {};
         };
+      };
+
+      // ICRC-3: the ledgers this import added, at most 100 per block
+      var next_i = 0;
+      while (next_i < added.size()) {
+        let first_i = next_i;
+        let n = Nat.min(100, added.size() - first_i);
+        let chunk = Array.tabulate<T3.Value>(n, func(i) { Icrc3Log.principal(added.get(first_i + i)) });
+        icrc3_config(by, "whitelist_tokens_added", #Array(chunk), null);
+        next_i += n;
       };
 
     } catch e { 
@@ -2555,6 +2700,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
 
     // Add to admin list
     admin_principals := Array.append(admin_principals, [principal]);
+    icrc3_config(?caller, "admin_added", Icrc3Log.principal(principal), null);
     #ok("Added admin " # Principal.toText(principal))
   };
 
@@ -2580,6 +2726,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     };
 
     admin_principals := new_admins;
+    icrc3_config(?caller, "admin_removed", Icrc3Log.principal(principal), null);
     #ok("Removed admin " # Principal.toText(principal))
   };
 
@@ -2776,6 +2923,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
               Debug.print("Adding token " # Principal.toText(ledger_id) # " to known tokens with balance " # debug_show(balance));
               known_tokens.put(ledger_id, metadata);
               cntImportedWithBalance += 1;
+              icrc3_config(null, "known_token_added", icrc3_token_value(ledger_id, metadata, ?balance), null);
             };
           } catch e {
             Debug.print("Error getting balance for token " # Principal.toText(ledger_id) # ": " # Error.message(e));
@@ -2973,7 +3121,9 @@ shared (deployer) persistent actor class SneedRLL() = this {
       case (?_) { };
     };
 
+    let old_min = token_min_distributions.get(token_id);
     token_min_distributions.put(token_id, min_amount);
+    icrc3_config(?caller, "token_min_distribution", icrc3_limit_value(token_id, ?min_amount), ?icrc3_limit_value(token_id, old_min));
     #ok("Set minimum distribution amount for token " # Principal.toText(token_id) # " to " # debug_show(min_amount))
   };
 
@@ -2984,8 +3134,9 @@ shared (deployer) persistent actor class SneedRLL() = this {
       case (null) { 
         return #err("No minimum distribution amount set for token " # Principal.toText(token_id)); 
       };
-      case (?_) {
+      case (?old_min) {
         token_min_distributions.delete(token_id);
+        icrc3_config(?caller, "token_min_distribution", icrc3_limit_value(token_id, null), ?icrc3_limit_value(token_id, ?old_min));
         #ok("Removed minimum distribution amount for token " # Principal.toText(token_id))
       };
     }
@@ -3018,7 +3169,9 @@ shared (deployer) persistent actor class SneedRLL() = this {
       case (?_) { };
     };
 
+    let old_max = token_max_distributions.get(token_id);
     token_max_distributions.put(token_id, max_amount);
+    icrc3_config(?caller, "token_max_distribution", icrc3_limit_value(token_id, ?max_amount), ?icrc3_limit_value(token_id, old_max));
     #ok("Set maximum distribution amount for token " # Principal.toText(token_id) # " to " # debug_show(max_amount))
   };
 
@@ -3029,8 +3182,9 @@ shared (deployer) persistent actor class SneedRLL() = this {
       case (null) { 
         return #err("No maximum distribution amount set for token " # Principal.toText(token_id)); 
       };
-      case (?_) {
+      case (?old_max) {
         token_max_distributions.delete(token_id);
+        icrc3_config(?caller, "token_max_distribution", icrc3_limit_value(token_id, null), ?icrc3_limit_value(token_id, ?old_max));
         #ok("Removed maximum distribution amount for token " # Principal.toText(token_id))
       };
     }
@@ -3695,6 +3849,203 @@ shared (deployer) persistent actor class SneedRLL() = this {
     Iter.toArray(claimed_amounts.entries())
   };
 
+  ////////////////
+  // ICRC-3 activity log (library src/icrc3, design spec/rll_icrc3.md)
+  ////////////////
+
+  transient let icrc3_catalogue : Icrc3Log.Config = {
+    block_types_url = "https://app.sneeddao.com/api/rll#block-types";
+    block_types = [
+      "rll_reconciliation",
+      "rll_distribution",
+      "rll_credit",
+      "rll_claim",
+      "rll_claim_incident",
+      "rll_claim_incident_resolve",
+      "rll_config_update",
+      "rll_admin_action",
+    ];
+  };
+
+  private func icrc3_cid() : Nat { icrc3_next_cid += 1; icrc3_next_cid };
+  // RLL has no text log; the library's lines go to the canister log
+  private func icrc3_print(cid : Nat, message : Text) { Debug.print("[icrc3 " # Nat.toText(cid) # "] " # message) };
+
+  private func icrc3_env() : Icrc3Log.Environment {
+    {
+      self = this_canister_id();
+      archive_controllers = [SNEED_SNS_ROOT];
+      cycle_reserve = 2_000_000_000_000; // never spend this canister's balance below 2 T
+      new_correlation_id = icrc3_cid;
+      log_info = icrc3_print;
+      log_error = icrc3_print;
+    };
+  };
+
+  private func icrc3_sns_env() : Icrc3Sns.Environment {
+    {
+      governance = sneed_governance_canister_id;
+      name = "RLL";
+      doc_url = "https://app.sneeddao.com/api/rll#activity-log-icrc-3";
+      new_correlation_id = icrc3_cid;
+      log_info = icrc3_print;
+      log_error = icrc3_print;
+      describe = null;
+    };
+  };
+
+  // Append one block for a change that has just been committed to local state.
+  private func icrc3_add(btype : Text, tx : [(Text, T3.Value)]) {
+    ignore Icrc3Log.append(icrc3, btype, Int.abs(Time.now()), tx);
+  };
+
+  private func icrc3_add_i(btype : Text, tx : [(Text, T3.Value)]) : Nat {
+    Icrc3Log.append(icrc3, btype, Int.abs(Time.now()), tx);
+  };
+
+  /// A setting changed: by `by` (an admin), or by the distribution cycle when null.
+  private func icrc3_config(by : ?Principal, key : Text, value : T3.Value, old_value : ?T3.Value) {
+    let who : (Text, T3.Value) = switch (by) { case (?p) ("caller", Icrc3Log.principal(p)); case null ("via", #Text("cycle")) };
+    let base : [(Text, T3.Value)] = [who, ("key", #Text(key)), ("value", value)];
+    icrc3_add("rll_config_update", switch (old_value) { case (?o) Array.append(base, [("old_value", o)]); case null base });
+  };
+
+  private func icrc3_admin(caller : Principal, action : Text, fields : [(Text, T3.Value)]) {
+    icrc3_add("rll_admin_action", Array.append<(Text, T3.Value)>([("caller", Icrc3Log.principal(caller)), ("action", #Text(action))], fields));
+  };
+
+  /// Owners and amounts (zero amounts left out) as an Array of Map { owner; amount }.
+  private func icrc3_owner_amounts(pairs : [(Principal, Nat)]) : T3.Value {
+    let out = Buffer.Buffer<T3.Value>(pairs.size());
+    for ((owner, amount) in pairs.vals()) {
+      if (amount > 0) { out.add(#Map([("owner", Icrc3Log.principal(owner)), ("amount", #Nat(amount))])) };
+    };
+    #Array(Buffer.toArray(out));
+  };
+
+  /// Ledgers and amounts as an Array of Map { ledger; amount }.
+  private func icrc3_ledger_amounts(pairs : [(Principal, Nat)]) : T3.Value {
+    #Array(Array.map<(Principal, Nat), T3.Value>(pairs, func((ledger, amount)) { #Map([("ledger", Icrc3Log.principal(ledger)), ("amount", #Nat(amount))]) }));
+  };
+
+  private func icrc3_token_value(ledger : Principal, m : T.TokenMetadata, balance : ?Nat) : T3.Value {
+    let base : [(Text, T3.Value)] = [("ledger", Icrc3Log.principal(ledger)), ("symbol", #Text(m.symbol)), ("decimals", #Nat(Nat8.toNat(m.decimals))), ("fee", #Nat(m.fee))];
+    #Map(switch (balance) { case (?b) Array.append(base, [("balance", #Nat(b))]); case null base });
+  };
+
+  /// A per-token minimum or maximum; without `amount` there is none (the default applies).
+  private func icrc3_limit_value(ledger : Principal, amount : ?Nat) : T3.Value {
+    switch (amount) {
+      case (?a) { #Map([("ledger", Icrc3Log.principal(ledger)), ("amount", #Nat(a))]) };
+      case null { #Map([("ledger", Icrc3Log.principal(ledger))]) };
+    };
+  };
+
+  // ---- standard ICRC-3 read interface ----
+
+  public query func icrc3_get_blocks(args : T3.GetBlocksArgs) : async T3.GetBlocksResult {
+    Icrc3Log.getBlocks(icrc3, args);
+  };
+
+  public query func icrc3_get_archives(args : T3.GetArchivesArgs) : async T3.GetArchivesResult {
+    Icrc3Log.getArchives(icrc3, args);
+  };
+
+  public query func icrc3_get_tip_certificate() : async ?T3.DataCertificate {
+    Icrc3Log.tipCertificate(icrc3);
+  };
+
+  public query func icrc3_supported_block_types() : async [T3.BlockType] {
+    Icrc3Log.supportedBlockTypes(icrc3_catalogue);
+  };
+
+  public query func icrc10_supported_standards() : async [T3.SupportedStandard] {
+    Icrc3Log.supportedStandards();
+  };
+
+  public query func icrc3_log_status() : async T3.LogStatus {
+    Icrc3Log.status(icrc3, icrc3_rt);
+  };
+
+  // ---- administration ----
+
+  public shared ({ caller }) func admin_set_icrc3_settings(update : T3.SettingsUpdate) : async { #Ok : T3.Settings; #Err : Text } {
+    if (not is_admin(caller)) { return #Err("Only admins can change the ICRC-3 settings") };
+    switch (Icrc3Log.applySettings(icrc3, update)) {
+      case (#Err(e)) { #Err(e) };
+      case (#Ok(changes)) {
+        for ((key, old_value, new_value) in changes.vals()) {
+          icrc3_config(?caller, key, #Nat(new_value), ?#Nat(old_value));
+        };
+        #Ok(icrc3.settings);
+      };
+    };
+  };
+
+  /// Move every live block to the archives now (creating archives as needed). Returns the number of blocks moved.
+  public shared ({ caller }) func admin_icrc3_spill_now() : async { #Ok : Nat; #Err : Text } {
+    if (not is_admin(caller)) { return #Err("Only admins can trigger a spill") };
+    if (icrc3_rt.spilling) { return #Err("A spill is already in progress") };
+    let moved = await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), true);
+    ignore await* Icrc3Sns.registerMissing(icrc3_sns, icrc3_sns_rt, icrc3.archives, icrc3_sns_env());
+    #Ok(moved);
+  };
+
+  /// Re-apply the intended controllers (this canister and SNS root) to every archive.
+  public shared ({ caller }) func admin_icrc3_repair_archive_controllers() : async [(Principal, { #Ok; #Err : Text })] {
+    if (not is_admin(caller)) { Debug.trap("Only admins can repair archive controllers") };
+    await* Icrc3Log.repairArchiveControllers(icrc3, icrc3_env());
+  };
+
+  // ---- SNS registration of archives ----
+
+  /// Where each archive stands with its RegisterDappCanisters proposal.
+  public query func icrc3_registration_status() : async Icrc3Sns.Status {
+    Icrc3Sns.status(icrc3_sns, icrc3_sns_env());
+  };
+
+  /// The SNS neuron (32-byte id) that has this canister as a hotkey and submits the
+  /// registration proposals; null switches the step off.
+  public shared ({ caller }) func admin_set_icrc3_proposal_neuron(neuron : ?Blob) : async { #Ok; #Err : Text } {
+    if (not is_admin(caller)) { return #Err("Only admins can set the proposal neuron") };
+    let old = icrc3_sns.neuron;
+    switch (Icrc3Sns.setNeuron(icrc3_sns, neuron)) {
+      case (#Err(e)) { #Err(e) };
+      case (#Ok) {
+        let asValue = func(n : ?Blob) : T3.Value { switch (n) { case (?b) { #Blob(b) }; case null { #Text("none") } } };
+        icrc3_config(?caller, "icrc3_proposal_neuron", asValue(neuron), ?asValue(old));
+        #Ok;
+      };
+    };
+  };
+
+  /// Submit the pending registration proposals now instead of at the next spill check.
+  public shared ({ caller }) func admin_icrc3_register_archives_now() : async { #Ok : Nat; #Err : Text } {
+    if (not is_admin(caller)) { return #Err("Only admins can submit registration proposals") };
+    #Ok(await* Icrc3Sns.registerMissing(icrc3_sns, icrc3_sns_rt, icrc3.archives, icrc3_sns_env()));
+  };
+
+  /// Forget an archive's proposal (after a rejection) so a new one is submitted.
+  public shared ({ caller }) func admin_icrc3_reset_archive_registration(canister_id : Principal) : async { #Ok : Bool; #Err : Text } {
+    if (not is_admin(caller)) { return #Err("Only admins can reset a registration") };
+    #Ok(Icrc3Sns.reset(icrc3_sns, canister_id));
+  };
+
+  // ---- background work ----
+
+  private func icrc3_timer_job() : async () {
+    ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false);
+    ignore await* Icrc3Sns.registerMissing(icrc3_sns, icrc3_sns_rt, icrc3.archives, icrc3_sns_env());
+  };
+
+  private func ensure_icrc3_timer<system>() {
+    Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job);
+  };
+
+  // the ICRC-3 spill check (every 15 minutes; started on install, and on upgrade before
+  // postupgrade, which calls it again harmlessly)
+  ensure_icrc3_timer<system>();
+
   // get_api_doc (ICP service discoverability): a short Markdown guide for agents and integrators,
   // with the full reference at https://app.sneeddao.com/api-docs/. A static text: no state read.
   public query func get_api_doc() : async Text { ApiDoc.text };
@@ -3706,6 +4057,12 @@ shared (deployer) persistent actor class SneedRLL() = this {
     #acceptsVote : Any;
     #add_admin : Any;
     #add_known_token : Any;
+    #admin_icrc3_register_archives_now : Any;
+    #admin_icrc3_repair_archive_controllers : Any;
+    #admin_icrc3_reset_archive_registration : Any;
+    #admin_icrc3_spill_now : Any;
+    #admin_set_icrc3_proposal_neuron : Any;
+    #admin_set_icrc3_settings : Any;
     #all_token_balances : Any;
     #balance_of : Any;
     #balance_reconciliation : Any;
@@ -3768,6 +4125,13 @@ shared (deployer) persistent actor class SneedRLL() = this {
     #get_wallet_known_tokens : Any;
     #get_wallet_token_check_status : Any;
     #get_whitelisted_tokens : Any;
+    #icrc10_supported_standards : Any;
+    #icrc3_get_archives : Any;
+    #icrc3_get_blocks : Any;
+    #icrc3_get_tip_certificate : Any;
+    #icrc3_log_status : Any;
+    #icrc3_registration_status : Any;
+    #icrc3_supported_block_types : Any;
     #import_all_neurons : Any;
     #import_all_new_neurons : Any;
     #import_all_new_proposals : Any;
@@ -3846,6 +4210,13 @@ shared (deployer) persistent actor class SneedRLL() = this {
         or #get_wallet_known_tokens _
         or #get_wallet_token_check_status _
         or #get_whitelisted_tokens _
+        or #icrc10_supported_standards _
+        or #icrc3_get_archives _
+        or #icrc3_get_blocks _
+        or #icrc3_get_tip_certificate _
+        or #icrc3_log_status _
+        or #icrc3_registration_status _
+        or #icrc3_supported_block_types _
         or #imported_neurons_count _
         or #imported_owners_count _
         or #imported_props_count _

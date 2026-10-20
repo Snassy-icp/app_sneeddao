@@ -333,7 +333,51 @@ type Result = variant { ok : text; err : text };
 
 ---
 
-## 7. Integration checklist
+## 7. Activity log (ICRC-3)
+
+Every distribution, every owner's credit, every paid claim, every unknown-outcome claim and its resolution, each cycle's balance reconciliation and every admin change is a block in a hash-chained, certified [ICRC-3](https://github.com/dfinity/ICRC-1/tree/main/standards/ICRC-3) log. Old blocks move to archive canisters created by RLL and co-controlled by Sneed DAO's SNS root. The log started empty with the release that added it; earlier history is in the event queries of 5.2. Design: [spec/rll_icrc3.md](https://github.com/Snassy-icp/app_sneeddao/blob/main/spec/rll_icrc3.md).
+
+| Method | Kind | Returns | Notes |
+|---|---|---|---|
+| `icrc3_get_blocks(vec { start; length })` | query | `GetBlocksResult` | Live blocks, plus a callback (`icrc3_get_blocks` on an archive) per archive holding requested blocks. At most 1,000 blocks per reply. |
+| `icrc3_get_archives({ from : opt principal })` | query | `vec { canister_id; start; end }` | The archives, oldest first. |
+| `icrc3_get_tip_certificate()` | query | `opt { certificate; hash_tree }` | Certified `last_block_index` and `last_block_hash`; `null` while the log is empty. |
+| `icrc3_supported_block_types()` | query | `vec { block_type; url }` | Every `btype` of [7.2](#72-block-types), each with the url `https://app.sneeddao.com/api/rll#block-types`. |
+| `icrc10_supported_standards()` | query | `vec { name; url }` | ICRC-3, ICRC-10. |
+| `icrc3_log_status()` | query | record | Length, live blocks, archives, settings. |
+| `icrc3_registration_status()` | query | record | SNS registration proposals of the archives. |
+| `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`, `admin_set_icrc3_proposal_neuron`, `admin_icrc3_register_archives_now`, `admin_icrc3_reset_archive_registration` | update | | Admins only. |
+
+**Verify.** Check the tip certificate against the IC root key, then download blocks `0 … last_block_index` (following archive callbacks), recompute each block's [representation-independent hash](https://github.com/dfinity/ICRC-1/blob/main/standards/ICRC-3/HASHINGVALUES.md) and check every `phash` against the previous block's hash and the last hash against the certified one. The verifier in the [Sneed Lock API doc](/api/sneed_lock) works unchanged with the RLL canister id.
+
+### 7.1 Block format
+
+`Map { btype; ts; phash; tx }` (`phash` absent in block 0). Inside `tx`: principals as `Blob`; accounts as `Array [owner, subaccount?]`; amounts (base units of the token), ids, voting power and nanosecond times as `Nat`; `token` is the ICRC-1 ledger; `caller` is the principal that called, and blocks the canister writes from its own daily cycle carry `via = "cycle"` instead; flags as `Nat` 0 / 1; absent optional fields are left out.
+
+### 7.2 Block types
+
+| btype | when | tx fields |
+|---|---|---|
+| `rll_reconciliation` | the cycle read a known token's ledger balance (one per known token per cycle, before its distribution) | `token`, `ledger_balance`, `claimable` (sum of owner balances), `reserved` (claims awaiting the ledger + unresolved incidents), `undistributed`, `underflow` (owed above the ledger balance; normally 0), `to_distribute` (shared now: 0 under the token's minimum, capped at its maximum), `via` |
+| `rll_distribution` | a token was shared out | `token`, `amount` (total credited), `requested` (the rest is rounding dust that stays undistributed), `owners` (credited a non-zero amount), `neurons` (whose cast votes counted), `voting_power` (their total: the basis of every share), `first_proposal`, `last_proposal`, `via` |
+| `rll_credit` | an owner's balance grew in that distribution (non-zero credits only) | `owner`, `token`, `amount`, `voting_power` (the owner's neurons' cast voting power), `distribution` (block index of the `rll_distribution`) |
+| `rll_claim` | a claim's transfer succeeded | `caller`, `token`, `amount` (sent, net of fee), `fee`, `total` (debited), `owners` (Array of Map `owner`, `amount`: whose balances paid), `to`, `ledger_tx`, `seq` (`ClaimEvent.sequence_number`; memo `rll-claim:<seq>`) |
+| `rll_claim_incident` | a claim's outcome is unknown: the owners stay debited (3.2, step 7) | `incident_id`, `caller`, `token`, `total`, `amount`, `fee`, `owners`, `seq`, `memo`, `created_at_time`, `error` |
+| `rll_claim_incident_resolve` | an admin resolved an incident | `caller`, `incident_id`, `token`, `landed` (1: the transfer landed), `recredited`, `owners` (re-credited, when `landed` = 0) |
+| `rll_config_update` | a setting changed | `caller` or `via`, `key`, `value`, `old_value` when there was one |
+| `rll_admin_action` | an admin started or stopped a process or used a reset tool | `caller`, `action`, and its fields |
+
+`rll_config_update` keys: `admin_added`, `admin_removed` (Blob); `known_token_added` (Map `ledger`, `symbol`, `decimals`, `fee`, and `balance` when the cycle's balance check added it); `known_token_removed` (Blob); `known_tokens_cleared`, `whitelist_cleared` (Nat count); `whitelist_tokens_added` (Array of Blob, up to 100 per block); `token_min_distribution`, `token_max_distribution` (Map `ledger`, `amount`; no `amount` = none set: the default minimum of 10 × fee, or no maximum; `old_value` always present); `main_loop` (`on` / `off`); `icrc3_proposal_neuron` (Blob or `none`) and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount` (Nat).
+
+`rll_admin_action` actions: `distribution_cycle_start`, `distribution_cycle_stop`; `neuron_import_start` (`mode` `all` / `new`), `proposal_import_start` (`mode`, `from_proposal`), `neuron_import_stop`, `proposal_import_stop`; `clear_balances` (`owners`, `totals`: Array of Map `ledger`, `amount`, what was owed and becomes undistributed), `clear_all_balances_and_distributions` (`owners`, `totals`, and the counts `distribution_events`, `user_distribution_events`, `claim_events`), `clear_total_distributions` (`totals`), `clear_user_distributions`, `clear_user_distribution_events`, `clear_distribution_events`, `clear_claim_events`, `clear_imported_neurons`, `clear_imported_owners`, `clear_imported_props` (`count`).
+
+Not logged: reads, `balance_reconciliation()` (anyone may call it and it changes nothing; the cycle's reconciliation is logged), claims that change nothing (under the fee, a ledger error, a call that provably never ran: the balances are restored; see `get_claim_events`), the stages of a cycle, and cycles started by the main loop (their effects are logged).
+
+**Following one owner.** An owner's credits are the `rll_credit` blocks with their `owner`; what they claimed is in the `rll_claim` blocks listing them in `owners` (the `caller` is whoever claimed: the owner or a hotkey).
+
+---
+
+## 8. Integration checklist
 
 - Show claimable rewards with `balances_of_hotkey_neurons(neurons)` after listing the user's neurons in Sneed SNS governance.
 - Claim with `claim_full_balance_of_hotkey(ledger, icrc1_fee())`; skip tokens whose balance is not above the fee.
@@ -342,3 +386,4 @@ type Result = variant { ok : text; err : text };
 - Remember that a hotkey can claim its neuron owner's rewards, and say so to users who add hotkeys.
 - To add to the rewards, transfer a known token to `lvc4n-7aaaa-aaaam-adm6a-cai` (main account); it is shared in the next daily cycle.
 - Prefer the filtered event queries; the unfiltered ones return every event ever logged.
+- For an auditable history, read the ICRC-3 log (section 7) and verify it against the tip certificate.

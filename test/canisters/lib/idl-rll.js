@@ -23,6 +23,11 @@ export const rllGovernanceIdl = ({ IDL }) => IDL.Service({
   set_proposal: IDL.Func([ProposalSpec], [], []),
   clear_proposals: IDL.Func([], [], []),
   set_parameters: IDL.Func([Parameters], [], []),
+  // manage_neuron's test side (rll's ICRC-3 archive registration)
+  add_hotkey: IDL.Func([IDL.Vec(IDL.Nat8), IDL.Principal], [], []),
+  list_proposals: IDL.Func([], [IDL.Vec(IDL.Record({
+    id: IDL.Nat64, proposer: IDL.Principal, neuron: IDL.Vec(IDL.Nat8), title: IDL.Text, url: IDL.Text, summary: IDL.Text, canister_ids: IDL.Vec(IDL.Principal),
+  }))], ['query']),
 });
 
 /// mock ICPSwap token list (MockIcpSwapTokenList.mo)

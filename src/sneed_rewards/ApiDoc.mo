@@ -33,6 +33,10 @@ RLL is where Sneed DAO's Recursive Liquidity Loop pays out. Tokens that reach it
 - Earnings follow voting: per neuron, the voting power of ballots actually cast on proposals 1 up to `get_highest_closed_proposal_id()`. A neuron that never votes earns nothing.
 - A claim logs a `Pending` `ClaimEvent`, then `Success` (with `tx_index`) or `Failed` under the same `sequence_number`.
 
+## Activity log (ICRC-3)
+
+- Every distribution (`rll_distribution`, then one `rll_credit` per owner credited), paid claim (`rll_claim`, with the owners whose balances paid it), unknown-outcome claim and its resolution, each cycle's per-token reconciliation and every admin change is a certified, hash-chained block: `icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types` (queries). Old blocks move to archive canisters. Block types: https://app.sneeddao.com/api/rll#block-types
+
 ## Errors, retries and Busy
 
 - Retrying a claim is safe: balances are debited before the transfer and restored only when it certainly did not happen, so nothing is paid twice.
