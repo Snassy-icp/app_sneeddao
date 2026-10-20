@@ -7,12 +7,15 @@ import { getNftImage, getNftName, getNftDescription, formatNftMetadata, getNftAt
 import PrincipalInput from './components/PrincipalInput';
 import './NftCard.css';
 
-const NftCard = ({ nft, collectionName, collectionSymbol, onSend , supportsIcrc37 = false, onApprove, onRevoke, collectionId }) => {
+const NftCard = ({ nft, collectionName, collectionSymbol, onSend , supportsIcrc37 = false, onApprove, onRevoke, collectionId, standard }) => {
+    const isExt = standard === 'EXT' || nft.standard === 'EXT';
     const { theme } = useTheme();
     const [isExpanded, setIsExpanded] = useState(false);
     const [imageError, setImageError] = useState(false);
     
-    const imageUrl = getNftImage(nft.metadata, nft);
+    const [useFallback, setUseFallback] = useState(false);
+    // EXT: the card's own picture, and if that does not load the collection's image route
+    const imageUrl = useFallback && nft.fallbackImage ? nft.fallbackImage : getNftImage(nft.metadata, nft);
     const nftName = getNftName(nft.metadata, nft.tokenId, nft);
     const description = getNftDescription(nft.metadata, nft);
     const formattedMetadata = formatNftMetadata(nft.metadata);
@@ -88,7 +91,7 @@ const NftCard = ({ nft, collectionName, collectionSymbol, onSend , supportsIcrc3
                     <img 
                         src={imageUrl} 
                         alt={nftName}
-                        onError={() => setImageError(true)}
+                        onError={() => { if (nft.fallbackImage && !useFallback) setUseFallback(true); else setImageError(true); }}
                         style={{
                             width: '100%',
                             height: '100%',
@@ -146,7 +149,7 @@ const NftCard = ({ nft, collectionName, collectionSymbol, onSend , supportsIcrc3
                         fontSize: '13px',
                         color: theme.colors.mutedText
                     }}>
-                        {collectionSymbol} #{nft.tokenId.toString()}
+                        {isExt ? <><span style={{ fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: 5, background: '#0ea5e933', color: '#38bdf8', marginRight: 6 }}>EXT</span>token index {nft.tokenId.toString()}</> : <>{collectionSymbol} #{nft.tokenId.toString()}</>}
                     </div>
                 </div>
                 {/* Always-visible actions: open the token page, put it up on Sneedex */}
@@ -154,8 +157,8 @@ const NftCard = ({ nft, collectionName, collectionSymbol, onSend , supportsIcrc3
                     <div style={{ display: 'flex', gap: '6px', marginTop: '8px', marginBottom: isExpanded ? '12px' : '0' }}>
                         <Link to={`/nft_item?collection=${collectionId}&id=${nft.tokenId.toString()}`} onClick={(e) => e.stopPropagation()} title="Open this NFT's page"
                             style={{ flex: 1, textAlign: 'center', fontSize: '12px', padding: '5px 8px', borderRadius: '6px', border: `1px solid ${theme.colors.border}`, color: theme.colors.secondaryText, textDecoration: 'none' }}>View</Link>
-                        <Link to={`/sneedex_create?nft=${collectionId}:${nft.tokenId.toString()}`} onClick={(e) => e.stopPropagation()} title="Create a Sneedex offer with this NFT pre-filled"
-                            style={{ flex: 1, textAlign: 'center', fontSize: '12px', padding: '5px 8px', borderRadius: '6px', border: '1px solid #8b5cf6', color: '#a78bfa', textDecoration: 'none', fontWeight: 600 }}>Sell on Sneedex</Link>
+                        {!isExt && <Link to={`/sneedex_create?nft=${collectionId}:${nft.tokenId.toString()}`} onClick={(e) => e.stopPropagation()} title="Create a Sneedex offer with this NFT pre-filled"
+                            style={{ flex: 1, textAlign: 'center', fontSize: '12px', padding: '5px 8px', borderRadius: '6px', border: '1px solid #8b5cf6', color: '#a78bfa', textDecoration: 'none', fontWeight: 600 }}>Sell on Sneedex</Link>}
                     </div>
                 )}
                 

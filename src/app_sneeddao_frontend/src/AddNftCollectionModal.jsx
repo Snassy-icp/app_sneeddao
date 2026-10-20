@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Principal } from '@dfinity/principal';
 import { useTheme } from './contexts/ThemeContext';
 import { fetchCollectionInfo } from './utils/NftUtils';
+import { isExtCollection, fetchExtCollectionInfo, knownExtCollection } from './utils/ExtUtils';
 import PrincipalInput from './components/PrincipalInput';
 import './AddNftCollectionModal.css';
 
@@ -39,10 +40,13 @@ const AddNftCollectionModal = ({ isOpen, onClose, onAdd, agent }) => {
         setCollectionInfo(null);
         
         try {
+            // a known EXT collection, or a canister that answers as EXT, is added as EXT; everything else must be ICRC-7
+            if (knownExtCollection(canisterId)) { setCollectionInfo(await fetchExtCollectionInfo(canisterId, agent)); return; }
             const info = await fetchCollectionInfo(canisterId, agent);
             
             if (!info.isIcrc7) {
-                setError('This canister does not answer the ICRC-7 queries (icrc7_name, icrc7_total_supply, icrc7_tokens), so it is not an ICRC-7 collection');
+                if (await isExtCollection(canisterId, agent)) { setCollectionInfo(await fetchExtCollectionInfo(canisterId, agent)); return; }
+                setError('This canister answers neither the ICRC-7 queries (icrc7_name, icrc7_total_supply, icrc7_tokens) nor the EXT ones (extensions, bearer), so it is not a collection this wallet can read');
                 return;
             }
             
@@ -125,7 +129,7 @@ const AddNftCollectionModal = ({ isOpen, onClose, onAdd, agent }) => {
                         fontSize: '14px',
                         color: theme.colors.mutedText
                     }}>
-                        Enter the canister ID of an ICRC-7 NFT collection
+                        Enter the canister ID of an ICRC-7 or EXT NFT collection
                     </p>
                 </div>
                 
@@ -271,10 +275,15 @@ const AddNftCollectionModal = ({ isOpen, onClose, onAdd, agent }) => {
                                     color: theme.colors.primaryText,
                                     fontWeight: '600'
                                 }}>
-                                    {collectionInfo.totalSupply.toString()}
+                                    {collectionInfo.totalSupply === null || collectionInfo.totalSupply === undefined ? 'unknown' : collectionInfo.totalSupply.toString()}
                                 </span>
                             </div>
-                            {collectionInfo.standards && (
+                            {collectionInfo.standard === 'EXT' && (
+                                <div style={{ padding: '6px 12px', fontSize: '12px', color: theme.colors.mutedText }}>
+                                    Standard: EXT. EXT collections have no on-chain name, so it is listed under its canister id unless it is one this wallet knows. Pictures and traits come from each token's metadata.
+                                </div>
+                            )}
+                            {collectionInfo.standards && collectionInfo.standard !== 'EXT' && (
                                 <div style={{ padding: '6px 12px', fontSize: '12px', color: theme.colors.mutedText }}>
                                     Standards: ICRC-7{collectionInfo.standards.icrc37 ? ', ICRC-37 approvals' : ''}{collectionInfo.standards.icrc10 ? '' : ' (answers the queries but does not announce itself through ICRC-10, which the standard asks for; marketplaces and wallets that only check the announcement will not see it)'}
                                 </div>
@@ -296,7 +305,7 @@ const AddNftCollectionModal = ({ isOpen, onClose, onAdd, agent }) => {
                                     color: theme.colors.success,
                                     fontWeight: '500'
                                 }}>
-                                    ICRC-7 Compatible
+                                    {collectionInfo.standard === 'EXT' ? 'EXT collection' : 'ICRC-7 Compatible'}
                                 </span>
                             </div>
                         </div>

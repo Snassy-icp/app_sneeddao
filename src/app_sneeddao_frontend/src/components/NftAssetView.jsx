@@ -6,14 +6,30 @@ import { Link } from 'react-router-dom';
 import { FaImage, FaExternalLinkAlt } from 'react-icons/fa';
 import { boundTo, SoulboundBadge } from './Soulbound';
 import { useTheme } from '../contexts/ThemeContext';
-import { anonymousNftAgent, fetchCollectionInfo, fetchTokenDetails, getNftImage, getNftName, getNftDescription, getNftAttributes, getNftLinks, formatNftMetadata, getNftMedia } from '../utils/NftUtils';
+import { isKnownExtCollection, isExtCollection, fetchExtCollectionInfo, fetchRegistry, tokenMetadata as extTokenMetadata, extTokenView } from '../utils/ExtUtils';
+import { anonymousNftAgent, verifyIcrc7Support, fetchCollectionInfo, fetchTokenDetails, getNftImage, getNftName, getNftDescription, getNftAttributes, getNftLinks, formatNftMetadata, getNftMedia } from '../utils/NftUtils';
 
 const collectionCache = new Map(); // id -> Promise<info>
 const tokenCache = new Map(); // `${collection}:${id}` -> token detail
+const standardCache = new Map(); // id -> Promise<'ICRC-7' | 'EXT'>
+
+/// 'EXT' for the EXT collections this browser knows and for canisters that answer as EXT but not as ICRC-7; else 'ICRC-7'.
+export function collectionStandardCached(collectionId) {
+    if (isKnownExtCollection(collectionId)) return Promise.resolve('EXT');
+    if (!standardCache.has(collectionId)) {
+        const agent = anonymousNftAgent();
+        const p = (async () => {
+            if (await verifyIcrc7Support(collectionId, agent)) return 'ICRC-7';
+            return (await isExtCollection(collectionId, agent)) ? 'EXT' : 'ICRC-7';
+        })().catch(() => 'ICRC-7');
+        standardCache.set(collectionId, p);
+    }
+    return standardCache.get(collectionId);
+}
 
 export function loadCollectionInfoCached(collectionId) {
     if (!collectionCache.has(collectionId)) {
-        const p = fetchCollectionInfo(collectionId, anonymousNftAgent());
+        const p = collectionStandardCached(collectionId).then((std) => (std === 'EXT' ? fetchExtCollectionInfo(collectionId, anonymousNftAgent()) : fetchCollectionInfo(collectionId, anonymousNftAgent())));
         p.catch(() => collectionCache.delete(collectionId));
         collectionCache.set(collectionId, p);
     }
@@ -23,7 +39,14 @@ export function loadCollectionInfoCached(collectionId) {
 export async function loadTokensCached(collectionId, tokenIds, { refresh = false } = {}) {
     const want = tokenIds.map((x) => x.toString());
     const missing = refresh ? want : want.filter((id) => !tokenCache.has(`${collectionId}:${id}`));
-    if (missing.length) {
+    if (missing.length && (await collectionStandardCached(collectionId)) === 'EXT') {
+        // EXT: holders from the registry (an account id each, not a principal), pictures and traits from each token's metadata
+        const agent = anonymousNftAgent();
+        const idx = missing.map(Number);
+        const [registry, metas] = await Promise.all([fetchRegistry(collectionId, agent, { refresh }), extTokenMetadata(collectionId, idx, agent, { refresh })]);
+        const holder = new Map(registry.map((r) => [r.index, r.accountId]));
+        for (const i of idx) tokenCache.set(`${collectionId}:${i}`, extTokenView(collectionId, i, metas.get(i), holder.get(i) || null));
+    } else if (missing.length) {
         const got = await fetchTokenDetails(collectionId, missing, anonymousNftAgent());
         for (const t of got) tokenCache.set(`${collectionId}:${t.tokenId.toString()}`, t);
     }
@@ -135,6 +158,11 @@ export function NftAssetDetails({ collectionId, tokenIds, me = null }) {
                                     <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText, fontFamily: 'monospace', flexShrink: 0 }}>{t && boundTo(t.metadata) && <SoulboundBadge style={{ marginRight: 6, fontFamily: 'inherit' }} />}{media?.kind === 'model' && <span title="Has a 3D model - open it to turn it around" style={{ marginRight: 6, fontFamily: 'inherit', fontWeight: 700, color: theme.colors.accent }}>3D</span>}#{key}</span>
                                 </div>
                                 {desc && <div style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{desc}</div>}
+                                {!ownerText && t?.ownerAccountId && (
+                                    <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>
+                                        Holder account: <span style={{ fontFamily: 'monospace' }}>{t.ownerAccountId.slice(0, 8)}…{t.ownerAccountId.slice(-6)}</span>
+                                    </div>
+                                )}
                                 {ownerText && (
                                     <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>
                                         Owner: <span style={{ fontFamily: 'monospace' }}>{ownerText.slice(0, 5)}…{ownerText.slice(-3)}</span>{me && ownerText === me && <span style={{ marginLeft: 6, color: '#10b981', fontWeight: 600 }}>yours</span>}

@@ -649,6 +649,14 @@ function HelpWallet() {
                         can send an NFT (recipient principal, optional subaccount and memo) and, where the collection supports it, approve
                         spenders. If you are an admin of a collection, a mint form appears too. Your Sneed Lock locks are NFTs in the Sneed Lock collection.
                     </p>
+                    <p style={styles.paragraph}>
+                        <strong style={styles.strong}>EXT NFTs</strong> (the older standard, used by the Sneed Diamond Club) show up on the same page with
+                        an EXT badge. The Sneed Diamond Club is listed for everyone; add any other EXT collection by its canister id with
+                        {' '}<strong style={styles.strong}>Add Collection</strong>. EXT records holders by account id, so the page shows the NFTs held by your
+                        principal's default account. You can send one EXT NFT at a time to a principal or to an account id (64 hex characters,
+                        checked before sending); the dialog shows the recipient once more before it sends, because a transfer can't be undone.
+                        The <Link to="/nfts" style={styles.link}>NFT browser</Link> browses EXT collections too.
+                    </p>
                 </div>
 
                 {/* Tips */}

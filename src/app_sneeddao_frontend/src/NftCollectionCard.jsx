@@ -97,6 +97,7 @@ const NftCollectionCard = ({ collection, onSendNft, onRemove, onRefresh, isRefre
                             whiteSpace: 'nowrap'
                         }}>
                             {collection.name}
+                            {collection.standard === 'EXT' && <span title="An EXT collection (the older Toniq / Entrepot standard)" style={{ marginLeft: 8, fontSize: '11px', fontWeight: 700, padding: '2px 7px', borderRadius: 6, background: '#0ea5e933', color: '#38bdf8', verticalAlign: 'middle' }}>EXT</span>}
                         </div>
                         <div style={{
                             fontSize: '14px',
@@ -106,8 +107,8 @@ const NftCollectionCard = ({ collection, onSendNft, onRemove, onRefresh, isRefre
                             gap: '8px',
                             flexWrap: 'wrap'
                         }}>
-                            <span>{collection.symbol}</span>
-                            <span>•</span>
+                            {collection.standard !== 'EXT' && <><span>{collection.symbol}</span>
+                            <span>•</span></>}
                             <span>{collection.nfts.length} NFT{collection.nfts.length !== 1 ? 's' : ''}</span>
                             {collection.totalSupply && (
                                 <>
@@ -333,6 +334,7 @@ const NftCollectionCard = ({ collection, onSendNft, onRemove, onRefresh, isRefre
                                     nft={nft}
                                     collectionName={collection.name}
                                     collectionSymbol={collection.symbol}
+                                    standard={collection.standard}
                                     onSend={(nft) => onSendNft(collection, nft)}
                                     supportsIcrc37={!!collection.supportsIcrc37}
                                     collectionId={collection.canisterId}

@@ -15,6 +15,7 @@ import { fetchApprovals, getNftImage, getNftName, getNftDescription, getNftAttri
 import NftModel from '../components/NftModel';
 import CharacterPanel, { hasCharacterLinks, CarriedBy, SoulboundNote } from '../components/CharacterPanel';
 import { loadCollectionInfoCached, loadTokensCached, nftCollectionUrl } from '../components/NftAssetView';
+import { accountId as extAccountId, isSavedExtCollection, addExtCollection } from '../utils/ExtUtils';
 import { customStyles } from '../health/TreeView.jsx';
 import LockGas from '../components/LockGas';
 import { canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
@@ -62,7 +63,10 @@ function NftItem() {
 
     const ownerText = token?.owner?.owner?.toString?.() || null;
     const ownerSub = token?.owner?.subaccount?.length ? uint8ArrayToHex(token.owner.subaccount[0]) : null;
-    const mine = !!(me && ownerText === me);
+    const isExt = token?.standard === 'EXT' || info?.standard === 'EXT';
+    const ownerAid = token?.ownerAccountId || null; // EXT holders are account ids
+    const myAid = useMemo(() => { try { return me ? extAccountId(me) : null; } catch { return null; } }, [me]);
+    const mine = !!(me && ownerText === me) || !!(isExt && myAid && ownerAid === myAid);
     const { setKnownAvatar } = useNaming();
     const [avatarState, setAvatarState] = useState(null); // null | 'saving' | 'done' | error text
     const useAsAvatar = async () => {
@@ -81,15 +85,17 @@ function NftItem() {
         return () => { alive = false; };
     }, [mine, info?.standards?.icrc37, identity, collection, idText]);
 
-    const img = token ? getNftImage(token.metadata, token) : null;
+    const [useFallbackImg, setUseFallbackImg] = useState(false);
+    useEffect(() => { setUseFallbackImg(false); }, [collection, idText]);
+    const img = token ? (useFallbackImg && token.fallbackImage ? token.fallbackImage : getNftImage(token.metadata, token)) : null;
     const name = token ? getNftName(token.metadata, idText, token) : `NFT #${idText}`;
     const desc = token ? getNftDescription(token.metadata, token) : null;
     const attrs = token ? getNftAttributes(token) : [];
     const links = token ? getNftLinks(token) : [];
     const media = token ? getNftMedia(token) : null;
     const raw = token ? formatNftMetadata(token.metadata) : [];
-    const inWallet = useMemo(() => getSavedNftCollections().includes(collection), [collection]);
-    const addToWallet = () => { try { localStorage.setItem(NFT_COLLECTIONS_STORAGE_KEY, JSON.stringify([...new Set([...getSavedNftCollections(), collection])])); } catch { /* ignore */ } };
+    const inWallet = useMemo(() => (isExt ? isSavedExtCollection(collection) : getSavedNftCollections().includes(collection)), [collection, isExt]);
+    const addToWallet = () => { if (isExt) { addExtCollection(collection, info?.name); return; } try { localStorage.setItem(NFT_COLLECTIONS_STORAGE_KEY, JSON.stringify([...new Set([...getSavedNftCollections(), collection])])); } catch { /* ignore */ } };
 
     const card = { background: theme.colors.cardBg, border: `1px solid ${theme.colors.border}`, borderRadius: 14, padding: '1rem' };
     const label = { fontSize: '0.72rem', fontWeight: 600, color: theme.colors.mutedText, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 };
@@ -113,7 +119,7 @@ function NftItem() {
                             <div style={{ aspectRatio: '1 / 1', background: theme.colors.tertiaryBg, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                                 {loading ? <FaSpinner className="health-spin" size={28} color={theme.colors.mutedText} />
                                     : media?.kind === 'model' ? <NftModel url={media.url} poster={img && !imgBroken ? img : null} alt={name} style={{ width: '100%', height: '100%' }} />
-                                    : img && !imgBroken ? <img src={img} alt={name} onError={() => setImgBroken(true)} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+                                    : img && !imgBroken ? <img src={img} alt={name} onError={() => { if (token?.fallbackImage && !useFallbackImg) setUseFallbackImg(true); else setImgBroken(true); }} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
                                     : <div style={{ textAlign: 'center', color: theme.colors.mutedText }}><FaImage size={48} color={primary} /><div style={{ fontSize: '0.8rem', marginTop: 8 }}>{token && !token.exists ? 'This token does not exist in the collection' : imgBroken ? 'The picture could not be loaded' : 'No picture in the metadata'}</div></div>}
                             </div>
                             {media?.kind === 'audio' && <audio controls preload="none" src={media.url} style={{ width: '100%', display: 'block' }} />}
@@ -128,7 +134,7 @@ function NftItem() {
                                         <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText, marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                                             {info?.logo && <img src={info.logo} alt="" style={{ width: 18, height: 18, borderRadius: 4, objectFit: 'cover' }} />}
                                             <Link to={nftCollectionUrl(collection)} style={{ color: theme.colors.accent, textDecoration: 'none' }}>{info?.name || collection}</Link>
-                                            {info?.symbol && <span>{info.symbol}</span>}
+                                            {isExt ? <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '1px 6px', borderRadius: 5, background: '#0ea5e933', color: '#38bdf8' }}>EXT</span> : info?.symbol && <span>{info.symbol}</span>}
                                             <span style={{ fontFamily: 'monospace' }}>#{idText}</span>
                                         </div>
                                     </div>
@@ -145,14 +151,19 @@ function NftItem() {
                                         <PrincipalDisplay principal={Principal.fromText(ownerText)} isAuthenticated={isAuthenticated} subaccount={ownerSub} />
                                         {mine && <span style={{ fontSize: '0.72rem', fontWeight: 700, background: '#10b981', color: 'white', padding: '2px 8px', borderRadius: 6 }}>YOURS</span>}
                                     </div>
-                                ) : <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>{loading ? 'Reading…' : 'Unknown (the collection did not answer icrc7_owner_of, or the token does not exist)'}</div>}
+                                ) : ownerAid ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                        <span title="EXT collections record the holder's account id, not a principal" style={{ fontFamily: 'monospace', fontSize: '0.82rem', color: theme.colors.primaryText, wordBreak: 'break-all' }}>account {ownerAid}</span>
+                                        {mine && <span style={{ fontSize: '0.72rem', fontWeight: 700, background: '#10b981', color: 'white', padding: '2px 8px', borderRadius: 6 }}>YOURS</span>}
+                                    </div>
+                                ) : <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>{loading ? 'Reading…' : isExt ? 'Unknown (the token is not in the collection registry)' : 'Unknown (the collection did not answer icrc7_owner_of, or the token does not exist)'}</div>}
                                 {ownerSub && <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: 6, fontFamily: 'monospace', wordBreak: 'break-all' }}>subaccount {ownerSub}</div>}
                                 {token?.owner && <CarriedBy owner={token.owner} theme={theme} />}
                                 {mine && (
                                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
-                                        <Link to={`/sneedex_create?nft=${collection}:${idText}`} style={btn('#a78bfa')}><FaTag /> Sell on Sneedex</Link>
+                                        {!isExt && <Link to={`/sneedex_create?nft=${collection}:${idText}`} style={btn('#a78bfa')}><FaTag /> Sell on Sneedex</Link>}
                                         <Link to="/nft" onClick={() => { if (!inWallet) addToWallet(); }} style={btn()}><FaWallet /> {inWallet ? 'Open in wallet' : 'Add collection to wallet'}</Link>
-                                        {namingServiceEnabled && img && (
+                                        {namingServiceEnabled && img && !isExt && (
                                             <button type="button" onClick={useAsAvatar} disabled={avatarState === 'saving' || avatarState === 'done'} style={btn()} title="Show this NFT next to your name while you own it">
                                                 <FaUserCircle /> {avatarState === 'saving' ? 'Setting…' : avatarState === 'done' ? 'Your avatar now' : 'Use as my avatar'}
                                             </button>
@@ -240,7 +251,8 @@ function NftItem() {
                             <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                                 <span style={{ fontFamily: 'monospace' }}>{collection}</span>
                                 <a href={`https://dashboard.internetcomputer.org/canister/${collection}`} target="_blank" rel="noopener noreferrer" style={{ color: theme.colors.accent }}>collection on the dashboard</a>
-                                {info?.standards && <span>{['icrc7', 'icrc37', 'icrc10', 'icrc3'].filter((k) => info.standards[k]).map((k) => k.toUpperCase().replace('ICRC', 'ICRC-')).join(' · ')}</span>}
+                                {isExt && <span>EXT · token identifier <span style={{ fontFamily: 'monospace' }}>{token?.tid}</span></span>}
+                                {info?.standards && !isExt && <span>{['icrc7', 'icrc37', 'icrc10', 'icrc3'].filter((k) => info.standards[k]).map((k) => k.toUpperCase().replace('ICRC', 'ICRC-')).join(' · ')}</span>}
                             </div>
                         </div>
                     </div>

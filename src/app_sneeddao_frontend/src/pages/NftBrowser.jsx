@@ -1,4 +1,4 @@
-// /nfts: browse any ICRC-7 collection the way /positions browses pools and
+// /nfts: browse any ICRC-7 or EXT collection the way /positions browses pools and
 // /neurons browses neurons. No login needed; tokens you own are marked.
 // ?collection=<canister> opens a collection; each tile opens /nft_item.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -10,7 +10,8 @@ import PrincipalInput from '../components/PrincipalInput';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { anonymousNftAgent, fetchCollectionTokenIds, getSavedNftCollections, NFT_COLLECTIONS_STORAGE_KEY, getNftImage, getNftName } from '../utils/NftUtils';
-import { loadCollectionInfoCached, loadTokensCached, nftItemUrl, useNftTokens } from '../components/NftAssetView';
+import { loadCollectionInfoCached, loadTokensCached, nftItemUrl, useNftTokens, collectionStandardCached } from '../components/NftAssetView';
+import { getExtCollections, addExtCollection, fetchRegistry, accountId } from '../utils/ExtUtils';
 import { customStyles } from '../health/TreeView.jsx';
 
 const primary = '#a18cd1';
@@ -25,7 +26,8 @@ function CollectionChip({ id, onPick, active, theme }) {
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 10, cursor: 'pointer', border: `1px solid ${active ? primary : theme.colors.border}`, background: active ? `${primary}22` : theme.colors.secondaryBg, color: theme.colors.primaryText, fontSize: '0.85rem' }}>
             {info?.logo ? <img src={info.logo} alt="" style={{ width: 22, height: 22, borderRadius: 5, objectFit: 'cover' }} /> : <FaImage style={{ color: primary }} />}
             <span>{info?.name || `${id.slice(0, 5)}…${id.slice(-3)}`}</span>
-            {info?.symbol && <span style={{ color: theme.colors.mutedText }}>{info.symbol}</span>}
+            {info?.symbol && info?.standard !== 'EXT' && <span style={{ color: theme.colors.mutedText }}>{info.symbol}</span>}
+            {info?.standard === 'EXT' && <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '1px 5px', borderRadius: 5, background: '#0ea5e933', color: '#38bdf8' }}>EXT</span>}
         </button>
     );
 }
@@ -36,6 +38,9 @@ function NftBrowser() {
     const [params] = useSearchParams();
     const { identity, isAuthenticated } = useAuth();
     const me = identity?.getPrincipal?.().toText?.() || null;
+    const myAid = useMemo(() => { try { return me ? accountId(me) : null; } catch { return null; } }, [me]);
+    // a token is yours by principal (ICRC-7) or by your default account id (EXT)
+    const isMine = (t) => !!t && ((me && t.owner?.owner?.toString?.() === me) || (myAid && t.ownerAccountId === myAid));
     const collection = params.get('collection') || '';
     const [input, setInput] = useState(collection);
     const [info, setInfo] = useState(null);
@@ -47,7 +52,7 @@ function NftBrowser() {
     const [loading, setLoading] = useState(false);
     const [onlyMine, setOnlyMine] = useState(false);
     const [error, setError] = useState('');
-    const saved = useMemo(() => getSavedNftCollections(), [collection]);
+    const saved = useMemo(() => { const ext = getExtCollections().map((c) => c.canisterId); return [...ext, ...getSavedNftCollections().filter((x) => !ext.includes(x))]; }, [collection]);
     const recent = useMemo(() => readRecent().filter((x) => !saved.includes(x)), [saved, collection]);
     const PAGE = 48;
 
@@ -58,7 +63,14 @@ function NftBrowser() {
         setLoading(true); setError('');
         try {
             const agent = anonymousNftAgent();
-            const page = await fetchCollectionTokenIds(collection, agent, fromCursor, PAGE);
+            let page;
+            if ((await collectionStandardCached(collection)) === 'EXT') {
+                // EXT has no paging query: the registry lists every token with its holder; page through it here
+                const reg = await fetchRegistry(collection, agent, { refresh: fromCursor === null && reset });
+                const start = fromCursor === null ? 0 : reg.findIndex((r) => r.index > Number(fromCursor));
+                const slice = start < 0 ? [] : reg.slice(start, start + PAGE);
+                page = { ids: slice.map((r) => BigInt(r.index)), last: slice.length ? BigInt(slice[slice.length - 1].index) : null, done: start < 0 || start + PAGE >= reg.length };
+            } else page = await fetchCollectionTokenIds(collection, agent, fromCursor, PAGE);
             setIds((prev) => { const seen = new Set((reset ? [] : prev).map((x) => x.toString())); const add = page.ids.filter((x) => !seen.has(x.toString())); return reset ? add : [...prev, ...add]; });
             setCursor(page.last); setDone(page.done || page.ids.length === 0);
             // details arrive in batches so the tiles fill in progressively
@@ -86,10 +98,10 @@ function NftBrowser() {
 
     const open = (id) => { const t = (id || '').trim(); if (!t) return; navigate(`/nfts?collection=${t}`); };
     const isSaved = saved.includes(collection);
-    const addToWallet = () => { try { localStorage.setItem(NFT_COLLECTIONS_STORAGE_KEY, JSON.stringify([...new Set([...getSavedNftCollections(), collection])])); } catch { /* ignore */ } navigate('/nft'); };
+    const addToWallet = () => { if (info?.standard === 'EXT') { addExtCollection(collection, info.name); navigate('/nft'); return; } try { localStorage.setItem(NFT_COLLECTIONS_STORAGE_KEY, JSON.stringify([...new Set([...getSavedNftCollections(), collection])])); } catch { /* ignore */ } navigate('/nft'); };
 
-    const shown = ids.filter((id) => !onlyMine || tokens.get(id.toString())?.owner?.owner?.toString?.() === me);
-    const mineCount = me ? ids.filter((id) => tokens.get(id.toString())?.owner?.owner?.toString?.() === me).length : 0;
+    const shown = ids.filter((id) => !onlyMine || isMine(tokens.get(id.toString())));
+    const mineCount = me ? ids.filter((id) => isMine(tokens.get(id.toString()))).length : 0;
 
     const card = { background: theme.colors.cardBg, border: `1px solid ${theme.colors.border}`, borderRadius: 14, padding: '1rem' };
     return (
@@ -99,7 +111,7 @@ function NftBrowser() {
             <div style={{ maxWidth: 1100, margin: '0 auto', padding: '1.25rem 16px 3rem' }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
                     <h1 style={{ color: theme.colors.primaryText, fontSize: '1.6rem', margin: 0 }}>NFTs</h1>
-                    <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>Browse any ICRC-7 collection, owned or not. Every token has its own page.</span>
+                    <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>Browse any ICRC-7 or EXT collection, owned or not. Every token has its own page.</span>
                 </div>
                 <div style={{ ...card, marginTop: 12, marginBottom: 16 }}>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -125,11 +137,11 @@ function NftBrowser() {
                                 {info?.logo ? <img src={info.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <FaImage size={26} color={primary} />}
                             </div>
                             <div style={{ flex: 1, minWidth: 200 }}>
-                                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: theme.colors.primaryText }}>{info ? info.name : (infoError ? 'Unknown collection' : 'Reading collection…')} {info?.symbol && <span style={{ fontWeight: 400, color: theme.colors.mutedText }}>({info.symbol})</span>}</div>
+                                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: theme.colors.primaryText }}>{info ? info.name : (infoError ? 'Unknown collection' : 'Reading collection…')} {info?.standard === 'EXT' ? <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 7px', borderRadius: 6, background: '#0ea5e933', color: '#38bdf8', verticalAlign: 'middle' }}>EXT</span> : info?.symbol && <span style={{ fontWeight: 400, color: theme.colors.mutedText }}>({info.symbol})</span>}</div>
                                 <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
                                     <span style={{ fontFamily: 'monospace' }}>{collection}</span>
                                     {info?.totalSupply !== undefined && info?.totalSupply !== null && <span>supply {info.totalSupply.toString()}</span>}
-                                    {info?.standards && <span>{['icrc7', 'icrc37', 'icrc10', 'icrc3'].filter((k) => info.standards[k]).map((k) => k.toUpperCase().replace('ICRC', 'ICRC-')).join(' · ') || 'standards unknown'}</span>}
+                                    {info?.standards && <span>{info.standard === 'EXT' ? 'EXT' : (['icrc7', 'icrc37', 'icrc10', 'icrc3'].filter((k) => info.standards[k]).map((k) => k.toUpperCase().replace('ICRC', 'ICRC-')).join(' · ') || 'standards unknown')}</span>}
                                     <a href={`https://dashboard.internetcomputer.org/canister/${collection}`} target="_blank" rel="noopener noreferrer" style={{ color: theme.colors.accent, display: 'inline-flex', alignItems: 'center', gap: 4 }}>dashboard <FaExternalLinkAlt size={9} /></a>
                                 </div>
                                 {info?.description && <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText, marginTop: 6, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{info.description}</div>}
@@ -152,7 +164,7 @@ function NftBrowser() {
                                 const t = tokens.get(key);
                                 const img = t ? getNftImage(t.metadata, t) : null;
                                 const name = t ? getNftName(t.metadata, id, t) : `#${key}`;
-                                const mine = me && t?.owner?.owner?.toString?.() === me;
+                                const mine = isMine(t);
                                 return (
                                     <Link key={key} to={nftItemUrl(collection, id)} style={{ textDecoration: 'none', background: theme.colors.secondaryBg, border: `1px solid ${mine ? '#10b981' : theme.colors.border}`, borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                                         <div style={{ aspectRatio: '1 / 1', background: theme.colors.tertiaryBg, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' }}>

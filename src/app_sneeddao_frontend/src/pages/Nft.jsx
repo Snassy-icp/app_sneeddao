@@ -9,6 +9,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import AddNftCollectionModal from '../AddNftCollectionModal';
 import { getSavedNftCollections, NFT_COLLECTIONS_STORAGE_KEY, loadNftCollection, transferNft, fetchCollectionAdmins, mintNft, getNftName, approveToken, revokeTokenApproval, approveCollection, revokeCollectionApproval } from '../utils/NftUtils';
 import { app_sneeddao_backend } from 'declarations/app_sneeddao_backend';
+import { getExtCollections, addExtCollection, removeExtCollection, loadExtCollection, transferExt } from '../utils/ExtUtils';
 import './Nft.css';
 
 const spinnerStyle = (theme) => ({ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', border: `2px solid ${theme.colors.border}`, borderTopColor: theme.colors.primaryText, animation: 'nft-spin 0.8s linear infinite', verticalAlign: '-2px', marginRight: '6px' });
@@ -35,7 +36,15 @@ const Nft = () => {
     const [refreshingCollections, setRefreshingCollections] = useState(new Set());
     
     // Saved collection IDs
-    const [savedCollectionIds, setSavedCollectionIds] = useState(() => getSavedNftCollections());
+    const [icrc7CollectionIds, setIcrc7CollectionIds] = useState(() => getSavedNftCollections());
+    // EXT collections (the built-in Diamond Club and any the user added) are kept under their own
+    // storage key: the ICRC-7 list is read by other pages that would try to load them as ICRC-7.
+    const [extCollections, setExtCollections] = useState(() => getExtCollections());
+    const extIds = extCollections.map((c) => c.canisterId);
+    const isExtId = (id) => extIds.includes(id);
+    const savedCollectionIds = [...extIds, ...icrc7CollectionIds.filter((id) => !extIds.includes(id))];
+    const savedKey = savedCollectionIds.join(',');
+    const setSavedCollectionIds = (f) => { setIcrc7CollectionIds(f); setExtCollections(getExtCollections()); };
     // What each saved collection is doing while it loads: id -> { stage, name, symbol, logo, found, error }
     const [loadProgress, setLoadProgress] = useState({});
     const inFlight = useRef(new Set()); // collection ids being loaded right now
@@ -74,10 +83,11 @@ const Nft = () => {
         setLoadProgress((p) => { const n = { ...p }; for (const id of pending) n[id] = { stage: 'Connecting…' }; return n; });
         Promise.allSettled(pending.map(async (canisterId) => {
             try {
-                const c = await loadNftCollection(canisterId, account, identity, agent, (prog) => {
-                    if (alive.current) setLoadProgress((p) => ({ ...p, [canisterId]: { ...prog } }));
-                });
-                c.isAdmin = (await fetchCollectionAdmins(c.canisterId, agent)).includes(me);
+                const onProg = (prog) => { if (alive.current) setLoadProgress((p) => ({ ...p, [canisterId]: { ...prog } })); };
+                const c = isExtId(canisterId)
+                    ? await loadExtCollection(canisterId, identity.getPrincipal(), agent, onProg)
+                    : await loadNftCollection(canisterId, account, identity, agent, onProg);
+                c.isAdmin = c.standard === 'EXT' ? false : (await fetchCollectionAdmins(c.canisterId, agent)).includes(me);
                 if (!alive.current) return;
                 // every saved collection is listed, owned tokens or not (an admin may own none yet); keep the saved order
                 setCollections((prev) => {
@@ -93,7 +103,7 @@ const Nft = () => {
             }
         })).then(() => { if (alive.current && inFlight.current.size === 0) setIsLoading(false); });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isAuthenticated, identity, agent, savedCollectionIds]);
+    }, [isAuthenticated, identity, agent, savedKey, icrc7CollectionIds]);
     
     const retryCollection = (canisterId) => {
         // dropping the stale entry makes the loader effect pick it up again
@@ -113,12 +123,9 @@ const Nft = () => {
                 subaccount: []
             };
             
-            const refreshedCollection = await loadNftCollection(
-                collection.canisterId,
-                account,
-                identity,
-                agent
-            );
+            const refreshedCollection = collection.standard === 'EXT'
+                ? await loadExtCollection(collection.canisterId, identity.getPrincipal(), agent, null, { refresh: true })
+                : await loadNftCollection(collection.canisterId, account, identity, agent);
             
             setCollections(prev => 
                 prev.map(c => 
@@ -138,9 +145,14 @@ const Nft = () => {
     };
     
     const handleAddCollection = async (canisterId, collectionInfo) => {
+        if (collectionInfo?.standard === 'EXT') {
+            addExtCollection(canisterId, collectionInfo.name);
+            setExtCollections(getExtCollections());
+            return;
+        }
         // Add to saved collections
-        const updatedIds = [...new Set([...savedCollectionIds, canisterId])];
-        setSavedCollectionIds(updatedIds);
+        const updatedIds = [...new Set([...icrc7CollectionIds, canisterId])];
+        setIcrc7CollectionIds(updatedIds);
         localStorage.setItem(NFT_COLLECTIONS_STORAGE_KEY, JSON.stringify(updatedIds));
         
         // The saved-ids effect reloads the list; appending here as well showed the collection twice.
@@ -164,9 +176,14 @@ const Nft = () => {
             onConfirm: () => {
                 // Remove from collections
                 setCollections(prev => prev.filter(c => c.canisterId !== collection.canisterId));
+                if (isExtId(collection.canisterId)) {
+                    removeExtCollection(collection.canisterId);
+                    setExtCollections(getExtCollections());
+                    return;
+                }
                 // Remove from saved IDs
-                const updatedIds = savedCollectionIds.filter(id => id !== collection.canisterId);
-                setSavedCollectionIds(updatedIds);
+                const updatedIds = icrc7CollectionIds.filter(id => id !== collection.canisterId);
+                setIcrc7CollectionIds(updatedIds);
                 localStorage.setItem(NFT_COLLECTIONS_STORAGE_KEY, JSON.stringify(updatedIds));
             },
         });
@@ -180,6 +197,14 @@ const Nft = () => {
     
     const handleConfirmSend = async (toAccount, memo) => {
         if (!selectedNft || !selectedCollection || !identity || !agent) return;
+        if (selectedCollection.standard === 'EXT') {
+            // toAccount is { principal: text } or { address: account id hex }; one NFT, amount 1
+            const r = await transferExt(selectedCollection.canisterId, selectedNft.index, identity.getPrincipal(), toAccount, agent);
+            const landed = r.newBearer === r.expectedBearer;
+            setDialog({ title: 'NFT sent', message: `${getNftName(selectedNft.metadata, selectedNft.tokenId, selectedNft)} was sent. ${landed ? `The collection now shows account ${r.newBearer} as its holder.` : `The collection accepted the transfer${r.newBearer ? `; it reports account ${r.newBearer} as the holder` : ''}.`}`, type: 'success', confirmText: 'Done' });
+            await handleRefreshCollection(selectedCollection);
+            return;
+        }
         
         try {
             const result = await transferNft(
@@ -233,7 +258,7 @@ const Nft = () => {
                             marginBottom: '32px',
                             lineHeight: '1.6'
                         }}>
-                            Connect your wallet to view and manage your ICRC-7 NFTs
+                            Connect your wallet to view and manage your ICRC-7 and EXT NFTs
                         </p>
                         <button
                             onClick={login}
@@ -299,7 +324,7 @@ const Nft = () => {
                             color: theme.colors.mutedText,
                             margin: 0
                         }}>
-                            Your ICRC-7 NFT collections
+                            Your ICRC-7 and EXT NFT collections
                         </p>
                     </div>
                     
@@ -436,7 +461,7 @@ const Nft = () => {
                             maxWidth: '500px',
                             margin: '0 auto 32px auto'
                         }}>
-                            Add an ICRC-7 NFT collection to view and manage your NFTs
+                            Add an ICRC-7 or EXT NFT collection to view and manage your NFTs
                         </p>
                         <button
                             onClick={() => setIsAddModalOpen(true)}
