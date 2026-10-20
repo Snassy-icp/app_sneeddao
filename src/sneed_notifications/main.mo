@@ -116,6 +116,14 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     max_attempts = 5;
   };
   var admins : [Principal] = [];
+
+  // One-time bootstrap (2026-10-20): since #417 made SNS root the only controller, nobody could make
+  // admin calls (admins are controllers plus this list, which was empty). This upgrade puts one
+  // maintainer on the list; a later upgrade removes this hook, and the list keeps the entry.
+  transient let BOOTSTRAP_ADMIN = Principal.fromText("d7zib-qo5mr-qzmpb-dtyof-l7yiu-pu52k-wk7ng-cbm3n-ffmys-crbkz-nae");
+  system func postupgrade() {
+    if (Array.find<Principal>(admins, func(a) = a == BOOTSTRAP_ADMIN) == null) admins := Array.append(admins, [BOOTSTRAP_ADMIN]);
+  };
   /// Each relay kind's public key (base64 SPKI, RSA-OAEP-256): clients encrypt addresses to it.
   var relay_keys : [(ChannelKind, Text)] = [];
 

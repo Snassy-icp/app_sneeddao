@@ -288,4 +288,15 @@ describe('sneed_notifications', () => {
     const h = await as(bob).get_my_history(1n);
     expect(h[0].deliveries.some((d) => 'delivered' in d.state)).toBe(true);
   });
+
+  it('puts the bootstrap maintainer on the admin list at upgrade, once, so admin calls work without controlling it', async () => {
+    const D7 = 'd7zib-qo5mr-qzmpb-dtyof-l7yiu-pu52k-wk7ng-cbm3n-ffmys-crbkz-nae';
+    expect((await n.get_admins()).map((p) => p.toText())).toContain(D7); // added by the upgrade above
+    await pic.upgradeCanister({ sender: admin, canisterId: notifId, wasm: wasm('sneed_notifications'), upgradeModeOptions: { skip_pre_upgrade: [], wasm_memory_persistence: [{ keep: null }] } });
+    expect((await n.get_admins()).filter((p) => p.toText() === D7)).toHaveLength(1); // not twice
+    // a listed admin who is not a controller can make admin calls
+    const asD7 = actorAs(pic, notifIdl, notifId, Principal.fromText(D7));
+    unwrap(await asD7.admin_add_admin(carol));
+    expect((await n.get_admins()).map((p) => p.toText())).toContain(carol.toText());
+  });
 });
