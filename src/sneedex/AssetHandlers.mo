@@ -669,6 +669,78 @@ module {
         };
     };
     
+    func sameAccount(owner : Principal, sub : ?Blob, a : T.Account) : Bool {
+        let zero = Blob.fromArray(Array.tabulate<Nat8>(32, func(_) { 0 }));
+        let s1 = switch (sub) { case (?b) { b }; case null { zero } };
+        let s2 = switch (a.subaccount) { case (?b) { b }; case null { zero } };
+        Principal.equal(owner, a.owner) and Blob.equal(s1, s2);
+    };
+
+    /// Hand over the listed tokens that still sit in the offer's escrow subaccount, and only those,
+    /// so a retry after a partly failed batch never tries to move a token twice (a token already
+    /// moved is no longer Sneedex's to move). Returns how many tokens were moved.
+    public func deliverEscrowedNfts(
+        collectionCanisterId : Principal,
+        sneedex : Principal,
+        escrowSubaccount : Blob,
+        toAccount : T.Account,
+        tokenIds : [Nat]
+    ) : async* T.Result<Nat> {
+        let collection = getICRC7Collection(collectionCanisterId);
+        let owners = try { await collection.icrc7_owner_of(tokenIds) } catch (_e) {
+            return #err(#TransferFailed("Failed to check NFT owners"));
+        };
+        if (owners.size() != tokenIds.size()) { return #err(#TransferFailed("The collection answered for a different number of tokens")) };
+        let toMove = Buffer.Buffer<Nat>(tokenIds.size());
+        var i = 0;
+        for (o in owners.vals()) {
+            let id = tokenIds[i];
+            i += 1;
+            switch (o) {
+                case (?a) { if (sameAccount(sneedex, ?escrowSubaccount, a)) { toMove.add(id) } };
+                case null {};
+            };
+        };
+        if (toMove.size() == 0) { return #ok(0) };
+        switch (await* transferNfts(collectionCanisterId, escrowSubaccount, toAccount, Buffer.toArray(toMove))) {
+            case (#ok(_)) { #ok(toMove.size()) };
+            case (#err(e)) { #err(e) };
+        };
+    };
+
+    /// True only when Sneedex is provably the one and only controller of the canister, which is
+    /// how escrow leaves it and how a failed hand-over leaves it. Any doubt (no access) is false.
+    public func isSoleCanisterController(canisterId : Principal, sneedex : Principal) : async* Bool {
+        try {
+            let status = await getManagementCanister().canister_status({ canister_id = canisterId });
+            let c = status.settings.controllers;
+            c.size() == 1 and Principal.equal(c[0], sneedex);
+        } catch (_e) { false };
+    };
+
+    /// True only when Sneedex is provably the one principal with any permission on the neuron,
+    /// which is how escrow leaves it and how a failed hand-over leaves it. Any doubt is false.
+    public func isSoleNeuronHolder(governanceCanisterId : Principal, neuronId : T.NeuronId, sneedex : Principal) : async* Bool {
+        try {
+            let response = await getSNSGovernance(governanceCanisterId).get_neuron({ neuron_id = ?neuronId });
+            switch (response.result) {
+                case (?#Neuron(neuron)) {
+                    var sneedexHolds = false;
+                    for (perm in neuron.permissions.vals()) {
+                        if (perm.permission_type.size() > 0) {
+                            switch (perm.principal) {
+                                case (?p) { if (Principal.equal(p, sneedex)) { sneedexHolds := true } else { return false } };
+                                case null {};
+                            };
+                        };
+                    };
+                    sneedexHolds;
+                };
+                case (_) { false };
+            };
+        } catch (_e) { false };
+    };
+
     /// Move tokens out of Sneedex's own default account (no subaccount). Only ever needed for a
     /// collection that ignored the escrow subaccount on deposit, which is not ICRC-7 compliant.
     public func transferNftsFromDefault(

@@ -161,7 +161,17 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // exactly these (the hotkeys_snapshot inside the offer only keeps the principals).
     // Escrows from before this map existed have no entry; see neuronRestorePermissions.
     var snsNeuronEscrowPermissions : [(T.OfferId, Nat, [T.NeuronPermission])] = [];
-    
+
+    // Settlement progress: for an offer whose assets are being handed over (to the winner of a
+    // Completed offer, or back to the seller of an Expired/Cancelled one), the indices of the
+    // assets already delivered. A retry only redoes the others; the offer becomes Claimed or
+    // Reclaimed only once every asset is delivered, and its entry is then removed.
+    var settlementDelivered : [(T.OfferId, [Nat])] = [];
+
+    // In-flight guard for asset settlement, per offer (transient, like bidEscrowLocks): the
+    // auto-delivery timers and the manual claim/reclaim must not hand over the same offer at once.
+    transient var settlementLocks = Map.new<T.OfferId, ()>();
+
     // ============================================
     // PRIVATE HELPERS
     // ============================================
@@ -822,101 +832,303 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         });
     };
     
-    /// Auto-deliver assets to winning bidder (called via Timer)
-    /// Best effort - if it fails, buyer can manually claim from GUI
+    // ============================================
+    // SETTLEMENT: HANDING THE ASSETS OVER
+    // ============================================
+
+    func deliveredIndicesOf(offerId : T.OfferId) : [Nat] {
+        for ((o, idx) in settlementDelivered.vals()) { if (o == offerId) { return idx } };
+        [];
+    };
+
+    func isAssetDelivered(offerId : T.OfferId, assetIndex : Nat) : Bool {
+        Array.find<Nat>(deliveredIndicesOf(offerId), func(i) { i == assetIndex }) != null;
+    };
+
+    func markAssetDelivered(offerId : T.OfferId, assetIndex : Nat) {
+        if (isAssetDelivered(offerId, assetIndex)) { return };
+        let updated = Array.append(deliveredIndicesOf(offerId), [assetIndex]);
+        let others = Array.filter<(T.OfferId, [Nat])>(settlementDelivered, func((o, _)) { o != offerId });
+        settlementDelivered := Array.append(others, [(offerId, updated)]);
+    };
+
+    func clearDeliveredAssets(offerId : T.OfferId) {
+        settlementDelivered := Array.filter<(T.OfferId, [Nat])>(settlementDelivered, func((o, _)) { o != offerId });
+    };
+
+    /// Set an offer's state, keeping everything else as the offer has it now.
+    func setOfferState(offerId : T.OfferId, newState : T.OfferState) {
+        switch (getOffer(offerId)) {
+            case (?offer) { updateOffer(offerId, { offer with state = newState }) };
+            case null {};
+        };
+    };
+
+    /// The marketplace cut already paid out of a winning bid's escrow (zero if none). The cut log
+    /// is append-only, so this is the record that the cut must not be paid again.
+    func cutPaidForBid(bidId : T.BidId) : Nat {
+        var paid = 0;
+        for (e in cutPaymentLog.vals()) { if (e.bid_id == bidId) { paid += e.cut_amount } };
+        paid;
+    };
+
+    func errorText(e : T.SneedexError) : Text {
+        switch (e) {
+            case (#TransferFailed(t) or #CanisterError(t) or #GovernanceError(t) or #InvalidAsset(t) or #InvalidState(t) or #EscrowFailed(t)) { t };
+            case (_) { debug_show (e) };
+        };
+    };
+
+    /// Another offer (any state) names the same canister, neuron or lock.
+    func otherOfferListsAsset(offerId : T.OfferId, asset : T.Asset) : Bool {
+        for (o in offers.vals()) {
+            if (o.id != offerId and assetExists(o.assets, asset)) { return true };
+        };
+        false;
+    };
+
+    /// Hand one asset of an offer to `recipient`: to the winner (toBuyer) or back to the seller.
+    /// Safe to repeat after a failure: a canister's controllers, a neuron's new owner, a lock's
+    /// owner and a token sweep are each one call that happens whole or not at all (re-adding a
+    /// neuron permission that was already added is harmless), and NFTs are moved only while they
+    /// are still in the offer's escrow subaccount.
+    func deliverAsset(offer : T.Offer, assetIndex : Nat, recipient : Principal, toBuyer : Bool) : async* T.Result<()> {
+        let escrowSub = Utils.offerEscrowSubaccount(offer.creator, offer.id);
+        switch (offer.assets[assetIndex].asset) {
+            case (#Canister(asset)) {
+                let ckind = switch (asset.canister_kind) { case (?k) { k }; case null { 0 } };
+                if (toBuyer) {
+                    let r = await* AssetHandlers.transferCanister(asset.canister_id, [recipient]);
+                    // the buyer gets a clean canister: a bot's escrow snapshot is dropped, not restored
+                    switch (r) {
+                        case (#ok(_)) {
+                            if (ckind == T.CANISTER_KIND_ICP_NEURON_MANAGER or ckind == T.CANISTER_KIND_TRADING_BOT) {
+                                removeEscrowSnapshot(asset.canister_id);
+                            };
+                        };
+                        case (#err(_)) {};
+                    };
+                    r;
+                } else {
+                    // restore botkeys BEFORE releasing controllers (nothing to do once restored)
+                    if (ckind == T.CANISTER_KIND_ICP_NEURON_MANAGER) {
+                        await restoreNeuronManagerState(asset.canister_id);
+                    } else if (ckind == T.CANISTER_KIND_TRADING_BOT) {
+                        await restoreTradingBotState(asset.canister_id);
+                    };
+                    switch (asset.controllers_snapshot) {
+                        case (?snapshot) { await* AssetHandlers.releaseCanister(asset.canister_id, snapshot) };
+                        case null { await* AssetHandlers.transferCanister(asset.canister_id, [recipient]) };
+                    };
+                };
+            };
+            case (#SNSNeuron(asset)) {
+                if (toBuyer) {
+                    await* AssetHandlers.transferNeuron(asset.governance_canister_id, asset.neuron_id, self(), [recipient]);
+                } else {
+                    switch (asset.hotkeys_snapshot) {
+                        case (?snapshot) {
+                            await* AssetHandlers.releaseNeuron(asset.governance_canister_id, asset.neuron_id, self(), neuronRestorePermissions(offer, assetIndex, snapshot));
+                        };
+                        case null {
+                            await* AssetHandlers.transferNeuron(asset.governance_canister_id, asset.neuron_id, self(), [recipient]);
+                        };
+                    };
+                };
+            };
+            case (#ICRC1Token(asset)) {
+                switch (await* AssetHandlers.reclaimAllTokens(asset.ledger_canister_id, self(), escrowSub, { owner = recipient; subaccount = null })) {
+                    case (#ok(_)) { #ok() };
+                    case (#err(e)) { #err(e) };
+                };
+            };
+            case (#ICRC7NFT(asset)) {
+                switch (await* AssetHandlers.deliverEscrowedNfts(asset.collection_canister_id, self(), escrowSub, { owner = recipient; subaccount = null }, asset.token_ids)) {
+                    case (#ok(_)) { #ok() };
+                    case (#err(e)) { #err(e) };
+                };
+            };
+            case (#SneedLock(asset)) {
+                await* AssetHandlers.transferSneedLock(sneedLockCanisterId, asset, recipient);
+            };
+        };
+    };
+
+    /// For an offer that is already Claimed or Reclaimed: offers settled before per-asset tracking
+    /// were marked so even when a hand-over failed. Hand an asset over only when it is provably
+    /// still held in escrow for this offer, as a failed hand-over left it. Returns whether
+    /// anything was handed over.
+    ///  - tokens: the escrow subaccount is this offer's alone; to the buyer only while it still
+    ///    holds the whole amount that was sold (a delivered escrow is left empty)
+    ///  - NFTs: only the tokens still in this offer's escrow subaccount
+    ///  - canisters, neurons, locks: custody is not per offer, so only when no other offer names
+    ///    the asset and Sneedex is its sole controller / sole permission holder / owner
+    func recoverAsset(offer : T.Offer, assetIndex : Nat, recipient : Principal, toBuyer : Bool) : async* T.Result<Bool> {
+        let entry = offer.assets[assetIndex];
+        let escrowSub = Utils.offerEscrowSubaccount(offer.creator, offer.id);
+        switch (entry.asset) {
+            case (#ICRC1Token(asset)) {
+                let bal = await* AssetHandlers.getTokenBalance(asset.ledger_canister_id, self(), ?escrowSub);
+                let fee = await* AssetHandlers.getTokenFee(asset.ledger_canister_id);
+                if (bal <= fee or (toBuyer and bal < asset.amount)) { return #ok(false) };
+                switch (await* AssetHandlers.reclaimAllTokens(asset.ledger_canister_id, self(), escrowSub, { owner = recipient; subaccount = null })) {
+                    case (#ok(_)) { #ok(true) };
+                    case (#err(e)) { #err(e) };
+                };
+            };
+            case (#ICRC7NFT(asset)) {
+                switch (await* AssetHandlers.deliverEscrowedNfts(asset.collection_canister_id, self(), escrowSub, { owner = recipient; subaccount = null }, asset.token_ids)) {
+                    case (#ok(n)) { #ok(n > 0) };
+                    case (#err(e)) { #err(e) };
+                };
+            };
+            case (_) {
+                if (otherOfferListsAsset(offer.id, entry.asset)) { return #ok(false) };
+                let held = switch (entry.asset) {
+                    case (#Canister(a)) { await* AssetHandlers.isSoleCanisterController(a.canister_id, self()) };
+                    case (#SNSNeuron(a)) { await* AssetHandlers.isSoleNeuronHolder(a.governance_canister_id, a.neuron_id, self()) };
+                    case (#SneedLock(a)) {
+                        switch (await* AssetHandlers.readSneedLock(sneedLockCanisterId, a.lock_id)) {
+                            case (#ok((owner, _))) { Principal.equal(owner, self()) };
+                            case (#err(_)) { false };
+                        };
+                    };
+                    case (_) { false };
+                };
+                if (not held) { return #ok(false) };
+                switch (await* deliverAsset(offer, assetIndex, recipient, toBuyer)) {
+                    case (#ok(_)) { #ok(true) };
+                    case (#err(e)) { #err(e) };
+                };
+            };
+        };
+    };
+
+    /// Hand every asset of a settled offer to its recipient: the winner of a Completed offer
+    /// (toBuyer) or the seller of an Expired / Cancelled one (only the assets that were escrowed).
+    /// Each asset handed over is recorded, so a retry redoes only the ones that failed, and the
+    /// offer becomes Claimed / Reclaimed only once every asset is delivered; until then it stays
+    /// Completed / Expired / Cancelled and the error names what failed.
+    /// With `recover` the offer is already Claimed / Reclaimed; see recoverAsset.
+    /// `winningBid`: never hand assets to the winner while the seller is still owed and the
+    /// winning escrow no longer holds what the seller is due (the bid less any cut already paid).
+    /// Serialized per offer. Returns how many assets this call handed over.
+    func settleAssets(offerId : T.OfferId, toBuyer : Bool, recover : Bool, recipient : Principal, winningBid : ?T.Bid) : async* T.Result<Nat> {
+        if (Map.has(settlementLocks, nhash, offerId)) {
+            return #err(#InvalidState("A hand-over of this offer's assets is already in progress; try again shortly"));
+        };
+        Map.set(settlementLocks, nhash, offerId, ());
+        try {
+            let offer = switch (getOffer(offerId)) { case (?o) { o }; case null { return #err(#OfferNotFound) } };
+            // checked again under the lock: the state decides who receives the assets
+            let stateOk = switch (offer.state, toBuyer, recover) {
+                case (#Completed(_), true, false) { true };
+                case (#Claimed, true, true) { true };
+                case ((#Expired or #Cancelled), false, false) { true };
+                case (#Reclaimed, false, true) { true };
+                case (_) { false };
+            };
+            if (not stateOk) { return #err(#InvalidState("The offer is not in a state to hand these assets over")) };
+
+            switch (winningBid) {
+                case (?b) {
+                    switch (getBid(b.id)) {
+                        case null { return #err(#BidNotFound) };
+                        case (?bid) {
+                            if (bid.state == #Won) {
+                                let paidCut = cutPaidForBid(bid.id);
+                                let due = if (bid.amount > paidCut) { bid.amount - paidCut } else { 0 };
+                                let escrowBalance = await* AssetHandlers.getTokenBalance(
+                                    offer.price_token_ledger,
+                                    self(),
+                                    ?Utils.bidEscrowSubaccount(bid.bidder, bid.id)
+                                );
+                                if (escrowBalance < due) {
+                                    return #err(#InvalidState("Winning bid escrow no longer holds the full bid amount; assets cannot be released"));
+                                };
+                            };
+                        };
+                    };
+                };
+                case null {};
+            };
+
+            let failures = Buffer.Buffer<Text>(0);
+            var handedOver = 0;
+            for (assetIndex in offer.assets.keys()) {
+                let entry = offer.assets[assetIndex];
+                let pending = (toBuyer or entry.escrowed) and (recover or not isAssetDelivered(offerId, assetIndex));
+                if (pending) {
+                    if (recover) {
+                        switch (await* recoverAsset(offer, assetIndex, recipient, toBuyer)) {
+                            case (#ok(moved)) { if (moved) { handedOver += 1 } };
+                            case (#err(e)) { failures.add("asset " # Nat.toText(assetIndex) # ": " # errorText(e)) };
+                        };
+                    } else {
+                        switch (await* deliverAsset(offer, assetIndex, recipient, toBuyer)) {
+                            case (#ok(_)) {
+                                markAssetDelivered(offerId, assetIndex);
+                                handedOver += 1;
+                            };
+                            case (#err(e)) { failures.add("asset " # Nat.toText(assetIndex) # ": " # errorText(e)) };
+                        };
+                    };
+                };
+            };
+
+            if (failures.size() > 0) {
+                return #err(#TransferFailed("Not every asset could be handed over (" # Text.join("; ", failures.vals()) # "). The assets handed over are recorded; call again to retry the rest."));
+            };
+            if (not recover) {
+                setOfferState(offerId, if (toBuyer) { #Claimed } else { #Reclaimed });
+                clearDeliveredAssets(offerId);
+            };
+            #ok(handedOver);
+        } finally {
+            Map.delete(settlementLocks, nhash, offerId);
+        };
+    };
+
+    /// Register delivered assets in the recipient's Sneed Hub wallet (best effort, on a timer).
+    func scheduleWalletRegistration<system>(offer : T.Offer, recipient : Principal, toBuyer : Bool) {
+        ignore Timer.setTimer<system>(#seconds 0, func () : async () {
+            for (entry in offer.assets.vals()) {
+                if (toBuyer or entry.escrowed) {
+                    switch (entry.asset) {
+                        case (#Canister(asset)) {
+                            await registerCanisterToWallet(recipient, asset.canister_id, asset.canister_kind);
+                        };
+                        case (#ICRC1Token(asset)) {
+                            // the seller already has the token in the wallet
+                            if (toBuyer) { await registerTokenToWallet(recipient, asset.ledger_canister_id) };
+                        };
+                        // SNS neurons are shown via SNS governance; NFT collections per user on the NFT page
+                        case (#SNSNeuron(_) or #ICRC7NFT(_) or #SneedLock(_)) {};
+                    };
+                };
+            };
+        });
+    };
+
+    /// Auto-deliver assets to the winning bidder (called via Timer). Best effort: if a hand-over
+    /// fails the offer stays Completed and the buyer's claimAssets retries the missing assets.
     func autoDeliverAssets(offerId : T.OfferId) : async () {
         switch (getOffer(offerId)) {
-            case null { /* Offer not found, ignore */ };
+            case null {};
             case (?offer) {
                 switch (offer.state) {
                     case (#Completed(completion)) {
                         switch (getBid(completion.winning_bid_id)) {
-                            case null { /* Bid not found, ignore */ };
+                            case null {};
                             case (?bid) {
-                                // Transfer all assets to the winner
-                                for (entry in offer.assets.vals()) {
-                                    switch (entry.asset) {
-                                        case (#Canister(asset)) {
-                                            // Clean up escrow snapshot for bot types (don't restore - buyer gets clean canister)
-                                            let ckind = switch (asset.canister_kind) { case (?k) { k }; case null { 0 } };
-                                            if (ckind == T.CANISTER_KIND_ICP_NEURON_MANAGER or ckind == T.CANISTER_KIND_TRADING_BOT) {
-                                                removeEscrowSnapshot(asset.canister_id);
-                                            };
-                                            
-                                            let _ = await* AssetHandlers.transferCanister(
-                                                asset.canister_id,
-                                                [bid.bidder]
-                                            );
-                                        };
-                                        case (#SNSNeuron(asset)) {
-                                            let _ = await* AssetHandlers.transferNeuron(
-                                                asset.governance_canister_id,
-                                                asset.neuron_id,
-                                                self(),
-                                                [bid.bidder]
-                                            );
-                                        };
-                                        case (#ICRC1Token(asset)) {
-                                            let subaccount = Utils.offerEscrowSubaccount(offer.creator, offerId);
-                                            let _ = await* AssetHandlers.reclaimAllTokens(
-                                                asset.ledger_canister_id,
-                                                self(),
-                                                subaccount,
-                                                { owner = bid.bidder; subaccount = null }
-                                            );
-                                        };
-                                        case (#ICRC7NFT(asset)) {
-                                            let subaccount = Utils.offerEscrowSubaccount(offer.creator, offerId);
-                                            let _ = await* AssetHandlers.transferNfts(asset.collection_canister_id, subaccount, { owner = bid.bidder; subaccount = null }, asset.token_ids);
-                                        };
-                                        case (#SneedLock(asset)) {
-                                            let _ = await* AssetHandlers.transferSneedLock(sneedLockCanisterId, asset, bid.bidder);
-                                        };
-                                    };
+                                switch (await* settleAssets(offerId, true, false, bid.bidder, ?bid)) {
+                                    case (#ok(_)) { scheduleWalletRegistration<system>(offer, bid.bidder, true) };
+                                    case (#err(_)) {};
                                 };
-                                
-                                // Register delivered assets to buyer's wallet (best effort)
-                                for (entry in offer.assets.vals()) {
-                                    switch (entry.asset) {
-                                        case (#Canister(asset)) {
-                                            await registerCanisterToWallet(bid.bidder, asset.canister_id, asset.canister_kind);
-                                        };
-                                        case (#SNSNeuron(_asset)) {
-                                            // For SNS neurons, frontend handles display
-                                        };
-                                        case (#ICRC1Token(asset)) {
-                                            await registerTokenToWallet(bid.bidder, asset.ledger_canister_id);
-                                        };
-                                        case (#ICRC7NFT(_)) {
-                                            // NFT collections are listed per user in the browser's NFT page
-                                        };
-                                        case (#SneedLock(_)) {};
-                                    };
-                                };
-                                
-                                // Update state to Claimed
-                                let updatedOffer : T.Offer = {
-                                    id = offer.id;
-                                    creator = offer.creator;
-                                    min_bid_price = offer.min_bid_price;
-                                    buyout_price = offer.buyout_price;
-                                    expiration = offer.expiration;
-                                    price_token_ledger = offer.price_token_ledger;
-                                    assets = offer.assets;
-                                    state = #Claimed;
-                                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
-                                    approved_bidders = offer.approved_bidders;
-                                    fee_rate_bps = offer.fee_rate_bps;
-                                    public_note = offer.public_note;
-                                    note_to_buyer = offer.note_to_buyer;
-                                    created_at = offer.created_at;
-                                    activated_at = offer.activated_at;
-                                };
-                                updateOffer(offerId, updatedOffer);
                             };
                         };
                     };
-                    case (_) { /* Wrong state, ignore */ };
+                    case (_) {};
                 };
             };
         };
@@ -956,10 +1168,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
             let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
 
+            // A cut paid by an earlier attempt whose seller transfer then failed is not paid again:
+            // the retry only pays the seller (the escrow already holds just the bid less that cut).
+            let alreadyPaidCut = cutPaidForBid(bid.id);
             let rawCut = bid.amount * offer.fee_rate_bps / 10000;
-            let marketplaceFee = if (rawCut > fee) { rawCut } else { 0 };
+            let marketplaceFee = if (alreadyPaidCut > 0) { alreadyPaidCut } else if (rawCut > fee) { rawCut } else { 0 };
 
-            if (marketplaceFee > 0) {
+            if (marketplaceFee > 0 and alreadyPaidCut == 0) {
                 // The escrow pays the cut less one fee, plus that ledger fee: marketplaceFee in all.
                 let feeTransferResult = await* AssetHandlers.transferTokens(
                     offer.price_token_ledger,
@@ -1036,123 +1251,19 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
 
-    /// Auto-reclaim assets for expired/cancelled offers (called via Timer)
-    /// Best effort - if it fails, seller can manually reclaim from GUI
+    /// Auto-reclaim assets for expired/cancelled offers (called via Timer). Best effort: if a
+    /// hand-over fails the offer stays Expired/Cancelled and the seller's reclaimAssets retries.
     func autoReclaimAssets(offerId : T.OfferId) : async () {
         switch (getOffer(offerId)) {
-            case null { /* Offer not found, ignore */ };
+            case null {};
             case (?offer) {
                 if (offer.state != #Expired and offer.state != #Cancelled) {
                     return; // Wrong state
                 };
-                
-                // Transfer all escrowed assets back to creator
-                for (assetIndex in offer.assets.keys()) {
-                    let entry = offer.assets[assetIndex];
-                    if (entry.escrowed) {
-                        switch (entry.asset) {
-                            case (#Canister(asset)) {
-                                // Restore botkeys BEFORE releasing controllers
-                                let ckind = switch (asset.canister_kind) { case (?k) { k }; case null { 0 } };
-                                if (ckind == T.CANISTER_KIND_ICP_NEURON_MANAGER) {
-                                    await restoreNeuronManagerState(asset.canister_id);
-                                } else if (ckind == T.CANISTER_KIND_TRADING_BOT) {
-                                    await restoreTradingBotState(asset.canister_id);
-                                };
-                                
-                                switch (asset.controllers_snapshot) {
-                                    case (?snapshot) {
-                                        let _ = await* AssetHandlers.releaseCanister(
-                                            asset.canister_id,
-                                            snapshot
-                                        );
-                                    };
-                                    case null {
-                                        let _ = await* AssetHandlers.transferCanister(
-                                            asset.canister_id,
-                                            [offer.creator]
-                                        );
-                                    };
-                                };
-                            };
-                            case (#SNSNeuron(asset)) {
-                                switch (asset.hotkeys_snapshot) {
-                                    case (?snapshot) {
-                                        let _ = await* AssetHandlers.releaseNeuron(
-                                            asset.governance_canister_id,
-                                            asset.neuron_id,
-                                            self(),
-                                            neuronRestorePermissions(offer, assetIndex, snapshot)
-                                        );
-                                    };
-                                    case null {
-                                        let _ = await* AssetHandlers.transferNeuron(
-                                            asset.governance_canister_id,
-                                            asset.neuron_id,
-                                            self(),
-                                            [offer.creator]
-                                        );
-                                    };
-                                };
-                            };
-                            case (#ICRC1Token(asset)) {
-                                let subaccount = Utils.offerEscrowSubaccount(offer.creator, offerId);
-                                let _ = await* AssetHandlers.reclaimAllTokens(
-                                    asset.ledger_canister_id,
-                                    self(),
-                                    subaccount,
-                                    { owner = offer.creator; subaccount = null }
-                                );
-                            };
-                            case (#ICRC7NFT(asset)) {
-                                let subaccount = Utils.offerEscrowSubaccount(offer.creator, offerId);
-                                let _ = await* AssetHandlers.transferNfts(asset.collection_canister_id, subaccount, { owner = offer.creator; subaccount = null }, asset.token_ids);
-                            };
-                            case (#SneedLock(asset)) {
-                                let _ = await* AssetHandlers.transferSneedLock(sneedLockCanisterId, asset, offer.creator);
-                            };
-                        };
-                    };
+                switch (await* settleAssets(offerId, false, false, offer.creator, null)) {
+                    case (#ok(_)) { scheduleWalletRegistration<system>(offer, offer.creator, false) };
+                    case (#err(_)) {};
                 };
-                
-                // Re-register reclaimed assets to seller's wallet (best effort)
-                for (entry in offer.assets.vals()) {
-                    if (entry.escrowed) {
-                        switch (entry.asset) {
-                            case (#Canister(asset)) {
-                                await registerCanisterToWallet(offer.creator, asset.canister_id, asset.canister_kind);
-                            };
-                            case (#SNSNeuron(_asset)) {
-                                // SNS neurons are shown via SNS governance, no registration needed
-                            };
-                            case (#ICRC1Token(_asset)) {
-                                // Tokens don't need re-registration (user already has it in their wallet)
-                            };
-                            case (#ICRC7NFT(_)) {};
-                                case (#SneedLock(_)) {};
-                        };
-                    };
-                };
-                
-                // Update state to Reclaimed
-                let updatedOffer : T.Offer = {
-                    id = offer.id;
-                    creator = offer.creator;
-                    min_bid_price = offer.min_bid_price;
-                    buyout_price = offer.buyout_price;
-                    expiration = offer.expiration;
-                    price_token_ledger = offer.price_token_ledger;
-                    assets = offer.assets;
-                    state = #Reclaimed;
-                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
-                    approved_bidders = offer.approved_bidders;
-                    fee_rate_bps = offer.fee_rate_bps;
-                    public_note = offer.public_note;
-                    note_to_buyer = offer.note_to_buyer;
-                    created_at = offer.created_at;
-                    activated_at = offer.activated_at;
-                };
-                updateOffer(offerId, updatedOffer);
             };
         };
     };
@@ -3167,7 +3278,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // CLAIMING ASSETS AND REFUNDS
     // ============================================
     
-    /// Buyer claims assets from a completed offer
+    /// Buyer claims assets from a completed offer. Only the assets not yet handed over are moved;
+    /// the offer becomes Claimed once all of them are, and stays Completed (error returned) if a
+    /// hand-over fails, so calling again retries the rest.
+    /// On an offer already Claimed (settled before per-asset tracking), hands over whatever is
+    /// provably still in escrow for it; with nothing there it answers "Assets already claimed".
     public shared ({ caller }) func claimAssets(offerId : T.OfferId) : async T.Result<()> {
         switch (getOffer(offerId)) {
             case null { return #err(#OfferNotFound) };
@@ -3180,117 +3295,17 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 if (not Principal.equal(caller, bid.bidder)) {
                                     return #err(#NotAuthorized);
                                 };
-
-                                // Gate asset release on the escrow still holding the
-                                // full bid amount. Even with the withdrawBidEscrow
-                                // guard in place, never hand over the assets unless the
-                                // seller is still guaranteed to be paid — otherwise a
-                                // drained escrow would let the winner take the assets
-                                // while claimWinningBid later fails.
-                                //
-                                // Only gate while the seller is still owed (#Won). Once
-                                // the seller has been paid (#ClaimedBySeller) the escrow
-                                // is legitimately empty and the buyer must still be able
-                                // to claim — this is the recovery path when auto-delivery
-                                // did not complete.
-                                if (bid.state == #Won) {
-                                    let winningEscrowSubaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
-                                    let winningEscrowBalance = await* AssetHandlers.getTokenBalance(
-                                        offer.price_token_ledger,
-                                        self(),
-                                        ?winningEscrowSubaccount
-                                    );
-                                    if (winningEscrowBalance < bid.amount) {
-                                        return #err(#InvalidState("Winning bid escrow no longer holds the full bid amount; assets cannot be released"));
+                                // Never hand over the assets unless the seller is still guaranteed to be
+                                // paid: while the bid is #Won its escrow must hold what the seller is due.
+                                // Once the seller is paid (#ClaimedBySeller) the escrow is legitimately
+                                // empty and the buyer must still be able to claim. (In settleAssets.)
+                                switch (await* settleAssets(offerId, true, false, caller, ?bid)) {
+                                    case (#err(e)) { #err(e) };
+                                    case (#ok(_)) {
+                                        scheduleWalletRegistration<system>(offer, caller, true);
+                                        #ok();
                                     };
                                 };
-
-                                // Transfer all assets to the winner
-                                for (entry in offer.assets.vals()) {
-                                    switch (entry.asset) {
-                                        case (#Canister(asset)) {
-                                            // Clean up escrow snapshot for bot types (don't restore - buyer gets clean canister)
-                                            let ckind = switch (asset.canister_kind) { case (?k) { k }; case null { 0 } };
-                                            if (ckind == T.CANISTER_KIND_ICP_NEURON_MANAGER or ckind == T.CANISTER_KIND_TRADING_BOT) {
-                                                removeEscrowSnapshot(asset.canister_id);
-                                            };
-                                            
-                                            let _ = await* AssetHandlers.transferCanister(
-                                                asset.canister_id,
-                                                [caller]
-                                            );
-                                        };
-                                        case (#SNSNeuron(asset)) {
-                                            let _ = await* AssetHandlers.transferNeuron(
-                                                asset.governance_canister_id,
-                                                asset.neuron_id,
-                                                self(),
-                                                [caller]
-                                            );
-                                        };
-                                        case (#ICRC1Token(asset)) {
-                                            let subaccount = Utils.offerEscrowSubaccount(offer.creator, offerId);
-                                            let _ = await* AssetHandlers.reclaimAllTokens(
-                                                asset.ledger_canister_id,
-                                                self(),
-                                                subaccount,
-                                                { owner = caller; subaccount = null }
-                                            );
-                                        };
-                                        case (#ICRC7NFT(asset)) {
-                                            let subaccount = Utils.offerEscrowSubaccount(offer.creator, offerId);
-                                            let _ = await* AssetHandlers.transferNfts(asset.collection_canister_id, subaccount, { owner = caller; subaccount = null }, asset.token_ids);
-                                        };
-                                        case (#SneedLock(asset)) {
-                                            let _ = await* AssetHandlers.transferSneedLock(sneedLockCanisterId, asset, caller);
-                                        };
-                                    };
-                                };
-                                
-                                // Register delivered assets to buyer's wallet (best effort, non-blocking)
-                                let buyerPrincipal = caller;
-                                ignore Timer.setTimer<system>(#seconds 0, func () : async () {
-                                    for (entry in offer.assets.vals()) {
-                                        switch (entry.asset) {
-                                            case (#Canister(asset)) {
-                                                await registerCanisterToWallet(buyerPrincipal, asset.canister_id, asset.canister_kind);
-                                            };
-                                            case (#SNSNeuron(asset)) {
-                                                // For SNS neurons, register the SNS token ledger
-                                                // The neurons will show in the token card in /wallet
-                                                // Note: We'd need to get the SNS ledger from governance
-                                                // For now, skip - frontend handles SNS neuron display
-                                            };
-                                            case (#ICRC1Token(asset)) {
-                                                await registerTokenToWallet(buyerPrincipal, asset.ledger_canister_id);
-                                            };
-                                            case (#ICRC7NFT(_)) {};
-                                case (#SneedLock(_)) {};
-                                        };
-                                    };
-                                });
-                                
-                                // Update state to claimed
-                                let updatedOffer : T.Offer = {
-                                    id = offer.id;
-                                    creator = offer.creator;
-                                    min_bid_price = offer.min_bid_price;
-                                    buyout_price = offer.buyout_price;
-                                    expiration = offer.expiration;
-                                    price_token_ledger = offer.price_token_ledger;
-                                    assets = offer.assets;
-                                    state = #Claimed;
-                                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
-                                    approved_bidders = offer.approved_bidders;
-                                    fee_rate_bps = offer.fee_rate_bps;
-                                    public_note = offer.public_note;
-                                    note_to_buyer = offer.note_to_buyer;
-                                    created_at = offer.created_at;
-                                    activated_at = offer.activated_at;
-                                };
-                                
-                                updateOffer(offerId, updatedOffer);
-                                #ok();
                             };
                         };
                     };
@@ -3310,6 +3325,22 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         return #err(#InvalidState("Offer was cancelled"));
                     };
                     case (#Claimed) {
+                        switch (findWinningBid(offer)) {
+                            case (?bid) {
+                                if (Principal.equal(caller, bid.bidder)) {
+                                    switch (await* settleAssets(offerId, true, true, caller, ?bid)) {
+                                        case (#err(e)) { return #err(e) };
+                                        case (#ok(n)) {
+                                            if (n > 0) {
+                                                scheduleWalletRegistration<system>(offer, caller, true);
+                                                return #ok();
+                                            };
+                                        };
+                                    };
+                                };
+                            };
+                            case null {};
+                        };
                         return #err(#InvalidState("Assets already claimed"));
                     };
                     case (#Reclaimed) {
@@ -3343,7 +3374,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
     
-    /// Reclaim assets from expired or cancelled offer
+    /// Reclaim assets from an expired or cancelled offer. Only the escrowed assets not yet handed
+    /// back are moved; the offer becomes Reclaimed once all of them are, and stays Expired/Cancelled
+    /// (error returned) if a hand-over fails, so calling again retries the rest.
+    /// On an offer already Reclaimed (settled before per-asset tracking), hands back whatever is
+    /// provably still in escrow for it.
     public shared ({ caller }) func reclaimAssets(offerId : T.OfferId) : async T.Result<()> {
         switch (getOffer(offerId)) {
             case null { return #err(#OfferNotFound) };
@@ -3351,119 +3386,32 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 if (not Principal.equal(caller, offer.creator)) {
                     return #err(#NotAuthorized);
                 };
-                
-                if (offer.state != #Expired and offer.state != #Cancelled) {
-                    return #err(#InvalidState("Can only reclaim from expired or cancelled offers"));
-                };
-                
-                // Transfer all assets back to creator
-                for (assetIndex in offer.assets.keys()) {
-                    let entry = offer.assets[assetIndex];
-                    if (entry.escrowed) {
-                        switch (entry.asset) {
-                            case (#Canister(asset)) {
-                                // Restore botkeys BEFORE releasing controllers
-                                let ckind = switch (asset.canister_kind) { case (?k) { k }; case null { 0 } };
-                                if (ckind == T.CANISTER_KIND_ICP_NEURON_MANAGER) {
-                                    await restoreNeuronManagerState(asset.canister_id);
-                                } else if (ckind == T.CANISTER_KIND_TRADING_BOT) {
-                                    await restoreTradingBotState(asset.canister_id);
-                                };
-                                
-                                switch (asset.controllers_snapshot) {
-                                    case (?snapshot) {
-                                        let _ = await* AssetHandlers.releaseCanister(
-                                            asset.canister_id,
-                                            snapshot
-                                        );
-                                    };
-                                    case null {
-                                        let _ = await* AssetHandlers.transferCanister(
-                                            asset.canister_id,
-                                            [caller]
-                                        );
-                                    };
-                                };
-                            };
-                            case (#SNSNeuron(asset)) {
-                                switch (asset.hotkeys_snapshot) {
-                                    case (?snapshot) {
-                                        let _ = await* AssetHandlers.releaseNeuron(
-                                            asset.governance_canister_id,
-                                            asset.neuron_id,
-                                            self(),
-                                            neuronRestorePermissions(offer, assetIndex, snapshot)
-                                        );
-                                    };
-                                    case null {
-                                        let _ = await* AssetHandlers.transferNeuron(
-                                            asset.governance_canister_id,
-                                            asset.neuron_id,
-                                            self(),
-                                            [caller]
-                                        );
-                                    };
-                                };
-                            };
-                            case (#ICRC1Token(asset)) {
-                                let subaccount = Utils.offerEscrowSubaccount(caller, offerId);
-                                let _ = await* AssetHandlers.reclaimAllTokens(
-                                    asset.ledger_canister_id,
-                                    self(),
-                                    subaccount,
-                                    { owner = caller; subaccount = null }
-                                );
-                            };
-                            case (#ICRC7NFT(asset)) {
-                                let subaccount = Utils.offerEscrowSubaccount(caller, offerId);
-                                let _ = await* AssetHandlers.transferNfts(asset.collection_canister_id, subaccount, { owner = caller; subaccount = null }, asset.token_ids);
-                            };
-                            case (#SneedLock(asset)) {
-                                let _ = await* AssetHandlers.transferSneedLock(sneedLockCanisterId, asset, caller);
+                switch (offer.state) {
+                    case (#Expired or #Cancelled) {
+                        switch (await* settleAssets(offerId, false, false, offer.creator, null)) {
+                            case (#err(e)) { #err(e) };
+                            case (#ok(_)) {
+                                scheduleWalletRegistration<system>(offer, offer.creator, false);
+                                #ok();
                             };
                         };
                     };
-                };
-                
-                // Re-register reclaimed assets to seller's wallet (best effort, non-blocking)
-                let creatorPrincipal = caller;
-                ignore Timer.setTimer<system>(#seconds 0, func () : async () {
-                    for (entry in offer.assets.vals()) {
-                        if (entry.escrowed) {
-                            switch (entry.asset) {
-                                case (#Canister(asset)) {
-                                    await registerCanisterToWallet(creatorPrincipal, asset.canister_id, asset.canister_kind);
+                    case (#Reclaimed) {
+                        switch (await* settleAssets(offerId, false, true, offer.creator, null)) {
+                            case (#err(e)) { return #err(e) };
+                            case (#ok(n)) {
+                                if (n > 0) {
+                                    scheduleWalletRegistration<system>(offer, offer.creator, false);
+                                    return #ok();
                                 };
-                                case (#SNSNeuron(_asset)) {};
-                                case (#ICRC1Token(_asset)) {};
-                                case (#ICRC7NFT(_)) {};
-                                case (#SneedLock(_)) {};
                             };
                         };
+                        #err(#InvalidState("Can only reclaim from expired or cancelled offers"));
                     };
-                });
-                
-                // Update state
-                let updatedOffer : T.Offer = {
-                    id = offer.id;
-                    creator = offer.creator;
-                    min_bid_price = offer.min_bid_price;
-                    buyout_price = offer.buyout_price;
-                    expiration = offer.expiration;
-                    price_token_ledger = offer.price_token_ledger;
-                    assets = offer.assets;
-                    state = #Reclaimed;
-                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
-                    approved_bidders = offer.approved_bidders;
-                    fee_rate_bps = offer.fee_rate_bps;
-                    public_note = offer.public_note;
-                    note_to_buyer = offer.note_to_buyer;
-                    created_at = offer.created_at;
-                    activated_at = offer.activated_at;
+                    case (_) {
+                        #err(#InvalidState("Can only reclaim from expired or cancelled offers"));
+                    };
                 };
-                
-                updateOffer(offerId, updatedOffer);
-                #ok();
             };
         };
     };
@@ -3589,8 +3537,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 0 // Nothing reserved yet
                             };
 
-                            let maxWithdrawable : Nat = if (balance > minimumReserved) {
-                                balance - minimumReserved
+                            // The withdrawal itself pays one ledger fee out of the escrow too, so
+                            // what is left afterwards is balance - amount - fee >= minimumReserved.
+                            let maxWithdrawable : Nat = if (balance > minimumReserved + fee) {
+                                balance - minimumReserved - fee
                             } else {
                                 0
                             };

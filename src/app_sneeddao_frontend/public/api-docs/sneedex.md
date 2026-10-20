@@ -59,10 +59,10 @@ Draft ──finalizeAssets──▶ PendingEscrow ──activateOffer──▶ A
 | `Draft` | Creator adds assets (`addAsset`), then `finalizeAssets`. |
 | `PendingEscrow` | Creator escrows each asset (`escrow*`), then `activateOffer`. |
 | `Active` | Anyone allowed reserves and confirms bids. Creator may `acceptBid` or `cancelOffer`. Anyone may `processExpiration` after the expiry. |
-| `Completed` | The winner is fixed. Assets go to the winner, payment to the seller (automatically, else `claimAssets` / `claimWinningBid`). |
-| `Claimed` | The assets have been sent to the winner. The seller can still `claimWinningBid` if the payment has not gone out. |
-| `Expired`, `Cancelled` | The escrowed assets go back to the seller (automatically, else `reclaimAssets`). |
-| `Reclaimed` | Final. |
+| `Completed` | The winner is fixed. Assets go to the winner, payment to the seller (automatically, else `claimAssets` / `claimWinningBid`). The offer stays `Completed` until every asset has been delivered. |
+| `Claimed` | Every asset has been delivered to the winner. The seller can still `claimWinningBid` if the payment has not gone out. |
+| `Expired`, `Cancelled` | The escrowed assets go back to the seller (automatically, else `reclaimAssets`). The offer stays here until every escrowed asset is back. |
+| `Reclaimed` | Final: every escrowed asset is back with the seller. |
 
 State changes that move ownership (`Active → Completed`, `Active → Expired`, `→ Cancelled`) are a single write with no `await` in between, so every asset of an offer changes hands together: the winner owns all of them or none.
 
@@ -349,22 +349,24 @@ A confirmed bid with `amount ≥ buyout_price` is recorded at exactly `buyout_pr
 
 - **Automatic**: a confirmed bid that becomes `Lost` (outbid, offer completed by another bid, cancelled) is refunded one second later: `amount − fee` to the bidder's default account, then `Refunded`.
 - **`refundBid(bidId)`**: the same by hand, for the bidder, when the automatic refund failed. Requires `Lost` and `tokens_escrowed` (`Can only refund lost bids`, `No tokens escrowed`). Returns `InsufficientFunds` if the amount does not cover the fee.
-- **`withdrawBidEscrow(bidId, amount) → ok(block_index)`**: sends `amount` from the bid escrow to the bidder; the escrow pays the ledger fee on top. Refused for `Won` and `Refunded` bids. Before confirmation everything may be withdrawn; after confirmation `bid.amount + fee` must stay. Returns `InsufficientFunds { available; required }` with the most that may be withdrawn. This is how a bidder recovers tokens sent to a reservation that was never confirmed (including after the offer ended): read `getBidEscrowBalance(bidId)` and withdraw `balance − fee`.
+- **`withdrawBidEscrow(bidId, amount) → ok(block_index)`**: sends `amount` from the bid escrow to the bidder; the escrow pays the ledger fee on top. Refused for `Won` and `Refunded` bids. Before confirmation everything less the withdrawal's own fee may be withdrawn; after confirmation `bid.amount + fee` must stay after that fee too, so the most is `balance − bid.amount − 2 × fee`. Returns `InsufficientFunds { available; required }` with the most that may be withdrawn. This is how a bidder recovers tokens sent to a reservation that was never confirmed (including after the offer ended): read `getBidEscrowBalance(bidId)` and withdraw `balance − fee`.
 - **`getBidEscrowBalance(bidId) → ok(nat)`** reads the ledger (update call).
 
 ### 3.7 Settlement: delivery and payment
 
 When an offer completes Sneedex schedules two timers:
 
-- after 2 s, **asset delivery** to the winner: canisters (winner becomes sole controller), neurons (winner gets full owner permissions, Sneedex leaves), ICRC-1 balances (less one fee each), NFTs (to the winner's default account), Sneed Locks (ownership transfer). Then the offer becomes `Claimed`, and canisters and tokens are registered in the winner's Sneed wallet (best effort).
+- after 2 s, **asset delivery** to the winner: canisters (winner becomes sole controller), neurons (winner gets full owner permissions, Sneedex leaves), ICRC-1 balances (less one fee each), NFTs (to the winner's default account), Sneed Locks (ownership transfer). Once every asset has arrived the offer becomes `Claimed`, and canisters and tokens are registered in the winner's Sneed wallet (best effort).
 - after 3 s, **payment** to the seller from the winning bid's escrow: the marketplace cut to the fee recipient (section 4.2), the rest less one ledger fee to the seller's default account. Then the bid becomes `ClaimedBySeller`.
 
 The manual equivalents:
 
-- **`claimAssets(offerId)`**, winner only, while `Completed`. While the seller is still owed (`Won`), it first checks the winning escrow still holds the full bid (`Winning bid escrow no longer holds the full bid amount; assets cannot be released`). Other states answer with `InvalidState`: `Offer is Active (not yet completed). Seller must accept a bid first.`, `Assets already claimed`, `Assets were reclaimed by seller`, `Offer has expired`, `Offer was cancelled`, `Offer is in Draft state, not completed`, `Offer is in PendingEscrow state, not completed`.
-- **`claimWinningBid(offerId)`**, creator only, while `Completed` or `Claimed`. Errors: `Offer is not completed`, `Bid is not in won state` (already paid), `An escrow operation is already in progress for this bid`, `InsufficientFunds`, `TransferFailed(...)`.
+- **`claimAssets(offerId)`**, winner only, while `Completed`. While the seller is still owed (`Won`), it first checks the winning escrow still holds what the seller is due, the bid less any marketplace cut already paid (`Winning bid escrow no longer holds the full bid amount; assets cannot be released`). It hands over only the assets not delivered yet; if one fails it returns `TransferFailed("Not every asset could be handed over (asset <i>: <reason>; …). …")`, the offer stays `Completed`, and calling again retries just those. `InvalidState("A hand-over of this offer's assets is already in progress; try again shortly")` while the delivery timer or another call is handing the same offer over. Other states answer with `InvalidState`: `Offer is Active (not yet completed). Seller must accept a bid first.`, `Assets already claimed`, `Assets were reclaimed by seller`, `Offer has expired`, `Offer was cancelled`, `Offer is in Draft state, not completed`, `Offer is in PendingEscrow state, not completed`.
+- **`claimWinningBid(offerId)`**, creator only, while `Completed` or `Claimed`. Errors: `Offer is not completed`, `Bid is not in won state` (already paid), `An escrow operation is already in progress for this bid`, `InsufficientFunds`, `TransferFailed(...)`. If the cut went out but the transfer to the seller failed, the bid stays `Won` and a retry pays only the seller; the cut is never paid twice.
 
-**Deliveries do not report per-asset failures.** Delivery (automatic or `claimAssets`) and return (automatic or `reclaimAssets`) attempt every asset, ignore the result of each transfer, and then set `Claimed` or `Reclaimed`. A failed transfer (an unreachable ledger, a Sneed Lock refusal) therefore leaves that asset in Sneedex while the offer looks settled. Integrators should verify arrival (controllers, neuron permissions, balances, `icrc7_owner_of`, Sneed Lock owner) and report anything missing to Sneed DAO; admins can retry the return to the seller with `adminReclaimStuckTokens`.
+**A failed hand-over is retried, never repeated.** Delivery (automatic or `claimAssets`) and return (automatic or `reclaimAssets`) record each asset that reached its recipient and set `Claimed` or `Reclaimed` only when all of them have. A failed transfer (an unreachable ledger, a governance or Sneed Lock refusal) leaves the offer `Completed` (or `Expired` / `Cancelled`) with that asset still in escrow, and the automatic attempt is not repeated: the winner calls `claimAssets` (the seller `reclaimAssets`) again, which hands over only what is missing. Assets already delivered are never sent twice, and NFTs are moved only while they are still in the offer's escrow subaccount. Hand-overs of one offer are serialized, so the timer and a manual call cannot run at once.
+
+Offers settled by earlier versions of Sneedex could be marked `Claimed` or `Reclaimed` although a transfer had failed. For those, `claimAssets` on a `Claimed` offer (winner only) and `reclaimAssets` on a `Reclaimed` offer (creator only) hand over whatever is provably still held for that offer: token balances in its escrow subaccount (to the winner only while the escrow still holds the full listed amount), NFTs still in its escrow subaccount, and canisters, neurons and locks of which Sneedex is still the sole controller / sole permission holder / owner and that no other offer lists. With nothing left they answer as before (`Assets already claimed`, `Can only reclaim from expired or cancelled offers`). Anything this cannot prove (for example a canister also listed in a later offer) is left to an admin.
 
 ### 3.8 Expiry
 
@@ -377,9 +379,9 @@ Errors: `Offer is not active`, `Offer has no expiration`, `Offer has not expired
 
 ### 3.9 Cancellation and reclaiming
 
-**`cancelOffer(offerId)`**, creator only, in `Draft`, `PendingEscrow` or `Active`, **also with bids**. Every confirmed `Pending` bid becomes `Lost`, is refunded, and its bidder is told. The escrowed assets are returned after 2 s (`Cancelled → Reclaimed`). Error: `Offer cannot be cancelled in current state`.
+**`cancelOffer(offerId)`**, creator only, in `Draft`, `PendingEscrow` or `Active`, **also with bids**. Every confirmed `Pending` bid becomes `Lost`, is refunded, and its bidder is told. The escrowed assets are returned after 2 s (`Cancelled → Reclaimed` once all are back). Error: `Offer cannot be cancelled in current state`.
 
-**`reclaimAssets(offerId)`**, creator only, in `Expired` or `Cancelled`: returns the escrowed assets by hand (canister controllers from the snapshot, neuron permissions as recorded, token balances less one fee, NFTs and locks to the creator) and sets `Reclaimed`. Error: `Can only reclaim from expired or cancelled offers`.
+**`reclaimAssets(offerId)`**, creator only, in `Expired` or `Cancelled`: returns the escrowed assets not returned yet (canister controllers from the snapshot, neuron permissions as recorded, token balances less one fee, NFTs and locks to the creator) and sets `Reclaimed` once all are back. If one fails: `TransferFailed("Not every asset could be handed over (…)")`, the state stays, and calling again retries the rest (section 3.7). Errors: `Can only reclaim from expired or cancelled offers`, `A hand-over of this offer's assets is already in progress; try again shortly`.
 
 ### 3.10 Notifications
 
@@ -450,7 +452,7 @@ The cut goes to the fee recipient of the price ledger: a per-ledger override (`g
 
 **Offers change during awaits.** The escrow methods re-read the offer after their cross-canister calls and refuse with `InvalidState("Offer changed while escrowing")` if it moved on (for example a cancel in between). Settlement checks `Active` and writes the new state without an `await` in between, so concurrent buyouts, `acceptBid` and expiry cannot both win.
 
-**Retrying.** The `escrow*` methods verify the current on-chain situation, so repeating one after a timeout is safe. `createOffer` is not idempotent: two calls make two drafts and charge two fees; after a timeout check `getOffersByCreator(me)` first. `reserveBid` is cheap to repeat but each call makes a new bid id with its own escrow subaccount; send tokens only to the id you are going to confirm. `processExpiration`, `claimAssets` and `claimWinningBid` refuse a second run with an `InvalidState`.
+**Retrying.** The `escrow*` methods verify the current on-chain situation, so repeating one after a timeout is safe. `createOffer` is not idempotent: two calls make two drafts and charge two fees; after a timeout check `getOffersByCreator(me)` first. `reserveBid` is cheap to repeat but each call makes a new bid id with its own escrow subaccount; send tokens only to the id you are going to confirm. `processExpiration`, `claimAssets`, `reclaimAssets` and `claimWinningBid` refuse a second run once they have succeeded; after a `TransferFailed` they are meant to be called again and only redo what failed.
 
 **Thrown errors.** A rejected call means nothing changed, except after a cross-canister await. Re-read with `queryOffer` / `queryBid` / `getOfferView` and continue from the state you find.
 
@@ -687,6 +689,6 @@ type Config = record {
 - NFTs: prefer ICRC-37 approval with `escrowICRC7NFTsByApproval`; for plain ICRC-7 make sure the collection honours subaccounts.
 - Sneed Lock NFTs and `SneedLock` assets must stay locked past the offer's `expiration`; token locks need gas (two fees in the gas tank, or one free fee in Sneedex's Sneed Lock wallet).
 - Bids: reserve, send exactly the amount, confirm. Handle `BidTooLow` and `BidIncrementTooSmall` by showing `minimum` / `minimum_next`. If confirmation fails, offer `withdrawBidEscrow(bidId, balance − fee)`.
-- After completion wait for `Claimed` and `ClaimedBySeller`; offer `claimAssets` / `claimWinningBid` buttons if they do not come within a minute, and verify that each asset actually arrived.
+- After completion wait for `Claimed` and `ClaimedBySeller`; offer `claimAssets` / `claimWinningBid` buttons if they do not come within a minute (an offer that stays `Completed` has an asset whose hand-over failed; `claimAssets` retries it and its error says which).
 - Private offers restrict bidding, they do not hide anything; everything except `note_to_buyer` is public.
 - Test on staging (`igm46-laaaa-aaaae-qgwra-cai`) first; it uses real tokens.

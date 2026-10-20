@@ -62,6 +62,17 @@ cp .dfx/ic/canisters/sneedex/service.did.js "$OUT/sneedex.did.js"
 
 MOC="$(dfx +"$DFX_VERSION" cache show)/moc"
 PKGS="$(mops sources)"
+
+# sneedex before per-asset settlement tracking (it marked offers Claimed/Reclaimed even when a
+# hand-over failed), for the test that upgrades from it and recovers such an offer
+SNEEDEX_PREV_COMMIT=aa73d9c2
+echo "== sneedex at $SNEEDEX_PREV_COMMIT (moc, for the settlement upgrade test)"
+PREV_SRC="$(mktemp -d)"
+git archive "$SNEEDEX_PREV_COMMIT" src/sneedex src/PremiumClient.mo src/IngressGuard.mo | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS "$PREV_SRC/src/sneedex/main.mo" -o "$OUT/sneedex_prev.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneedex_prev.wasm"
 for c in MockLedger MockLedgerV2 MockLedgerFaulty MockRejectLedger MockSwapPool MockDexPool MockIcpswapFactory MockKongSwap \
          MockSnsGovernance MockSnsNeurons MockHubSns MockForumGovernance MockForumSnsW MockRllGovernance MockNnsGovernance \
          MockCmc MockSnsWasm MockPremium MockSneedApp MockIcpSwapList MockIcpSwapTokenList MockNamesModerator MockIcpLedger MockMrSneedGov MockNotifySender Icrc3Demo; do

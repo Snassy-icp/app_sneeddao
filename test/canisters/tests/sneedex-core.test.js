@@ -489,20 +489,20 @@ describe('bids', () => {
     const b = await fundBid(dexBob, bob, id, E8);
     const sub = await dexAny.getBidEscrowSubaccount(bob, b);
     expect(errOf(await dexCarol.withdrawBidEscrow(b, 1n))).toHaveProperty('NotAuthorized');
-    expect(errOf(await dexBob.withdrawBidEscrow(b, E8 + 1n))).toEqual({ InsufficientFunds: { available: E8, required: E8 + 1n } });
+    expect(errOf(await dexBob.withdrawBidEscrow(b, E8))).toEqual({ InsufficientFunds: { available: E8 - ICP_FEE, required: E8 } }); // the withdrawal pays its own fee
     unwrap(await dexBob.withdrawBidEscrow(b, E8 / 2n));
     expect(await balance(icp, dexId, sub)).toBe(E8 / 2n - ICP_FEE);
     unwrap(await dexBob.withdrawBidEscrow(b, E8 / 2n - 2n * ICP_FEE));
     expect(await balance(icp, dexId, sub)).toBe(0n);
     expect(errOf(await dexBob.confirmBid(b, E8))).toHaveProperty('InsufficientFunds');
-    // confirmed: the bid amount plus one fee stays reserved
+    // confirmed: the bid amount plus one fee stays reserved, after the withdrawal's own fee
     const c = await placeBid(dexCarol, carol, id, 2n * E8);
     const subC = await dexAny.getBidEscrowSubaccount(carol, c);
     expect(errOf(await dexCarol.withdrawBidEscrow(c, 1n))).toEqual({ InsufficientFunds: { available: 0n, required: 1n } });
     unwrap(await transfer(icpAs(carol), account(dexId, subC), E8));
-    expect(errOf(await dexCarol.withdrawBidEscrow(c, E8))).toEqual({ InsufficientFunds: { available: E8 - ICP_FEE, required: E8 } });
-    unwrap(await dexCarol.withdrawBidEscrow(c, E8 - ICP_FEE));
-    expect(await balance(icp, dexId, subC)).toBe(2n * E8);
+    expect(errOf(await dexCarol.withdrawBidEscrow(c, E8 - ICP_FEE))).toEqual({ InsufficientFunds: { available: E8 - 2n * ICP_FEE, required: E8 - ICP_FEE } });
+    unwrap(await dexCarol.withdrawBidEscrow(c, E8 - 2n * ICP_FEE));
+    expect(await balance(icp, dexId, subC)).toBe(2n * E8 + ICP_FEE); // the bid plus the fee of its payout
     unwrap(await dexAlice.cancelOffer(id));
     await settle(3);
   });
