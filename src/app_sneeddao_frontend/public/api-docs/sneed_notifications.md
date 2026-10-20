@@ -47,6 +47,7 @@ For each message the canister decides, from the user's permission and settings:
 3. **Paused:** while the user's `snooze_until` or the permission's `muted_until` is in the future, or when the permission is `copy_only`, only the "always copy to" channel gets it.
 4. **Otherwise:** the channels of a per-topic `#channels` rule, else the user's default channels for the level (`settings.defaults.urgent | normal | info`), plus the "always copy to" channel.
 5. Only **verified** channels are used.
+6. **No echoes:** a message from the canister this service delivers Sneed SMS through (the `sneed_sms` principal of the config) never goes to `sneed_sms` channels, neither chosen ones nor the "always copy to" one. The rule keys on the calling canister, whatever its app or topic. Sneed SMS uses it for its "new direct message" notices (app Sneed Hub, topic `direct_message`): the message is in the inbox already, and a copy there would be a system message, which Sneed SMS never notifies for, so no loop is possible either way. Such a notice can therefore be recorded with no delivery at all (`deliveries = 0`) for a user who has only the Sneed SMS channel.
 
 A user who never changed anything has no default channels and `always_copy` set to their Sneed SMS channel, so by default **every allowed message goes to the user's Sneed SMS inbox** and nowhere else.
 
@@ -238,7 +239,7 @@ await n.set_settings({
 
 `register_app(input)` checks the input (section 6 limits), then for each listed canister that it does not already belong to an app, and that the caller controls it: the caller is among the canister's controllers (read with the management canister's `canister_info`), or the caller is the governance canister of an SNS (as listed by SNS-W) whose root controls it, or the canister is the caller itself. The caller becomes the app's **owner**. Errors: `Please sign in`, the input messages, `<canister> already belongs to an app`, `Could not read the canister's controllers: ...`, `You are not a controller of this canister`. Returns the app id.
 
-`update_app(id, input)` (owner or admin) replaces name, logo, description, canisters and topics; the owner stays. Newly added canisters need the same control proof. Errors: `No such app`, `Only the app's owner`, `<canister> belongs to another app`, the input and control messages. Removing a topic leaves per-topic rules of users that name it in place; they no longer match.
+`update_app(id, input)` (owner or admin) replaces name, logo, description, canisters and topics; the owner stays. Newly added canisters need the same control proof, except when an admin calls (admins may register any canister with `admin_register_app` already). Errors: `No such app`, `Only the app's owner`, `<canister> belongs to another app`, the input and control messages. Removing a topic leaves per-topic rules of users that name it in place; they no longer match.
 
 ### 3.2 Notifying
 

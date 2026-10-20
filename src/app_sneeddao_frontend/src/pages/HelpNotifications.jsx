@@ -36,14 +36,19 @@ export default function HelpNotifications() {
             </Section>
 
             <Section icon={FaComments} title="What Sneed Hub notifies you about" id="sneed-hub-events">
-                <P>Sneed Hub's own forum can send these messages, as long as you allowed it as an app:</P>
+                <P>Sneed Hub's own forum and Sneed SMS can send these messages, as long as you allowed Sneed Hub as an app:</P>
                 <List>
                     <Li><B>Replies</B>: someone replied to your post, or posted in a thread you started ("New reply in ..."). You aren't told about your own posts, and if the reply also mentions you, you get the mention instead, not both.</Li>
                     <Li><B>Mentions</B>: someone mentioned you in a post or thread ("You were mentioned in ...").</Li>
                     <Li><B>Tips</B>: someone tipped one of your posts ("Your post got a tip").</Li>
+                    <Li>
+                        <B>Direct messages</B>: someone sent you a <L to="/sms">Sneed SMS</L> ("New message from ..."). It shows the subject and a
+                        link to the message, <B>never the message text</B>. It goes to your other channels (phone, Discord...) only, not to your
+                        Sneed SMS inbox: the message is there already.
+                    </Li>
                 </List>
                 <P>
-                    Each message has a short excerpt and a link straight to the post. These are separate from the bell and banners in
+                    Each forum message has a short excerpt and a link straight to the post. These are separate from the bell and banners in
                     the header, which Sneed Hub shows on its own while you have the site open.
                 </P>
             </Section>

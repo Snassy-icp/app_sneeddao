@@ -125,6 +125,14 @@ persistent actor SneedSMS {
     // Premium membership cache (principal -> expiration)
     var stable_premium_cache = PremiumClient.emptyCache();
     
+    // Sneed Notifications (spec/sneed_notifications.md): when set, a message a person sends with
+    // send_message also gives each recipient a heads-up there ("New message from ..."; the subject,
+    // never the text), for those who allowed Sneed Hub. System messages (send_system_notification,
+    // which is how Sneed Notifications itself copies notifications into inboxes) never notify, and
+    // Sneed Notifications never copies what this canister sends back into Sneed SMS: no loop.
+    // Best effort: sending never waits on it. Unset: off.
+    var stable_notifications : ?Principal = null;
+
     // Runtime config (mutable wrapper around stable values)
     transient var runtime_config : SMSConfig = {
         var rate_limit_minutes = stable_rate_limit_minutes;
@@ -775,9 +783,62 @@ persistent actor SneedSMS {
         Map.set(state.messages, Map.nhash, message_id, message);
         add_to_indexes(message_id, sender_index, recipient_indices);
         update_user_message_time(caller);
+        await* notify_recipients(caller, input.recipients, message_id, input.subject);
 
         #ok(message_id)
     };
+
+    // ---- Sneed Notifications (person-to-person messages only) ----
+
+    type NotifyInput = { user : Principal; topic : Text; title : Text; body : Text; link : ?Text; dedupe : ?Text; sponsored : Bool };
+    type Notifications = actor { notify_batch : shared [NotifyInput] -> async [Any] };
+    transient let MAX_NOTIFY_BATCH : Nat = 100; // what notify_batch takes
+    transient let MAX_NOTIFY_SUBJECT : Nat = 200;
+
+    /// "abcde…xyz": a principal short enough for a title.
+    private func short_principal(p : Principal) : Text {
+        let cs = Text.toArray(Principal.toText(p));
+        if (cs.size() <= 12) return Principal.toText(p);
+        Text.fromIter(Array.subArray(cs, 0, 5).vals()) # "…" # Text.fromIter(Array.subArray(cs, cs.size() - 3, 3).vals())
+    };
+
+    private func clip(t : Text, max : Nat) : Text {
+        let cs = Text.toArray(t);
+        if (cs.size() <= max) t else Text.fromIter(Array.subArray(cs, 0, max).vals()) # "…"
+    };
+
+    /// A heads-up per recipient (each once, never the sender) through Sneed Notifications: who it
+    /// is from, the subject and a link, never the message text (it would pass through relays
+    /// such as Discord or Apple). Fire and forget, bounded: an unanswered call never holds up
+    /// sending or upgrades. Called from send_message only, never for system messages.
+    private func notify_recipients(sender : Principal, recipients : [Principal], message_id : Nat, subject : Text) : async* () {
+        let id = switch (stable_notifications) { case (?id) id; case null return };
+        let items = Buffer.Buffer<NotifyInput>(recipients.size());
+        let seen = Buffer.Buffer<Principal>(recipients.size());
+        let title = "New message from " # short_principal(sender);
+        let body = clip(subject, MAX_NOTIFY_SUBJECT);
+        for (r in recipients.vals()) {
+            if (r != sender and not Principal.isAnonymous(r) and items.size() < MAX_NOTIFY_BATCH
+                and Buffer.indexOf<Principal>(r, seen, Principal.equal) == null) {
+                seen.add(r);
+                items.add({ user = r; topic = "direct_message"; title; body;
+                    link = ?("https://app.sneeddao.com/msg/" # Nat.toText(message_id));
+                    dedupe = ?("sms-" # Nat.toText(message_id)); sponsored = false });
+            };
+        };
+        if (items.size() == 0) return;
+        let n : Notifications = actor (Principal.toText(id));
+        ignore (with timeout = 60) n.notify_batch(Buffer.toArray(items));
+    };
+
+    /// Admins: the Sneed Notifications canister to tell recipients of new messages (null: off).
+    public shared ({ caller }) func admin_set_notifications(canister : ?Principal) : async Result<(), SMSError> {
+        if (not is_admin(caller)) return #err(#Unauthorized("Admins only"));
+        stable_notifications := canister;
+        #ok()
+    };
+
+    public query func get_notifications_canister() : async ?Principal { stable_notifications };
 
     public query ({ caller }) func get_message(message_id: Nat) : async ?MessageResponse {
         switch (Map.get(state.messages, Map.nhash, message_id)) {
@@ -1132,6 +1193,7 @@ persistent actor SneedSMS {
         #get_api_doc : Any;
         #add_admin : Any;
         #add_authorized_sender : Any;
+        #admin_set_notifications : Any;
         #get_admins : Any;
         #get_all_messages : Any;
         #get_all_messages_admin : Any;
@@ -1139,6 +1201,7 @@ persistent actor SneedSMS {
         #get_config : Any;
         #get_last_seen_messages_timestamp : Any;
         #get_message : Any;
+        #get_notifications_canister : Any;
         #get_premium_config : Any;
         #get_received_messages : Any;
         #get_recent_messages_count : Any;
@@ -1168,6 +1231,7 @@ persistent actor SneedSMS {
                 or #get_config _
                 or #get_last_seen_messages_timestamp _
                 or #get_message _
+                or #get_notifications_canister _
                 or #get_premium_config _
                 or #get_received_messages _
                 or #get_recent_messages_count _

@@ -14,7 +14,7 @@ Lets any dapp on the Internet Computer notify its users, and lets each user deci
 
 ## Authentication
 - `notify`, `notify_batch` and `request_permission` are accepted only as inter-canister calls from a canister listed in a registered app; ingress calls are refused.
-- `register_app` needs control of each listed canister (a controller, the governance canister of an SNS whose root controls it, or the canister itself); `update_app` needs the owner or an admin.
+- `register_app` needs control of each listed canister (a controller, the governance canister of an SNS whose root controls it, or the canister itself); `update_app` needs the owner or an admin (a canister new to the app needs the same control, except for admins).
 - User methods (`allow_app`, `set_permission`, `set_settings`, `add_channel`, `verify_channel`, `remove_channel`, `top_up`) refuse the anonymous principal.
 - `relay_pull` / `relay_ack` only from registered relays; `admin_*` only from admins.
 - Nothing is anonymous: senders (app canisters) and receivers are public principals.
@@ -42,6 +42,7 @@ Lets any dapp on the Internet Computer notify its users, and lets each user deci
 - Query methods sent as update calls are refused by the ingress guard (`inspect`).
 - Argument caps: 4 KiB by default, 64 KiB for `register_app`, `update_app`, `relay_ack` and admin config, about 13 KiB for `add_channel`, `set_settings`, `set_permission`. `notify_batch` over 100 inputs and `get_receipts` over 500 ids trap.
 - A new user's default `always_copy` channel id is not stored until their first update call (`add_channel({ sneed_sms })` creates it).
+- No echoes: a notification from the Sneed SMS canister itself (`get_config().sneed_sms`, e.g. Sneed Hub's `direct_message` notices) is never delivered to `sneed_sms` channels, not even the always-copy one, so it may have no delivery at all.
 
 ## Start with these methods
 Dapps: `register_app`, `request_permission`, `notify`, `get_receipts`, `get_app_balance`, `top_up_app`. Users: `get_my_requests`, `allow_app`, `get_my_settings`, `add_channel`, `verify_channel`, `set_settings`, `top_up`, `get_my_history`. Public: `get_config`, `list_apps`, `get_app`, `stats`.

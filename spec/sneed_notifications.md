@@ -107,7 +107,13 @@ Plus:
   are suppressed and free ones (Sneed SMS) still go out.
   Changed from the original plan: past the message cap the message is refused entirely (§2.2).
 - Every message lands in the "always copy to" channel with its app, topic and level, so users can see who sent what
-  and switch it off from there.
+  and switch it off from there. One exception, **no echoes**: a message from the canister that
+  delivers a channel kind never goes to channels of that kind. Today that is Sneed SMS: whatever
+  the configured `sneed_sms` canister sends through `notify`/`notify_batch` (its "new direct
+  message" notices) skips `#sneed_sms` channels, chosen or always-copy (`echoKind` in main.mo). The
+  message is in the inbox already, and Sneed SMS itself only notifies for messages people send
+  (`send_message`), never for system messages (`send_system_notification`, how this canister
+  copies into inboxes), so there are two independent guards against a loop.
 - A user can **block** an app (`allow_app(app, false)`); a DAO-run list can flag abusive apps (**Q**: who maintains it).
   Status (2026-10-20): no shared list; admins can remove an abusive app (`admin_remove_app`), after
   which it can notify nobody, and mark apps verified.
@@ -255,7 +261,9 @@ pays for every member getting a real SMS whenever a canister runs low.
   the header notification bar today becomes topics of the "Sneed Hub" app, with push to the
   installed app on iPhone and Android.
   Status (2026-10-20): partly built: the forum sends replies, mentions and tips (`notify_batch`,
-  best effort); the other topics are not wired.
+  best effort); Sneed SMS sends `direct_message` ("New message from <short principal>", the
+  subject only, never the text; link to /msg/<id>; dedupe per message; not sponsored), once per
+  recipient, when `admin_set_notifications` is set on sneed_sms; the other topics are not wired.
 - **Unicycle:** cycles running low, top-ups done, drain alerts. Status (2026-10-20): not started.
 - **Mr Sneed:** go-ahead requests to the DAO's operators (today: Sneed SMS plus a Discord DM).
   Status (2026-10-20): not wired.
@@ -289,7 +297,7 @@ pays for every member getting a real SMS whenever a canister runs low.
    hours, digests), consent, `notify`, the queue, receipts, user balances, spending caps; tests
    (PocketIC). Status (2026-10-20): built and deployed, except digests.
 2. Sneed Hub notification centre; Sneed Hub's own notifications as the first app. Status: built
-   (forum replies, mentions, tips).
+   (forum replies, mentions, tips; Sneed SMS direct messages).
 3. Off-chain relay for push and Discord (the VPS), with encrypted contacts. Status: built
    (`relays/notifications/relay.mjs`, RSA-OAEP + AES-GCM instead of vetKD).
 4. Unicycle integration. Status: not started.

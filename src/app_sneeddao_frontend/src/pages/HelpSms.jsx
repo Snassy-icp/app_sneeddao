@@ -114,6 +114,10 @@ export default function HelpSms() {
                     <Li>The header shows a counter for new messages. Click it to open <L to="/sms">Messages</L>. Turn it on or off with <B>Message Notifications</B> in the settings on your <L to="/me">Me</L> page.</Li>
                     <Li><B>SMS When Mentioned</B>, also on your Me page, decides whether forum @-mentions reach you as an SMS. See <L to="/help/forum">Forum help</L>.</Li>
                     <Li>On your Me page you can also choose which Sneedex events reach you by direct message.</Li>
+                    <Li>
+                        You can also get a heads-up on your phone or Discord when a new message arrives: allow Sneed Hub and add a channel
+                        on <L to="/notifications">Notifications</L>. It says who it's from and shows the subject, <B>never the message text</B>.
+                    </Li>
                     <Li>For alerts beyond Sneed Hub itself, see <L to="/notifications">Notifications</L> and its <L to="/help/notifications">help page</L>.</Li>
                 </List>
             </Section>

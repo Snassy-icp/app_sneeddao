@@ -270,14 +270,16 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     #ok(id);
   };
 
-  /// The owner (or an admin) changes an app's name, topics or canisters.
+  /// The owner (or an admin) changes an app's name, topics or canisters. A canister new to the app
+  /// must be controlled by the caller, except for admins, who may already register any canister
+  /// (admin_register_app): e.g. adding a DAO canister such as Sneed SMS to Sneed Hub.
   public shared ({ caller }) func update_app(id : Nat, input : AppInput) : async Result {
     let a = switch (Map.get(apps, Map.nhash, id)) { case (?a) a; case null return #err("No such app") };
     if (caller != a.owner and not isAdmin(caller)) return #err("Only the app's owner");
     switch (checkAppInput(input)) { case (?e) return #err(e); case null {} };
     for (c in input.canisters.vals()) {
       switch (Map.get(app_of_canister, Map.phash, c)) { case (?other) if (other != id) return #err(Principal.toText(c) # " belongs to another app"); case null {} };
-      if (Array.find<Principal>(a.canisters, func(x) = x == c) == null and c != caller) switch (await* Control.controls(sns, config.sns_wasm, caller, c)) { case (#err(e)) return #err(e); case (#ok) {} };
+      if (Array.find<Principal>(a.canisters, func(x) = x == c) == null and c != caller and not isAdmin(caller)) switch (await* Control.controls(sns, config.sns_wasm, caller, c)) { case (#err(e)) return #err(e); case (#ok) {} };
     };
     let cur = switch (Map.get(apps, Map.nhash, id)) { case (?a) a; case null return #err("No such app") };
     for (c in input.canisters.vals()) switch (Map.get(app_of_canister, Map.phash, c)) { case (?other) if (other != id) return #err(Principal.toText(c) # " belongs to another app"); case null {} };
@@ -332,7 +334,14 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     Map.set(user_notifications, Map.phash, n.user, Array.append(list, [n.id]));
   };
 
-  func notifyOne(a : App, input : NotifyInput) : NotifyResult {
+  /// No echoes: a canister this service delivers through never gets its own messages back. A
+  /// notification from the configured Sneed SMS canister (e.g. "new direct message") is never
+  /// delivered to #sneed_sms channels, neither the chosen ones nor the always-copy one: that copy
+  /// would be one more message in the same inbox, and a loop if SMS notified for it. The rule
+  /// keys on the calling canister, so it holds whatever topic or app the canister is listed under.
+  func echoKind(caller : Principal) : ?ChannelKind = if (caller == config.sneed_sms) ?#sneed_sms else null;
+
+  func notifyOne(a : App, input : NotifyInput, skip : ?ChannelKind) : NotifyResult {
     if (input.title.size() == 0 or input.title.size() > config.max_title) return #err(#invalid("A title of 1 to " # Nat.toText(config.max_title) # " characters"));
     if (input.body.size() > config.max_body) return #err(#invalid("The body is at most " # Nat.toText(config.max_body) # " characters"));
     if (not validLink(input.link)) return #err(#invalid("Links must be https and at most 512 characters"));
@@ -378,7 +387,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     let wanted = Buffer.Buffer<Channel>(4);
     for (c in userChannels(user).vals()) {
       let inSet = Array.find<Nat>(chosen, func(x) = x == c.id) != null or Array.find<Nat>(copy, func(x) = x == c.id) != null;
-      if (inSet and c.state == #verified) wanted.add(c);
+      if (inSet and c.state == #verified and ?c.kind != skip) wanted.add(c);
     };
 
     // payment: the app if sponsored (all or nothing), else the user, channel by channel
@@ -432,7 +441,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   /// Send a user a message. Only a registered app's canisters may call it.
   public shared ({ caller }) func notify(input : NotifyInput) : async NotifyResult {
     let a = switch (appOfCaller(caller)) { case (?a) a; case null return #err(#not_registered) };
-    let r = notifyOne(a, input);
+    let r = notifyOne(a, input, echoKind(caller));
     kick<system>();
     r;
   };
@@ -440,7 +449,8 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   public shared ({ caller }) func notify_batch(inputs : [NotifyInput]) : async [NotifyResult] {
     if (inputs.size() > MAX_BATCH) trap("At most 100 messages per batch");
     let a = switch (appOfCaller(caller)) { case (?a) a; case null return Array.map<NotifyInput, NotifyResult>(inputs, func(_) = #err(#not_registered)) };
-    let r = Array.map<NotifyInput, NotifyResult>(inputs, func(i) = notifyOne(a, i));
+    let skip = echoKind(caller);
+    let r = Array.map<NotifyInput, NotifyResult>(inputs, func(i) = notifyOne(a, i, skip));
     kick<system>();
     r;
   };

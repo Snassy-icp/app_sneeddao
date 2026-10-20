@@ -27,6 +27,10 @@ Direct messages (\"SMS\") from one principal to one or more others: a subject, a
 - **Sending is irreversible**: messages cannot be edited or recalled. `remove_self_from_message(id)` only takes the caller off; the message is deleted only when nobody is left on it.
 - Limits (read at run time from `get_config()` and, for Sneed Premium members, `get_premium_config()`): minutes between messages, subject and body length, recipients per message. Admins are exempt from the rate limit.
 
+## Notifications for new messages
+- When admins set a Sneed Notifications canister (`get_notifications_canister()`), each `send_message` also notifies every recipient once (never the sender) through it: app Sneed Hub (the recipient must allow it), topic `direct_message`, title `New message from <short principal>`, body the subject only (never the message text), link `https://app.sneeddao.com/msg/<id>`, paid by the recipient. Fire-and-forget: sending never waits on it or fails because of it.
+- `send_system_notification` never notifies, and Sneed Notifications never copies these notices back into Sneed SMS: no loop.
+
 ## Asynchronous lifecycle and polling
 - `send_message` is a single update that returns the new id; nothing to poll afterwards.
 - For unread counts poll `get_recent_messages_count(me)` (a cheap query); after showing the inbox call `mark_messages_seen_up_to(newest created_at seen)`.

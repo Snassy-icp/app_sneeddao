@@ -63,13 +63,19 @@ There is no other way to delete a message.
 
 ### 1.5 System messages
 
-Canisters on the canister's `authorized_senders` list may call `send_system_notification` to write to users without the rate limit and with the premium size limits. Such a message shows `get_system_sender_principal()` as its sender (the calling canister when none is set). Sneed Notifications delivers its "Sneed SMS" channel this way.
+Canisters on the canister's `authorized_senders` list may call `send_system_notification` to write to users without the rate limit and with the premium size limits. Such a message shows `get_system_sender_principal()` as its sender (the calling canister when none is set). Sneed Notifications delivers its "Sneed SMS" channel this way. System messages never trigger a notification (§1.6).
 
-### 1.6 Time and ids
+### 1.6 Notifications for new messages
+
+When admins have set a Sneed Notifications canister (`get_notifications_canister()`), each message sent with `send_message` also gives every recipient a heads-up through [Sneed Notifications](/api/sneed_notifications): app Sneed Hub (it must be allowed by the recipient), topic `direct_message` (level normal), title `New message from abcde…xyz` (the sender's principal, shortened), body the message **subject** (up to 200 characters), link `https://app.sneeddao.com/msg/<id>`, dedupe key `sms-<id>`, not sponsored (the recipient pays their own paid channels, as for forum notifications). **The message text is never sent**: notifications pass through relays such as Discord or Apple's push service. Each recipient once (duplicates folded, never the sender, at most 100). The call is fire-and-forget with a bounded wait: sending never waits on it and never fails because of it. Unset, nothing is sent.
+
+No loop: only `send_message` notifies, never `send_system_notification` (which is how Sneed Notifications copies every notification into the user's inbox), and Sneed Notifications never delivers anything this canister sends to Sneed SMS channels. The heads-up therefore goes to the recipient's other channels (push, Discord…) only.
+
+### 1.7 Time and ids
 
 Timestamps (`created_at`, `updated_at`, last-seen marks) are `int` nanoseconds since the Unix epoch, as `Time.now()` in Motoko and `BigInt(Date.now()) * 1_000_000n` in JavaScript. Message ids are `nat`.
 
-### 1.7 Calls the canister refuses at ingress
+### 1.8 Calls the canister refuses at ingress
 
 Before it accepts an update call from outside the IC the canister checks it (`inspect`), and a refused call costs nobody anything:
 
@@ -167,7 +173,7 @@ if ('err' in r) console.error(r.err);
 5. Recipients → `InvalidInput("At least one recipient is required")`, `InvalidInput("Too many recipients. Maximum is N")`.
 6. Each `reply_to` id → `NotFound("Reply message N not found")`, or `Unauthorized("Cannot reply to message N - access denied")` when the caller cannot read it.
 
-On success the message is stored, indexed for the sender and each recipient, the caller's rate-limit clock is reset, and the id is returned. Recipients are not checked or de-duplicated: list each principal once (a principal listed twice gets the message twice in its received list). Any principal can be a recipient, including canisters and principals that never used Sneed SMS. The sender may include themselves.
+On success the message is stored, indexed for the sender and each recipient, the caller's rate-limit clock is reset, the recipients are notified when Sneed Notifications is set (§1.6, best effort), and the id is returned. Recipients are not checked or de-duplicated: list each principal once (a principal listed twice gets the message twice in its received list). Any principal can be a recipient, including canisters and principals that never used Sneed SMS. The sender may include themselves.
 
 ### 3.2 Reading
 
@@ -240,7 +246,7 @@ The text is meant for people; branch on the variant tag.
 ### 5.4 System messages (authorised canisters)
 
 **`send_system_notification({ recipients : vec principal; subject : text; body : text }) → Result<nat, SMSError>`**
-Only for principals on the authorised-sender list (`Unauthorized("Caller is not authorized to send system notifications")`). No rate limit. Errors: `InvalidInput("Subject too long. Maximum is N")`, `InvalidInput("Body too long. Maximum is N")`, `InvalidInput("At least one recipient is required")`, `InvalidInput("Too many recipients. Maximum is N")`, all against the premium limits. Empty subjects and bodies are allowed here. Returns the message id. To get on the list, ask Sneed DAO (an admin call, usually by proposal).
+Only for principals on the authorised-sender list (`Unauthorized("Caller is not authorized to send system notifications")`). No rate limit. Errors: `InvalidInput("Subject too long. Maximum is N")`, `InvalidInput("Body too long. Maximum is N")`, `InvalidInput("At least one recipient is required")`, `InvalidInput("Too many recipients. Maximum is N")`, all against the premium limits. Empty subjects and bodies are allowed here. Never sends a notification (§1.6). Returns the message id. To get on the list, ask Sneed DAO (an admin call, usually by proposal).
 
 ### 5.5 Admin methods
 
@@ -253,6 +259,7 @@ Restricted to admins (governance, controllers, listed admins) unless noted. Inte
 | `update_premium_config(opt opt premium_canister, opt …)` | Change the premium canister (`[]` unchanged, `[[]]` clear) and limits. |
 | `get_authorized_senders()`, `add_authorized_sender(p)`, `remove_authorized_sender(p)` | The canisters allowed to call `send_system_notification`. |
 | `set_system_sender_principal(opt p)` | The sender shown on system messages. |
+| `admin_set_notifications(opt p) → Result<(), SMSError>` | The Sneed Notifications canister told of new messages (§1.6); `[]` turns it off. `get_notifications_canister() → opt principal` is a public query. |
 | `get_all_messages_admin()` | Every message (empty for non-admins). |
 | `import_admins(vec AdminInfo)`, `import_messages(vec MessageResponse)` | Controllers only: restore data after a migration. |
 
