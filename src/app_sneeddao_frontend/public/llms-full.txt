@@ -1,0 +1,625 @@
+# Sneed Hub for AI agents (full)
+
+This file concatenates the Sneed Hub agent skills: first the sneed-hub master guide, then the integration skills. Entry point: https://app.sneeddao.com/llms.txt. Individual files: https://app.sneeddao.com/.well-known/agent-skills/index.json
+
+
+<!-- ===== skill: sneed-hub (https://app.sneeddao.com/.well-known/agent-skills/sneed-hub/SKILL.md) ===== -->
+
+
+# Sneed Hub: what a user can do, and how
+
+## What Sneed DAO and Sneed Hub are
+
+Sneed DAO is an SNS DAO on the Internet Computer (ICP). It is run by its SNEED neurons: every upgrade of its canisters is a proposal that SNEED neurons vote on. Its founders are anonymous; nobody speaks for the DAO except its proposals. Mr Sneed is the DAO's mascot and spirit ("we are all Mr Sneed"), given a voice by AI; his memories and rules are public on-chain at https://app.sneeddao.com/mr-sneed.
+
+Sneed Hub (https://app.sneeddao.com) is the DAO's web app, served from an ICP asset canister. It is a wallet plus tools: Sneed Lock (time locks for tokens and liquidity), Sneedex (escrow marketplace and swap), SNS and ICP neuron management, liquid staking, bots you own (ICP staking bot, trading bot), a forum for every SNS with tips and polls, direct messages (Sneed SMS), notifications, names and avatars, token tools and governance views. Everything works on any SNS, not only Sneed; most pages follow the SNS chosen in the header dropdown.
+
+Key ids: Sneed SNS root `fp274-iaaaa-aaaaq-aacha-cai`, governance `fi3zi-fyaaa-aaaaq-aachq-cai`, SNEED ledger `hvgxa-wqaaa-aaaaq-aacia-cai`, ICP ledger `ryjl3-tyaaa-aaaaa-aaaba-cai`.
+
+## How you (the agent) help
+
+- You explain and guide; **the user acts**. Every transaction is signed by the user's own Internet Identity session in Sneed Hub. You never hold their keys and never act for them.
+- **Never ask for** a seed phrase, recovery phrase, Internet Identity passkey/device, PEM file, dfx identity or any private key. If a user offers one, tell them to stop and never share it with anyone.
+- Give the exact URL to open (below), then the buttons to press. Fill route params from what the user tells you or from public reads.
+- To check facts yourself, read public state (see "Reading public state yourself"). Say plainly when a figure is live and may have changed (fees, prices of apps, limits).
+- Don't talk about token prices, returns or whether to buy anything. Sneed Hub is a tool, not advice.
+- Nothing on-chain is anonymous: the user's principal is public and every post, tip, lock, bid, vote, name and donation is linked to it. Never describe an action as anonymous.
+
+## Safety rules to tell users
+
+1. **Real tokens, real fees.** Every ledger transfer costs that token's fee (ICP: 0.0001). Some actions also charge an ICP service fee (lock fee, Sneedex offer fee, staking-bot or trading-bot mint price, SNS Jailbreak fee); the page shows it before you confirm.
+2. **Transfers are irreversible.** Check the recipient principal/account and the amount before you press Send; nobody can undo a wrong transfer.
+3. **Locks can't be shortened.** A Sneed Lock can be extended, never cancelled early.
+4. **Verify canister ids.** Before trading a token, locking it or minting from Sneedapp, check the ledger/canister id (not just the symbol or logo). Use Token Studio's Check (/studio) for any unfamiliar token.
+5. **Beware fake sites and links.** Sneed Hub is only at `app.sneeddao.com` (staging test copy: `2icdp-6qaaa-aaaal-qjt6a-cai.icp0.io`, shows a STAGING banner, uses real tokens). No one from Sneed DAO will DM you asking for keys or to "verify your wallet".
+6. **Pairing links.** Only approve a pairing code you see in your *own* installed app; if someone sends you a /pair link, don't allow it.
+7. **Messages are not secret.** Sneed SMS and forum posts are stored on-chain unencrypted; don't put passwords or keys in them.
+8. **Staging is a separate copy.** Names, posts and settings there are separate from the real site; tokens are real, so use small amounts.
+
+## Logging in
+
+- Open https://app.sneeddao.com/login (or any page) → the login dialog → choose **Internet Identity 1.0** (classic, identity.ic0.app, existing anchors) or **Internet Identity 2.0** (id.ai). No other wallets (Plug, NFID, OISY) are supported. Sessions last 7 days.
+- The principal shown at the top of /wallet is the user's **Sneed Hub principal**. It is specific to Sneed Hub (Internet Identity gives each site its own principal), so it differs from the user's NNS dapp principal. Tokens sent to it are in their Sneed Hub wallet. To use NNS or SNS neurons in Sneed Hub, the user adds this principal as a **hotkey** on the neuron (explained at /help/neurons).
+- **Install as an app** (https://app.sneeddao.com/help/app): iPhone: Safari → Share → Add to Home Screen. Android: Chrome menu → Install app. Desktop: Chrome/Edge install icon.
+- **Pairing** (when the login popup does not return to the installed app, mainly iPhone): in the app's login dialog tap "Pair it with Safari" (other platforms: "Pair it with a browser") → "Copy link" (`https://app.sneeddao.com/pair?key=...`) → open it in the browser, "Log in to continue", check the code matches the app's code (like `K7Q-2MX`), "Allow" → "Copy approval" → back in the app "Paste approval".
+
+## URL conventions
+
+- `sns=<SNS root canister id>` selects the SNS on SNS pages (default Sneed `fp274-iaaaa-aaaaq-aacha-cai`). Find root ids on /sns.
+- Neuron ids are hex strings; proposal ids are numbers; principals are text (`xxxxx-...-cai` for canisters).
+- [login] = needs a logged-in user.
+
+## Goal map
+
+### Hold, send and receive tokens - /wallet [login]
+- Receive: give people the principal shown at the top of /wallet (Copy).
+- Tabs: **Tokens | Liquidity | Apps | Statistics**. "+ Add Token" adds any ICRC-1 ledger by canister id.
+- Token card: **Send**, **Buy** (swap ICP into it), **Sell** (into ICP); card tabs Balance | Locks | Neurons | Info. "Deposited" balance = the user's Sneed wallet subaccount in Sneed Lock (used for locks).
+- Any principal's balances, read-only: `/scan_wallet?principal=<p>`; a user's public page: `/principal?id=<p>`.
+- History: `/transactions?ledger=<ledgerId>`; one tx: `/transaction?ledger=<ledgerId>&id=<index>`.
+- NFTs (ICRC-7): /nft [login] ("Add Collection", "Send NFT", "Approve a spender", "Sell on Sneedex"); browse any collection: `/nfts?collection=<canister>`; one item: `/nft_item?collection=<canister>&id=<tokenId>`.
+- Help: /help/wallet.
+
+### Swap tokens - /swap
+`/swap?input=<ledgerId>&output=<ledgerId>` (default ICP → SNEED). Compares ICPSwap and KongSwap routes (split and multi-hop) and can fill from Sneedex buyouts. Set "Slippage tolerance", review, confirm.
+
+### Lock tokens or liquidity - Sneed Lock
+- Create: `/lock_wizard` [login] (`?type=token&token=<ledgerId>` or `?type=position` to preselect).
+  1. "Lock Tokens" or "Lock Liquidity Position" → Continue.
+  2. Tokens: shows "Available to lock"; if short, send tokens to the shown address, "Check again". Position: pick the ICPSwap pool; on ICPSwap transfer the position (Liquidity → Details → "Transfer position") to the Sneed Wallet principal shown, then "Choose the position to lock".
+  3. Pay the ICP lock fee if shown (Premium members pay less).
+  4. "Configure & Lock": amount (MAX), expiry, optional "Dissolve delay in days" → "Create Lock".
+- One lock: `/lock/<lock_id>`: owner can "Start dissolving" / "Stop dissolving", "Extend the lock period", "Send the NFT" (each lock is an ICRC-7 NFT), "Add gas".
+- All locks: `/sneedlock_info` (`?owner=<principal>&ledger=<ledgerId>`), overview /sneedlock, per token `/tokenlocksoverview?ledger=<ledgerId>`.
+- Locked LP positions in /wallet → Liquidity: claim fees, "Add Liquidity", transfer. Expired token locks become free "Deposited" tokens; expired positions can be withdrawn.
+- Help: /help/sneedlock. Integration skill: sneed-lock.
+
+### Manage ICPSwap liquidity - /position, /positions
+- `/position?swap=<pool>&id=<positionId>`: owner can "Collect fees", "Move range", "Remove", "Transfer", "Lock in Sneed Lock", "Withdraw to wallet". `/position?swap=<pool>` opens a new position. `/positions` lists mine / a pool's.
+
+### Trade or escrow on Sneedex
+- Browse: /sneedex_offers; my offers and bids: /sneedex_my [login]; about: /sneedex; help: /help/sneedex.
+- Sell: /sneedex_create [login] → asset type (App / ICP Staking Bot / Trading Bot / SNS Neuron / NFT / ICRC1 Token; Sneed Locks are sold as Sneed Lock NFTs) → "Price Token", "Minimum Bid" (blank = buyout only), "Buyout Price", "Min Bid Increment", "Expiration", optional "Private Offer (OTC)" with approved bidders → "Create Offer" (the app escrows the assets and activates the offer). An SNS neuron needs the ManagePrincipals permission for the user's principal.
+- Offer page `/sneedex_offer/<offerId>`: buyer "Place Bid" / "Buyout", then "Claim Your Assets"; seller "Accept Highest Bid", "Cancel Offer", "Claim Payment". After expiry anyone can press "Finalize Auction" / "Process Expiration". A marketplace fee comes out of the winning bid.
+- From elsewhere: "Sell on Sneedex" buttons on tokens, NFTs and positions.
+- Integration skill: sneedex.
+
+### SNS neurons
+- Browse an SNS: /sns (directory and parameters). Neurons: `/neurons?sns=<root>`; one neuron: `/neuron?neuronid=<hex>&sns=<root>` (permissions, followees, dissolve, voting history; a private "Set Nickname").
+- Manage your own: /wallet → token card → Neurons tab: "Create New Neuron", "Increase Stake", "Set Dissolve Delay", "Start/Stop Dissolving", "Disburse", "Disburse Maturity", "Split Neuron", "Send Neuron", hotkeys. Or /me → My Neurons.
+- Neurons created elsewhere (NNS dapp) show up once the Sneed Hub principal is a hotkey (or controller).
+- Liquid staking (neurons you can transfer or sell): /liquid_staking; SNS: /sns_neuron_wizard [login] (pick SNS → amount, dissolve delay → "Confirm & Stake").
+- SNS Jailbreak (add your Sneed Hub principal as full controller of an SNS neuron you control in the NNS dapp): /tools/sns_jailbreak [login] → pick SNS, neuron, target principal → generate a script, read it, paste it in the browser console on nns.ic0.app. Has an ICP fee. Help: /help/sns_jailbreak.
+
+### ICP neurons - staking bot
+- Create: /create_icp_neuron [login] (or /sneedapp/app/sneed-icp-staking-bot → "Mint Now"); pay the mint price, then "Open Manager".
+- Manage: `/icp_neuron_manager/<canisterId>`: stake, maturity, dissolve, disburse, following, hotkeys, Botkeys (fine-grained permissions), chores (auto confirm-following, refresh stake, collect maturity). The bot is a canister the user controls; the neuron lives in it.
+- Help: /help/icp-neuron-manager.
+
+### Run a trading bot
+- Mint: /sneedapp/app/sneed-trading-bot → "Mint Now" → `/sneedapp/mint/sneed-trading-bot` ("Select Version", optional extra gas, "Review Payment", "Confirm & Mint").
+- Manage: `/trading_bot/<canisterId>`: Setup Wizard (DCA or Range Trade with optional stop-loss), chores (start, pause, "Run Once"), purses ("Fund", "Reclaim"), Botkeys, logs. Trades on ICPSwap and KongSwap.
+- All apps: /sneedapp (store), /apps [login] (App Manager: your canisters, groups, health lamps, top-up). Help: /help/sneedapp, /help/trading_bot.
+
+### Top up cycles or manage a canister
+- Any canister: `/canister?id=<canisterId>` → "Top Up Canister" (ICP → cycles via the Cycles Minting Canister) or "Pay by card" (CyclePay: card/Apple Pay/Google Pay, card fee shown, cycles go straight to the canister, no login). Controllers can add/remove controllers, set a public name, upgrade the wasm.
+- Several at once: /wallet → Apps tab or /apps → "Top-Up": pay with ICP or ck-USDC (CyclePay), to a target level, split equally or same amount each.
+- Explorer: /canisters. Help: /help/dapp-manager.
+
+### Vote on proposals
+- Your SNS and NNS neurons in one place: /active_proposals [login] ("Voting": "Adopt" / "Reject", "Show only votable").
+- SNS list `/proposals?sns=<root>`; one: `/proposal?proposalid=<n>&sns=<root>` → "Adopt" / "Reject" per eligible neuron or "Vote with all eligible neurons"; discussion thread below.
+- NNS: /icp_proposals, `/icp_proposal?proposalid=<n>`.
+- To vote, the neuron needs the Sneed Hub principal as hotkey ("Add Your Principal as a Hotkey" instructions are on the page). Help: /help/proposals, /help/dao.
+- Earn and claim Sneed voting rewards (for Sneed neurons hotkeyed to your principal): /rewards [login].
+
+### Forum, tips, polls
+- `/forum?sns=<root>` → topic `/topic/<topicId>?sns=<root>` → "Start a New Thread" [login] (optional "Include a Poll"; poll weighting by neuron voting power).
+- Thread `/thread?threadid=<n>&sns=<root>`: "Reply", "Edit Post", "Delete", up/down vote with your hotkey neurons, tip button. One post: `/post?postid=<n>&sns=<root>`.
+- Tip: tip button on a post → "Choose Token", amount → "Send Tip" (a ledger transfer from your wallet to the author, recorded by the forum; public).
+- Activity: /feed; my posts /posts; tips sent/received /tips. If an SNS has no forum yet: "Create Your Forum".
+- Help: /help/forum. Integration skill: sneed-forum.
+
+### Direct messages (Sneed SMS)
+- /sms [login] ("Compose", "Add Recipient", Subject, Message, "Send Message", "Reply", "Reply All"); start one to someone: `/sms?recipient=<principal>`; one conversation `/msg/<id>`. Or "Send Message" on a user's /principal page.
+- Limits (subject/body length, recipients, rate) are higher for Premium. Messages are not encrypted and show the sender's principal. Help: /help/sms. Skill: sneed-sms.
+
+### Notifications
+- /notifications [login]: allow or block apps asking to notify you; per-level delivery, "Quiet hours", "Hold messages"; per-app level and mute; channels (Sneed SMS; others such as phone push and Discord as the page shows them live); "Top up" an ICP balance for paid channels; "Recent". Help: /help/notifications. Skill: sneed-notifications.
+
+### Name, avatar, address book
+- /me [login] ("My Profile"): "Set Name" (public, max 32 chars, moderated; visible to everyone), avatar (upload/URL, or "Use an NFT I own" - must still own it), public names and private nicknames for your neurons.
+- Private nicknames for any principal or neuron: /names ("Address Book") or on /principal and /neuron pages. Nicknames are shown only to you, but are stored on-chain unencrypted.
+- Canister names: `/canister?id=<id>` (controllers). Browse named users: /users. Help: /help/names. Skill: sneed-names.
+
+### Check a token's safety - Token Studio
+- /studio → enter a ledger id → "Check": a rating from public data (controllers, wasm, archives, index, etc.). Fixes for owners: `/studio/<ledgerId>/harden`. `/tools/token_safety/<ledgerId>` redirects here.
+- **Launching/minting a token, building an index, and handing a token over to custody (/studio launch, index, handover tabs, /custody, /guardian, /tools/pad) are "coming soon"** - not open to users yet. Say so; don't invent steps. Help: /help/token-studio.
+
+### Other tools
+- /tools/main lists them. Follow the Money (`/tools/money?ledger=<ledgerId>&start=<principal>`), Account Tool (/tools/account: principals, subaccounts, account ids), ICRC-3 Browser (`/tools/icrc3?canister=<id>`). Help: /help/tools.
+
+### Premium, DAO info, community
+- /premium: "Purchase with ICP", "Claim with Sneed Voting Power" or "Redeem Promo Code"; gives discounts (Sneedex, bots, jailbreak, lock fees) and higher limits (messages, posts, App Manager).
+- DAO: /dao (about), /dao_info (dashboard), /health (automated checks), /rll_info (tokenomics and the liquidity loop), /revenue (live product revenue), /products, /partners, /projects, /lore, /mr-sneed.
+- Feedback: `/feedback?kind=bug` or `?kind=idea` [login] (becomes a public forum thread; security bugs can be sent privately by SMS). Donations: /donate (public thank-you wall; gifts can't be refunded).
+- Developer docs: /api. Help index: /help. Disclaimer: /disclaimer.
+
+## Reading public state yourself
+
+- Canister API references (Markdown, with Candid and JS IDL alongside): `https://app.sneeddao.com/api-docs/<slug>.md` for slugs `sneed_lock`, `sneedex`, `sneed_sns_forum`, `sneed_sms`, `sneed_names`, `sneed_notifications`, `sneed_premium`, `rll`, `sneedapp`, `mr_sneed`, `app_sneeddao_backend`; Candid at `<slug>.did`, IDL at `<slug>.did.js`.
+- Most reads are anonymous query calls (`dfx canister --network ic call <id> <method> '(...)' --query`, or `@dfinity/agent` with an anonymous identity against https://icp-api.io). Data scoped to "the caller" (own messages, nicknames, notification settings) needs the user's identity, so send the user to the page instead.
+- Sneed Hub MCP server (read-only lookups and deep links): https://github.com/Snassy-icp/app_sneeddao/tree/main/mcp/sneed-hub
+- Integration skills: sneed-lock, sneedex, sneed-forum, sneed-sms, sneed-names, sneed-notifications in https://app.sneeddao.com/.well-known/agent-skills/index.json.
+
+## What you must not do
+
+- Never ask for or accept keys, seed phrases, identity files or passkeys; never suggest the user pastes them anywhere.
+- Never tell a user to paste a script into a browser console unless it is Sneed Hub's own SNS Jailbreak script for their own neuron, and tell them to read it first.
+- Never promise outcomes, returns or prices; never invent features, fees or pages - if unsure, send them to the page or /help.
+- Never claim anything on-chain is private or anonymous.
+- Don't attribute Sneed DAO or the SNEED token to any named person.
+
+
+<!-- ===== skill: sneed-lock (https://app.sneeddao.com/.well-known/agent-skills/sneed-lock/SKILL.md) ===== -->
+
+
+# Sneed Lock integration skill
+
+Sneed Lock is a permissionless canister: it authorises every call by the calling principal only, so any front end, script or canister can use it for its users. Read the full reference at https://app.sneeddao.com/api-docs/sneed_lock.md (Markdown) when you need exact error strings, every method, or the types. The Candid interface is at https://app.sneeddao.com/api-docs/sneed_lock.did and a ready JavaScript IDL factory at https://app.sneeddao.com/api-docs/sneed_lock.did.js.
+
+Canisters: production `pqsms-lqaaa-aaaal-ajjza-cai`, staging `25fsc-7yaaa-aaaal-qjt5q-cai` (same code, separate state; test there first). ICP ledger `ryjl3-tyaaa-aaaaa-aaaba-cai`, ICP ledger fee 10_000 e8s.
+
+## Core facts to keep straight
+
+1. **Three accounts per user principal P.** Frontend wallet `{owner: P}`. Sneed wallet `{owner: sneed_lock, subaccount: principalToSubAccount(P)}` (from `@dfinity/utils`; byte 0 = principal length, then principal bytes, zero padded to 32). Payment subaccount: never compute it, call `getPaymentSubaccount(P)`.
+2. **Token locks are balance based.** Tokens sit in the user's Sneed wallet; the canister records `{lock_id, amount, expiry}` and `transfer_tokens` only releases `balance − sum(active locks) − ledger fee`.
+3. **Position locks hold the ICPSwap position in the canister.** The user's "claim" maps the position to them. Order is strict: `claim_position` while the user still owns it on ICPSwap → pool `transferPosition(user, sneed_lock, id)` → `create_position_lock`. Claims are exclusive: a successful `claim_position` drops any older claim another principal left on that position.
+4. **Expiry is nat64 nanoseconds since epoch.** JS: `BigInt(Date.now()) * 1_000_000n`. Limits from `get_lock_limits()` → `{min_lock_length_ns, max_lock_length_ns}` (minimum 5 seconds by default, `Minimum lock time not fulfilled.`; maximum set by governance, `Maximum lock time exceeded.`). With a dissolve delay the limits apply to lock period + delay.
+5. **Amounts are base units** (`nat`), never decimal-scaled.
+6. **Locks never shorten or cancel.** Position lock expiry can be extended (`update_position_lock`). Ownership of either kind can be transferred while locked (liquid locking).
+7. **Lock fee in ICP** may apply to `create_lock` and `create_position_lock`. Ask `getEffectiveLockFee(P, isPositionLock)`; deposit `fee_e8s − getPaymentBalance(P)` into the payment subaccount before locking. Exactly `fee_e8s` leaves the subaccount; surplus stays for next time.
+8. **`Busy:` errors and `GenericError{error_code = 2}` mean retry in a few seconds**, not failure. Per-caller mutex on token operations, per-pool mutex on fee claims and add-liquidity; NFT transfers of a lock that is busy answer `GenericError{error_code = 3}` (also retry).
+9. **`dex` is always `1`** (ICPSwap). `token0`/`token1` passed to `create_position_lock` must be the pool's `metadata().token0.address` / `token1.address` in pool order; the canister stores them unverified and uses them for fee claims and add-liquidity.
+10. **Every state change is logged as an ICRC-3 block** (`btype` prefixed `sneedlock_`, hash-chained via `phash`, tip certified). Read with `icrc3_get_blocks` / `icrc3_get_archives`, verify from `icrc3_get_tip_certificate`. Block catalogue and a verifier script: https://app.sneeddao.com/api-docs/sneed_lock.md section 8.
+
+## Procedures
+
+### Lock tokens
+1. `balance = ledger.icrc1_balance_of(sneedWallet)`, `locked = get_summed_locks()` entry for the ledger (caller-scoped query), `free = balance − locked`.
+2. If `amount > free`, `icrc1_transfer` the shortfall from the frontend wallet to `sneedWallet` (ledger fee on top).
+3. Ensure the fee (see fact 7).
+4. `create_lock(amount, ledger, expiresAtNs, [])` → `Ok(lock_id)` or `Err{message}` (last argument: optional dissolve delay in ns; with one, `expiresAtNs` is the end of the lock period and may be 0).
+
+### Lock an ICPSwap position
+1. `meta = pool.metadata()`; `token0/1 = Principal.fromText(meta.ok.token0.address / token1.address)`.
+2. `claim_position(pool, positionId)` must return `true` (checks the pool says P owns it).
+3. `pool.transferPosition(P, sneed_lock, positionId)` → `{ok: true}`.
+4. Ensure the fee; `create_position_lock(pool, 1n, positionId, expiresAtNs, token0, token1, [])` → `Ok(lock_id)` (last argument: optional dissolve delay in ns). The position's NFT (ICRC-7, id = this lock id) is minted.
+If step 4 fails, the position is in Sneed Lock, claimed and unlocked: fix the cause and retry, or `transfer_position(P, pool, positionId)` to take it back.
+
+### Read locks
+- Lists are paged: `get_lock_states_page({owner, ledger, swap_canister_id, token, kind, status, include_archived, prev, take})` → `vec LockState`, ascending lock id, ≤ 500 per call; default `take` 100; continue with `prev = [last.lock_id]` until a page is short. Several known ids at once: `get_lock_states(vec lock_id)`. `status: [{Active: null}]` = currently locked; `token` = token locks of that ledger plus position locks with it on either side. (The old `get_all_*` / `get_active_*` / `get_expired_*` / `get_ledger_token_locks` / `get_swap_position_locks` / `get_token_position_locks` were removed.)
+- One lock: `get_lock_state(lock_id)` → `LockState` with `lock_end`, `dissolve_delay`, `dissolving_until`, `expiry` (effective; max nat64 = until it dissolves), `earliest_unlock`, `created_at`, `locked`, `archived`, `owner_subaccount` (NFT label). Also `get_lock_by_id(lock_id)` → the raw record.
+- Dissolve delays (owner only): `start_dissolving(id)` (only once the lock period has ended, for a lock with a delay; the lock then unlocks after the delay), `stop_dissolving(id)` (time left becomes the delay again), `increase_dissolve_delay(id, additional_ns)`, `extend_lock(id, new_lock_end)` (not while dissolving) → `Ok(LockState)` | `Err(NotFound | NotOwner | InProgress | Invalid text)`.
+- Every lock is an ICRC-7 / ICRC-37 NFT on this canister: `icrc7_owner_of`, `icrc7_transfer`, `icrc37_approve_tokens`, `icrc37_transfer_from`. Position locks: id = the position's first lock id (`get_position_nft(pool, positionId)`); moving one moves the position, its lock and unclaimed fees. Token locks: id = lock id; moving one costs one ledger fee from the owner's free balance in Sneed Lock, else from the lock's gas tank (`get_lock_gas(lock_id)` → account; anyone can top it up with a plain `icrc1_transfer`; the tank pays 2 fees per transfer); no gas → `GenericError` code 7. `withdraw_lock_gas(lock_id, to)` (owner).
+- A user's positions in Sneed Lock: `get_claimed_positions_for_principal(P)` → `{owner, swap_canister_id, position_id, position_lock: [] | [lock]}`.
+- Caller's own: `get_token_locks()`, `get_summed_locks()`, `get_position_ownerships()`.
+- Public pages: `https://app.sneeddao.com/lock/<lock_id>`, `https://app.sneeddao.com/sneedlock_info`.
+
+### Claim trading fees of a locked position
+`claim_position_fees(pool, positionId)` → `Ok{amount0, amount1, token0, token1}` (gross). The pool itself delivers `amount − ledger fee` per side to the user's Sneed wallet, asynchronously, a side at or below the fee is dropped. Fails with `Insufficient rewards to claim...` when neither side exceeds its ledger fee. Then optionally forward with `transfer_tokens(P, null, ledger, amount − fee)`.
+
+### Add liquidity to a locked position
+Fund the Sneed wallet with `amount + ledger fee` per token. `add_liquidity_to_locked_position(pool, positionId, amount0, amount1)`; each non-zero amount must exceed 2× its ledger fee; pass `0` for a side the (out-of-range) position cannot take. Result `{credited0/1, used0/1, returned0/1, increase_error}`; leftovers return to the Sneed wallet; `increase_error` non-null means the pool refused and everything came back.
+
+### Transfer locked assets (liquid locking)
+`transfer_token_lock_ownership(to, ledger, lock_id)` (caller's Sneed wallet needs one free ledger fee). `transfer_position_ownership(to, pool, positionId)`. The recipient needs no prior setup.
+
+### Withdraw
+Tokens: `transfer_tokens(to, toSubaccountOpt, ledger, amount)` from the Sneed wallet (unlocked part only). Positions: after expiry, `transfer_position(to, pool, positionId)` moves the position to `to` on ICPSwap and clears the claim; refused while the lock is active.
+
+### Housekeeping
+`has_expired_locks()` / `clear_expired_locks()`, `has_expired_position_locks()` / `clear_expired_position_locks()` archive the caller's expired locks. Most updates do this implicitly.
+
+### Audit the history (ICRC-3 activity log)
+- `icrc3_log_status()` → `log_length`, archives, settings. `icrc3_get_blocks([{start; length}])` → live blocks plus `archived_blocks` callbacks to call on the archive canisters for older ranges (max 1000 blocks per response). `icrc3_get_archives({from = null})` lists archives.
+- Block = `Map { btype; ts; phash; tx }`; principals are `Blob`, accounts `Array [owner, subaccount?]`, numbers `Nat`. `tx.cid` joins with the text logs. One lock's history = blocks whose `tx.lock_id` matches.
+- To prove a lock: verify `icrc3_get_tip_certificate` (IC certificate + hash tree with `last_block_index`, `last_block_hash`), then walk `phash` from the tip; the create block proves when it was locked, the absence of a later `sneedlock_position_withdraw` / `sneedlock_token_withdraw` (or `_transfer`) block for it proves it is still held.
+
+## Minimal JavaScript setup
+
+```js
+import { Actor, HttpAgent } from '@dfinity/agent';
+import { Principal } from '@dfinity/principal';
+import { principalToSubAccount } from '@dfinity/utils';
+import { idlFactory } from './sneed_lock.did.js'; // https://app.sneeddao.com/api-docs/sneed_lock.did.js
+
+const SNEED_LOCK = Principal.fromText('pqsms-lqaaa-aaaal-ajjza-cai');
+const agent = new HttpAgent({ identity, host: 'https://icp-api.io' });
+const sneedLock = Actor.createActor(idlFactory, { agent, canisterId: SNEED_LOCK });
+const sneedWallet = (p) => ({ owner: SNEED_LOCK, subaccount: [principalToSubAccount(p)] });
+```
+
+## dfx examples
+
+```bash
+dfx canister --network ic call pqsms-lqaaa-aaaal-ajjza-cai get_lock_states_page '(record { owner = null; ledger = null; swap_canister_id = null; token = null; kind = opt variant { PositionLock }; status = opt variant { Active }; include_archived = false; prev = null; take = opt (100 : nat) })' --query
+dfx canister --network ic call pqsms-lqaaa-aaaal-ajjza-cai get_lock_by_id '(413 : nat)' --query
+dfx canister --network ic call pqsms-lqaaa-aaaal-ajjza-cai getEffectiveLockFee '(principal "aaaaa-aa", true)'
+```
+
+## Reference implementation
+
+The Sneed wallet is open source and calls every method above: lock wizard `src/app_sneeddao_frontend/src/pages/LockWizard.jsx`, wallet `src/Wallet.jsx` (`handleAddLiquidityToLockedPosition`, `handleClaimLockedPositionFees`), fee forwarding `src/utils/FeeForwarding.js`, positions loader `src/contexts/WalletContext.jsx`, all under https://github.com/Snassy-icp/app_sneeddao/tree/main/src/app_sneeddao_frontend.
+
+
+<!-- ===== skill: sneedex (https://app.sneeddao.com/.well-known/agent-skills/sneedex/SKILL.md) ===== -->
+
+
+# Sneedex integration skill
+
+Sneedex is an escrow marketplace. A seller puts one or more assets into escrow in the canister, sets a price token and a buyout price and/or an expiration (auction), and Sneedex hands the assets to the winning bidder and the payment to the seller. Every call is authorised by the calling principal; there is no off-chain matching. Full reference (every method, error, type): https://app.sneeddao.com/api-docs/sneedex.md. Candid: `src/declarations/sneedex/sneedex.did` in the repo.
+
+Canisters: production `7bvk3-ryaaa-aaaal-qtykq-cai`, staging `igm46-laaaa-aaaae-qgwra-cai` (same code, separate state; real tokens on both). ICP ledger `ryjl3-tyaaa-aaaaa-aaaba-cai` (fee 10_000 e8s).
+
+## Core facts to keep straight
+
+1. **Asset kinds** (`getAssetTypes()`): `Canister` (0), `SNSNeuron` (1), `ICRC1Token` (2), `ICRC7NFT` (3), `SneedLock` (4). Canister kinds (`getCanisterKinds()`): 0 Unknown, 1 ICP Staking Bot, 2 Trading Bot. Up to `getConfig().max_assets_per_offer` (default 10) assets per offer; at most 50 token ids per NFT asset.
+2. **Offer lifecycle** (`OfferState`): `Draft` (add assets) → `finalizeAssets` → `PendingEscrow` (escrow each asset) → `activateOffer` → `Active` (bids) → `Completed{winning_bid_id}` → `Claimed`; or `Expired` / `Cancelled` → `Reclaimed`. Only the creator manages the offer.
+3. **An offer needs a buyout price or an expiration** (`OfferMustHaveBuyoutOrExpiration`). Expiration is `int` nanoseconds since epoch and must be at least `config.min_offer_duration_ns` (default 1 hour) ahead. `min_bid_price`, if set, is > 0 and ≤ buyout; without it the minimum bid is the buyout. All prices are base units of `price_token_ledger`.
+4. **Escrow is per-offer subaccount of Sneedex.** Never compute subaccounts; ask `getOfferEscrowSubaccount(creator, offerId)`, `getBidEscrowSubaccount(bidder, bidId)`, `getOfferCreationPaymentSubaccount(user)`.
+5. **Fees.** Offer creation fee in ICP: `getEffectiveOfferCreationFee(P)` (lower or zero for Sneed Premium members); deposit it to `{owner: sneedex, subaccount: getOfferCreationPaymentSubaccount(P)}` before `createOffer`, else `InsufficientFunds`. Leftover: `withdrawOfferCreationPayment()`. Marketplace cut: `fee_rate_bps` is locked into the offer at creation (premium rate if the creator is premium) and taken from the winning bid; a cut not above one ledger fee is not taken. `getFeeConfig()` returns the current rates.
+6. **Bids escrow tokens first.** `reserveBid` gives a bid id, the bidder sends tokens to that bid's subaccount, `confirmBid(bidId, amount)` checks the balance. A bid ≥ buyout is capped at the buyout and completes the offer at once (excess refunded). Each new bid must beat the highest by `min_bid_increment_fee_multiple × price-ledger fee` (default 1 base unit), else `BidIncrementTooSmall{minimum_next}`.
+7. **Settlement is automatic, with manual fallbacks.** On completion Sneedex schedules delivery to buyer and seller and refunds losing bids by timer. If something did not arrive: buyer `claimAssets(offerId)`, seller `claimWinningBid(offerId)`, loser `refundBid(bidId)`, seller after expiry/cancel `reclaimAssets(offerId)`.
+8. **`processExpiration(offerId)` is permissionless**: after the expiration it completes the offer with the highest bid, or marks it `Expired` and returns the assets. While the expiration timer runs (`isExpirationTimerRunning()`), Sneedex also does this itself.
+9. **Private offers**: `approved_bidders = [vec principal]`; only those (and the creator) can bid; they are notified on activation. Public offers have `approved_bidders = null`.
+10. **`cancelOffer`** works in Draft, PendingEscrow and Active; confirmed bids are marked Lost and refunded, assets return to the seller.
+11. **`note_to_buyer`** is visible only to the creator and, once won, the winning bidder; `public_note` to everyone. Max 4000 chars each.
+
+## Procedures
+
+### List an asset (seller P)
+1. Pay the creation fee (fact 5) if `getEffectiveOfferCreationFee(P) > 0`.
+2. `createOffer({price_token_ledger, buyout_price, min_bid_price, expiration, min_bid_increment_fee_multiple, approved_bidders, public_note, note_to_buyer})` → `ok(offerId)`.
+3. `addAsset({offer_id, asset})` per asset (Draft only; duplicates refused). Then `finalizeAssets(offerId)`.
+4. Escrow each asset by index (`assetIndex` = position in `offer.assets`):
+   - **ICRC-1 tokens**: `icrc1_transfer` `amount + ledger fee` to `{owner: sneedex, subaccount: getOfferEscrowSubaccount(P, offerId)}`, then `escrowICRC1Tokens(offerId, i)` (needs balance ≥ amount; the buyer later receives the escrow balance less one fee).
+   - **Canister**: add Sneedex as a controller (P must be a controller too), then `escrowCanister(offerId, i)`. Sneedex becomes the sole controller and keeps a snapshot of the old controllers for a reclaim. For staking and trading bots it also snapshots and clears their bot permissions (restored on a reclaim; a buyer gets the bot clean).
+   - **SNS neuron**: give Sneedex full owner permissions on the neuron (P must have them), then `escrowSNSNeuron(offerId, i)`. Sneedex removes every other principal's permissions and records them for a reclaim.
+   - **ICRC-7 NFTs**: either `icrc7_transfer` each token to the offer escrow subaccount and call `escrowICRC7NFTs(offerId, i)`, or approve Sneedex via ICRC-37 and call `escrowICRC7NFTsByApproval(offerId, i)` (Sneedex pulls them). Verified with `icrc7_owner_of`. A collection that ignores `to.subaccount` will not work; test with a self-transfer first.
+   - **Sneed Lock lock** (`#SneedLock{lock_id, lock}`; `addAsset` re-reads the lock and refuses one that is not P's, expired, or expires before the offer): move ownership to Sneedex in Sneed Lock (`transfer_token_lock_ownership(sneedex, ledger, lockId)` or `transfer_position_ownership(sneedex, pool, positionId)`), then `escrowSneedLock(offerId, i)`. For a token lock Sneedex needs one ledger fee free in its own Sneed Lock wallet (`{owner: sneed_lock, subaccount: principalToSubAccount(sneedex)}`); anyone may send it. Sneed Lock lock NFTs can also be listed as an `ICRC7NFT` asset of collection `pqsms-lqaaa-aaaal-ajjza-cai` (same expiry rule; a token lock's gas tank must hold 2 fees).
+5. `activateOffer(offerId)` once every `assets[i].escrowed` is true.
+
+### Bid or buy out (bidder B)
+1. `queryOffer(offerId)` / `getOfferView(offerId)` → state Active, price ledger, highest bid.
+2. `reserveBid(offerId)` → `ok(bidId)`; `sub = getBidEscrowSubaccount(B, bidId)`.
+3. `icrc1_transfer` exactly the bid amount to `{owner: sneedex, subaccount: sub}` (ledger fee paid on top by B).
+4. `confirmBid(bidId, amount)`. Errors: `BidTooLow{minimum}`, `BidIncrementTooSmall{...}`, `OfferExpired`, `InvalidState`.
+5. Before confirming B may take funds back with `withdrawBidEscrow(bidId, amount)`; after confirming only the excess above bid + one fee. `getBidEscrowBalance(bidId)` shows the balance.
+
+### Seller decisions
+`acceptBid(offerId)` completes with the current highest bid before expiry. `cancelOffer(offerId)` (fact 10).
+
+### Read state
+- `getOfferFeed({start_id, length, filter: [{states, asset_types, creator, has_bids, public_only, viewer}]})` → `{offers, has_more, next_start_id}`, newest first; continue with `start_id = next_start_id`.
+- `getPublicOffers()`, `getActiveOffers()`, `getOffersByCreator(P)`, `getPrivateOffersFor(P)`, `getBidsByBidder(P)`, `queryBid(bidId)`, `getMarketStats()`, `getPaymentStats()`.
+- Escrowed bots: `getNeuronManagerInfo(canister)` (cached `getCachedNeuronManagerInfoQuery`), `getCanisterInfo(offerId, i)`.
+- Notification preferences (via Sneed SMS): `getMyNotificationSettings()` / `setMyNotificationSettings(...)`.
+
+## Minimal JavaScript setup
+
+```js
+import { Actor, HttpAgent } from '@dfinity/agent';
+import { Principal } from '@dfinity/principal';
+import { idlFactory } from './sneedex.did.js'; // src/declarations/sneedex/sneedex.did.js
+
+const SNEEDEX = Principal.fromText('7bvk3-ryaaa-aaaal-qtykq-cai');
+const agent = await HttpAgent.create({ identity, host: 'https://icp-api.io' });
+const sneedex = Actor.createActor(idlFactory, { agent, canisterId: SNEEDEX });
+const feed = await sneedex.getOfferFeed({ start_id: [], length: 20n, filter: [{ states: [[{ Active: null }]], asset_types: [], creator: [], has_bids: [], public_only: [true], viewer: [] }] });
+```
+
+## dfx examples
+
+```bash
+dfx canister --network ic call 7bvk3-ryaaa-aaaal-qtykq-cai getOfferFeed '(record { start_id = null; length = 20 : nat; filter = opt record { states = opt vec { variant { Active } }; asset_types = null; creator = null; has_bids = null; public_only = opt true; viewer = null } })' --query
+dfx canister --network ic call 7bvk3-ryaaa-aaaal-qtykq-cai getOfferView '(1 : nat)' --query
+dfx canister --network ic call 7bvk3-ryaaa-aaaal-qtykq-cai getFeeConfig '()' --query
+```
+
+## In Sneed Hub
+
+Marketplace https://app.sneeddao.com/sneedex, browse https://app.sneeddao.com/sneedex_offers, one offer https://app.sneeddao.com/sneedex_offer/<offerId>, create wizard https://app.sneeddao.com/sneedex_create (does the escrow steps above, including the NFT self-transfer test and Sneed Lock fee funding), your offers and bids https://app.sneeddao.com/sneedex_my, help https://app.sneeddao.com/help/sneedex. Reference implementation: `src/app_sneeddao_frontend/src/pages/SneedexCreate.jsx` and `SneedexOffer.jsx`.
+
+
+<!-- ===== skill: sneed-forum (https://app.sneeddao.com/.well-known/agent-skills/sneed-forum/SKILL.md) ===== -->
+
+
+# Sneed SNS forum integration skill
+
+The forum canister stores every forum, topic, thread, post, vote, poll and tip record of Sneed Hub's forum. Read the full reference at https://app.sneeddao.com/api-docs/sneed_sns_forum.md for every method and type. Production `mcigm-4aaaa-aaaad-qhlkq-cai`, staging `nrtf2-wiaaa-aaaad-aankq-cai` (same code, separate state).
+
+**Everything is public and signed.** Every thread, post, vote, poll vote and tip record carries the author's principal (`created_by`, `voter_principal`, `from_principal`) and can be read by anyone. There is no anonymous posting; anonymous callers are refused for writes. Tell users this before they post.
+
+## Core facts to keep straight
+
+1. **Hierarchy.** Forum (one per SNS, `sns_root_canister_id`) → topics (may nest: `parent_topic_id`) → threads (`title` optional, `body`) → posts (`reply_to_post_id` makes a reply tree). Ids are `nat` from one shared counter, so a thread id and a post id never collide.
+2. **Who may create what.** Forums and topics: forum admins only (`create_forum`, `create_topic`). Any logged-in principal can call `create_sns_forum_setup(sns_root)` (creates, where missing, the forum of an SNS known to SNS-W, its Governance topic and the Proposals subtopic under it; returns the Proposals topic id) and `create_special_topic({sns_root_canister_id; special_topic_type = General | Governance | Preproposals})`. Threads and posts: any non-anonymous principal; no neuron is needed to post. A post's thread must belong to a forum linked to an SNS (else `No SNS governance canister found`).
+3. **Editing and deleting.** `update_thread` / `update_post`: the author or an admin. `delete_post`: the author or an admin. Deleting forums, topics and threads is admin only. Deletes are soft (`deleted = true`, hidden from normal queries; admins can `undelete_*`).
+4. **Votes are per neuron.** `vote_on_post(post_id, variant {upvote} | {downvote})` asks the SNS governance canister for every neuron the caller can reach (controller or hotkey) and records one vote per neuron with its voting power at that moment. `vote_on_post_with_neurons(post_id, vote, [ {id = blob} ])` limits it to the given neurons. Re-voting replaces a neuron's vote; `retract_vote` / `retract_vote_with_neurons` remove them. No reachable neuron → `Unauthorized("No accessible neurons found")`. Post scores: `upvote_score`, `downvote_score` (summed voting power, base units).
+5. **Polls.** `create_poll({thread_id; post_id = opt id | null; title; body; options (≥ 2); end_timestamp (ns, future); vp_power = opt float (default 1.0; 0 = one neuron one vote, 0.5 = square root, …); allow_vote_changes = opt bool (default true)})`. Only the thread's (or post's) author can attach a poll, one per thread and one per post. Vote with `vote_on_poll_with_neurons(poll_id, option_id, neuron_ids)` before `end_timestamp`.
+6. **Tips are records, not transfers.** The tipper first sends tokens with the token ledger's own `icrc1_transfer` to the post author's account `{owner = author; subaccount = null}`, then calls `create_tip(to, post_id, ledger, amount, opt block_index)`. The forum does not move or verify tokens; treat a tip record as the tipper's claim and check the ledger block if it matters. A transfer cannot be undone.
+7. **Mentions.** A mention is a Markdown link whose text starts with `@` and whose target is a Sneed Hub principal page: `[@Name](https://app.sneeddao.com/principal?id=<principal>)`. At most 10 per thread or post are recorded; the principal, not the name, is who is meant. Users opt in to an SMS on mention with `set_mention_sms(true)` (Sneed Hub: /me); that SMS is sent by the poster's own client from the poster's principal.
+8. **Notifications.** New replies, mentions and tips are also handed to the Sneed Notifications canister (`get_notifications_canister()`), best effort.
+9. **Text limits are configurable.** Read `get_text_limits()` and `get_premium_config()` before posting; Sneed Premium members get longer thread and post bodies (production on 2026-10-20: body 4_000 chars, premium 12_000; titles 200 for threads, 100 for posts). Too long → `InvalidInput`.
+10. **Errors** are `variant { AlreadyExists; InternalError; InvalidInput; NotFound; Unauthorized : text }` inside `Result` (`ok : nat` = new id). Query responses are not certified.
+
+## Procedures
+
+### Find an SNS forum and read it
+1. `get_forum_by_sns_root(snsRoot)` → `opt ForumResponse` (null: no forum yet; a logged-in user can create it with `create_sns_forum_setup`).
+2. `get_topics_by_forum(forum_id)`, `get_subtopics(topic_id)`.
+3. Threads, newest activity first, paged: `get_threads_by_activity(topic_id, start_from, length, reverse)` → `{threads; has_more; next_start_from}`; pass `next_start_from` back as `start_from`. (`get_threads_by_topic` returns all at once.)
+4. `get_thread(id)`, `get_posts_by_thread(thread_id)` (all live posts; build the tree from `reply_to_post_id`), `get_post(id)`, `get_post_replies(post_id)`, `get_thread_context(thread_id)` → forum, topic and SNS root.
+5. Site-wide activity: `get_feed({start_id = null; length = 20; filter = opt {sns_root_canister_ids; topic_ids; creator_principals; search_text}})` → `{items; has_more; next_start_id}`, newest first; continue with `start_id = next_start_id`.
+
+### Post
+- New thread: `create_thread({topic_id; title = opt "…"; body})` → `ok thread_id`.
+- Reply: `create_post(thread_id, opt reply_to_post_id, opt title, body)` → `ok post_id`.
+- Edit: `update_thread(id, title, body)`, `update_post(id, title, body)`.
+
+### Vote on posts and polls
+`vote_on_post_with_neurons(post_id, variant { upvote }, neuron_ids)`; inspect with `get_post_votes(post_id)` or `get_thread_votes_for_neurons(thread_id, neuron_ids)`. Polls: `get_polls_by_thread`, `get_poll(id)` (options with `vote_count`, `total_voting_power`), `vote_on_poll_with_neurons`, `get_poll_votes`.
+
+### Proposal discussions
+`get_proposal_thread(sns_root, proposal_id)` → mapping or null. `create_proposal_thread_with_auto_setup({sns_root_canister_id; proposal_id})` creates the forum structure if missing and the thread. Reverse: `get_thread_proposal_id(thread_id)`.
+
+### A user's activity
+`get_threads_by_user(p)`, `get_posts_by_user(p)`, `get_replies_to_user(p)`, `get_tips_received_by_user(p)`, `get_tips_given_by_user(p)`, `get_tip_tokens_received_by_user(p)`, `get_mentions_of_user(p, before, limit ≤ 100)` → `{items; next}` (newest first; pass `next` as `before`). Unseen counts: `get_recent_replies_count`, `get_recent_tips_count`, `get_recent_mentions_count`; mark seen with `mark_replies_seen_up_to(ns)` etc. (caller only).
+
+## Sneed Hub pages
+
+- Forum of the selected SNS: `https://app.sneeddao.com/forum?sns=<sns_root>`; topic `https://app.sneeddao.com/topic/<topic_id>?sns=<sns_root>`.
+- Thread `https://app.sneeddao.com/thread?threadid=<id>`; post `https://app.sneeddao.com/post?postid=<id>`.
+- Feed `/feed`, own posts `/posts`, tips `/tips`, proposal with its discussion `/proposal?proposalid=<id>&sns=<sns_root>`, mention-SMS setting on `/me`.
+
+## Minimal JavaScript setup
+
+```js
+import { Actor, HttpAgent } from '@dfinity/agent';
+import { Principal } from '@dfinity/principal';
+import { idlFactory } from './sneed_sns_forum.did.js'; // src/declarations/sneed_sns_forum in the repo
+
+const agent = new HttpAgent({ identity, host: 'https://icp-api.io' }); // anonymous identity is enough for queries
+const forum = Actor.createActor(idlFactory, { agent, canisterId: 'mcigm-4aaaa-aaaad-qhlkq-cai' });
+const f = await forum.get_forum_by_sns_root(Principal.fromText(snsRoot)); // [] or [ForumResponse]
+const page = await forum.get_threads_by_activity(topicId, [], 20n, false);
+```
+
+## dfx examples
+
+```bash
+dfx canister --network ic call mcigm-4aaaa-aaaad-qhlkq-cai get_text_limits --query
+dfx canister --network ic call mcigm-4aaaa-aaaad-qhlkq-cai get_feed '(record { start_id = null; length = 10 : nat; filter = null })' --query
+dfx canister --network ic call mcigm-4aaaa-aaaad-qhlkq-cai get_posts_by_thread '(1 : nat)' --query
+```
+
+## Reference implementation
+
+Sneed Hub's forum UI: `src/app_sneeddao_frontend/src/pages/Forum.jsx`, `Topic.jsx`, `Thread.jsx`, `components/ThreadViewer.jsx` (posting, voting, tipping), `utils/mentions.js`, under https://github.com/Snassy-icp/app_sneeddao.
+
+
+<!-- ===== skill: sneed-sms (https://app.sneeddao.com/.well-known/agent-skills/sneed-sms/SKILL.md) ===== -->
+
+
+# Sneed SMS integration skill
+
+Sneed SMS delivers short messages from one Internet Computer principal to others. Read the full reference at https://app.sneeddao.com/api-docs/sneed_sms.md for every method and type. Production `zelpl-7yaaa-aaaad-abtcq-cai`, staging `v33jy-4qaaa-aaaad-absna-cai` (same code, separate state). Sending is free; there is no fee.
+
+**Not encrypted, not anonymous.** Messages are stored as plaintext in canister memory. The query methods only return a message to its sender and recipients, but anyone who can read the canister's state (its controllers, the subnet's node machines) could see it, and query replies are not certified. Every message names its sender's principal. Tell users: do not send seed phrases, passwords or anything private through Sneed SMS.
+
+## Core facts to keep straight
+
+1. **A message** = `{id; sender; recipients : vec principal; subject; body; reply_to : opt vec nat; created_at; updated_at (ns)}`. The caller sees `can_remove_self` too.
+2. **Access.** Only the sender and the current recipients can read a message (`get_message` returns `null` for anyone else). Anonymous callers cannot send.
+3. **Limits** come from `get_config()` and, for Sneed Premium members, `get_premium_config()`. Production on 2026-10-20: subject 100 chars, body 2_000, 5 recipients, one message per 10 minutes; Premium: subject 200, body 12_000, 50 recipients, one per minute. Premium is checked live against the Sneed Premium canister (`7gump-4aaaa-aaaal-qtyka-cai`); if it is unreachable the plain limits apply. Read the config rather than hard-coding.
+4. **Rate limit** counts from the caller's last sent message: `RateLimited("Must wait N more minutes …")`. Empty subject or body, no recipients, too many recipients, or text too long → `InvalidInput`.
+5. **Replies** list the message ids they answer in `reply_to`; the caller must have access to each (else `Unauthorized`, or `NotFound` if gone).
+6. **Leaving.** `remove_self_from_message(id)` removes the caller (sender or recipient). When the sender leaves, the others still see the message with the sender shown as the anonymous principal `2vxsx-fae`; when nobody is left the message is deleted. There is no edit and no recall: once sent, recipients keep it.
+7. **System notifications.** `send_system_notification` is only for authorised canisters (forum mention SMSes are not system notifications: the poster's own client sends them with `send_message`). Its sender is shown as `get_system_sender_principal()`.
+8. **Errors**: `variant { AlreadyExists; InvalidInput; NotFound; RateLimited; Unauthorized : text }` inside `Result` (`ok : nat` = new message id). Queries called as update calls are refused by the ingress guard; call them as queries.
+
+## Procedures
+
+### Send a message
+1. Optional: `get_config()` / `get_premium_config()` to size the text.
+2. `send_message({recipients = vec { principal "…" }; subject = "…"; body = "…"; reply_to = null})` → `ok id`.
+3. Reply: `reply_to = opt vec { original_id }`, recipients = the original sender (and others), subject conventionally `Re: …`.
+
+### Read
+- `get_received_messages()`, `get_sent_messages()`, `get_all_messages()` (both, deduplicated) – all for the caller, unpaged; sort by `created_at` yourself.
+- `get_message(id)` → `opt MessageResponse`.
+- Unread badge: `get_recent_messages_count(p)` counts received messages newer than the last-seen mark; `mark_messages_seen_up_to(ns)` (caller) sets the mark; `get_last_seen_messages_timestamp(p)`.
+- Totals: `get_stats()` → `{total_messages; total_users}`.
+
+## Sneed Hub pages
+
+- Inbox and compose: `https://app.sneeddao.com/sms`.
+- Compose to someone: `https://app.sneeddao.com/sms?recipient=<principal>`; reply to a message: `/sms?reply=<message_id>`.
+- One message (thread view): `https://app.sneeddao.com/msg/<message_id>`.
+- A principal's public page: `/principal?id=<principal>`. Mention-SMS opt-in (forum): `/me`.
+
+## Minimal JavaScript setup
+
+```js
+import { Actor, HttpAgent } from '@dfinity/agent';
+import { Principal } from '@dfinity/principal';
+import { idlFactory } from './sneed_sms.did.js'; // src/declarations/sneed_sms in the repo
+
+const agent = new HttpAgent({ identity, host: 'https://icp-api.io' }); // the user's own identity: messages are per caller
+const sms = Actor.createActor(idlFactory, { agent, canisterId: 'zelpl-7yaaa-aaaad-abtcq-cai' });
+const r = await sms.send_message({ recipients: [Principal.fromText(to)], subject: 'Hello', body: 'Hi there', reply_to: [] });
+if ('err' in r) console.error(r.err); else console.log('sent message', r.ok);
+const inbox = await sms.get_received_messages();
+```
+
+## dfx examples
+
+```bash
+dfx canister --network ic call zelpl-7yaaa-aaaad-abtcq-cai get_config --query
+dfx canister --network ic call zelpl-7yaaa-aaaad-abtcq-cai get_premium_config --query
+dfx canister --network ic call zelpl-7yaaa-aaaad-abtcq-cai get_received_messages --query   # as your own identity
+dfx canister --network ic call zelpl-7yaaa-aaaad-abtcq-cai send_message '(record { recipients = vec { principal "<recipient-principal>" }; subject = "Hello"; body = "Hi"; reply_to = null })'
+```
+
+## Reference implementation
+
+Sneed Hub's messaging page `src/app_sneeddao_frontend/src/pages/SMS.jsx` under https://github.com/Snassy-icp/app_sneeddao.
+
+
+<!-- ===== skill: sneed-names (https://app.sneeddao.com/.well-known/agent-skills/sneed-names/SKILL.md) ===== -->
+
+
+# Sneed naming service skill
+
+Six canisters hold the names Sneed Hub shows. All are on production and Sneed Hub reads and writes them directly; the older naming methods of `app_sneeddao_backend` (`set_principal_name`, `set_neuron_name`, ...) are legacy: their data was imported into these canisters and the imports are closed. The backend stays the moderation authority (bans and the word blacklist), which the name canisters consult on every public name. Full reference: https://app.sneeddao.com/api-docs/sneed_names.md.
+
+| Canister | Holds | Production | Staging |
+|---|---|---|---|
+| `sneed_pid_names` | public names and avatars of accounts and canisters, ICRC-3 log | `ejz7n-lyaaa-aaaad-qmkzq-cai` | `qechb-aiaaa-aaaad-ag6lq-cai` |
+| `sneed_neuron_names` | public names of SNS neurons, ICRC-3 log | `e46oa-kqaaa-aaaad-qmk2a-cai` | `rjmdp-paaaa-aaaad-ag6ma-cai` |
+| `sneed_pid_nicknames` | each user's private labels for principals | `e37iu-hiaaa-aaaad-qmk2q-cai` | `ronf3-cyaaa-aaaad-ag6mq-cai` |
+| `sneed_neuron_nicknames` | each user's private labels for neurons | `es4di-raaaa-aaaad-qmk3a-cai` | `rhooh-uqaaa-aaaad-ag6na-cai` |
+| `sneed_avatars` | avatar images (content-addressed) | `ev5f4-4yaaa-aaaad-qmk3q-cai` | `rapit-ziaaa-aaaad-ag6nq-cai` |
+| `sneed_profiles` | dapp registry (the "dapp" labels of principals), ICRC-3 log | `fytbs-tqaaa-aaaad-qmk4a-cai` | `rviz6-yaaaa-aaaad-ag6oa-cai` |
+
+Candid: `src/declarations/<canister>/<canister>.did` in the repo. Results are `variant { ok: text; err: text }` unless noted; errors are readable sentences.
+
+## Core facts to keep straight
+
+1. **Names are public; nicknames are private to the caller.** A public name (`sneed_pid_names`, `sneed_neuron_names`) is visible to everyone and written to an ICRC-3 log. A nickname is returned only to the principal that set it (`get_my_nicknames*` are caller-scoped) and has no public log, but it is not encrypted: canister controllers could read it. Never describe a nickname as secret, or a name as anonymous.
+2. **Accounts, not principals.** In `sneed_pid_names` a person's account groups several principals (`members`, each `owner` or `member`, with an optional dapp label); every member shows the account's name. Self-authenticating principals get accounts; canister ids get canister names instead (set by a controller, or by the governance of the SNS whose root controls the canister).
+3. **Name rules** (both public names and nicknames): 1 to 32 characters (canisters at least 2), letters a-z A-Z, digits, spaces, `-`, `_`, `.`, `'`; at least one letter or digit; no leading, trailing or double spaces. Unique ignoring capitals (`That name is taken`; neurons: unique per SNS). Public names also pass the backend moderator; if it does not answer, the name is refused (retry).
+4. **Checkmark.** `verified` is true only while the stored verification matches the current name; renaming drops it. Verification comes from canister admins (`verify`), from Sneed DAO by proposal (`verify_by_dao`, a generic nervous system function with `validate_verify_by_dao`), and for neurons also from the neuron's own SNS (`verify_by_sns`).
+5. **Hotkeys.** An owner may `add_hotkey(p)`: `p` can then manage the account and `merge_account` it into its own account. A hotkey is not shown as a member.
+6. **Avatars** are `AvatarRef = variant { url: text; blob: blob }`: an `https://` link (max 512 chars) or the 32-byte SHA-256 of an image in `sneed_avatars`, served at `https://ev5f4-4yaaa-aaaad-qmk3q-cai.raw.icp0.io/<64 hex chars>`. Upload first with `sneed_avatars.upload(bytes)` (PNG, JPEG, GIF or WebP, at most 48 KiB, a limited number held per principal) → `ok(hash)`; `release(hash)` stops holding it. An image nobody holds is freed, and a name pointing at it shows no avatar.
+7. **NFT avatars.** `set_my_nft_avatar(opt {collection; token_id})` shows an ICRC-7 NFT; the canister checks with `icrc7_owner_of` that one of the account's principals owns it (any subaccount). Clients must check ownership again when they display it (the NFT may have been sold): Sneed Hub does, and falls back to the account's other avatar. Anyone signed in may call `refresh_nft_avatar(account)` to clear one that changed hands.
+8. **Batch reads**: `get_names` takes up to 500 keys and answers in order (`null` = nothing set). To mirror everything, page `changes_since({after; limit})` from `after = 0`, continuing with the last item's `seq` until empty.
+9. **The anonymous principal cannot write.** Every setter needs a signed-in caller; the user signs in Sneed Hub (or their own agent identity). Never ask a user for keys or seed phrases.
+
+## Procedures
+
+### Look up who a principal is
+`sneed_pid_names.get_name(p)` → `opt NameInfo {name, verified, avatar, nft_avatar, kind: account(id) | canister, dapp, run_by}` (query, anonymous is fine). Many at once: `get_names(vec principal)`. Full account: `get_account_of(p)` / `get_account(id)` → members, hotkeys, verification. Search: `search({prefix; kind: opt (account | canister); limit})`; directory: `list_names({start_after; limit})`.
+
+### Look up a neuron's name
+Key is `NeuronKey = {sns_root: principal; neuron_id: blob}`. `sneed_neuron_names.get_name(k)` / `get_names(vec k)`; per SNS: `list_by_sns({sns_root; start_after; limit})`, `search({sns_root; prefix; limit})`.
+
+### Set your own name and avatar (in Sneed Hub: https://app.sneeddao.com/me)
+`set_my_name(name)` (creates the account on first use; `""` clears). `set_my_avatar(opt AvatarRef)`. `set_my_nft_avatar(opt NftRef)`. For an account you manage as a hotkey: `set_account_name(id, name)`, `set_account_avatar(id, avatar)`; list them with `my_hotkey_accounts()`.
+
+### Group principals into one account
+- Hotkey and merge: from the account to be merged, `add_hotkey(P)`; then, as `P`, `merge_account(fromId)`. Its principals join P's account as members; if P's account had no name it takes the merged name and checkmark.
+- Principals you cannot sign in with here (e.g. an NNS dapp principal that staked an SNS neuron you hold a permission on): `link_by_neuron(sns_root, neuron_id, memo, principal, dapp)`; the neuron id must be that principal's staking subaccount with `memo`.
+- `set_member(principal, role, dapp)`, `remove_member(principal)`, `remove_hotkey(account, hotkey)`.
+
+### Name a canister
+As a controller (or the governance of the SNS controlling it): `set_canister_name(canister, name)`, `set_canister_avatar(canister, avatar)`, `set_canister_run_by(canister, opt accountId)` (you must also own that account).
+
+### Name a neuron
+`sneed_neuron_names.set_name(k, name)` needs a permission on the neuron (`That name is taken in this SNS` if used); `set_avatar(k, avatar)`.
+
+### Private nicknames (in Sneed Hub: https://app.sneeddao.com/names)
+Principals: `sneed_pid_nicknames.set_nickname(target, text)` (`""` removes), `set_nickname_avatar`, `get_my_nicknames({start_after; limit})` (500 a page), `get_my_nicknames_for(vec principal)`, `search_my_nicknames(prefix, limit)`, `my_nickname_count()` → `{count; max_free; max_premium}` (Sneed Premium members may keep more). Neurons: the same methods on `sneed_neuron_nicknames` with `NeuronKey` targets.
+
+### Dapp registry (sneed_profiles)
+`list_dapps({start_after; limit})`, `get_dapps(vec id)`, `search_dapps(prefix, limit)`. `register_dapp({name; url; logo; canisters})` → `ok(id)` as a controller of at least one listed canister (or the governance of the SNS that controls one); `update_dapp(id, input)` (a new name loses the checkmark). Members of an account use the id as their `dapp` label. No public Sneed Hub page registers dapps yet.
+
+### Audit (ICRC-3)
+`sneed_pid_names`, `sneed_neuron_names` and `sneed_profiles` log every change as ICRC-3 blocks: `icrc3_log_status`, `icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`. Text logs: `get_log(start, length)`.
+
+## Minimal JavaScript setup
+
+```js
+import { Actor, HttpAgent } from '@dfinity/agent';
+import { Principal } from '@dfinity/principal';
+import { idlFactory } from './sneed_pid_names.did.js'; // generate from the .did with didc or dfx
+const agent = new HttpAgent({ host: 'https://icp-api.io' }); // anonymous is enough for reads
+const names = Actor.createActor(idlFactory, { agent, canisterId: 'ejz7n-lyaaa-aaaad-qmkzq-cai' });
+const [info] = await names.get_name(Principal.fromText('<principal>')); // undefined = no name
+```
+
+## dfx examples
+
+```bash
+dfx canister --network ic --identity anonymous call ejz7n-lyaaa-aaaad-qmkzq-cai get_name '(principal "<principal>")' --query
+dfx canister --network ic --identity anonymous call ejz7n-lyaaa-aaaad-qmkzq-cai search '(record { prefix = "sneed"; kind = null; limit = 10 : nat })' --query
+dfx canister --network ic --identity anonymous call e46oa-kqaaa-aaaad-qmk2a-cai list_by_sns '(record { sns_root = principal "fp274-iaaaa-aaaaq-aacha-cai"; start_after = null; limit = 50 : nat })' --query
+```
+
+## Reference implementation
+
+`src/app_sneeddao_frontend/src/utils/NamingService.js` (every call above, the name mirror, avatar URLs), `src/utils/nftAvatars.js` (display-time NFT ownership check), `src/components/AccountPanel.jsx` (hotkeys and merging), pages `/me` and `/names`, under https://github.com/Snassy-icp/app_sneeddao/tree/main/src/app_sneeddao_frontend. Canister sources: `src/sneed_pid_names`, `src/sneed_neuron_names`, `src/sneed_pid_nicknames`, `src/sneed_neuron_nicknames`, `src/sneed_avatars`, `src/sneed_profiles`, shared rules in `src/sneed_names`.
+
+
+<!-- ===== skill: sneed-notifications (https://app.sneeddao.com/.well-known/agent-skills/sneed-notifications/SKILL.md) ===== -->
+
+
+# Sneed Notifications skill
+
+Sneed Notifications is a message hub: apps declare topics, users allow apps and pick channels and rules, the apps' canisters call `notify`, and messages wait in the canister until delivered: Sneed SMS by the canister itself, every other channel by relays that pull jobs and report back. Users pay for their own deliveries on paid channels; an app may sponsor a message. Full reference: https://app.sneeddao.com/api-docs/sneed_notifications.md. Candid: `src/declarations/sneed_notifications/sneed_notifications.did`.
+
+Canisters: production `vuy7a-iaaaa-aaaay-aaduq-cai` (live; early: one app registered so far, Sneed Hub's forum), staging `uqvqs-raaaa-aaaay-aadsq-cai`. User page: https://app.sneeddao.com/notifications, help: https://app.sneeddao.com/help/notifications. Payments in ICP, ledger `ryjl3-tyaaa-aaaaa-aaaba-cai`, fee 10_000 e8s.
+
+## Core facts to keep straight
+
+1. **Nothing arrives until the user allows the app.** `notify` answers `err(not_allowed)` when the user has no permission record for the app or blocked it. Apps ask with `request_permission(user)`; the request shows in the user's notification centre; the user decides with `allow_app(app, true|false)` (allowing applies default caps).
+2. **Sneed SMS is always there and free.** Every user has a verified `sneed_sms` channel, and by default `always_copy` points at it, so every allowed notification is also copied to the user's Sneed SMS inbox. Removing that copy is the user's choice.
+3. **Other channels need a running relay and verification.** Production has relays for `discord` and `push` (phone push, installed app); `telegram`, `email` and `sms` have none yet. `get_relay_keys()` lists the kinds that work. A channel address is encrypted in the client to the relay's key (RSA-OAEP-256 wrapping AES-256-GCM, see `NotificationsService.js`), so the canister and apps cannot read it. `add_channel` sends a 6-digit code through the relay; `verify_channel(id, code)` within 24 hours.
+4. **Prices** (`get_config().prices_e8s`, production now): Sneed SMS 0, push 100, Discord 100, Telegram 100, email 1_000, SMS 1_000_000 e8s per delivery; `notify_price_e8s` is 0. The user's balance pays unless the app sends `sponsored = true`, then the app's balance pays all or nothing (`err(no_funds)`). Top-ups cannot be withdrawn.
+5. **Caps protect the user.** Per app: `daily_cap` messages (default 20) and `daily_spend_cap_e8s` (default 100_000); over the message cap → `err(rate_limited)`; a paid delivery over balance or spend cap is recorded as `suppressed`.
+6. **Levels** `urgent | normal | info` come from the app's topic; the user routes each level to channels (`settings.defaults`), may mute, re-level or re-route a topic (`TopicRule`), `demote` an app, set `copy_only`, mute an app until a time, snooze everything (`snooze_until`) and set quiet hours (`QuietHours`, minutes of the day plus UTC offset; `urgent_passes` lets urgent through). During quiet hours deliveries are held, except Sneed SMS.
+7. **Limits**: title 1-200 chars, body ≤ 2000, link `https://` ≤ 512, `dedupe` key folds repeats within 1 hour (`deduplicated = true`), at most 20 channels per user. Notifications are kept 30 days.
+8. **Only registered app canisters may call `notify` / `notify_batch` / `request_permission`.** `register_app` requires the caller to control every listed canister (or be the governance of an SNS whose root controls it); a canister belongs to one app.
+9. **Never act for a user without their signature.** User methods are caller-scoped; the user signs in Sneed Hub. Do not ask for keys or seed phrases.
+
+## Procedures (user)
+
+### Get notifications from an app
+1. `get_my_requests()` → apps that asked; `list_apps(start, limit)` / `get_app(id)` to inspect (check `verified`, `owner`, `canisters`).
+2. `allow_app(appId, true)`; fine-tune with `set_permission(appId, Permission)`. `get_my_apps()` → `vec (App, Permission)`.
+
+### Add a channel
+1. `get_relay_keys()`; if the kind is missing, it is not available yet.
+2. Encrypt the address to the relay key in the client; `add_channel(kind, label, addressBlob)` → `ok(channelId)`.
+3. Read the code from that channel; `verify_channel(channelId, code)`. `remove_channel(id)` deletes the address.
+
+### Routing, quiet hours, snooze
+`get_my_settings()` → `{settings, channels, balance_e8s}`. Change and send back the whole record with `set_settings(Settings)` (channel ids must be the user's own).
+
+### Pay for deliveries
+`icrc2_approve` the ICP ledger for `amount + 10_000` with spender `{owner = vuy7a-iaaaa-aaaay-aaduq-cai}`, then `top_up(amount_e8s)` → `ok(newBalance)`.
+
+### History
+`get_my_history(limit)` → newest first, each with `deliveries` (`queued | sending | delivered | failed | suppressed`).
+
+## Procedures (dapp developer)
+
+1. `register_app({name; description; logo; canisters; topics = vec {record {id; title; description; level}}})` → `ok(appId)` (sign in as a controller of each canister). `update_app(id, input)` later. Apps start unverified; Sneed DAO admins set the checkmark.
+2. From an app canister: `request_permission(user)` → `ok("Asked" | "Already asked" | "Already decided by the user")`.
+3. From an app canister: `notify({user; topic; title; body; link; dedupe; sponsored})` → `ok{id; deliveries; deduplicated}` or `err(not_registered | not_allowed | unknown_topic | rate_limited | no_funds | invalid text)`. Up to many users at once: `notify_batch(vec NotifyInput)`.
+4. Sponsoring: anyone may fund an app with `top_up_app(appId, amount_e8s)` after an ICRC-2 approval; `get_app_balance(appId)`.
+5. Outcome per message (never where it went): `get_receipts(vec id)` → `pending | delivered | expired | failed | suppressed`.
+
+## dfx examples
+
+```bash
+dfx canister --network ic --identity anonymous call vuy7a-iaaaa-aaaay-aaduq-cai list_apps '(0 : nat, 20 : nat)' --query
+dfx canister --network ic --identity anonymous call vuy7a-iaaaa-aaaay-aaduq-cai get_config --query
+dfx canister --network ic call vuy7a-iaaaa-aaaay-aaduq-cai get_my_settings --query
+```
+
+## Reference implementation
+
+User side: `src/app_sneeddao_frontend/src/utils/NotificationsService.js` (top-up, channel encryption) and `src/pages/Notifications.jsx`. App side: the forum canister `src/sneed_sns_forum` sends replies, mentions and tips. Spec: `spec/sneed_notifications.md`. All under https://github.com/Snassy-icp/app_sneeddao.

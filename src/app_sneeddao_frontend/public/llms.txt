@@ -1,23 +1,48 @@
-# Sneed DAO app
+# Sneed Hub
 
-> Sneed DAO builds open, permissionless tools on the Internet Computer: Sneed Lock (time-locking of ICRC-1 tokens and ICPSwap liquidity positions), a wallet, liquid staking helpers and more. This file lists the machine-readable documentation for integrators and agents.
+> Sneed Hub (https://app.sneeddao.com) is the web app of Sneed DAO, an SNS DAO on the Internet Computer that is governed by its SNEED neurons. Users log in with Internet Identity and get a wallet plus tools for any SNS: Sneed Lock (time locks for ICRC-1 tokens and ICPSwap liquidity, as transferable NFTs), the Sneedex escrow marketplace and swap, SNS and ICP neuron management and liquid staking, staking and trading bots they own, cycles top-ups, an SNS forum with tips and polls, direct messages, notifications, names and avatars, Token Studio safety checks and governance views. This file is the entry point for AI agents: agents explain and guide, and users sign every action themselves in Sneed Hub. Never ask a user for keys or seed phrases.
 
-## Canister API documentation
+## Start here
 
-- [Sneed Lock canister API](https://app.sneeddao.com/api-docs/sneed_lock.md): full reference for pqsms-lqaaa-aaaal-ajjza-cai, with flows, every method, error strings, types and JavaScript examples
-- [Sneed Lock Candid interface](https://app.sneeddao.com/api-docs/sneed_lock.did)
-- [Sneed Lock JavaScript IDL factory](https://app.sneeddao.com/api-docs/sneed_lock.did.js)
+- [sneed-hub skill](https://app.sneeddao.com/.well-known/agent-skills/sneed-hub/SKILL.md): master guide for helping a user - login, every goal mapped to its page URL and buttons, safety rules, how to read public state
+- [llms-full.txt](https://app.sneeddao.com/llms-full.txt): the sneed-hub skill and all integration skills in one file
+
+## Canister API docs
+
+Each reference has Markdown (`.md`), Candid (`.did`) and a JavaScript IDL factory (`.did.js`) at the same path.
+
+- [Sneed Lock](https://app.sneeddao.com/api-docs/sneed_lock.md): token and LP-position locks, dissolve delays, lock NFTs (ICRC-7/37), ICRC-3 log
+- [Sneedex](https://app.sneeddao.com/api-docs/sneedex.md): escrow marketplace for tokens, NFTs, SNS neurons, canisters and locks
+- [Sneed SNS forum](https://app.sneeddao.com/api-docs/sneed_sns_forum.md): forums, topics, threads, posts, votes, polls, tips, mentions
+- [Sneed SMS](https://app.sneeddao.com/api-docs/sneed_sms.md): direct messages between principals
+- [Sneed names](https://app.sneeddao.com/api-docs/sneed_names.md): public names, private nicknames, profiles and avatars
+- [Sneed notifications](https://app.sneeddao.com/api-docs/sneed_notifications.md): notification preferences, channels and app registration
+- [Sneed Premium](https://app.sneeddao.com/api-docs/sneed_premium.md): membership
+- [RLL](https://app.sneeddao.com/api-docs/rll.md): revenue and rewards distribution
+- [Sneedapp](https://app.sneeddao.com/api-docs/sneedapp.md): app store that mints bot canisters
+- [Mr Sneed](https://app.sneeddao.com/api-docs/mr_sneed.md): the DAO mascot's on-chain memory and activity log
+- [Sneed Hub backend](https://app.sneeddao.com/api-docs/app_sneeddao_backend.md): settings, whitelisted tokens, partners, projects
+- [Human-readable API pages](https://app.sneeddao.com/api)
 
 ## Agent skills
 
 - [Agent skills index](https://app.sneeddao.com/.well-known/agent-skills/index.json): discovery index (schema 0.2.0)
-- [sneed-lock skill](https://app.sneeddao.com/.well-known/agent-skills/sneed-lock/SKILL.md): compact, task-oriented guide to integrating Sneed Lock
+- [sneed-hub](https://app.sneeddao.com/.well-known/agent-skills/sneed-hub/SKILL.md): what a user can do on Sneed Hub and how
+- [sneed-lock](https://app.sneeddao.com/.well-known/agent-skills/sneed-lock/SKILL.md): integrate Sneed Lock
+- [sneedex](https://app.sneeddao.com/.well-known/agent-skills/sneedex/SKILL.md): integrate Sneedex
+- [sneed-forum](https://app.sneeddao.com/.well-known/agent-skills/sneed-forum/SKILL.md): read and write the SNS forum
+- [sneed-sms](https://app.sneeddao.com/.well-known/agent-skills/sneed-sms/SKILL.md): send and read direct messages
+- [sneed-names](https://app.sneeddao.com/.well-known/agent-skills/sneed-names/SKILL.md): names, nicknames, avatars
+- [sneed-notifications](https://app.sneeddao.com/.well-known/agent-skills/sneed-notifications/SKILL.md): notifications for users and dapps
+
+## MCP server
+
+- Sneed Hub MCP server: see https://github.com/Snassy-icp/app_sneeddao/tree/main/mcp/sneed-hub (read-only lookups of public on-chain data and deep links into Sneed Hub)
+
+## Help for people
+
+- [Help pages](https://app.sneeddao.com/help): wallet, installing the app, names, DAO, proposals, neurons, liquid staking, forum, messages, notifications, Sneed Lock, Sneedex, SNS Jailbreak, Sneedapp, canister manager, ICP neuron manager, trading bot, Token Studio, tools
 
 ## Source code
 
-- [app_sneeddao on GitHub](https://github.com/Snassy-icp/app_sneeddao): canisters (Motoko) and the reference frontend (React)
-
-## Optional
-
-- [Human-readable API pages](https://app.sneeddao.com/api)
-- [Help pages](https://app.sneeddao.com/help)
+- [app_sneeddao on GitHub](https://github.com/Snassy-icp/app_sneeddao): Motoko canisters and the React frontend
