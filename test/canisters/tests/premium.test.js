@@ -287,20 +287,22 @@ describe('withdrawing a deposit', () => {
   });
 
   it('runs one purchase or withdrawal per caller at a time', async () => {
+    // PocketIC runs queued calls in no fixed order: whichever call takes the lock first, the other
+    // two must be refused as in progress, and no ICP may be lost or paid twice.
     await icp.mint(depositAccount(eve), ICP / 5n);
+    const eveBefore = await balance(account(eve));
     const d = pic.createDeferredActor({ idlFactory: premiumIdl, canisterId: premiumId }); d.setPrincipal(eve);
-    const first = await d.withdrawDeposit();
-    const second = await d.withdrawDeposit();
-    const third = await d.purchaseWithIcp();
-    const [r1, r2, r3] = [await first(), await second(), await third()];
-    expect(r1).toHaveProperty('ok');
-    expect(r2).toEqual({ err: { InProgress: null } });
-    expect(r3.err.InternalError).toMatch(/in progress/);
+    const calls = [await d.withdrawDeposit(), await d.withdrawDeposit(), await d.purchaseWithIcp()];
+    const results = [];
+    for (const c of calls) results.push(await c());
+    const inProgress = (r) => (r.err && ('InProgress' in r.err || /in progress/.test(r.err.InternalError ?? '')));
+    expect(results.filter(inProgress)).toHaveLength(2);
+    // the lock is released afterwards: take back whatever is still deposited
+    const rest = await premiumEve().withdrawDeposit();
+    if ('err' in rest) expect(rest.err).toHaveProperty('NothingToWithdraw');
     expect(await balance(depositAccount(eve))).toBe(0n);
-    expect(await balance(account(eve))).toBe((7n * ICP) / 10n - ICP_FEE + ICP / 5n - ICP_FEE + ICP / 5n - ICP_FEE);
-    // the lock is released afterwards
-    await icp.mint(depositAccount(eve), ICP / 5n);
-    unwrap(await premiumEve().withdrawDeposit());
+    // 0.2 ICP matches no tier, so exactly one withdrawal paid it out, minus one fee
+    expect(await balance(account(eve))).toBe(eveBefore + ICP / 5n - ICP_FEE);
   });
 });
 
