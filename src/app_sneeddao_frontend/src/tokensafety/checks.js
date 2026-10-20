@@ -124,8 +124,11 @@ const loaders = {
         };
     },
     status: (canisterId) => async () => {
-        const m = await CanisterStatus.request({ canisterId: Principal.fromText(canisterId), agent: getAgent(canisterId), paths: ['controllers', 'module_hash'] });
-        return { controllers: (m.get('controllers') || []).map((p) => p.toText()), moduleHash: hexOf(m.get('module_hash')) };
+        // git_commit_id: the source commit DFINITY's builds embed as public metadata (a claim, not proof)
+        const commitPath = { kind: 'metadata', key: 'git_commit_id', path: 'git_commit_id', decodeStrategy: 'utf-8' };
+        const m = await CanisterStatus.request({ canisterId: Principal.fromText(canisterId), agent: getAgent(canisterId), paths: ['controllers', 'module_hash', commitPath] });
+        const commit = String(m.get('git_commit_id') || '').trim();
+        return { controllers: (m.get('controllers') || []).map((p) => p.toText()), moduleHash: hexOf(m.get('module_hash')), gitCommit: /^[0-9a-f]{40}$/.test(commit) ? commit : null };
     },
     /// Every ledger-suite version the NNS ever approved, plus every deployed SNS.
     snsw: async (ctx) => {
@@ -331,7 +334,7 @@ async function classifyControllers(controllers, ctx) {
     return { grade: 'fail', label: `Controlled by ${users.length ? `${users.length} user principal(s)` : ''}${users.length && canisters.length ? ' and ' : ''}${canisters.length ? `${canisters.length} canister(s)` : ''}: ${named.join(', ')}`, kind: 'other' };
 }
 
-function classifyHash(hash, kind, snsw, controllersKind) {
+function classifyHash(hash, kind, snsw, controllersKind, gitCommit = null) {
     if (!hash) return { grade: 'fail', label: 'No code installed' };
     const v = snsw[kind]?.get(hash);
     if (v !== undefined) return { grade: 'pass', label: `DFINITY ICRC ledger suite ${kind}, NNS-approved version ${v + 1} of ${snsw.versions}` };
@@ -339,6 +342,10 @@ function classifyHash(hash, kind, snsw, controllersKind) {
     if (rel && rel.kind === kind) return { grade: 'pass', label: `DFINITY ICRC ledger suite ${kind}, official release ${rel.release}${rel.u256 ? ' (u256)' : ''} (github.com/dfinity/ic)` };
     if (rel) return { grade: 'warn', label: `A DFINITY ICRC ledger suite ${rel.kind} (release ${rel.release}) installed as the ${kind}` };
     if (controllersKind === 'nns') return { grade: 'pass', label: 'Installed by NNS proposal (not in the SNS version list)' };
+    // The canister says which DFINITY commit it was built from, but its hash is none of the builds known
+    // here: someone rebuilt it (or patched it), so the code can't be verified from outside. DFINITY
+    // publishes the hashes of its own build of every commit; the link lets anyone compare.
+    if (gitCommit) return { grade: 'fail', label: `Built from DFINITY IC commit ${gitCommit.slice(0, 8)} by its own account, but not a DFINITY build known here: the code can't be verified. DFINITY's published hashes for that commit: https://download.dfinity.systems/ic/${gitCommit}/canisters/SHA256SUMS` };
     return { grade: 'fail', label: 'Unknown wasm: not an NNS-approved build or an official DFINITY ledger suite release. The registry will know more sources later' };
 }
 
@@ -454,8 +461,8 @@ export function buildTokenTree(ledgerId, config, header = null) {
             if (!cid) return skip('No such canister');
             const [st, snsw] = await Promise.all([status(ctx, cid), ctx.load('snsw', loaders.snsw)]);
             const cls = await classifyControllers(st.controllers, ctx);
-            const h = classifyHash(st.moduleHash, kind, snsw, cls.kind);
-            return { status: h.grade, summary: h.label, details: { canister: cid, module_hash: st.moduleHash }, link: HUB.canister(cid) };
+            const h = classifyHash(st.moduleHash, kind, snsw, cls.kind, st.gitCommit);
+            return { status: h.grade, summary: h.label, details: { canister: cid, module_hash: st.moduleHash, ...(st.gitCommit ? { git_commit_id: st.gitCommit } : {}) }, link: HUB.canister(cid) };
         },
     });
 
