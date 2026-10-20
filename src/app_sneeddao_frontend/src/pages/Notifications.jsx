@@ -44,6 +44,13 @@ export default function Notifications() {
         setLive(kinds);
     }, [actor, identity]);
     useEffect(() => { load().catch((e) => setMsg({ err: e.message || String(e) })); }, [load]);
+    // a code from a tapped notification (/notifications?code=123456) fills the channels waiting for one
+    const codeFromLink = useMemo(() => { const c = new URLSearchParams(window.location.search).get('code'); return /^\d{6}$/.test(c || '') ? c : null; }, []);
+    useEffect(() => {
+        if (!codeFromLink || !data) return;
+        const waiting = data.channels.filter((c) => 'unverified' in c.state);
+        if (waiting.length) setCodes((cs) => Object.fromEntries([...Object.entries(cs), ...waiting.map((c) => [String(c.id), codeFromLink])]));
+    }, [codeFromLink, data]);
 
     const run = async (f, okText) => {
         setBusy(true); setMsg(null);

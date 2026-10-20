@@ -19,7 +19,12 @@ self.addEventListener('notificationclick', (event) => {
     event.waitUntil((async () => {
         const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
         const same = wins.find((w) => new URL(w.url).origin === url.origin);
-        if (same && url.origin === self.location.origin) { await same.focus(); return same.navigate(url.href); }
+        if (same && url.origin === self.location.origin) {
+            // navigate() is refused for windows this worker doesn't control (and on some iOS versions):
+            // then tell the page where to go, and open a window if even focusing fails
+            try { await same.focus(); } catch { return self.clients.openWindow(url.href); }
+            try { return await same.navigate(url.href); } catch { same.postMessage({ type: 'sneed-open', url: url.pathname + url.search }); return same; }
+        }
         return self.clients.openWindow(url.href);
     })());
 });

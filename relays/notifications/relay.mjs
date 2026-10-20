@@ -64,13 +64,21 @@ async function discord(job, addr) {
     const ch = await fetch('https://discord.com/api/v10/users/@me/channels', { method: 'POST', headers: H, body: JSON.stringify({ recipient_id: addr.discord_id }) });
     if (!ch.ok) throw new Error(`Discord: can't open a DM (${ch.status}); share a server with Mr Sneed and allow DMs from its members`);
     const { id } = await ch.json();
-    const content = `**[${job.app}] ${job.title}**${job.body ? `\n${job.body}` : ''}${job.link[0] ? `\n<${job.link[0]}>` : ''}\n-# via Sneed Notifications · manage: <${HUB}/notifications>`;
+    const code = verificationCode(job);
+    const content = code ? `**Your Sneed Notifications code: ${code}**\nEnter it in Sneed Hub → Notifications: <${HUB}/notifications?code=${code}>` : `**[${job.app}] ${job.title}**${job.body ? `\n${job.body}` : ''}${job.link[0] ? `\n<${job.link[0]}>` : ''}\n-# via Sneed Notifications · manage: <${HUB}/notifications>`;
     const r = await fetch(`https://discord.com/api/v10/channels/${id}/messages`, { method: 'POST', headers: H, body: JSON.stringify({ content: content.slice(0, 2000), allowed_mentions: { parse: [] } }) });
     if (!r.ok) throw new Error(`Discord: send failed (${r.status})`);
 }
 
+// A channel's verification code, if this job carries one (the canister's "Your Sneed Notifications code: 123456").
+const verificationCode = (job) => (job.app === 'Sneed Notifications' && /code: (\d{6})$/.exec(job.title)?.[1]) || null;
+
 async function push(job, sub) {
-    const payload = JSON.stringify({ title: `${job.app}: ${job.title}`, body: job.body.slice(0, 300), link: job.link[0] || `${HUB}/notifications`, tag: `sneed-${job.id}` });
+    // A verification code goes first, so a phone banner never cuts it off; tapping it opens the page with the code filled in.
+    const code = verificationCode(job);
+    const payload = JSON.stringify(code
+        ? { title: `Your code: ${code}`, body: 'Enter it in Sneed Hub → Notifications to turn on notifications for this device.', link: `${HUB}/notifications?code=${code}`, tag: `sneed-${job.id}` }
+        : { title: `${job.app}: ${job.title}`, body: job.body.slice(0, 300), link: job.link[0] || `${HUB}/notifications`, tag: `sneed-${job.id}` });
     try {
         await webpush.sendNotification(sub, payload, { TTL: 86_400, vapidDetails: { subject: HUB, publicKey: vapid.publicKey, privateKey: vapid.privateKey } });
     } catch (e) {
