@@ -189,7 +189,7 @@ export function CheckPanel({ ledgerId, onHeader, onRating, indexOverride = null 
             </div>
 
             <div style={{ color: theme.colors.mutedText, fontSize: '0.78rem', marginTop: 12, lineHeight: 1.6 }}>
-                The two gates come first: controllers and module hashes are read through the IC's public state, and hashes are compared with every ledger-suite version the NNS has approved. When a gate fails, nothing the ledger reports can be trusted, so the rating is "Unverifiable" whatever the other checks say. Holders are rebuilt from the ledger's own block log in your browser. Locks and locked liquidity come from Sneed Lock, pools from ICPSwap, and cycles from the blackhole canister or the SNS root where they are observable. A button on a line opens the studio action that answers it.
+                The two gates come first: controllers and module hashes are read through the IC's public state, and hashes are compared with every ledger-suite version the NNS has approved and every official DFINITY ledger suite release. When a gate fails, nothing the ledger reports can be trusted, so the rating is "Unverifiable" whatever the other checks say. Holders are rebuilt from the ledger's own block log in your browser. Locks and locked liquidity come from Sneed Lock, pools from ICPSwap, and cycles from the blackhole canister, the SNS root or NNS root where they are observable. A button on a line opens the studio action that answers it.
             </div>
         </>
     );

@@ -22,6 +22,7 @@ import { idlFactory as governanceIdl } from 'external/sns_governance/sns_governa
 import { guardianIdl, guardianById, policySummary } from './guardianIdl.js';
 import { NEVER_NS } from '../utils/lockTime';
 import { getLedgerTokenLocks, getTokenPositionLocks } from '../utils/sneedLockLists';
+import { DFINITY_LEDGER_RELEASES } from './dfinityReleases.js';
 const NEVER_MS = Number(NEVER_NS / 1_000_000n);
 
 export const IDS = {
@@ -77,6 +78,13 @@ const blackholeIdl = ({ IDL }) => IDL.Service({
         status: IDL.Variant({ running: IDL.Null, stopping: IDL.Null, stopped: IDL.Null }), memory_size: IDL.Nat, cycles: IDL.Nat,
         settings: IDL.Record({ freezing_threshold: IDL.Nat, controllers: IDL.Vec(IDL.Principal), memory_allocation: IDL.Nat, compute_allocation: IDL.Nat }),
         module_hash: IDL.Opt(IDL.Vec(IDL.Nat8)),
+    })], []),
+});
+// NNS root answers canister_status for any canister it controls (anyone may ask). Only the fields
+// read here: its settings record differs from the blackhole's.
+const nnsRootIdl = ({ IDL }) => IDL.Service({
+    canister_status: IDL.Func([IDL.Record({ canister_id: IDL.Principal })], [IDL.Record({
+        status: IDL.Variant({ running: IDL.Null, stopping: IDL.Null, stopped: IDL.Null }), memory_size: IDL.Nat, cycles: IDL.Nat,
     })], []),
 });
 const Account = IDL.Record({ owner: IDL.Principal, subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)) });
@@ -317,7 +325,7 @@ async function classifyControllers(controllers, ctx) {
     const named = await Promise.all(controllers.map(async (c) => (BLACKHOLES[c] ? BLACKHOLES[c] : guardianById(c) ? guardianById(c).name : snsw.byRoot.has(c) ? await daoLabel(snsw.byRoot.get(c), ctx) : c === IDS.nnsRoot ? 'NNS root' : c)));
     const canisters = controllers.filter((c) => c.length === 27);
     const users = controllers.filter((c) => c.length !== 27);
-    if (controllers.length > 1 && controllers.some((c) => BLACKHOLES[c] || guardianById(c) || snsw.byRoot.has(c))) {
+    if (controllers.length > 1 && controllers.some((c) => BLACKHOLES[c] || guardianById(c) || snsw.byRoot.has(c) || c === IDS.nnsRoot)) {
         return { grade: 'fail', label: `Mixed controllers: ${named.join(', ')}. The DAO or blackhole does not control this alone`, kind: 'mixed' };
     }
     return { grade: 'fail', label: `Controlled by ${users.length ? `${users.length} user principal(s)` : ''}${users.length && canisters.length ? ' and ' : ''}${canisters.length ? `${canisters.length} canister(s)` : ''}: ${named.join(', ')}`, kind: 'other' };
@@ -327,8 +335,11 @@ function classifyHash(hash, kind, snsw, controllersKind) {
     if (!hash) return { grade: 'fail', label: 'No code installed' };
     const v = snsw[kind]?.get(hash);
     if (v !== undefined) return { grade: 'pass', label: `DFINITY ICRC ledger suite ${kind}, NNS-approved version ${v + 1} of ${snsw.versions}` };
+    const rel = DFINITY_LEDGER_RELEASES[hash];
+    if (rel && rel.kind === kind) return { grade: 'pass', label: `DFINITY ICRC ledger suite ${kind}, official release ${rel.release}${rel.u256 ? ' (u256)' : ''} (github.com/dfinity/ic)` };
+    if (rel) return { grade: 'warn', label: `A DFINITY ICRC ledger suite ${rel.kind} (release ${rel.release}) installed as the ${kind}` };
     if (controllersKind === 'nns') return { grade: 'pass', label: 'Installed by NNS proposal (not in the SNS version list)' };
-    return { grade: 'fail', label: 'Unknown wasm: not an NNS-approved ledger suite build. The registry will know more sources later' };
+    return { grade: 'fail', label: 'Unknown wasm: not an NNS-approved build or an official DFINITY ledger suite release. The registry will know more sources later' };
 }
 
 // ---- liquidity math (ICPSwap v3) ----
@@ -962,6 +973,11 @@ export function buildTokenTree(ledgerId, config, header = null) {
                         const r = await ctx2.call(g.get_child(Principal.fromText(t.id)), 'custody status');
                         const stt = r[0]?.status?.[0];
                         if (stt && !stt.error.length) s = { cycles: stt.cycles, memory: stt.memory_size, running: stt.running }; via = cls.guardian.name;
+                    }
+                    if (!s && st.controllers.includes(IDS.nnsRoot)) {
+                        const root = await actor(nnsRootIdl, IDS.nnsRoot);
+                        const r = await ctx2.call(root.canister_status({ canister_id: Principal.fromText(t.id) }), 'NNS root status');
+                        s = { cycles: r.cycles, memory: r.memory_size, running: Object.keys(r.status)[0] }; via = 'NNS root';
                     }
                     if (!s) return skip(`Not observable: ${cls.kind === 'nns' ? 'NNS-controlled' : cls.kind === 'none' ? 'no controller to ask' : 'controllers do not publish status'}. A blackhole or DAO controller would make it visible`, { controllers: st.controllers });
                     const details = { via, cycles: s.cycles.toString(), memory: fmtBytes(s.memory), state: s.running };
