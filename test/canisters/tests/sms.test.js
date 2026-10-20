@@ -133,9 +133,10 @@ describe('sneed_sms', () => {
     unwrap(await s.update_premium_config([], [500n], [20000n], [1n], [50n]));
   });
 
-  it('admin list: anyone may add the first admin, after that only admins manage the list and the last one stays', async () => {
-    // bootstrap: with an empty list any caller may appoint an admin (the controllers are admins regardless)
-    unwrap(await sAlice.add_admin(alice));
+  it('admin list: only admins (controllers, governance, listed) add admins, even when the list is empty; the last one stays', async () => {
+    // no "first admin" rule: an empty list doesn't let an outsider in
+    expect(err(await sAlice.add_admin(alice))).toMatch(/Unauthorized: Only admins can add new admins/);
+    unwrap(await s.add_admin(alice)); // a controller appoints
     expect(await s.is_admin_query(alice)).toBe(true);
     expect(err(await sBob.add_admin(bob))).toMatch(/Unauthorized: Only admins can add new admins/);
     expect(err(await s.add_admin(alice))).toMatch(/AlreadyExists: Principal is already an admin/);

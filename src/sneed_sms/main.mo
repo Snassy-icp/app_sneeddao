@@ -387,8 +387,9 @@ persistent actor SneedSMS {
 
     // Admin management endpoints
     public shared ({ caller }) func add_admin(new_admin: Principal) : async Result<(), SMSError> {
-        // Check if caller is already an admin (or if this is the first admin)
-        if (Vector.size(state.admins) > 0 and not is_admin(caller)) {
+        // Only admins (which includes the controllers and Sneed governance) add admins. There is no
+        // "first admin" rule: an empty list must not let anyone in.
+        if (not is_admin(caller)) {
             return #err(#Unauthorized("Only admins can add new admins"));
         };
 

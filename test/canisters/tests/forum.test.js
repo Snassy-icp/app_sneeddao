@@ -86,8 +86,9 @@ describe('sneed_sns_forum', () => {
     expect(await f.get_feed({ start_id: [], length: 10n, filter: [] })).toEqual({ items: [], has_more: false, next_start_id: [] });
   });
 
-  it('admin list: anyone may appoint the first admin, then only admins manage it and the last one stays', async () => {
-    unwrap(await fAlice.add_admin(carol)); // bootstrap: the list was empty
+  it('admin list: only admins (controllers, governance, listed) appoint admins, even when the list is empty; the last one stays', async () => {
+    expect(JSON.stringify(await fAlice.add_admin(carol))).toMatch(/Only admins can add new admins/); // no "first admin" rule
+    unwrap(await f.add_admin(carol)); // a controller appoints
     expect(err(await fAlice.add_admin(alice))).toMatch(/Unauthorized: Only admins can add new admins/);
     expect(err(await f.add_admin(carol))).toMatch(/AlreadyExists/);
     expect(err(await f.add_admin(SNEED_GOVERNANCE))).toMatch(/AlreadyExists/); // implicit admins count
