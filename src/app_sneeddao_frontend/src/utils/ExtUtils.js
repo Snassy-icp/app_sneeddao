@@ -76,6 +76,13 @@ export function accountId(principal, subaccount = null) {
     return toHex(new Uint8Array([...bigEndianCrc32(digest), ...digest]));
 }
 
+/// The account id that holds EXT tokens escrowed for a Sneedex offer: Sneedex's principal with the
+/// offer's escrow subaccount (Sneedex's getOfferEscrowSubaccount; it also answers the id itself with
+/// getOfferEscrowAccountId, which callers should compare with this).
+export function escrowAccountId(sneedexPrincipal, subaccount) {
+    return accountId(sneedexPrincipal, Uint8Array.from(subaccount || []));
+}
+
 /// 64 hex characters whose first 4 bytes are the CRC32 of the other 28.
 export function isValidAccountId(text) {
     const t = String(text || '').trim().toLowerCase().replace(/^0x/, '');
@@ -273,10 +280,13 @@ const TRANSFER_ERRORS = {
     Other: (v) => `The collection refused: ${v}`,
 };
 
-/// Send one EXT NFT from `fromPrincipal`'s default account. `to` is { principal: Principal | text } or { address: account id hex }.
+/// Send one EXT NFT from `fromPrincipal`'s default account. `to` is { principal: Principal | text } or { address: account id hex }
+/// (e.g. a Sneedex offer's escrow account id).
 /// Checks first that the sender's account still holds it; afterwards reads the new holder back.
+/// Options: `requireArrival` - throw unless the holder read back is the recipient (a lost answer is
+/// resolved by that read: if the token arrived, the call counts as done).
 /// Returns { ok: true, newBearer, expectedBearer }; throws with a readable message otherwise.
-export async function transferExt(canisterId, index, fromPrincipal, to, agent) {
+export async function transferExt(canisterId, index, fromPrincipal, to, agent, { requireArrival = false } = {}) {
     const from = typeof fromPrincipal === 'string' ? Principal.fromText(fromPrincipal) : fromPrincipal;
     let toUser; let expected;
     if (to?.principal !== undefined) {
@@ -292,16 +302,23 @@ export async function transferExt(canisterId, index, fromPrincipal, to, agent) {
     if (expected === mine) throw new Error('That is your own account');
     const holder = await bearer(canisterId, index, agent);
     if (holder !== mine) throw new Error(holder ? `You do not hold this token any more (it is held by account ${holder}).` : 'This token does not exist.');
-    const r = await actorOf(canisterId, agent).transfer({
-        from: { principal: from }, to: toUser, token: tokenIdentifier(canisterId, index),
-        amount: 1n, memo: [], notify: false, subaccount: [],
-    });
-    if ('err' in r) {
+    let r; let callError = null;
+    try {
+        r = await actorOf(canisterId, agent).transfer({
+            from: { principal: from }, to: toUser, token: tokenIdentifier(canisterId, index),
+            amount: 1n, memo: [], notify: false, subaccount: [],
+        });
+    } catch (e) { callError = e; }
+    if (r && 'err' in r) {
         const k = Object.keys(r.err)[0];
         throw new Error((TRANSFER_ERRORS[k] || ((v) => `${k} ${v ?? ''}`))(r.err[k]));
     }
     let newBearer = null;
     try { newBearer = await bearer(canisterId, index, agent); } catch { /* the transfer itself answered ok */ }
+    if (callError && newBearer !== expected) throw callError;
+    if (requireArrival && newBearer !== expected) {
+        throw new Error(`The collection did not confirm the transfer: token ${index} is held by account ${newBearer || 'unknown'}, not by ${expected}.`);
+    }
     return { ok: true, newBearer, expectedBearer: expected };
 }
 

@@ -1,6 +1,6 @@
 # Sneedex canister API
 
-Sneedex is the escrow marketplace of Sneed DAO on the Internet Computer. A seller bundles one or more assets into an **offer**: canisters, SNS neurons, ICRC-1 tokens, ICRC-7 NFTs and Sneed Lock locks. Sneedex takes them into escrow, buyers bid in one ICRC-1 token, and when the offer settles every asset changes hands at once, by a single state change. Auctions (minimum bid, optional buyout, expiry), fixed-price listings (buyout only) and private offers (a list of approved bidders) are all the same offer with different settings. The canister authorises calls by the calling principal only, so any wallet, dashboard or script can list, bid and settle for its users without asking Sneed DAO first.
+Sneedex is the escrow marketplace of Sneed DAO on the Internet Computer. A seller bundles one or more assets into an **offer**: canisters, SNS neurons, ICRC-1 tokens, ICRC-7 NFTs, EXT NFTs (e.g. Sneed Diamond Club cards) and Sneed Lock locks. Sneedex takes them into escrow, buyers bid in one ICRC-1 token, and when the offer settles every asset changes hands at once, by a single state change. Auctions (minimum bid, optional buyout, expiry), fixed-price listings (buyout only) and private offers (a list of approved bidders) are all the same offer with different settings. The canister authorises calls by the calling principal only, so any wallet, dashboard or script can list, bid and settle for its users without asking Sneed DAO first.
 
 | | |
 |---|---|
@@ -89,6 +89,8 @@ Sneedex holds tokens in subaccounts of its own principal. All three use the same
 | Creation-fee payment | Sneedex, `(user)` | `0x50` (`P`) | `getOfferCreationPaymentSubaccount(user)` |
 
 Prefer asking the canister (all three are free queries) over computing them.
+
+EXT collections know holders only as ICP-style **account identifiers** (64 hex characters). The offer escrow as an account id, where EXT NFTs are escrowed, is `getOfferEscrowAccountId(creator, offerId)` (free query): the account id of Sneedex's principal with the offer escrow subaccount.
 
 ### 1.5 Time and amounts
 
@@ -312,6 +314,30 @@ A collection that ignores the subaccount on `icrc7_transfer` (not ICRC-7 complia
 
 **Sneed Lock NFTs.** Every Sneed Lock lock is an NFT of the Sneed Lock canister's own ICRC-7 collection (see the [Sneed Lock API](/api/sneed_lock), section 3.8). Listing one is the usual way to sell a lock. For tokens of that collection Sneedex also checks, at `addAsset` and again at escrow, that each lock still exists and is still locked, and that it unlocks after the offer's `expiration`: `InvalidAsset("Sneed Lock NFT <id> does not exist (an unlocked lock is no longer an NFT)")`, `… has no current lock`, `Lock <id> has expired`, `Lock <id> unlocks before the offer ends; a lock must outlive the offer`. At escrow a token lock must also be able to pay the ledger fee of its delivery: two fees in its gas tank, or one free fee in Sneedex's own Sneed Lock wallet, else `InvalidAsset("Lock <id> needs gas to be delivered: add at least <n> more of its token to its gas account (anyone can, from the lock or NFT page)")`.
 
+#### EXT NFTs (`EXTNFT`, asset type 5)
+
+```js
+{ EXTNFT: { collection_canister_id, token_indices: [7, 42] } }   // vec nat32
+```
+
+EXT is the Toniq / Entrepot NFT standard (for example the Sneed Diamond Club, `gjv36-laaaa-aaaah-adyza-cai`). A token is addressed by its index; its TokenIdentifier is the principal-text encoding of `"\x0Atid"` ++ collection bytes ++ the 4-byte big-endian index. A holder is an account identifier. 1 to 50 indices of one collection per asset, none twice. EXT has no common approval flow, so escrow is always by transfer:
+
+1. `createOffer`, then `addAsset`. Sneedex reads `bearer(tokenIdentifier)` for every token: each must be held by the **caller's default account** (`accountId(caller)`), or already sit in this offer's escrow account. Errors: `InvalidAsset("EXT token <i> is not yours: it is held by account <aid>, not by your account <aid>")`, `InvalidAsset("EXT token <i> does not exist in this collection")`, `TransferFailed("Failed to read the holder of EXT token <i> (is this an EXT collection?)")`, `List at least one token index`, `At most 50 tokens of one collection per asset`, `Token index <i> is listed twice`, `An EXT token of this asset is already listed in offer <id>`. A token counts as already listed when another open offer (Draft, PendingEscrow, Active) of the same seller lists it, or when any offer holds it in escrow and has not handed it over yet; a previous holder's stale draft does not block a new holder.
+2. `finalizeAssets(offerId)`.
+3. `getOfferEscrowAccountId(creator, offerId)`: the escrow account id.
+4. For each card, call the **collection's** `transfer`:
+   ```candid
+   transfer(record { from = variant { principal = <seller> }; to = variant { address = "<escrow account id>" };
+                     token = "<tokenIdentifier(collection, index)>"; amount = 1; memo = blob ""; notify = false; subaccount = null })
+   ```
+   Send to the escrow **account id** (`address`), not to Sneedex's principal: `principal = Sneedex` names Sneedex's default account, where no offer can claim it.
+5. `escrowEXTNFTs(offerId, assetIndex)`: Sneedex checks with `bearer` that every token is held by the escrow account id. Errors: `InvalidAsset("EXT token <i> is not in the escrow account <aid> (it is held by account <aid>)")`, `Asset at index is not an EXT NFT`.
+6. `activateOffer(offerId)` once every asset is escrowed.
+
+**Delivery.** Sneedex moves each card out of the escrow account with `transfer({ from = variant { address = <escrow account id> }; to = variant { principal = <recipient> }; amount = 1; notify = false; subaccount = opt <escrow subaccount>; … })`. The EXT reference implementation, and the Sneed Diamond Club, take the owner from `from` and the spender from the caller's principal plus `subaccount`, and require both to be the holder; `from = principal Sneedex` would name Sneedex's default account and be refused (`Unauthorized`). This was confirmed on the Diamond Club on mainnet with calls that were refused by design and moved nothing. All calls to the collection are bounded-wait calls; whatever the answer (including a lost one), Sneedex reads `bearer` afterwards and records the card as delivered only once the recipient's default account holds it. A retry moves only the cards still in the escrow account, so no card is sent twice.
+
+**Cancellation and expiry** return escrowed cards to the seller like every other asset. In addition, a card that sits in the escrow account but whose asset was never marked escrowed (sent, but `escrowEXTNFTs` not called before the offer was cancelled or expired) is returned best effort; a block with `escrowed` = 0 records it. A card stranded elsewhere in Sneedex (its default account, or an escrow account no offer holds it for) can only be returned by an admin (`adminReturnMisplacedExtNft`).
+
 #### Sneed Lock by ownership (`SneedLock`, asset type 4)
 
 ```js
@@ -358,7 +384,7 @@ A confirmed bid with `amount ≥ buyout_price` is recorded at exactly `buyout_pr
 
 When an offer completes Sneedex schedules two timers:
 
-- after 2 s, **asset delivery** to the winner: canisters (winner becomes sole controller), neurons (winner gets full owner permissions, Sneedex leaves), ICRC-1 balances (less one fee each), NFTs (to the winner's default account), Sneed Locks (ownership transfer). Once every asset has arrived the offer becomes `Claimed`, and canisters and tokens are registered in the winner's Sneed wallet (best effort).
+- after 2 s, **asset delivery** to the winner: canisters (winner becomes sole controller), neurons (winner gets full owner permissions, Sneedex leaves), ICRC-1 balances (less one fee each), NFTs (ICRC-7 and EXT, to the winner's default account), Sneed Locks (ownership transfer). Once every asset has arrived the offer becomes `Claimed`, and canisters and tokens are registered in the winner's Sneed wallet (best effort).
 - after 3 s, **payment** to the seller from the winning bid's escrow: the marketplace cut to the fee recipient (section 4.2), the rest less one ledger fee to the seller's default account. Then the bid becomes `ClaimedBySeller`.
 
 The manual equivalents:
@@ -366,9 +392,9 @@ The manual equivalents:
 - **`claimAssets(offerId)`**, winner only, while `Completed`. While the seller is still owed (`Won`), it first checks the winning escrow still holds what the seller is due, the bid less any marketplace cut already paid (`Winning bid escrow no longer holds the full bid amount; assets cannot be released`). It hands over only the assets not delivered yet; if one fails it returns `TransferFailed("Not every asset could be handed over (asset <i>: <reason>; …). …")`, the offer stays `Completed`, and calling again retries just those. `InvalidState("A hand-over of this offer's assets is already in progress; try again shortly")` while the delivery timer or another call is handing the same offer over. Other states answer with `InvalidState`: `Offer is Active (not yet completed). Seller must accept a bid first.`, `Assets already claimed`, `Assets were reclaimed by seller`, `Offer has expired`, `Offer was cancelled`, `Offer is in Draft state, not completed`, `Offer is in PendingEscrow state, not completed`.
 - **`claimWinningBid(offerId)`**, creator only, while `Completed` or `Claimed`. Errors: `Offer is not completed`, `Bid is not in won state` (already paid), `An escrow operation is already in progress for this bid`, `InsufficientFunds`, `TransferFailed(...)`. If the cut went out but the transfer to the seller failed, the bid stays `Won` and a retry pays only the seller; the cut is never paid twice.
 
-**A failed hand-over is retried, never repeated.** Delivery (automatic or `claimAssets`) and return (automatic or `reclaimAssets`) record each asset that reached its recipient and set `Claimed` or `Reclaimed` only when all of them have. A failed transfer (an unreachable ledger, a governance or Sneed Lock refusal) leaves the offer `Completed` (or `Expired` / `Cancelled`) with that asset still in escrow, and the automatic attempt is not repeated: the winner calls `claimAssets` (the seller `reclaimAssets`) again, which hands over only what is missing. Assets already delivered are never sent twice, and NFTs are moved only while they are still in the offer's escrow subaccount. Hand-overs of one offer are serialized, so the timer and a manual call cannot run at once.
+**A failed hand-over is retried, never repeated.** Delivery (automatic or `claimAssets`) and return (automatic or `reclaimAssets`) record each asset that reached its recipient and set `Claimed` or `Reclaimed` only when all of them have. A failed transfer (an unreachable ledger, a governance or Sneed Lock refusal) leaves the offer `Completed` (or `Expired` / `Cancelled`) with that asset still in escrow, and the automatic attempt is not repeated: the winner calls `claimAssets` (the seller `reclaimAssets`) again, which hands over only what is missing. Assets already delivered are never sent twice, and NFTs (ICRC-7 and EXT) are moved only while they are still in the offer's escrow account. Hand-overs of one offer are serialized, so the timer and a manual call cannot run at once.
 
-Offers settled by earlier versions of Sneedex could be marked `Claimed` or `Reclaimed` although a transfer had failed. For those, `claimAssets` on a `Claimed` offer (winner only) and `reclaimAssets` on a `Reclaimed` offer (creator only) hand over whatever is provably still held for that offer: token balances in its escrow subaccount (to the winner only while the escrow still holds the full listed amount), NFTs still in its escrow subaccount, and canisters, neurons and locks of which Sneedex is still the sole controller / sole permission holder / owner and that no other offer lists. With nothing left they answer as before (`Assets already claimed`, `Can only reclaim from expired or cancelled offers`). Anything this cannot prove (for example a canister also listed in a later offer) is left to an admin.
+Offers settled by earlier versions of Sneedex could be marked `Claimed` or `Reclaimed` although a transfer had failed. For those, `claimAssets` on a `Claimed` offer (winner only) and `reclaimAssets` on a `Reclaimed` offer (creator only) hand over whatever is provably still held for that offer: token balances in its escrow subaccount (to the winner only while the escrow still holds the full listed amount), NFTs (ICRC-7 and EXT) still in its escrow account, and canisters, neurons and locks of which Sneedex is still the sole controller / sole permission holder / owner and that no other offer lists. With nothing left they answer as before (`Assets already claimed`, `Can only reclaim from expired or cancelled offers`). Anything this cannot prove (for example a canister also listed in a later offer) is left to an admin.
 
 ### 3.8 Expiry
 
@@ -383,7 +409,7 @@ Errors: `Offer is not active`, `Offer has no expiration`, `Offer has not expired
 
 **`cancelOffer(offerId)`**, creator only, in `Draft`, `PendingEscrow` or `Active`, **also with bids**. Every confirmed `Pending` bid becomes `Lost`, is refunded, and its bidder is told. The escrowed assets are returned after 2 s (`Cancelled → Reclaimed` once all are back). Error: `Offer cannot be cancelled in current state`.
 
-**`reclaimAssets(offerId)`**, creator only, in `Expired` or `Cancelled`: returns the escrowed assets not returned yet (canister controllers from the snapshot, neuron permissions as recorded, token balances less one fee, NFTs and locks to the creator) and sets `Reclaimed` once all are back. If one fails: `TransferFailed("Not every asset could be handed over (…)")`, the state stays, and calling again retries the rest (section 3.7). Errors: `Can only reclaim from expired or cancelled offers`, `A hand-over of this offer's assets is already in progress; try again shortly`.
+**`reclaimAssets(offerId)`**, creator only, in `Expired` or `Cancelled`: returns the escrowed assets not returned yet (canister controllers from the snapshot, neuron permissions as recorded, token balances less one fee, NFTs and locks to the creator; EXT cards also when sent but never marked escrowed, section 3.2) and sets `Reclaimed` once all are back. If one fails: `TransferFailed("Not every asset could be handed over (…)")`, the state stays, and calling again retries the rest (section 3.7). Errors: `Can only reclaim from expired or cancelled offers`, `A hand-over of this offer's assets is already in progress; try again shortly`.
 
 ### 3.10 Notifications
 
@@ -479,6 +505,7 @@ Types are in section 7. "Caller" is the principal signing the call. Methods mark
 | `getNextOfferId()` | `OfferId` | The id the next `createOffer` gets. |
 | `getMarketStats()` | `MarketStats` | `total_offers`, `active_offers`, `completed_offers` (`Completed` + `Claimed`), `total_bids` (reservations included). `total_volume_by_token` is always empty (not implemented). |
 | `getOfferEscrowSubaccount(creator, offerId)` | `blob` | 1.4. |
+| `getOfferEscrowAccountId(creator, offerId)` | `text` | The offer escrow as an account identifier (64 hex), where EXT NFTs are escrowed (1.4, 3.2). |
 
 ### 6.2 Offers: creating and managing (updates)
 
@@ -486,12 +513,12 @@ Types are in section 7. "Caller" is the principal signing the call. Methods mark
 Section 3.1. Errors: `OfferMustHaveBuyoutOrExpiration`, `InvalidExpiration` (expiry sooner than `min_offer_duration_ns` from now), `InvalidPrice("Minimum bid must be greater than 0 (leave it unset for buyout-only offers)")`, `InvalidPrice("Minimum bid cannot exceed buyout price")`, `InvalidInput("Public note exceeds maximum length of 4000 characters")`, `InvalidInput("Note to buyer exceeds maximum length of 4000 characters")`, `InsufficientFunds` (creation fee), `TransferFailed(...)`.
 
 **`addAsset({ offer_id; asset }) → variant { ok; err }`**
-Creator, `Draft`. Section 3.2. General errors: `InvalidAsset("This asset type is not currently accepted")` (type deactivated), `OfferNotFound`, `NotAuthorized`, `InvalidState("Offer must be in Draft state to add assets")`, `InvalidAsset("Maximum number of assets reached")`, `InvalidAsset("This asset has already been added to the offer")`; NFT: `List at least one token id`, `At most 50 tokens of one collection per asset`, `Token id <id> is listed twice`. Assets cannot be removed; cancel the draft and start again.
+Creator, `Draft`. Section 3.2. General errors: `InvalidAsset("This asset type is not currently accepted")` (type deactivated), `OfferNotFound`, `NotAuthorized`, `InvalidState("Offer must be in Draft state to add assets")`, `InvalidAsset("Maximum number of assets reached")`, `InvalidAsset("This asset has already been added to the offer")`; NFT: `List at least one token id`, `At most 50 tokens of one collection per asset`, `Token id <id> is listed twice`; EXT: see section 3.2. Assets cannot be removed; cancel the draft and start again.
 
 **`finalizeAssets(offerId) → variant { ok; err }`**
 Creator, `Draft → PendingEscrow`. Errors: `Offer must be in Draft state`, `InvalidAsset("Offer must have at least one asset")`.
 
-**`escrowCanister`, `escrowSNSNeuron`, `escrowICRC1Tokens`, `escrowICRC7NFTs`, `escrowICRC7NFTsByApproval`, `escrowSneedLock` `(offerId, assetIndex) → variant { ok; err }`**
+**`escrowCanister`, `escrowSNSNeuron`, `escrowICRC1Tokens`, `escrowICRC7NFTs`, `escrowICRC7NFTsByApproval`, `escrowEXTNFTs`, `escrowSneedLock` `(offerId, assetIndex) → variant { ok; err }`**
 Creator, `PendingEscrow` (`Offer must be in PendingEscrow state`). Section 3.2.
 
 **`activateOffer(offerId) → variant { ok; err }`**
@@ -529,7 +556,7 @@ Creator, `PendingEscrow → Active`. Errors: `All assets must be escrowed before
 
 | Method | Kind | Returns | Notes |
 |---|---|---|---|
-| `getAssetTypes()` | query | `vec AssetType` | `0` Canister, `1` SNS Neuron, `2` ICRC1 Token, `3` ICRC-7 NFT, `4` Sneed Lock, each with `active`. A deactivated type cannot be added to new offers. |
+| `getAssetTypes()` | query | `vec AssetType` | `0` Canister, `1` SNS Neuron, `2` ICRC1 Token, `3` ICRC-7 NFT, `4` Sneed Lock, `5` EXT NFT, each with `active`. A deactivated type cannot be added to new offers. |
 | `getCanisterKinds()` | query | `vec CanisterKind` | `0` Unknown, `1` ICP Staking Bot, `2` Trading Bot. |
 | `verifyICPNeuronManager(canister)` | update | `variant { Ok : NeuronManagerVersion; Err : text }` | `Failed to verify canister as ICP Staking Bot. getVersion() call failed.` |
 | `verifyTradingBot(canister)` | update | `variant { Ok : TradingBotVersion; Err : text }` | `Failed to verify canister as Trading Bot. getVersion() call failed.` |
@@ -561,8 +588,9 @@ Restricted to the canister's controllers (the Sneed SNS on production) and `conf
 | `startExpirationTimer()`, `stopExpirationTimer()`, `setExpirationCheckInterval(seconds)`, `triggerExpirationCheck()` | The expiry timer (interval at least 60 s). |
 | `setNeuronInfoCacheStaleness(seconds)`, `clearNeuronInfoCache()`, `clearNeuronInfoCacheFor(canister)` | Staking-bot info cache. |
 | `getCreationFeePaymentLog(offset, limit)`, `getCutPaymentLog(offset, limit)`, `getCreationFeePaymentLogCount()`, `getCutPaymentLogCount()` | Payment logs, newest first, at most 1,000 per page. |
-| `adminReclaimStuckTokens(offerId)` | Retries returning every escrowed asset of an offer to its creator and reports each result as text. |
+| `adminReclaimStuckTokens(offerId)` | Retries returning every escrowed asset of an offer to its creator and reports each result as text (ICRC-7 and EXT NFTs: only those still in the offer's escrow account). |
 | `adminReturnMisplacedNft(collection, tokenId, to)` | Returns an NFT a non-compliant collection put in Sneedex's default account. Refused while any open offer has the token escrowed. |
+| `adminReturnMisplacedExtNft(collection, tokenIndex, fromOffer, to)` | Returns an EXT token from Sneedex's default account (`fromOffer` null) or from an offer's escrow account (`opt offerId`) that no offer holds it for, to `to`'s default account. Refused while an offer waiting for its escrow lists the token, or an offer holds it escrowed and has not handed it over. |
 | `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`, `admin_set_icrc3_proposal_neuron`, `admin_icrc3_register_archives_now`, `admin_icrc3_reset_archive_registration` | The activity log's archives and their SNS registration (section 8). |
 
 ---
@@ -572,7 +600,7 @@ Restricted to the canister's controllers (the Sneed SNS on production) and `conf
 ```candid
 type OfferId = nat;
 type BidId = nat;
-type AssetTypeId = nat;      // 0 Canister, 1 SNSNeuron, 2 ICRC1Token, 3 ICRC7NFT, 4 SneedLock
+type AssetTypeId = nat;      // 0 Canister, 1 SNSNeuron, 2 ICRC1Token, 3 ICRC7NFT, 4 SneedLock, 5 EXTNFT
 type CanisterKindId = nat;   // 0 unknown, 1 ICP Staking Bot, 2 Trading Bot
 type Time = int;             // ns since Unix epoch
 type Timestamp = nat64;      // ns since Unix epoch (payment logs)
@@ -613,7 +641,10 @@ type Asset = variant {
       Position : record { swap_canister_id : principal; position_id : nat; expiry : nat64 };
     };
   };
+  EXTNFT : record { collection_canister_id : principal; token_indices : vec nat32 };   // 1..50 indices
 };
+// The Asset variant gained the EXTNFT case after the others: regenerate your bindings (from
+// sneedex.did) to decode offers that contain EXT assets; older bindings fail on such offers.
 type AssetEntry = record { asset : Asset; escrowed : bool };
 type AddAssetRequest = record { offer_id : OfferId; asset : Asset };
 
@@ -710,7 +741,7 @@ A block is a `Map` with `btype` (Text), `ts` (Nat, ns since epoch: when the bloc
 - Amounts are `Nat` in the token's base units; ids and expirations are `Nat`.
 - `caller` is the principal that made the call. Actions done by a Sneedex timer (auto-delivery, auto-payment, auto-refund, auto-reclaim, the expiration worker) have no `caller` but `via` = `"timer"`.
 - Flags are `Nat` 0 or 1. Optional fields are omitted when absent.
-- `asset` describes one asset as listed: a `Map` with `type` and its fields: `canister` (`canister_id`, `canister_kind`, `controllers_snapshot` once escrowed), `sns_neuron` (`governance`, `neuron_id`, `hotkeys_snapshot` once escrowed), `icrc1` (`ledger`, `amount`), `icrc7` (`collection`, `token_ids`), `sneed_lock` (`lock_id`, `kind` = `token` or `position`, `ledger` and `amount` or `pool` and `position_id`, `expiry`).
+- `asset` describes one asset as listed: a `Map` with `type` and its fields: `canister` (`canister_id`, `canister_kind`, `controllers_snapshot` once escrowed), `sns_neuron` (`governance`, `neuron_id`, `hotkeys_snapshot` once escrowed), `icrc1` (`ledger`, `amount`), `icrc7` (`collection`, `token_ids`), `ext` (`collection`, `token_indices` (Array of Nat), `token_identifiers` (Array of Text)), `sneed_lock` (`lock_id`, `kind` = `token` or `position`, `ledger` and `amount` or `pool` and `position_id`, `expiry`).
 - Nothing private is logged: `note_to_buyer` never appears. Public notes and canister titles and descriptions are left out too. Everything in the log is already public through the queries; nothing on the IC is anonymous.
 
 The block hash is the ICRC-3 representation-independent hash, as in [Sneed Lock's 8.2](/api/sneed_lock#82-block-format).
@@ -726,12 +757,12 @@ Offers:
 | `sneedex_offer_create` | `createOffer` recorded a Draft offer. | `caller`, `offer_id`, `price_ledger`, `fee_rate_bps` (cut locked in); `min_bid`, `buyout`, `expiration`, `min_increment_fee_multiple` when set; `approved_bidders` (private offer); `creation_fee_e8s`, `creation_fee_icp_tx` when a fee was paid |
 | `sneedex_asset_add` | `addAsset` | `caller`, `offer_id`, `asset_index`, `asset` |
 | `sneedex_offer_finalize` | `finalizeAssets` (to PendingEscrow) | `caller`, `offer_id`, `asset_count` |
-| `sneedex_asset_escrow` | An `escrow*` call confirmed custody of one asset. | `caller`, `offer_id`, `asset_index`, `asset` (with snapshots); `pulled` (1 when Sneedex pulled NFTs through an ICRC-37 approval) |
+| `sneedex_asset_escrow` | An `escrow*` call confirmed custody of one asset. | `caller`, `offer_id`, `asset_index`, `asset` (with snapshots); `pulled` (1 when Sneedex pulled NFTs through an ICRC-37 approval); EXT: `account_id` (Text, the escrow account id) |
 | `sneedex_offer_activate` | `activateOffer` | `caller`, `offer_id` |
 | `sneedex_offer_cancel` | `cancelOffer` | `caller`, `offer_id`, `from_state` (`draft`, `pending_escrow`, `active`) |
 | `sneedex_offer_expire` | An Active offer passed its expiration without bids (`processExpiration` by anyone, or the expiration worker). | `offer_id`; `caller` or `via` |
 | `sneedex_offer_complete` | The offer got its winner (the bid becomes Won). | `offer_id`, `bid_id`, `buyer`, `price_ledger`, `amount`, `reason` (`buyout`, `accept`, `expiry`); `caller` or `via` |
-| `sneedex_asset_deliver` | One asset reached its recipient. | `offer_id`, `asset_index`, `asset`, `to`, `side` (`buyer` or `seller`); for tokens `amount` and `ledger_tx` when a transfer happened; for NFTs `moved` (tokens moved); `recovered` = 1 when handed over from an offer already Claimed / Reclaimed; `caller` or `via` |
+| `sneedex_asset_deliver` | One asset reached its recipient. | `offer_id`, `asset_index`, `asset`, `to`, `side` (`buyer` or `seller`); for tokens `amount` and `ledger_tx` when a transfer happened; for NFTs (ICRC-7 and EXT) `moved` (tokens moved); `escrowed` = 0 when an EXT asset that was never marked escrowed was returned best effort on cancel or expiry; `recovered` = 1 when handed over from an offer already Claimed / Reclaimed; `caller` or `via` |
 | `sneedex_offer_settle` | Every asset arrived; the offer is now Claimed or Reclaimed. | `offer_id`, `outcome` (`claimed` or `reclaimed`), `to`; `caller` or `via` |
 
 Bids and payments:
@@ -753,8 +784,9 @@ Admin (controllers and admins only):
 
 | `btype` | When | `tx` fields |
 |---|---|---|
-| `sneedex_admin_asset_return` | `adminReclaimStuckTokens` handed one escrowed asset back to the seller. | `caller`, `offer_id`, `asset_index`, `asset`, `to`; for tokens `amount`, `ledger_tx` |
+| `sneedex_admin_asset_return` | `adminReclaimStuckTokens` handed one escrowed asset back to the seller. | `caller`, `offer_id`, `asset_index`, `asset`, `to`; for tokens `amount`, `ledger_tx`; for NFTs (ICRC-7 and EXT) `moved` |
 | `sneedex_admin_nft_return` | `adminReturnMisplacedNft` | `caller`, `collection`, `token_id`, `to` (account) |
+| `sneedex_admin_ext_return` | `adminReturnMisplacedExtNft` | `caller`, `collection`, `token_index`, `token_identifier`, `from_offer_id` when given, `from_account_id` (Text), `to` (principal) |
 | `sneedex_config_update` | A setting changed. | `caller`, `key`, `value`; `old_value` when known |
 
 `sneedex_config_update` keys: `admin_added`, `admin_removed`; one block per changed field of the configuration (`admins`, `min_offer_duration_ns`, `max_assets_per_offer`, `min_increment_usd_range_min`, `min_increment_usd_range_max`, `min_increment_usd_target`, `min_increment_fallback_tokens`); `marketplace_fee_rate_bps`, `premium_auction_cut_bps`, `offer_creation_fee_e8s`, `premium_offer_creation_fee_e8s`, `fee_recipient` (account), `ledger_fee_recipient` (Map `ledger`, `account`), `ledger_fee_recipient_removed`; `sneed_premium_canister_id`, `backend_canister_id`, `neuron_manager_factory_canister_id`, `sneed_sms_canister_id` (principal, or Text `none`), `sneed_lock_canister_id`; `asset_type_added` (Map `id`, `name`), `asset_type_deactivated`, `asset_type_reactivated`; `expiration_timer` (`on` / `off`), `expiration_check_interval_seconds`, `neuron_info_cache_staleness_seconds`; `icrc3_proposal_neuron` and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
@@ -782,6 +814,7 @@ The procedure and the Node.js script of [Sneed Lock's 8.4](/api/sneed_lock#84-ve
 - ICRC-1 assets: deposit `amount + fee` so the buyer receives `amount`.
 - Canisters: add Sneedex as a controller; neurons: give Sneedex all owner permissions (1–10). Sneedex removes everyone else.
 - NFTs: prefer ICRC-37 approval with `escrowICRC7NFTsByApproval`; for plain ICRC-7 make sure the collection honours subaccounts.
+- EXT NFTs: list only cards the seller's default account holds; send each to `getOfferEscrowAccountId(creator, offerId)` as `to = variant { address = … }`, then call `escrowEXTNFTs`. Regenerate bindings so offers with `EXTNFT` assets decode.
 - Sneed Lock NFTs and `SneedLock` assets must stay locked past the offer's `expiration`; token locks need gas (two fees in the gas tank, or one free fee in Sneedex's Sneed Lock wallet).
 - Bids: reserve, send exactly the amount, confirm. Handle `BidTooLow` and `BidIncrementTooSmall` by showing `minimum` / `minimum_next`. If confirmation fails, offer `withdrawBidEscrow(bidId, balance − fee)`.
 - After completion wait for `Claimed` and `ClaimedBySeller`; offer `claimAssets` / `claimWinningBid` buttons if they do not come within a minute (an offer that stays `Completed` has an asset whose hand-over failed; `claimAssets` retries it and its error says which).

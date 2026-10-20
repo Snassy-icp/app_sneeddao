@@ -3,7 +3,7 @@ import Header from '../components/Header';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaGavel, FaHandHoldingUsd, FaClock, FaCheck, FaTimes, FaExternalLinkAlt, FaPlus, FaCubes, FaBrain, FaCoins, FaSync, FaWallet, FaChevronLeft, FaChevronRight } from 'react-icons/fa';
+import { FaGavel, FaHandHoldingUsd, FaClock, FaCheck, FaTimes, FaExternalLinkAlt, FaPlus, FaCubes, FaBrain, FaCoins, FaSync, FaWallet, FaChevronLeft, FaChevronRight, FaImage, FaLock } from 'react-icons/fa';
 import { 
     createSneedexActor, 
     formatAmount, 
@@ -760,6 +760,9 @@ function SneedexMy() {
             if (type === 'Canister') return <FaCubes key={i} style={{ color: theme.colors.accent }} />;
             if (type === 'SNSNeuron') return <FaBrain key={i} style={{ color: theme.colors.success }} />;
             if (type === 'ICRC1Token') return <FaCoins key={i} style={{ color: theme.colors.warning }} />;
+            if (type === 'ICRC7NFT') return <FaImage key={i} title="ICRC-7 NFT" style={{ color: '#a18cd1' }} />;
+            if (type === 'EXTNFT') return <span key={i} title="EXT NFT" style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><FaImage style={{ color: '#38bdf8' }} /><span style={{ fontSize: '9px', fontWeight: 700, color: '#38bdf8' }}>EXT</span></span>;
+            if (type === 'SneedLock') return <FaLock key={i} title="Sneed Lock" style={{ color: theme.colors.accent }} />;
             return null;
         });
     };

@@ -52,6 +52,10 @@ import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/P
 import PrincipalInput from '../components/PrincipalInput';
 import NeuronDisplay from '../components/NeuronDisplay';
 import { getAllTokenLocks } from '../utils/sneedLockLists';
+import { getExtCollections, loadExtCollection, isKnownExtCollection, accountId as extAccountId, bearer as extBearer } from '../utils/ExtUtils';
+import { collectionStandardCached, rememberCollectionStandard, ExtBadge } from '../components/NftAssetView';
+import { escrowExtAsset } from '../utils/SneedexExt';
+import { useExtEscrowConfirm } from '../components/ExtEscrowConfirm';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
@@ -129,6 +133,7 @@ const managementIdlFactory = () => {
 
 function SneedexCreate() {
     const { identity, isAuthenticated } = useAuth();
+    const [confirmExtEscrow, extEscrowConfirmModal] = useExtEscrowConfirm();
     const { theme } = useTheme();
     const { formatValue: denomFormatValue } = useDenomination();
     const formatUsd = (v) => denomFormatValue(v || 0);
@@ -772,8 +777,12 @@ function SneedexCreate() {
         if (newAssetType !== 'nft' || !identity) return;
         const lockId = sneedLockCanisterId ? String(sneedLockCanisterId) : null;
         const ids = [...(lockId ? [lockId] : []), ...getSavedNftCollections().filter((id) => id !== lockId)];
-        if (ids.length === 0) { setMyNftCollections([]); return; }
-        setMyNftCollections(ids.map((id) => ({ id, name: null, symbol: null, logo: null })));
+        const exts = getExtCollections().filter((c) => !ids.includes(c.canisterId));
+        if (ids.length === 0 && exts.length === 0) { setMyNftCollections([]); return; }
+        setMyNftCollections([
+            ...ids.map((id) => ({ id, name: null, symbol: null, logo: null, standard: 'ICRC-7' })),
+            ...exts.map((c) => ({ id: c.canisterId, name: c.name, symbol: c.symbol, logo: null, standard: 'EXT' })),
+        ]);
         let alive = true;
         const agent = HttpAgent.createSync({ host: getHost(), identity });
         for (const id of ids) {
@@ -783,27 +792,38 @@ function SneedexCreate() {
         }
         return () => { alive = false; };
     }, [newAssetType, identity]);
-    const loadNftsFor = async (collectionId) => {
+    /// `standardHint`: 'EXT' or 'ICRC-7' when known (a saved EXT collection, ?standard=EXT); else detected.
+    const loadNftsFor = async (collectionId, standardHint = null) => {
         if (!identity || !collectionId) return;
         setNewAssetNftLoading(true); setNewAssetNftInfo(null);
         try {
             Principal.fromText(collectionId);
             const agent = HttpAgent.createSync({ host: getHost(), identity });
             if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
+            if (standardHint) rememberCollectionStandard(collectionId, standardHint);
+            const standard = standardHint || (isKnownExtCollection(collectionId) ? 'EXT' : await collectionStandardCached(collectionId));
+            if (standard === 'EXT') {
+                // EXT: the cards held by the user's default account id; escrow is a transfer to the offer's escrow account id
+                const c = await loadExtCollection(collectionId, identity.getPrincipal(), agent);
+                setNewAssetNftInfo({ name: c.name, symbol: c.symbol, nfts: c.nfts, supportsIcrc37: false, standard: 'EXT' });
+                return;
+            }
             const c = await loadNftCollection(collectionId, { owner: identity.getPrincipal(), subaccount: [] }, identity, agent);
-            setNewAssetNftInfo({ name: c.name, symbol: c.symbol, nfts: c.nfts, supportsIcrc37: !!c.supportsIcrc37 });
+            setNewAssetNftInfo({ name: c.name, symbol: c.symbol, nfts: c.nfts, supportsIcrc37: !!c.supportsIcrc37, standard: 'ICRC-7' });
         } catch (e) { setError(`Could not read the collection: ${e?.message || e}`); }
         finally { setNewAssetNftLoading(false); }
     };
-    // Arriving from the NFT wallet: ?nft=<collection>:<id>[,<id>]
+    // Arriving from the NFT wallet: ?nft=<collection>:<id>[,<id>] (&standard=EXT for an EXT collection; ids are token indices)
     useEffect(() => {
-        const q = new URLSearchParams(location.search).get('nft');
+        const params = new URLSearchParams(location.search);
+        const q = params.get('nft');
+        const std = params.get('standard') === 'EXT' ? 'EXT' : null;
         if (!q || !identity) return;
         const [collection, ids] = q.split(':');
         if (!collection) return;
         setShowAddAsset(true); setNewAssetType('nft'); setNewAssetNftCollection(collection);
         setNewAssetNftTokens((ids || '').split(',').filter(Boolean));
-        loadNftsFor(collection);
+        loadNftsFor(collection, std);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [location.search, identity]);
     const [loadingTokenBalance, setLoadingTokenBalance] = useState(false);
@@ -913,7 +933,7 @@ function SneedexCreate() {
         if (asset.type === 'canister') return `canister:${asset.canister_id}`;
         if (asset.type === 'neuron') return `neuron:${asset.governance_id}:${asset.neuron_id}`;
         if (asset.type === 'token') return `token:${asset.ledger_id}`;
-        if (asset.type === 'nft') return `nft:${asset.collection_id}:${(asset.token_ids || []).join(',')}`;
+        if (asset.type === 'nft') return `nft:${asset.standard === 'EXT' ? 'ext:' : ''}${asset.collection_id}:${(asset.token_ids || []).join(',')}`;
         if (asset.type === 'lock') return `lock:${asset.lock_id}`;
         return `unknown:${Date.now()}`;
     }, []);
@@ -1172,6 +1192,20 @@ function SneedexCreate() {
         } catch (e) { return { verified: false, message: `Could not check ownership: ${e?.message || e}` }; }
     }, [identity]);
     
+    // EXT: each card must be held by the user's default account id (the wizard escrows from there)
+    const verifyExtOwnership = useCallback(async (collectionId, indices) => {
+        if (!identity) return { verified: false, message: 'Not authenticated' };
+        try {
+            const agent = HttpAgent.createSync({ host: getHost(), identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
+            const mine = extAccountId(identity.getPrincipal());
+            const holders = await Promise.all(indices.map((i) => extBearer(collectionId, Number(i), agent)));
+            const missing = indices.filter((i, k) => holders[k] !== mine);
+            if (missing.length) return { verified: false, message: `Not in your wallet: card #${missing.join(', #')}` };
+            return { verified: true, message: `${indices.length} EXT card${indices.length === 1 ? '' : 's'} in your wallet (escrow sends ${indices.length === 1 ? 'it' : 'them'} to the offer's escrow account)` };
+        } catch (e) { return { verified: false, message: `Could not check the holder: ${e?.message || e}` }; }
+    }, [identity]);
+
     // Sneed Lock: the lock must still exist and be yours (escrow moves its ownership to Sneedex)
     const verifySneedLock = useCallback(async (asset) => {
         if (!identity) return { verified: false, message: 'Not authenticated' };
@@ -1301,7 +1335,7 @@ function SneedexCreate() {
         } else if (asset.type === 'neuron') {
             result = await verifyNeuronHotkey(asset.governance_id, asset.neuron_id);
         } else if (asset.type === 'nft') {
-            result = await verifyNftOwnership(asset.collection_id, asset.token_ids);
+            result = asset.standard === 'EXT' ? await verifyExtOwnership(asset.collection_id, asset.token_ids) : await verifyNftOwnership(asset.collection_id, asset.token_ids);
         } else if (asset.type === 'lock') {
             result = await verifySneedLock(asset);
         } else {
@@ -1353,7 +1387,7 @@ function SneedexCreate() {
                 } else if (asset.type === 'neuron') {
                     result = await verifyNeuronHotkey(asset.governance_id, asset.neuron_id);
                 } else if (asset.type === 'nft') {
-                    result = await verifyNftOwnership(asset.collection_id, asset.token_ids);
+                    result = asset.standard === 'EXT' ? await verifyExtOwnership(asset.collection_id, asset.token_ids) : await verifyNftOwnership(asset.collection_id, asset.token_ids);
                 } else if (asset.type === 'lock') {
                     result = await verifySneedLock(asset);
                 } else {
@@ -1515,16 +1549,22 @@ function SneedexCreate() {
                     setError('Pick or type at least one token id (numbers only)');
                     return;
                 }
+                const isExtAsset = newAssetNftInfo?.standard === 'EXT';
+                if (isExtAsset && ids.some((x) => Number(x) > 0xffffffff)) {
+                    setError('EXT token indices are at most 4294967295');
+                    return;
+                }
                 const first = newAssetNftInfo?.nfts?.find((n) => n.tokenId.toString() === ids[0]);
                 asset = {
                     type: 'nft',
+                    ...(isExtAsset ? { standard: 'EXT' } : {}),
                     collection_id: newAssetNftCollection.trim(),
                     token_ids: ids,
                     symbol: newAssetNftInfo?.symbol || 'NFT',
                     collection_name: newAssetNftInfo?.name || '',
                     image: first ? getNftImage(first.metadata, first) : '',
                     supportsIcrc37: !!newAssetNftInfo?.supportsIcrc37,
-                    display: ids.length === 1 ? `${newAssetNftInfo?.symbol || 'NFT'} #${ids[0]}${first ? ` (${getNftName(first.metadata, first.tokenId, first)})` : ''}` : `${ids.length} ${newAssetNftInfo?.symbol || 'NFT'}s: #${ids.join(', #')}`
+                    display: (isExtAsset ? 'EXT · ' : '') + (ids.length === 1 ? `${newAssetNftInfo?.symbol || 'NFT'} #${ids[0]}${first ? ` (${getNftName(first.metadata, first.tokenId, first)})` : ''}` : `${ids.length} ${newAssetNftInfo?.symbol || 'NFT'}s: #${ids.join(', #')}`)
                 };
             }
         } catch (e) {
@@ -1631,7 +1671,7 @@ function SneedexCreate() {
             setNewAssetNftCollection(asset.collection_id);
             setNewAssetNftTokens(asset.token_ids || []);
             setNewAssetNftIdsText('');
-            loadNftsFor(asset.collection_id);
+            loadNftsFor(asset.collection_id, asset.standard === 'EXT' ? 'EXT' : null);
         }
     };
     
@@ -1869,7 +1909,9 @@ function SneedexCreate() {
             // Step: Add assets to the offer
             updateProgressStep(stepIndex, 'in_progress');
             for (const asset of assets) {
-                const assetVariant = createAssetVariant(asset.type, asset);
+                const assetVariant = asset.type === 'nft' && asset.standard === 'EXT'
+                    ? createAssetVariant('ext', { collection_id: asset.collection_id, token_indices: asset.token_ids })
+                    : createAssetVariant(asset.type, asset);
                 const addResult = await actor.addAsset({
                     offer_id: offerId,
                     asset: assetVariant,
@@ -1908,6 +1950,8 @@ function SneedexCreate() {
                     } else if (asset.type === 'token') {
                         // Transfer tokens then escrow
                         await escrowTokenAsset(asset.ledger_id, asset.amount, asset.decimals, offerId, idx, identity.getPrincipal());
+                    } else if (asset.type === 'nft' && asset.standard === 'EXT') {
+                        await escrowExtNftAsset(asset, offerId, idx);
                     } else if (asset.type === 'nft') {
                         await escrowNftAsset(asset, offerId, idx);
                     } else if (asset.type === 'lock') {
@@ -2086,6 +2130,18 @@ function SneedexCreate() {
         if ('err' in r) throw new Error(`Failed to escrow the lock: ${getErrorMessage(r.err)}`);
     };
     
+    /// EXT cards: after the confirm screen, send each card still in the wallet to the offer's escrow
+    /// account id (read from Sneedex), then Sneedex verifies with bearer(). Cards already there are not resent.
+    const escrowExtNftAsset = async (asset, offerId, assetIndex) => {
+        const actor = createSneedexActor(identity);
+        const agent = HttpAgent.createSync({ host: getHost(), identity });
+        if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
+        await escrowExtAsset({
+            sneedexActor: actor, identity, agent, collectionId: asset.collection_id, collectionName: asset.collection_name,
+            indices: asset.token_ids.map(Number), offerId, assetIndex, confirm: confirmExtEscrow,
+        });
+    };
+
     /// NFTs: with ICRC-37, approve Sneedex and let it pull the tokens; otherwise transfer them into the escrow subaccount and have Sneedex verify.
     const escrowNftAsset = async (asset, offerId, assetIndex) => {
         const actor = createSneedexActor(identity);
@@ -4584,24 +4640,25 @@ function SneedexCreate() {
                                                     {myNftCollections.map((c) => {
                                                         const on = newAssetNftCollection.trim() === c.id;
                                                         return (
-                                                            <button key={c.id} type="button" title={c.id} onClick={() => { setNewAssetNftCollection(c.id); setNewAssetNftInfo(null); setNewAssetNftTokens([]); loadNftsFor(c.id); }}
+                                                            <button key={c.id} type="button" title={c.id} onClick={() => { setNewAssetNftCollection(c.id); setNewAssetNftInfo(null); setNewAssetNftTokens([]); loadNftsFor(c.id, c.standard === 'EXT' ? 'EXT' : null); }}
                                                                 style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 10, cursor: 'pointer', border: `1px solid ${on ? sneedexPrimary : theme.colors.border}`, background: on ? `${sneedexPrimary}22` : theme.colors.secondaryBg, color: theme.colors.primaryText, fontSize: '0.85rem' }}>
                                                                 {c.logo ? <img src={c.logo} alt="" style={{ width: 22, height: 22, borderRadius: 5, objectFit: 'cover' }} /> : <FaImage style={{ color: theme.colors.mutedText }} />}
                                                                 <span>{c.name || `${c.id.slice(0, 5)}…${c.id.slice(-3)}`}</span>
                                                                 {c.symbol && <span style={{ color: theme.colors.mutedText }}>{c.symbol}</span>}
+                                                                {c.standard === 'EXT' && <ExtBadge />}
                                                             </button>
                                                         );
                                                     })}
                                                 </div>
-                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: 6 }}>Sneed Lock (your LP and token locks) and the collections in your NFT wallet. Any other ICRC-7 collection can be typed below.</div>
+                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: 6 }}>Sneed Lock (your LP and token locks), the collections in your NFT wallet and your EXT collections (marked EXT). Any other ICRC-7 or EXT collection can be typed below.</div>
                                             </div>
                                         )}
                                         <div style={styles.formGroup}>
-                                            <label style={styles.label}>Collection (ICRC-7 canister)</label>
+                                            <label style={styles.label}>Collection (ICRC-7 or EXT canister)</label>
                                             <PrincipalInput value={newAssetNftCollection} onChange={(v) => { setNewAssetNftCollection(v); setNewAssetNftInfo(null); setNewAssetNftTokens([]); }} placeholder="Collection canister id or name" defaultTab="all" style={{ width: '100%' }} />
                                             <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                                                 <button type="button" style={styles.secondaryButton} disabled={newAssetNftLoading || !newAssetNftCollection} onClick={() => loadNftsFor(newAssetNftCollection.trim())}>{newAssetNftLoading ? 'Loading…' : 'Load my NFTs in it'}</button>
-                                                {newAssetNftInfo && <span style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>{newAssetNftInfo.name} ({newAssetNftInfo.symbol}) · you own {newAssetNftInfo.nfts.length} · {newAssetNftInfo.supportsIcrc37 ? 'ICRC-37: escrow by approval' : 'escrow by transfer'}</span>}
+                                                {newAssetNftInfo && <span style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>{newAssetNftInfo.standard === 'EXT' && <ExtBadge style={{ marginRight: 6 }} />}{newAssetNftInfo.name} ({newAssetNftInfo.symbol}) · you own {newAssetNftInfo.nfts.length} · {newAssetNftInfo.standard === 'EXT' ? "escrow by transfer to the offer's escrow account id (you confirm it first)" : newAssetNftInfo.supportsIcrc37 ? 'ICRC-37: escrow by approval' : 'escrow by transfer'}</span>}
                                             </div>
                                         </div>
                                         {newAssetNftInfo && newAssetNftInfo.nfts.length > 0 && (
@@ -4622,7 +4679,7 @@ function SneedexCreate() {
                                             </div>
                                         )}
                                         <div style={styles.formGroup}>
-                                            <label style={styles.label}>Or type token ids (comma separated)</label>
+                                            <label style={styles.label}>{newAssetNftInfo?.standard === 'EXT' ? 'Or type token indices (comma separated)' : 'Or type token ids (comma separated)'}</label>
                                             <input style={styles.input} value={newAssetNftIdsText} onChange={(e) => setNewAssetNftIdsText(e.target.value)} placeholder="e.g. 12, 13" />
                                         </div>
                                     </>
@@ -5667,6 +5724,7 @@ function SneedexCreate() {
                     </div>
                 )}
                 
+                {extEscrowConfirmModal}
                 {/* Progress Overlay */}
                 {showProgressOverlay && (
                     <div style={{

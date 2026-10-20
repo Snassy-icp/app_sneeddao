@@ -32,6 +32,7 @@ module {
     public let ASSET_TYPE_ICRC1_TOKEN : AssetTypeId = 2;
     public let ASSET_TYPE_ICRC7_NFT : AssetTypeId = 3;
     public let ASSET_TYPE_SNEED_LOCK : AssetTypeId = 4;
+    public let ASSET_TYPE_EXT_NFT : AssetTypeId = 5;
     
     // ============================================
     // CANISTER KINDS - Extensible System for known canister types
@@ -381,6 +382,16 @@ module {
         token_ids : [Nat];
     };
     
+    /// One or more NFTs of one EXT collection (the Toniq / Entrepot standard, e.g. the Sneed
+    /// Diamond Club), by token index. EXT has no subaccounts of its own: a holder is an account
+    /// identifier. The seller transfers each token to the account id of the offer's escrow
+    /// subaccount of this canister (getOfferEscrowAccountId); escrowEXTNFTs verifies it with
+    /// bearer(); delivery is an EXT transfer out of that account, checked with bearer() after.
+    public type EXTNFTAsset = {
+        collection_canister_id : Principal;
+        token_indices : [Nat32];
+    };
+    
     /// A Sneed Lock: either a token lock (tokens held in Sneed Lock until an expiry) or a locked
     /// ICPSwap LP position. Escrowed by moving the lock's ownership inside Sneed Lock to this
     /// canister (transfer_token_lock_ownership / transfer_position_ownership), verified with
@@ -422,6 +433,9 @@ module {
         #ICRC1Token : ICRC1TokenAsset;
         #ICRC7NFT : ICRC7NFTAsset;
         #SneedLock : SneedLockAsset;
+        // Added after the others: a new case of a stored variant is a supertype of the old
+        // variant, so the stable state stays compatible (checked with moc --stable-compatible).
+        #EXTNFT : EXTNFTAsset;
     };
     
     // Asset with escrow status

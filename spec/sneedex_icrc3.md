@@ -56,6 +56,7 @@ A `Map` describing one asset as listed, with `type` and the fields of that type:
 | `sns_neuron` | `governance`, `neuron_id` (Blob); `hotkeys_snapshot` (Array of Blob) once escrowed |
 | `icrc1` | `ledger`, `amount` |
 | `icrc7` | `collection`, `token_ids` (Array of Nat) |
+| `ext` | `collection`, `token_indices` (Array of Nat), `token_identifiers` (Array of Text, the EXT TokenIdentifiers) |
 | `sneed_lock` | `lock_id`, `kind` (`token` or `position`), `ledger` and `amount` or `pool` and `position_id`, `expiry` |
 
 ## Block type catalogue
@@ -70,12 +71,12 @@ Offers:
 | `sneedex_offer_create` | `createOffer` recorded the offer (Draft) | `caller`, `offer_id`, `price_ledger`, `fee_rate_bps` (cut locked in for this offer); `min_bid`, `buyout`, `expiration`, `min_increment_fee_multiple` when set; `approved_bidders` (Array of Blob) for a private offer; `creation_fee_e8s` and `creation_fee_icp_tx` when a creation fee was paid |
 | `sneedex_asset_add` | `addAsset` | `caller`, `offer_id`, `asset_index`, `asset` |
 | `sneedex_offer_finalize` | `finalizeAssets` (Draft → PendingEscrow) | `caller`, `offer_id`, `asset_count` |
-| `sneedex_asset_escrow` | an `escrow*` call verified custody of one asset | `caller`, `offer_id`, `asset_index`, `asset` (with snapshots); `pulled` = 1 when Sneedex pulled NFTs through an ICRC-37 approval |
+| `sneedex_asset_escrow` | an `escrow*` call verified custody of one asset | `caller`, `offer_id`, `asset_index`, `asset` (with snapshots); `pulled` = 1 when Sneedex pulled NFTs through an ICRC-37 approval; for EXT `account_id` (Text, the escrow account id the tokens were verified in) |
 | `sneedex_offer_activate` | `activateOffer` (PendingEscrow → Active) | `caller`, `offer_id` |
 | `sneedex_offer_cancel` | `cancelOffer` | `caller`, `offer_id`, `from_state` (`draft`, `pending_escrow`, `active`) |
 | `sneedex_offer_expire` | `processExpiration` or the expiration worker found no bid (Active → Expired) | `offer_id`; `caller` or `via` |
 | `sneedex_offer_complete` | an offer got its winner (Active → Completed; the bid becomes Won) | `offer_id`, `bid_id`, `buyer`, `price_ledger`, `amount`, `reason` (`buyout`, `accept`, `expiry`); `caller` or `via` |
-| `sneedex_asset_deliver` | one asset reached its recipient | `offer_id`, `asset_index`, `asset`, `to` (principal), `side` (`buyer` or `seller`); `recovered` = 1 when handed over from an offer that was already Claimed / Reclaimed (offers settled by a version before per-asset tracking, whose failed hand-over `claimAssets` / `reclaimAssets` can still recover); for tokens `amount` and `ledger_tx` when a transfer happened; for NFTs `moved` (how many of the token ids were still in escrow and moved); `caller` or `via` |
+| `sneedex_asset_deliver` | one asset reached its recipient | `offer_id`, `asset_index`, `asset`, `to` (principal), `side` (`buyer` or `seller`); `recovered` = 1 when handed over from an offer that was already Claimed / Reclaimed (offers settled by a version before per-asset tracking, whose failed hand-over `claimAssets` / `reclaimAssets` can still recover); for tokens `amount` and `ledger_tx` when a transfer happened; for NFTs (ICRC-7 and EXT) `moved` (how many of the tokens were still in escrow and moved); `escrowed` = 0 when an EXT asset that was never marked escrowed was found in the escrow account and returned to the seller, best effort, on cancel or expiry; `caller` or `via` |
 | `sneedex_offer_settle` | every asset arrived and the offer became Claimed or Reclaimed | `offer_id`, `outcome` (`claimed` or `reclaimed`), `to`; `caller` or `via` |
 
 Bids:
@@ -102,8 +103,9 @@ Admin (admins and controllers only):
 
 | btype | when | tx fields |
 |---|---|---|
-| `sneedex_admin_asset_return` | `adminReclaimStuckTokens` handed one escrowed asset back to the seller | `caller`, `offer_id`, `asset_index`, `asset`, `to`; tokens: `amount`, `ledger_tx` when a transfer happened |
+| `sneedex_admin_asset_return` | `adminReclaimStuckTokens` handed one escrowed asset back to the seller | `caller`, `offer_id`, `asset_index`, `asset`, `to`; tokens: `amount`, `ledger_tx` when a transfer happened; NFTs (ICRC-7 and EXT, added with the EXT release; before it an escrowed ICRC-7 asset made `adminReclaimStuckTokens` trap, its switch did not cover the case): `moved` |
 | `sneedex_admin_nft_return` | `adminReturnMisplacedNft` | `caller`, `collection`, `token_id`, `to` (account) |
+| `sneedex_admin_ext_return` | `adminReturnMisplacedExtNft` | `caller`, `collection`, `token_index`, `token_identifier`, `from_offer_id` when given, `from_account_id` (Text), `to` (principal) |
 | `sneedex_config_update` | a setting changed | `caller`, `key`, `value`; `old_value` when known |
 
 `sneedex_config_update` keys and values: `admin_added`, `admin_removed` (Blob);
@@ -135,20 +137,21 @@ in Sneed Hub (best effort, outside the market), and reads.
 | `createOffer` | `sneedex_creation_fee_pay` right after the ICP transfer; `sneedex_offer_create` when the offer is stored |
 | `addAsset` / `addAssetSync` | `sneedex_asset_add` |
 | `finalizeAssets` | `sneedex_offer_finalize` |
-| `escrowCanister`, `escrowSNSNeuron`, `escrowICRC1Tokens`, `escrowICRC7NFTs(ByApproval)`, `escrowSneedLock` | `sneedex_asset_escrow` when the asset is marked escrowed |
+| `escrowCanister`, `escrowSNSNeuron`, `escrowICRC1Tokens`, `escrowICRC7NFTs(ByApproval)`, `escrowEXTNFTs`, `escrowSneedLock` | `sneedex_asset_escrow` when the asset is marked escrowed |
 | `activateOffer` | `sneedex_offer_activate` |
 | `reserveBid` | `sneedex_bid_reserve` |
 | `confirmBid` | `sneedex_bid_excess_refund` (ledger Ok only), then `sneedex_bid_lost` (offer closed meanwhile) or `sneedex_bid_confirm` + `sneedex_bid_lost` (outbid) per lower bid; a buyout continues in `completeOfferInternal`; a lost buyout race logs `sneedex_bid_lost` |
 | `completeOfferInternal` (from `confirmBid`, `acceptBid`, `processExpiration`, the expiration worker) | `sneedex_offer_complete`, then `sneedex_bid_lost` per other Pending bid |
 | `processExpiration`, expiration worker | `sneedex_offer_expire` (no bids) |
 | `cancelOffer` | `sneedex_offer_cancel`, then `sneedex_bid_lost` per escrowed Pending bid |
-| `settleAssets` (from `claimAssets`, `reclaimAssets`, `autoDeliverAssets`, `autoReclaimAssets`) | `sneedex_asset_deliver` per asset handed over (normal or recovered), then `sneedex_offer_settle` when the offer becomes Claimed / Reclaimed |
+| `settleAssets` (from `claimAssets`, `reclaimAssets`, `autoDeliverAssets`, `autoReclaimAssets`) | `sneedex_asset_deliver` per asset handed over (normal, recovered, or an unescrowed EXT asset returned with `escrowed` = 0), then `sneedex_offer_settle` when the offer becomes Claimed / Reclaimed |
 | `payWinningBidToSeller` (from `claimWinningBid`, the auto-payment timer) | `sneedex_cut_pay` after the cut transfer; `sneedex_seller_pay` after the seller transfer |
 | `refundBid`, `autoRefundBid` | `sneedex_bid_refund` |
 | `withdrawBidEscrow` | `sneedex_bid_escrow_withdraw` |
 | `withdrawOfferCreationPayment` | `sneedex_creation_payment_withdraw` |
 | `adminReclaimStuckTokens` | `sneedex_admin_asset_return` per successful hand-back |
 | `adminReturnMisplacedNft` | `sneedex_admin_nft_return` |
+| `adminReturnMisplacedExtNft` | `sneedex_admin_ext_return` |
 | admin setters, `addAdmin`, `removeAdmin`, `updateConfig`, asset types, expiration timer, cache staleness, ICRC-3 settings and neuron | `sneedex_config_update` |
 
 To carry the details of a hand-over into its block, the token sweep

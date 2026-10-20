@@ -86,6 +86,7 @@ describe('admin guards', () => {
       () => dexBob.setNeuronManagerFactoryCanisterId([bob]), () => dexBob.setSneedLockCanisterId(bob), () => dexBob.setSneedSmsCanisterId([bob]),
       () => dexBob.startExpirationTimer(), () => dexBob.stopExpirationTimer(), () => dexBob.setExpirationCheckInterval(120n),
       () => dexBob.triggerExpirationCheck(), () => dexBob.adminReturnMisplacedNft(tokenAId, 1n, account(bob)), () => dexBob.adminReclaimStuckTokens(0n),
+      () => dexBob.adminReturnMisplacedExtNft(tokenAId, 1, [], bob),
       () => dexBob.setNeuronInfoCacheStaleness(1n), () => dexBob.clearNeuronInfoCache(), () => dexBob.clearNeuronInfoCacheFor(bob),
     ];
     for (const call of calls) expect(errOf(await call())).toHaveProperty('NotAuthorized');
@@ -95,7 +96,7 @@ describe('admin guards', () => {
     expect(await dexBob.getMarketplaceFeeRate()).toBe(0n);
     expect((await dexBob.getFeeRecipient()).owner.toText()).toBe('aaaaa-aa'); // the default: transfers to it would fail on a real ledger
     expect(await dexBob.getLedgerFeeRecipients()).toEqual([]);
-    expect(await dexBob.getAssetTypes()).toHaveLength(5);
+    expect(await dexBob.getAssetTypes()).toHaveLength(6);
     expect(await dexBob.getSneedPremiumCanisterId()).toEqual([]);
     expect(await dexBob.getBackendCanisterId()).toEqual([]);
     expect(await dexBob.getNeuronManagerFactoryCanisterId()).toEqual([]);
@@ -177,22 +178,22 @@ describe('config', () => {
 });
 
 describe('asset type registry', () => {
-  it('starts with the five built-in types, all active', async () => {
+  it('starts with the six built-in types, all active', async () => {
     const types = await dexBob.getAssetTypes();
     expect(types.map((t) => [t.id, t.name, t.active])).toEqual([
-      [0n, 'Canister', true], [1n, 'SNS Neuron', true], [2n, 'ICRC1 Token', true], [3n, 'ICRC-7 NFT', true], [4n, 'Sneed Lock', true],
+      [0n, 'Canister', true], [1n, 'SNS Neuron', true], [2n, 'ICRC1 Token', true], [3n, 'ICRC-7 NFT', true], [4n, 'Sneed Lock', true], [5n, 'EXT NFT', true],
     ]);
   });
 
-  it('adds new types with ids from 5 upwards and deactivates them', async () => {
-    expect(unwrap(await dexAdmin.addAssetType('Domain', 'A domain name'))).toBe(5n);
-    expect(unwrap(await dexAdmin.addAssetType('Ticket', 'An event ticket'))).toBe(6n);
-    unwrap(await dexAdmin.deactivateAssetType(5n));
+  it('adds new types with ids from 6 upwards and deactivates them', async () => {
+    expect(unwrap(await dexAdmin.addAssetType('Domain', 'A domain name'))).toBe(6n);
+    expect(unwrap(await dexAdmin.addAssetType('Ticket', 'An event ticket'))).toBe(7n);
+    unwrap(await dexAdmin.deactivateAssetType(6n));
     unwrap(await dexAdmin.deactivateAssetType(99n)); // unknown ids are accepted silently
     const types = await dexBob.getAssetTypes();
-    expect(types.find((t) => t.id === 5n)).toEqual({ id: 5n, name: 'Domain', description: 'A domain name', active: false });
-    expect(types.find((t) => t.id === 6n).active).toBe(true);
-    expect(types).toHaveLength(7);
+    expect(types.find((t) => t.id === 6n)).toEqual({ id: 6n, name: 'Domain', description: 'A domain name', active: false });
+    expect(types.find((t) => t.id === 7n).active).toBe(true);
+    expect(types).toHaveLength(8);
   });
 
   it('refuses assets of a deactivated type until an admin reactivates it', async () => {

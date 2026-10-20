@@ -6,7 +6,7 @@
 // nothing and its retry appends the block; the hash chain and certified tip verify (lib/icrc3.js);
 // spills into archive canisters co-controlled by SNS root, registered through a hotkeyed neuron;
 // an upgrade keeps the log and certificate; and an upgrade from the production wasm
-// (build/sneedex_prod.wasm, commit b483932c) keeps every offer and bid and starts an empty log.
+// (build/sneedex_preicrc3.wasm, commit b483932c) keeps every offer and bid and starts an empty log.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { IDL } from '@icp-sdk/core/candid';
 import { Principal } from '@icp-sdk/core/principal';
@@ -29,7 +29,7 @@ const CATALOGUE = [
   'sneedex_offer_cancel', 'sneedex_offer_expire', 'sneedex_offer_complete', 'sneedex_asset_deliver', 'sneedex_offer_settle',
   'sneedex_bid_reserve', 'sneedex_bid_excess_refund', 'sneedex_bid_confirm', 'sneedex_bid_lost', 'sneedex_bid_refund',
   'sneedex_bid_escrow_withdraw', 'sneedex_cut_pay', 'sneedex_seller_pay', 'sneedex_creation_fee_pay',
-  'sneedex_creation_payment_withdraw', 'sneedex_admin_asset_return', 'sneedex_admin_nft_return', 'sneedex_config_update',
+  'sneedex_creation_payment_withdraw', 'sneedex_admin_asset_return', 'sneedex_admin_nft_return', 'sneedex_admin_ext_return', 'sneedex_config_update',
 ];
 const treasury = user('icrc3-treasury');
 
@@ -502,10 +502,10 @@ describe('upgrades', () => {
     expect(blocks.at(-1)).toMatchObject({ t: 'sneedex_offer_activate', offer_id: id });
   });
 
-  it('from the production wasm keep every offer and bid and start an empty log', async () => {
-    const oldId = await install(pic, { name: 'sneedex_prod', initTypes: sneedexInit({ IDL }), initArgs: [[]], cycles: 20n * T, targetSubnetId: appSubnet });
+  it('from the wasm before the log keep every offer and bid and start an empty log', async () => {
+    const oldId = await install(pic, { name: 'sneedex_preicrc3', initTypes: sneedexInit({ IDL }), initArgs: [[]], cycles: 20n * T, targetSubnetId: appSubnet });
     const old = market(oldId);
-    // the production code has no log
+    // the code before the log has no log
     await expect(old.bob.icrc3_log_status()).rejects.toThrow();
     const sold = await old.list([tokenAsset(tokenAId, 13_000n)]);
     const open = await old.list([tokenAsset(tokenAId, 14_000n)]);

@@ -2,7 +2,7 @@
 module {
   public let text : Text = "# Sneedex (canister sneedex)
 
-Sneedex is Sneed DAO's escrow marketplace. A seller bundles assets into an offer (canisters, SNS neurons, ICRC-1 tokens, ICRC-7 NFTs, Sneed Lock locks), Sneedex takes them into escrow, buyers bid in one ICRC-1 price token, and at settlement every asset changes hands together. Auctions, fixed-price listings and private offers are the same offer with different settings. The canister is controlled by the Sneed DAO SNS.
+Sneedex is Sneed DAO's escrow marketplace. A seller bundles assets into an offer (canisters, SNS neurons, ICRC-1 tokens, ICRC-7 NFTs, EXT NFTs, Sneed Lock locks), Sneedex takes them into escrow, buyers bid in one ICRC-1 price token, and at settlement every asset changes hands together. Auctions, fixed-price listings and private offers are the same offer with different settings. The canister is controlled by the Sneed DAO SNS.
 
 - Production: `7bvk3-ryaaa-aaaal-qtykq-cai`
 - Staging (same code, own state, real tokens): `igm46-laaaa-aaaae-qgwra-cai`
@@ -13,7 +13,7 @@ Sneedex is Sneed DAO's escrow marketplace. A seller bundles assets into an offer
 - `expiration`, `created_at`, `activated_at`, `completion_time` are `int` nanoseconds since the Unix epoch; log timestamps are `nat64` ns.
 - `OfferId` and `BidId` are `nat` counters; assets are addressed by their index in `offer.assets`.
 - Results are lowercase `variant { ok : T; err : SneedexError }` (`NotAuthorized`, `OfferNotFound`, `InvalidState(text)`, `BidTooLow { minimum }`, `BidIncrementTooSmall {...}`, `InsufficientFunds { available; required }`, `TransferFailed(text)`, ...). `verifyICPNeuronManager`, `verifyTradingBot` and `getNeuronManagerInfo` use `Ok`/`Err`.
-- Escrow subaccounts: ask the canister (`getOfferEscrowSubaccount(creator, offerId)`, `getBidEscrowSubaccount(bidder, bidId)`, `getOfferCreationPaymentSubaccount(user)`), all free queries.
+- Escrow subaccounts: ask the canister (`getOfferEscrowSubaccount(creator, offerId)`, `getBidEscrowSubaccount(bidder, bidId)`, `getOfferCreationPaymentSubaccount(user)`), all free queries. EXT NFTs are escrowed at the hex account id `getOfferEscrowAccountId(creator, offerId)`.
 
 ## Authentication
 
@@ -45,6 +45,7 @@ Calls are authorised by the signing principal. The creator manages an offer; the
 - Arguments are capped: 4 KiB for most methods; `createOffer` at most 200 approved bidders and 4,000-character notes; `addAsset` at most 50 NFT ids, 100-character title, 4,000-character description.
 - Each `reserveBid` creates a new bid id with its own escrow subaccount: send tokens only to the one you confirm. Recover unconfirmed deposits with `withdrawBidEscrow`.
 - `getBidEscrowBalance`, `getUserOfferCreationBalance` and `getEffectiveOfferCreationFee` are update calls.
+- EXT NFTs (asset `EXTNFT { collection_canister_id; token_indices : vec nat32 }`): you can only list cards your default account holds. After `finalizeAssets`, send each card with the collection's `transfer` to `to = variant { address = getOfferEscrowAccountId(...) }` (the account id, not Sneedex's principal, which would be its default account), then call `escrowEXTNFTs(offerId, assetIndex)`. Sneedex sends cards on with `from = address(escrow account id)` and `subaccount = escrow subaccount`, and records a delivery only once `bearer` shows the recipient.
 - Locks listed must stay locked past the offer's `expiration`; token locks need gas to be delivered.
 
 ## Activity log (ICRC-3)

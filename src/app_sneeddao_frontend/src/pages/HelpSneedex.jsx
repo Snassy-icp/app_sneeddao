@@ -286,7 +286,7 @@ function HelpSneedex() {
                         <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>Key Features</h4>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}><strong style={styles.strong}>Escrow:</strong> the assets and the bids are held by the Sneedex canister until the offer ends, so neither side has to trust the other</li>
-                            <li style={styles.listItem}><strong style={styles.strong}>Many asset types:</strong> apps (canisters), ICP Staking Bots, Trading Bots, SNS neurons, ICRC-7 NFTs (including Sneed Lock locks) and ICRC-1 tokens</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Many asset types:</strong> apps (canisters), ICP Staking Bots, Trading Bots, SNS neurons, ICRC-7 NFTs (including Sneed Lock locks), EXT NFTs (such as Sneed Diamond Club cards) and ICRC-1 tokens</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Bundles:</strong> one offer can hold several assets of different types</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Flexible pricing:</strong> a minimum bid (auction), a buyout price (instant purchase), or both</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Private offers (OTC):</strong> only principals you approve can bid</li>
@@ -364,6 +364,23 @@ function HelpSneedex() {
                             refuses collections that ignore subaccounts, since a token sent there could not be claimed by the offer.
                             Sneed Locks keep their lock rules: ownership moves to Sneedex inside Sneed Lock and on to the buyer. 
                             A token lock costs one ledger fee to pass on, which the wizard tops up for you.
+                        </p>
+                    </div>
+                    
+                    <div style={styles.featureCard} id="ext-nfts">
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaImage size={14} color="#a855f7" />
+                            NFT (EXT), such as Sneed Diamond Club cards
+                        </h4>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            EXT is the older NFT standard of Entrepot collections. Pick one of your EXT collections (the Sneed 
+                            Diamond Club is always offered, plus any EXT collection you added to your NFT wallet) and the cards 
+                            to sell; you can only list cards your wallet holds. EXT has no approvals, so escrow is a transfer: 
+                            after you confirm, Sneed Hub sends each card to Sneedex's escrow account for this offer (an account 
+                            id that only Sneedex controls) and Sneedex checks the collection now shows that account as the holder. 
+                            On a sale Sneedex sends the cards to the buyer and records them as delivered only once the collection 
+                            shows the buyer as the holder; if the offer is cancelled or expires without bids, the cards come back 
+                            to you, including a card that reached the escrow account before the offer was activated.
                         </p>
                     </div>
                     

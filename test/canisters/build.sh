@@ -74,11 +74,22 @@ git archive "$SNEEDEX_PREV_COMMIT" src/sneedex src/PremiumClient.mo src/IngressG
 rm -rf "$PREV_SRC"
 test -s "$OUT/sneedex_prev.wasm"
 
-# sneedex as production runs it before the ICRC-3 log, for the test that upgrades from it
-SNEEDEX_PROD_COMMIT=b483932c
-echo "== sneedex at $SNEEDEX_PROD_COMMIT (moc, for the ICRC-3 upgrade test)"
+# sneedex before the ICRC-3 log, for the test that upgrades from it and starts an empty log
+SNEEDEX_PRE_ICRC3_COMMIT=b483932c
+echo "== sneedex at $SNEEDEX_PRE_ICRC3_COMMIT (moc, for the ICRC-3 upgrade test)"
 PREV_SRC="$(mktemp -d)"
-git archive "$SNEEDEX_PROD_COMMIT" src/sneedex src/PremiumClient.mo src/IngressGuard.mo | tar -x -C "$PREV_SRC"
+git archive "$SNEEDEX_PRE_ICRC3_COMMIT" src/sneedex src/PremiumClient.mo src/IngressGuard.mo | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS "$PREV_SRC/src/sneedex/main.mo" -o "$OUT/sneedex_preicrc3.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneedex_preicrc3.wasm"
+
+# sneedex as production runs it (ICRC-3 log, no EXT assets; wasm c20305b8), for the test that
+# upgrades from it to EXT NFT assets
+SNEEDEX_PROD_COMMIT=0775f9ac
+echo "== sneedex at $SNEEDEX_PROD_COMMIT (moc, for the EXT upgrade test)"
+PREV_SRC="$(mktemp -d)"
+git archive "$SNEEDEX_PROD_COMMIT" src/sneedex src/PremiumClient.mo src/IngressGuard.mo src/icrc3 | tar -x -C "$PREV_SRC"
 # shellcheck disable=SC2086
 "$MOC" $PKGS "$PREV_SRC/src/sneedex/main.mo" -o "$OUT/sneedex_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
 rm -rf "$PREV_SRC"

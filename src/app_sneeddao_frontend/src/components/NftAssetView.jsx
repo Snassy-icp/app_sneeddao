@@ -27,6 +27,11 @@ export function collectionStandardCached(collectionId) {
     return standardCache.get(collectionId);
 }
 
+/// Record a collection's standard when it is known for sure (e.g. a Sneedex EXT asset), so reads skip the probing.
+export function rememberCollectionStandard(collectionId, standard) {
+    if (collectionId && (standard === 'EXT' || standard === 'ICRC-7') && !isKnownExtCollection(collectionId)) standardCache.set(collectionId, Promise.resolve(standard));
+}
+
 export function loadCollectionInfoCached(collectionId) {
     if (!collectionCache.has(collectionId)) {
         const p = collectionStandardCached(collectionId).then((std) => (std === 'EXT' ? fetchExtCollectionInfo(collectionId, anonymousNftAgent()) : fetchCollectionInfo(collectionId, anonymousNftAgent())));
@@ -81,8 +86,14 @@ export function useNftTokens(collectionId, tokenIds, { refreshKey = 0 } = {}) {
 export const nftItemUrl = (collectionId, tokenId) => `/nft_item?collection=${collectionId}&id=${tokenId.toString()}`;
 export const nftCollectionUrl = (collectionId) => `/nfts?collection=${collectionId}`;
 
+/// The small "EXT" tag shown on EXT tokens (Toniq / Entrepot standard).
+export function ExtBadge({ style = {} }) {
+    return <span title="An EXT NFT (Toniq / Entrepot standard)" style={{ fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: 5, background: '#0ea5e933', color: '#38bdf8', ...style }}>EXT</span>;
+}
+
 /// A square thumbnail: the first token's picture, else the collection logo, else a placeholder.
-export function NftAssetIcon({ collectionId, tokenIds, size = 36, radius = 8 }) {
+export function NftAssetIcon({ collectionId, tokenIds, size = 36, radius = 8, standard = null }) {
+    if (standard) rememberCollectionStandard(collectionId, standard);
     const { info, tokens } = useNftTokens(collectionId, (tokenIds || []).slice(0, 1));
     const t = tokens[0];
     const img = (t && getNftImage(t.metadata, t)) || info?.logo || null;
@@ -94,14 +105,17 @@ export function NftAssetIcon({ collectionId, tokenIds, size = 36, radius = 8 }) 
 }
 
 /// "Name · Collection (SYMBOL)" with links to the token page and the collection browser.
-export function NftAssetTitle({ collectionId, tokenIds, linkStyle = {} }) {
+export function NftAssetTitle({ collectionId, tokenIds, linkStyle = {}, standard = null }) {
+    if (standard) rememberCollectionStandard(collectionId, standard);
     const { theme } = useTheme();
     const ids = tokenIds || [];
     const { info, tokens } = useNftTokens(collectionId, ids.slice(0, 1));
     const t = tokens[0];
     const name = ids.length === 1 ? (t ? getNftName(t.metadata, ids[0], t) : `NFT #${ids[0]}`) : `${ids.length} NFTs`;
+    const isExt = standard === 'EXT' || t?.standard === 'EXT';
     return (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+            {isExt && <ExtBadge />}
             {ids.length === 1 ? <Link to={nftItemUrl(collectionId, ids[0])} style={{ color: 'inherit', textDecoration: 'none', ...linkStyle }}>{name}</Link> : <span>{name}</span>}
             <Link to={nftCollectionUrl(collectionId)} style={{ fontSize: '0.8rem', fontWeight: 400, color: theme.colors.accent, textDecoration: 'none' }}>
                 {info ? `${info.name}${info.symbol ? ` (${info.symbol})` : ''}` : collectionId}
@@ -111,7 +125,8 @@ export function NftAssetTitle({ collectionId, tokenIds, linkStyle = {} }) {
 }
 
 /// Everything we can read about each token: picture, name, description, attributes, links, raw metadata.
-export function NftAssetDetails({ collectionId, tokenIds, me = null }) {
+export function NftAssetDetails({ collectionId, tokenIds, me = null, standard = null }) {
+    if (standard) rememberCollectionStandard(collectionId, standard);
     const { theme } = useTheme();
     const { info, tokens, loading, error } = useNftTokens(collectionId, tokenIds || []);
     const [rawOpen, setRawOpen] = useState({});
@@ -127,6 +142,7 @@ export function NftAssetDetails({ collectionId, tokenIds, me = null }) {
                         <span style={{ fontFamily: 'monospace' }}>{collectionId}</span>
                         {info?.totalSupply !== undefined && info?.totalSupply !== null && <span>· supply {info.totalSupply.toString()}</span>}
                         {info?.standards?.icrc37 && <span>· ICRC-37 approvals</span>}
+                        {(standard === 'EXT' || info?.isExt) && <span>· <ExtBadge /> EXT standard (holders are account ids)</span>}
                         <Link to={nftCollectionUrl(collectionId)} style={{ color: theme.colors.accent, textDecoration: 'none' }}>Browse collection</Link>
                     </div>
                 </div>

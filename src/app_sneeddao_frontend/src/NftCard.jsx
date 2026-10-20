@@ -157,8 +157,8 @@ const NftCard = ({ nft, collectionName, collectionSymbol, onSend , supportsIcrc3
                     <div style={{ display: 'flex', gap: '6px', marginTop: '8px', marginBottom: isExpanded ? '12px' : '0' }}>
                         <Link to={`/nft_item?collection=${collectionId}&id=${nft.tokenId.toString()}`} onClick={(e) => e.stopPropagation()} title="Open this NFT's page"
                             style={{ flex: 1, textAlign: 'center', fontSize: '12px', padding: '5px 8px', borderRadius: '6px', border: `1px solid ${theme.colors.border}`, color: theme.colors.secondaryText, textDecoration: 'none' }}>View</Link>
-                        {!isExt && <Link to={`/sneedex_create?nft=${collectionId}:${nft.tokenId.toString()}`} onClick={(e) => e.stopPropagation()} title="Create a Sneedex offer with this NFT pre-filled"
-                            style={{ flex: 1, textAlign: 'center', fontSize: '12px', padding: '5px 8px', borderRadius: '6px', border: '1px solid #8b5cf6', color: '#a78bfa', textDecoration: 'none', fontWeight: 600 }}>Sell on Sneedex</Link>}
+                        <Link to={`/sneedex_create?nft=${collectionId}:${nft.tokenId.toString()}${isExt ? '&standard=EXT' : ''}`} onClick={(e) => e.stopPropagation()} title="Create a Sneedex offer with this NFT pre-filled"
+                            style={{ flex: 1, textAlign: 'center', fontSize: '12px', padding: '5px 8px', borderRadius: '6px', border: '1px solid #8b5cf6', color: '#a78bfa', textDecoration: 'none', fontWeight: 600 }}>Sell on Sneedex</Link>
                     </div>
                 )}
                 

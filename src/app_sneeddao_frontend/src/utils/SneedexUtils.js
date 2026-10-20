@@ -226,6 +226,7 @@ export const getAssetType = (asset) => {
     if ('ICRC1Token' in asset) return 'ICRC1Token';
     if ('ICRC7NFT' in asset) return 'ICRC7NFT';
     if ('SneedLock' in asset) return 'SneedLock';
+    if ('EXTNFT' in asset) return 'EXTNFT';
     return 'Unknown';
 };
 
@@ -295,6 +296,14 @@ export const getAssetDetails = (assetEntry) => {
             type: 'ICRC7NFT',
             collection_id: asset.ICRC7NFT.collection_canister_id.toString(),
             token_ids: asset.ICRC7NFT.token_ids.map((id) => BigInt(id)),
+            escrowed,
+        };
+    }
+    if ('EXTNFT' in asset) {
+        return {
+            type: 'EXTNFT',
+            collection_id: asset.EXTNFT.collection_canister_id.toString(),
+            token_indices: Array.from(asset.EXTNFT.token_indices, (i) => Number(i)), // vec nat32 decodes as a Uint32Array
             escrowed,
         };
     }
@@ -373,6 +382,14 @@ export const createAssetVariant = (type, details) => {
                 ICRC7NFT: {
                     collection_canister_id: Principal.fromText(details.collection_id),
                     token_ids: details.token_ids.map((id) => BigInt(id)),
+                }
+            };
+        case 'ext':
+            // EXT token indices are nat32 (plain numbers in candid)
+            return {
+                EXTNFT: {
+                    collection_canister_id: Principal.fromText(details.collection_id),
+                    token_indices: details.token_indices.map((i) => Number(i)),
                 }
             };
         default:

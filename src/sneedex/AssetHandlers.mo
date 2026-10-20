@@ -6,10 +6,13 @@ import T "Types";
 import Utils "Utils";
 import Array "mo:base/Array";
 import Nat "mo:base/Nat";
+import Text "mo:base/Text";
 import Nat8 "mo:base/Nat8";
 import Nat64 "mo:base/Nat64";
 import Int "mo:base/Int";
 import Time "mo:base/Time";
+import Nat32 "mo:base/Nat32";
+import Ext "../sneed_names/Ext";
 
 module {
     // ============================================
@@ -936,6 +939,114 @@ module {
         };
     };
     
+    // ============================================
+    // EXT NFTs (Toniq / Entrepot standard)
+    // ============================================
+    // A holder is an account identifier (hex). Sneedex holds an offer's EXT tokens in the account
+    // id of (Sneedex, the offer's escrow subaccount). Every call is a bounded-wait call: a call
+    // whose answer is lost is followed by a bearer() read, which is the truth.
+
+    let EXT_READ_TIMEOUT : Nat32 = 30;
+    let EXT_TRANSFER_TIMEOUT : Nat32 = 60;
+
+    func extCollection(collection : Principal) : Ext.TransferCollection {
+        actor (Principal.toText(collection)) : Ext.TransferCollection;
+    };
+
+    /// The account id holding an EXT token (lowercase hex), or why it could not be read.
+    public func extBearer(collection : Principal, index : Nat32) : async* T.Result<Text> {
+        let tid = Ext.tokenIdentifier(collection, index);
+        try {
+            switch (await (with timeout = EXT_READ_TIMEOUT) extCollection(collection).bearer(tid)) {
+                case (#ok(aid)) { #ok(Text.toLowercase(aid)) };
+                case (#err(#InvalidToken(_))) { #err(#InvalidAsset("EXT token " # Nat32.toText(index) # " does not exist in this collection")) };
+                case (#err(#Other(t))) { #err(#TransferFailed("The collection could not say who holds EXT token " # Nat32.toText(index) # ": " # t)) };
+            };
+        } catch (_e) {
+            #err(#TransferFailed("Failed to read the holder of EXT token " # Nat32.toText(index) # " (is this an EXT collection?)"));
+        };
+    };
+
+    /// Every listed token is held by `account` (an account id).
+    public func verifyExtHeldBy(collection : Principal, indices : [Nat32], account : Text, what : Text) : async* T.Result<()> {
+        for (index in indices.vals()) {
+            switch (await* extBearer(collection, index)) {
+                case (#err(e)) { return #err(e) };
+                case (#ok(holder)) {
+                    if (holder != account) { return #err(#InvalidAsset("EXT token " # Nat32.toText(index) # " is not " # what # " (it is held by account " # holder # ")")) };
+                };
+            };
+        };
+        #ok();
+    };
+
+    func extErrorText(e : { #Unauthorized : Text; #InsufficientBalance; #Rejected; #InvalidToken : Text; #CannotNotify : Text; #Other : Text }) : Text {
+        switch (e) {
+            case (#Unauthorized(a)) { "unauthorized (" # a # ")" }; case (#InsufficientBalance) { "insufficient balance" };
+            case (#Rejected) { "rejected" }; case (#InvalidToken(t)) { "invalid token " # t };
+            case (#CannotNotify(a)) { "cannot notify " # a }; case (#Other(t)) { t };
+        };
+    };
+
+    /// Move one EXT token out of Sneedex's account (`fromSubaccount`, null = the default account)
+    /// to `to`, then read the holder back: Ok only once the collection says `to` holds it.
+    /// EXT checks that `from` is the holder and that the caller's account (caller +
+    /// `subaccount`) is `from`; `from` is therefore the account id of that subaccount, not
+    /// Sneedex's principal (which would name its default account).
+    public func transferExtFrom(collection : Principal, sneedex : Principal, fromSubaccount : ?Blob, index : Nat32, to : Principal) : async* T.Result<()> {
+        let tid = Ext.tokenIdentifier(collection, index);
+        let fromAid = switch (fromSubaccount) { case (?s) { Ext.accountIdOf(sneedex, s) }; case null { Ext.accountId(sneedex) } };
+        let toAid = Ext.accountId(to);
+        let refusal : ?Text = try {
+            switch (await (with timeout = EXT_TRANSFER_TIMEOUT) extCollection(collection).transfer({
+                from = #address(fromAid); to = #principal(to); token = tid; amount = 1; memo = ""; notify = false; subaccount = fromSubaccount;
+            })) {
+                case (#ok(_)) { null };
+                case (#err(e)) { ?extErrorText(e) };
+            };
+        } catch (_e) { ?"the call failed or its answer was lost" };
+        // the holder is the truth, whatever the answer was (a lost answer may hide a done transfer)
+        switch (await* extBearer(collection, index)) {
+            case (#ok(holder)) {
+                if (holder == toAid) { return #ok() };
+                switch (refusal) {
+                    case (?r) { #err(#TransferFailed("EXT token " # Nat32.toText(index) # ": " # r)) };
+                    case null { #err(#TransferFailed("EXT token " # Nat32.toText(index) # ": the collection answered ok but the token is held by account " # holder)) };
+                };
+            };
+            case (#err(e)) {
+                switch (refusal) {
+                    case (?r) { #err(#TransferFailed("EXT token " # Nat32.toText(index) # ": " # r)) };
+                    case null { #err(e) };
+                };
+            };
+        };
+    };
+
+    /// Hand over the listed tokens that are still in the offer's escrow account, and only those:
+    /// a token the recipient already holds counts as delivered, and a token held by anyone else
+    /// has left the escrow before (only Sneedex can move it out, and only to this offer's
+    /// recipient), so a retry never moves a token twice. Stops at the first failure.
+    /// Returns how many tokens this call moved.
+    public func deliverEscrowedExt(collection : Principal, sneedex : Principal, escrowSubaccount : Blob, to : Principal, indices : [Nat32]) : async* T.Result<Nat> {
+        let escrowAid = Ext.accountIdOf(sneedex, escrowSubaccount);
+        var moved = 0;
+        for (index in indices.vals()) {
+            switch (await* extBearer(collection, index)) {
+                case (#err(e)) { return #err(e) };
+                case (#ok(holder)) {
+                    if (holder == escrowAid) {
+                        switch (await* transferExtFrom(collection, sneedex, ?escrowSubaccount, index, to)) {
+                            case (#err(e)) { return #err(e) };
+                            case (#ok(_)) { moved += 1 };
+                        };
+                    };
+                };
+            };
+        };
+        #ok(moved);
+    };
+
     /// Get token balance in a subaccount
     public func getTokenBalance(
         ledgerCanisterId : Principal,

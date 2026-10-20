@@ -194,10 +194,16 @@ export const extIdl = ({ IDL }) => {
     fungible: IDL.Record({ name: IDL.Text, symbol: IDL.Text, decimals: IDL.Nat8, metadata: IDL.Opt(IDL.Vec(IDL.Nat8)) }),
     nonfungible: IDL.Record({ metadata: IDL.Opt(IDL.Vec(IDL.Nat8)) }),
   });
+  const User = IDL.Variant({ address: IDL.Text, principal: IDL.Principal });
   return IDL.Service({
     mint: IDL.Func([IDL.Text, IDL.Opt(IDL.Vec(IDL.Nat8))], [IDL.Nat32], []),
     set_bearer: IDL.Func([IDL.Nat32, IDL.Text], [], []),
     set_failing: IDL.Func([IDL.Bool], [], []),
+    set_transfer_failing: IDL.Func([IDL.Bool], [], []),
+    transfer_count: IDL.Func([], [IDL.Nat], ['query']),
+    transfer: IDL.Func([IDL.Record({
+      from: User, to: User, token: IDL.Text, amount: IDL.Nat, memo: IDL.Vec(IDL.Nat8), notify: IDL.Bool, subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)),
+    })], [IDL.Variant({ ok: IDL.Nat, err: IDL.Variant({ Unauthorized: IDL.Text, InsufficientBalance: IDL.Null, Rejected: IDL.Null, InvalidToken: IDL.Text, CannotNotify: IDL.Text, Other: IDL.Text }) })], []),
     extensions: IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
     bearer: IDL.Func([IDL.Text], [IDL.Variant({ ok: IDL.Text, err: CommonError })], ['query']),
     tokens: IDL.Func([IDL.Text], [IDL.Variant({ ok: IDL.Vec(IDL.Nat32), err: CommonError })], ['query']),
@@ -205,9 +211,10 @@ export const extIdl = ({ IDL }) => {
     getRegistry: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Nat32, IDL.Text))], ['query']),
   });
 };
-/// The account identifier (hex) of a principal's default account.
-export function extAccountId(principal) {
-  const digest = createHash('sha224').update(Buffer.concat([Buffer.from([0x0a]), Buffer.from('account-id'), Buffer.from(principal.toUint8Array()), Buffer.alloc(32)])).digest();
+/// The account identifier (hex) of a principal's default account, or of a 32-byte subaccount.
+export function extAccountId(principal, subaccount = null) {
+  const sub = subaccount ? Buffer.from(subaccount) : Buffer.alloc(32);
+  const digest = createHash('sha224').update(Buffer.concat([Buffer.from([0x0a]), Buffer.from('account-id'), Buffer.from(principal.toUint8Array()), sub])).digest();
   const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(digest));
   return Buffer.concat([crc, digest]).toString('hex');
 }

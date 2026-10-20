@@ -4,6 +4,8 @@ import NeuronDisplay from '../components/NeuronDisplay';
 import SwapModal from '../components/SwapModal';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { NftAssetIcon, NftAssetTitle, NftAssetDetails } from '../components/NftAssetView';
+import { escrowExtAsset } from '../utils/SneedexExt';
+import { useExtEscrowConfirm } from '../components/ExtEscrowConfirm';
 import { SneedLockAssetIcon, SneedLockAssetTitle, SneedLockAssetDetails } from '../components/SneedLockAssetView';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -158,6 +160,7 @@ const managementIdlFactory = () => {
 function SneedexOffer() {
     const { id } = useParams();
     const { identity, isAuthenticated } = useAuth();
+    const [confirmExtEscrow, extEscrowConfirmModal] = useExtEscrowConfirm();
     const { theme } = useTheme();
     const { formatValue: denomFormatValue, currencySign: denomSign } = useDenomination();
     const formatUsd = (v) => denomFormatValue(v || 0);
@@ -2104,6 +2107,33 @@ function SneedexOffer() {
         }
     };
     
+    /// EXT cards: send the ones still in the seller's wallet to the offer's escrow account id (after the
+    /// confirm screen), then Sneedex verifies. Also finishes an escrow whose cards were already sent.
+    const handleEscrowExt = async (assetIndex) => {
+        if (!identity || !offer) return;
+        const assetEntry = offer.assets[assetIndex];
+        if (!assetEntry || !('EXTNFT' in assetEntry.asset)) { setError('Invalid EXT asset'); return; }
+        const a = assetEntry.asset.EXTNFT;
+        setEscrowingAsset(assetIndex);
+        setError('');
+        try {
+            const agent = HttpAgent.createSync({ host: getHost(), identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
+            await escrowExtAsset({
+                sneedexActor: createSneedexActor(identity), identity, agent,
+                collectionId: a.collection_canister_id.toString(), indices: Array.from(a.token_indices, Number),
+                offerId: offer.id, assetIndex, confirm: confirmExtEscrow,
+            });
+            showInfo('EXT cards escrowed successfully!', 'success');
+            await fetchOffer();
+        } catch (e) {
+            console.error('Failed to escrow EXT cards:', e);
+            setError(e.message || 'Failed to escrow the EXT cards.');
+        } finally {
+            setEscrowingAsset(null);
+        }
+    };
+
     const handleEscrowICRC1Tokens = async (assetIndex) => {
         if (!identity || !offer) return;
         
@@ -2549,6 +2579,7 @@ function SneedexOffer() {
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
+            {extEscrowConfirmModal}
             <main style={{ color: theme.colors.primaryText }}>
                 {/* Hero Section */}
                 <div style={{
@@ -2979,6 +3010,10 @@ function SneedexOffer() {
                                             const ledgerId = details.ledger_id;
                                             verificationStatus = tokenBalanceStatus[ledgerId];
                                             canEscrow = verificationStatus?.verified === true;
+                                        } else if (details.type === 'EXTNFT') {
+                                            // checked when escrowing: cards in your wallet are sent (after a confirm screen), cards already in escrow are verified
+                                            verificationStatus = { verified: true, message: "Escrow sends the cards to this offer's escrow account (you confirm first)" };
+                                            canEscrow = true;
                                         }
                                     }
                                     
@@ -3054,6 +3089,9 @@ function SneedexOffer() {
                                                         {details.type === 'ICRC7NFT' && (
                                                             <NftAssetIcon collectionId={details.collection_id} tokenIds={details.token_ids} size={36} />
                                                         )}
+                                                        {details.type === 'EXTNFT' && (
+                                                            <NftAssetIcon collectionId={details.collection_id} tokenIds={details.token_indices} standard="EXT" size={36} />
+                                                        )}
                                                         {details.type === 'SneedLock' && (
                                                             <SneedLockAssetIcon details={details} size={36} />
                                                         )}
@@ -3106,6 +3144,9 @@ function SneedexOffer() {
                                                             })()}
                                                             {details.type === 'ICRC7NFT' && (
                                                                 <NftAssetTitle collectionId={details.collection_id} tokenIds={details.token_ids} />
+                                                            )}
+                                                            {details.type === 'EXTNFT' && (
+                                                                <NftAssetTitle collectionId={details.collection_id} tokenIds={details.token_indices} standard="EXT" />
                                                             )}
                                                             {details.type === 'SneedLock' && (
                                                                 <SneedLockAssetTitle details={details} />
@@ -3489,6 +3530,7 @@ function SneedexOffer() {
                                                                 details.type === 'Canister' ? 'You are a controller of the app canister - ready to escrow' :
                                                                 details.type === 'SNSNeuron' ? (verificationStatus?.message || 'Has permissions') :
                                                                 details.type === 'ICRC1Token' ? (verificationStatus?.message || 'Sufficient balance') :
+                                                                details.type === 'EXTNFT' ? verificationStatus?.message :
                                                                 'Ready'
                                                             }
                                                         </span>
@@ -3537,6 +3579,7 @@ function SneedexOffer() {
                                                             if (details.type === 'Canister') handleEscrowCanister(idx);
                                                             else if (details.type === 'SNSNeuron') handleEscrowSNSNeuron(idx);
                                                             else if (details.type === 'ICRC1Token') handleEscrowICRC1Tokens(idx);
+                                                            else if (details.type === 'EXTNFT') handleEscrowExt(idx);
                                                         }}
                                                         disabled={escrowingAsset === idx}
                                                         style={{
@@ -5048,6 +5091,9 @@ function SneedexOffer() {
                                             {/* Expanded ICRC1 Token Info Section */}
                                             {details.type === 'SneedLock' && isExpanded && (
                                                 <SneedLockAssetDetails details={details} />
+                                            )}
+                                            {details.type === 'EXTNFT' && isExpanded && (
+                                                <NftAssetDetails collectionId={details.collection_id} tokenIds={details.token_indices} standard="EXT" />
                                             )}
                                             {details.type === 'ICRC7NFT' && isExpanded && (
                                                 <NftAssetDetails collectionId={details.collection_id} tokenIds={details.token_ids} me={identity?.getPrincipal?.().toText?.() || null} />

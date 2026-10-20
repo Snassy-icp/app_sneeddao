@@ -10,6 +10,7 @@ import Timer "mo:base/Timer";
 import Blob "mo:base/Blob";
 import Buffer "mo:base/Buffer";
 import Debug "mo:base/Debug";
+import Nat32 "mo:base/Nat32";
 
 import Map "mo:map/Map";
 import { phash; nhash } "mo:map/Map";
@@ -23,6 +24,7 @@ import ApiDoc "ApiDoc";
 import Icrc3Log "../icrc3/Log";
 import Icrc3Sns "../icrc3/SnsRegister";
 import T3 "../icrc3/Types";
+import Ext "../sneed_names/Ext";
 
 shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this {
     // ============================================
@@ -38,7 +40,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // Counters for unique IDs
     var nextOfferId : T.OfferId = 0;
     var nextBidId : T.BidId = 0;
-    var nextAssetTypeId : T.AssetTypeId = 5; // 0..4 are reserved for built-in types
+    var nextAssetTypeId : T.AssetTypeId = 5; // 0..5 are reserved for built-in types (ensureBuiltInAssetTypes moves this past 5)
     
     // Asset types registry
     var assetTypes : [T.AssetType] = [
@@ -47,6 +49,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         { id = T.ASSET_TYPE_ICRC1_TOKEN; name = "ICRC1 Token"; description = "ICRC1 fungible token"; active = true },
         { id = T.ASSET_TYPE_ICRC7_NFT; name = "ICRC-7 NFT"; description = "Non-fungible tokens of an ICRC-7 collection"; active = true },
         { id = T.ASSET_TYPE_SNEED_LOCK; name = "Sneed Lock"; description = "A Sneed Lock token lock or locked LP position"; active = true },
+        { id = T.ASSET_TYPE_EXT_NFT; name = "EXT NFT"; description = "Non-fungible tokens of an EXT collection (Toniq / Entrepot standard)"; active = true },
     ];
     /// Deployments from before the NFT type keep their registry across upgrades; add the entry once.
     private func ensureBuiltInAssetTypes() {
@@ -56,7 +59,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         if (Array.find<T.AssetType>(assetTypes, func(t) { t.id == T.ASSET_TYPE_SNEED_LOCK }) == null) {
             assetTypes := Array.append(assetTypes, [{ id = T.ASSET_TYPE_SNEED_LOCK; name = "Sneed Lock"; description = "A Sneed Lock token lock or locked LP position"; active = true }]);
         };
-        if (nextAssetTypeId <= T.ASSET_TYPE_SNEED_LOCK) { nextAssetTypeId := T.ASSET_TYPE_SNEED_LOCK + 1 };
+        if (Array.find<T.AssetType>(assetTypes, func(t) { t.id == T.ASSET_TYPE_EXT_NFT }) == null) {
+            assetTypes := Array.append(assetTypes, [{ id = T.ASSET_TYPE_EXT_NFT; name = "EXT NFT"; description = "Non-fungible tokens of an EXT collection (Toniq / Entrepot standard)"; active = true }]);
+        };
+        if (nextAssetTypeId <= T.ASSET_TYPE_EXT_NFT) { nextAssetTypeId := T.ASSET_TYPE_EXT_NFT + 1 };
     };
     // The actor body runs on every install, upgrades included, while the registry above keeps its stored value.
     ensureBuiltInAssetTypes();
@@ -225,6 +231,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             };
             case (#ICRC7NFT(n)) {
                 #Map([("type", #Text("icrc7")), ("collection", pv(n.collection_canister_id)), ("token_ids", #Array(Array.map<Nat, T3.Value>(n.token_ids, func(i) { #Nat(i) })))]);
+            };
+            case (#EXTNFT(n)) {
+                #Map([
+                    ("type", #Text("ext")), ("collection", pv(n.collection_canister_id)),
+                    ("token_indices", #Array(Array.map<Nat32, T3.Value>(n.token_indices, func(i) { #Nat(Nat32.toNat(i)) }))),
+                    ("token_identifiers", #Array(Array.map<Nat32, T3.Value>(n.token_indices, func(i) { #Text(Ext.tokenIdentifier(n.collection_canister_id, i)) }))),
+                ]);
             };
             case (#SneedLock(l)) {
                 switch (l.lock) {
@@ -1054,6 +1067,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             case (#SneedLock(asset)) {
                 plain(await* AssetHandlers.transferSneedLock(sneedLockCanisterId, asset, recipient));
             };
+            case (#EXTNFT(asset)) {
+                switch (await* AssetHandlers.deliverEscrowedExt(asset.collection_canister_id, self(), escrowSub, recipient, asset.token_indices)) {
+                    case (#ok(n)) { #ok([("moved", #Nat(n))]) };
+                    case (#err(e)) { #err(e) };
+                };
+            };
         };
     };
 
@@ -1083,6 +1102,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             };
             case (#ICRC7NFT(asset)) {
                 switch (await* AssetHandlers.deliverEscrowedNfts(asset.collection_canister_id, self(), escrowSub, { owner = recipient; subaccount = null }, asset.token_ids)) {
+                    case (#ok(n)) { #ok(if (n > 0) { ?[("moved", #Nat(n))] } else { null }) };
+                    case (#err(e)) { #err(e) };
+                };
+            };
+            // like ICRC-7: only the tokens still in this offer's escrow account
+            case (#EXTNFT(asset)) {
+                switch (await* AssetHandlers.deliverEscrowedExt(asset.collection_canister_id, self(), escrowSub, recipient, asset.token_indices)) {
                     case (#ok(n)) { #ok(if (n > 0) { ?[("moved", #Nat(n))] } else { null }) };
                     case (#err(e)) { #err(e) };
                 };
@@ -1172,6 +1198,25 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             };
             for (assetIndex in offer.assets.keys()) {
                 let entry = offer.assets[assetIndex];
+                // An EXT asset the seller sent to the escrow account but never got marked escrowed
+                // (escrowEXTNFTs not called before the offer was cancelled or expired) goes back
+                // too, best effort: a card that is not there, or a collection that cannot answer,
+                // is no failure of the hand-back (adminReturnMisplacedExtNft remains for that).
+                let unescrowedExt = (not toBuyer) and (not recover) and (not entry.escrowed) and (switch (entry.asset) { case (#EXTNFT(_)) { true }; case (_) { false } });
+                if (unescrowedExt and not isAssetDelivered(offerId, assetIndex)) {
+                    switch (entry.asset) {
+                        case (#EXTNFT(a)) {
+                            switch (await* AssetHandlers.deliverEscrowedExt(a.collection_canister_id, self(), Utils.offerEscrowSubaccount(offer.creator, offerId), recipient, a.token_indices)) {
+                                case (#ok(n)) {
+                                    markAssetDelivered(offerId, assetIndex);
+                                    if (n > 0) { handedOver += 1; logDelivered(assetIndex, false, [("moved", #Nat(n)), ("escrowed", #Nat(0))]) };
+                                };
+                                case (#err(_)) {};
+                            };
+                        };
+                        case (_) {};
+                    };
+                };
                 let pending = (toBuyer or entry.escrowed) and (recover or not isAssetDelivered(offerId, assetIndex));
                 if (pending) {
                     if (recover) {
@@ -1223,7 +1268,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             if (toBuyer) { await registerTokenToWallet(recipient, asset.ledger_canister_id) };
                         };
                         // SNS neurons are shown via SNS governance; NFT collections per user on the NFT page
-                        case (#SNSNeuron(_) or #ICRC7NFT(_) or #SneedLock(_)) {};
+                        case (#SNSNeuron(_) or #ICRC7NFT(_) or #SneedLock(_) or #EXTNFT(_)) {};
                     };
                 };
             };
@@ -1511,6 +1556,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             };
                             case (#ICRC7NFT(_)) { updatedAssets.add(entry) };
                             case (#SneedLock(_)) { updatedAssets.add(entry) };
+                            case (#EXTNFT(_)) { updatedAssets.add(entry) };
                         };
                     };
                 };
@@ -2165,6 +2211,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         for (id in new.token_ids.vals()) { if (Array.find<Nat>(existing.token_ids, func(x) { x == id }) != null) { return true } };
                     };
                 };
+                case (#EXTNFT(existing), #EXTNFT(new)) {
+                    if (Principal.equal(existing.collection_canister_id, new.collection_canister_id)) {
+                        for (i in new.token_indices.vals()) { if (Array.find<Nat32>(existing.token_indices, func(x) { x == i }) != null) { return true } };
+                    };
+                };
                 case (_, _) {};
             };
         };
@@ -2206,9 +2257,73 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     };
                 };
             };
+            // EXT tokens: only their holder lists them. Each must be held by the caller's default
+            // account, or already sit in this offer's escrow account (sent there before listing).
+            case (#EXTNFT(nft)) {
+                switch (getOffer(request.offer_id)) {
+                    case null { return #err(#OfferNotFound) };
+                    case (?o) {
+                        if (not Principal.equal(caller, o.creator)) { return #err(#NotAuthorized) };
+                        if (o.state != #Draft) { return #err(#InvalidState("Offer must be in Draft state to add assets")) };
+                    };
+                };
+                switch (validateExtIndices(nft.token_indices)) { case (#err(e)) { return #err(e) }; case (#ok(_)) {} };
+                let mine = Ext.accountId(caller);
+                let escrowAid = Ext.accountIdOf(self(), Utils.offerEscrowSubaccount(caller, request.offer_id));
+                for (index in nft.token_indices.vals()) {
+                    switch (await* AssetHandlers.extBearer(nft.collection_canister_id, index)) {
+                        case (#err(e)) { return #err(e) };
+                        case (#ok(holder)) {
+                            if (holder != mine and holder != escrowAid) {
+                                return #err(#InvalidAsset("EXT token " # Nat32.toText(index) # " is not yours: it is held by account " # holder # ", not by your account " # mine));
+                            };
+                        };
+                    };
+                };
+            };
             case (_) {};
         };
         addAssetSync(caller, { offer_id = request.offer_id; asset = asset });
+    };
+
+    /// 1 to 50 token indices, none twice.
+    func validateExtIndices(indices : [Nat32]) : T.Result<()> {
+        if (indices.size() == 0) { return #err(#InvalidAsset("List at least one token index")) };
+        if (indices.size() > 50) { return #err(#InvalidAsset("At most 50 tokens of one collection per asset")) };
+        var i = 0;
+        for (a in indices.vals()) {
+            var j = 0;
+            for (b in indices.vals()) { if (i != j and a == b) { return #err(#InvalidAsset("Token index " # Nat32.toText(a) # " is listed twice")) }; j += 1 };
+            i += 1;
+        };
+        #ok();
+    };
+
+    /// Another offer that can still change hands lists one of these EXT tokens: an open offer
+    /// (Draft, PendingEscrow, Active) of the same seller, or any offer that holds it in escrow
+    /// and has not handed it over yet. Another seller's stale draft does not block a new holder.
+    func otherOfferListsExt(offerId : T.OfferId, seller : Principal, collection : Principal, indices : [Nat32]) : ?T.OfferId {
+        for (o in offers.vals()) {
+            if (o.id != offerId) {
+                let open = o.state == #Draft or o.state == #PendingEscrow or o.state == #Active;
+                let settled = o.state == #Claimed or o.state == #Reclaimed;
+                for (assetIndex in o.assets.keys()) {
+                    let entry = o.assets[assetIndex];
+                    switch (entry.asset) {
+                        case (#EXTNFT(e)) {
+                            if (Principal.equal(e.collection_canister_id, collection)) {
+                                let blocks = (open and Principal.equal(o.creator, seller)) or (entry.escrowed and not settled and not isAssetDelivered(o.id, assetIndex));
+                                if (blocks) {
+                                    for (i in indices.vals()) { if (Array.find<Nat32>(e.token_indices, func(x) { x == i }) != null) { return ?o.id } };
+                                };
+                            };
+                        };
+                        case (_) {};
+                    };
+                };
+            };
+        };
+        null;
     };
     
     func addAssetSync(caller : Principal, request : T.AddAssetRequest) : T.Result<()> {
@@ -2262,6 +2377,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             var j = 0;
                             for (other in nft.token_ids.vals()) { if (i != j and id == other) { return #err(#InvalidAsset("Token id " # Nat.toText(id) # " is listed twice")) }; j += 1 };
                             i += 1;
+                        };
+                    };
+                    case (#EXTNFT(nft)) {
+                        switch (validateExtIndices(nft.token_indices)) { case (#err(e)) { return #err(e) }; case (#ok(_)) {} };
+                        switch (otherOfferListsExt(offer.id, caller, nft.collection_canister_id, nft.token_indices)) {
+                            case (?other) { return #err(#InvalidAsset("An EXT token of this asset is already listed in offer " # Nat.toText(other))) };
+                            case null {};
                         };
                     };
                     case (#SneedLock(l)) {
@@ -2675,6 +2797,32 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     public shared ({ caller }) func escrowICRC7NFTsByApproval(offerId : T.OfferId, assetIndex : Nat) : async T.Result<()> {
         await* escrowNftsInternal(caller, offerId, assetIndex, true);
     };
+    /// Mark an EXT asset escrowed once every listed token is held by the offer's escrow account:
+    /// the account id of this canister's escrow subaccount for the offer (getOfferEscrowAccountId).
+    /// The seller sends each token there with the collection's transfer (to = { address = that
+    /// account id }) and then calls this; nothing is pulled (EXT has no standard approval flow).
+    public shared ({ caller }) func escrowEXTNFTs(offerId : T.OfferId, assetIndex : Nat) : async T.Result<()> {
+        let offer = switch (getOffer(offerId)) { case (?o) { o }; case null { return #err(#OfferNotFound) } };
+        if (not Principal.equal(caller, offer.creator)) { return #err(#NotAuthorized) };
+        if (offer.state != #PendingEscrow) { return #err(#InvalidState("Offer must be in PendingEscrow state")) };
+        if (assetIndex >= offer.assets.size()) { return #err(#InvalidAsset("Asset index out of bounds")) };
+        let assetEntry = offer.assets[assetIndex];
+        if (assetEntry.escrowed) { return #err(#InvalidAsset("Asset already escrowed")) };
+        let nft = switch (assetEntry.asset) { case (#EXTNFT(n)) { n }; case (_) { return #err(#InvalidAsset("Asset at index is not an EXT NFT")) } };
+        let escrowAid = Ext.accountIdOf(self(), Utils.offerEscrowSubaccount(caller, offerId));
+        switch (await* AssetHandlers.verifyExtHeldBy(nft.collection_canister_id, nft.token_indices, escrowAid, "in the escrow account " # escrowAid)) {
+            case (#err(e)) { return #err(e) };
+            case (#ok(_)) {};
+        };
+        // re-read: the offer may have changed across the awaits
+        let offer2 = switch (getOffer(offerId)) { case (?o) { o }; case null { return #err(#OfferNotFound) } };
+        if (offer2.state != #PendingEscrow or assetIndex >= offer2.assets.size() or offer2.assets[assetIndex].escrowed) { return #err(#InvalidState("Offer changed while escrowing")) };
+        let updatedEntry : T.AssetEntry = { asset = assetEntry.asset; escrowed = true };
+        updateOffer(offerId, { offer2 with assets = Utils.updateAt(offer2.assets, assetIndex, updatedEntry) });
+        icrc3_add("sneedex_asset_escrow", [("caller", pv(caller)), ("offer_id", #Nat(offerId)), ("asset_index", #Nat(assetIndex)), ("asset", assetV(assetEntry.asset)), ("account_id", #Text(escrowAid))]);
+        #ok();
+    };
+
     /// Escrow a Sneed Lock: the seller has moved the lock's ownership in Sneed Lock to this canister
     /// (transfer_token_lock_ownership / transfer_position_ownership); verify it, and for a token lock
     /// make sure Sneedex can afford to pass it on (one ledger fee free in its Sneed Lock wallet).
@@ -3802,6 +3950,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // QUERY FUNCTIONS
     // ============================================
     
+    /// The EXT / ICP-style account identifier (64 hex chars) of an offer's escrow account: this
+    /// canister with getOfferEscrowSubaccount(creator, offerId). EXT tokens are escrowed there.
+    public query func getOfferEscrowAccountId(creator : Principal, offerId : T.OfferId) : async Text {
+        Ext.accountIdOf(self(), Utils.offerEscrowSubaccount(creator, offerId));
+    };
+
     /// Get offer escrow subaccount for ICRC1 token deposits
     public query func getOfferEscrowSubaccount(creator : Principal, offerId : T.OfferId) : async Blob {
         Utils.offerEscrowSubaccount(creator, offerId);
@@ -4141,6 +4295,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             case (#ICRC1Token(_)) T.ASSET_TYPE_ICRC1_TOKEN;
             case (#ICRC7NFT(_)) T.ASSET_TYPE_ICRC7_NFT;
             case (#SneedLock(_)) T.ASSET_TYPE_SNEED_LOCK;
+            case (#EXTNFT(_)) T.ASSET_TYPE_EXT_NFT;
         };
     };
     
@@ -4811,6 +4966,58 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
 
+    /// Admin rescue for an EXT token that sits in an account of Sneedex but belongs to no offer
+    /// that can still hand it over: sent to Sneedex's default account (`fromOffer` null), or to an
+    /// offer's escrow account (`fromOffer`) without the offer holding it (never marked escrowed,
+    /// or not listed there at all). Moves it to `to`'s default account. Refused while any offer
+    /// waiting for its escrow lists the token, or any offer holds it escrowed and has not handed
+    /// it over, so a legitimately escrowed token can never be moved this way.
+    public shared ({ caller }) func adminReturnMisplacedExtNft(collection : Principal, tokenIndex : Nat32, fromOffer : ?T.OfferId, to : Principal) : async T.Result<Text> {
+        if (not isAdmin(caller)) { return #err(#NotAuthorized) };
+        if (Principal.isAnonymous(to)) { return #err(#InvalidInput("Refusing to send to the anonymous principal")) };
+        for (o in offers.vals()) {
+            if (o.state != #Draft and o.state != #Claimed and o.state != #Reclaimed) {
+                for (assetIndex in o.assets.keys()) {
+                    let entry = o.assets[assetIndex];
+                    switch (entry.asset) {
+                        case (#EXTNFT(nft)) {
+                            if (Principal.equal(nft.collection_canister_id, collection) and Array.find<Nat32>(nft.token_indices, func(i) { i == tokenIndex }) != null) {
+                                if (entry.escrowed and not isAssetDelivered(o.id, assetIndex)) {
+                                    return #err(#InvalidState("Token is escrowed for offer " # Nat.toText(o.id)));
+                                };
+                                if (o.state == #PendingEscrow) {
+                                    return #err(#InvalidState("Token is listed in offer " # Nat.toText(o.id) # ", which is waiting for its escrow"));
+                                };
+                            };
+                        };
+                        case (_) {};
+                    };
+                };
+            };
+        };
+        let sub : ?Blob = switch (fromOffer) {
+            case null { null };
+            case (?id) { switch (getOffer(id)) { case (?o) { ?Utils.offerEscrowSubaccount(o.creator, o.id) }; case null { return #err(#OfferNotFound) } } };
+        };
+        let fromAid = switch (sub) { case (?s) { Ext.accountIdOf(self(), s) }; case null { Ext.accountId(self()) } };
+        switch (await* AssetHandlers.verifyExtHeldBy(collection, [tokenIndex], fromAid, "in that account of Sneedex (" # fromAid # ")")) {
+            case (#err(e)) { return #err(e) };
+            case (#ok(_)) {};
+        };
+        switch (await* AssetHandlers.transferExtFrom(collection, self(), sub, tokenIndex, to)) {
+            case (#err(e)) { #err(e) };
+            case (#ok(_)) {
+                let from : [(Text, T3.Value)] = switch (fromOffer) { case (?id) { [("from_offer_id", #Nat(id))] }; case null { [] } };
+                icrc3_add("sneedex_admin_ext_return", Array.flatten<(Text, T3.Value)>([
+                    [("caller", pv(caller)), ("collection", pv(collection)), ("token_index", #Nat(Nat32.toNat(tokenIndex))), ("token_identifier", #Text(Ext.tokenIdentifier(collection, tokenIndex)))],
+                    from,
+                    [("from_account_id", #Text(fromAid)), ("to", pv(to))],
+                ]));
+                #ok("EXT token " # Nat32.toText(tokenIndex) # " returned");
+            };
+        };
+    };
+
     /// Admin function to manually reclaim stuck tokens from an offer
     /// This is useful when autoReclaimAssets failed to transfer tokens
     /// but already updated the state to Reclaimed
@@ -4903,6 +5110,20 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             };
                                         };
                                     };
+                                };
+                            };
+                            // NFTs: only the tokens still in this offer's escrow (before, an ICRC-7 asset
+                            // was not covered by this switch and trapped)
+                            case (#ICRC7NFT(asset)) {
+                                switch (await* AssetHandlers.deliverEscrowedNfts(asset.collection_canister_id, self(), Utils.offerEscrowSubaccount(offer.creator, offerId), { owner = offer.creator; subaccount = null }, asset.token_ids)) {
+                                    case (#ok(n)) { message := message # "NFTs returned to the seller: " # Nat.toText(n) # "\n"; if (n > 0) { returned(assetIndex, entry.asset, [("moved", #Nat(n))]) } };
+                                    case (#err(e)) { message := message # "NFT return failed: " # errorText(e) # "\n" };
+                                };
+                            };
+                            case (#EXTNFT(asset)) {
+                                switch (await* AssetHandlers.deliverEscrowedExt(asset.collection_canister_id, self(), Utils.offerEscrowSubaccount(offer.creator, offerId), offer.creator, asset.token_indices)) {
+                                    case (#ok(n)) { message := message # "EXT tokens returned to the seller: " # Nat.toText(n) # "\n"; if (n > 0) { returned(assetIndex, entry.asset, [("moved", #Nat(n))]) } };
+                                    case (#err(e)) { message := message # "EXT return failed: " # errorText(e) # "\n" };
                                 };
                             };
                             case (#SneedLock(asset)) {
@@ -5177,6 +5398,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             "sneedex_creation_payment_withdraw",
             "sneedex_admin_asset_return",
             "sneedex_admin_nft_return",
+            "sneedex_admin_ext_return",
             "sneedex_config_update",
         ];
     };
@@ -5355,6 +5577,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         #addAssetType : Any;
         #adminReclaimStuckTokens : Any;
         #adminReturnMisplacedNft : Any;
+        #adminReturnMisplacedExtNft : Any;
         #admin_icrc3_register_archives_now : Any;
         #admin_icrc3_repair_archive_controllers : Any;
         #admin_icrc3_reset_archive_registration : Any;
@@ -5374,6 +5597,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         #escrowICRC1Tokens : Any;
         #escrowICRC7NFTs : Any;
         #escrowICRC7NFTsByApproval : Any;
+        #escrowEXTNFTs : Any;
         #escrowSNSNeuron : Any;
         #escrowSneedLock : Any;
         #finalizeAssets : Any;
@@ -5408,6 +5632,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         #getOfferCreationFee : Any;
         #getOfferCreationPaymentSubaccount : Any;
         #getOfferEscrowSubaccount : Any;
+        #getOfferEscrowAccountId : Any;
         #getOfferFeed : Any;
         #getOfferView : Any;
         #getOffersByCreator : Any;
@@ -5493,6 +5718,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 or #getOfferCreationFee _
                 or #getOfferCreationPaymentSubaccount _
                 or #getOfferEscrowSubaccount _
+                or #getOfferEscrowAccountId _
                 or #getOfferFeed _
                 or #getOfferView _
                 or #getOffersByCreator _
@@ -5528,6 +5754,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 and (switch (f().asset) {
                     case (#Canister c) IngressGuard.optText(c.title, T.MAX_CANISTER_TITLE_LENGTH) and IngressGuard.optText(c.description, T.MAX_CANISTER_DESCRIPTION_LENGTH);
                     case (#ICRC7NFT n) n.token_ids.size() <= MAX_NFTS_PER_ASSET;
+                    case (#EXTNFT n) n.token_indices.size() <= MAX_NFTS_PER_ASSET;
                     case _ true;
                 })
             };

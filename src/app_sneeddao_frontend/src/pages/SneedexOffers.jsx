@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot, FaChevronLeft, FaChevronRight, FaChevronDown, FaChevronUp, FaTimes, FaUnlock, FaExchangeAlt, FaChartLine, FaImage } from 'react-icons/fa';
-import { NftAssetIcon } from '../components/NftAssetView';
+import { NftAssetIcon, ExtBadge } from '../components/NftAssetView';
 import { SneedLockAssetIcon, SneedLockAssetTitle } from '../components/SneedLockAssetView';
 import { getLogoSync } from '../hooks/useLogoCache';
 import TokenSelector from '../components/TokenSelector';
@@ -686,7 +686,7 @@ function SneedexOffers() {
                 if (filterType === 'trading_bot') return type === 'Canister' && details.canister_kind === CANISTER_KIND_TRADING_BOT;
                 if (filterType === 'neuron') return type === 'SNSNeuron';
                 if (filterType === 'token') return type === 'ICRC1Token';
-                if (filterType === 'nft') return type === 'ICRC7NFT';
+                if (filterType === 'nft') return type === 'ICRC7NFT' || type === 'EXTNFT';
                 if (filterType === 'lock') return type === 'SneedLock';
                 return true;
             });
@@ -2296,6 +2296,9 @@ function SneedexOffers() {
                                                     const stakeText = stakeValue !== undefined ? `\nStake: ${stakeValue.toFixed(4)} ${snsInfo?.symbol || 'tokens'}` : '';
                                                     return `${snsInfo?.name || 'SNS'} Neuron\nGovernance: ${details.governance_id}\nNeuron ID: ${details.neuron_id?.slice(0, 16)}...${stakeText}`;
                                                 }
+                                                if (details.type === 'EXTNFT') {
+                                                    return `EXT NFT${details.token_indices.length === 1 ? '' : 's'}\nCollection: ${details.collection_id}\nToken indices: ${details.token_indices.join(', ')}`;
+                                                }
                                                 if (details.type === 'ICRC7NFT') {
                                                     return `ICRC-7 NFT${details.token_ids.length === 1 ? '' : 's'}\nCollection: ${details.collection_id}\nToken ids: ${details.token_ids.join(', ')}`;
                                                 }
@@ -2406,6 +2409,12 @@ function SneedexOffers() {
                                                         <>
                                                             <SneedLockAssetIcon details={details} size={18} />
                                                             <SneedLockAssetTitle details={details} />
+                                                        </>
+                                                    )}
+                                                    {details.type === 'EXTNFT' && (
+                                                        <>
+                                                            <NftAssetIcon collectionId={details.collection_id} tokenIds={details.token_indices} standard="EXT" size={18} radius={4} />
+                                                            <ExtBadge />{details.token_indices.length === 1 ? `Card #${details.token_indices[0]}` : `${details.token_indices.length} cards`} <span style={{ color: theme.colors.mutedText, fontFamily: 'monospace', fontSize: '0.75rem' }}>{details.collection_id.slice(0, 5)}…</span>
                                                         </>
                                                     )}
                                                     {details.type === 'ICRC7NFT' && (

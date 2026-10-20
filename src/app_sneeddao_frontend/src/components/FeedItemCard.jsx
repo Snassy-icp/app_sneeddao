@@ -8,7 +8,7 @@ import TokenIcon from './TokenIcon';
 import MarkdownBody from './MarkdownBody';
 import Poll from './Poll';
 import { SneedLockAssetIcon, SneedLockAssetTitle } from './SneedLockAssetView';
-import { NftAssetIcon } from './NftAssetView';
+import { NftAssetIcon, ExtBadge } from './NftAssetView';
 
 // Accent colors
 const feedPrimary = '#f97316';
@@ -850,6 +850,14 @@ function FeedItemCard({
                                                     <>
                                                         <SneedLockAssetIcon details={asset} size={18} />
                                                         <span style={{ color: theme.colors.primaryText }}><SneedLockAssetTitle details={asset} /></span>
+                                                    </>
+                                                )}
+                                                {asset.type === 'EXTNFT' && (
+                                                    <>
+                                                        <NftAssetIcon collectionId={asset.collection_id} tokenIds={asset.token_indices} standard="EXT" size={18} radius={4} />
+                                                        <span style={{ color: theme.colors.primaryText }}>
+                                                            <ExtBadge style={{ marginRight: 4 }} />{asset.token_indices.length === 1 ? `Card #${asset.token_indices[0]}` : `${asset.token_indices.length} cards`} <span style={{ color: theme.colors.mutedText, fontFamily: 'monospace', fontSize: '0.75rem' }}>{asset.collection_id.slice(0, 5)}…</span>
+                                                        </span>
                                                     </>
                                                 )}
                                                 {asset.type === 'ICRC7NFT' && (

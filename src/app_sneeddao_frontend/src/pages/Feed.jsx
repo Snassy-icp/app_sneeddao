@@ -19,7 +19,7 @@ import FeedItemCard from '../components/FeedItemCard';
 import { FaRss, FaFilter, FaTimes, FaChevronDown, FaChevronUp, FaComments, FaLayerGroup, FaStream, FaReply, FaSearch, FaUser, FaList, FaGavel, FaBrain, FaRobot, FaCube, FaCoins, FaClock } from 'react-icons/fa';
 import { createSneedexActor, getAssetDetails, formatAmount, formatTimeRemaining, getOfferStateString } from '../utils/SneedexUtils';
 import { SneedLockAssetIcon, SneedLockAssetTitle } from '../components/SneedLockAssetView';
-import { NftAssetIcon } from '../components/NftAssetView';
+import { NftAssetIcon, ExtBadge } from '../components/NftAssetView';
 
 // Accent colors for Feed
 const feedPrimary = '#f97316'; // Warm orange
@@ -2295,6 +2295,14 @@ function Feed() {
                                                         <>
                                                             <SneedLockAssetIcon details={asset} size={18} />
                                                             <span style={{ color: theme.colors.primaryText }}><SneedLockAssetTitle details={asset} /></span>
+                                                        </>
+                                                    )}
+                                                    {asset.type === 'EXTNFT' && (
+                                                        <>
+                                                            <NftAssetIcon collectionId={asset.collection_id} tokenIds={asset.token_indices} standard="EXT" size={18} radius={4} />
+                                                            <span style={{ color: theme.colors.primaryText }}>
+                                                                <ExtBadge style={{ marginRight: 4 }} />{asset.token_indices.length === 1 ? `Card #${asset.token_indices[0]}` : `${asset.token_indices.length} cards`} <span style={{ color: theme.colors.mutedText, fontFamily: 'monospace', fontSize: '0.75rem' }}>{asset.collection_id.slice(0, 5)}…</span>
+                                                            </span>
                                                         </>
                                                     )}
                                                     {asset.type === 'ICRC7NFT' && (

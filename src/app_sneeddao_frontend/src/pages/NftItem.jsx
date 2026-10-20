@@ -161,7 +161,7 @@ function NftItem() {
                                 {token?.owner && <CarriedBy owner={token.owner} theme={theme} />}
                                 {mine && (
                                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
-                                        {!isExt && <Link to={`/sneedex_create?nft=${collection}:${idText}`} style={btn('#a78bfa')}><FaTag /> Sell on Sneedex</Link>}
+                                        <Link to={`/sneedex_create?nft=${collection}:${idText}${isExt ? '&standard=EXT' : ''}`} style={btn('#a78bfa')}><FaTag /> Sell on Sneedex</Link>
                                         <Link to="/nft" onClick={() => { if (!inWallet) addToWallet(); }} style={btn()}><FaWallet /> {inWallet ? 'Open in wallet' : 'Add collection to wallet'}</Link>
                                         {namingServiceEnabled && img && (
                                             <button type="button" onClick={useAsAvatar} disabled={avatarState === 'saving' || avatarState === 'done'} style={btn()} title="Show this NFT next to your name while you own it">
