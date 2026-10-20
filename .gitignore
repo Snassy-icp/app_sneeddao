@@ -46,6 +46,8 @@ src/app_sneeddao_frontend/public/api-docs/*.did.js
 !src/app_sneeddao_frontend/public/api-docs/sneed_names.did
 !src/app_sneeddao_frontend/public/api-docs/sneed_names.did.js
 src/app_sneeddao_frontend/public/.well-known/agent-skills/index.json
+src/app_sneeddao_frontend/public/.well-known/ii-derivation-origin
+src/app_sneeddao_frontend/public/.well-known/ic-architecture
 
 # canister test artifacts
 test/canisters/build/

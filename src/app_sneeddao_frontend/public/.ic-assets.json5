@@ -24,6 +24,16 @@
         }
     },
     {
+        // Service discoverability files: read cross-origin by agents and never cached, so a change
+        // of canisters or origin is seen at once.
+        "match": ".well-known/{ii-derivation-origin,ic-architecture}",
+        "headers": {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+            "Cache-Control": "no-store"
+        }
+    },
+    {
         "match": "llms.txt",
         "headers": {
             "Access-Control-Allow-Origin": "*",
