@@ -76,6 +76,9 @@ shared (deployer) persistent actor class SneedMon() = this {
   public type SpecialPricesFor = T.SpecialPricesFor;
   public type SpResult = T.SpResult;
   public type ChargeEntryTiered = T.ChargeEntryTiered;
+  public type AutoTopUpSettings = T.AutoTopUpSettings;
+  public type TopUpFailure = T.TopUpFailure;
+  public type MyAutoTopUp = T.MyAutoTopUp;
 
   // ---------------------------------------------------------------------------------------------
   // State (enhanced orthogonal persistence, like sneed_notifications)
@@ -179,6 +182,14 @@ shared (deployer) persistent actor class SneedMon() = this {
   var fee_forwards : Nat = 0;
   var deposits_e8s : Nat = 0;
   var withdrawals_e8s : Nat = 0;
+  // auto top-up (spec §3; added after 6cfabb63, empty on upgrade = off for everyone): user -> settings
+  // and counters. Pulls go from the user's wallet straight into the main account and are credited.
+  let auto_top_ups = Map.new<Principal, T.AutoTopUp>();
+  var auto_top_ups_n : Nat = 0;
+  var auto_top_ups_e8s : Nat = 0;
+  transient let MAX_PULLS_PER_ROUND : Nat = 50;
+  transient let TOP_UP_RETRY_NS : Int = 86_400_000_000_000; // a refused pull is retried after a day
+  transient let MAX_TOP_UP_E8S : Nat = 10_000_000_000; // 100 ICP
 
   // economics: does the monitor pay for itself? (hourly buckets for the windows)
   let hours = Map.new<Nat, Period>();
@@ -210,6 +221,7 @@ shared (deployer) persistent actor class SneedMon() = this {
   transient var notices_done = false;
   transient var refreshed_this_round : Nat = 0;
   transient var fees_checked_round : Nat = 0;
+  transient var pulls_this_round : Nat = 0;
   transient let nns_info = Map.new<Principal, [(Nat64, ?T.NnsNeuronInfo)]>(); // this round's NNS neuron reads
   // users with a ledger call under way (credit_deposit, withdraw_balance), and the fee withdrawal
   transient let in_flight = Map.new<Principal, ()>();
@@ -745,6 +757,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     {
       balance_e8s = a.balance_e8s; paused = a.paused; watches = ws.size(); per_round_of_checks_e8s = checksCost(caller, ws); per_day_e8s = dailyCost(caller, ws);
       charged_e8s = a.charged_e8s; checks = a.checks; deposited_e8s = a.deposited_e8s; withdrawn_e8s = a.withdrawn_e8s; deposit_account = depositAccount(caller);
+      auto_top_up = myAutoTopUp(caller);
     };
   };
 
@@ -772,7 +785,7 @@ shared (deployer) persistent actor class SneedMon() = this {
         let e = all[n - 1 - start - i];
         let back = start + i; // 0 = newest
         let tier = if (back < tiers.size()) SP.tierText(tiers[tiers.size() - 1 - back]) else "regular";
-        { at = e.at; target = e.target; every_min = e.every_min; price_e8s = e.price_e8s; outcome = e.outcome; price_tier = tier };
+        { at = e.at; target = e.target; every_min = e.every_min; price_e8s = e.price_e8s; outcome = e.outcome; price_tier = tier; kind = if (e.every_min == 0) "auto_top_up" else "check" };
       });
     };
   };
@@ -852,6 +865,54 @@ shared (deployer) persistent actor class SneedMon() = this {
     };
   };
 
+  // ---- auto top-up (spec §3): pulled from the user's wallet with ICRC-2 ----
+
+  transient let NO_TOP_UP : T.AutoTopUp = {
+    settings = null; set_at = 0; pulls = 0; pulled_e8s = 0; last_pull_at = 0; last_block = null;
+    attempted_round = 0; failure = null; retry_at = 0; notice_sent = false;
+  };
+  func topUpOf(u : Principal) : T.AutoTopUp = switch (Map.get(auto_top_ups, Map.phash, u)) { case (?t) t; case null NO_TOP_UP };
+  func minTopUp() : Nat = 10 * billing.ledger_fee_e8s;
+
+  func myAutoTopUp(u : Principal) : MyAutoTopUp {
+    let t = topUpOf(u);
+    {
+      settings = t.settings; pulls = t.pulls; pulled_e8s = t.pulled_e8s; last_pull_at = t.last_pull_at; last_failure = t.failure; retry_at = t.retry_at;
+      spender = { owner = Principal.fromActor(this); subaccount = null };
+      per_pull_allowance_e8s = switch (t.settings) { case (?s) s.amount_e8s + billing.ledger_fee_e8s; case null 0 };
+      min_amount_e8s = minTopUp(); max_amount_e8s = MAX_TOP_UP_E8S;
+    };
+  };
+
+  /// Top up automatically from your wallet: when your balance falls below `when_below_e8s`, or
+  /// can't pay one check of each of your watches, sneed_mon pulls `amount_e8s` from your ICP account
+  /// (`from_subaccount` of your principal, null = the main account; icrc2_transfer_from, at most once a round) and credits it in full; the ledger fee is
+  /// paid from your wallet on top. You first approve sneed_mon (`get_my_balance().auto_top_up.spender`)
+  /// on the ICP ledger with icrc2_approve: that allowance (amount and expiry) is the most it can ever
+  /// take, each pull using amount + fee of it. A refused pull (allowance used up or expired, wallet
+  /// empty) is retried a day later, and you get one message (topic `account`). null turns it off.
+  /// amount_e8s: at least 10 ledger fees, at most 100 ICP; when_below_e8s: at most 100 ICP.
+  public shared ({ caller }) func set_auto_top_up(s : ?AutoTopUpSettings) : async Result {
+    if (Principal.isAnonymous(caller)) return #err("Please sign in");
+    let known = Map.has(auto_top_ups, Map.phash, caller);
+    switch s {
+      case (?x) {
+        if (x.amount_e8s < minTopUp()) return #err("The top-up amount is at least 10 ledger fees (" # e8sText(minTopUp()) # " ICP)");
+        if (x.amount_e8s > MAX_TOP_UP_E8S) return #err("The top-up amount is at most " # e8sText(MAX_TOP_UP_E8S) # " ICP");
+        if (x.when_below_e8s > MAX_TOP_UP_E8S) return #err("The threshold is at most " # e8sText(MAX_TOP_UP_E8S) # " ICP");
+        switch (x.from_subaccount) { case (?b) if (b.size() != 32) return #err("A subaccount is 32 bytes"); case null {} };
+        if (not known and Map.size(auto_top_ups) >= config.max_users) return #err("sneed_mon is full (user limit); try again later");
+      };
+      case null if (not known) return #ok("Auto top-up is off");
+    };
+    // a new setting starts afresh: a refusal is retried next round, and told again if it recurs
+    Map.set(auto_top_ups, Map.phash, caller, { topUpOf(caller) with settings = s; set_at = now(); failure = null; retry_at = 0; notice_sent = false });
+    switch s {
+      case (?x) #ok("Auto top-up on: " # e8sText(x.amount_e8s) # " ICP from your " # (if (x.from_subaccount == null) "main account" else "subaccount") # " whenever your balance falls below " # e8sText(x.when_below_e8s) # " ICP, as far as your approval allows");
+      case null #ok("Auto top-up is off");
+    };
+  };
+
   /// Totals (never per user): what sneed_mon owes its users and how much of the collected fees is
   /// left. Its main ledger account holds at least `obligations_e8s`.
   public query func get_accounting() : async Accounting {
@@ -861,6 +922,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     {
       icp_ledger = billing.icp_ledger; user_balances_e8s = ub; fees_available_e8s = feesAvailable(); obligations_e8s = ub + feesAvailable();
       fees_collected_e8s; fees_withdrawn_e8s; fees_forwarded_e8s; fee_forwards; deposits_e8s; withdrawals_e8s; accounts = Map.size(accounts); paused_users = paused;
+      auto_top_ups = auto_top_ups_n; auto_top_ups_e8s;
     };
   };
 
@@ -892,6 +954,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     notify_broken := false;
     notices_done := false;
     refreshed_this_round := 0;
+    pulls_this_round := 0;
     Map.clear(nns_info);
     // paused users whose balance pays again (a lower price) resume
     for ((u, a) in Map.entries(accounts)) if (a.paused) ignore maybeResume(u);
@@ -912,7 +975,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     round_ticks += 1;
     var finished = false;
     try {
-      if (await* phaseList()) if (await* phaseRefresh(true)) if (await* phaseMatch()) if (await* phaseChecks()) if (await* phaseRefresh(false)) { await* forwardFees(); finished := true };
+      if (await* phaseTopUps()) if (await* phaseList()) if (await* phaseRefresh(true)) if (await* phaseMatch()) if (await* phaseChecks()) if (await* phaseRefresh(false)) { await* forwardFees(); finished := true };
     } catch (e) { noteError(null, "round: " # Error.message(e)); finished := true };
     running_since := null;
     let c1 = Cycles.balance();
@@ -929,6 +992,129 @@ shared (deployer) persistent actor class SneedMon() = this {
       ignore Timer.setTimer<system>(#seconds 1, work);
     };
     // else: the round stays open and the next timer tick goes on with it
+  };
+
+  // ---- phase 0: auto top-ups (before anything is charged, so a pull can prevent a pause) ----
+
+  /// The settings to pull with, when `u` needs a top-up now: auto top-up on, watches to pay for,
+  /// the balance below the threshold or short of one check of each watch (or paused), not tried
+  /// this round, not within a day of a refusal.
+  func topUpDue(u : Principal, t : T.AutoTopUp) : ?AutoTopUpSettings {
+    let s = switch (t.settings) { case (?s) s; case null return null };
+    if (t.attempted_round == round_no or now() < t.retry_at) return null;
+    let ws = watchesOf(u);
+    if (ws.size() == 0) return null;
+    let a = acct(u);
+    if (a.paused or a.balance_e8s < s.when_below_e8s or a.balance_e8s < checksCost(u, ws)) ?s else null;
+  };
+
+  /// Pull the due top-ups, at most MAX_PULLS_PER_ROUND a round (the rest next round), in parallel.
+  /// Each user's ledger call holds their lock (no deposit or withdrawal meanwhile); the balance is
+  /// credited only after the ledger accepted. Pulls go to the main account, so the invariant holds:
+  /// the main account grows by exactly what the balance does.
+  func phaseTopUps() : async* Bool {
+    let todo = Buffer.Buffer<(Principal, AutoTopUpSettings)>(8);
+    label scan for ((u, t) in Map.entries(auto_top_ups)) {
+      if (pulls_this_round + todo.size() >= MAX_PULLS_PER_ROUND) break scan;
+      if (not Map.has(in_flight, Map.phash, u)) switch (topUpDue(u, t)) { case (?s) todo.add((u, s)); case null {} };
+    };
+    var i = 0;
+    while (i < todo.size()) {
+      if (budget == 0) return false;
+      let n = Nat.min(par(), todo.size() - i);
+      let locked = Buffer.Buffer<Principal>(n);
+      try {
+        let fs = Buffer.Buffer<(Principal, Nat, async T.TransferFromResult)>(n);
+        for (k in Iter.range(0, n - 1)) {
+          let (u, s) = todo.get(i + k);
+          if (lock(u)) {
+            locked.add(u);
+            Map.set(auto_top_ups, Map.phash, u, { topUpOf(u) with attempted_round = round_no });
+            spend();
+            pulls_this_round += 1;
+            fs.add((u, s.amount_e8s, ledger().icrc2_transfer_from({
+              spender_subaccount = null; from = { owner = u; subaccount = s.from_subaccount }; to = { owner = Principal.fromActor(this); subaccount = null };
+              amount = s.amount_e8s; fee = ?billing.ledger_fee_e8s; memo = ?Text.encodeUtf8("sneed_mon top-up " # Nat.toText(round_no));
+              created_at_time = ?Nat64.fromNat(Int.abs(now()));
+            })));
+          };
+        };
+        i += n;
+        for ((u, amount, f) in fs.vals()) {
+          // an unbounded-wait call: a reject means nothing moved (tried again next round)
+          let r = try { await f } catch (e) { noteError(null, "auto top-up: " # Error.message(e)); #Err(#TemporarilyUnavailable) };
+          topUpResult(u, amount, r);
+        };
+      } finally { for (u in locked.vals()) Map.delete(in_flight, Map.phash, u) };
+    };
+    true;
+  };
+
+  func topUpResult(u : Principal, amount : Nat, r : T.TransferFromResult) {
+    let fee = billing.ledger_fee_e8s;
+    // one message per failure streak (notice_sent is cleared by a pull or a new setting)
+    func failed(reason : Text) {
+      Map.set(auto_top_ups, Map.phash, u, { topUpOf(u) with failure = ?{ at = now(); reason }; retry_at = now() + TOP_UP_RETRY_NS });
+    };
+    switch r {
+      case (#Ok(block)) {
+        let a = acct(u);
+        putAcct(u, { a with balance_e8s = a.balance_e8s + amount; deposited_e8s = a.deposited_e8s + amount });
+        deposits_e8s += amount;
+        auto_top_ups_n += 1;
+        auto_top_ups_e8s += amount;
+        let t = topUpOf(u);
+        Map.set(auto_top_ups, Map.phash, u, { t with pulls = t.pulls + 1; pulled_e8s = t.pulled_e8s + amount; last_pull_at = now(); last_block = ?block; failure = null; retry_at = 0; notice_sent = false });
+        addCharge(u, { at = now(); target = #nns; every_min = 0; price_e8s = amount; outcome = "Auto top-up: +" # e8sText(amount) # " ICP from your wallet (ledger block " # Nat.toText(block) # ")" }, #regular);
+        ignore maybeResume(u);
+      };
+      case (#Err(#InsufficientAllowance(x))) failed(
+        if (x.allowance == 0) "Sneed Monitor has no allowance left on your wallet (the approval is used up, expired or was never given)"
+        else "the allowance left (" # e8sText(x.allowance) # " ICP) does not cover " # e8sText(amount) # " ICP plus the ledger fee"
+      );
+      case (#Err(#InsufficientFunds(x))) failed("your wallet holds " # e8sText(x.balance) # " ICP, not enough for " # e8sText(amount) # " ICP plus the " # e8sText(fee) # " ICP ledger fee");
+      case (#Err(#GenericError(x))) failed("the ledger refused it: " # clip(x.message, 200));
+      case (#Err(#BadBurn _)) failed("the ledger refused it");
+      case (#Err(#BadFee(x))) { billing := { billing with ledger_fee_e8s = x.expected_fee }; noteError(null, "auto top-up: the ledger fee changed") };
+      // passing trouble (or a clock issue): tried again next round, nobody told
+      case (#Err(#TemporarilyUnavailable) or #Err(#TooOld) or #Err(#CreatedInFuture _) or #Err(#Duplicate _)) noteError(null, "auto top-up: the ledger could not take it now");
+    };
+  };
+
+  /// One "Auto top-up failed" message per failure (topic `account`), to users not told yet; like
+  /// the pause notices, not_registered / unknown_topic leave them for the next round.
+  func sendTopUpNotices() : async* () {
+    let n : T.Notifications = switch (config.notifications) { case (?n) actor (Principal.toText(n)); case null return };
+    let due = Buffer.Buffer<(Principal, T.TopUpFailure)>(8);
+    for ((u, t) in Map.entries(auto_top_ups)) switch (t.settings, t.failure) {
+      case (?_, ?f) if (not t.notice_sent) due.add((u, f));
+      case _ {};
+    };
+    var i = 0;
+    while (i < due.size()) {
+      let chunk = Array.tabulate<(Principal, T.TopUpFailure)>(Nat.min(Nat.min(config.batch_size, 100), due.size() - i), func(k) = due.get(i + k));
+      i += chunk.size();
+      let inputs = Array.map<(Principal, T.TopUpFailure), T.NotifyInput>(chunk, func((u, f)) = {
+        user = u; topic = TOPIC_ACCOUNT; sponsored = config.sponsored; link = ?(SITE # "/notifications#sneed-monitor");
+        dedupe = ?("autotopup:" # Int.toText(f.at));
+        title = clip("Auto top-up failed: " # f.reason, 200);
+        body = "Sneed Monitor could not top up your balance from your wallet: " # f.reason # ". It tries again in a day. To fix it now, renew the approval (or add ICP to your wallet) under Sneed Monitor on the notifications page. If your balance can't pay the next check meanwhile, monitoring pauses until you top up.";
+      });
+      spend();
+      let results = try { await n.notify_batch(inputs) } catch (e) { noteError(null, "notify_batch (top-up notices): " # Error.message(e)); return };
+      var k = 0;
+      for (r in results.vals()) {
+        if (k < chunk.size()) {
+          let (u, f) = chunk[k];
+          switch r {
+            case (#err(#not_registered) or #err(#unknown_topic)) {};
+            case _ { let t = topUpOf(u); if (t.failure == ?f) Map.set(auto_top_ups, Map.phash, u, { t with notice_sent = true }) };
+          };
+          switch r { case (#ok(x)) if (not x.deduplicated) sent += 1; case _ {} };
+        };
+        k += 1;
+      };
+    };
   };
 
   // ---- phase 1: list_proposals for each target due (as often as its fastest active watcher) ----
@@ -1282,6 +1468,7 @@ shared (deployer) persistent actor class SneedMon() = this {
   func phaseChecks() : async* Bool {
     if (not notices_done) {
       if (budget == 0) return false;
+      await* sendTopUpNotices();
       await* sendPauseNotices();
       notices_done := true;
     };
@@ -1613,7 +1800,7 @@ shared (deployer) persistent actor class SneedMon() = this {
   func topics() : [T.NTopic] = [
     { id = TOPIC_PROPOSALS; title = "Proposals to vote on"; level = #normal; description = "A new proposal in an SNS or the NNS you watch that one of your neurons can vote on (several at once as one digest)." },
     { id = TOPIC_DEADLINES; title = "Proposals closing soon"; level = #urgent; description = "Before voting closes on a proposal in an SNS or the NNS you watch, if one of your neurons still hasn't voted." },
-    { id = TOPIC_ACCOUNT; title = "Your Sneed Monitor balance"; level = #normal; description = "Your prepaid balance can't pay the next check: monitoring is paused until you top up." },
+    { id = TOPIC_ACCOUNT; title = "Your Sneed Monitor balance"; level = #normal; description = "Your prepaid balance can't pay the next check (monitoring is paused until you top up), or an automatic top-up from your wallet failed." },
   ];
 
   func appInput() : T.AppInput = {
@@ -1864,6 +2051,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     #list_target_topics : Any;
     #credit_deposit : Any;
     #withdraw_balance : Any;
+    #set_auto_top_up : Any;
     #admin_set_config : Any;
     #admin_set_tuning : Any;
     #admin_set_tiers : Any;
@@ -1884,7 +2072,7 @@ shared (deployer) persistent actor class SneedMon() = this {
   } }) : Bool {
     switch msg {
       case (#get_api_doc _ or #get_status _ or #get_targets _ or #get_config _ or #get_tuning _ or #get_tiers _ or #get_admins _ or #get_topics _ or #get_my_watches _ or #get_watch _ or #get_my_nns_neurons _ or #get_target_topics _ or #get_deposit_account _ or #get_my_balance _ or #get_my_charges _ or #get_accounting _ or #get_billing_config _ or #get_my_charges_with_tier _ or #get_special_prices _ or #get_special_prices_for _) false;
-      case (#watch _ or #unwatch _ or #refresh_my_neurons _ or #set_nns_neurons _ or #list_target_topics _ or #credit_deposit _ or #withdraw_balance _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG;
+      case (#watch _ or #unwatch _ or #refresh_my_neurons _ or #set_nns_neurons _ or #list_target_topics _ or #credit_deposit _ or #withdraw_balance _ or #set_auto_top_up _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       // a topic filter of up to 50 keys of 64 characters
       case (#update_watch _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.textArg(50 * 64);
       case (#admin_set_tuning _) isAdmin(caller) and arg.size() <= IngressGuard.textArg(50 * 64);

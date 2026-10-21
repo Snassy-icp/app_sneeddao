@@ -6,7 +6,10 @@ import Blob "mo:base/Blob";
 import Buffer "mo:base/Buffer";
 import HashMap "mo:base/HashMap";
 import Nat "mo:base/Nat";
+import Int "mo:base/Int";
+import Nat64 "mo:base/Nat64";
 import Nat8 "mo:base/Nat8";
+import Time "mo:base/Time";
 import Principal "mo:base/Principal";
 import Text "mo:base/Text";
 
@@ -86,7 +89,13 @@ shared ({ caller = deployer }) persistent actor class MockLedger(init : { fee : 
     #TemporarilyUnavailable; #GenericError : { error_code : Nat; message : Text };
   };
   transient let allowances = HashMap.HashMap<Text, Nat>(16, Text.equal, Text.hash);
+  transient let expiries = HashMap.HashMap<Text, Nat64>(16, Text.equal, Text.hash);
   func allowanceKey(owner : Account, spender : Account) : Text { key(owner) # ">" # key(spender) };
+  // an approval past its expires_at counts as none (as the ICP ledger does)
+  func allowanceOf(k : Text) : Nat {
+    switch (expiries.get(k)) { case (?e) if (Nat64.toNat(e) <= Int.abs(Time.now())) return 0; case null {} };
+    switch (allowances.get(k)) { case (?a) a; case null 0 };
+  };
 
   public shared ({ caller }) func icrc2_approve(args : ApproveArgs) : async { #Ok : Nat; #Err : TransferError } {
     let from : Account = { owner = caller; subaccount = args.from_subaccount };
@@ -94,18 +103,20 @@ shared ({ caller = deployer }) persistent actor class MockLedger(init : { fee : 
     if (b < fee) { return #Err(#InsufficientFunds({ balance = b })) };
     balances.put(key(from), b - fee);
     allowances.put(allowanceKey(from, args.spender), args.amount);
+    switch (args.expires_at) { case (?e) expiries.put(allowanceKey(from, args.spender), e); case null expiries.delete(allowanceKey(from, args.spender)) };
     let index = txs.size();
     txs.add({ index; from; to = from; amount = 0; fee });
     #Ok(index);
   };
   public query func icrc2_allowance(args : { account : Account; spender : Account }) : async { allowance : Nat; expires_at : ?Nat64 } {
-    { allowance = switch (allowances.get(allowanceKey(args.account, args.spender))) { case (?a) a; case null 0 }; expires_at = null };
+    let k = allowanceKey(args.account, args.spender);
+    { allowance = allowanceOf(k); expires_at = expiries.get(k) };
   };
   public shared ({ caller }) func icrc2_transfer_from(args : TransferFromArgs) : async { #Ok : Nat; #Err : TransferFromError } {
     if (paused) { return #Err(#TemporarilyUnavailable) };
     let spender : Account = { owner = caller; subaccount = args.spender_subaccount };
     let k = allowanceKey(args.from, spender);
-    let allowance = switch (allowances.get(k)) { case (?a) a; case null 0 };
+    let allowance = allowanceOf(k);
     if (allowance < args.amount + fee) { return #Err(#InsufficientAllowance({ allowance })) };
     let b = balance(args.from);
     if (b < args.amount + fee) { return #Err(#InsufficientFunds({ balance = b })) };

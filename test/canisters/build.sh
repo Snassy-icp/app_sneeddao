@@ -228,6 +228,16 @@ for c in sneedex sneedapp sneed_lock sneed_premium sneed_pad sneed_guardian app_
   test -s "$OUT/${c}_presp.wasm"
 done
 rm -rf "$PREV_SRC"
+# sneed_mon before auto top-up (ICRC-2 pulls from the user's wallet), for the test that upgrades
+# from it (and that runs the auto top-up tests against it to see them fail)
+MON_PRE_ATU_COMMIT=6cfabb63
+echo "== sneed_mon at $MON_PRE_ATU_COMMIT (moc, EOP, for the auto top-up upgrade test)"
+PREV_SRC="$(mktemp -d)"
+git archive "$MON_PRE_ATU_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_mon/main.mo" -o "$OUT/sneed_mon_preatu.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneed_mon_preatu.wasm"
 for c in MockLedger MockLedgerV2 MockLedgerFaulty MockRejectLedger MockSwapPool MockDexPool MockIcpswapFactory MockKongSwap \
          MockSnsGovernance MockSnsNeurons MockHubSns MockForumGovernance MockForumSnsW MockRllGovernance MockNnsGovernance \
          MockCmc MockSnsWasm MockPremium MockSneedApp MockIcpSwapList MockIcpSwapTokenList MockNamesModerator MockIcpLedger MockMrSneedGov MockNotifySender MockExt MockMonSns MockMonNns MockProxyGov MockProxyTarget Icrc3Demo; do

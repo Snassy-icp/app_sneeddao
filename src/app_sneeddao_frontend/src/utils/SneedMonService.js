@@ -61,3 +61,43 @@ export async function sendIcp(identity, ledgerId, to, amountE8s) {
 
 /// A canister answer `{ ok } | { err }` as its ok value, or a thrown Error.
 export const unwrap = (r) => { if (r && 'err' in r) throw new Error(r.err); return r?.ok; };
+
+// ---- auto top-up (ICRC-2): the user approves sneed_mon, which pulls from their wallet ----
+
+/// A subaccount typed by the user: an index number (big-endian in the last bytes, as the app's
+/// hex subaccounts are read) or hex (0x… or up to 64 hex digits). '' = the main account (null).
+/// Throws on anything else.
+export function parseSubaccountInput(text) {
+    const t = (text || '').trim();
+    if (!t) return null;
+    let hex;
+    if (/^\d+$/.test(t) && t.length < 64) hex = BigInt(t).toString(16);
+    else hex = t.replace(/^0x/i, '').replace(/[\s-]/g, '');
+    if (!/^[0-9a-fA-F]*$/.test(hex) || hex.length > 64) throw new Error('A subaccount is an index number or up to 64 hex digits');
+    const padded = hex.padStart(64, '0');
+    const bytes = Uint8Array.from(padded.match(/../g).map((b) => parseInt(b, 16)));
+    return bytes.every((b) => b === 0) ? null : bytes;
+}
+export const subaccountHex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+
+const ledgerFor = (identity, ledgerId) => createLedger(typeof ledgerId === 'string' ? ledgerId : ledgerId.toText(), { agentOptions: { host, identity } });
+
+/// icrc2_approve on `ledgerId` from the user's (sub)account for `spender` ({ owner, subaccount }),
+/// replacing any earlier approval. expiresAtNs null = no expiry. Returns the block.
+export async function approveSpender(identity, ledgerId, spender, amountE8s, expiresAtNs, fromSubaccount) {
+    const r = await ledgerFor(identity, ledgerId).icrc2_approve({
+        from_subaccount: fromSubaccount ? [fromSubaccount] : [], spender, amount: amountE8s, expected_allowance: [],
+        expires_at: expiresAtNs ? [expiresAtNs] : [], fee: [], memo: [], created_at_time: [],
+    });
+    if ('Err' in r) {
+        const [k, v] = Object.entries(r.Err)[0];
+        const detail = k === 'InsufficientFunds' ? `not enough ICP for the approval fee (balance ${fmtIcp(v.balance)})` : k === 'GenericError' ? v.message : k;
+        throw new Error(`The ledger refused the approval: ${detail}`);
+    }
+    return r.Ok;
+}
+
+/// The allowance the user's (sub)account gives `spender`: { allowance, expires_at: [] | [ns] }.
+export async function getAllowance(identity, ledgerId, owner, fromSubaccount, spender) {
+    return ledgerFor(identity, ledgerId).icrc2_allowance({ account: { owner, subaccount: fromSubaccount ? [fromSubaccount] : [] }, spender });
+}

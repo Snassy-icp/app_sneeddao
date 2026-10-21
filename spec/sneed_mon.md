@@ -118,6 +118,27 @@ usual (`sponsored = false`).
   pending proposals dropped, no charges) and told once (topic `account`). `credit_deposit` (or
   `watch`, `unwatch`, a lower price at round start) resumes them when the balance pays one check of
   each watch. A user with no watches is never charged.
+- **Auto top-up (ICRC-2):** `set_auto_top_up(opt { amount_e8s; when_below_e8s; from_subaccount })`
+  (null turns it off; `get_my_balance().auto_top_up` shows the settings, counters, the last refusal
+  and the spender to approve). The user approves sneed_mon on the ICP ledger (`icrc2_approve`,
+  optionally from a subaccount holding limited funds, with an expiry); that allowance is the hard
+  cap, each pull using amount + one ledger fee of it. At the start of each round (phase 0, before
+  anything is charged), a user with auto top-up on and watches whose balance is below
+  `when_below_e8s`, or can't pay one check of each watch, or is paused, gets one
+  `icrc2_transfer_from(from = { user; from_subaccount }, to = sneed_mon's main account, amount,
+  memo "sneed_mon top-up <round>", created_at_time)`. The user's wallet pays the ledger fee; the
+  balance is credited the full amount only after the ledger accepted (so the main account and the
+  balances grow together and the invariant holds), counted in `deposited_e8s` / `deposits_e8s`,
+  per user (`pulls`, `pulled_e8s`) and in total (`get_accounting().auto_top_ups[_e8s]`), and listed
+  in the charge history as a credit (`every_min = 0`, `price_e8s` = the amount; `kind =
+  "auto_top_up"` in `get_my_charges_with_tier`). At most one attempt per user per round, at most 50
+  pulls a round (the rest next round), under the user's deposit/withdrawal lock. A refusal
+  (`InsufficientAllowance`: used up, expired or never given; `InsufficientFunds`; `GenericError`)
+  is recorded, retried after a day (or at once after a new `set_auto_top_up`), and told once per
+  failure streak (topic `account`, "Auto top-up failed: <reason>"); passing trouble (a reject,
+  `TemporarilyUnavailable`, clock errors, a changed fee) is retried next round without a message.
+  If the balance still can't pay, the pause path applies as before. Limits: amount at least 10
+  ledger fees and at most 100 ICP; threshold at most 100 ICP; a subaccount is 32 bytes.
 - **Withdrawals:** `withdraw_balance(amount, to)`: the amount comes off the balance first and is put
   back if the ledger refuses; `to` receives amount less the ledger fee.
 - **Fees:** `fees_collected_e8s` (all charges), `fees_withdrawn_e8s` (forwarded or withdrawn). Once
@@ -189,6 +210,14 @@ repeat). Watchers have no balance after the upgrade, so their first check pauses
 notice (staging has none). After the upgrade run `admin_update_notifications_app` so app 2 becomes
 "Sneed Monitor" with the three topics, and point `admin_set_billing` at the real ledger (it is by
 default).
+
+## 7a. Upgrade adding auto top-up (from 6cfabb63)
+
+New stable state only (`auto_top_ups`, two counters; transient constants); Candid additions are
+additive (`set_auto_top_up`, new fields in `MyBalance`, `Accounting`, `ChargeEntryTiered`). After
+the upgrade nobody has auto top-up on. Test: `sneed-mon-auto-top-up.test.js` upgrades the
+6cfabb63 build (`build/sneed_mon_preatu.wasm`). Run `admin_update_notifications_app` so the
+`account` topic's description mentions failed top-ups.
 
 ## 8. Later topics (not built)
 

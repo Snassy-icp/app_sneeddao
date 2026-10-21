@@ -273,7 +273,42 @@ module {
   public type SpResult = { #ok; #err : Text };
   /// One paid check with the price tier that applied (get_my_charges_with_tier): `regular`,
   /// `admin` or `partner` (sneed_mon has no premium price).
-  public type ChargeEntryTiered = { at : Int; target : Target; every_min : Nat; price_e8s : Nat; outcome : Text; price_tier : Text };
+  /// `kind`: "check" (a paid check) or "auto_top_up" (a credit pulled from the user's wallet:
+  /// every_min 0, price_e8s the amount credited, target meaningless).
+  public type ChargeEntryTiered = { at : Int; target : Target; every_min : Nat; price_e8s : Nat; outcome : Text; price_tier : Text; kind : Text };
+
+  /// Auto top-up (spec §3): when the balance falls below `when_below_e8s` (or can't pay one check of
+  /// each watch), sneed_mon pulls `amount_e8s` from the user's wallet with icrc2_transfer_from, as
+  /// far as the user's ICRC-2 approval allows.
+  /// from_subaccount: the user's subaccount the pull comes from (32 bytes; null = the main account);
+  /// approving from a subaccount holding limited funds caps what can ever be taken.
+  public type AutoTopUpSettings = { amount_e8s : Nat; when_below_e8s : Nat; from_subaccount : ?Blob };
+  public type TopUpFailure = { at : Int; reason : Text };
+  /// Stored per user; settings null = off (the counters are kept).
+  public type AutoTopUp = {
+    settings : ?AutoTopUpSettings;
+    set_at : Int;
+    pulls : Nat; // successful pulls
+    pulled_e8s : Nat; // credited by them, in all
+    last_pull_at : Int;
+    last_block : ?Nat;
+    attempted_round : Nat; // at most one pull per user per round
+    failure : ?TopUpFailure; // the last refusal by the ledger (cleared by a pull or a new setting)
+    retry_at : Int; // after a refusal: not before a day has passed
+    notice_sent : Bool; // the one "Auto top-up failed" message for this failure went out
+  };
+  public type MyAutoTopUp = {
+    settings : ?AutoTopUpSettings;
+    pulls : Nat;
+    pulled_e8s : Nat;
+    last_pull_at : Int;
+    last_failure : ?TopUpFailure;
+    retry_at : Int;
+    spender : Account; // approve this account (sneed_mon) on the ICP ledger
+    per_pull_allowance_e8s : Nat; // what one pull uses of the allowance: amount + ledger fee
+    min_amount_e8s : Nat;
+    max_amount_e8s : Nat;
+  };
 
   public type MyBalance = {
     balance_e8s : Nat;
@@ -286,6 +321,7 @@ module {
     deposited_e8s : Nat;
     withdrawn_e8s : Nat;
     deposit_account : Account;
+    auto_top_up : MyAutoTopUp;
   };
 
   public type CreditResult = { #ok : { credited_e8s : Nat; balance_e8s : Nat; paused : Bool }; #err : Text };
@@ -305,6 +341,8 @@ module {
     withdrawals_e8s : Nat;
     accounts : Nat;
     paused_users : Nat;
+    auto_top_ups : Nat; // successful auto top-ups, in all (their amounts are in deposits_e8s too)
+    auto_top_ups_e8s : Nat;
   };
 
   // ---- ICP ledger (ICRC-1), the parts sneed_mon uses ----
@@ -321,9 +359,23 @@ module {
     #TemporarilyUnavailable;
     #GenericError : { error_code : Nat; message : Text };
   };
+  public type TransferFromArg = { spender_subaccount : ?Blob; from : Account; to : Account; amount : Nat; fee : ?Nat; memo : ?Blob; created_at_time : ?Nat64 };
+  public type TransferFromError = {
+    #BadFee : { expected_fee : Nat };
+    #BadBurn : { min_burn_amount : Nat };
+    #InsufficientFunds : { balance : Nat };
+    #InsufficientAllowance : { allowance : Nat };
+    #TooOld;
+    #CreatedInFuture : { ledger_time : Nat64 };
+    #Duplicate : { duplicate_of : Nat };
+    #TemporarilyUnavailable;
+    #GenericError : { error_code : Nat; message : Text };
+  };
+  public type TransferFromResult = { #Ok : Nat; #Err : TransferFromError };
   public type Ledger = actor {
     icrc1_balance_of : shared query Account -> async Nat;
     icrc1_transfer : shared TransferArg -> async { #Ok : Nat; #Err : TransferError };
+    icrc2_transfer_from : shared TransferFromArg -> async TransferFromResult;
   };
 
   // ---- Sneed Notifications (src/sneed_notifications/Types.mo), the parts sneed_mon uses ----

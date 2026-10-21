@@ -23,6 +23,7 @@ import { getNnsNeuronId } from '../utils/NnsUtils';
 import {
     monEnabled, monActor, NNS_TARGET, snsTarget, targetKey, tierLabel, REMINDER_WINDOWS,
     e8sToIcp, fmtIcp, icpToE8s, encodeAccount, sendIcp,
+    parseSubaccountInput, subaccountHex, approveSpender, getAllowance,
 } from '../utils/SneedMonService';
 
 const accent = '#f59e0b';
@@ -59,6 +60,7 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
     const [charges, setCharges] = useState(null); // { total, entries, start }
     const [wdAmount, setWdAmount] = useState('');
     const [wdTo, setWdTo] = useState('');
+    const [autoForm, setAutoForm] = useState(null); // { amount, below, cap, days, sub } while the form is open
 
     const load = useCallback(async () => {
         if (!actor) return;
@@ -66,7 +68,14 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
             actor.get_my_balance(), actor.get_my_watches(), actor.get_tiers(), actor.get_my_nns_neurons(), actor.get_config(), actor.get_status(),
             fetchSpecialPricesFor(actor, identity.getPrincipal()), // admin / partner price (spec/special_prices.md); null on an older canister
         ]);
-        setD({ balance, watches, tiers, special, nnsIds: Array.from(nnsIds), config, appId: status.app_id.length ? status.app_id[0] : null });
+        // auto top-up (an older canister has none): the allowance left on the ledger for sneed_mon
+        const at = balance.auto_top_up || null;
+        let allowance = null;
+        if (at && at.settings.length) {
+            const sub = at.settings[0].from_subaccount.length ? Uint8Array.from(at.settings[0].from_subaccount[0]) : null;
+            allowance = await getAllowance(identity, config.billing.icp_ledger, identity.getPrincipal(), sub, at.spender).catch(() => null);
+        }
+        setD({ balance, watches, tiers, special, allowance, nnsIds: Array.from(nnsIds), config, appId: status.app_id.length ? status.app_id[0] : null });
         setLoadErr(null);
     }, [actor, identity]);
     useEffect(() => { load().catch((e) => setLoadErr(e.message || String(e))); }, [load]);
@@ -224,6 +233,47 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
         await afterCredit(r.credited_e8s);
     });
 
+    // ---- auto top-up: approve sneed_mon on the ICP ledger (the allowance is the cap), then the settings ----
+    const at = balance.auto_top_up || null;
+    const atOn = Boolean(at && at.settings.length);
+    const atSettings = atOn ? at.settings[0] : null;
+    const atSub = atSettings && atSettings.from_subaccount.length ? Uint8Array.from(atSettings.from_subaccount[0]) : null;
+    const icpText = (e8s) => String(Math.ceil(e8sToIcp(e8s) * 1e4) / 1e4);
+    const openAutoForm = () => {
+        const min = at.min_amount_e8s;
+        const month = balance.per_day_e8s > 0n ? monthNow : monthPlan;
+        const week = (balance.per_day_e8s > 0n ? balance.per_day_e8s : monthPlan / BigInt(MONTH_DAYS)) * 7n;
+        setAutoForm(atSettings
+            ? { amount: icpText(atSettings.amount_e8s), below: icpText(atSettings.when_below_e8s), cap: '1', days: '90', sub: atSub ? subaccountHex(atSub) : '' }
+            : { amount: icpText(month > min ? month : min), below: icpText(week), cap: '1', days: '90', sub: '' });
+    };
+    const allowAuto = () => run(async () => {
+        const f = autoForm;
+        const amount = icpToE8s(f.amount);
+        const below = f.below.trim() === '' ? 0n : icpToE8s(f.below);
+        const cap = icpToE8s(f.cap);
+        const days = Number(f.days);
+        if (amount < at.min_amount_e8s) throw new Error(`The top-up amount is at least ${fmtIcp(at.min_amount_e8s)} (10 ledger fees)`);
+        if (amount > at.max_amount_e8s) throw new Error(`The top-up amount is at most ${fmtIcp(at.max_amount_e8s)}`);
+        if (cap < amount) throw new Error('The total allowance must cover at least one top-up');
+        if (!Number.isFinite(days) || days < 1 || days > 3650) throw new Error('The allowance lasts 1 to 3650 days');
+        const sub = parseSubaccountInput(f.sub);
+        // each pull uses amount + one ledger fee of the allowance
+        const pulls = (cap + amount - 1n) / amount;
+        const expires = BigInt(Date.now() + days * 86_400_000) * 1_000_000n;
+        await approveSpender(identity, config.billing.icp_ledger, at.spender, cap + pulls * fee, expires, sub);
+        ok(await actor.set_auto_top_up([{ amount_e8s: amount, when_below_e8s: below, from_subaccount: sub ? [sub] : [] }]));
+        setAutoForm(null);
+        setMsg({ ok: `Auto top-up on: ${fmtIcp(amount)} whenever your Sneed Monitor balance falls below ${fmtIcp(below)}, up to ${fmtIcp(cap)} in all for ${days} days.` });
+    });
+    const turnOffAuto = () => run(async () => {
+        ok(await actor.set_auto_top_up([]));
+        setAutoForm(null);
+        // take the allowance back too (one ledger fee)
+        await approveSpender(identity, config.billing.icp_ledger, at.spender, 0n, null, atSub);
+        setMsg({ ok: 'Auto top-up is off and the allowance is withdrawn.' });
+    });
+
     const updateWatch = (t, patch, okText) => run(async () => { ok(await actor.update_watch(t, { ...noChange, ...patch })); if (okText) setMsg({ ok: okText }); });
     const setFrequency = (w, min) => {
         const patch = { every_min: [BigInt(min)] };
@@ -310,6 +360,54 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
             <div style={{ ...row, marginTop: 10 }}>
                 <button type="button" style={btn(showDeposit)} disabled={busy} onClick={() => { setShowDeposit(!showDeposit); if (!topUpAmt) setTopUpAmt(suggestTopUp(0n)); }}><FaWallet /> Top up</button>
             </div>
+
+            {at && (
+                <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
+                    <label style={{ ...row, color: c.primaryText, fontSize: '0.88rem', cursor: busy ? 'wait' : 'pointer' }}>
+                        <input type="checkbox" checked={atOn || autoForm !== null} disabled={busy} onChange={(e) => { if (e.target.checked) openAutoForm(); else if (atOn) turnOffAuto(); else setAutoForm(null); }} />
+                        Top up automatically from my wallet
+                    </label>
+                    {atOn && !autoForm && (
+                        <div style={{ ...muted, display: 'grid', gap: 2, paddingLeft: 24 }}>
+                            <span>Adds <strong style={{ color: c.primaryText }}>{money(atSettings.amount_e8s)}</strong> whenever your Sneed Monitor balance falls below {money(atSettings.when_below_e8s)} (or can't pay the next checks), from your {atSub ? <>subaccount <code style={{ wordBreak: 'break-all' }}>{subaccountHex(atSub).replace(/^0+/, '') || '0'}</code></> : 'main wallet account'}.</span>
+                            <span>Allowance left: {d.allowance ? <>{money(d.allowance.allowance)}{d.allowance.expires_at.length > 0 && <> · expires {nsToDate(d.allowance.expires_at[0]).toLocaleDateString()}</>}</> : 'unknown'}{at.pulls > 0n && <> · topped up {String(at.pulls)} {at.pulls === 1n ? 'time' : 'times'} ({fmtIcp(at.pulled_e8s)})</>}</span>
+                            {d.allowance && d.allowance.allowance < at.per_pull_allowance_e8s && <span style={{ color: c.error || '#ef4444' }}>The allowance can't cover another top-up ({fmtIcp(at.per_pull_allowance_e8s)} with the fee). Renew it with Change.</span>}
+                            {at.last_failure.length > 0 && <span style={{ color: c.error || '#ef4444', display: 'flex', alignItems: 'center', gap: 6 }}><FaExclamationTriangle /> Last top-up failed: {at.last_failure[0].reason}. Next try {nsToDate(at.retry_at).toLocaleString()}.</span>}
+                            <div style={{ ...row, marginTop: 4 }}>
+                                <button type="button" style={btn(false)} disabled={busy} onClick={openAutoForm}>Change</button>
+                                <button type="button" style={btn(false)} disabled={busy} onClick={turnOffAuto}>Turn off</button>
+                            </div>
+                        </div>
+                    )}
+                    {autoForm && (
+                        <div style={{ padding: '12px', borderRadius: 10, border: `1px solid ${accent}`, display: 'grid', gap: 10 }}>
+                            <label style={{ ...muted, display: 'grid', gap: 4 }}>Top-up amount
+                                <span style={row}><input type="number" min={e8sToIcp(at.min_amount_e8s)} step="0.001" value={autoForm.amount} onChange={(e) => setAutoForm({ ...autoForm, amount: e.target.value })} style={{ ...field, width: 120 }} /> ICP{usd(icpToE8s(autoForm.amount)) && ` (≈ ${usd(icpToE8s(autoForm.amount))})`}</span>
+                                <span style={{ fontSize: '0.75rem' }}>Suggested: about a month of your watches. At least {fmtIcp(at.min_amount_e8s)}.</span>
+                            </label>
+                            <label style={{ ...muted, display: 'grid', gap: 4 }}>When my balance falls below
+                                <span style={row}><input type="number" min="0" step="0.001" value={autoForm.below} onChange={(e) => setAutoForm({ ...autoForm, below: e.target.value })} style={{ ...field, width: 120 }} /> ICP{usd(icpToE8s(autoForm.below)) && ` (≈ ${usd(icpToE8s(autoForm.below))})`}</span>
+                                <span style={{ fontSize: '0.75rem' }}>Suggested: about a week of your watches.</span>
+                            </label>
+                            <div style={{ ...muted, display: 'grid', gap: 4 }}>Allow Sneed Monitor to take at most
+                                <span style={row}>
+                                    <input type="number" min="0" step="0.1" value={autoForm.cap} onChange={(e) => setAutoForm({ ...autoForm, cap: e.target.value })} style={{ ...field, width: 100 }} aria-label="Total allowance in ICP" /> ICP in all, for
+                                    <input type="number" min="1" step="1" value={autoForm.days} onChange={(e) => setAutoForm({ ...autoForm, days: e.target.value })} style={{ ...field, width: 80 }} aria-label="Days the allowance lasts" /> days
+                                </span>
+                                <span style={{ fontSize: '0.75rem' }}>This allowance on the ICP ledger is the hard limit: Sneed Monitor can never take more, or take anything after it expires. Approving costs one ledger fee ({fmtIcp(fee)}); each top-up costs one more from your wallet.</span>
+                            </div>
+                            <label style={{ ...muted, display: 'grid', gap: 4 }}>Pay from subaccount (optional)
+                                <input value={autoForm.sub} onChange={(e) => setAutoForm({ ...autoForm, sub: e.target.value })} placeholder="Main account; or an index (1, 2…) or hex" style={{ ...field, maxWidth: '100%' }} />
+                                <span style={{ fontSize: '0.75rem' }}>Careful users keep a subaccount with limited funds for this. The approval is made from it.</span>
+                            </label>
+                            <div style={row}>
+                                <button type="button" style={btn(true)} disabled={busy} onClick={allowAuto}>Allow</button>
+                                <button type="button" style={btn(false)} disabled={busy} onClick={() => setAutoForm(null)}>Cancel</button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {showDeposit && (
                 <div style={{ marginTop: 12, padding: '12px', borderRadius: 10, border: `1px solid ${accent}`, display: 'grid', gap: 10 }}>
@@ -459,9 +557,11 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
                     {charges && charges.entries.map((e, i) => (
                         <div key={`${charges.start}-${i}`} style={{ ...row, borderTop: `1px solid ${c.border}`, padding: '5px 0', fontSize: '0.8rem', color: c.secondaryText }}>
                             <span style={{ minWidth: 140 }}>{nsToDate(e.at).toLocaleString()}</span>
-                            <span style={{ flex: 1, minWidth: 120, color: c.primaryText }}>{nameOf(e.target)}</span>
-                            <span>{tierLabel(e.every_min).toLowerCase()}</span>
-                            <span>{fmtIcp(e.price_e8s)}{e.price_tier && <PriceTierBadge tier={e.price_tier} />}</span>
+                            {e.every_min === 0n
+                                ? <><span style={{ flex: 1, minWidth: 120, color: c.primaryText }}>Auto top-up</span><span style={{ color: '#10b981' }}>+{fmtIcp(e.price_e8s)}</span></>
+                                : <><span style={{ flex: 1, minWidth: 120, color: c.primaryText }}>{nameOf(e.target)}</span>
+                                    <span>{tierLabel(e.every_min).toLowerCase()}</span>
+                                    <span>{fmtIcp(e.price_e8s)}{e.price_tier && <PriceTierBadge tier={e.price_tier} />}</span></>}
                             <span style={{ ...muted, flexBasis: '100%' }}>{e.outcome}</span>
                         </div>
                     ))}

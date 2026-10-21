@@ -67,6 +67,7 @@ export default function HelpMonitor() {
                 </P>
                 <List>
                     <Li><B>Topping up</B>: ICP sent to your deposit address is moved into your balance when you press <B>check deposit</B> (or straight away with <B>Top up from my wallet</B>). Moving it costs one ledger fee (0.0001 ICP).</Li>
+                    <Li><B>Topping up automatically</B>: tick <B>Top up automatically from my wallet</B> and choose an amount, the balance that triggers it, and a total allowance with an expiry. Pressing <B>Allow</B> approves Sneed Monitor on the ICP ledger for that allowance only; it can never take more, or anything after the expiry. You can pay from a subaccount holding limited funds. If a top-up fails (allowance used up or expired, wallet empty) you get one message, and it tries again a day later. <B>Turn off</B> stops it and withdraws the allowance.</Li>
                     <Li><B>Running out</B>: when your balance can't pay a check, monitoring pauses. Your watches are kept, nothing more is charged, and you get one message saying so. Topping up resumes it.</Li>
                     <Li><B>Where the money goes</B>: collected fees are forwarded to the Sneed DAO's revenue loop (the same account Sneed Premium pays into).</Li>
                 </List>

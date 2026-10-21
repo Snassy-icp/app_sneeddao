@@ -68,6 +68,7 @@ A target is polled as often as its most frequent **active** (paid-up) watcher wa
 | Default prices | base 144,000 e8s a day: daily ×1 = 144,000 e8s a check; 3-hourly ×2 = 36,000; hourly ×3 = 18,000 (432,000 e8s a day); 10-minute ×6 = 6,000 (a day of 10-minute checks: 864,000 e8s). A deployed canister keeps its stored tiers; `get_tiers` is authoritative. |
 | Special prices | An admin price and partner prices ([§1.6a](#special-prices)): the lowest applicable per-check price is charged. |
 | Pause | A check the balance can't pay is not made: the user's watches pause (kept), one `account` message says so, and `credit_deposit` resumes them once the balance pays one check of each watch. No watches, no charge. |
+| Auto top-up | `set_auto_top_up(opt record { amount_e8s; when_below_e8s; from_subaccount : opt blob })` after approving sneed_mon (`get_my_balance().auto_top_up.spender`) on the ICP ledger with `icrc2_approve` (from that subaccount, if set). At the start of a round, when your balance is below `when_below_e8s` or can't pay one check of each watch, sneed_mon pulls `amount_e8s` with `icrc2_transfer_from` and credits it in full (your wallet pays the ledger fee; each pull uses amount + fee of the allowance). At most once a round. The allowance (amount, expiry) is the hard cap. A refusal (allowance used up or expired, wallet short) is retried after a day and told once (topic `account`, "Auto top-up failed: …"); then the pause rule applies. Pulls show in the charge history (`every_min = 0`, `kind = "auto_top_up"`). `null` turns it off. Amount: 10 ledger fees to 100 ICP. |
 | Withdraw | `withdraw_balance(amount_e8s, to)`: `to` receives the amount less the ledger fee (10,000 e8s). |
 | Fees | Forwarded in one transfer (less the ledger fee) to `fee_destination` once they reach `fee_sweep_threshold_e8s` (0.1 ICP), at most once a round. Default destination: the account Sneed Premium pays into, the Neutrinite pylon's ICP splitter `6jvpj-sqaaa-aaaaj-azwnq-cai` with subaccount `0100000000060000000000000000000000000000000000000000000000000000`, which feeds the RLL. |
 | Solvency | `get_accounting()`: user balances + fees not yet forwarded = `obligations_e8s`; sneed_mon's main ICP account holds at least that. |
@@ -102,7 +103,8 @@ special prices are public through `get_special_prices()`.
 | `list_neurons` | The old cache stays; retried in an hour. |
 | `notify_batch` fails, or answers `not_registered` / `unknown_topic` | No more checks that round; the check is refunded and its proposals kept. Run `admin_register_with_notifications` or `admin_update_notifications_app`. |
 | `not_allowed`, `rate_limited`, `no_funds`, `invalid` for one user | That message is dropped (the check is still charged). |
-| Ledger (deposit, withdrawal, fee forward) | Nothing is credited or debited unless the ledger accepted. |
+| Ledger (deposit, withdrawal, fee forward, auto top-up) | Nothing is credited or debited unless the ledger accepted. |
+| Auto top-up refused (allowance, funds) | Recorded in `auto_top_up.last_failure`, one `account` message, retried after a day or after `set_auto_top_up`. |
 
 ### 1.8 Calls the canister refuses at ingress
 
@@ -173,13 +175,14 @@ dfx canister --network ic call sneed_mon get_status --query
 | `list_target_topics(Target)` | update | `variant { ok : vec TopicOption; err : text }` | Read from governance, cached a day. |
 | `credit_deposit()` | update | `CreditResult` | 1.6. |
 | `withdraw_balance(nat, Account)` | update | `ResultNat` | The ledger block. |
+| `set_auto_top_up(opt AutoTopUpSettings)` | update | `Result` | 1.6 Auto top-up; `null` turns it off. |
 | `get_my_watches()` / `get_watch(Target)` | query | `vec MyWatch` / `opt MyWatch` | |
 | `get_my_nns_neurons()` | query | `vec nat64` | |
 | `get_target_topics(Target)` | query | `opt vec TopicOption` | The cached `list_target_topics` answer. |
 | `get_deposit_account()` | query | `Account` | |
-| `get_my_balance()` | query | `MyBalance` | Balance, paused, watches, one round of checks and a day's cost at your tiers, totals. |
+| `get_my_balance()` | query | `MyBalance` | Balance, paused, watches, one round of checks and a day's cost at your tiers, totals, `auto_top_up` (settings, pulls, last refusal, the spender to approve). |
 | `get_my_charges(start : nat, len : nat)` | query | `record { total : nat; entries : vec ChargeEntry }` | Newest first, at most 100 per call, the last 200 kept. |
-| `get_my_charges_with_tier(start : nat, len : nat)` | query | `record { total : nat; entries : vec ChargeEntryTiered }` | The same entries with `price_tier`. |
+| `get_my_charges_with_tier(start : nat, len : nat)` | query | `record { total : nat; entries : vec ChargeEntryTiered }` | The same entries with `price_tier` and `kind` (`check` or `auto_top_up`). |
 
 ### 3.2 Public reads
 
@@ -227,7 +230,13 @@ type MyWatch = record {
   price_per_check_e8s : nat; next_check_at : int; pending : nat; neurons : opt nat; neurons_at : int;
 };
 type ChargeEntry = record { at : int; target : Target; every_min : nat; price_e8s : nat; outcome : text };
-type ChargeEntryTiered = record { at : int; target : Target; every_min : nat; price_e8s : nat; outcome : text; price_tier : text };
+type ChargeEntryTiered = record { at : int; target : Target; every_min : nat; price_e8s : nat; outcome : text; price_tier : text; kind : text };
+type AutoTopUpSettings = record { amount_e8s : nat; when_below_e8s : nat; from_subaccount : opt blob };
+type MyAutoTopUp = record {
+  settings : opt AutoTopUpSettings; pulls : nat; pulled_e8s : nat; last_pull_at : int;
+  last_failure : opt record { at : int; reason : text }; retry_at : int;
+  spender : Account; per_pull_allowance_e8s : nat; min_amount_e8s : nat; max_amount_e8s : nat;
+};
 type MonPrices = record { base_daily_price_e8s : opt nat };
 type MonPartner = record { label : text; prices : MonPrices; expires_at : opt int };
 type Account = record { owner : principal; subaccount : opt blob };
