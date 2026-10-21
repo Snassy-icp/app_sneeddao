@@ -15,6 +15,7 @@ import Nat "mo:base/Nat";
 
 import T "Types";
 import IngressGuard "../../IngressGuard";
+import BotCycles "../BotCycles";
 import BotkeyPermissions "../BotkeyPermissions";
 import BotChoreTypes "../BotChoreTypes";
 import BotChoreEngine "../BotChoreEngine";
@@ -471,6 +472,16 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     public query func getVersion(): async T.Version {
         currentVersion;
+    };
+
+    // Public: the bot's cycles balance, so anyone can see its fuel and top it up through the CMC
+    // without being a controller (see BotCycles.mo; wallet_balance128 is the cycles wallet's method).
+    public query func getCyclesBalance(): async Nat {
+        BotCycles.balance();
+    };
+
+    public query func wallet_balance128(): async BotCycles.WalletBalance128 {
+        BotCycles.walletBalance128();
     };
 
     public query func getCreatedAt(): async Int {
@@ -3326,6 +3337,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
       #getChoreStatuses : Any;
       #getChoreTypes : Any;
       #getCollectMaturitySettings : Any;
+      #getCyclesBalance : Any;
       #getCreatedAt : Any;
       #getDistributionLists : Any;
       #getEventEmissionEnabled : Any;
@@ -3403,6 +3415,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
       #vote : Any;
       #withdrawIcp : Any;
       #withdrawToken : Any;
+      #wallet_balance128 : Any;
     } }) : Bool {
       switch (msg) {
         case (
@@ -3417,6 +3430,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
           or #getChoreStatuses _
           or #getChoreTypes _
           or #getCollectMaturitySettings _
+          or #getCyclesBalance _
           or #getCreatedAt _
           or #getDistributionLists _
           or #getEventEmissionEnabled _
@@ -3435,6 +3449,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
           or #listChoreInstances _
           or #listHotkeyPrincipals _
           or #listPermissionTypes _
+          or #wallet_balance128 _
         ) false;
         case _ {
           if (not (Principal.isController(caller) or hasBotkey(caller))) return false;

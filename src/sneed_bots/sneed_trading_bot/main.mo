@@ -15,6 +15,7 @@ import Timer "mo:base/Timer";
 
 import T "Types";
 import IngressGuard "../../IngressGuard";
+import BotCycles "../BotCycles";
 import BotkeyPermissions "../BotkeyPermissions";
 import BotChoreTypes "../BotChoreTypes";
 import BotChoreEngine "../BotChoreEngine";
@@ -7800,6 +7801,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     public query func getVersion(): async T.Version { currentVersion };
 
+    // Public: the bot's cycles balance, so anyone can see its fuel and top it up through the CMC
+    // without being a controller (see BotCycles.mo; wallet_balance128 is the cycles wallet's method).
+    public query func getCyclesBalance(): async Nat { BotCycles.balance() };
+
+    public query func wallet_balance128(): async BotCycles.WalletBalance128 { BotCycles.walletBalance128() };
+
     public query func getCanisterPrincipal(): async Principal {
         Principal.fromActor(this)
     };
@@ -9950,6 +9957,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
       #getCircuitBreakerEnabled : Any;
       #getCircuitBreakerLog : Any;
       #getCircuitBreakerRules : Any;
+      #getCyclesBalance : Any;
       #getDailyPortfolioSummaries : Any;
       #getDailyPriceCandles : Any;
       #getDistributionLists : Any;
@@ -10066,6 +10074,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
       #updateTradeAction : Any;
       #withdrawIcp : Any;
       #withdrawToken : Any;
+      #wallet_balance128 : Any;
     } }) : Bool {
       switch (msg) {
         case (
@@ -10083,6 +10092,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
           or #getCircuitBreakerEnabled _
           or #getCircuitBreakerLog _
           or #getCircuitBreakerRules _
+          or #getCyclesBalance _
           or #getDailyPortfolioSummaries _
           or #getDailyPriceCandles _
           or #getDistributionLists _
@@ -10129,6 +10139,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
           or #listHotkeyPrincipals _
           or #listPermissionTypes _
           or #listPurseSnapshotPurses _
+          or #wallet_balance128 _
         ) false;
         case _ {
           if (not (Principal.isController(caller) or hasBotkey(caller))) return false;

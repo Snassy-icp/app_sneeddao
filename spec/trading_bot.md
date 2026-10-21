@@ -889,6 +889,8 @@ var eventReactionLogMaxEntries: Nat                       // Default: 500
 ```motoko
 getVersion() : async Version
 getCanisterPrincipal() : async Principal
+getCyclesBalance() : async Nat                     // query, public (0.9.4) — the bot's cycles, for anyone (non-controllers top up via the CMC)
+wallet_balance128() : async { amount : Nat }       // query, public (0.9.4) — the same, under the DFINITY cycles wallet's method name
 ```
 
 ### Permission Management (shared pattern)

@@ -294,6 +294,8 @@ Every method below except the plain info queries is permission-checked: controll
 ```motoko
 getVersion(): async Version                    // query, public
 getCreatedAt(): async Int                      // query, public
+getCyclesBalance(): async Nat                  // query, public (0.9.5) — the bot's cycles, for anyone (non-controllers top up via the CMC)
+wallet_balance128(): async { amount : Nat }    // query, public (0.9.5) — the same, under the DFINITY cycles wallet's method name
 getAccount(): async Account                    // query, public — the canister's ICRC-1 account
 getAccountId(): async AccountIdentifier        // query, public — legacy account id; users send ICP here before staking
 getBalance(): async Nat                        // [ViewNeuron] ICP balance of this canister

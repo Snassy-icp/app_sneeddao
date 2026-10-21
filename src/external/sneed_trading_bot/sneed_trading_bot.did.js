@@ -805,6 +805,9 @@ export const idlFactory = ({ IDL }) => {
         // Canister Info
         getVersion: IDL.Func([], [Version], ['query']),
         getCanisterPrincipal: IDL.Func([], [IDL.Principal], ['query']),
+        // public: the bot's cycles balance (since 0.9.4; older bots lack it)
+        getCyclesBalance: IDL.Func([], [IDL.Nat], ['query']),
+        wallet_balance128: IDL.Func([], [IDL.Record({ amount: IDL.Nat })], ['query']),
 
         // Permissions (aligned with staking bot API)
         addHotkeyPermissions: IDL.Func([IDL.Principal, IDL.Vec(TradingPermissionType)], [OperationResult], []),
