@@ -18,7 +18,7 @@ import { HttpAgent } from '@dfinity/agent';
 import TransactionList from '../components/TransactionList';
 import TokenIcon from '../components/TokenIcon';
 import NeuronDisplay from '../components/NeuronDisplay';
-import { useNaming } from '../NamingContext';
+import { useNaming, useAvatar } from '../NamingContext';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import MarkdownBody from '../components/MarkdownBody';
@@ -233,6 +233,10 @@ export default function PrincipalPage() {
     } catch (e) {
         console.error('Invalid principal ID:', e);
     }
+    // The viewed user's avatar (canisters have none)
+    const viewedAvatarUrl = useAvatar(principalParam && !isCanisterPrincipal(principalParam) ? principalParam : null);
+    const [viewedAvatarBroken, setViewedAvatarBroken] = useState(false);
+    useEffect(() => { setViewedAvatarBroken(false); }, [viewedAvatarUrl]);
 
     // Initialize search input from URL parameter
     useEffect(() => {
@@ -1951,7 +1955,10 @@ export default function PrincipalPage() {
                                                 boxShadow: `0 8px 32px ${shadowColor}`,
                                                 border: `4px solid ${theme.colors.secondaryBg}`
                                             }}>
-                                                {isCanister ? <FaCube size={36} color="white" /> : (isPremium ? <FaCrown size={36} color="white" /> : <FaUser size={36} color="white" />)}
+                                                {!isCanister && viewedAvatarUrl && !viewedAvatarBroken ? (
+                                                    <img src={viewedAvatarUrl} alt="" referrerPolicy="no-referrer" onError={() => setViewedAvatarBroken(true)}
+                                                        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '16px', padding: isPremium ? '3px' : 0, boxSizing: 'border-box' }} />
+                                                ) : isCanister ? <FaCube size={36} color="white" /> : (isPremium ? <FaCrown size={36} color="white" /> : <FaUser size={36} color="white" />)}
                                             </div>
                                         );
                                     })()}
