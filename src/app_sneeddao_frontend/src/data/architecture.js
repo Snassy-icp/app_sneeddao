@@ -114,9 +114,9 @@ export const NODES = [
     { id: 'sneed_premium', name: 'Sneed Premium', role: 'membership', kind: 'dao', cluster: 'money', at: [0, 1], icon: 'FaCrown',
         ids: { ic: '7gump-4aaaa-aaaal-qtyka-cai', staging: 'sf5tm-dqaaa-aaaae-qgyla-cai' }, controllers: 'sns', persistence: 'classic', icrc3: true, api: 'sneed_premium',
         about: 'Premium membership, bought in ICP or earned by staked SNEED voting power. Other canisters ask it who is a member for their discounts and higher limits.' },
-    { id: 'sgldt', name: 'sGLDT', role: 'DAO-registered token', kind: 'dao', cluster: 'money', at: [1, 1], icon: 'FaCoins',
+    { id: 'sgldt', name: 'sGLDT', role: 'partner token', kind: 'dao', cluster: 'money', at: [1, 1], icon: 'FaCoins',
         ids: { ic: 'i2s4q-syaaa-aaaan-qz4sq-cai' }, controllers: 'sns',
-        about: 'The sGLDT token canister, registered with Sneed DAO; the wallet shows it next to GLDT.' },
+        about: 'A partnership: sGLDT is built by a DAO member and registered under Sneed DAO, so the SNS controls its canister, in return for a share of its revenue. The wallet shows it next to GLDT.' },
     { id: 'sneed_pad', name: 'Sneed Pad', role: 'token launcher', kind: 'dao', cluster: 'money', at: [0, 2], icon: 'FaRocket', status: 'staging',
         ids: { staging: 'symdn-ciaaa-aaaal-qxobq-cai' }, controllers: 'team', persistence: 'classic', icrc3: true,
         about: 'Token Studio\'s launchpad: creates an ICRC ledger (and index) from NNS-approved SNS-W Wasms, paid once, then hands control to you, a blackhole, Sneed DAO or a custody canister. Staging only so far.' },
@@ -185,6 +185,7 @@ export const NODES = [
     { id: 'icrc3_archives', name: 'ICRC-3 archives', role: 'old log blocks', kind: 'dao', cluster: 'infra', at: [0, 1], icon: 'FaArchive', controllers: 'parent',
         about: 'Archive canisters that a canister with an ICRC-3 log creates, controls and tops up as its log grows; anyone can verify the hash chain.' },
     { id: 'unicycle', name: 'ic-unicycle', role: 'cycles monitor', kind: 'external', cluster: 'infra', at: [1, 1], icon: 'FaBolt', controllers: 'third',
+        ids: { ic: '2ccdl-vaaaa-aaaan-q6h5a-cai' },
         about: 'The member-built monitor that watches the DAO\'s cycles, tops canisters up and can file treasury proposals for SNS-controlled canisters. Also Sneed Notifications\' partner.' },
 
     // ---- Internet Computer and partners (bottom band, six columns) ----
