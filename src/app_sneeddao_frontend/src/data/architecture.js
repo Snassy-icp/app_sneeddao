@@ -71,7 +71,7 @@ const SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
 export const NODES = [
     // ---- who uses it (top band, six columns) ----
     { id: 'people', name: 'You', role: 'browser or phone app', kind: 'people', cluster: 'access', at: [1, 0], icon: 'FaUser',
-        about: 'Anyone with a browser: Sneed Hub runs in your browser and calls the canisters below directly, signed with your Internet Identity.' },
+        about: 'Anyone with a browser. Sneed Hub\'s files come from the web app canister, but then the app runs in your browser and calls each canister below itself, signed with your Internet Identity: there is no server in between. Those many lines are left out to keep the map readable.' },
     { id: 'agents', name: 'AI agents and integrators', role: 'wallets, DEXes, scripts', kind: 'people', cluster: 'access', at: [2, 0], icon: 'FaRobot',
         about: 'Any wallet, dashboard, script or AI agent can call Sneed\'s canisters on the same terms as Sneed Hub: they authorise by calling principal only. Guide: /llms.txt and the API docs.' },
     { id: 'mcp', name: 'Sneed Hub MCP server', role: 'read-only tools for AI agents', kind: 'offchain', cluster: 'access', at: [3, 0], icon: 'FaPlug',
@@ -105,6 +105,9 @@ export const NODES = [
     { id: 'mr_sneed_operator', name: 'Mr Sneed\'s operator', role: 'off-chain worker', kind: 'offchain', cluster: 'governance', at: [1, 3], icon: 'FaLaptopCode',
         controllers: 'offchain',
         about: 'The program that speaks as Mr Sneed for now: it reads the forum and messages, answers, and writes memories to the canister with its own principal.' },
+    { id: 'sneed_proxy', name: 'Sneed proxy', role: 'admin settings by proposal', kind: 'dao', cluster: 'governance', at: [0, 4], icon: 'FaCogs', status: 'upcoming',
+        controllers: 'sns', persistence: 'eop', icrc3: true, api: 'sneed_proxy',
+        about: 'Carries adopted SNS proposals into the DAO\'s canisters as an admin, so every admin setting can be changed by proposal from Sneed Hub: one generic function per proposal topic, an allowlist of proposable actions changed only by critical proposal, and a log of every forwarded call. Being built; not deployed.' },
 
     // ---- money and trading ----
     { id: 'sneed_lock', name: 'Sneed Lock', role: 'token and LP locks', kind: 'dao', cluster: 'money', at: [0, 0], icon: 'FaLock',
@@ -239,7 +242,7 @@ export const EDGES = [
     // people
     { from: 'people', to: 'app_sneeddao_frontend', type: 'call', label: 'opens Sneed Hub' },
     { from: 'people', to: 'internet_identity', type: 'call', label: 'logs in' },
-    { from: 'people', to: 'vectors', type: 'payment', label: 'Premium and Jailbreak fees, paid straight into the ICP splitter' },
+    { from: 'people', to: 'vectors', type: 'payment', label: 'when you buy Premium or a jailbreak script, your wallet pays the ICP splitter directly (no canister in between)' },
     { from: 'agents', to: 'app_sneeddao_frontend', type: 'call', label: 'reads /llms.txt, the agent skills and the API docs' },
     { from: 'agents', to: 'mcp', type: 'relay', label: 'asks through MCP tools' },
     // agents and integrators call the canisters' public APIs directly, as Sneed Hub does (a few main ones shown)
@@ -263,6 +266,12 @@ export const EDGES = [
     { from: 'sns_governance', to: 'mr_sneed', type: 'call', label: 'sets the personality (generic function proposals)' },
     { from: 'sns_governance', to: 'sneed_guardian', type: 'call', label: 'approves custody operations (generic function proposals)' },
     { from: 'sns_governance', to: 'sneed_pid_names', type: 'call', label: 'verified names by proposal' },
+    { from: 'sns_governance', to: 'sneed_proxy', type: 'call', label: 'executes admin-setting proposals (generic functions 6000-6010)' },
+    { from: 'sneed_proxy', to: 'sns_root', type: 'call', label: 'reads the SNS canisters it must never call' },
+    { from: 'sneed_proxy', to: 'sneed_lock', type: 'call', label: 'lock fees by proposal (pilot)' },
+    { from: 'sneed_proxy', to: 'sneedex', type: 'call', label: 'marketplace fees by proposal (planned)' },
+    { from: 'sneed_proxy', to: 'sneed_premium', type: 'call', label: 'Premium tiers by proposal (planned)' },
+    { from: 'sneed_proxy', to: 'sneedapp', type: 'call', label: 'mint prices by proposal (planned)' },
     { from: 'rll', to: 'sns_governance', type: 'call', label: 'reads neurons and voting power' },
     { from: 'rll', to: 'icpswap', type: 'call', label: 'token list for metadata' },
     { from: 'rll', to: 'icrc_ledgers', type: 'payment', label: 'pays out claimed rewards' },
@@ -378,7 +387,7 @@ export const EDGES = [
  */
 export const SERVICES = [
     // governance
-    { id: 'dao', name: 'DAO and proposals', cluster: 'governance', route: '/proposals', canisters: ['sns_governance', 'sns_root', 'sneed_ledger', 'sneed_index', 'other_snses'] },
+    { id: 'dao', name: 'DAO and proposals', cluster: 'governance', route: '/proposals', canisters: ['sns_governance', 'sns_root', 'sneed_ledger', 'sneed_index', 'other_snses', 'sneed_proxy'] },
     { id: 'rewards', name: 'Rewards and the loop', cluster: 'governance', route: '/rll', canisters: ['rll', 'sneed_defi', 'vectors', 'sns_governance', 'sneed_ledger', 'icrc_ledgers'] },
     { id: 'revenue', name: 'Revenue', cluster: 'governance', route: '/revenue', canisters: ['vectors', 'sneedex', 'sneed_premium', 'app_sneeddao_backend', 'sneed_defi', 'rll'] },
     { id: 'mr_sneed', name: 'Mr Sneed', cluster: 'governance', route: '/mr-sneed', canisters: ['mr_sneed', 'mr_sneed_operator', 'sns_governance', 'sneed_sns_forum'] },
