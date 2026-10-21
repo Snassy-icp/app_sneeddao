@@ -1,10 +1,12 @@
-# Programmable accounts: wallet subaccounts, sneed_vault, funding trees (draft)
+# Programmable accounts: pockets, sneed_vault, funding trees (draft)
 
 Three ideas from 2026-10-21 that build on each other:
 
-1. **Wallet subaccounts.** Sneed Hub's wallet holds, sends from, receives on and approves
-   (ICRC-2) from the user's own subaccounts. A prudent user gives approvals from a subaccount
-   that holds limited funds, so a spender can never take more than that subaccount holds.
+1. **Pockets.** Sneed Hub's wallet shows every account that is the user's and holds tokens as a
+   *pocket*: subaccounts of the user's own principal, accounts Sneed canisters and other services
+   hold for the user, and service balances, in one list (§4). It holds, sends from, receives on,
+   moves between and approves (ICRC-2) from them. A prudent user gives approvals from a pocket
+   that holds limited funds, so a spender can never take more than that pocket holds.
 2. **Programmable accounts (`sneed_vault`).** A canister in which every principal owns a
    namespace of 65,536 subaccounts. Each subaccount carries **grants**: rules for who may request
    funds from it, how much, to where and under what conditions, a bit like neuron hotkeys with
@@ -14,7 +16,7 @@ Three ideas from 2026-10-21 that build on each other:
    (token balances) and canisters (cycles) and tops them up from ICRC-2 approvals and from vault
    grants, in trees: A tops up B, B tops up C.
 
-Status (2026-10-21): spec only, nothing built. sneed_mon's auto top-up (ICRC-2 with an optional
+Status (2026-10-21): spec only, nothing built; the pockets design (§4) is agreed. sneed_mon's auto top-up (ICRC-2 with an optional
 `from_subaccount`, spec/sneed_mon.md §3) is being built and is the first edge of a funding tree.
 
 Open questions are marked **Q** and collected in §14.
@@ -22,8 +24,10 @@ Open questions are marked **Q** and collected in §14.
 ## 1. Words
 
 - **Account:** an ICRC-1 account `{ owner : principal; subaccount : opt blob }` on one ledger.
-- **Wallet subaccount:** `{ owner = me; subaccount = s }`: my own principal's subaccount on a
-  ledger. Only I can move it (with my key), or a spender I approved from it.
+- **Pocket:** any account that is mine and holds tokens: a wallet pocket, a hosted pocket or a
+  service balance (§4.1).
+- **Wallet subaccount (wallet pocket):** `{ owner = me; subaccount = s }`: my own principal's
+  subaccount on a ledger. Only I can move it (with my key), or a spender I approved from it.
 - **Vault subaccount:** `{ owner = sneed_vault; subaccount = owned(me, index) }`. The vault holds
   it; I own it by the namespace rule (§3). Only the vault can move it, on my instruction or on a
   grant I made.
@@ -71,7 +75,7 @@ to no owner; the vault leaves them where they are. Only a DAO proposal can retur
 
 ### 2.3 Tokens and fees
 
-- **Ledgers:** any ICRC-1 ledger; ICRC-2 where the vault approves on the owner's behalf (§4.2) or
+- **Ledgers:** any ICRC-1 ledger; ICRC-2 where the vault approves on the owner's behalf (§4.4) or
   pulls from a wallet; ICP through its ICRC-1/2 interface. For ICP the vault page also shows the
   legacy 64-hex account identifier, for deposits from exchanges.
 - **Allowed ledgers:** a grant names its ledgers explicitly. The vault itself has no token list:
@@ -140,57 +144,343 @@ owner; index }`. Sneed Hub computes them locally too (same bytes, tested against
   subaccounts; if the vault namespace were ever adopted inside those canisters, their subaccounts
   would parse as non-canonical (non-zero padding or a broken principal) and stay out of it. No
   change to them is proposed.
-- **Wallet subaccounts** (§4) use a different convention on purpose: they are subaccounts of the
-  user's *own* principal, so the owner is already in `owner` and the subaccount is just a number.
+- **Wallet pockets** (§4) use a different convention on purpose: they are subaccounts of the
+  user's *own* principal, so the owner is already in `owner` and the subaccount is just a number
+  (byte 0 is zero, so it never equals a classic or vault subaccount; §4.10).
 
-## 4. Wallet subaccounts (Sneed Hub, phase 1, frontend only)
+## 4. Wallet UX: pockets (Sneed Hub, phase 1)
 
-### 4.1 What the wallet does
+Agreed design (2026-10-21). One concept the user learns once, a casual path that shows nothing new
+until it matters, and the full control behind **Advanced**.
 
-- **Numbered subaccounts.** Wallet subaccount *n* is the 32-byte big-endian number *n* (n >= 1;
-  0 is the main account). The ICRC-1 textual account then stays short (`<principal>-<checksum>.3`),
-  which `AccountParser` (spec/subaccounts.md) already reads and writes. Raw 32-byte subaccounts
-  (from elsewhere) are supported in Advanced.
-- **Which exist.** A ledger can't list them. Sneed Hub merges: the subaccounts remembered in the
-  browser, the ones the user created, and, for ICRC ledgers with an index-ng canister,
-  `list_subaccounts({ owner })` (ICP's index has no such call; ICP subaccounts come from memory
-  and a scan of 1..N). Empty ones are hidden unless named.
-- **Hold:** the token list shows the total per token; a token row opens its accounts (main,
-  each subaccount, the Sneed Lock wallet as today, vault subaccounts). Amounts use
-  `useDenomination().formatValue` (never a hard-coded `$`).
-- **Receive on:** a subaccount's card shows its textual account, a QR code and, for ICP, the
-  64-hex account identifier.
-- **Send from:** the send dialog gains a "from" picker (default: main). `from_subaccount` is set
-  on the transfer; the existing split logic (`sendPlan.js`) learns about subaccounts later
-  (**Q3**: let "send" draw from several subaccounts at once?).
-- **Move between my accounts:** a send to my own subaccount, with the ledger fee shown.
-- **Approve from a subaccount:** `icrc2_approve({ from_subaccount; spender; amount; expires_at;
-  expected_allowance })`. The approve dialog suggests "approve from a new subaccount holding only
-  what you want at risk": one click creates subaccount *n*, moves the amount plus fees there, and
-  approves from it.
-- **Approvals view.** Per token: spender, from which account, allowance, expiry. Sources: ICRC-103
-  `icrc103_get_allowances` where the ledger lists it in `icrc1_supported_standards`; otherwise the
-  approvals Sneed Hub made (remembered locally) plus approve transactions from the index, each
-  confirmed with `icrc2_allowance`. **Revoke** is `icrc2_approve` with amount 0 (costs a ledger
-  fee; said so). Sneed Monitor's auto top-up shows its approval here with a link.
+### 4.1 One concept: the pocket
 
-### 4.2 ICRC-2 facts the UI must respect
+A **pocket** is any account that is the user's and holds tokens. Three kinds, one list:
 
-- An approval is per (owner account, spender). A new `icrc2_approve` **replaces** the allowance;
-  it does not add to it. `expected_allowance` makes it compare-and-set, which Sneed Hub always
-  sets when it changes an existing allowance.
+| kind | the account | who can move it | examples | receives tokens directly |
+|---|---|---|---|---|
+| **wallet pocket** | `{ owner = me; subaccount = s }` | my key (or a spender I approved from it) | **Main** (default subaccount), numbered pockets (#1, #2, ...), pockets with an exact 32-byte subaccount | yes |
+| **hosted pocket** | an account a canister holds for me | the host, on my call and by its rules | Sneed Lock wallet, sneed_vault subaccounts (phase 2), Sneedex payment and bid-escrow subaccounts, ICPSwap pools' unused balances, TACO exchange balances | when the host's account is an ICRC-1 account (Sneed Lock, vault, Sneedex); not when it is the host's internal books (ICPSwap, TACO) |
+| **service balance** | a balance a service keeps in its own books | the service | Sneed Monitor balance, Sneed Notifications message balance | **no**: labelled "service balance", topped up through the service |
+
+All three appear in the same rows with the same columns (name, host, balance, actions); the kind
+only changes the badge and what the buttons do.
+
+The model (`utils/pockets/model.js`, pure, no React):
+
+```js
+Pocket = {
+  id,            // 'w:<subaccount hex or 0>' | 'h:<adapterId>:<hostKey>' | 's:<adapterId>:<hostKey>'
+  kind,          // 'wallet' | 'hosted' | 'service'
+  adapterId,     // 'wallet', 'sneed_lock', 'sneedex', 'icpswap', 'taco', 'sneed_mon', 'sneed_notifications', 'sneed_vault', ...
+  account,       // ICRC-1 account when there is one (null for books-only balances)
+  number,        // n for numbered wallet pockets, else null
+  label,         // the user's private nickname (§4.6), else the adapter's default name
+  balances,      // Map ledger -> { total, available, locked?, note? }
+  caps,          // { receive, deposit, withdraw, send, approve, readOnly }
+  grants,        // count of grants on it (vault pockets), shown as a shield badge
+  hidden,        // from the registry (§4.7)
+}
+```
+
+Totals always count every pocket, hidden or not, so a token's total is the truth; "hidden" only
+takes a pocket out of lists, pickers and the switcher.
+
+### 4.2 Host adapters
+
+Every host, Sneed's or a third party's, plugs in through the same small frontend adapter
+(`utils/pockets/adapters/<id>.js`), registered in `utils/pockets/adapters/index.js`:
+
+```js
+Adapter = {
+  id, name, kind,                    // kind: 'hosted' | 'service'
+  ledgers?(ctx),                     // ledgers it can hold, if it knows (else: the wallet's token list)
+  listMyAccounts(ctx) -> [{ hostKey, account?, label?, ledgers? }],
+  balance(ctx, pocket, ledger) -> { total, available, locked?, note? },
+  deposit?(ctx, pocket, ledger, amount, fromSubaccount),   // absent = can't deposit from the wallet
+  withdraw?(ctx, pocket, ledger, amount, to),              // absent = read-only
+  rules?(ctx, pocket, ledger) -> { withdrawable, why? },   // what can leave now, and why not more
+  grants?(ctx, pocket) -> [Grant],                         // vault only
+}
+// ctx = { identity, me, agent, ledgerMeta(ledger) -> { fee, decimals, symbol } }
+```
+
+- **Read-only is allowed.** A third-party host whose API we can read but not act on (or not yet)
+  ships `listMyAccounts` and `balance` only; its rows show the balance and a "manage at <host>"
+  link instead of Withdraw. A failing adapter never breaks the wallet: its rows show "couldn't
+  read <host>" and the rest loads (each adapter call with a timeout, results cached per session).
+- **Adapters never touch keys.** They make calls with the user's identity like the rest of the
+  wallet; every write goes through the same confirm dialog with the fee shown.
+
+Phase-1 adapters:
+
+| adapter | kind | list | balance | deposit | withdraw / rules |
+|---|---|---|---|---|---|
+| `wallet` (built in) | wallet | registry + discovery (§4.8) | `icrc1_balance_of` | — | `icrc1_transfer` with `from_subaccount` |
+| `sneed_lock` (Sneed Lock wallet) | hosted | one pocket: `{ sneed_lock; principalToSubAccount(me) }` | ledger balance; `locked` from `get_summed_locks` | transfer to that account | `transfer_tokens(to_principal, to_subaccount, ledger, amount)`; withdrawable = balance − locked − fee (as `sendPlan.js` today) |
+| `sneedex` | hosted | offer-creation payment subaccount (`getOfferCreationPaymentSubaccount(me)`), my bids' escrows (`getBidEscrowSubaccount`) | ledger balance / `getBidEscrowBalance` | transfer to the subaccount (bid funding) | `withdrawOfferCreationPayment()`; `withdrawBidEscrow(bid, amount)` with its rules (all before confirmation, only the excess after, nothing from won or refunded bids) |
+| `icpswap` | hosted, books only | pools I have positions in (`getUserPositionIdsByPrincipal` over the wallet's swap canisters, `get_swap_canister_ids`) plus pools the swap UI used (remembered) | `getUserUnusedBalance(me)` → `balance0`, `balance1` | — (deposits happen inside a swap or add-liquidity) | `pool.withdraw({ token; amount; fee })` (as `pages/Position.jsx` and `services/dex/dexes/ICPSwapDex.js` do) |
+| `taco` | hosted, books only | per TACO exchange API (spec/pipeline.md: TACO as a swap venue) | its balance query | when its API allows | read-only until its withdraw API is known and tested |
+| `sneed_mon` | service | one: my Monitor balance | `SneedMonService` balance | the existing deposit flow, or auto top-up (ICRC-2) | per sneed_mon's API; none means "service balance, can't withdraw" |
+| `sneed_notifications` | service | one: my message balance | its balance query | `top_up` (ICRC-2) | none (no withdraw, spec/sneed_notifications.md) |
+| `sneed_vault` | hosted | `get_my_accounts()` | ledger balance | transfer to `owned(me, i)` | owner `transfer`; `grants` → shield badge (phase 2) |
+
+Today's Sneed Lock integration (`token.balance_backend` / `available_backend` in `TokenCard.jsx`,
+`WalletContext.jsx`, the two-source split in `utils/sendPlan.js`) becomes the `sneed_lock` adapter:
+the Sneed Lock wallet is simply a hosted pocket. `sendPlan.js` keeps its Main + Sneed Lock split
+for a send in "All pockets" mode, now reading both through the model; with one pocket selected a
+send uses that pocket only (Q3 asks whether to split across any pockets).
+
+### 4.3 From casual to pro
+
+- **Token card:** shows the total across all pockets, as today. Only when **more than one** pocket
+  holds that token, a quiet "in N pockets ▸" disclosure appears; it lists the pockets (name,
+  host badge, balance via `useDenomination().formatValue`, shield badge with the grant count) each
+  with **Send / Move / Receive** (service balances: **Top up**, and **Withdraw** where the host
+  allows). A user with one pocket never sees the word.
+- **Move** is the send dialog with "to: one of my pockets" (a `PocketPicker` instead of the
+  recipient field). Behind the same button: wallet → wallet is `icrc1_transfer` with
+  `from_subaccount`; wallet → hosted is the adapter's `deposit`; hosted → wallet is its
+  `withdraw`; hosted → hosted is withdraw-then-deposit (two steps, both fees shown) unless the host
+  moves internally (vault `transfer`). The ledger fee is always shown.
+- **Receive** on a pocket: its ICRC-1 textual account (numbered #3 is `<principal>-<checksum>.3`,
+  which `AccountParser` reads and writes), a QR code, and for ICP the 64-hex account identifier.
+  "Receive on a new pocket" creates the next number in one click.
+- **Pocket switcher** at the top of the wallet: **All pockets** (default) or one pocket. Picking
+  one makes every card show only that pocket's balance (SNEED, ICP, TACO...), hides tokens it
+  doesn't hold (toggle), and makes Send/Approve default to it as `from`. Remembered per viewer in
+  `localStorage` (try/catch; falls back to All).
+- **Advanced → Pockets page** (`/wallet/pockets`):
+  - **create**: auto-number (next free number) or an exact subaccount through the byte editor,
+    extracted from `pages/ToolsAccount.jsx` (hex, number, text, byte array left/right,
+    principal + index) and the send dialog's manual subaccount input (`SendTokenModal.jsx`,
+    `AccountParser.resolveSubaccount`) into one `components/SubaccountEditor.jsx`;
+  - **rename**, **hide/unhide**, **forget** (registry only; a pocket with a balance is found again);
+  - **hosts**: which hosts hold pockets for me, per adapter, with read-only and failure states;
+  - **approvals per pocket** with revoke (§4.4);
+  - **grants** on vault pockets (count, link to the vault rules editor, §12.2).
+
+### 4.4 Approvals: reuse the wallet's approvals module
+
+ICRC-2 approval management is being built now as its own wallet feature: `utils/approvals.js`
+(list per account: ICRC-103 `icrc103_get_allowances` where the ledger lists it in
+`icrc1_supported_standards`, otherwise approvals Sneed Hub made plus approve transactions from the
+index, each confirmed with `icrc2_allowance`; revoke = `icrc2_approve` amount 0 with
+`expected_allowance`, one ledger fee, said so), `hooks/useApprovals.js` and
+`components/ApprovalsList.jsx`. Pockets define no approval logic of their own: the pockets page
+and a pocket's row render `ApprovalsList` for `(ledger, pocket.account)`, and the approve dialog
+takes its `from` from a `PocketPicker`. Hosted pockets have approvals only where the host can
+approve (vault raw approvals, §5.1). Sneed Monitor's auto top-up shows up there with a link.
+
+**Approve safely:** the approve dialog suggests "approve from a new pocket holding only what you
+want at risk": one click creates pocket *n*, moves amount + fees there and approves from it.
+
+ICRC-2 facts the UI respects:
+- An approval is per (owner account, spender); a new `icrc2_approve` **replaces** it (Sneed Hub
+  always sets `expected_allowance` when changing one).
 - Each `icrc2_transfer_from` consumes amount + ledger fee of the allowance.
-- An approval costs one ledger fee, paid by the approver's account. Revoking costs one too.
+- Approving and revoking each cost one ledger fee, paid by the approving account.
 - An expired allowance answers `InsufficientAllowance`, exactly as a used-up one.
-- An approval is independent of the balance: the account may hold less than the allowance. That
-  is what makes the limited-funds subaccount the real cap.
+- An approval is independent of the balance, which is what makes a limited-funds pocket the
+  real cap.
 
-### 4.3 Names
+### 4.5 One model, one picker
 
-Names are **local by default** (browser storage per principal: "Bots", "Savings"), wrapped in
-try/catch, never relied on. An optional on-chain label for **vault** subaccounts (§6.1) is public
-and says so. **Q4:** on-chain names for wallet subaccounts, through the naming service
-(spec/sneed_names.md) as account names, or local only?
+- `hooks/usePockets.js` over a `PocketsContext` (next to `WalletContext`): `pockets`,
+  `pocketsFor(ledger)`, `total(ledger)`, `selected` / `setSelected`, `create`, `rename`, `hide`,
+  `forget`, `refresh`, `checkNumber(ledger, n)`, `deepScan(ledger)`. All logic lives in the pure
+  modules under `utils/pockets/`, so it is unit-testable and the MCP can use it.
+- `components/PocketPicker.jsx`: one component, props `{ ledger, value, onChange, filter
+  ('from' | 'to' | 'approve' | 'receive'), allowNew }`; shows name · number, host badge, balance,
+  shield badge; offers "new pocket" when `allowNew`. Selects with explicit dark-mode colours.
+- Used everywhere an own account is chosen: send (from) and Move (to), Receive, approve (from),
+  Sneed Monitor auto top-up `from_subaccount` (replaces the free-text field and
+  `SneedMonService.parseSubaccountInput`), Sneedex deposits (fund a bid or the creation payment
+  from a pocket), and the MCP (`mcp/sneed-hub`: a `list_pockets` read tool and a `from_pocket`
+  argument on its transfer and approve tools, resolving names and numbers the same way).
+
+### 4.6 Names: private account nicknames
+
+- **Display:** the label always comes with the number: "Savings · #3", "Main", "#7" when unnamed,
+  "Savings · #0a1b…" for an exact (non-numbered) subaccount. Hosted: "Sneed Lock wallet",
+  "Sneedex bid 123", "ICPSwap SNEED/ICP"; a user label is shown with the host ("Bots · Sneed Lock").
+- **Storage:** private account nicknames in the naming service, so they sync across devices and
+  show wherever the account appears to its owner (transaction lists, approvals, Monitor, Sneedex,
+  PrincipalDisplay of accounts). Unpublished, not secret (spec/sneed_names.md §6 wording): never
+  presented as encrypted or anonymous.
+- **Canister change (additive) in `sneed_pid_nicknames`**, next to principal nicknames:
+
+```candid
+type Account = record { owner : principal; subaccount : opt blob };
+type PocketMeta = record {
+  host : opt text;               // adapter id for hosted pockets; null = wallet pocket
+  ledgers : vec principal;       // where it was seen or used, at most 20
+  hidden : bool;
+  created_at : nat64;
+};
+type AccountNickname = record { account : Account; nickname : text; pocket : opt PocketMeta; updated_at : nat64 };
+
+get_my_account_nicknames : (record { start_after : opt Account; limit : nat }) ->
+    (record { items : vec AccountNickname; next : opt Account }) query;      // limit <= 500
+get_my_account_nicknames_for : (vec Account) -> (vec opt AccountNickname) query;  // <= 100
+set_account_nickname : (Account, text) -> (Result);        // "" clears the name, keeps pocket meta
+set_pocket : (Account, opt PocketMeta) -> (Result);        // remember / update / forget
+set_pockets : (vec record { Account; opt PocketMeta }) -> (vec Result);  // batch, <= 50
+my_account_nickname_count : () -> (record { count : nat; max_free : nat; max_premium : nat }) query;
+```
+
+  - Storage as principal nicknames: accounts deduplicated to `Nat32` in their own dedup table (key
+    = canonical bytes: owner, then the 32-byte subaccount; `null` and 32 zero bytes are the same
+    account), one flat map keyed `owner_index << 32 | account_index`, so one owner's entries are a
+    range scan. A separate map from principal nicknames; existing state and methods unchanged.
+  - An entry exists while it has a nickname or pocket meta; clearing both deletes it.
+  - Limits: their own config fields `account_max_free` (100) and `account_max_premium` (1,000),
+    admin-settable like the existing ones (**Q4**).
+  - Validation: names spec §3.1 rules and the blacklist check as for nicknames; subaccount exactly
+    32 bytes; banned users can't write. No public log, no ICRC-3 blocks.
+  - Ingress guard: the new methods join the `msg` variant with argument caps (`SMALL_ARG` for single
+    calls, `MEDIUM_ARG` for the batch and `_for` queries); queries refused as updates.
+  - Upgrade: enhanced orthogonal persistence, so a proposal must set `wasm_memory_persistence =
+    keep` (or `--wasm-memory-persistence keep` while the canister is not yet the DAO's); verify the
+    module hash after. Staging first.
+  - `utils/NamingService.js` gains the client calls and a `localStorage` mirror of the caller's
+    entries (as for principal nicknames), so names appear before the call returns.
+
+### 4.7 The pocket registry: where it lives
+
+Every pocket created in Sneed Hub (and every one discovery finds with a balance) is recorded, so a
+new device finds them without scanning.
+
+| | **`sneed_pid_nicknames` account entries** (chosen) | `app_sneeddao_backend` per-user settings |
+|---|---|---|
+| one call gives | names and the registry together (they are the same row) | the registry only; names still in the naming service |
+| privacy | already caller-only data | settings are caller-only too |
+| upgrades | small canister, few users of its code; quick to ship | the big central canister: DAO proposal, EOP KEEP, many unrelated features at risk |
+| growth | per-owner range scan, limits already a concept there | settings record grows per user; no paging |
+| fit | an account entry is "my label for this account", a pocket is "and it's mine" | settings are preferences, not data about accounts |
+
+So the registry is the `pocket` field of the account entry (§4.6). Without a sign-in or when the
+call fails, the `localStorage` mirror and discovery still work.
+
+### 4.8 Discovery
+
+The wallet merges, per ledger, in this order:
+
+1. **Remember first:** the registry (§4.7) and its local mirror.
+2. **Index:** where the ledger has an ICRC index-ng canister (SNS tokens: from the SNS data;
+   others: `icrc106_get_index_principal` where the ledger supports it, as `pages/studio/IndexPanel.jsx`
+   probes), `list_subaccounts({ owner = me; start })`, paged (already used in
+   `components/TransactionList.jsx` and `tokensafety/sources.js`). Automatic. Found subaccounts with
+   a balance are added to the registry in one batched `set_pockets`.
+3. **ICP:** the ICP index works on account identifiers (hashes), so there is no listing.
+   Remembered pockets plus a manual **"check pocket #N"** (and "check #1–#20": cheap
+   `icrc1_balance_of` queries) in Advanced.
+4. **No index:** an opt-in **deep scan** in Advanced ("read this token's whole history to find
+   your pockets: about X blocks"): folds the ledger's block log through the shared ledger history
+   cache (§4.9) and keeps every account whose owner is me; each is confirmed with
+   `icrc1_balance_of` and recorded.
+5. **Hosted and service pockets:** each adapter's `listMyAccounts`.
+
+Empty, unnamed wallet pockets are hidden from lists (still in the registry); named ones show with 0.
+
+### 4.9 One ledger history cache
+
+Today several places read ledger logs and archives, each with its own fetcher and nothing kept:
+
+| where | what it reads | kept |
+|---|---|---|
+| `tokensafety/scan.js` (+ `scan.worker.js`, `scanClient.js`) | whole log: `get_blocks` (2,000 per call), the `get_transactions` walk (NatLabs), ICRC-3 fallback | in the worker's memory, dropped after the scan |
+| `components/TransactionList.jsx` | `get_transactions` + SNS archive `get_transactions` for the list | component state |
+| `pages/Transaction.jsx` | one transaction, through its archive | component state |
+| `utils/icrc3/client.js` `fetchBlocks` (used by `pages/ToolsIcrc3.jsx`, `components/RllActivityCard.jsx`, `scan.js`) | ICRC-3 ranges of any canister, archive callbacks | actor cache only |
+| `utils/rllLedger.js` (RLL ledger page, `utils/revenueData.js`) | index `get_account_transactions` per account | in-memory rows with a TTL |
+
+None uses IndexedDB for blocks today. Consolidate into **one module, `utils/ledgerHistory/`**, the
+only code that fetches ledger or ICRC-3 log blocks:
+
+- **Storage:** IndexedDB `sneed_ledger_history` (added to `CACHE_DB_NAMES` in `utils/cacheUtils.js`)
+  with stores `meta` (per canister: API kind, archives, log length seen), `chunks` (normalized
+  blocks in fixed 2,000-block chunks keyed `canister:chunkStart`) and `accountTx` (index pages per
+  account). Archived blocks are immutable, so chunks are kept until evicted (LRU by size cap,
+  default 200 MB, Q15); only the open tip chunk is refetched.
+- **API:** `getRange(canister, start, length)`, `findTx(canister, id)`,
+  `fold(canister, reducer, init, { from, to, onProgress, signal })` which streams chunk by chunk,
+  `accountHistory(ledger, account, { since })`. Callers fold; nobody gets the whole log as an array.
+- **Never two copies:** one module instance owns fetching. Within a page, in-flight requests are
+  single-flight (a map of promises per chunk) and decoded chunks sit in one small shared LRU. Long
+  folds (token safety scan, deep scan) run in the existing scan worker; the main thread gets only
+  results, not blocks. Across tabs and the worker, `navigator.locks.request('ledgerHistory:' +
+  canister)` lets one context fetch a chunk while others wait and then read it from IndexedDB.
+- **Without IndexedDB** (private window, quota error): the same API streams without storing, and
+  says so in the scan UI.
+- **Migration:** `scan.js`'s fetchers move into the module first (it is the heaviest reader), then
+  `TransactionList` / `Transaction`, `icrc3/client.js` ranges (ToolsIcrc3, RllActivityCard), and
+  `rllLedger.js`'s per-account rows into `accountTx`; the pocket deep scan and Sneedex use it from
+  the start.
+
+### 4.10 Subaccount layout
+
+- **Numbered pocket n** is the 32-byte big-endian number n (n >= 1; Main is the default
+  subaccount). For any n < 2^248, byte 0 is zero, while the classic `[L][principal][zeros]`
+  derivation and the vault's `owned(P, i)` (§3.1) have byte 0 = L >= 1. So a numbered pocket never
+  equals a classic or vault subaccount, even when the wallet owner is a canister (a bot) that also
+  uses classic subaccounts of its own principal.
+- **Exact pockets** may be any 32 bytes. One that parses as `[L][principal]...` gets a hint
+  ("principal-derived: some dapps use this as <principal>'s deposit address").
+- The byte editor's existing "principal + index" mode writes the index right after the principal
+  bytes; that equals the vault layout (index in bytes 30..31) only for 29-byte principals.
+  `SubaccountEditor` adds a "Sneed Vault layout" mode and the shared codec implements
+  `owned`/`parse` once (tested against the vault's queries).
+- **Hosted pockets keep their host's layout:** Sneed Lock = index 0 of my principal on sneed_lock,
+  Sneedex `P`/`O`/`B` markers (§3.3), vault `owned(me, i)`. Pockets never invent layouts for hosts.
+
+### 4.11 Phase-1 build plan
+
+Files (all under `src/app_sneeddao_frontend/src` unless noted):
+
+| # | file | what |
+|---|---|---|
+| 1 | `utils/pockets/subaccount.js` | codec: number ↔ subaccount, hex, input parsing (replaces the copies in `ToolsAccount.jsx`, `SneedMonService.parseSubaccountInput`; `AccountParser.resolveSubaccount` delegates), vault `owned`/`parse`, textual account |
+| 2 | `utils/pockets/model.js` | pure: pocket ids, merge of registry/discovery/adapters (dedupe by account), totals, holders per token, filter by selected pocket, display names, next free number |
+| 3 | `utils/pockets/adapters/*.js` + `index.js` | `wallet`, `sneed_lock`, `sneedex`, `icpswap`, `sneed_mon`, `sneed_notifications`; `taco` read-only stub behind a flag until its API is checked |
+| 4 | `src/sneed_pid_nicknames` + `test/canisters/tests/nicknames.test.js` | account nicknames and pocket meta (§4.6) |
+| 5 | `utils/NamingService.js`, `utils/pockets/registry.js` | client calls + local mirror; registry read/write |
+| 6 | `utils/pockets/discovery.js` | registry → index `list_subaccounts` → ICP check → deep scan |
+| 7 | `contexts/PocketsContext.jsx`, `hooks/usePockets.js` | the one model for the UI |
+| 8 | `components/PocketPicker.jsx`, `components/SubaccountEditor.jsx`, `components/PocketSwitcher.jsx`, `components/PocketRows.jsx` | picker, extracted byte editor, switcher, the "in N pockets" rows |
+| 9 | `TokenCard.jsx`, `Wallet.jsx`, `SendTokenModal.jsx`, `utils/sendPlan.js`, `contexts/WalletContext.jsx` | totals + disclosure (Sneed Lock breakdown becomes pocket rows), switcher, from/to pickers and Move |
+| 10 | `pages/Pockets.jsx` (route `/wallet/pockets`) | Advanced page; renders `ApprovalsList` per pocket |
+| 11 | `components/SneedMonitorSection.jsx`, Sneedex bid/offer pages, `mcp/sneed-hub/src/tools` | `PocketPicker` adoption, MCP `list_pockets` / `from_pocket` |
+| 12 | `utils/ledgerHistory/` | the shared cache (§4.9), then the deep scan |
+
+Order: (a) 1–2 with unit tests; (b) 4 on staging, then 5; (c) 3, 6, 7; (d) 8–9 (casual path);
+(e) 10 with the approvals module once it lands; (f) 11; (g) 12 and the consumers' migration (the
+wallet works without it; only the deep scan waits for it).
+
+Tests (vitest in `test/canisters`, which already imports frontend modules, as
+`naming-frontend.test.js` does):
+- `pockets-model.test.js`: codec round-trips (number, hex, text, bytes, principal + index, vault
+  layout for 1-, 10- and 29-byte principals), "numbered never equals classic or vault" over
+  sampled principals, `null` = zero subaccount, display names, merge/dedupe across sources,
+  totals with hidden pockets, holders count (disclosure only when > 1), switcher filtering, next
+  free number.
+- `pockets-adapters.test.js` (PocketIC with the mock ledger): `sneed_lock` (balance, locked,
+  withdrawable = balance − locked − fee, withdraw), `sneedex` (payment and bid escrow, the
+  confirmation rules), `sneed_mon` and `sneed_notifications` balances, the `wallet` adapter's
+  transfers from a numbered pocket; `icpswap` against a mock pool answering
+  `getUserUnusedBalance` / `withdraw`; a failing adapter doesn't fail the model.
+- `nicknames.test.js` extended: owner isolation, limits free/premium, canonical account key,
+  pocket meta set/clear, batch, ingress caps, upgrade keeps state.
+- `ledger-history.test.js` (with an in-memory IndexedDB such as `fake-indexeddb`, dev dependency):
+  chunking, single-flight, tip refresh, fold streaming, quota fallback.
+- `npm run check` in the frontend; the full canister suite after the nicknames change.
+
+Verify by hand on staging: create #1 and a named pocket, receive on it from another wallet, see
+"in 2 pockets", Move back and forth (fees right), switcher on SNEED/ICP, rename on one device and
+see it on another, hide/unhide, ICP "check pocket #N", index discovery on SNEED, Sneed Lock wallet
+as a pocket (send, withdraw with locks), a Sneedex bid funded from a pocket and its escrow
+withdrawn, ICPSwap unused balance shown and withdrawn, Sneed Monitor auto top-up from a pocket,
+approve-safely and revoke in `ApprovalsList`, dark mode and phone width.
 
 ## 5. sneed_vault: owner operations
 
@@ -404,7 +694,7 @@ ship?
 
 ### 8.1 The graph
 
-- **Nodes:** ledger accounts (wallet accounts, wallet subaccounts, vault subaccounts, anyone's
+- **Nodes:** ledger accounts (wallet pockets, vault subaccounts, anyone's
   account as a target only), canisters (cycles), and the user's sneed_mon service balance.
 - **Edges:** `source -> target` with a ledger (or cycles), a condition (`below X, fill to Y`), and
   a source kind:
@@ -523,7 +813,7 @@ for `set_grant`). Every new method joins the `msg` variant.
 - **Privacy:** nothing here is private. Balances are on the ledger, every vault subaccount carries
   its owner's principal in its bytes, grants, labels and requests (with reasons) are public
   queries and ICRC-3 blocks. The UI never offers anonymity or privacy (memory: no false
-  anonymity); local names stay in the browser but are not secret.
+  anonymity); pocket names are private account nicknames (§4.6): unpublished, not secret.
 
 ### 9.7 Tests
 
@@ -599,12 +889,12 @@ A credit refill can itself be an edge (Monitor tops up the credit from a subacco
 
 The user's rule: one-click simple path on top, full control behind **Advanced**.
 
-### 12.1 Wallet (phase 1)
+### 12.1 Wallet: pockets (phase 1)
 
-- **Casual:** token rows show totals; "Receive" offers "a new address for this" (creates
-  subaccount *n*, local name); "Approve safely" (§4.1) creates a limited subaccount in one click.
-- **Advanced:** per-token account list, raw subaccount entry, move between accounts, the
-  approvals table with revoke, ICP account ids.
+Specified in §4.3: totals on token cards, "in N pockets ▸" only when more than one pocket holds the
+token, Send / Move / Receive per pocket, the pocket switcher, "Receive on a new pocket", "Approve
+safely" (§4.4); Advanced: the Pockets page (create by number or exact bytes, rename, hide, hosts,
+approvals through `ApprovalsList`, grants), ICP check-by-number and the deep scan (§4.8).
 
 ### 12.2 Vault page (`/vault`)
 
@@ -626,9 +916,13 @@ The user's rule: one-click simple path on top, full control behind **Advanced**.
 
 ## 13. Rollout
 
-1. **Wallet subaccounts** (frontend only): numbered subaccounts, hold, send from, receive on, move,
-   approve from a subaccount, approvals view and revoke. Sneed Monitor's auto top-up picks its
-   `from_subaccount` from the list. No canister changes.
+1. **Pockets** (§4, build plan §4.11): the pocket model, `usePockets` and `PocketPicker`; wallet,
+   Sneed Lock, Sneedex, ICPSwap, Sneed Monitor and Sneed Notifications adapters (TACO read-only
+   until its API is checked); totals, "in N pockets", Move, the switcher, the Pockets page;
+   approvals through the wallet's approvals module; Sneed Monitor auto top-up, Sneedex and the MCP
+   pick pockets with `PocketPicker`. One canister change: account nicknames and pocket meta in
+   `sneed_pid_nicknames` (additive, KEEP upgrade, staging first). Then the shared ledger history
+   cache (`utils/ledgerHistory/`) and the opt-in deep scan.
 2. **sneed_vault v1:** namespace, owner transfer/approve/labels, grants with limits, ledgers,
    destinations, expiry, pause, revoke; `request_funds`; dedupe; service credit, fees, special
    prices, fee forwarding; ICRC-3; ingress guard; vault page with the rules editor. Staging first,
@@ -643,8 +937,9 @@ The user's rule: one-click simple path on top, full control behind **Advanced**.
 
 1. Canister name: `sneed_vault` or `sneed_accounts`?
 2. Cycles ledger as a cycles source from the start, or ICP→CMC only?
-3. Should "send" draw from several wallet subaccounts at once?
-4. On-chain names for wallet subaccounts (naming service), or local only?
+3. Should "send" draw from several pockets at once (beyond today's Main + Sneed Lock split)?
+4. Account nickname limits: 100 free / 1,000 with Sneed Premium, counted apart from principal
+   nicknames? (Decided: names are private account nicknames in the naming service, §4.6.)
 5. Charge owner calls (transfer/approve) a small service fee for cycles, or keep them free?
 6. A "manager" delegate that can pause/revoke grants but not create them or move funds?
 7. Limit periods: fixed windows (boundary burst) or a token bucket?
@@ -656,3 +951,8 @@ The user's rule: one-click simple path on top, full control behind **Advanced**.
 12. A Sneed Premium price for vault fees?
 13. Should the vault itself ever act as an ICRC-2 spender (pulling from wallets), or stay
     push-only with Monitor as the only puller (recommended: push-only)?
+14. Hosted → hosted Move: always withdraw-then-deposit through the wallet (two fees, two steps), or
+    leave the option out until a host moves internally?
+15. Ledger history cache: size cap (200 MB default?) and whether to offer the deep scan on phones.
+16. Should discovery record found pockets in the registry automatically (one batched update), or
+    only when the user names, uses or confirms them?
