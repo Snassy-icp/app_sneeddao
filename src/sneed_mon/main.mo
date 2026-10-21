@@ -209,6 +209,19 @@ shared (deployer) persistent actor class SneedMon() = this {
   var skipped_other : Nat = 0;
   var errors : Nat = 0;
   var last_error : ?(Int, Text) = null;
+  /// The last RECENT_ERRORS_KEPT errors, newest last (get_recent_errors, admins).
+  var recent_errors : [(Int, Text)] = [];
+  transient let RECENT_ERRORS_KEPT : Nat = 30;
+  /// The round phase running now (prefixes the errors noted meanwhile).
+  transient var phase_name : Text = "";
+  /// Outgoing calls: what one holds while in flight (its fee plus the cycles the IC reserves for
+  /// the largest possible response, measured at each send) and the balance at which the last
+  /// send failed (call_perform refused it: too few cycles above the freezing threshold, or a full
+  /// queue). A round sends a call more only while the balance is above that floor, unless
+  /// nothing is in flight (then it tries, so a stale floor can't stop it for good).
+  transient var call_reserve : Nat = 0;
+  transient var call_floor : Nat = 0;
+  var send_failures : Nat = 0;
 
   // per round, rebuilt after an upgrade (every phase is idempotent, so a round just goes on)
   transient var round_open = false;
@@ -239,6 +252,7 @@ shared (deployer) persistent actor class SneedMon() = this {
   func gov(p : Principal) : T.Governance = actor (Principal.toText(p));
   func nnsGov() : T.NnsGovernance = actor (Principal.toText(tuning.nns_governance));
   func spend() { if (budget > 0) budget -= 1; calls_total += 1; calls_last_round += 1 };
+  func spendBudget() { if (budget > 0) budget -= 1 };
   func par() : Nat = Nat.max(1, Nat.min(Nat.min(tuning.parallel_calls, 50), budget));
 
   func targetKey(t : Target) : Text = switch t { case (#sns(r)) Principal.toText(r); case (#nns) NNS_KEY };
@@ -268,9 +282,28 @@ shared (deployer) persistent actor class SneedMon() = this {
     out # "…";
   };
 
-  func noteError(key : ?Text, msg : Text) {
+  /// Room for one more call in flight next to `inFlight` others.
+  func roomForCall(inFlight : Nat) : Bool = inFlight == 0 or Cycles.balance() > call_floor + call_reserve;
+  /// A call was sent; `before` is the balance just before.
+  func callSent(before : Nat) {
+    let after = Cycles.balance();
+    if (before > after) call_reserve := before - after;
+    if (before <= call_floor) call_floor := 0; // the floor was wrong
+    calls_total += 1; calls_last_round += 1;
+  };
+  /// A call could not be sent (the call expression threw: ic0.call_perform failed).
+  func sendFailed(what : Text, key : ?Text, e : Error.Error) {
+    call_floor := Cycles.balance();
+    send_failures += 1;
+    noteError(key, what # " not sent (" # Nat.toText(Cycles.balance()) # " cycles left, ~" # Nat.toText(call_reserve) # " held per call in flight): " # Error.message(e));
+  };
+
+  func noteError(key : ?Text, raw : Text) {
+    let msg = if (phase_name == "") raw else phase_name # ": " # raw;
     errors += 1;
     last_error := ?(now(), msg);
+    let kept = Array.append(recent_errors, [(now(), clip(msg # (switch key { case (?k) " [" # k # "]"; case null "" }), 300))]);
+    recent_errors := if (kept.size() > RECENT_ERRORS_KEPT) Array.subArray<(Int, Text)>(kept, (kept.size() - RECENT_ERRORS_KEPT : Nat), RECENT_ERRORS_KEPT) else kept;
     switch (key) {
       case (?k) switch (Map.get(targets, Map.thash, k)) {
         case (?s) Map.set(targets, Map.thash, k, { s with last_error = ?(now(), msg); errors = s.errors + 1 });
@@ -975,8 +1008,25 @@ shared (deployer) persistent actor class SneedMon() = this {
     round_ticks += 1;
     var finished = false;
     try {
-      if (await* phaseTopUps()) if (await* phaseList()) if (await* phaseRefresh(true)) if (await* phaseMatch()) if (await* phaseChecks()) if (await* phaseRefresh(false)) { await* forwardFees(); finished := true };
-    } catch (e) { noteError(null, "round: " # Error.message(e)); finished := true };
+      phase_name := "top-ups";
+      if (await* phaseTopUps()) {
+        phase_name := "list";
+        if (await* phaseList()) {
+          phase_name := "refresh missing";
+          if (await* phaseRefresh(true)) {
+            phase_name := "match";
+            if (await* phaseMatch()) {
+              phase_name := "checks";
+              if (await* phaseChecks()) {
+                phase_name := "refresh stale";
+                if (await* phaseRefresh(false)) { phase_name := "fee forward"; await* forwardFees(); finished := true };
+              };
+            };
+          };
+        };
+      };
+    } catch (e) { noteError(null, "round aborted (cycles " # Nat.toText(Cycles.balance()) # ", calls this round " # Nat.toText(calls_last_round) # "): " # Error.message(e)); finished := true };
+    phase_name := "";
     running_since := null;
     let c1 = Cycles.balance();
     let burned = if (c0 > c1) c0 - c1 : Nat else 0;
@@ -1025,21 +1075,34 @@ shared (deployer) persistent actor class SneedMon() = this {
       let locked = Buffer.Buffer<Principal>(n);
       try {
         let fs = Buffer.Buffer<(Principal, Nat, async T.TransferFromResult)>(n);
-        for (k in Iter.range(0, n - 1)) {
+        // send up to n (fewer when the cycles can't hold more in flight; the rest next batch)
+        var k = 0;
+        label send while (k < n) {
           let (u, s) = todo.get(i + k);
+          if (not roomForCall(fs.size())) break send;
+          k += 1;
           if (lock(u)) {
             locked.add(u);
-            Map.set(auto_top_ups, Map.phash, u, { topUpOf(u) with attempted_round = round_no });
-            spend();
-            pulls_this_round += 1;
-            fs.add((u, s.amount_e8s, ledger().icrc2_transfer_from({
-              spender_subaccount = null; from = { owner = u; subaccount = s.from_subaccount }; to = { owner = Principal.fromActor(this); subaccount = null };
-              amount = s.amount_e8s; fee = ?billing.ledger_fee_e8s; memo = ?Text.encodeUtf8("sneed_mon top-up " # Nat.toText(round_no));
-              created_at_time = ?Nat64.fromNat(Int.abs(now()));
-            })));
+            spendBudget();
+            let b0 = Cycles.balance();
+            try {
+              fs.add((u, s.amount_e8s, ledger().icrc2_transfer_from({
+                spender_subaccount = null; from = { owner = u; subaccount = s.from_subaccount }; to = { owner = Principal.fromActor(this); subaccount = null };
+                amount = s.amount_e8s; fee = ?billing.ledger_fee_e8s; memo = ?Text.encodeUtf8("sneed_mon top-up " # Nat.toText(round_no));
+                created_at_time = ?Nat64.fromNat(Int.abs(now()));
+              })));
+              callSent(b0);
+              Map.set(auto_top_ups, Map.phash, u, { topUpOf(u) with attempted_round = round_no });
+              pulls_this_round += 1;
+            } catch (e) {
+              sendFailed("auto top-up", null, e);
+              // nothing else in flight: this user is tried again next round; else in the next batch
+              if (fs.size() == 0) Map.set(auto_top_ups, Map.phash, u, { topUpOf(u) with attempted_round = round_no }) else k -= 1;
+              break send;
+            };
           };
         };
-        i += n;
+        i += k;
         for ((u, amount, f) in fs.vals()) {
           // an unbounded-wait call: a reject means nothing moved (tried again next round)
           let r = try { await f } catch (e) { noteError(null, "auto top-up: " # Error.message(e)); #Err(#TemporarilyUnavailable) };
@@ -1133,16 +1196,28 @@ shared (deployer) persistent actor class SneedMon() = this {
     while (i < todo.size()) {
       if (budget == 0) return false;
       let n = Nat.min(par(), todo.size() - i);
-      let chunk = Array.tabulate<TargetState>(n, func(k) = todo.get(i + k));
-      i += n;
-      // fire the first pages together, then await them
+      // send the first pages together (as many as the cycles can hold in flight), then await them
       let snsF = Buffer.Buffer<(Text, async { proposals : [T.ListedProposal] })>(n);
       let nnsF = Buffer.Buffer<(Text, async { proposal_info : [T.NnsProposalInfo] })>(1);
-      for (s in chunk.vals()) {
-        spend();
-        if (isNns(s.key)) nnsF.add((s.key, nnsGov().list_proposals(nnsArgs(null))))
-        else snsF.add((s.key, gov(s.governance).list_proposals(snsArgs(null))));
+      var k = 0;
+      label send while (k < n) {
+        let s = todo.get(i + k);
+        if (not roomForCall(snsF.size() + nnsF.size())) break send;
+        spendBudget();
+        let b0 = Cycles.balance();
+        try {
+          if (isNns(s.key)) nnsF.add((s.key, nnsGov().list_proposals(nnsArgs(null))))
+          else snsF.add((s.key, gov(s.governance).list_proposals(snsArgs(null))));
+          callSent(b0);
+          k += 1;
+        } catch (e) {
+          sendFailed("list_proposals", ?s.key, e);
+          // nothing else in flight: this target waits for the next round
+          if (snsF.size() + nnsF.size() == 0) { markListed(s.key); k += 1 };
+          break send;
+        };
       };
+      i += k;
       for ((key, f) in snsF.vals()) {
         let r = try { ?(await f) } catch (e) { noteError(?key, "list_proposals: " # Error.message(e)); markListed(key); null };
         switch r { case (?r) await* applySns(key, r.proposals); case null {} };
@@ -1326,13 +1401,25 @@ shared (deployer) persistent actor class SneedMon() = this {
       if (budget == 0) return false;
       let n = Nat.min(Nat.min(par(), todo.size() - i), tuning.max_refresh_per_round - refreshed_this_round);
       let fs = Buffer.Buffer<(Principal, Text, Principal, async { neurons : [T.Neuron] })>(n);
-      for (k in Iter.range(0, n - 1)) {
+      var k = 0;
+      label send while (k < n) {
         let (u, key, g) = todo.get(i + k);
-        spend();
-        fs.add((u, key, g, gov(g).list_neurons({ of_principal = ?u; limit = Nat32.fromNat(NEURON_PAGE); start_page_at = null })));
+        if (not roomForCall(fs.size())) break send;
+        spendBudget();
+        let b0 = Cycles.balance();
+        try {
+          fs.add((u, key, g, gov(g).list_neurons({ of_principal = ?u; limit = Nat32.fromNat(NEURON_PAGE); start_page_at = null })));
+          callSent(b0);
+          k += 1;
+        } catch (e) {
+          sendFailed("list_neurons", ?key, e);
+          // nothing else in flight: this cache is retried later (as after a failed read)
+          if (fs.size() == 0) { neuronsFailed(key, u, "list_neurons not sent"); k += 1 };
+          break send;
+        };
       };
-      i += n;
-      refreshed_this_round += n;
+      i += k;
+      refreshed_this_round += k;
       for ((u, key, g, f) in fs.vals()) {
         let r = try { ?(await f) } catch (e) { neuronsFailed(key, u, "list_neurons: " # Error.message(e)); null };
         switch r { case (?r) ignore await* neuronsFrom(key, g, u, r.neurons, true); case null {} };
@@ -1369,14 +1456,29 @@ shared (deployer) persistent actor class SneedMon() = this {
       if (budget == 0) return false;
       let n = Nat.min(par(), jobs.size() - i);
       let fs = Buffer.Buffer<(Text, Nat64, async { result : ?{ #Error : { error_message : Text; error_type : Int32 }; #Proposal : T.FullProposal } })>(n);
-      for (k in Iter.range(0, n - 1)) {
+      var k = 0;
+      label send while (k < n) {
         let (key, id) = jobs.get(i + k);
         switch (Map.get(targets, Map.thash, key)) {
-          case (?s) { spend(); fs.add((key, id, gov(s.governance).get_proposal({ proposal_id = ?{ id } }))) };
+          case (?s) {
+            if (not roomForCall(fs.size())) break send;
+            spendBudget();
+            let b0 = Cycles.balance();
+            try {
+              fs.add((key, id, gov(s.governance).get_proposal({ proposal_id = ?{ id } })));
+              callSent(b0);
+            } catch (e) {
+              sendFailed("get_proposal " # Nat64.toText(id), ?key, e);
+              // nothing else in flight: counts as a failed read of this proposal; else next batch
+              if (fs.size() == 0) { failedRead(key, id); k += 1 };
+              break send;
+            };
+          };
           case null {};
         };
+        k += 1;
       };
-      i += n;
+      i += k;
       for ((key, id, f) in fs.vals()) {
         try {
           switch ((await f).result) {
@@ -1391,12 +1493,17 @@ shared (deployer) persistent actor class SneedMon() = this {
           };
         } catch (e) {
           noteError(?key, "get_proposal " # Nat64.toText(id) # ": " # Error.message(e));
-          updateOpen(key, id, func(o) = { o with fails = o.fails + 1 });
-          switch (findOpen(key, id)) { case (?o) if (o.fails >= MAX_FAILS) giveUp(key, id); case null {} };
+          failedRead(key, id);
         };
       };
     };
     true;
+  };
+
+  /// A proposal whose ballots could not be read: retried next round, given up after MAX_FAILS.
+  func failedRead(key : Text, id : Nat64) {
+    updateOpen(key, id, func(o) = { o with fails = o.fails + 1 });
+    switch (findOpen(key, id)) { case (?o) if (o.fails >= MAX_FAILS) giveUp(key, id); case null {} };
   };
 
   func giveUp(key : Text, id : Nat64) {
@@ -1520,16 +1627,27 @@ shared (deployer) persistent actor class SneedMon() = this {
       };
       // send the groups, up to par() batches at once
       let outcome = Array.init<Text>(groups.size(), "");
-      let calls = Buffer.Buffer<(Nat, Nat, async [T.NotifyResult])>(4);
+      // a batch that could not be sent counts as not taken: its checks are refunded and stay due
+      let calls = Buffer.Buffer<(Nat, Nat, ?(async [T.NotifyResult]))>(4);
+      var inFlight = 0;
+      var unsent = false;
       var g = 0;
       while (g < groups.size()) {
         let m = Nat.min(size, groups.size() - g);
         let gs = Array.tabulate<Group>(m, func(k) = groups.get(g + k));
-        spend();
-        calls.add((g, m, n.notify_batch(Array.map<Group, T.NotifyInput>(gs, message))));
+        let f : ?(async [T.NotifyResult]) = if (not roomForCall(inFlight)) null else {
+          spendBudget();
+          let b0 = Cycles.balance();
+          try { let x = n.notify_batch(Array.map<Group, T.NotifyInput>(gs, message)); callSent(b0); inFlight += 1; ?x } catch (e) { sendFailed("notify_batch", null, e); null };
+        };
+        calls.add((g, m, f));
         g += m;
       };
-      for ((start, m, f) in calls.vals()) {
+      label answers for ((start, m, of) in calls.vals()) {
+        let f = switch of {
+          case (?f) f;
+          case null { unsent := true; for (j in Iter.range(start, start + m - 1)) outcome[j] := "unavailable"; continue answers };
+        };
         let results = try { await f } catch (e) { noteError(null, "notify_batch: " # Error.message(e)); notify_broken := true; [] };
         var refused = results.size() < m;
         var k = 0;
@@ -1572,7 +1690,8 @@ shared (deployer) persistent actor class SneedMon() = this {
           addEconomics({ cycles_burned = 0; revenue_e8s = c.price; checks = 1; rounds = 0 });
         };
       };
-      if (notify_broken) return true;
+      // a batch not sent: the rest of the checks wait for the next round (they stay due)
+      if (notify_broken or unsent) return true;
     };
     true;
   };
@@ -1617,8 +1736,23 @@ shared (deployer) persistent actor class SneedMon() = this {
         if (budget == 0) return false;
         let n = Nat.min(par(), ids.size() - i);
         let fs = Buffer.Buffer<(Nat64, async { #Ok : T.NnsNeuronInfo; #Err : { error_message : Text; error_type : Int32 } })>(n);
-        for (k in Iter.range(0, n - 1)) { spend(); fs.add((ids[i + k], nnsGov().get_neuron_info(ids[i + k]))) };
-        i += n;
+        var k = 0;
+        label send while (k < n) {
+          if (not roomForCall(fs.size())) break send;
+          spendBudget();
+          let b0 = Cycles.balance();
+          try {
+            fs.add((ids[i + k], nnsGov().get_neuron_info(ids[i + k])));
+            callSent(b0);
+            k += 1;
+          } catch (e) {
+            sendFailed("get_neuron_info", ?NNS_KEY, e);
+            // nothing else in flight: read as unknown (like a failed read)
+            if (fs.size() == 0) { got.add((ids[i + k], null)); k += 1 };
+            break send;
+          };
+        };
+        i += k;
         for ((id, f) in fs.vals()) {
           let info : ?T.NnsNeuronInfo = try { switch (await f) { case (#Ok(x)) ?x; case (#Err _) null } } catch (e) { noteError(?NNS_KEY, "get_neuron_info: " # Error.message(e)); null };
           got.add((id, info));
@@ -1790,6 +1924,9 @@ shared (deployer) persistent actor class SneedMon() = this {
   };
 
   /// Every setting (core, tuning, billing, tiers), for an admin page.
+  /// The last errors noted (newest last), each with the phase and target it happened in. Admins.
+  public query ({ caller }) func get_recent_errors() : async [(Int, Text)] { if (isAdmin(caller)) recent_errors else [] };
+
   public query func get_config() : async T.AllConfig { { core = config; tuning; billing; tiers = tier_table } };
   public query func get_tuning() : async Tuning { tuning };
   public query func get_admins() : async [Principal] { admins };
@@ -2022,6 +2159,7 @@ shared (deployer) persistent actor class SneedMon() = this {
   system func inspect({ caller : Principal; arg : Blob; msg : {
     #get_api_doc : Any;
     #get_status : Any;
+    #get_recent_errors : Any;
     #get_targets : Any;
     #get_config : Any;
     #get_tuning : Any;
@@ -2071,7 +2209,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     #admin_remove_admin : Any;
   } }) : Bool {
     switch msg {
-      case (#get_api_doc _ or #get_status _ or #get_targets _ or #get_config _ or #get_tuning _ or #get_tiers _ or #get_admins _ or #get_topics _ or #get_my_watches _ or #get_watch _ or #get_my_nns_neurons _ or #get_target_topics _ or #get_deposit_account _ or #get_my_balance _ or #get_my_charges _ or #get_accounting _ or #get_billing_config _ or #get_my_charges_with_tier _ or #get_special_prices _ or #get_special_prices_for _) false;
+      case (#get_api_doc _ or #get_status _ or #get_recent_errors _ or #get_targets _ or #get_config _ or #get_tuning _ or #get_tiers _ or #get_admins _ or #get_topics _ or #get_my_watches _ or #get_watch _ or #get_my_nns_neurons _ or #get_target_topics _ or #get_deposit_account _ or #get_my_balance _ or #get_my_charges _ or #get_accounting _ or #get_billing_config _ or #get_my_charges_with_tier _ or #get_special_prices _ or #get_special_prices_for _) false;
       case (#watch _ or #unwatch _ or #refresh_my_neurons _ or #set_nns_neurons _ or #list_target_topics _ or #credit_deposit _ or #withdraw_balance _ or #set_auto_top_up _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       // a topic filter of up to 50 keys of 64 characters
       case (#update_watch _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.textArg(50 * 64);

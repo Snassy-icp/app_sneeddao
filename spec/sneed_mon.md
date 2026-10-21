@@ -187,7 +187,17 @@ parallelism, caps), `admin_set_tiers`, `admin_set_billing`, `admin_set_fee_desti
 topics), `admin_update_notifications_app` (`update_app(app_id, AppInput)`, allowed to the app's
 owner, which sneed_mon is when it registered the app: new name, description and topics, same id),
 `admin_set_app_id`, `admin_withdraw_fees`, `admin_pause` / `admin_resume`, `admin_set_interval`,
-`admin_run_now`, `admin_add_admin` / `admin_remove_admin`.
+`admin_run_now`, `admin_add_admin` / `admin_remove_admin`; `get_recent_errors` (admins: the last
+30 errors, each with the round phase and target it happened in).
+
+Outgoing calls and cycles: each call in flight holds the cycles reserved for its largest possible
+response (~82B on a 13-node subnet), and the IC refuses to send one (`call_perform` fails, the call
+expression throws "could not perform remote call") when that would take the balance under the
+freezing threshold. A round sends calls only while the balance is above the level at which the last
+send failed (plus one call's reservation, both measured), unless none is in flight; a call it can't
+send is recorded on its target (a proposal's failed read, a target's failed listing, a stale neuron
+cache, a refunded check) and the rest go in the next batch, after the ones in flight are answered.
+A round never aborts on one call.
 
 Conventions: ingress guard (`system func inspect`: queries refused as updates, `admin_*` only from
 admins, user methods not from the anonymous principal, 4 KB argument cap, 16 KB for a topic

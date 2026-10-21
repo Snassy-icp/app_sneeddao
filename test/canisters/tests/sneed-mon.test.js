@@ -576,7 +576,7 @@ describe('sneed_mon', () => {
 
   it('refuses queries sent as updates and non-admin admin calls at ingress', async () => {
     const asUpd = (p) => actorAs(pic, asUpdates(monIdl), monId, p);
-    for (const q of ['get_status', 'get_targets', 'get_config', 'get_tuning', 'get_tiers', 'get_admins', 'get_topics', 'get_my_watches', 'get_my_nns_neurons', 'get_deposit_account', 'get_my_balance', 'get_accounting', 'get_billing_config', 'get_api_doc']) {
+    for (const q of ['get_status', 'get_recent_errors', 'get_targets', 'get_config', 'get_tuning', 'get_tiers', 'get_admins', 'get_topics', 'get_my_watches', 'get_my_nns_neurons', 'get_deposit_account', 'get_my_balance', 'get_accounting', 'get_billing_config', 'get_api_doc']) {
       expect(await refusedAtIngress(asUpd(bob)[q]()), q).toBe(true);
     }
     expect(await refusedAtIngress(asUpd(bob).get_watch(NNS))).toBe(true);
