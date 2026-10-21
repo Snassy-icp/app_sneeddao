@@ -67,6 +67,7 @@ import TokensAdmin from './pages/admin/Tokens';
 import AdminsAdmin from './pages/admin/Admins';
 import AdminSnsJailbreak from './pages/AdminSnsJailbreak';
 import RewardsAdmin from './pages/admin/Rewards';
+import RllAdmin from './pages/admin/Rll';
 import Projects from './pages/Projects';
 import PairApp from './pages/PairApp';
 import Notifications from './pages/Notifications';
@@ -369,6 +370,7 @@ function App() {
                     <Route path="/admin/admins" element={<AdminsAdmin />} />
                     <Route path="/admin/sns_jailbreak" element={<AdminSnsJailbreak />} />
                     <Route path="/admin/rewards" element={<RewardsAdmin />} />
+                    <Route path="/admin/rll" element={<RllAdmin />} />
                   </Routes>
                   </Layout>
                   </FrontendUpdateProvider>

@@ -694,6 +694,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Sneedapp', path: '/admin/sneedapp' },
                 { name: 'Sneed Pad', path: '/admin/pad' },
                 { name: 'Sneedex', path: '/admin/sneedex' },
+                { name: 'RLL Rewards', path: '/admin/rll' },
                 { name: 'SNS Jailbreak', path: '/admin/sns_jailbreak' }
             ]
         };

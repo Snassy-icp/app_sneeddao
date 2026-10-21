@@ -522,6 +522,29 @@ function Admin() {
                     </Link>
 
                     <Link 
+                        to="/admin/rll"
+                        style={{
+                            backgroundColor: '#4a3a1a',
+                            padding: '20px',
+                            borderRadius: '8px',
+                            textDecoration: 'none',
+                            color: '#ffffff',
+                            textAlign: 'center',
+                            border: '1px solid #d4af37',
+                            transition: 'transform 0.2s ease',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '10px'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
+                        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                    >
+                        <h2 style={{ margin: 0 }}>RLL Claims &amp; Cycle</h2>
+                        <p style={{ color: '#d4af37', margin: 0 }}>Claim log with status filter and grouped errors, cycle controls, known tokens and limits</p>
+                    </Link>
+
+                    <Link 
                         to="/admin/donations"
                         style={{
                             backgroundColor: '#3a1a24',

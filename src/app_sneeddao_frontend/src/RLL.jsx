@@ -1,2417 +1,502 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+// /rll: the voting rewards of the RLL canister (public/api-docs/rll.md). What the rewards are,
+// the headline statistics, the signed-in user's claimable balances, claim button and history,
+// the history of distributions (paged, newest first) and the ICRC-3 activity log.
+// Other users' claims are not listed here; admins find the claim log, the canister's status and
+// its tools on /admin/rll.
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
-import { useAuth } from './AuthContext';
-import { createActor as createLedgerActor } from 'external/icrc1_ledger';
-import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
-import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
-import { getTokenLogo } from './utils/TokenUtils';
+import { FaGift, FaSpinner, FaSync, FaChartBar, FaWallet, FaHistory, FaInfoCircle, FaExternalLinkAlt } from 'react-icons/fa';
+import Header from './components/Header';
+import Pager from './components/Pager';
+import RllActivityCard from './components/RllActivityCard';
 import ConfirmationModal from './ConfirmationModal';
 import Notification from './Notification';
-import './RLL.css';
-import './Notification.css';
-import { Actor, HttpAgent } from '@dfinity/agent';
-import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
-import PrincipalBox from './PrincipalBox';
-import { headerStyles } from './styles/HeaderStyles';
-import Header from './components/Header';
-import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
+import { useAuth } from './AuthContext';
 import { useTheme } from './contexts/ThemeContext';
-import { useWhitelistTokens } from './contexts/WhitelistTokensContext';
-import { normalizeId } from './hooks/useNeuronsCache';
-import { FaCoins, FaChartBar, FaBalanceScale, FaClock, FaDatabase, FaCog, FaHistory, FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaSpinner } from 'react-icons/fa';
+import { useDenomination } from './contexts/DenominationContext';
+import { useNaming } from './NamingContext';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
+import { fetchUserNeuronsForSns } from './utils/NeuronUtils';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { useStoreVersion } from './utils/revenueStore';
+import { loadTokenMeta, loadPrice, tokenMeta, priceOf, fmtAmount } from './utils/revenueData';
+import { rllActor, rllCanisterId, RLL_HOST, loadEventStatistics, distributionSource, groupClaims, isInstructionLimit, fmtNs } from './utils/rllApi';
 
-// Custom CSS for animations
-const customAnimations = `
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+const AMBER = '#f59e0b';
+const SNEED_GOVERNANCE = 'fi3zi-fyaaa-aaaaq-aachq-cai';
+const PAGE_SIZE = 20;
+
+const textOf = (p) => (typeof p === 'string' ? p : p.toText());
+const want = (ledger) => { loadTokenMeta(ledger).catch(() => {}); loadPrice(ledger).catch(() => {}); };
+/// The value of an amount in the chosen denomination, or null while the price is unknown.
+function useMoney() {
+    const { formatValue } = useDenomination();
+    return useCallback((amount, ledger) => {
+        const meta = tokenMeta(ledger); const p = priceOf(ledger);
+        if (!meta || p == null || amount == null) return null;
+        return formatValue((Number(amount) / 10 ** meta.decimals) * p);
+    }, [formatValue]);
 }
-
-@keyframes rllFloat {
-    0%, 100% { transform: translateY(0px); }
-    50% { transform: translateY(-8px); }
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-.rll-float {
-    animation: rllFloat 3s ease-in-out infinite;
-}
-
-.rll-fade-in {
-    animation: fadeInUp 0.5s ease-out forwards;
-}
-
-.rll-spin {
-    animation: spin 1s linear infinite;
-}
-`;
-
-// Page accent colors - gold/amber theme for rewards
-const rllPrimary = '#f59e0b';
-const rllSecondary = '#fbbf24';
-
-// Styles
-const getStyles = (theme) => ({
-    tokenBalances: {
-        background: theme.colors.cardGradient,
-        border: `1px solid ${theme.colors.border}`,
-        borderRadius: '16px',
-        padding: '1.25rem',
-        marginTop: '16px',
-        color: theme.colors.primaryText,
-        boxShadow: theme.colors.cardShadow
-    },
-    tokenList: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '10px'
-    },
-    tokenItem: {
-        display: 'flex',
-        alignItems: 'center',
-        padding: '12px',
-        background: `${rllPrimary}08`,
-        border: `1px solid ${rllPrimary}20`,
-        borderRadius: '12px',
-        boxShadow: theme.colors.cardShadow,
-        color: theme.colors.primaryText,
-        transition: 'all 0.3s ease'
-    },
-    tokenSymbol: {
-        fontWeight: '600',
-        marginRight: 'auto',
-        color: theme.colors.primaryText
-    },
-    tokenBalance: {
-        fontFamily: 'monospace',
-        fontSize: '1em',
-        color: rllPrimary,
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px',
-        fontWeight: '600'
-    },
-    heading: {
-        color: theme.colors.primaryText,
-        marginBottom: '12px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        fontSize: '1.1rem',
-        fontWeight: '700'
-    },
-    infoIcon: {
-        color: rllPrimary,
-        cursor: 'help',
-        fontSize: '12px',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: '18px',
-        height: '18px',
-        borderRadius: '50%',
-        border: `1px solid ${rllPrimary}`,
-        marginLeft: '6px',
-        fontWeight: '600'
-    },
-    spinner: {
-        width: '20px',
-        height: '20px',
-        border: `2px solid ${theme.colors.border}`,
-        borderTop: `2px solid ${rllPrimary}`,
-        borderRadius: '50%',
-        animation: 'spin 1s linear infinite',
-    },
-    controls: {
-        marginBottom: '15px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        color: theme.colors.primaryText
-    },
-    checkbox: {
-        cursor: 'pointer',
-        width: '16px',
-        height: '16px',
-        accentColor: rllPrimary
-    },
-    section: {
-        background: theme.colors.cardGradient,
-        border: `1px solid ${theme.colors.border}`,
-        borderRadius: '16px',
-        padding: '1.25rem',
-        marginTop: '16px',
-        color: theme.colors.primaryText,
-        boxShadow: theme.colors.cardShadow
-    },
-    distributionItem: {
-        display: 'flex',
-        alignItems: 'center',
-        padding: '12px',
-        background: `${rllPrimary}08`,
-        border: `1px solid ${rllPrimary}20`,
-        borderRadius: '12px',
-        boxShadow: theme.colors.cardShadow,
-        color: theme.colors.primaryText,
-        marginBottom: '10px',
-        transition: 'all 0.3s ease'
-    },
-    distributionLabel: {
-        fontWeight: '600',
-        marginRight: 'auto',
-        color: theme.colors.primaryText
-    },
-    distributionValue: {
-        fontFamily: 'monospace',
-        fontSize: '1em',
-        color: rllPrimary,
-        fontWeight: '600'
-    },
-    eventList: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '10px'
-    },
-    eventItem: {
-        display: 'flex',
-        flexDirection: 'column',
-        padding: '12px',
-        background: `${rllPrimary}08`,
-        border: `1px solid ${rllPrimary}20`,
-        borderRadius: '12px',
-        boxShadow: theme.colors.cardShadow,
-        color: theme.colors.primaryText,
-        transition: 'all 0.3s ease'
-    },
-    eventHeader: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        marginBottom: '8px',
-        fontWeight: '600',
-        fontSize: '0.9rem'
-    },
-    eventDetails: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '4px',
-        fontSize: '0.85rem',
-        color: theme.colors.secondaryText
-    },
-    sectionHeader: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: '12px'
-    },
-    sectionIcon: {
-        width: '36px',
-        height: '36px',
-        borderRadius: '10px',
-        background: `linear-gradient(135deg, ${rllPrimary}20, ${rllPrimary}10)`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: '10px',
-        flexShrink: 0
-    },
-    statusGrid: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '8px'
-    },
-    statusItem: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        color: theme.colors.primaryText,
-        fontSize: '0.9rem',
-        padding: '4px 0'
-    },
-    cycleInfo: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '8px'
-    },
-    progressInfo: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '8px'
-    },
-    proposalInfo: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '8px'
-    },
-    reconciliationList: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '10px'
-    },
-    reconciliationItem: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        color: theme.colors.primaryText
-    },
-    adminControls: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '10px'
-    },
-    adminButton: {
-        background: `linear-gradient(135deg, ${rllPrimary}, ${rllSecondary})`,
-        color: '#fff',
-        border: 'none',
-        borderRadius: '10px',
-        padding: '10px 18px',
-        cursor: 'pointer',
-        fontSize: '0.95rem',
-        fontWeight: '600',
-        transition: 'all 0.3s ease',
-        boxShadow: `0 4px 12px ${rllPrimary}30`
-    },
-    noNeuronsMessage: {
-        background: theme.colors.cardGradient,
-        border: `1px solid ${theme.colors.border}`,
-        padding: '1.25rem',
-        borderRadius: '16px',
-        color: theme.colors.primaryText,
-        boxShadow: theme.colors.cardShadow
-    },
-    instructionsList: {
-        marginTop: '15px',
-        paddingLeft: '20px',
-        lineHeight: '1.6'
-    },
-    principalCode: {
-        background: `${rllPrimary}10`,
-        border: `1px solid ${rllPrimary}20`,
-        padding: '6px 10px',
-        borderRadius: '8px',
-        fontFamily: 'monospace',
-        wordBreak: 'break-all',
-        color: theme.colors.primaryText
-    },
-    expandButton: {
-        background: 'none',
-        border: 'none',
-        color: rllPrimary,
-        cursor: 'pointer',
-        fontSize: '18px',
-        padding: '0 8px',
-        transition: 'all 0.3s ease'
-    },
-    rllLogo: {
-        fontSize: '2.5em',
-        fontWeight: 'bold',
-        color: theme.colors.primaryText,
-        textDecoration: 'none',
-        marginLeft: '20px',
-        display: 'flex',
-        alignItems: 'center'
-    },
-    logoContainer: {
-        display: 'flex',
-        alignItems: 'center'
-    },
-    claimButton: {
-        background: `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`,
-        color: '#fff',
-        border: 'none',
-        borderRadius: '10px',
-        padding: '10px 18px',
-        cursor: 'pointer',
-        fontSize: '0.95rem',
-        fontWeight: '600',
-        transition: 'all 0.3s ease',
-        boxShadow: `0 4px 12px ${theme.colors.success}30`
-    },
-    eventActions: {
-        display: 'flex',
-        justifyContent: 'flex-end',
-        marginTop: '10px'
-    },
-    claimHistory: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '12px'
-    },
-    statsCard: {
-        background: `${rllPrimary}08`,
-        border: `1px solid ${rllPrimary}20`,
-        padding: '1rem',
-        borderRadius: '14px',
-        boxShadow: theme.colors.cardShadow
-    }
-});
-
-// Token configurations
-const TOKENS = [
-    {
-        canisterId: 'ryjl3-tyaaa-aaaaa-aaaba-cai',
-        symbol: 'ICP',
-        decimals: 8,
-        fee: 0.0001,
-        standard: 'ICRC2'
-    },
-    {
-        canisterId: 'hvgxa-wqaaa-aaaaq-aacia-cai',
-        symbol: 'SNEED',
-        decimals: 8,
-        fee: 0.00001,
-        standard: 'ICRC2'
-    }
-];
-
-const SNEED_GOVERNANCE_CANISTER_ID = 'fi3zi-fyaaa-aaaaq-aachq-cai';
-
-// Helper function to format timestamps (for seconds)
-const formatTimestamp = (timestamp) => {
-    if (!timestamp) return '';
-    const date = new Date(Number(timestamp) * 1000); // Convert seconds to milliseconds
-    return date.toLocaleString();
+const usdOfAmount = (amount, ledger) => {
+    const meta = tokenMeta(ledger); const p = priceOf(ledger);
+    return meta && p != null ? (Number(amount) / 10 ** meta.decimals) * p : 0;
 };
 
-// Helper function for nanosecond timestamps
-const formatNanoTimestamp = (timestamp) => {
-    if (!timestamp) return '';
-    const date = new Date(Number(timestamp) / 1_000_000); // Convert nanoseconds to milliseconds
-    return date.toLocaleString();
-};
-
-// Add utility function for hex conversion
-function uint8ArrayToHex(array) {
-    return Array.from(array)
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-}
-
-// Helper function to calculate age from timestamp
-const calculateAge = (timestamp) => {
-    if (!timestamp) return '';
-    const ageInSeconds = Math.floor(Date.now() / 1000) - Number(timestamp);
-    
-    const years = Math.floor(ageInSeconds / (365 * 24 * 60 * 60));
-    const months = Math.floor((ageInSeconds % (365 * 24 * 60 * 60)) / (30 * 24 * 60 * 60));
-    const days = Math.floor((ageInSeconds % (30 * 24 * 60 * 60)) / (24 * 60 * 60));
-    const hours = Math.floor((ageInSeconds % (24 * 60 * 60)) / (60 * 60));
-    
-    const parts = [];
-    if (years > 0) parts.push(`${years}y`);
-    if (months > 0) parts.push(`${months}m`);
-    if (days > 0) parts.push(`${days}d`);
-    if (hours > 0 && years === 0) parts.push(`${hours}h`); // Only show hours if less than a year old
-    
-    return parts.join(' ') || 'Less than an hour';
-};
-
-// Helper function to format e8s to token amount
-const formatE8s = (e8s) => {
-    if (!e8s) return '0';
-    return (Number(e8s) / 1e8).toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    });
-};
-
-// Helper function to format duration in seconds to human readable format
-const formatDuration = (seconds) => {
-    if (!seconds) return '0 seconds';
-    const years = Math.floor(seconds / (365 * 24 * 60 * 60));
-    const months = Math.floor((seconds % (365 * 24 * 60 * 60)) / (30 * 24 * 60 * 60));
-    const days = Math.floor((seconds % (30 * 24 * 60 * 60)) / (24 * 60 * 60));
-    
-    const parts = [];
-    if (years > 0) parts.push(`${years} year${years > 1 ? 's' : ''}`);
-    if (months > 0) parts.push(`${months} month${months > 1 ? 's' : ''}`);
-    if (days > 0) parts.push(`${days} day${days > 1 ? 's' : ''}`);
-    
-    return parts.join(', ') || '< 1 day';
-};
-
-function RLL() {
-    const { identity, isAuthenticated, logout, login } = useAuth();
+function Who({ principal }) {
     const { theme } = useTheme();
-    const { whitelistedTokens: tokens, loading: loadingTokens } = useWhitelistTokens();
-    const styles = getStyles(theme);
-    const [balances, setBalances] = useState({});
-    const [loadingBalances, setLoadingBalances] = useState({});
-    const [distributions, setDistributions] = useState(null);
-    const [loadingDistributions, setLoadingDistributions] = useState(true);
-    const [distributionEvents, setDistributionEvents] = useState([]);
-    const [claimEvents, setClaimEvents] = useState([]);
-    const [loadingEvents, setLoadingEvents] = useState(true);
-    const [userClaimEvents, setUserClaimEvents] = useState([]);
-    const [loadingUserEvents, setLoadingUserEvents] = useState(true);
-    const [userBalances, setUserBalances] = useState([]);
-    const [loadingUserBalances, setLoadingUserBalances] = useState(true);
-    const [showConfirmModal, setShowConfirmModal] = useState(false);
-    const [confirmMessage, setConfirmMessage] = useState('');
-    const [confirmAction, setConfirmAction] = useState(null);
-    const [isClaimHistoryExpanded, setIsClaimHistoryExpanded] = useState(false);
-    const [isHotkeyNeuronsExpanded, setIsHotkeyNeuronsExpanded] = useState(false);
-    
-    // Section expansion state
-    const [expandedSections, setExpandedSections] = useState({
-        rewardsStatistics: true, // Expanded by default
-        balanceReconciliation: false,
-        distributionLimits: false,
-        distributionCycle: false,
-        importStatus: false,
-        distributionEvents: false,
-        claimEvents: false,
-        adminControls: false,
-        manageDistributionLimits: false,
-        errorClaims: false
-    });
-    
-    // New state variables for enhanced features
-    const [importedNeuronsCount, setImportedNeuronsCount] = useState(0);
-    const [importedOwnersCount, setImportedOwnersCount] = useState(0);
-    const [importedPropsCount, setImportedPropsCount] = useState(0);
-    const [importStage, setImportStage] = useState('');
-    const [orchestratorStage, setOrchestratorStage] = useState('');
-    const [tokenCheckStatus, setTokenCheckStatus] = useState(null);
-    const [walletTokenCheckStatus, setWalletTokenCheckStatus] = useState(null);
-    const [mainLoopStatus, setMainLoopStatus] = useState({
-        isRunning: null,
-        lastStarted: null,
-        lastStopped: null,
-        lastCycleStarted: null,
-        lastCycleEnded: null,
-        nextScheduled: null,
-        frequencySeconds: null,
-        currentTime: null
-    });
-    const [reconciliation, setReconciliation] = useState([]);
-    const [loadingReconciliation, setLoadingReconciliation] = useState(true);
-    const [isAdmin, setIsAdmin] = useState(false);
-    const [highestClosedProposalId, setHighestClosedProposalId] = useState(null);
-    const [tokenDistributionLimits, setTokenDistributionLimits] = useState({});
-    const [loadingDistributionLimits, setLoadingDistributionLimits] = useState(true);
-    const [newMinAmount, setNewMinAmount] = useState('');
-    const [newMaxAmount, setNewMaxAmount] = useState('');
-    const [selectedToken, setSelectedToken] = useState(null);
-    const [eventStats, setEventStats] = useState(null);
-    const [loadingEventStats, setLoadingEventStats] = useState(true);
-    const [errorClaims, setErrorClaims] = useState([]);
-    const [unmatchedPendingClaims, setUnmatchedPendingClaims] = useState([]);
-    const [loadingErrorClaims, setLoadingErrorClaims] = useState(true);
-    const [loadingUnmatchedClaims, setLoadingUnmatchedClaims] = useState(true);
+    const naming = useNaming();
+    let p = null;
+    try { p = typeof principal === 'string' ? Principal.fromText(principal) : principal; } catch { /* not a principal */ }
+    if (!p) return <span>{String(principal)}</span>;
+    const info = naming ? getPrincipalDisplayInfoFromContext(p, naming.principalNames, naming.principalNicknames, naming.verifiedNames, naming.principalCanisterTypes) : null;
+    return <PrincipalDisplay principal={p} displayInfo={info} short showCopyButton={false} style={{ color: theme.colors.primaryText }} />;
+}
 
-    // New state for hotkey neurons
-    const [hotkeyNeurons, setHotkeyNeurons] = useState({
-        neurons_by_owner: [],
-        total_voting_power: 0,
-        distribution_voting_power: 0
-    });
-    const [loadingHotkeyNeurons, setLoadingHotkeyNeurons] = useState(true);
+function Spinner({ text }) {
+    const { theme } = useTheme();
+    return <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: 6 }}><FaSpinner className="rll-spin" /> {text}</span>;
+}
 
-    // New state for claiming tokens
-    const [claimingTokens, setClaimingTokens] = useState({});
-    const [notification, setNotification] = useState(null);
+function Card({ title, icon, right, children, id }) {
+    const { theme } = useTheme();
+    const c = theme.colors;
+    return (
+        <section id={id} style={{ background: c.cardBg, border: `1px solid ${c.border}`, borderRadius: 14, padding: '1rem', marginBottom: 16, minWidth: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                <h2 style={{ margin: 0, fontSize: '1.1rem', color: c.primaryText, display: 'flex', alignItems: 'center', gap: 8 }}>{icon} {title}</h2>
+                {right}
+            </div>
+            {children}
+        </section>
+    );
+}
 
-    // Fetch total distributions
-    useEffect(() => {
-        const fetchDistributions = async () => {
-            console.log('Starting to fetch total distributions...');
-            setLoadingDistributions(true);
-            try {
-                const agent = new HttpAgent({
-                    host: 'https://ic0.app'
-                });
-                await agent.fetchRootKey();
-                
-                const rllActor = createRllActor(rllCanisterId, {
-                    agentOptions: { agent }
-                });
-                console.log('Created RLL actor, fetching distributions...');
-                const totalDistributions = await rllActor.get_total_distributions();
-                console.log('Received total distributions:', totalDistributions);
-                
-                // Transform the data into a more usable format
-                const formattedDistributions = totalDistributions.reduce((acc, [principal, amount]) => {
-                    acc[principal.toText()] = amount;
-                    return acc;
-                }, {});
-                
-                setDistributions(formattedDistributions);
-            } catch (error) {
-                console.error('Error fetching total distributions:', error);
-            } finally {
-                setLoadingDistributions(false);
-            }
-        };
+function RefreshButton({ loading, onClick, title }) {
+    const { theme } = useTheme();
+    return (
+        <button type="button" disabled={loading} onClick={onClick} title={title} style={{ background: 'transparent', border: `1px solid ${theme.colors.border}`, borderRadius: 8, color: theme.colors.secondaryText, padding: '4px 8px', cursor: 'pointer' }}>
+            <FaSync className={loading ? 'rll-spin' : ''} />
+        </button>
+    );
+}
 
-        fetchDistributions();
+/// Amounts per token as a wrapped list, largest value first: "12.3 SNEED · 0.5 ICP".
+function TokenAmounts({ list, max = 2, limit = 6 }) {
+    const { theme } = useTheme();
+    const [all, setAll] = useState(false);
+    useStoreVersion();
+    const sorted = [...list].filter(([, a]) => a > 0n).sort((x, y) => usdOfAmount(y[1], y[0]) - usdOfAmount(x[1], x[0]));
+    if (!sorted.length) return <span style={{ color: theme.colors.mutedText }}>None</span>;
+    const shown = all ? sorted : sorted.slice(0, limit);
+    return (
+        <span>
+            {shown.map(([ledger, amount], i) => <React.Fragment key={ledger}>{i > 0 && ' · '}<span style={{ whiteSpace: 'nowrap' }}>{fmtAmount(amount, ledger, max)}</span></React.Fragment>)}
+            {sorted.length > limit && (
+                <button type="button" onClick={() => setAll(!all)} style={{ background: 'none', border: 'none', color: theme.colors.accent, cursor: 'pointer', fontSize: '0.8rem', marginLeft: 6 }}>
+                    {all ? 'fewer' : `+${sorted.length - limit} more`}
+                </button>
+            )}
+        </span>
+    );
+}
+
+const perToken = (pairs) => pairs.map(([p, a]) => [textOf(p), a]);
+const valueOf = (list) => list.reduce((s, [l, a]) => s + usdOfAmount(a, l), 0);
+
+// ---- statistics ----
+
+function Statistics({ distributionCount }) {
+    const { theme } = useTheme();
+    const { formatValue } = useDenomination();
+    const c = theme.colors;
+    useStoreVersion();
+    const [state, setState] = useState({ loading: true });
+    const load = useCallback(async () => {
+        setState((s) => ({ ...s, loading: true }));
+        const r = await loadEventStatistics();
+        let totals = null;
+        if (!r.stats) {
+            // without the statistics, the all-time totals per token still come from their own query
+            try { totals = perToken(await rllActor().get_total_distributions()); } catch { /* shown as missing */ }
+        }
+        const s = r.stats;
+        const ledgers = s ? [...s.all_time.server_distributions.per_token, ...s.all_time.claims.per_token, ...s.last_24h.server_distributions.per_token] : (totals || []);
+        ledgers.forEach(([l]) => want(textOf(l)));
+        setState({ loading: false, ...r, totals });
     }, []);
+    useEffect(() => { load(); }, [load]);
 
-    // Fetch events
-    useEffect(() => {
-        const fetchEvents = async () => {
-            console.log('Starting to fetch events...');
-            setLoadingEvents(true);
-            try {
-                const agent = new HttpAgent({
-                    host: 'https://ic0.app'
-                });
-                await agent.fetchRootKey();
-                
-                const rllActor = createRllActor(rllCanisterId, {
-                    agentOptions: { agent }
-                });
-                console.log('Created RLL actor, fetching events...');
-                const [distributions, claims] = await Promise.all([
-                    rllActor.get_distribution_events(),
-                    rllActor.get_claim_events()
-                ]);
-                
-                console.log('Received distribution events:', distributions);
-                console.log('Received claim events:', claims);
-                
-                setDistributionEvents(distributions);
-                setClaimEvents(claims);
-            } catch (error) {
-                console.error('Error fetching events:', error);
-            } finally {
-                setLoadingEvents(false);
-            }
-        };
-
-        fetchEvents();
-    }, []);
-
-    // Fetch user's claim events
-    useEffect(() => {
-        const fetchUserEvents = async () => {
-            if (!isAuthenticated || !identity) {
-                console.log('Skipping user events fetch - not authenticated or no identity');
-                return;
-            }
-            
-            console.log('Starting to fetch user claim events...');
-            setLoadingUserEvents(true);
-            try {
-                const rllActor = createRllActor(rllCanisterId, {
-                    agentOptions: {
-                        identity,
-                    },
-                });
-                console.log('Created RLL actor, fetching user claims...');
-                const claims = await rllActor.get_claim_events_for_hotkey(identity.getPrincipal());
-                console.log('Received user claim events:', claims);
-                setUserClaimEvents(claims);
-            } catch (error) {
-                console.error('Error fetching user claim events:', error);
-            } finally {
-                setLoadingUserEvents(false);
-            }
-        };
-
-        fetchUserEvents();
-    }, [isAuthenticated, identity]);
-
-    // Fetch user's balances
-    useEffect(() => {
-        const fetchUserBalances = async () => {
-            if (!isAuthenticated || !identity) {
-                console.log('Skipping user balances fetch - not authenticated or no identity');
-                return;
-            }
-            
-            console.log('Starting to fetch user balances...');
-            setLoadingUserBalances(true);
-            try {
-                // First get neurons from SNS
-                const neurons = await fetchNeuronsFromSns();
-                
-                const rllActor = createRllActor(rllCanisterId, {
-                    agentOptions: {
-                        identity,
-                    },
-                });
-                console.log('Created RLL actor, fetching user balances...');
-                const balances = await rllActor.balances_of_hotkey_neurons(neurons);
-                console.log('Received user balances:', balances);
-                setUserBalances(balances);
-            } catch (error) {
-                console.error('Error fetching user balances:', error);
-            } finally {
-                setLoadingUserBalances(false);
-            }
-        };
-
-        fetchUserBalances();
-    }, [isAuthenticated, identity]);
-
-    // Fetch import status (the admin buttons below refresh it through this ref)
-    const fetchImportStatusRef = useRef(null);
-    const fetchImportStatus = async () => { await fetchImportStatusRef.current?.(); };
-    useEffect(() => {
-        const fetchImportStatus = async () => {
-            console.log('Starting to fetch import status...');
-            try {
-                const agent = new HttpAgent({
-                    host: 'https://ic0.app'
-                });
-                await agent.fetchRootKey();
-                
-                const rllActor = createRllActor(rllCanisterId, {
-                    agentOptions: { agent }
-                });
-                
-                const [
-                    neurons,
-                    owners,
-                    props,
-                    stage,
-                    proposalId,
-                    loopStatus,
-                    tokenBalCheckStatus,
-                    walletBalCheckStatus
-                ] = await Promise.all([
-                    rllActor.imported_neurons_count(),
-                    rllActor.imported_owners_count(),
-                    rllActor.imported_props_count(),
-                    rllActor.get_import_stage(),
-                    rllActor.get_highest_closed_proposal_id(),
-                    rllActor.get_main_loop_status(),
-                    rllActor.get_token_balance_check_status(),
-                    rllActor.get_wallet_token_check_status()
-                ]);
-
-                console.log('Received import status:', {
-                    neurons,
-                    owners,
-                    props,
-                    stage,
-                    proposalId,
-                    loopStatus,
-                    tokenBalCheckStatus,
-                    walletBalCheckStatus
-                });
-
-                setImportedNeuronsCount(neurons);
-                setImportedOwnersCount(owners);
-                setImportedPropsCount(props);
-                setImportStage(stage);
-                setHighestClosedProposalId(proposalId);
-                setTokenCheckStatus(tokenBalCheckStatus);
-                setWalletTokenCheckStatus(walletBalCheckStatus);
-                setMainLoopStatus({
-                    isRunning: loopStatus.is_running,
-                    lastStarted: loopStatus.last_started,
-                    lastStopped: loopStatus.last_stopped,
-                    lastCycleStarted: loopStatus.last_cycle_started,
-                    lastCycleEnded: loopStatus.last_cycle_ended,
-                    nextScheduled: loopStatus.next_scheduled,
-                    frequencySeconds: loopStatus.frequency_seconds,
-                    currentTime: loopStatus.current_time
-                });
-
-            } catch (error) {
-                console.error('Error fetching import status:', error);
-                // Set default values on error
-                setImportedNeuronsCount(0);
-                setImportedOwnersCount(0);
-                setImportedPropsCount(0);
-                setImportStage('');
-                setHighestClosedProposalId(null);
-                setTokenCheckStatus(null);
-                setWalletTokenCheckStatus(null);
-                setMainLoopStatus({
-                    isRunning: null,
-                    lastStarted: null,
-                    lastStopped: null,
-                    lastCycleStarted: null,
-                    lastCycleEnded: null,
-                    nextScheduled: null,
-                    frequencySeconds: null,
-                    currentTime: null
-                });
-            }
-        };
-
-        fetchImportStatusRef.current = fetchImportStatus;
-        fetchImportStatus();
-        
-        // Poll faster (5s) when cycle is active, slower (30s) when idle
-        const isActive = importStage && !importStage.includes('idle');
-        const intervalMs = isActive ? 5000 : 30000;
-        const intervalId = setInterval(fetchImportStatus, intervalMs);
-        
-        return () => clearInterval(intervalId);
-    }, [importStage]);
-
-    // Fetch balance reconciliation
-    useEffect(() => {
-        const fetchReconciliation = async () => {
-            console.log('Starting to fetch balance reconciliation...');
-            setLoadingReconciliation(true);
-            try {
-                const agent = new HttpAgent({
-                    host: 'https://ic0.app'
-                });
-                await agent.fetchRootKey();
-                
-                const rllActor = createRllActor(rllCanisterId, {
-                    agentOptions: { agent }
-                });
-                
-                // First get known tokens
-                const knownTokens = await rllActor.get_known_tokens();
-                console.log('Known tokens:', knownTokens);
-
-                // For each token, get its balance - extract just the principal from each token entry
-                const balances = await Promise.all(knownTokens.map(async ([tokenId]) => {
-                    const ledgerActor = createLedgerActor(tokenId.toString(), {
-                        agentOptions: { agent }
-                    });
-
-                    const balance = await ledgerActor.icrc1_balance_of({
-                        owner: Principal.fromText(rllCanisterId),
-                        subaccount: []
-                    });
-                    return [tokenId, balance];
-                }));
-
-                // Call balance_reconciliation_from_balances with the fetched balances
-                const reconciliationData = await rllActor.balance_reconciliation_from_balances(balances);
-                console.log('Received reconciliation data:', reconciliationData);
-                setReconciliation(reconciliationData);
-
-            } catch (error) {
-                console.error('Error fetching reconciliation:', error);
-            } finally {
-                setLoadingReconciliation(false);
-            }
-        };
-
-        fetchReconciliation();
-    }, []);
-
-    // Function to fetch neurons directly from SNS
-    const fetchNeuronsFromSns = async () => {
-        const sneedGovernanceCanisterId = 'fi3zi-fyaaa-aaaaq-aachq-cai'; // Sneed governance canister
-        return await fetchUserNeuronsForSns(identity, sneedGovernanceCanisterId);
-    };
-
-    // Updated function to fetch hotkey neurons data
-    const fetchHotkeyNeuronsData = async () => {
-        if (!identity) {
-            setLoadingHotkeyNeurons(false);
-            return;
-        }
-        
-        setLoadingHotkeyNeurons(true);
-        try {
-            // First get neurons from SNS
-            const neurons = await fetchNeuronsFromSns();
-            
-            // Then get voting power data from RLL
-            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-            const result = await rllActor.get_hotkey_voting_power(neurons);
-            
-            setHotkeyNeurons(result);
-        } catch (error) {
-            console.error('Error fetching hotkey neurons:', error);
-            // Set empty state on error
-            setHotkeyNeurons({
-                neurons_by_owner: [],
-                total_voting_power: 0,
-                distribution_voting_power: 0
-            });
-        } finally {
-            setLoadingHotkeyNeurons(false);
-        }
-    };
-
-    // Update useEffect to use new function and handle authentication changes
-    useEffect(() => {
-        if (isAuthenticated && identity) {
-            fetchHotkeyNeuronsData();
-        } else {
-            setLoadingHotkeyNeurons(false);
-        }
-    }, [isAuthenticated, identity]);
-
-    const formatBalance = (balance, decimals) => {
-        if (!balance) return '0';
-        return (Number(balance) / Math.pow(10, decimals)).toFixed(decimals);
-    };
-
-    const getTokenDecimals = (symbol) => {
-        const token = tokens.find(t => t.symbol === symbol);
-        return token ? token.decimals : 8; // fallback to 8 decimals if token not found
-    };
-
-    const formatProposalRange = (range) => {
-        return `${range.first} - ${range.last}`;
-    };
-
-    const getTokenSymbolByPrincipal = (principalId) => {
-        const normalizedId = normalizeId(principalId);
-        const token = tokens.find(t => normalizeId(t.ledger_id) === normalizedId);
-        return token ? token.symbol : 'Unknown';
-    };
-
-    const getTokenDecimalsByPrincipal = (principalId) => {
-        const normalizedId = normalizeId(principalId);
-        const token = tokens.find(t => normalizeId(t.ledger_id) === normalizedId);
-        return token ? token.decimals : 8; // fallback to 8 decimals
-    };
-
-    const handleClaimRewards = async (tokenId, balance, token) => {
-        console.log('Setting up claim action...');
-        console.log('Current auth state:', { isAuthenticated, hasIdentity: !!identity });
-        
-        // Check if balance is 0
-        if (balance <= 0n) {
-            setNotification({
-                type: 'error',
-                message: `No ${token.symbol} rewards available to claim`
-            });
-            return;
-        }
-
-        // Check if balance is less than or equal to fee
-        if (balance <= token.fee) {
-            setNotification({
-                type: 'error',
-                message: `Your ${token.symbol} rewards (${formatBalance(balance, token.decimals)} ${token.symbol}) are less than the transaction fee (${formatBalance(token.fee, token.decimals)} ${token.symbol}). Please wait until you have accumulated more rewards before claiming.`
-            });
-            return;
-        }
-        
-        // Store a direct function that will be executed when confirmed
-        setConfirmAction(async () => {
-            console.log('Executing claim action...');
-            setClaimingTokens(prev => ({ ...prev, [tokenId.toString()]: true }));
-            try {
-                const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-                console.log('Created RLL actor, calling claim_full_balance_of_hotkey...');
-                
-                const claim_results = await rllActor.claim_full_balance_of_hotkey(
-                    tokenId,
-                    token.fee
-                );
-                console.log('Claim results:', claim_results);
-
-                // Check the TransferResult variant
-                if ('Ok' in claim_results) {
-                    // Only refresh data and show success notification if the claim was successful
-                    console.log('Claim successful, refreshing data...');
-                    const [balances, claims] = await Promise.all([
-                        rllActor.balances_of_hotkey(),
-                        rllActor.get_claim_events_for_hotkey(identity.getPrincipal())
-                    ]);
-                    
-                    setUserBalances(balances);
-                    setUserClaimEvents(claims);
-                    console.log('Data refreshed successfully');
-                    
-                    setNotification({
-                        type: 'success',
-                        message: `Successfully claimed ${formatBalance(balance, token.decimals)} ${token.symbol}`
-                    });
-                } else if (claim_results.Err) {
-                    // Handle specific transfer errors
-                    const error = claim_results.Err;
-                    let errorMessage = '';
-                    
-                    if (error.InsufficientFunds) {
-                        const availableBalance = error.InsufficientFunds.balance;
-                        errorMessage = `Insufficient funds. Available balance: ${formatBalance(availableBalance, token.decimals)} ${token.symbol}`;
-                    } else if (error.BadFee) {
-                        const expectedFee = error.BadFee.expected_fee;
-                        errorMessage = `Your ${token.symbol} rewards are less than the transaction fee (${formatBalance(expectedFee, token.decimals)} ${token.symbol}). Please wait until you have accumulated more rewards before claiming.`;
-                    } else if (error.GenericError) {
-                        errorMessage = error.GenericError.message;
-                    } else {
-                        errorMessage = `Transfer failed: ${Object.keys(error)[0]}`;
-                    }
-                    
-                    console.error('Claim failed:', errorMessage);
-                    setNotification({
-                        type: 'error',
-                        message: `Failed to claim ${token.symbol}: ${errorMessage}`
-                    });
-                }
-            } catch (error) {
-                console.error('Error during claim process:', error);
-                setNotification({
-                    type: 'error',
-                    message: `Failed to claim ${token.symbol}: ${error.message}`
-                });
-            } finally {
-                setClaimingTokens(prev => ({ ...prev, [tokenId.toString()]: false }));
-            }
-        });
-        
-        setConfirmMessage(`Do you want to claim your balance of ${formatBalance(balance, token.decimals)} ${token.symbol}?`);
-        setShowConfirmModal(true);
-    };
-
-    // Add this function to group events by sequence number
-    const groupEventsBySequence = (events) => {
-        const grouped = {};
-        events.forEach(event => {
-            const seqNum = event.sequence_number.toString();
-            if (!grouped[seqNum]) {
-                grouped[seqNum] = [];
-            }
-            grouped[seqNum].push(event);
-        });
-        return grouped;
-    };
-
-    // Add this function to get the latest status from a group of events
-    // Priority order: Success > Failed > Pending > Unknown
-    // Success takes highest priority as it's a final positive state
-    // Failed takes priority over Pending as it's a final negative state
-    // Pending is shown only if there are no final states
-    const getGroupStatus = (events) => {
-        if (events.some(e => 'Success' in e.status)) return 'Success';
-        if (events.some(e => 'Failed' in e.status)) return 'Failed';
-        if (events.some(e => 'Pending' in e.status)) return 'Pending';
-        return 'Unknown';
-    };
-
-    // Admin action handlers
-    const handleStartDistributionCycle = async () => {
-        if (!isAdmin) return;
-        try {
-            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-            const result = await rllActor.start_distribution_cycle();
-            console.log('Distribution cycle started:', result);
-            // Refresh status
-            await fetchImportStatus();
-        } catch (error) {
-            console.error('Error starting distribution cycle:', error);
-        }
-    };
-
-    const handleStopDistributionCycle = async () => {
-        if (!isAdmin) return;
-        try {
-            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-            const result = await rllActor.stop_distribution_cycle();
-            console.log('Distribution cycle stopped:', result);
-            // Refresh status
-            await fetchImportStatus();
-        } catch (error) {
-            console.error('Error stopping distribution cycle:', error);
-        }
-    };
-
-    const handleImportAllNeurons = async () => {
-        if (!isAdmin) return;
-        try {
-            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-            const result = await rllActor.import_all_neurons();
-            console.log('Started importing all neurons:', result);
-            // Refresh status
-            await fetchImportStatus();
-        } catch (error) {
-            console.error('Error importing neurons:', error);
-        }
-    };
-
-    const handleImportAllProposals = async () => {
-        if (!isAdmin) return;
-        try {
-            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-            const result = await rllActor.import_all_proposals();
-            console.log('Started importing all proposals:', result);
-            // Refresh status
-            await fetchImportStatus();
-        } catch (error) {
-            console.error('Error importing proposals:', error);
-        }
-    };
-
-    const handleStartMainLoop = async () => {
-        if (!isAdmin) return;
-        try {
-            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-            const result = await rllActor.start_rll_main_loop();
-            console.log('Main loop started:', result);
-            // Refresh status
-            await fetchImportStatus();
-        } catch (error) {
-            console.error('Error starting main loop:', error);
-        }
-    };
-
-    const handleStopMainLoop = async () => {
-        if (!isAdmin) return;
-        try {
-            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-            const result = await rllActor.stop_rll_main_loop();
-            console.log('Main loop stopped:', result);
-            // Refresh status
-            await fetchImportStatus();
-        } catch (error) {
-            console.error('Error stopping main loop:', error);
-        }
-    };
-
-    // Add function to fetch token distribution limits
-    const fetchTokenDistributionLimits = async () => {
-        if (!tokens.length) return;
-        setLoadingDistributionLimits(true);
-        try {
-            const agent = new HttpAgent({
-                host: 'https://ic0.app'
-            });
-            await agent.fetchRootKey();
-            
-            const rllActor = createRllActor(rllCanisterId, {
-                agentOptions: { agent }
-            });
-
-            // Get all min and max distributions in parallel
-            const [allMinDist, allMaxDist] = await Promise.all([
-                rllActor.get_all_token_min_distributions(),
-                rllActor.get_all_token_max_distributions()
-            ]);
-
-            // Convert arrays to maps for easier lookup
-            const minDistMap = new Map(allMinDist.map(([principal, amount]) => [principal.toString(), amount]));
-            const maxDistMap = new Map(allMaxDist.map(([principal, amount]) => [principal.toString(), amount]));
-
-            // Create limits object only for tokens that have either min or max set
-            const limits = {};
-            for (const token of tokens) {
-                const tokenId = token.ledger_id.toString();
-                const min = minDistMap.get(tokenId);
-                const max = maxDistMap.get(tokenId);
-                
-                if (min || max) {
-                    limits[tokenId] = {
-                        min: min ? [min] : null,
-                        max: max ? [max] : null
-                    };
-                }
-            }
-            
-            setTokenDistributionLimits(limits);
-        } catch (error) {
-            console.error('Error fetching token distribution limits:', error);
-        } finally {
-            setLoadingDistributionLimits(false);
-        }
-    };
-
-    // Add function to set token distribution limits
-    const handleSetDistributionLimits = async (tokenId) => {
-        if (!isAdmin || !tokenId) return;
-        try {
-            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-            
-            if (newMinAmount) {
-                const minAmount = BigInt(Math.floor(Number(newMinAmount) * Math.pow(10, 8)));
-                await rllActor.set_token_min_distribution(Principal.fromText(tokenId), minAmount);
-            }
-            
-            if (newMaxAmount) {
-                const maxAmount = BigInt(Math.floor(Number(newMaxAmount) * Math.pow(10, 8)));
-                await rllActor.set_token_max_distribution(Principal.fromText(tokenId), maxAmount);
-            }
-            
-            // Refresh the limits
-            await fetchTokenDistributionLimits();
-            
-            // Clear the input fields
-            setNewMinAmount('');
-            setNewMaxAmount('');
-            setSelectedToken(null);
-        } catch (error) {
-            console.error('Error setting distribution limits:', error);
-        }
-    };
-
-    // Add function to remove token distribution limits
-    const handleRemoveDistributionLimits = async (tokenId) => {
-        if (!isAdmin || !tokenId) return;
-        try {
-            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-            
-            // Remove both min and max limits
-            await rllActor.remove_token_min_distribution(Principal.fromText(tokenId));
-            await rllActor.remove_token_max_distribution(Principal.fromText(tokenId));
-            
-            // Refresh the limits
-            await fetchTokenDistributionLimits();
-        } catch (error) {
-            console.error('Error removing distribution limits:', error);
-        }
-    };
-
-    // Add useEffect to fetch token distribution limits when tokens are loaded
-    useEffect(() => {
-        if (tokens.length > 0) {
-            fetchTokenDistributionLimits();
-        }
-    }, [tokens]);
-
-    // Add function to check admin status
-    const checkAdminStatus = async () => {
-        if (!identity) {
-            setIsAdmin(false);
-            return;
-        }
-        try {
-            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-            const isAdminResult = await rllActor.principal_is_admin(identity.getPrincipal());
-            console.log('Admin check result:', isAdminResult);
-            setIsAdmin(isAdminResult);
-        } catch (error) {
-            console.error('Error checking admin status:', error);
-            setIsAdmin(false);
-        }
-    };
-
-    // Add useEffect to check admin status when identity changes
-    useEffect(() => {
-        if (identity) {
-            checkAdminStatus();
-        } else {
-            setIsAdmin(false);
-        }
-    }, [identity]);
-
-    useEffect(() => {
-        const fetchEventStats = async () => {
-            try {
-                const agent = new HttpAgent({
-                    host: 'https://ic0.app'
-                });
-                await agent.fetchRootKey();
-                
-                const rllActor = createRllActor(rllCanisterId, {
-                    agentOptions: { agent }
-                });
-
-                const stats = await rllActor.get_event_statistics();
-                console.log('Event statistics:', stats);
-                
-                // Enhanced debugging to compare all_time vs last_24h
-                console.log('=== EVENT STATISTICS DEBUGGING ===');
-                console.log('All Time Claims Total:', stats.all_time.claims.total.toString());
-                console.log('Last 24h Claims Total:', stats.last_24h.claims.total.toString());
-                console.log('All Time Claims Successful:', stats.all_time.claims.successful.toString());
-                console.log('Last 24h Claims Successful:', stats.last_24h.claims.successful.toString());
-                console.log('All Time Claims Failed:', stats.all_time.claims.failed.toString());
-                console.log('Last 24h Claims Failed:', stats.last_24h.claims.failed.toString());
-                console.log('All Time Claims Pending:', stats.all_time.claims.pending.toString());
-                console.log('Last 24h Claims Pending:', stats.last_24h.claims.pending.toString());
-                console.log('All Time Claims Unique Users:', stats.all_time.claims.unique_users.toString());
-                console.log('Last 24h Claims Unique Users:', stats.last_24h.claims.unique_users.toString());
-                
-                // Check if values are identical
-                const allTimeTotal = stats.all_time.claims.total.toString();
-                const last24hTotal = stats.last_24h.claims.total.toString();
-                const allTimeSuccessful = stats.all_time.claims.successful.toString();
-                const last24hSuccessful = stats.last_24h.claims.successful.toString();
-                
-                if (allTimeTotal === last24hTotal && allTimeSuccessful === last24hSuccessful) {
-                    console.warn('⚠️ ISSUE DETECTED: All-time and 24h statistics are identical!');
-                    console.warn('This suggests the backend RLL canister is not calculating 24h statistics correctly.');
-                } else {
-                    console.log('✅ All-time and 24h statistics appear to be different as expected.');
-                }
-                console.log('=== END DEBUGGING ===');
-                
-                setEventStats(stats);
-            } catch (error) {
-                console.error('Error fetching event statistics:', error);
-            } finally {
-                setLoadingEventStats(false);
-            }
-        };
-
-        fetchEventStats();
-        // Refresh every minute
-        const interval = setInterval(fetchEventStats, 60000);
-        return () => clearInterval(interval);
-    }, []);
-
-    useEffect(() => {
-        const fetchErrorAndUnmatchedClaims = async () => {
-            if (!isAdmin) return;
-            
-            try {
-                const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-                
-                setLoadingErrorClaims(true);
-                setLoadingUnmatchedClaims(true);
-                
-                const [errorResult, unmatchedResult] = await Promise.all([
-                    rllActor.get_error_claim_events(),
-                    rllActor.get_unmatched_pending_claims()
-                ]);
-
-                if ('ok' in errorResult) {
-                    setErrorClaims(errorResult.ok);
-                } else {
-                    console.error('Error fetching error claims:', errorResult.err);
-                }
-
-                if ('ok' in unmatchedResult) {
-                    setUnmatchedPendingClaims(unmatchedResult.ok);
-                } else {
-                    console.error('Error fetching unmatched claims:', unmatchedResult.err);
-                }
-            } catch (error) {
-                console.error('Error fetching claims data:', error);
-            } finally {
-                setLoadingErrorClaims(false);
-                setLoadingUnmatchedClaims(false);
-            }
-        };
-
-        if (isAdmin && identity) {
-            fetchErrorAndUnmatchedClaims();
-            // Refresh every minute
-            const interval = setInterval(fetchErrorAndUnmatchedClaims, 60000);
-            return () => clearInterval(interval);
-        }
-    }, [isAdmin, identity]);
-
-    const formatTokenAmount = (amount, tokenId) => {
-        const token = tokens.find(t => t.ledger_id.toString() === tokenId.toString());
-        if (!token) return amount.toString();
-        return (Number(amount) / Math.pow(10, token.decimals)).toFixed(token.decimals);
-    };
-
-    const getTokenSymbol = (tokenId) => {
-        const token = tokens.find(t => t.ledger_id.toString() === tokenId.toString());
-        return token ? token.symbol : tokenId.toString().slice(0, 10) + '...';
-    };
-
-    // Helper function to check if 24h data is identical to all-time data
-    const isDataIdentical = () => {
-        if (!eventStats) return false;
-        
-        const allTime = eventStats.all_time.claims;
-        const last24h = eventStats.last_24h.claims;
-        
-        return (
-            allTime.total.toString() === last24h.total.toString() &&
-            allTime.successful.toString() === last24h.successful.toString() &&
-            allTime.failed.toString() === last24h.failed.toString() &&
-            allTime.pending.toString() === last24h.pending.toString() &&
-            allTime.unique_users.toString() === last24h.unique_users.toString()
-        );
-    };
+    const tile = (label, value, sub, color) => (
+        <div style={{ background: c.secondaryBg, border: `1px solid ${c.border}`, borderRadius: 10, padding: '10px 12px', minWidth: 0 }}>
+            <div style={{ fontSize: '0.7rem', color: c.mutedText, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 700, color: color || c.primaryText, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+            {sub && <div style={{ fontSize: '0.72rem', color: c.mutedText, marginTop: 2 }}>{sub}</div>}
+        </div>
+    );
+    const s = state.stats;
+    const distributed = s ? perToken(s.all_time.server_distributions.per_token) : state.totals;
+    const claimed = s ? perToken(s.all_time.claims.per_token) : null;
+    const last24 = s ? perToken(s.last_24h.server_distributions.per_token) : null;
+    const distributedUsd = distributed ? valueOf(distributed) : 0;
+    const n = (x) => Number(x).toLocaleString();
 
     return (
-        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
-            <style>{customAnimations}</style>
-            <Header />
-            
-            {/* Hero Banner */}
-            <div style={{
-                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${rllPrimary}12 50%, ${rllSecondary}08 100%)`,
-                borderBottom: `1px solid ${theme.colors.border}`,
-                padding: '2rem 1rem',
-                position: 'relative',
-                overflow: 'hidden',
-                width: '100%',
-                boxSizing: 'border-box'
-            }}>
-                {/* Background decorations */}
-                <div style={{
-                    position: 'absolute',
-                    top: '-30%',
-                    right: '-5%',
-                    width: '300px',
-                    height: '300px',
-                    background: `radial-gradient(circle, ${rllPrimary}15 0%, transparent 70%)`,
-                    pointerEvents: 'none'
-                }} />
-                
-                <div className="rll-fade-in" style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
-                    <div className="rll-float" style={{
-                        width: '72px',
-                        height: '72px',
-                        borderRadius: '18px',
-                        background: `linear-gradient(135deg, ${rllPrimary}, ${rllSecondary})`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        margin: '0 auto 1rem',
-                        boxShadow: `0 12px 40px ${rllPrimary}50`,
-                    }}>
-                        <FaCoins size={32} style={{ color: '#fff' }} />
-                    </div>
-                    
-                    <h1 style={{
-                        fontSize: '1.75rem',
-                        fontWeight: '700',
-                        color: theme.colors.primaryText,
-                        margin: '0 0 0.5rem',
-                        letterSpacing: '-0.5px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '8px'
-                    }}>
-                        Rewards Distribution Server
-                        <span 
-                            style={styles.infoIcon} 
-                            title="The Rewards Distribution Server manages token rewards for Sneed DAO participants based on their voting activity and neuron holdings"
-                        >
-                            i
-                        </span>
-                    </h1>
-                    <p style={{
-                        fontSize: '0.95rem',
-                        color: theme.colors.secondaryText,
-                        margin: 0
-                    }}>
-                        Manage and claim your DAO voting rewards
-                    </p>
+        <Card title="Statistics" icon={<FaChartBar size={15} />} right={<RefreshButton loading={state.loading} onClick={load} title="Read the statistics again" />}>
+            {state.loading && !s && !state.totals && <Spinner text="Reading the statistics…" />}
+            {state.fixing && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '0.82rem', color: c.secondaryText, background: `${AMBER}14`, border: `1px solid ${AMBER}55`, borderRadius: 10, padding: '8px 10px', marginBottom: 12 }}>
+                    <FaInfoCircle style={{ marginTop: 3, flexShrink: 0, color: AMBER }} />
+                    <span>Statistics are being fixed (proposal #444): the canister&apos;s history outgrew the old way of counting it. Until the upgrade, the totals per token below come from a separate query.</span>
                 </div>
-            </div>
-            
-            <main className="rll-container" style={{ padding: '1.25rem', maxWidth: '900px', margin: '0 auto' }}>
-                <section className="rll-fade-in" style={styles.section}>
-                    <div style={styles.sectionHeader}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                            <div style={styles.sectionIcon}>
-                                <FaChartBar size={16} style={{ color: rllPrimary }} />
-                            </div>
-                            <h2 style={styles.heading}>
-                                Rewards Statistics
-                                <span 
-                                    style={styles.infoIcon} 
-                                    title="Overview of all Reward events including distributions and claims per token"
-                                >
-                                    i
-                                </span>
-                            </h2>
-                        </div>
-                        <button 
-                            onClick={() => setExpandedSections(prev => ({ ...prev, rewardsStatistics: !prev.rewardsStatistics }))}
-                            style={styles.expandButton}
-                        >
-                            {expandedSections.rewardsStatistics ? '▼' : '▶'}
-                        </button>
-                    </div>
-                    {expandedSections.rewardsStatistics && (loadingEventStats || loadingTokens ? (
-                        <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
-                            <FaSpinner className="rll-spin" size={24} style={{ color: rllPrimary }} />
-                        </div>
-                    ) : eventStats && (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
-                            {/* All Time Stats */}
-                            <div style={styles.statsCard}>
-                                <h3 style={{ color: rllPrimary, marginBottom: '12px', fontSize: '1rem', fontWeight: '700' }}>All Time Statistics</h3>
-                                
-                                <div style={{ marginBottom: '20px' }}>
-                                    <h4 style={{ color: theme.colors.success, marginBottom: '10px' }}>Server Distributions</h4>
-                                    <div style={styles.statusItem}>
-                                        <span>Total Count:</span>
-                                        <span>{eventStats.all_time.server_distributions.total.toString()}</span>
-                                    </div>
-                                    {eventStats.all_time.server_distributions.per_token.map(([tokenId, amount]) => (
-                                        <div key={tokenId.toString()} style={styles.statusItem}>
-                                            <span>{getTokenSymbol(tokenId)}:</span>
-                                            <span>{formatTokenAmount(amount, tokenId)}</span>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                <div style={{ marginBottom: '20px' }}>
-                                    <h4 style={{ color: theme.colors.error, marginBottom: '10px' }}>User Distributions</h4>
-                                    <div style={styles.statusItem}>
-                                        <span>Total Count:</span>
-                                        <span>{eventStats.all_time.user_distributions.total.toString()}</span>
-                                    </div>
-                                    {eventStats.all_time.user_distributions.per_token.map(([tokenId, amount]) => (
-                                        <div key={tokenId.toString()} style={styles.statusItem}>
-                                            <span>{getTokenSymbol(tokenId)}:</span>
-                                            <span>{formatTokenAmount(amount, tokenId)}</span>
-                                        </div>
-                                    ))}
-                                    <div style={styles.statusItem}>
-                                        <span>Unique Users:</span>
-                                        <span>{eventStats.all_time.user_distributions.unique_users.toString()}</span>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <h4 style={{ color: theme.colors.warning, marginBottom: '10px' }}>Claims</h4>
-                                    <div style={styles.statusItem}>
-                                        <span>Total Count:</span>
-                                        <span>{eventStats.all_time.claims.pending.toString()}</span>
-                                    </div>
-                                    {eventStats.all_time.claims.per_token.map(([tokenId, amount]) => (
-                                        <div key={tokenId.toString()} style={styles.statusItem}>
-                                            <span>{getTokenSymbol(tokenId)}:</span>
-                                            <span>{formatTokenAmount(amount, tokenId)}</span>
-                                        </div>
-                                    ))}
-                                    <div style={styles.statusItem}>
-                                        <span>Successful:</span>
-                                        <span style={{ color: theme.colors.success }}>{eventStats.all_time.claims.successful.toString()}</span>
-                                    </div>
-                                    <div style={styles.statusItem}>
-                                        <span>Failed:</span>
-                                        <span style={{ color: theme.colors.error }}>{eventStats.all_time.claims.failed.toString()}</span>
-                                    </div>
-                                    {(eventStats.all_time.claims.pending - eventStats.all_time.claims.successful - eventStats.all_time.claims.failed) > 0 && (
-                                        <div style={styles.statusItem}>
-                                            <span>Pending:</span>
-                                            <span style={{ color: theme.colors.warning }}>
-                                                {(eventStats.all_time.claims.pending - eventStats.all_time.claims.successful - eventStats.all_time.claims.failed).toString()}
-                                            </span>
-                                        </div>
-                                    )}
-                                    <div style={styles.statusItem}>
-                                        <span>Unique Users:</span>
-                                        <span>{eventStats.all_time.claims.unique_users.toString()}</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Last 24h Stats */}
-                            <div style={styles.statsCard}>
-                                <h3 style={{ 
-                                    color: rllPrimary, 
-                                    marginBottom: '12px',
-                                    fontSize: '1rem',
-                                    fontWeight: '700',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '10px'
-                                }}>
-                                    Last 24 Hours
-                                    {isDataIdentical() && (
-                                        <span 
-                                            style={{
-                                                background: `linear-gradient(135deg, ${theme.colors.error}, ${theme.colors.error}dd)`,
-                                                color: theme.colors.primaryBg,
-                                                fontSize: '12px',
-                                                padding: '4px 8px',
-                                                borderRadius: '4px',
-                                                fontWeight: 'normal'
-                                            }}
-                                            title="Warning: 24h data appears identical to all-time data. This indicates a backend issue with the Rewards Distribution canister's 24h statistics calculation."
-                                        >
-                                            ⚠️ Data Issue
-                                        </span>
-                                    )}
-                                </h3>
-                                
-                                <div style={{ marginBottom: '20px' }}>
-                                    <h4 style={{ color: theme.colors.success, marginBottom: '10px' }}>Server Distributions</h4>
-                                    <div style={styles.statusItem}>
-                                        <span>Total Count:</span>
-                                        <span>{eventStats.last_24h.server_distributions.total.toString()}</span>
-                                    </div>
-                                    {eventStats.last_24h.server_distributions.per_token.map(([tokenId, amount]) => (
-                                        <div key={tokenId.toString()} style={styles.statusItem}>
-                                            <span>{getTokenSymbol(tokenId)}:</span>
-                                            <span>{formatTokenAmount(amount, tokenId)}</span>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                <div style={{ marginBottom: '20px' }}>
-                                    <h4 style={{ color: theme.colors.error, marginBottom: '10px' }}>User Distributions</h4>
-                                    <div style={styles.statusItem}>
-                                        <span>Total Count:</span>
-                                        <span>{eventStats.last_24h.user_distributions.total.toString()}</span>
-                                    </div>
-                                    {eventStats.last_24h.user_distributions.per_token.map(([tokenId, amount]) => (
-                                        <div key={tokenId.toString()} style={styles.statusItem}>
-                                            <span>{getTokenSymbol(tokenId)}:</span>
-                                            <span>{formatTokenAmount(amount, tokenId)}</span>
-                                        </div>
-                                    ))}
-                                    <div style={styles.statusItem}>
-                                        <span>Unique Users:</span>
-                                        <span>{eventStats.last_24h.user_distributions.unique_users.toString()}</span>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <h4 style={{ color: theme.colors.warning, marginBottom: '10px' }}>Claims</h4>
-                                    <div style={styles.statusItem}>
-                                        <span>Total Count:</span>
-                                        <span>{eventStats.last_24h.claims.pending.toString()}</span>
-                                    </div>
-                                    {eventStats.last_24h.claims.per_token.map(([tokenId, amount]) => (
-                                        <div key={tokenId.toString()} style={styles.statusItem}>
-                                            <span>{getTokenSymbol(tokenId)}:</span>
-                                            <span>{formatTokenAmount(amount, tokenId)}</span>
-                                        </div>
-                                    ))}
-                                    <div style={styles.statusItem}>
-                                        <span>Successful:</span>
-                                        <span style={{ color: theme.colors.success }}>{eventStats.last_24h.claims.successful.toString()}</span>
-                                    </div>
-                                    <div style={styles.statusItem}>
-                                        <span>Failed:</span>
-                                        <span style={{ color: theme.colors.error }}>{eventStats.last_24h.claims.failed.toString()}</span>
-                                    </div>
-                                    {(eventStats.last_24h.claims.pending - eventStats.last_24h.claims.successful - eventStats.last_24h.claims.failed) > 0 && (
-                                        <div style={styles.statusItem}>
-                                            <span>Pending:</span>
-                                            <span style={{ color: theme.colors.warning }}>
-                                                {(eventStats.last_24h.claims.pending - eventStats.last_24h.claims.successful - eventStats.last_24h.claims.failed).toString()}
-                                            </span>
-                                        </div>
-                                    )}
-                                    <div style={styles.statusItem}>
-                                        <span>Unique Users:</span>
-                                        <span>{eventStats.last_24h.claims.unique_users.toString()}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </section>
-
-                {/* Data Issue Warning */}
-                {eventStats && isDataIdentical() && (
-                    <div style={{
-                        background: `linear-gradient(135deg, ${theme.colors.error}, ${theme.colors.error}dd)`,
-                        borderRadius: '8px',
-                        padding: '15px',
-                        marginTop: '20px',
-                        color: theme.colors.primaryBg
-                    }}>
-                        <h3 style={{ margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            ⚠️ Data Issue Detected
-                        </h3>
-                        <p style={{ margin: '0 0 10px 0' }}>
-                            The "Last 24 Hours" statistics are showing identical values to the "All Time" statistics. 
-                            This indicates an issue with the RLL canister's 24-hour statistics calculation.
-                        </p>
-                        <p style={{ margin: '0', fontSize: '14px', opacity: '0.9' }}>
-                            <strong>Technical Details:</strong> The backend RLL canister's <code>get_event_statistics()</code> function 
-                            should return different values for <code>last_24h</code> and <code>all_time</code> periods, but they are currently identical. 
-                            Check the browser console for detailed debugging information.
-                        </p>
-                    </div>
-                )}
-
-                {/* Balance Reconciliation */}
-                <section className="rll-fade-in" style={styles.section}>
-                    <div style={styles.sectionHeader}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                            <div style={styles.sectionIcon}>
-                                <FaBalanceScale size={16} style={{ color: rllPrimary }} />
-                            </div>
-                            <h2 style={styles.heading}>
-                                Balance Reconciliation
-                                <span 
-                                    style={styles.infoIcon} 
-                                    title="Overview of token balances held by the Rewards Distribution Server for distribution, including total distributed amounts and currently claimable rewards"
-                                >
-                                    i
-                                </span>
-                            </h2>
-                        </div>
-                        <button 
-                            onClick={() => setExpandedSections(prev => ({ ...prev, balanceReconciliation: !prev.balanceReconciliation }))}
-                            style={styles.expandButton}
-                        >
-                            {expandedSections.balanceReconciliation ? '▼' : '▶'}
-                        </button>
-                    </div>
-                    {expandedSections.balanceReconciliation && (loadingReconciliation ? (
-                        <div style={styles.spinner} />
-                    ) : (
-                    <div style={styles.reconciliationList}>
-                        {reconciliation.map(item => {
-                            const token = tokens.find(t => t.ledger_id.toString() === item.token_id.toString());
-                            const symbol = token ? token.symbol : 'Unknown';
-                            const decimals = token ? token.decimals : 8;
-                            const totalDistributed = distributions && distributions[item.token_id.toString()];
-                            return (
-                                <div key={item.token_id.toText()} style={{
-                                    background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
-                                    borderRadius: '6px',
-                                    padding: '15px',
-                                    marginBottom: '10px'
-                                }}>
-                                    <div style={{ fontWeight: 'bold', marginBottom: '10px' }}>{symbol}</div>
-                                    <div style={styles.statusItem}>
-                                        <span>Token:</span>
-                                        <span style={{fontWeight: 'bold'}}>{symbol}</span>
-                                    </div>
-                                    {totalDistributed !== undefined && (
-                                        <div style={styles.statusItem}>
-                                            <span>All-Time Distributed:</span>
-                                            <span style={{fontFamily: 'monospace'}}>{formatBalance(totalDistributed, decimals)} {symbol}</span>
-                                        </div>
-                                    )}
-                                    <div style={styles.statusItem}>
-                                        <span>Currently Claimable:</span>
-                                        <span style={{fontFamily: 'monospace'}}>{formatBalance(item.local_total, decimals)} {symbol}</span>
-                                    </div>
-                                    <div style={styles.statusItem}>
-                                        <span>Server Balance:</span>
-                                        <span style={{fontFamily: 'monospace'}}>{formatBalance(item.server_balance, decimals)} {symbol}</span>
-                                    </div>
-                                    <div style={styles.statusItem}>
-                                        <span>Remaining:</span>
-                                        <span style={{
-                                            fontFamily: 'monospace',
-                                            color: Number(item.remaining) > 0 ? '#2ecc71' : '#ffffff'
-                                        }}>{formatBalance(item.remaining, decimals)} {symbol}</span>
-                                    </div>
-                                    {Number(item.underflow) > 0 && (
-                                        <div style={{...styles.statusItem, color: theme.colors.error}}>
-                                            <span>Underflow:</span>
-                                            <span style={{fontFamily: 'monospace'}}>{formatBalance(item.underflow, decimals)} {symbol}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                    ))}
-                </section>
-
-                {/* Token Distribution Limits */}
-                <section className="rll-fade-in" style={styles.section}>
-                    <div style={styles.sectionHeader}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                            <div style={styles.sectionIcon}>
-                                <FaCoins size={16} style={{ color: rllPrimary }} />
-                            </div>
-                            <h2 style={styles.heading}>
-                                Token Distribution Limits
-                                <span 
-                                    style={styles.infoIcon} 
-                                    title="Distribution limits control token rewards: Min ensures users receive meaningful amounts (smaller rewards accumulate until min is reached), while Max caps the reward size per cycle (excess rewards carry over to future cycles)"
-                                >
-                                    i
-                                </span>
-                            </h2>
-                        </div>
-                        <button 
-                            onClick={() => setExpandedSections(prev => ({ ...prev, distributionLimits: !prev.distributionLimits }))}
-                            style={styles.expandButton}
-                        >
-                            {expandedSections.distributionLimits ? '▼' : '▶'}
-                        </button>
-                    </div>
-                    {expandedSections.distributionLimits && (loadingDistributionLimits ? (
-                        <div style={styles.spinner} />
-                    ) : (
-                        <div style={styles.tokenList}>
-                            {tokens
-                                .filter(token => {
-                                    const limits = tokenDistributionLimits[token.ledger_id.toString()];
-                                    return limits && (limits.min?.[0] || limits.max?.[0]);
-                                })
-                                .map(token => {
-                                    const limits = tokenDistributionLimits[token.ledger_id.toString()];
-                                    return (
-                                        <div key={token.ledger_id.toString()} style={styles.tokenItem}>
-                                            <div style={styles.tokenSymbol}>{token.symbol}</div>
-                                            <div style={styles.tokenBalance}>
-                                                <div>
-                                                    Min: {limits?.min?.[0] ? (Number(limits.min[0]) / Math.pow(10, token.decimals)).toFixed(token.decimals) : 'Not set'}
-                                                    {' | '}
-                                                    Max: {limits?.max?.[0] ? (Number(limits.max[0]) / Math.pow(10, token.decimals)).toFixed(token.decimals) : 'Not set'}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })
-                            }
-                        </div>
-                    ))}
-                </section>
-
-                {/* Distribution Cycle Status */}
-                <section className="rll-fade-in" style={styles.section}>
-                    <div style={styles.sectionHeader}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                            <div style={styles.sectionIcon}>
-                                <FaClock size={16} style={{ color: rllPrimary }} />
-                            </div>
-                            <h2 style={styles.heading}>
-                                Distribution Cycle Status
-                                <span 
-                                    style={styles.infoIcon} 
-                                    title="Current status of the Rewards distribution cycle, including timing information and cycle frequency"
-                                >
-                                    i
-                                </span>
-                            </h2>
-                        </div>
-                        <button 
-                            onClick={() => setExpandedSections(prev => ({ ...prev, distributionCycle: !prev.distributionCycle }))}
-                            style={styles.expandButton}
-                        >
-                            {expandedSections.distributionCycle ? '▼' : '▶'}
-                        </button>
-                    </div>
-                    {expandedSections.distributionCycle && <div style={styles.cycleInfo}>
-                        <div style={styles.statusItem}>
-                            <span>Status:</span>
-                            <span style={{
-                                color: mainLoopStatus?.isRunning ? '#2ecc71' : '#e74c3c'
-                            }}>
-                                {mainLoopStatus?.isRunning ? 'Running' : 'Stopped'}
-                            </span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Current Stage:</span>
-                            <span style={{
-                                color: importStage.includes('idle') ? '#f1c40f' : '#2ecc71',
-                                fontFamily: 'monospace'
-                            }}>
-                                {importStage}
-                            </span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Last Started:</span>
-                            <span>{mainLoopStatus?.lastStarted ? formatNanoTimestamp(mainLoopStatus.lastStarted) : 'Never'}</span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Last Stopped:</span>
-                            <span>{mainLoopStatus?.lastStopped ? formatNanoTimestamp(mainLoopStatus.lastStopped) : 'Never'}</span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Last Cycle Started:</span>
-                            <span>{mainLoopStatus?.lastCycleStarted ? formatNanoTimestamp(mainLoopStatus.lastCycleStarted) : 'Never'}</span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Last Cycle Ended:</span>
-                            <span>{mainLoopStatus?.lastCycleEnded ? formatNanoTimestamp(mainLoopStatus.lastCycleEnded) : 'Never'}</span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Next Scheduled:</span>
-                            <span>{mainLoopStatus?.nextScheduled ? formatNanoTimestamp(mainLoopStatus.nextScheduled) : 'Not scheduled'}</span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Frequency:</span>
-                            <span>{mainLoopStatus?.frequencySeconds ? formatDuration(Number(mainLoopStatus.frequencySeconds)) : 'Unknown'}</span>
-                        </div>
-
-                        {/* Balance Check Progress */}
-                        {(tokenCheckStatus?.is_running || walletTokenCheckStatus?.is_running || 
-                          (importStage && !importStage.includes('idle'))) && (
-                            <div style={{ 
-                                marginTop: '16px', 
-                                padding: '16px', 
-                                background: `${rllPrimary}08`, 
-                                border: `1px solid ${rllPrimary}20`,
-                                borderRadius: '12px' 
-                            }}>
-                                <div style={{ ...styles.heading, fontSize: '0.95rem', marginBottom: '12px' }}>
-                                    <FaSpinner className="rll-spin" size={14} style={{ color: rllPrimary }} />
-                                    Live Cycle Progress
-                                </div>
-
-                                {/* Parsed stage display */}
-                                {importStage && !importStage.includes('idle') && (
-                                    <div style={{ marginBottom: '12px' }}>
-                                        <div style={{ 
-                                            display: 'flex', 
-                                            gap: '6px', 
-                                            flexWrap: 'wrap',
-                                            marginBottom: '8px'
-                                        }}>
-                                            {['importing whitelist', 'checking balances', 'importing neurons', 'importing proposals', 'distributing tokens'].map((step) => {
-                                                const stageText = importStage.toLowerCase();
-                                                const isActive = stageText.includes(step);
-                                                const stageOrder = ['importing whitelist', 'checking balances', 'importing neurons', 'importing proposals', 'distributing tokens'];
-                                                const currentIdx = stageOrder.findIndex(s => stageText.includes(s));
-                                                const stepIdx = stageOrder.indexOf(step);
-                                                const isCompleted = currentIdx > stepIdx;
-                                                return (
-                                                    <span key={step} style={{
-                                                        padding: '4px 10px',
-                                                        borderRadius: '20px',
-                                                        fontSize: '0.75rem',
-                                                        fontWeight: '600',
-                                                        background: isActive ? `${rllPrimary}30` : isCompleted ? 'rgba(46, 204, 113, 0.15)' : `${rllPrimary}08`,
-                                                        color: isActive ? rllPrimary : isCompleted ? '#2ecc71' : theme.colors.secondaryText,
-                                                        border: `1px solid ${isActive ? rllPrimary + '50' : isCompleted ? '#2ecc7130' : 'transparent'}`,
-                                                    }}>
-                                                        {isCompleted ? '✓ ' : isActive ? '● ' : '○ '}
-                                                        {step.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                                                    </span>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Token balance check progress */}
-                                {tokenCheckStatus && (tokenCheckStatus.is_running || Number(tokenCheckStatus.total) > 0) && (
-                                    <div style={{ marginBottom: '10px' }}>
-                                        <div style={{ ...styles.statusItem, marginBottom: '4px' }}>
-                                            <span style={{ fontWeight: '600', fontSize: '0.85rem' }}>
-                                                {tokenCheckStatus.is_running ? <FaSpinner className="rll-spin" size={10} style={{ marginRight: '6px' }} /> : <FaCheckCircle size={10} style={{ marginRight: '6px', color: '#2ecc71' }} />}
-                                                Canister Token Balances
-                                            </span>
-                                            <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: rllPrimary }}>
-                                                {Number(tokenCheckStatus.processed)} / {Number(tokenCheckStatus.total)}
-                                                {tokenCheckStatus.ticks ? ` (${Number(tokenCheckStatus.ticks)} ticks)` : ''}
-                                            </span>
-                                        </div>
-                                        <div style={{
-                                            width: '100%',
-                                            height: '6px',
-                                            background: theme.colors.tertiaryBg,
-                                            borderRadius: '3px',
-                                            overflow: 'hidden'
-                                        }}>
-                                            <div style={{
-                                                width: Number(tokenCheckStatus.total) > 0 
-                                                    ? `${(Number(tokenCheckStatus.processed) / Number(tokenCheckStatus.total)) * 100}%` 
-                                                    : '0%',
-                                                height: '100%',
-                                                background: tokenCheckStatus.is_running 
-                                                    ? `linear-gradient(90deg, ${rllPrimary}, ${rllSecondary})` 
-                                                    : '#2ecc71',
-                                                borderRadius: '3px',
-                                                transition: 'width 0.5s ease'
-                                            }} />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Wallet token check progress */}
-                                {walletTokenCheckStatus && (walletTokenCheckStatus.is_running || Number(walletTokenCheckStatus.total) > 0) && (
-                                    <div style={{ marginBottom: '10px' }}>
-                                        <div style={{ ...styles.statusItem, marginBottom: '4px' }}>
-                                            <span style={{ fontWeight: '600', fontSize: '0.85rem' }}>
-                                                {walletTokenCheckStatus.is_running ? <FaSpinner className="rll-spin" size={10} style={{ marginRight: '6px' }} /> : <FaCheckCircle size={10} style={{ marginRight: '6px', color: '#2ecc71' }} />}
-                                                Wallet Token Balances
-                                                {walletTokenCheckStatus.wallet?.[0] && (
-                                                    <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', marginLeft: '6px', color: theme.colors.secondaryText }}>
-                                                        ({walletTokenCheckStatus.wallet[0].toString().slice(0, 8)}...)
-                                                    </span>
-                                                )}
-                                            </span>
-                                            <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: rllPrimary }}>
-                                                {Number(walletTokenCheckStatus.processed)} / {Number(walletTokenCheckStatus.total)}
-                                                {walletTokenCheckStatus.ticks ? ` (${Number(walletTokenCheckStatus.ticks)} ticks)` : ''}
-                                            </span>
-                                        </div>
-                                        <div style={{
-                                            width: '100%',
-                                            height: '6px',
-                                            background: theme.colors.tertiaryBg,
-                                            borderRadius: '3px',
-                                            overflow: 'hidden'
-                                        }}>
-                                            <div style={{
-                                                width: Number(walletTokenCheckStatus.total) > 0 
-                                                    ? `${(Number(walletTokenCheckStatus.processed) / Number(walletTokenCheckStatus.total)) * 100}%` 
-                                                    : '0%',
-                                                height: '100%',
-                                                background: walletTokenCheckStatus.is_running 
-                                                    ? `linear-gradient(90deg, ${rllPrimary}, ${rllSecondary})` 
-                                                    : '#2ecc71',
-                                                borderRadius: '3px',
-                                                transition: 'width 0.5s ease'
-                                            }} />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Distribution progress from import stage string */}
-                                {importStage && importStage.includes('distributing tokens') && importStage.includes('/') && (
-                                    <div style={{ marginBottom: '10px' }}>
-                                        <div style={{ ...styles.statusItem, marginBottom: '4px' }}>
-                                            <span style={{ fontWeight: '600', fontSize: '0.85rem' }}>
-                                                <FaSpinner className="rll-spin" size={10} style={{ marginRight: '6px' }} />
-                                                Token Distribution
-                                            </span>
-                                            <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: rllPrimary }}>
-                                                {(() => {
-                                                    const match = importStage.match(/(\d+)\/(\d+)/);
-                                                    return match ? `${match[1]} / ${match[2]}` : '';
-                                                })()}
-                                            </span>
-                                        </div>
-                                        <div style={{
-                                            width: '100%',
-                                            height: '6px',
-                                            background: theme.colors.tertiaryBg,
-                                            borderRadius: '3px',
-                                            overflow: 'hidden'
-                                        }}>
-                                            <div style={{
-                                                width: (() => {
-                                                    const match = importStage.match(/(\d+)\/(\d+)/);
-                                                    if (match) {
-                                                        const pct = (parseInt(match[1]) / parseInt(match[2])) * 100;
-                                                        return `${Math.min(pct, 100)}%`;
-                                                    }
-                                                    return '0%';
-                                                })(),
-                                                height: '100%',
-                                                background: `linear-gradient(90deg, ${rllPrimary}, ${rllSecondary})`,
-                                                borderRadius: '3px',
-                                                transition: 'width 0.5s ease'
-                                            }} />
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>}
-                </section>
-
-
-                {/* Import Status Section */}
-                <section className="rll-fade-in" style={styles.section}>
-                    <div style={styles.sectionHeader}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                            <div style={styles.sectionIcon}>
-                                <FaDatabase size={16} style={{ color: rllPrimary }} />
-                            </div>
-                            <h2 style={styles.heading}>
-                                Import Status
-                                <span 
-                                    style={styles.infoIcon} 
-                                    title="Statistics about imported data from the Sneed governance system, including neurons, owners, and proposals"
-                                >
-                                    i
-                                </span>
-                            </h2>
-                        </div>
-                        <button 
-                            onClick={() => setExpandedSections(prev => ({ ...prev, importStatus: !prev.importStatus }))}
-                            style={styles.expandButton}
-                        >
-                            {expandedSections.importStatus ? '▼' : '▶'}
-                        </button>
-                    </div>
-                    {expandedSections.importStatus && <div style={styles.statusGrid}>
-                        <div style={styles.statusItem}>
-                            <span>Imported Neurons:</span>
-                            <span>{Number(importedNeuronsCount).toLocaleString()}</span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Imported Owners:</span>
-                            <span>{Number(importedOwnersCount).toLocaleString()}</span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Imported Proposals:</span>
-                            <span>{Number(importedPropsCount).toLocaleString()}</span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Highest Closed Proposal:</span>
-                            <span>{Number(highestClosedProposalId).toLocaleString()}</span>
-                        </div>
-                    </div>}
-                </section>
-                {/* Admin Controls */}
-                {isAdmin && (
-                    <>
-                        <section className="rll-fade-in" style={styles.section}>
-                            <div style={styles.sectionHeader}>
-                                <div style={{ display: 'flex', alignItems: 'center' }}>
-                                    <div style={styles.sectionIcon}>
-                                        <FaCog size={16} style={{ color: rllPrimary }} />
-                                    </div>
-                                    <h2 style={styles.heading}>
-                                        Admin Controls
-                                        <span 
-                                            style={styles.infoIcon} 
-                                            title="Administrative functions for managing the Rewards Distribution system, including cycle control and data import operations"
-                                        >
-                                            i
-                                        </span>
-                                    </h2>
-                                </div>
-                                <button 
-                                    onClick={() => setExpandedSections(prev => ({ ...prev, adminControls: !prev.adminControls }))}
-                                    style={styles.expandButton}
-                                >
-                                    {expandedSections.adminControls ? '▼' : '▶'}
-                                </button>
-                            </div>
-                            {expandedSections.adminControls && <div style={styles.adminControls}>
-                                <button 
-                                    onClick={handleStartDistributionCycle}
-                                    style={styles.adminButton}
-                                >
-                                    Start Distribution Cycle
-                                </button>
-                                <button 
-                                    onClick={handleStopDistributionCycle}
-                                    style={styles.adminButton}
-                                >
-                                    Stop Distribution Cycle
-                                </button>
-                                <button 
-                                    onClick={handleImportAllNeurons}
-                                    style={styles.adminButton}
-                                >
-                                    Import All Neurons
-                                </button>
-                                <button 
-                                    onClick={handleImportAllProposals}
-                                    style={styles.adminButton}
-                                >
-                                    Import All Proposals
-                                </button>
-                                <button 
-                                    onClick={handleStartMainLoop}
-                                    style={styles.adminButton}
-                                >
-                                    Start Main Loop
-                                </button>
-                                <button 
-                                    onClick={handleStopMainLoop}
-                                    style={styles.adminButton}
-                                >
-                                    Stop Main Loop
-                                </button>
-                            </div>}
-                        </section>
-
-                        {/* Token Distribution Limits Admin Section */}
-                        <section style={styles.section}>
-                            <div style={styles.sectionHeader}>
-                                <h2 style={styles.heading}>
-                                    Manage Token Distribution Limits
-                                    <span 
-                                        style={styles.infoIcon} 
-                                        title="Set or remove minimum and maximum distribution limits for each token"
-                                    >
-                                        i
-                                    </span>
-                                </h2>
-                                <button 
-                                    onClick={() => setExpandedSections(prev => ({ ...prev, manageDistributionLimits: !prev.manageDistributionLimits }))}
-                                    style={styles.expandButton}
-                                >
-                                    {expandedSections.manageDistributionLimits ? '▼' : '▶'}
-                                </button>
-                            </div>
-                            {expandedSections.manageDistributionLimits && <div style={{
-                                background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
-                                borderRadius: '6px',
-                                padding: '20px',
-                                marginBottom: '20px'
-                            }}>
-                                <div style={{ marginBottom: '15px' }}>
-                                    <label style={{ display: 'block', marginBottom: '5px' }}>Select Token:</label>
-                                    <select 
-                                        value={selectedToken || ''}
-                                        onChange={(e) => setSelectedToken(e.target.value)}
-                                        style={{
-                                            width: '100%',
-                                            padding: '8px',
-                                            background: theme.colors.cardGradient, 
-                                            boxShadow: theme.colors.cardShadow,
-                                            color: theme.colors.primaryBg,
-                                            border: `1px solid ${theme.colors.border}`,
-                                            borderRadius: '4px',
-                                            marginBottom: '10px'
-                                        }}
-                                    >
-                                        <option value="">Select a token</option>
-                                        {tokens.map(token => (
-                                            <option key={token.ledger_id.toString()} value={token.ledger_id.toString()}>
-                                                {token.symbol}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div style={{ marginBottom: '15px' }}>
-                                    <label style={{ display: 'block', marginBottom: '5px' }}>Minimum Distribution:</label>
-                                    <input
-                                        type="number"
-                                        value={newMinAmount}
-                                        onChange={(e) => setNewMinAmount(e.target.value)}
-                                        placeholder="Enter minimum amount"
-                                        style={{
-                                            width: '100%',
-                                            padding: '8px',
-                                            background: theme.colors.cardGradient, 
-                                            boxShadow: theme.colors.cardShadow,
-                                            color: theme.colors.primaryBg,
-                                            border: `1px solid ${theme.colors.border}`,
-                                            borderRadius: '4px'
-                                        }}
-                                    />
-                                </div>
-
-                                <div style={{ marginBottom: '15px' }}>
-                                    <label style={{ display: 'block', marginBottom: '5px' }}>Maximum Distribution:</label>
-                                    <input
-                                        type="number"
-                                        value={newMaxAmount}
-                                        onChange={(e) => setNewMaxAmount(e.target.value)}
-                                        placeholder="Enter maximum amount"
-                                        style={{
-                                            width: '100%',
-                                            padding: '8px',
-                                            background: theme.colors.cardGradient, 
-                                            boxShadow: theme.colors.cardShadow,
-                                            color: theme.colors.primaryBg,
-                                            border: `1px solid ${theme.colors.border}`,
-                                            borderRadius: '4px'
-                                        }}
-                                    />
-                                </div>
-
-                                <div style={{ display: 'flex', gap: '10px' }}>
-                                    <button
-                                        onClick={() => handleSetDistributionLimits(selectedToken)}
-                                        disabled={!selectedToken}
-                                        style={{
-                                            ...styles.adminButton,
-                                            opacity: !selectedToken ? 0.5 : 1
-                                        }}
-                                    >
-                                        Set Limits
-                                    </button>
-                                    <button
-                                        onClick={() => handleRemoveDistributionLimits(selectedToken)}
-                                        disabled={!selectedToken}
-                                        style={{
-                                            ...styles.adminButton,
-                                            background: `linear-gradient(135deg, ${theme.colors.error}, ${theme.colors.error}dd)`,
-                                            opacity: !selectedToken ? 0.5 : 1
-                                        }}
-                                    >
-                                        Remove Limits
-                                    </button>
-                                </div>
-                            </div>}
-                        </section>
-
-                        <section style={styles.section}>
-                            <div style={styles.sectionHeader}>
-                                <h2 style={styles.heading}>
-                                    Error Claims & Unmatched Pending Claims
-                                    <span 
-                                        style={styles.infoIcon} 
-                                        title="List of claims that encountered errors or are pending without matches"
-                                    >
-                                        i
-                                    </span>
-                                </h2>
-                                <button 
-                                    onClick={() => setExpandedSections(prev => ({ ...prev, errorClaims: !prev.errorClaims }))}
-                                    style={styles.expandButton}
-                                >
-                                    {expandedSections.errorClaims ? '▼' : '▶'}
-                                </button>
-                            </div>
-                            {expandedSections.errorClaims && (loadingErrorClaims || loadingUnmatchedClaims ? (
-                                <div style={styles.spinner} />
-                            ) : (
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '20px' }}>
-                                    {/* Error Claims */}
-                                    <div>
-                                        <h3 style={{ color: theme.colors.error, marginBottom: '15px' }}>Error Claims</h3>
-                                        {errorClaims.length > 0 ? (
-                                            <div style={styles.eventList}>
-                                                {errorClaims.map((event, index) => (
-                                                    <div key={index} style={styles.eventItem}>
-                                                        <div style={styles.eventHeader}>
-                                                            <span>Sequence: {event.sequence_number.toString()}</span>
-                                                            <span>{formatNanoTimestamp(event.timestamp)}</span>
-                                                        </div>
-                                                        <div style={styles.eventDetails}>
-                                                            <span>Token: {getTokenSymbol(event.token_id)}</span>
-                                                            <span>Amount: {formatTokenAmount(event.amount, event.token_id)}</span>
-                                                            <span>Fee: {formatTokenAmount(event.fee, event.token_id)}</span>
-                                                            <span>Hotkey: {event.hotkey.toString()}</span>
-                                                            {event.error_message && (
-                                                                <span style={{ color: theme.colors.error }}>
-                                                                    Error: {event.error_message[0]}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <p>No error claims found</p>
-                                        )}
-                                    </div>
-
-                                    {/* Unmatched Pending Claims */}
-                                    <div>
-                                        <h3 style={{ color: theme.colors.warning, marginBottom: '15px' }}>Unmatched Pending Claims</h3>
-                                        {unmatchedPendingClaims.length > 0 ? (
-                                            <div style={styles.eventList}>
-                                                {unmatchedPendingClaims.map((event, index) => (
-                                                    <div key={index} style={styles.eventItem}>
-                                                        <div style={styles.eventHeader}>
-                                                            <span>Sequence: {event.sequence_number.toString()}</span>
-                                                            <span>{formatNanoTimestamp(event.timestamp)}</span>
-                                                        </div>
-                                                        <div style={styles.eventDetails}>
-                                                            <span>Token: {getTokenSymbol(event.token_id)}</span>
-                                                            <span>Amount: {formatTokenAmount(event.amount, event.token_id)}</span>
-                                                            <span>Fee: {formatTokenAmount(event.fee, event.token_id)}</span>
-                                                            <span>Hotkey: {event.hotkey.toString()}</span>
-                                                            {event.tx_index && event.tx_index.length > 0 && (
-                                                                <span>Transaction ID: {event.tx_index[0].toString()}</span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <p>No unmatched pending claims found</p>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                        </section>
-                    </>
-                )}
-
-                <section className="rll-fade-in" style={styles.section}>
-                    <div style={styles.sectionHeader}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                            <div style={styles.sectionIcon}>
-                                <FaHistory size={16} style={{ color: rllPrimary }} />
-                            </div>
-                            <h2 style={styles.heading}>
-                                Recent Distribution Events
-                                <span 
-                                    style={styles.infoIcon} 
-                                    title="History of recent token distributions, showing proposal ranges, timestamps, and distributed amounts"
-                                >
-                                    i
-                                </span>
-                            </h2>
-                        </div>
-                        <button 
-                            onClick={() => setExpandedSections(prev => ({ ...prev, distributionEvents: !prev.distributionEvents }))}
-                            style={styles.expandButton}
-                        >
-                            {expandedSections.distributionEvents ? '▼' : '▶'}
-                        </button>
-                    </div>
-                    {expandedSections.distributionEvents && (loadingEvents ? (
-                        <div style={styles.spinner} />
-                    ) : (
-                        <div style={styles.eventList}>
-                            {[...distributionEvents].reverse().slice(0, 5).map((event, index) => (
-                                <div key={index} style={styles.eventItem}>
-                                    <div style={styles.eventHeader}>
-                                        <span>Proposals: {formatProposalRange(event.proposal_range)}</span>
-                                        <span>{formatNanoTimestamp(event.timestamp)}</span>
-                                    </div>
-                                    <div style={styles.eventDetails}>
-                                        <span>Amount: {formatBalance(event.amount, getTokenDecimalsByPrincipal(event.token_id.toString()))} {getTokenSymbolByPrincipal(event.token_id.toString())}</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ))}
-                </section>
-
-                <section className="rll-fade-in" style={styles.section}>
-                    <div style={styles.sectionHeader}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                            <div style={styles.sectionIcon}>
-                                <FaCheckCircle size={16} style={{ color: rllPrimary }} />
-                            </div>
-                            <h2 style={styles.heading}>
-                                Recent Claim Events
-                                <span 
-                                    style={styles.infoIcon} 
-                                    title="History of recent token claims by users, including timestamps and claimed amounts"
-                                >
-                                    i
-                                </span>
-                            </h2>
-                        </div>
-                        <button 
-                            onClick={() => setExpandedSections(prev => ({ ...prev, claimEvents: !prev.claimEvents }))}
-                            style={styles.expandButton}
-                        >
-                            {expandedSections.claimEvents ? '▼' : '▶'}
-                        </button>
-                    </div>
-                    {expandedSections.claimEvents && (loadingEvents ? (
-                        <div style={styles.spinner} />
-                    ) : (
-                        <div style={styles.eventList}>
-                            {[...claimEvents].reverse().slice(0, 5).map((event, index) => (
-                                <div key={index} style={styles.eventItem}>
-                                    <div style={styles.eventHeader}>
-                                        <span>{
-                                            'Success' in event.status ? 'Success' :
-                                            'Pending' in event.status ? 'Pending' :
-                                            'Failed' in event.status ? 'Failed' :
-                                            'Unknown'
-                                        }</span>
-                                        <span>{formatNanoTimestamp(event.timestamp)}</span>
-                                    </div>
-                                    <div style={styles.eventDetails}>
-                                        <span>Hotkey: {event.hotkey.toString()}</span>
-                                        <span>Amount: {formatBalance(event.amount, getTokenDecimalsByPrincipal(event.token_id.toString()))} {getTokenSymbolByPrincipal(event.token_id.toString())}</span>
-                                        <span>Fee: {formatBalance(event.fee, getTokenDecimalsByPrincipal(event.token_id.toString()))} {getTokenSymbolByPrincipal(event.token_id.toString())}</span>
-                                        <span>Sequence: {event.sequence_number.toString()}</span>
-                                        {event.tx_index && event.tx_index.length > 0 && <span>Transaction ID: {event.tx_index[0].toString()}</span>}
-                                        {event.error_message && event.error_message.length > 0 && <span>Message: {event.error_message[0]}</span>}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ))}
-                </section>
-
-            </main>
-
-            <ConfirmationModal
-                show={showConfirmModal}
-                message={confirmMessage}
-                onConfirm={async () => {
-                    console.log('Confirmation dialog OK clicked');
-                    try {
-                        if (confirmAction) {
-                            await confirmAction();
-                        }
-                    } catch (error) {
-                        console.error('Error executing confirm action:', error);
-                    } finally {
-                        setShowConfirmModal(false);
-                    }
-                }}
-                onCancel={() => setShowConfirmModal(false)}
-                onClose={() => setShowConfirmModal(false)}
-            />
-
-            {/* Add notification */}
-            {notification && (
-                <Notification
-                    type={notification.type}
-                    message={notification.message}
-                    onClose={() => setNotification(null)}
-                />
             )}
+            {state.error && <div style={{ fontSize: '0.82rem', color: c.error, marginBottom: 10 }}>Could not read the statistics: {state.error}</div>}
+            {distributed && (
+                <>
+                    <div style={{ fontSize: '0.7rem', color: c.mutedText, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Distributed, all time</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: AMBER, fontVariantNumeric: 'tabular-nums', lineHeight: 1.4 }}><TokenAmounts list={distributed} /></div>
+                    {distributedUsd > 0 && <div style={{ fontSize: '0.82rem', color: c.secondaryText }}>{formatValue(distributedUsd)} at today&apos;s prices</div>}
+                </>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginTop: 12 }}>
+                {s ? (
+                    <>
+                        {tile('Distributions', n(s.all_time.server_distributions.total), 'one per token per daily cycle')}
+                        {tile('Owners rewarded', n(s.all_time.user_distributions.unique_users), `${n(s.all_time.user_distributions.total)} credits`)}
+                        {tile('Claims paid', n(s.all_time.claims.successful), `by ${n(s.all_time.claims.unique_users)} principals`, c.success)}
+                        {tile('Last 24 hours', n(s.last_24h.server_distributions.total) + ' distributions', `${n(s.last_24h.claims.successful)} claims paid`)}
+                    </>
+                ) : (
+                    distributionCount != null && tile('Distributions', n(distributionCount), 'one per token per daily cycle')
+                )}
+            </div>
+            {claimed && claimed.length > 0 && (
+                <div style={{ fontSize: '0.82rem', color: c.secondaryText, marginTop: 12, lineHeight: 1.5 }}>
+                    <span style={{ color: c.mutedText }}>Claimed, all time: </span><TokenAmounts list={claimed} />
+                </div>
+            )}
+            {last24 && last24.length > 0 && (
+                <div style={{ fontSize: '0.82rem', color: c.secondaryText, marginTop: 4, lineHeight: 1.5 }}>
+                    <span style={{ color: c.mutedText }}>Distributed in the last 24 hours: </span><TokenAmounts list={last24} />
+                </div>
+            )}
+        </Card>
+    );
+}
 
+// ---- the signed-in user's rewards ----
+
+const STATUS_COLOR = (c) => ({ Success: c.success, Failed: c.error, Pending: c.warning });
+
+function StatusBadge({ status }) {
+    const { theme } = useTheme();
+    const color = STATUS_COLOR(theme.colors)[status] || theme.colors.mutedText;
+    const label = status === 'Success' ? 'Paid' : status === 'Failed' ? 'Failed' : 'Pending';
+    return <span style={{ fontSize: '0.7rem', fontWeight: 700, color, border: `1px solid ${color}66`, background: `${color}18`, borderRadius: 999, padding: '1px 8px', whiteSpace: 'nowrap' }}>{label}</span>;
+}
+
+function Tabs({ tabs, value, onChange }) {
+    const { theme } = useTheme();
+    const c = theme.colors;
+    return (
+        <div role="tablist" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+            {tabs.map((t) => (
+                <button key={t.key} type="button" role="tab" aria-selected={t.key === value} onClick={() => onChange(t.key)}
+                    style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${t.key === value ? AMBER : c.border}`, background: t.key === value ? `${AMBER}22` : 'transparent', color: c.primaryText, cursor: 'pointer', fontSize: '0.85rem' }}>
+                    {t.label}
+                </button>
+            ))}
         </div>
     );
 }
 
-export default RLL; 
+const rowStyle = (c) => ({ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 10, rowGap: 2, fontSize: '0.82rem', padding: '7px 10px', borderRadius: 8, background: c.secondaryBg });
+
+function YourRewards() {
+    const { identity, isAuthenticated, login } = useAuth();
+    const { theme } = useTheme();
+    const c = theme.colors;
+    const money = useMoney();
+    const { formatValue } = useDenomination();
+    useStoreVersion();
+    const [state, setState] = useState({ loading: false });
+    const [fees, setFees] = useState({});
+    const [claiming, setClaiming] = useState(null);
+    const [confirm, setConfirm] = useState(null);
+    const [notification, setNotification] = useState(null);
+    const [tab, setTab] = useState('received');
+    const [page, setPage] = useState(0);
+
+    const load = useCallback(async () => {
+        if (!identity) return;
+        setState((s) => ({ ...s, loading: true, error: null }));
+        try {
+            const me = identity.getPrincipal();
+            const rll = rllActor(identity);
+            const neurons = await fetchUserNeuronsForSns(identity, SNEED_GOVERNANCE);
+            const [balances, vp, claimEvents] = await Promise.all([
+                rll.balances_of_hotkey_neurons(neurons),
+                rll.get_hotkey_voting_power(neurons),
+                rll.get_claim_events_for_hotkey(me),
+            ]);
+            const owners = vp.neurons_by_owner.map(([p]) => p);
+            const claims = groupClaims(claimEvents);
+            const bal = perToken(balances);
+            bal.forEach(([l]) => want(l));
+            claims.forEach((x) => want(x.token));
+            setState({ loading: false, neurons: neurons.length, owners, balances: bal, vp, claims, history: null, historyError: null });
+            // the credits of every owner whose neuron this principal is on (one query per owner)
+            try {
+                const lists = await Promise.all(owners.map((o) => rll.get_user_specific_distribution_events(o)));
+                const history = lists.flat().sort((a, b) => (a.timestamp > b.timestamp ? -1 : a.timestamp < b.timestamp ? 1 : 0));
+                new Set(history.map((e) => e.token_id.toText())).forEach(want);
+                setState((s) => ({ ...s, history }));
+            } catch (e) {
+                setState((s) => ({ ...s, historyError: isInstructionLimit(e) ? 'Your reward history can be read after the RLL upgrade of proposal #444.' : (e?.message || String(e)) }));
+            }
+        } catch (e) {
+            setState({ loading: false, error: e?.message || String(e) });
+        }
+    }, [identity]);
+    useEffect(() => { if (isAuthenticated && identity) load(); }, [isAuthenticated, identity, load]);
+
+    // each claimable token's ledger fee: a balance not above it cannot be claimed yet
+    useEffect(() => {
+        (state.balances || []).forEach(([ledger]) => {
+            if (fees[ledger] !== undefined) return;
+            setFees((f) => ({ ...f, [ledger]: null }));
+            createLedgerActor(ledger, { agentOptions: { host: RLL_HOST } }).icrc1_fee()
+                .then((fee) => setFees((f) => ({ ...f, [ledger]: fee })))
+                .catch(() => {});
+        });
+    }, [state.balances]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const claim = (ledger, amount) => {
+        const fee = fees[ledger];
+        const meta = tokenMeta(ledger);
+        setConfirm({
+            message: `Claim ${fmtAmount(amount, ledger, meta?.decimals ?? 8)}? It is sent to your Sneed Hub wallet, less the ledger fee of ${fmtAmount(fee, ledger, meta?.decimals ?? 8)}.`,
+            run: async () => {
+                setClaiming(ledger);
+                try {
+                    const r = await rllActor(identity).claim_full_balance_of_hotkey(Principal.fromText(ledger), fee);
+                    if ('Ok' in r) {
+                        setNotification({ type: 'success', message: `Claimed ${fmtAmount(amount - fee, ledger, 8)} (ledger block ${String(r.Ok)}).` });
+                    } else {
+                        const e = r.Err;
+                        const msg = e.InsufficientFunds ? 'Nothing above the fee to claim yet.'
+                            : e.BadFee ? `The ledger fee changed to ${fmtAmount(e.BadFee.expected_fee, ledger, 8)}. Try again.`
+                            : e.GenericError ? e.GenericError.message : `The transfer failed: ${Object.keys(e)[0]}`;
+                        setNotification({ type: 'error', message: msg });
+                    }
+                } catch (e) {
+                    setNotification({ type: 'error', message: `The claim failed: ${e?.message || String(e)}` });
+                } finally {
+                    setClaiming(null);
+                    setFees((f) => ({ ...f, [ledger]: undefined }));
+                    load();
+                }
+            },
+        });
+    };
+
+    if (!isAuthenticated) {
+        return (
+            <Card title="Your rewards" icon={<FaWallet size={15} />}>
+                <p style={{ margin: '0 0 10px', fontSize: '0.85rem', color: c.secondaryText, lineHeight: 1.5 }}>Sign in to see what your Sneed neurons have earned, claim it to your wallet and see your history.</p>
+                <button type="button" onClick={login} style={{ padding: '8px 16px', borderRadius: 10, border: 'none', background: AMBER, color: '#1a1a1a', fontWeight: 700, cursor: 'pointer' }}>Sign in</button>
+            </Card>
+        );
+    }
+
+    const claimable = (state.balances || []).filter(([, a]) => a > 0n).sort((x, y) => usdOfAmount(y[1], y[0]) - usdOfAmount(x[1], x[0]));
+    const totalUsd = valueOf(claimable);
+    const share = state.vp && state.vp.distribution_voting_power > 0n ? Number(state.vp.total_voting_power) / Number(state.vp.distribution_voting_power) : null;
+    const list = tab === 'received' ? (state.history || []) : (state.claims || []);
+    const pages = Math.ceil(list.length / PAGE_SIZE);
+    const shown = list.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+    const manyOwners = (state.owners || []).length > 1;
+
+    return (
+        <Card title="Your rewards" icon={<FaWallet size={15} />} right={<RefreshButton loading={state.loading} onClick={load} title="Read your rewards again" />}>
+            {state.loading && !state.balances && <Spinner text="Reading your neurons and balances…" />}
+            {state.error && <div style={{ fontSize: '0.82rem', color: c.error }}>Could not read your rewards: {state.error}</div>}
+            {state.balances && state.neurons === 0 && (
+                <p style={{ margin: 0, fontSize: '0.85rem', color: c.secondaryText, lineHeight: 1.5 }}>
+                    No Sneed neurons were found for your principal. Rewards go to the owners of Sneed neurons that vote; add this principal as a hotkey on your neurons to see and claim them here (<Link to="/help/neurons" style={{ color: c.accent }}>how</Link>).
+                </p>
+            )}
+            {state.balances && state.neurons > 0 && (
+                <>
+                    <div style={{ fontSize: '0.8rem', color: c.mutedText, marginBottom: 10, lineHeight: 1.5 }}>
+                        {state.neurons} neuron{state.neurons === 1 ? '' : 's'}{manyOwners ? ` of ${state.owners.length} owners` : ''}
+                        {share != null && <> · your votes so far weigh <b style={{ color: c.secondaryText }}>{(share * 100).toLocaleString(undefined, { maximumFractionDigits: 4 })}%</b> of a distribution</>}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: c.mutedText, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>
+                        Claimable{totalUsd > 0 && <span style={{ textTransform: 'none', letterSpacing: 0 }}> · {formatValue(totalUsd)}</span>}
+                    </div>
+                    {claimable.length === 0 && <div style={{ fontSize: '0.85rem', color: c.secondaryText }}>Nothing to claim right now. Rewards are shared out once a day.</div>}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {claimable.map(([ledger, amount]) => {
+                            const fee = fees[ledger];
+                            const tooSmall = fee != null && amount <= fee;
+                            const busy = claiming === ledger;
+                            const v = money(amount, ledger);
+                            return (
+                                <div key={ledger} style={{ ...rowStyle(c), alignItems: 'center', padding: '9px 10px' }}>
+                                    <span style={{ fontWeight: 700, color: c.primaryText, fontVariantNumeric: 'tabular-nums' }}>{fmtAmount(amount, ledger, 8)}</span>
+                                    {v && <span style={{ color: c.mutedText, fontSize: '0.75rem' }}>{v}</span>}
+                                    <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                                        {tooSmall && <span style={{ color: c.mutedText, fontSize: '0.72rem' }}>not above the fee yet</span>}
+                                        <button type="button" disabled={busy || fee == null || tooSmall || !!claiming} onClick={() => claim(ledger, amount)}
+                                            style={{ padding: '6px 14px', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: '0.8rem', background: busy || fee == null || tooSmall ? c.border : c.success, color: '#fff', cursor: busy || fee == null || tooSmall || claiming ? 'not-allowed' : 'pointer' }}>
+                                            {busy ? <FaSpinner className="rll-spin" /> : 'Claim'}
+                                        </button>
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    {manyOwners && <div style={{ fontSize: '0.72rem', color: c.mutedText, marginTop: 6 }}>A principal on a neuron as a hotkey claims the rewards of the neuron&apos;s owner, to itself.</div>}
+                </>
+            )}
+            {state.balances && (
+                <div style={{ marginTop: 16 }}>
+                    <Tabs value={tab} onChange={(t) => { setTab(t); setPage(0); }} tabs={[
+                        { key: 'received', label: `Received${state.history ? ` (${state.history.length})` : ''}` },
+                        { key: 'claims', label: `Your claims (${(state.claims || []).length})` },
+                    ]} />
+                    {tab === 'received' && !state.history && !state.historyError && <Spinner text="Reading your reward history…" />}
+                    {tab === 'received' && state.historyError && <div style={{ fontSize: '0.82rem', color: c.mutedText }}>{state.historyError}</div>}
+                    {tab === 'received' && state.history && state.history.length === 0 && <div style={{ fontSize: '0.82rem', color: c.mutedText }}>No rewards credited yet.</div>}
+                    {tab === 'claims' && state.claims.length === 0 && <div style={{ fontSize: '0.82rem', color: c.mutedText }}>You have not claimed yet.</div>}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {tab === 'received' && shown.map((e, i) => {
+                            const ledger = e.token_id.toText();
+                            const v = money(e.amount, ledger);
+                            return (
+                                <div key={`${String(e.timestamp)}-${ledger}-${i}`} style={rowStyle(c)}>
+                                    <span style={{ fontWeight: 600, color: c.primaryText, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmtAmount(e.amount, ledger, 6)}</span>
+                                    {v && <span style={{ color: c.mutedText, fontSize: '0.72rem' }}>{v}</span>}
+                                    {manyOwners && <span style={{ color: c.secondaryText, display: 'inline-flex', gap: 4, alignItems: 'baseline' }}>to <Who principal={e.user} /></span>}
+                                    <span style={{ color: c.mutedText, fontSize: '0.72rem', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{fmtNs(e.timestamp)} · proposals {String(e.proposal_range.first)}–{String(e.proposal_range.last)}</span>
+                                </div>
+                            );
+                        })}
+                        {tab === 'claims' && shown.map((x) => (
+                            <div key={String(x.seq)} style={rowStyle(c)}>
+                                <StatusBadge status={x.status} />
+                                <span style={{ fontWeight: 600, color: c.primaryText, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmtAmount(x.amount, x.token, 6)}</span>
+                                {x.txIndex != null && <Link to={`/transaction?id=${x.txIndex}&ledger=${x.token}`} style={{ color: c.accent, fontSize: '0.72rem' }}>ledger tx {String(x.txIndex)}</Link>}
+                                {x.error && <span style={{ color: c.mutedText, fontSize: '0.72rem', wordBreak: 'break-word' }}>{x.error}</span>}
+                                <span style={{ color: c.mutedText, fontSize: '0.72rem', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{fmtNs(x.ts)} · #{String(x.seq)}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <Pager page={page} pages={pages} onChange={setPage} accent={AMBER} />
+                </div>
+            )}
+            {confirm && <ConfirmationModal show onClose={() => setConfirm(null)} onSubmit={confirm.run} doAwait message={confirm.message} />}
+            {notification && <Notification type={notification.type} message={notification.message} onClose={() => setNotification(null)} />}
+        </Card>
+    );
+}
+
+// ---- distribution history ----
+
+function Distributions({ onTotal }) {
+    const { theme } = useTheme();
+    const c = theme.colors;
+    const money = useMoney();
+    useStoreVersion();
+    const [source, setSource] = useState(null);
+    const [page, setPage] = useState(0);
+    const [rows, setRows] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+
+    const open = useCallback(async () => {
+        setLoading(true); setError(null);
+        try {
+            const s = await distributionSource();
+            setSource(s); onTotal?.(s.total);
+            setPage(0);
+        } catch (e) { setError(e?.message || String(e)); setLoading(false); }
+    }, [onTotal]);
+    useEffect(() => { open(); }, [open]);
+    useEffect(() => {
+        if (!source) return;
+        let live = true;
+        setLoading(true);
+        source.page(page, PAGE_SIZE)
+            .then((events) => { if (!live) return; events.forEach((e) => want(e.token_id.toText())); setRows(events); setError(null); })
+            .catch((e) => { if (live) setError(e?.message || String(e)); })
+            .finally(() => { if (live) setLoading(false); });
+        return () => { live = false; };
+    }, [source, page]);
+
+    const pages = source ? Math.ceil(source.total / PAGE_SIZE) : 0;
+    return (
+        <Card id="distributions" title="Distributions" icon={<FaHistory size={15} />} right={
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {source && <span style={{ fontSize: '0.75rem', color: c.mutedText }}>{source.total.toLocaleString()} in all</span>}
+                <RefreshButton loading={loading} onClick={open} title="Read the distributions again" />
+            </div>
+        }>
+            <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: c.secondaryText, lineHeight: 1.5 }}>
+                Each daily cycle shares out every known token the canister holds beyond what is already owed, in proportion to the voting power cast on the proposals in the range shown. Newest first.
+            </p>
+            {error && <div style={{ fontSize: '0.82rem', color: c.error, marginBottom: 8 }}>Could not read the distributions: {error}</div>}
+            {!rows && loading && <Spinner text="Reading the distributions…" />}
+            {rows && rows.length === 0 && <div style={{ fontSize: '0.82rem', color: c.mutedText }}>No distributions yet.</div>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, opacity: loading && rows ? 0.6 : 1 }}>
+                {(rows || []).map((e, i) => {
+                    const ledger = e.token_id.toText();
+                    const v = money(e.amount, ledger);
+                    return (
+                        <div key={`${String(e.timestamp)}-${ledger}-${i}`} style={rowStyle(c)}>
+                            <span style={{ fontWeight: 600, color: c.primaryText, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmtAmount(e.amount, ledger, 4)}</span>
+                            {v && <span style={{ color: c.mutedText, fontSize: '0.72rem' }}>{v}</span>}
+                            <span style={{ color: c.secondaryText, fontSize: '0.75rem' }}>proposals {String(e.proposal_range.first)}–{String(e.proposal_range.last)}</span>
+                            <span style={{ color: c.mutedText, fontSize: '0.72rem', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{fmtNs(e.timestamp)}</span>
+                        </div>
+                    );
+                })}
+            </div>
+            <Pager page={page} pages={pages} onChange={setPage} disabled={loading} accent={AMBER} />
+        </Card>
+    );
+}
+
+export default function RLL() {
+    const { theme } = useTheme();
+    const c = theme.colors;
+    const [distributionCount, setDistributionCount] = useState(null);
+    const onTotal = useMemo(() => (n) => setDistributionCount(n), []);
+    return (
+        <>
+            <Header />
+            <style>{'@keyframes rll-spin { to { transform: rotate(360deg); } } .rll-spin { animation: rll-spin 1s linear infinite; }'}</style>
+            <div style={{ maxWidth: 1000, margin: '0 auto', padding: '1.25rem 16px 3rem', boxSizing: 'border-box' }}>
+                <div style={{ marginBottom: 14 }}>
+                    <h1 style={{ margin: 0, fontSize: '1.6rem', color: c.primaryText, display: 'flex', alignItems: 'center', gap: 10 }}><FaGift color={AMBER} size={22} /> Voting rewards</h1>
+                    <p style={{ margin: '6px 0 0', color: c.secondaryText, fontSize: '0.9rem', maxWidth: 720, lineHeight: 1.55 }}>
+                        Part of what the DAO earns goes round the <Link to="/rll_info" style={{ color: c.accent }}>Recursive Liquidity Loop</Link> to the RLL rewards canister. Once a day it shares what it holds among the owners of Sneed neurons, in proportion to the voting power their neurons have cast on Sneed DAO proposals: neurons that vote earn, neurons that never vote do not. Owners, or principals added as hotkeys to their neurons, claim their share whenever they like. More in the <Link to="/help/dao#rewards" style={{ color: c.accent }}>Sneed DAO help</Link>.
+                    </p>
+                </div>
+
+                <Statistics distributionCount={distributionCount} />
+                <YourRewards />
+                <Distributions onTotal={onTotal} />
+                <RllActivityCard style={{ marginBottom: 16 }} />
+
+                <div style={{ fontSize: '0.75rem', color: c.mutedText, lineHeight: 1.5, display: 'flex', gap: 8 }}>
+                    <FaInfoCircle style={{ marginTop: 3, flexShrink: 0 }} />
+                    <div>
+                        Everything here is read live from the RLL canister <code>{rllCanisterId}</code>. Values in your chosen denomination use today&apos;s prices, not the price on the day. For developers: <Link to="/api/rll" style={{ color: c.accent }}>the canister&apos;s API <FaExternalLinkAlt size={8} /></Link>.
+                    </div>
+                </div>
+            </div>
+        </>
+    );
+}

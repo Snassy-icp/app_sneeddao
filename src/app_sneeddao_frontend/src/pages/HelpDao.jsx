@@ -61,7 +61,7 @@ export default function HelpDao() {
                     <Li>Your past claims are in the claim history, each with a link to its transaction.</Li>
                 </Steps>
                 <Warning title="Fees">A claim is a ledger transfer. If a balance is not larger than the token&apos;s transaction fee, the claim is refused; wait until more has accumulated.</Warning>
-                <P><L to="/rll">/rll</L> (<B>Rewards</B> in the Sneed DAO menu) is the rewards server&apos;s public status: all-time and 24-hour statistics of distributions and claims, token balances (distributed, currently claimable, remaining), per-token distribution limits, the distribution cycle status and the imported neurons and proposals. Its control buttons are for admins only.</P>
+                <P><L to="/rll">/rll</L> (<B>Rewards</B> in the Sneed DAO menu) is the public page of the rewards canister: what the rewards are, the headline statistics (all-time distributed per token, number of distributions, owners rewarded, claims paid, the last 24 hours), and, when you are logged in, your own section: what you can claim per token with a <B>Claim</B> button, your share of a distribution, the rewards credited to your neurons&apos; owners and your own claims, page by page. Below that is every distribution, newest first and paged, with the proposal range it was based on, and the recent activity from the canister&apos;s certified ICRC-3 log. Other people&apos;s claims are not listed there; the claim log, the cycle status and the canister&apos;s tools are on an admin page.</P>
             </Section>
 
             <Section icon={FaCrown} title="Sneed Premium" id="premium">
