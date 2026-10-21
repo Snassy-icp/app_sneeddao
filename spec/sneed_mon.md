@@ -1,101 +1,186 @@
-# sneed_mon: Sneed Hub's watcher (draft)
+# sneed_mon: Sneed Monitor, Sneed Hub's watcher (draft)
 
 Sneed Hub shows a notification bar in the header (votable proposals, low cycles, rewards to
 claim), computed in the browser (`src/app_sneeddao_frontend/src/hooks/useVotableProposalsNotifications.js`
 with `utils/VotableProposalsUtils.js`, `useLowCyclesNotification.js`, `useRewardsCache.js`). Users
 want the same alerts on their phone or Discord when the browser is closed. Delivery exists already
-(Sneed Notifications, `spec/sneed_notifications.md`); what's missing is something on-chain that
-watches and decides when to send. That is sneed_mon: a DAO-owned canister registered with Sneed
-Notifications as the app "Sneed Hub".
+(Sneed Notifications, `spec/sneed_notifications.md`); sneed_mon is the on-chain part that watches
+and decides when to send. It is registered with Sneed Notifications as its own app, **"Sneed
+Monitor"** (not the forum's "Sneed Hub" app), because it is paid for differently: users pay for
+being monitored.
 
-Status (2026-10-21): step 1 (topic `proposals`) is built and tested on PocketIC
-(`test/canisters/tests/sneed-mon.test.js`), not deployed. API: `src/app_sneeddao_frontend/public/api-docs/sneed_mon.md`.
+Status (2026-10-21): built and tested on PocketIC (`test/canisters/tests/sneed-mon.test.js`). The
+1bbee49a build (step 1: SNS watches, free, app "Sneed Hub") runs on staging
+(`v53u4-6iaaa-aaaay-aadva-cai`, app 2); this version upgrades it in place (§7). API:
+`src/app_sneeddao_frontend/public/api-docs/sneed_mon.md`.
 
-## 1. Step 1: proposals
+## 1. Watches
 
-- **Opt in per SNS.** `watch_sns(root)` / `unwatch_sns(root)` / `get_my_watches()`. The anonymous
-  principal is refused. The root must be listed by SNS-W (the governance canister comes from there,
-  so a made-up "root" can't point sneed_mon at a canister of the caller's choosing). The SNS name
-  comes from governance `get_metadata`. `watch_sns` also calls `request_permission` on Sneed
-  Notifications so the user finds "Sneed Hub" waiting in the notification centre.
-- **State:** user → SNS roots; root → { governance, name, sorted watchers, open proposals with
-  their two pass states, highest proposal id seen, last error }. Nothing about neurons or votes is
-  kept between rounds except a transient neuron cache.
-- **Caps:** 10 SNSes per user, 1,000 users, 100 SNSes (all in the config).
-- **Rounds** (timer, every 10 minutes): per SNS one `list_proposals` (reward status ACCEPT_VOTES only, newest
-  first, up to 3 pages of 50); open = now < deadline (wait-for-quiet deadline, or creation +
-  initial voting period), as `isProposalAcceptingVotes` does in the frontend.
-- **Passes:** per open proposal a "new" pass once, and a "reminder" pass once its deadline is
-  within 24 h. A pass fetches the ballots with `get_proposal` (because `list_proposals` returns only
-  the caller's own ballots) and walks the watchers: `list_neurons { of_principal = user }` (paged,
-  at most 3 × 100, cached for an hour), keeps neurons where the user holds permission 4 (vote),
-  and counts those whose ballot has `vote = 0`. Neurons without a ballot can't vote on the
-  proposal and don't count. This mirrors `hasEligibleNeurons` in `VotableProposalsUtils.js` (which
-  instead skips neurons with no voting power).
-- **Messages:** through `notify_batch` (50 per call), topic `proposals`, level `normal`, link
-  `https://app.sneeddao.com/proposal?proposalid=<id>&sns=<root>` (the frontend route), dedupe keys
-  `prop:<root>:<id>` and `propdl:<root>:<id>`. A proposal first seen inside the 24 h window gets
-  the "new" message only (it says when voting closes).
-- **Once only:** the pass cursor (the last watcher done, in sorted order) is stable state and
-  moves only after the batch holding that watcher was accepted. Sneed Notifications' dedupe
-  window (1 h) is a second guard, not the main one.
-- **Errors:** `not_allowed`, `rate_limited`, `no_funds`, `invalid` → that user is skipped for that
-  message, no retry. A failed `notify_batch` call or `not_registered` / `unknown_topic` → nothing is
-  marked done, no further passes that round, retried next round. A failing `get_proposal` is given
-  up after 3 tries; a failing `list_neurons` stops the pass until the next round.
-- **Bounded work:** at most 200 calls a tick; a round goes on in up to 10 follow-up ticks, then
-  waits for the next round; cursors keep the place across ticks and upgrades.
-- **Admin:** controllers plus an admin list (as in sneed_notifications); `admin_set_config`,
-  `admin_set_notifications_canister`, `admin_register_with_notifications` (register_app with this
-  canister and the topic list), `admin_set_app_id`, `admin_pause` / `admin_resume`,
-  `admin_set_interval`, `admin_run_now`; `get_status`, `get_snses` (counts only, never who watches).
-- **Conventions:** ingress guard (`system func inspect`: queries refused as updates, admin methods
-  only from admins, 4 KB argument cap); `get_api_doc`; enhanced orthogonal persistence like
-  sneed_notifications (so upgrade proposals must set `wasm_memory_persistence = keep`); no ICRC-85.
+- **Targets:** `variant { sns : root; nns }`. An SNS root must be listed by SNS-W (the governance
+  canister comes from there, so a made-up root can't point sneed_mon at a canister of the caller's
+  choosing); its name comes from governance `get_metadata`. The NNS is governance
+  `rrkah-fqaaa-aaaaa-aaaaq-cai` (`get_config().tuning.nns_governance`).
+- **Casual users: one call.** `watch(target)` with the defaults in config (`tuning.defaults`: all
+  topics, checked hourly, new-proposal messages and reminders a day before the deadline). It also
+  asks Sneed Notifications for permission (`request_permission`) and, for an SNS, reads the user's
+  neurons once. The balance must pay one check of each of the user's watches including the new one.
+- **Pro users:** `update_watch(target, settings)`, every field optional: `every_min` (a tier: 10,
+  60, 180 or 1440), `topics` (`all` or `only` keys), `new_proposals`, `reminders`,
+  `reminder_window_s` (1 h, 4 h, 12 h, 24 h or 48 h, at least the check interval, so a reminder
+  can't arrive after the deadline). `get_my_watches`, `get_watch(target)`.
+- **Topic filter:** keys from `list_target_topics(target)`: an SNS with topics offers its
+  `list_topics` (keys are the topic names, e.g. `Governance`; a proposal's key is its `topic`
+  field); an older SNS offers its proposal types (`list_nervous_system_functions`, keys
+  `fn:<id>`, matched against the proposal's `action`). A filter matches a proposal by either key.
+  The NNS offers its topic numbers (`4` = Governance...). Answers are cached a day.
+- **Neurons.** SNS: the neurons that list the user with permission 4 (vote), from `list_neurons {
+  of_principal }` (up to 3 × 100), cached per user and SNS. NNS: `list_neurons` only returns the
+  caller's own neurons, so users register neuron ids (`set_nns_neurons`, at most 20) and
+  sneed_mon reads their public `get_neuron_info`. A hotkey is never needed (a hotkey can vote).
+- **Caps:** 10 watches per user, 1,000 users, 100 targets.
 
-## 2. Cost
+## 2. Rounds
 
-Assumptions for a rough estimate (13-node subnet: about 0.26 B cycles per inter-canister call plus
-about 1,000 cycles per byte sent or received; 1 T cycles ≈ $1.35):
+A timer every 10 minutes (`interval_s`, one recurring timer, no heartbeat). A round never starts
+while one is open: a round over its call budget (`max_calls_per_tick`, 200) goes on in follow-up
+ticks one second apart (up to `max_continuations`), then in the next timer tick. Every phase
+skips what is done already, so a tick or an upgrade can stop anywhere. Independent calls are issued
+together and awaited together (`tuning.parallel_calls`, 20).
 
-- **Listing, every round:** one `list_proposals` per SNS, filtered to reward status ACCEPT_VOTES
-  (`include_reward_status = [1]`), so only open proposals come back (a few KB each, payload
-  rendering included). 100 SNSes × 144 rounds a day × (0.26 B + ~10 KB × 1,000) ≈ 0.2 T cycles a
-  day. This dominates when nothing happens.
-- **Per proposal:** 2 `get_proposal` calls with every ballot (about 90 bytes per neuron: ~0.45 B
-  cycles for an SNS of 5,000 neurons) plus, per watcher, up to 2 `list_neurons` calls (fewer with
-  the one-hour cache; ~0.3 B cycles each for a user with a few neurons) and a share of a
-  `notify_batch` (50 messages ≈ 0.3 B). 1,000 watchers on one proposal ≈ 0.7 T cycles; 10 users ≈ 7 B.
-- Instructions per tick are small (decoding the ballots of a big SNS once, then map lookups).
+1. **Poll** each target that is due: as often as its fastest *active* (not paused) watcher's
+   `every_min`. A target with no active watcher is never polled, and forgets its proposals; when a
+   watcher returns it starts afresh (every open proposal counts as new). One `list_proposals`
+   (reward status ACCEPT_VOTES; up to 3 pages: SNS 50, NNS 100 a page); open = now < deadline
+   (wait-for-quiet deadline, or creation + initial voting period; NNS `deadline_timestamp_seconds`).
+2. **Missing neuron caches** (a watcher never read, e.g. after the upgrade) are read.
+3. **Match** (polled targets only). SNS: a new proposal's ballots are read once with `get_proposal`
+   (`list_proposals` returns only the caller's ballots) and matched, without further calls,
+   against every active watcher's cached neurons: a neuron counts when its ballot has `vote = 0`.
+   Once per reminder window in use (a set of five), when the deadline comes within it, the ballots
+   are read and matched again for the watchers with that window. So the calls per proposal don't
+   depend on the number of watchers (test: 300 watchers, 1 `get_proposal`, 0 `list_neurons`). A
+   window already reached when the proposal is announced counts as done (the message says when
+   voting closes). NNS: every active watcher with registered neurons gets the proposal as a
+   candidate; no calls. Matches wait in the user's pending list (stable, at most 200).
+4. **Checks.** Each watch whose `every_min` has passed since its last check is checked: charged
+   (§3); NNS candidates are checked against the user's neurons (`get_neuron_info` of each, once a
+   round: voting power, dissolve delay ≥ 6 months, created before the proposal, no non-zero vote in
+   `recent_ballots`; a private neuron hides its ballots, so it counts for new proposals only); the
+   waiting proposals go out, one message per topic: a single proposal as before, several as a
+   digest ("3 proposals to vote on in Alpha DAO", a line each, link to the proposals page of that
+   SNS). `notify_batch`, 50 messages a call, in parallel.
+5. **Stale neuron caches** (older than `neuron_refresh_s`, 6 h, or the watch's interval if longer)
+   are re-read, at most `max_refresh_per_round` (100) a round, spreading the load. Users call
+   `refresh_my_neurons(target)` after adding a neuron (at most every 10 minutes).
+6. **Fees** are forwarded when over the threshold (§3).
 
-**Q**: measure on staging (`get_status().calls_total` and the cycle balance across a few days).
-The levers are the interval, the caps, and `neuron_cache_s`.
+**Messages:** topic `proposals` (normal) for "you can vote", `proposal_deadlines` (urgent) for
+"closes soon", `account` (normal) for "monitoring paused". Links: SNS
+`/proposal?proposalid=<id>&sns=<root>` and `/proposals?sns=<root>`, NNS
+`/icp_proposal?proposalid=<id>` and `/icp_proposals`. Dedupe keys `prop:` / `propdl:` (single),
+`propd:` / `propdld:` (digest).
 
-## 3. Who pays
+**Once only:** a proposal is matched once (`new_matched`) and once per window (`windows_done`),
+stored with the target; a pending item leaves the list when Sneed Notifications answered for it.
+`not_allowed`, `rate_limited`, `no_funds`, `invalid` → dropped (no retry). A failed `notify_batch`
+call or `not_registered` / `unknown_topic` → no more checks that round, the check refunded, its
+items kept.
 
-`sponsored = false` by default: Sneed Notifications charges paid deliveries (push, Discord) to the
-user's balance, Sneed SMS is free, as for the forum's messages. **Q**: should the DAO sponsor
-reminders (fund the app with `top_up_app` and set `sponsored = true`)? sneed_mon itself pays only
-cycles.
+**Errors:** a failing `list_proposals` skips the target until the next round; `get_proposal` is
+given up after 3 failures; a failing `list_neurons` keeps the old cache and is retried in an hour.
 
-## 4. Questions
+## 3. Billing
 
-1. **One app or two?** The forum is already registered as "Sneed Hub". Either sneed_mon is added
-   to that app (an admin of Sneed Notifications: `update_app` with this canister and the
-   `proposals` topic, then `admin_set_app_id` here), or it registers its own app with
-   `admin_register_with_notifications`, and users see two "Sneed Hub" apps. The first is cleaner;
-   note the daily cap (20 by default) is per app, so forum messages and proposal messages share it.
-2. **Reminder level:** `normal` for both messages. A deadline is the spec's example of `urgent`;
-   a second topic (`proposal_deadlines`, urgent) would let users route reminders separately.
-3. **Watch by default?** Today users opt in per SNS. Sneed Hub could offer "watch all SNSes where
-   I have neurons" (the frontend knows them) as one click.
-4. **NNS proposals:** not in step 1 (NNS `list_proposals` returns ballots differently and neurons
-   are found by hotkey).
+Users pay for being monitored, per check; messages themselves are priced by Sneed Notifications as
+usual (`sponsored = false`).
 
-## 5. Later topics (not built)
+- **Deposits:** `get_deposit_account()` is the caller's subaccount of sneed_mon on the ICP ledger
+  (byte 0 = principal length, then its bytes; the usual Sneed derivation). `credit_deposit()` reads
+  that subaccount and moves what is there (less one ledger fee) to sneed_mon's main account, then
+  credits the user's balance. With nothing there it credits nothing; a second call during the
+  first is refused (a per-user lock, released in `finally`); the credit happens only after the
+  ledger accepted, and the call is unbounded-wait, so a reject means nothing moved.
+- **Charges are bookkeeping** (balance decrements, never ledger transfers). Each check costs the
+  tier's per-check price: tiers (admin `admin_set_tiers`) are {10 min, 1 h, 3 h, 1 day} with daily
+  multipliers 6, 3, 2, 1 of `base_daily_price_e8s` (14,400 e8s). Per check = floor(daily price ×
+  every_min / 1440), so a day of checks never costs more than the tier's daily price: 600, 1,800,
+  3,600 and 14,400 e8s. Each check goes into the user's charge history (`get_my_charges`, the last
+  200: time, target, tier, price, outcome such as "nothing new" or "2 proposals, sent").
+- **Pause:** a check the balance can't pay is not made: the user is paused (watches kept, no checks,
+  pending proposals dropped, no charges) and told once (topic `account`). `credit_deposit` (or
+  `watch`, `unwatch`, a lower price at round start) resumes them when the balance pays one check of
+  each watch. A user with no watches is never charged.
+- **Withdrawals:** `withdraw_balance(amount, to)`: the amount comes off the balance first and is put
+  back if the ledger refuses; `to` receives amount less the ledger fee.
+- **Fees:** `fees_collected_e8s` (all charges), `fees_withdrawn_e8s` (forwarded or withdrawn). Once
+  the available fees reach `fee_sweep_threshold_e8s` (0.1 ICP), at the end of a round and at most
+  once a round, they go in one transfer (less the ledger fee) to `fee_destination`: by default the
+  account Sneed Premium pays into, the Neutrinite pylon's ICP splitter
+  (`6jvpj-sqaaa-aaaaj-azwnq-cai`, subaccount `01 00 00 00 00 06` + 26 zero bytes), which feeds the
+  RLL. The counters move only after the ledger accepted; a failure leaves the fees for the next
+  round. `null` keeps them in the canister for `admin_withdraw_fees(amount, to)`, which can't take
+  more than the available fees.
+- **Invariant:** sneed_mon's main account holds at least `user_balances + fees_available`
+  (`get_accounting().obligations_e8s`; the tests check it is exactly that).
+- **Economics** (`get_status().economics`): revenue, checks, rounds and cycles burned (what the
+  balance went down by during ticks), in total and for the last 24 hours and 30 days (hourly
+  buckets), so `/revenue` can show whether the monitor pays for itself.
 
-The watch list carries a topic (`MonTopic`, today only `#proposals`) so later steps add tags:
-- `#cycles`: low cycles for canisters the user watches (as `useLowCyclesNotification.js`), probably
-  via the blackhole or the canister's own status method.
-- `#rewards`: unclaimed RLL rewards (as `useRewardsCache.js`).
-Each would get its own watch map and pass, and a topic in the registration.
+## 4. Cost
+
+Assumptions (13-node subnet: about 0.26 B cycles per inter-canister call plus about 1,000 cycles per
+byte; 1 T cycles ≈ $1.35):
+
+- **Polling** is per target and only at the fastest active watcher's pace: an SNS whose watchers
+  are all hourly costs 24 `list_proposals` a day (≈ 6 B cycles with a few KB each), a 10-minute
+  watcher makes it 144 (≈ 40 B). Unwatched SNSes cost nothing.
+- **Per proposal:** one `get_proposal` with every ballot (≈ 0.45 B for 5,000 neurons) plus one per
+  reminder window in use, whatever the number of watchers; then a share of `notify_batch`
+  (50 messages ≈ 0.3 B).
+- **Per user:** a `list_neurons` per SNS every 6 hours (≈ 0.3 B each: ~1.2 B a day); NNS: one
+  `get_neuron_info` per registered neuron per check that has candidates (≈ 0.27 B each).
+- At the default prices an hourly watch brings 43,200 e8s a day (0.000432 ICP, about $0.002 at
+  $5 an ICP), against roughly 1 to 2 B cycles a day of per-user cost (about $0.002), before the
+  shared polling and per-proposal costs: roughly break-even, so the base price likely needs raising.
+
+**Q**: measure on staging with `get_status().economics` and tune `base_daily_price_e8s`; NNS
+watches cost more per check (per-neuron reads) than SNS watches at the same price.
+
+## 5. Admin
+
+Controllers plus an admin list. Everything is readable with `get_config()` (`core`, `tuning`,
+`billing`, `tiers`) and settable: `admin_set_config` (core), `admin_set_tuning` (defaults, refresh,
+parallelism, caps), `admin_set_tiers`, `admin_set_billing`, `admin_set_fee_destination`,
+`admin_set_fee_sweep_threshold`, `admin_set_notifications_canister`,
+`admin_register_with_notifications` (`register_app`: "Sneed Monitor", this canister, the three
+topics), `admin_update_notifications_app` (`update_app(app_id, AppInput)`, allowed to the app's
+owner, which sneed_mon is when it registered the app: new name, description and topics, same id),
+`admin_set_app_id`, `admin_withdraw_fees`, `admin_pause` / `admin_resume`, `admin_set_interval`,
+`admin_run_now`, `admin_add_admin` / `admin_remove_admin`.
+
+Conventions: ingress guard (`system func inspect`: queries refused as updates, `admin_*` only from
+admins, user methods not from the anonymous principal, 4 KB argument cap, 16 KB for a topic
+filter); `get_api_doc`; enhanced orthogonal persistence (upgrade proposals must set
+`wasm_memory_persistence = keep`); no ICRC-85; no ICRC-3 log yet.
+
+## 6. Questions
+
+1. **Watch by default?** Sneed Hub could offer "watch all SNSes where I have neurons" as one click.
+2. **Prices:** the defaults (base 14,400 e8s a day) are a guess; set them from staging's economics.
+3. **NNS pricing:** NNS checks read each registered neuron, so they cost more cycles; same price
+   for now.
+
+## 7. Upgrade from the staging build (1bbee49a)
+
+New stable variables only; the old `snses` / `user_watches` (and two old constants) stay declared
+and are moved into the new structures in `postupgrade`, then emptied. Watches get the defaults;
+open proposals whose "new" pass had started count as announced (better a missed message than a
+repeat). Watchers have no balance after the upgrade, so their first check pauses them with the
+notice (staging has none). After the upgrade run `admin_update_notifications_app` so app 2 becomes
+"Sneed Monitor" with the three topics, and point `admin_set_billing` at the real ledger (it is by
+default).
+
+## 8. Later topics (not built)
+
+The watch carries `MonTopic` (`#proposals` today): `#cycles` (low cycles of watched canisters, as
+`useLowCyclesNotification.js`) and `#rewards` (unclaimed RLL rewards, as `useRewardsCache.js`).

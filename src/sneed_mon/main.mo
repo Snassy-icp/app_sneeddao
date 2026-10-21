@@ -1,9 +1,11 @@
 import Array "mo:base/Array";
+import Blob "mo:base/Blob";
 import Buffer "mo:base/Buffer";
 import Char "mo:base/Char";
 import Cycles "mo:base/ExperimentalCycles";
 import Error "mo:base/Error";
 import Int "mo:base/Int";
+import Int32 "mo:base/Int32";
 import Iter "mo:base/Iter";
 import Nat "mo:base/Nat";
 import Nat32 "mo:base/Nat32";
@@ -20,25 +22,52 @@ import SnsDirectory "../sneed_names/SnsDirectory";
 import ApiDoc "ApiDoc";
 import T "Types";
 
-/// sneed_mon (spec/sneed_mon.md): Sneed Hub's watcher. Users opt in per SNS; on a timer it reads
-/// each watched SNS's open proposals, finds the watchers whose neurons can vote and haven't, and
-/// tells them through Sneed Notifications (app "Sneed Hub", topic `proposals`): once when a
-/// proposal they can vote on appears, and once more about a day before voting closes if they still
-/// haven't voted. Step 1 is proposals only; low cycles and rewards are planned topics.
+/// sneed_mon (spec/sneed_mon.md): Sneed Hub's watcher, registered with Sneed Notifications as the
+/// app "Sneed Monitor". Users watch SNSes or the NNS (`watch(target)`; pro users tune a watch with
+/// `update_watch`). A target is polled as often as its most frequent active watcher wants; each
+/// new proposal's ballots are read once and matched against every watcher's cached neurons, and
+/// each watch is checked (and charged, per its frequency tier) when due: its waiting proposals go
+/// out as one message per topic, "you can vote" (`proposals`) and "closes soon"
+/// (`proposal_deadlines`). NNS neurons are registered by id and read with get_neuron_info when a
+/// check is due. Watching is paid from a prepaid ICP balance per user; when a check can't be paid
+/// the user's watches pause (topic `account` says so once).
 shared (deployer) persistent actor class SneedMon() = this {
 
   public type MonTopic = T.MonTopic;
+  public type Target = T.Target;
+  public type TopicFilter = T.TopicFilter;
+  public type WatchSettings = T.WatchSettings;
+  public type WatchSettingsInput = T.WatchSettingsInput;
+  public type Watch = T.Watch;
+  public type OpenP = T.OpenP;
+  public type TargetState = T.TargetState;
+  public type Pending = T.Pending;
+  public type PendingKind = T.PendingKind;
+  public type NeuronCache = T.NeuronCache;
+  public type TopicOption = T.TopicOption;
+  public type Tuning = T.Tuning;
+  public type MyWatch = T.MyWatch;
+  public type TargetInfo = T.TargetInfo;
+  public type Backlog = T.Backlog;
+  public type Period = T.Period;
+  public type Economics = T.Economics;
   public type PassState = T.PassState;
   public type OpenProposal = T.OpenProposal;
   public type WatchedSns = T.WatchedSns;
   public type Config = T.Config;
   public type Status = T.Status;
-  public type SnsInfo = T.SnsInfo;
-  public type MyWatch = T.MyWatch;
   public type Result = T.Result;
   public type ResultNat = T.ResultNat;
-
-  type PassKind = { #new; #reminder };
+  public type BillingConfig = T.BillingConfig;
+  public type Tier = T.Tier;
+  public type TierTable = T.TierTable;
+  public type TierPrice = T.TierPrice;
+  public type UserAccount = T.UserAccount;
+  public type ChargeEntry = T.ChargeEntry;
+  public type MyBalance = T.MyBalance;
+  public type Accounting = T.Accounting;
+  public type Account = T.Account;
+  public type CreditResult = T.CreditResult;
 
   // ---------------------------------------------------------------------------------------------
   // State (enhanced orthogonal persistence, like sneed_notifications)
@@ -48,12 +77,29 @@ shared (deployer) persistent actor class SneedMon() = this {
   let ACCEPT_VOTES : Int32 = 1; // reward status: still open for votes (keeps listings small)
   let NEURON_PAGE : Nat = 100;
   let PROPOSAL_PAGE : Nat = 50;
-  let MAX_OPEN_PER_SNS : Nat = 50;
+  transient let NNS_PAGE : Nat = 100;
+  transient let MAX_OPEN_PER_TARGET : Nat = 100;
   let MAX_FAILS : Nat = 3;
-  let MIN_INTERVAL_S : Nat = 60;
-  let STALE_RUN_NS : Int = 900_000_000_000; // a run that trapped mid-way frees the lock after 15 min
-  let TOPIC_PROPOSALS = "proposals";
+  // constants of the 1bbee49a build, kept (stable lets can't be dropped without a migration); new
+  // constants are transient, so a changed value takes effect on upgrade
+  let MAX_OPEN_PER_SNS : Nat = 50;
   let LINK_BASE = "https://app.sneeddao.com/proposal?proposalid=";
+  let MIN_INTERVAL_S : Nat = 60;
+  transient let NNS_MIN_DISSOLVE_S : Nat64 = 15_778_800; // six months: the NNS's minimum to vote
+  let STALE_RUN_NS : Int = 900_000_000_000; // a run that trapped mid-way frees the lock after 15 min
+  transient let SLACK_NS : Int = 60_000_000_000; // due a minute early (timer jitter)
+  transient let MIN_NS : Nat = 60_000_000_000;
+  transient let HOUR_NS : Nat = 3_600_000_000_000;
+  transient let DIGEST_LINES : Nat = 10;
+  transient let MAX_CHARGES_KEPT : Nat = 200;
+  transient let HOURS_KEPT : Nat = 720; // 30 days of hourly economics
+  let TOPIC_PROPOSALS = "proposals";
+  transient let TOPIC_DEADLINES = "proposal_deadlines";
+  transient let TOPIC_ACCOUNT = "account";
+  transient let APP_NAME = "Sneed Monitor";
+  transient let NNS_KEY = "nns";
+  transient let SITE = "https://app.sneeddao.com";
+  transient let WINDOWS_S : [Nat] = [3_600, 14_400, 43_200, 86_400, 172_800];
 
   var config : Config = {
     notifications = ?Principal.fromText("vuy7a-iaaaa-aaaay-aaduq-cai");
@@ -63,25 +109,72 @@ shared (deployer) persistent actor class SneedMon() = this {
     sponsored = false;
     max_users = 1_000;
     max_watches_per_user = 10;
-    max_snses = 100;
+    max_snses = 100; // watched targets (SNSes and the NNS)
     max_calls_per_tick = 200;
     max_continuations = 10;
-    reminder_window_s = 86_400;
+    reminder_window_s = 86_400; // unused: watches carry their own window (tuning.defaults)
     batch_size = 50;
     neuron_pages = 3;
     proposal_pages = 3;
-    neuron_cache_s = 3_600;
+    neuron_cache_s = 3_600; // unused: tuning.neuron_refresh_s
   };
   var admins : [Principal] = [];
   var app_id : ?Nat = null;
 
-  let snses = Map.new<Principal, WatchedSns>(); // root -> state
-  let user_watches = Map.new<Principal, [Principal]>(); // user -> SNS roots (topic proposals)
+  // legacy state of the 1bbee49a build: moved into `targets` / `watches` by postupgrade, then empty
+  let snses = Map.new<Principal, WatchedSns>();
+  let user_watches = Map.new<Principal, [Principal]>();
   let directory : SnsDirectory.State = SnsDirectory.init();
+
+  var tuning : Tuning = {
+    nns_governance = Principal.fromText("rrkah-fqaaa-aaaaa-aaaaq-cai");
+    defaults = { every_min = 60; topics = #all; new_proposals = true; reminders = true; reminder_window_s = 86_400 };
+    neuron_refresh_s = 21_600;
+    max_refresh_per_round = 100;
+    parallel_calls = 20;
+    max_nns_neurons = 20;
+    user_refresh_min_s = 600;
+    max_pending_per_user = 200;
+    topic_cache_s = 86_400;
+  };
+  let targets = Map.new<Text, TargetState>(); // target key -> state
+  let watches = Map.new<Principal, [Watch]>(); // user -> watches
+  let pending = Map.new<Principal, [Pending]>(); // user -> proposals waiting for the watch's next check
+  let user_neurons = Map.new<Text, NeuronCache>(); // "user/target key" -> SNS vote neurons
+  let nns_neurons = Map.new<Principal, [Nat64]>(); // user -> registered NNS neuron ids
+  let topic_options = Map.new<Text, (Int, [TopicOption])>(); // target key -> (read at, options)
+
+  // billing (spec §3): per check, priced by the watch's frequency tier
+  var billing : BillingConfig = {
+    icp_ledger = Principal.fromText("ryjl3-tyaaa-aaaaa-aaaba-cai");
+    ledger_fee_e8s = 10_000;
+    // the account Sneed Premium pays into (its getConfig().paymentRecipient): the Neutrinite
+    // pylon's ICP splitter, node 6, which feeds the RLL
+    fee_destination = ?{ owner = Principal.fromText("6jvpj-sqaaa-aaaaj-azwnq-cai"); subaccount = ?Blob.fromArray([1, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) };
+    fee_sweep_threshold_e8s = 10_000_000; // 0.1 ICP
+  };
+  var tier_table : TierTable = {
+    base_daily_price_e8s = 14_400; // 0.000144 ICP a day for a daily watch; per check: 10 min 600, 1 h 1,800, 3 h 3,600, 1 day 14,400 e8s
+    tiers = [{ every_min = 10; daily_multiplier = 6 }, { every_min = 60; daily_multiplier = 3 }, { every_min = 180; daily_multiplier = 2 }, { every_min = 1440; daily_multiplier = 1 }];
+  };
+  let accounts = Map.new<Principal, UserAccount>();
+  let charges = Map.new<Principal, [ChargeEntry]>(); // user -> the last MAX_CHARGES_KEPT checks, oldest first
+  var fees_collected_e8s : Nat = 0;
+  var fees_withdrawn_e8s : Nat = 0;
+  var fees_forwarded_e8s : Nat = 0;
+  var fee_forwards : Nat = 0;
+  var deposits_e8s : Nat = 0;
+  var withdrawals_e8s : Nat = 0;
+
+  // economics: does the monitor pay for itself? (hourly buckets for the windows)
+  let hours = Map.new<Nat, Period>();
+  var econ_total : Period = { cycles_burned = 0; revenue_e8s = 0; checks = 0; rounds = 0 };
+  var last_round_cycles : Nat = 0;
 
   var round_no : Nat = 0;
   var last_round_start : Int = 0;
   var last_round_end : Int = 0;
+  var last_round_duration : Int = 0;
   var calls_total : Nat = 0;
   var calls_last_round : Nat = 0;
   var sent : Nat = 0;
@@ -92,15 +185,21 @@ shared (deployer) persistent actor class SneedMon() = this {
   var errors : Nat = 0;
   var last_error : ?(Int, Text) = null;
 
-  // per round, rebuilt after an upgrade (the passes' cursors are stable, so work resumes)
-  transient var queue : [Principal] = [];
-  transient var qpos : Nat = 0;
+  // per round, rebuilt after an upgrade (every phase is idempotent, so a round just goes on)
+  transient var round_open = false;
+  transient var round_ticks : Nat = 0;
+  transient var round_cycles : Nat = 0;
   transient var budget : Nat = 0;
   transient var continuations : Nat = 0;
   transient var running_since : ?Int = null;
-  transient var notify_broken = false; // the notifications canister refused us: no more passes this round
-  transient let ballot_cache = Map.new<Text, Map.Map<Text, Int32>>(); // "root/id/kind" -> neuron hex -> vote
-  transient let neuron_cache = Map.new<Text, (Int, [Text])>(); // "user/root" -> (fetched, vote neuron hexes)
+  transient var notify_broken = false; // the notifications canister refused us: no more checks this round
+  transient var notices_done = false;
+  transient var refreshed_this_round : Nat = 0;
+  transient var fees_checked_round : Nat = 0;
+  transient let nns_info = Map.new<Principal, [(Nat64, ?T.NnsNeuronInfo)]>(); // this round's NNS neuron reads
+  // users with a ledger call under way (credit_deposit, withdraw_balance), and the fee withdrawal
+  transient let in_flight = Map.new<Principal, ()>();
+  transient var fees_in_flight = false;
 
   // ---------------------------------------------------------------------------------------------
   // Helpers
@@ -109,10 +208,24 @@ shared (deployer) persistent actor class SneedMon() = this {
   func now() : Int = Time.now();
   func nowS() : Nat64 = Nat64.fromNat(Int.abs(now()) / 1_000_000_000);
   func isAdmin(p : Principal) : Bool = Principal.isController(p) or Array.find<Principal>(admins, func(a) = a == p) != null;
-  func watchesOf(u : Principal) : [Principal] = switch (Map.get(user_watches, Map.phash, u)) { case (?w) w; case null [] };
   func has(xs : [Principal], p : Principal) : Bool = Array.find<Principal>(xs, func(x) = x == p) != null;
+  func hasNat(xs : [Nat], n : Nat) : Bool = Array.find<Nat>(xs, func(x) = x == n) != null;
   func gov(p : Principal) : T.Governance = actor (Principal.toText(p));
+  func nnsGov() : T.NnsGovernance = actor (Principal.toText(tuning.nns_governance));
   func spend() { if (budget > 0) budget -= 1; calls_total += 1; calls_last_round += 1 };
+  func par() : Nat = Nat.max(1, Nat.min(Nat.min(tuning.parallel_calls, 50), budget));
+
+  func targetKey(t : Target) : Text = switch t { case (#sns(r)) Principal.toText(r); case (#nns) NNS_KEY };
+  func isNns(key : Text) : Bool = key == NNS_KEY;
+  func watchesOf(u : Principal) : [Watch] = switch (Map.get(watches, Map.phash, u)) { case (?w) w; case null [] };
+  func findWatch(u : Principal, key : Text) : ?Watch = Array.find<Watch>(watchesOf(u), func(w) = targetKey(w.target) == key);
+  func updateWatch(u : Principal, key : Text, f : Watch -> Watch) {
+    Map.set(watches, Map.phash, u, Array.map<Watch, Watch>(watchesOf(u), func(w) = if (targetKey(w.target) == key) f(w) else w));
+  };
+  func pendingOf(u : Principal) : [Pending] = switch (Map.get(pending, Map.phash, u)) { case (?p) p; case null [] };
+  func setPending(u : Principal, ps : [Pending]) = if (ps.size() == 0) Map.delete(pending, Map.phash, u) else Map.set(pending, Map.phash, u, ps);
+  func cacheKey(u : Principal, key : Text) : Text = Principal.toText(u) # "/" # key;
+  func nnsNeuronsOf(u : Principal) : [Nat64] = switch (Map.get(nns_neurons, Map.phash, u)) { case (?n) n; case null [] };
 
   let HEX : [Char] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'];
   func hex(b : Blob) : Text {
@@ -129,12 +242,12 @@ shared (deployer) persistent actor class SneedMon() = this {
     out # "…";
   };
 
-  func noteError(root : ?Principal, msg : Text) {
+  func noteError(key : ?Text, msg : Text) {
     errors += 1;
     last_error := ?(now(), msg);
-    switch (root) {
-      case (?r) switch (Map.get(snses, Map.phash, r)) {
-        case (?s) Map.set(snses, Map.phash, r, { s with last_error = ?(now(), msg); errors = s.errors + 1 });
+    switch (key) {
+      case (?k) switch (Map.get(targets, Map.thash, k)) {
+        case (?s) Map.set(targets, Map.thash, k, { s with last_error = ?(now(), msg); errors = s.errors + 1 });
         case null {};
       };
       case null {};
@@ -146,9 +259,10 @@ shared (deployer) persistent actor class SneedMon() = this {
     case null created + initial;
   };
 
-  func inWindow(deadline : Nat64) : Bool {
+  /// The deadline is within `window` seconds (and still ahead).
+  func within(deadline : Nat64, window : Nat) : Bool {
     let t = nowS();
-    deadline > t and Nat64.toNat(deadline - t) <= config.reminder_window_s;
+    deadline > t and Nat64.toNat(deadline - t) <= window;
   };
 
   func hoursLeft(deadline : Nat64) : Text {
@@ -158,60 +272,19 @@ shared (deployer) persistent actor class SneedMon() = this {
     if (h == 0) "in less than an hour" else if (h == 1) "in about 1 hour" else "in about " # Nat.toText(h) # " hours";
   };
 
-  func shortRoot(p : Principal) : Text {
-    let t = Principal.toText(p);
-    clip(t, 12);
+  func snsTopicName(t : T.SnsTopic) : Text = switch t {
+    case (#DaoCommunitySettings) "DaoCommunitySettings";
+    case (#SnsFrameworkManagement) "SnsFrameworkManagement";
+    case (#DappCanisterManagement) "DappCanisterManagement";
+    case (#ApplicationBusinessLogic) "ApplicationBusinessLogic";
+    case (#Governance) "Governance";
+    case (#TreasuryAssetManagement) "TreasuryAssetManagement";
+    case (#CriticalDappOperations) "CriticalDappOperations";
   };
 
-  // ---------------------------------------------------------------------------------------------
-  // Users: opt in per SNS
-  // ---------------------------------------------------------------------------------------------
-
-  /// Watch an SNS's proposals: you are told when one of your neurons (those you hold the vote
-  /// permission on) can vote on a new proposal, and a day before voting closes if it hasn't.
-  /// `root` must be the root of an SNS that SNS-W lists. Allow the app "Sneed Hub" in the
-  /// notification centre to receive the messages.
-  public shared ({ caller }) func watch_sns(root : Principal) : async Result {
-    if (Principal.isAnonymous(caller)) return #err("Please sign in");
-    switch (capCheck(caller, root)) { case (?e) return e; case null {} };
-    let known = Map.get(snses, Map.phash, root);
-    var governance = switch (known) { case (?s) s.governance; case null root };
-    var name = "";
-    if (known == null) {
-      try {
-        switch (await* SnsDirectory.governanceOf(directory, config.sns_wasm, root)) {
-          case (?g) governance := g;
-          case null return #err("Not the root of an SNS listed by SNS-W (try again in a minute if it is new)");
-        };
-      } catch (e) { return #err("SNS-W did not answer: " # Error.message(e)) };
-      try { name := switch ((await gov(governance).get_metadata({})).name) { case (?n) clip(n, 64); case null "" } } catch (_) {};
-    };
-    // the state may have changed while we waited
-    switch (capCheck(caller, root)) { case (?e) return e; case null {} };
-    switch (Map.get(snses, Map.phash, root)) {
-      case (?s) Map.set(snses, Map.phash, root, { s with watchers = sortedInsert(s.watchers, caller) });
-      case null Map.set(snses, Map.phash, root, {
-        root; governance; name = if (name == "") "SNS " # shortRoot(root) else name; watchers = [caller]; open = []; max_seen_id = (0 : Nat64);
-        listed_round = 0; listed_at = 0; last_error = null; errors = 0;
-      });
-    };
-    Map.set(user_watches, Map.phash, caller, Array.append(watchesOf(caller), [root]));
-    // best effort: the request shows up in the user's notification centre
-    switch (config.notifications, app_id) {
-      case (?n, ?_) try { ignore await (actor (Principal.toText(n)) : T.Notifications).request_permission(caller) } catch (_) {};
-      case _ {};
-    };
-    #ok("Watching");
-  };
-
-  /// null when `caller` may watch `root`, else the error to answer.
-  func capCheck(caller : Principal, root : Principal) : ?Result {
-    let mine = watchesOf(caller);
-    if (has(mine, root)) return ?#ok("Already watching");
-    if (mine.size() >= config.max_watches_per_user) return ?#err("At most " # Nat.toText(config.max_watches_per_user) # " SNSes per user");
-    if (mine.size() == 0 and Map.size(user_watches) >= config.max_users) return ?#err("sneed_mon is full (watcher limit); try again later");
-    if (not Map.has(snses, Map.phash, root) and Map.size(snses) >= config.max_snses) return ?#err("sneed_mon watches as many SNSes as it may; try again later");
-    null;
+  func topicOk(s : WatchSettings, p : OpenP) : Bool = switch (s.topics) {
+    case (#all) true;
+    case (#only(keys)) Array.find<Text>(keys, func(k) = k == p.topic_key or (p.fn_key != "" and k == p.fn_key)) != null;
   };
 
   func sortedInsert(xs : [Principal], p : Principal) : [Principal] {
@@ -219,375 +292,1286 @@ shared (deployer) persistent actor class SneedMon() = this {
     Array.sort<Principal>(Array.append(xs, [p]), Principal.compare);
   };
 
-  public shared ({ caller }) func unwatch_sns(root : Principal) : async Result {
-    if (Principal.isAnonymous(caller)) return #err("Please sign in");
-    let mine = watchesOf(caller);
-    if (not has(mine, root)) return #ok("Not watching");
-    let rest = Array.filter<Principal>(mine, func(r) = r != root);
-    if (rest.size() == 0) Map.delete(user_watches, Map.phash, caller) else Map.set(user_watches, Map.phash, caller, rest);
-    switch (Map.get(snses, Map.phash, root)) {
-      case (?s) {
-        let w = Array.filter<Principal>(s.watchers, func(x) = x != caller);
-        if (w.size() == 0) Map.delete(snses, Map.phash, root) else Map.set(snses, Map.phash, root, { s with watchers = w });
-      };
+  func isDue(w : Watch) : Bool = now() - w.last_check_at + SLACK_NS >= w.settings.every_min * MIN_NS;
+
+  /// The fastest frequency among the target's active (not paused) watchers; null: nobody active,
+  /// the target is not polled.
+  func activeEvery(s : TargetState) : ?Nat {
+    var best : ?Nat = null;
+    for (u in s.watchers.vals()) if (not isPausedUser(u)) switch (findWatch(u, s.key)) {
+      case (?w) best := switch best { case (?b) ?Nat.min(b, w.settings.every_min); case null ?w.settings.every_min };
       case null {};
     };
-    #ok("Stopped watching");
-  };
-
-  public query ({ caller }) func get_my_watches() : async [MyWatch] {
-    Array.mapFilter<Principal, MyWatch>(watchesOf(caller), func(r) = switch (Map.get(snses, Map.phash, r)) {
-      case (?s) ?{ topic = #proposals; root = r; governance = s.governance; name = s.name };
-      case null null;
-    });
+    best;
   };
 
   // ---------------------------------------------------------------------------------------------
-  // Rounds: list proposals, then run passes over the watchers
+  // Billing helpers (spec §3)
+  // ---------------------------------------------------------------------------------------------
+
+  transient let NEW_ACCOUNT : UserAccount = { balance_e8s = 0; paused = false; notice_sent = false; deposited_e8s = 0; charged_e8s = 0; withdrawn_e8s = 0; checks = 0 };
+
+  func acct(u : Principal) : UserAccount = switch (Map.get(accounts, Map.phash, u)) { case (?a) a; case null NEW_ACCOUNT };
+  func putAcct(u : Principal, a : UserAccount) = Map.set(accounts, Map.phash, u, a);
+  func isPausedUser(u : Principal) : Bool = switch (Map.get(accounts, Map.phash, u)) { case (?a) a.paused; case null false };
+
+  func tierOf(everyMin : Nat) : ?Tier = Array.find<Tier>(tier_table.tiers, func(t) = t.every_min == everyMin);
+  /// floor(daily price × every_min / 1440): a day of checks never costs more than the tier's daily price.
+  func perCheck(everyMin : Nat) : Nat = switch (tierOf(everyMin)) {
+    case (?t) tier_table.base_daily_price_e8s * t.daily_multiplier * everyMin / 1440;
+    case null 0;
+  };
+  func tierPrices() : [TierPrice] = Array.map<Tier, TierPrice>(tier_table.tiers, func(t) = {
+    every_min = t.every_min; daily_multiplier = t.daily_multiplier; daily_price_e8s = tier_table.base_daily_price_e8s * t.daily_multiplier;
+    per_check_e8s = perCheck(t.every_min); checks_per_day = 1440 / t.every_min;
+  });
+
+  /// One check of each of these watches: the least balance to start or resume watching.
+  func checksCost(ws : [Watch]) : Nat {
+    var c = 0;
+    for (w in ws.vals()) c += perCheck(w.settings.every_min);
+    c;
+  };
+  func dailyCost(ws : [Watch]) : Nat {
+    var c = 0;
+    for (w in ws.vals()) c += perCheck(w.settings.every_min) * (1440 / w.settings.every_min);
+    c;
+  };
+
+  /// The balance can't pay a check: the user's watches are kept but not checked (nor charged), their
+  /// waiting proposals dropped, and one notice is due.
+  func pauseUser(u : Principal) {
+    putAcct(u, { acct(u) with paused = true; notice_sent = false });
+    Map.delete(pending, Map.phash, u);
+  };
+
+  /// A paused user whose balance pays one check of each watch is checked again from the next round.
+  func maybeResume(u : Principal) : Bool {
+    let a = acct(u);
+    if (not a.paused) return false;
+    if (a.balance_e8s < checksCost(watchesOf(u))) return false;
+    putAcct(u, { a with paused = false; notice_sent = false });
+    true;
+  };
+
+  /// Charge one check. false (and nothing charged) when the balance can't pay it.
+  func chargeCheck(u : Principal, price : Nat) : Bool {
+    let a = acct(u);
+    if (a.balance_e8s < price) return false;
+    putAcct(u, { a with balance_e8s = a.balance_e8s - price : Nat; charged_e8s = a.charged_e8s + price; checks = a.checks + 1 });
+    fees_collected_e8s += price;
+    true;
+  };
+
+  /// A check that could not be carried out on our side (Sneed Notifications unavailable) is refunded.
+  func refundCheck(u : Principal, price : Nat) {
+    let a = acct(u);
+    putAcct(u, { a with balance_e8s = a.balance_e8s + price; charged_e8s = a.charged_e8s - price : Nat; checks = a.checks - 1 : Nat });
+    fees_collected_e8s -= price;
+  };
+
+  func addCharge(u : Principal, e : ChargeEntry) {
+    let cur = switch (Map.get(charges, Map.phash, u)) { case (?c) c; case null [] };
+    let all = Array.append(cur, [e]);
+    Map.set(charges, Map.phash, u, if (all.size() > MAX_CHARGES_KEPT) Array.subArray<ChargeEntry>(all, (all.size() - MAX_CHARGES_KEPT : Nat), MAX_CHARGES_KEPT) else all);
+  };
+
+  func plus(a : Period, b : Period) : Period = {
+    cycles_burned = a.cycles_burned + b.cycles_burned; revenue_e8s = a.revenue_e8s + b.revenue_e8s; checks = a.checks + b.checks; rounds = a.rounds + b.rounds;
+  };
+  transient let ZERO : Period = { cycles_burned = 0; revenue_e8s = 0; checks = 0; rounds = 0 };
+
+  func addEconomics(d : Period) {
+    econ_total := plus(econ_total, d);
+    let h = Int.abs(now()) / HOUR_NS;
+    switch (Map.get(hours, Map.nhash, h)) {
+      case (?p) Map.set(hours, Map.nhash, h, plus(p, d));
+      case null {
+        // a new hour: forget the ones older than 30 days
+        let old = Iter.toArray(Iter.filter<Nat>(Map.keys(hours), func(k) = k + HOURS_KEPT <= h));
+        for (k in old.vals()) Map.delete(hours, Map.nhash, k);
+        Map.set(hours, Map.nhash, h, d);
+      };
+    };
+  };
+
+  func window(nHours : Nat) : Period {
+    let h = Int.abs(now()) / HOUR_NS;
+    var p = ZERO;
+    for ((k, v) in Map.entries(hours)) if (k + nHours > h) p := plus(p, v);
+    p;
+  };
+
+  func e8sText(e8s : Nat) : Text {
+    let frac = Nat.toText(e8s % 100_000_000 + 100_000_000);
+    Nat.toText(e8s / 100_000_000) # "." # Text.fromIter(Iter.fromArray(Array.subArray<Char>(Text.toArray(frac), 1, 8)));
+  };
+
+  /// One "monitoring paused" message per pause, to the users not told yet (topic `account`). A
+  /// failed call leaves them for the next round; any answer from Sneed Notifications but
+  /// not_registered / unknown_topic counts as told.
+  func sendPauseNotices() : async* () {
+    let n : T.Notifications = switch (config.notifications) { case (?n) actor (Principal.toText(n)); case null return };
+    let due = Buffer.Buffer<Principal>(8);
+    for ((u, a) in Map.entries(accounts)) if (a.paused and not a.notice_sent and watchesOf(u).size() > 0) due.add(u);
+    var i = 0;
+    while (i < due.size()) {
+      let chunk = Array.tabulate<Principal>(Nat.min(Nat.min(config.batch_size, 100), due.size() - i), func(k) = due.get(i + k));
+      i += chunk.size();
+      let inputs = Array.map<Principal, T.NotifyInput>(chunk, func(u) {
+        let ws = watchesOf(u);
+        {
+          user = u; topic = TOPIC_ACCOUNT; sponsored = config.sponsored; link = null; dedupe = null;
+          title = "Monitoring paused: top up";
+          body = "Your Sneed Monitor balance can't pay the next check, so it stopped watching proposals for you (" # (if (ws.size() == 1) "1 watch" else Nat.toText(ws.size()) # " watches") # "). Your watches are kept: deposit ICP and credit it (at least " # e8sText(checksCost(ws)) # " ICP) and monitoring resumes.";
+        };
+      });
+      spend();
+      let results = try { await n.notify_batch(inputs) } catch (e) { noteError(null, "notify_batch (pause notices): " # Error.message(e)); return };
+      var k = 0;
+      for (r in results.vals()) {
+        if (k < chunk.size()) {
+          let u = chunk[k];
+          switch r {
+            case (#err(#not_registered) or #err(#unknown_topic)) {}; // not told: next round, after re-registration
+            case _ { let a = acct(u); if (a.paused) putAcct(u, { a with notice_sent = true }) };
+          };
+          switch r { case (#ok(x)) if (not x.deduplicated) sent += 1; case _ {} };
+        };
+        k += 1;
+      };
+    };
+  };
+
+  // ---------------------------------------------------------------------------------------------
+  // Users: watches
+  // ---------------------------------------------------------------------------------------------
+
+  /// Watch an SNS's or the NNS's proposals with the default settings (get_tuning().defaults: all
+  /// topics, checked hourly, new proposals and reminders). That is all a user needs to do;
+  /// update_watch changes the settings. You are told when one of your neurons can vote on a
+  /// proposal and hasn't (SNS: neurons on which you hold the vote permission; NNS: the neuron ids
+  /// you register with set_nns_neurons). Each check is charged from your balance at the watch's
+  /// tier (get_tiers); the balance must pay one check of each of your watches including this one.
+  /// Allow the app "Sneed Monitor" in the notification centre to receive the messages.
+  public shared ({ caller }) func watch(target : Target) : async Result {
+    if (Principal.isAnonymous(caller)) return #err("Please sign in");
+    let key = targetKey(target);
+    switch (capCheck(caller, key)) { case (?e) return e; case null {} };
+    let known = Map.get(targets, Map.thash, key);
+    var governance = switch (known, target) { case (?s, _) s.governance; case (null, #nns) tuning.nns_governance; case (null, #sns(r)) r };
+    var name = switch (known, target) { case (?s, _) s.name; case (null, #nns) "NNS"; case (null, #sns(_)) "" };
+    switch (known, target) {
+      case (null, #sns(root)) {
+        try {
+          switch (await* SnsDirectory.governanceOf(directory, config.sns_wasm, root)) {
+            case (?g) governance := g;
+            case null return #err("Not the root of an SNS listed by SNS-W (try again in a minute if it is new)");
+          };
+        } catch (e) { return #err("SNS-W did not answer: " # Error.message(e)) };
+        try { name := switch ((await gov(governance).get_metadata({})).name) { case (?n) clip(n, 64); case null "" } } catch (_) {};
+        if (name == "") name := "SNS " # clip(Principal.toText(root), 12);
+      };
+      case _ {};
+    };
+    // the state may have changed while we waited
+    switch (capCheck(caller, key)) { case (?e) return e; case null {} };
+    switch (Map.get(targets, Map.thash, key)) {
+      case (?s) Map.set(targets, Map.thash, key, { s with watchers = sortedInsert(s.watchers, caller) });
+      case null Map.set(targets, Map.thash, key, {
+        target; key; governance; name; watchers = [caller]; open = []; max_seen_id = (0 : Nat64);
+        listed_round = 0; listed_at = 0; last_polled_at = 0; last_error = null; errors = 0;
+      });
+    };
+    let t = now();
+    Map.set(watches, Map.phash, caller, Array.append(watchesOf(caller), [{ target; settings = tuning.defaults; created_at = t; last_check_at = 0; user_refresh_at = t }]));
+    if (not Map.has(accounts, Map.phash, caller)) putAcct(caller, NEW_ACCOUNT);
+    ignore maybeResume(caller); // capCheck made sure the balance pays a check of each watch
+    // best effort: the request shows up in the user's notification centre
+    switch (config.notifications, app_id) {
+      case (?n, ?_) try { ignore await (actor (Principal.toText(n)) : T.Notifications).request_permission(caller) } catch (_) {};
+      case _ {};
+    };
+    // the user's neurons: read now for an SNS (later only every neuron_refresh_s)
+    switch target {
+      case (#sns(_)) switch (await* readNeurons(key, governance, caller, false)) {
+        case (?ids) #ok("Watching; " # Nat.toText(ids.size()) # " of your neurons can vote here");
+        case null #ok("Watching; your neurons could not be read now, they will be next round");
+      };
+      case (#nns) {
+        let n = nnsNeuronsOf(caller).size();
+        if (n == 0) #ok("Watching; register your NNS neuron ids with set_nns_neurons to be told about proposals they can vote on") else #ok("Watching; " # Nat.toText(n) # " NNS neurons registered");
+      };
+    };
+  };
+
+  /// null when `caller` may watch `key`, else the error to answer.
+  func capCheck(caller : Principal, key : Text) : ?Result {
+    let mine = watchesOf(caller);
+    if (findWatch(caller, key) != null) return ?#ok("Already watching");
+    if (mine.size() >= config.max_watches_per_user) return ?#err("At most " # Nat.toText(config.max_watches_per_user) # " watches per user");
+    if (mine.size() == 0 and Map.size(watches) >= config.max_users) return ?#err("sneed_mon is full (watcher limit); try again later");
+    if (not Map.has(targets, Map.thash, key) and Map.size(targets) >= config.max_snses) return ?#err("sneed_mon watches as many SNSes as it may; try again later");
+    let need = checksCost(mine) + perCheck(tuning.defaults.every_min);
+    let have = acct(caller).balance_e8s;
+    if (have < need) return ?#err("Top up first: one check of each of your watches costs " # e8sText(need) # " ICP and your balance is " # e8sText(have) # " ICP (send ICP to get_deposit_account, then call credit_deposit)");
+    null;
+  };
+
+  public shared ({ caller }) func unwatch(target : Target) : async Result {
+    if (Principal.isAnonymous(caller)) return #err("Please sign in");
+    let key = targetKey(target);
+    let mine = watchesOf(caller);
+    if (findWatch(caller, key) == null) return #ok("Not watching");
+    let rest = Array.filter<Watch>(mine, func(w) = targetKey(w.target) != key);
+    if (rest.size() == 0) Map.delete(watches, Map.phash, caller) else Map.set(watches, Map.phash, caller, rest);
+    setPending(caller, Array.filter<Pending>(pendingOf(caller), func(p) = p.key != key));
+    Map.delete(user_neurons, Map.thash, cacheKey(caller, key));
+    switch (Map.get(targets, Map.thash, key)) {
+      case (?s) {
+        let w = Array.filter<Principal>(s.watchers, func(x) = x != caller);
+        if (w.size() == 0) { Map.delete(targets, Map.thash, key); Map.delete(topic_options, Map.thash, key) } else Map.set(targets, Map.thash, key, { s with watchers = w });
+      };
+      case null {};
+    };
+    ignore maybeResume(caller); // fewer watches may fit the balance again
+    #ok("Stopped watching");
+  };
+
+  /// Change a watch's settings (only the fields given). every_min: a tier of get_tiers (10, 60,
+  /// 180, 1440 by default); reminder_window_s: 3600, 14400, 43200, 86400 or 172800, at least the
+  /// check interval; topics: #all or #only keys from list_target_topics (1 to 50).
+  public shared ({ caller }) func update_watch(target : Target, input : WatchSettingsInput) : async Result {
+    if (Principal.isAnonymous(caller)) return #err("Please sign in");
+    let key = targetKey(target);
+    let w = switch (findWatch(caller, key)) { case (?w) w; case null return #err("Not watching") };
+    let s = w.settings;
+    let next : WatchSettings = {
+      every_min = switch (input.every_min) { case (?v) v; case null s.every_min };
+      topics = switch (input.topics) { case (?v) v; case null s.topics };
+      new_proposals = switch (input.new_proposals) { case (?v) v; case null s.new_proposals };
+      reminders = switch (input.reminders) { case (?v) v; case null s.reminders };
+      reminder_window_s = switch (input.reminder_window_s) { case (?v) v; case null s.reminder_window_s };
+    };
+    switch (checkSettings(next)) { case (?e) return #err(e); case null {} };
+    updateWatch(caller, key, func(x) = { x with settings = next });
+    #ok("Saved");
+  };
+
+  func checkSettings(s : WatchSettings) : ?Text {
+    if (tierOf(s.every_min) == null) return ?("every_min is one of " # Text.join(", ", Iter.map<Tier, Text>(tier_table.tiers.vals(), func(t) = Nat.toText(t.every_min))));
+    if (not hasNat(WINDOWS_S, s.reminder_window_s)) return ?"reminder_window_s is one of 3600, 14400, 43200, 86400, 172800";
+    if (s.reminder_window_s < s.every_min * 60) return ?"The reminder window must be at least the check interval (a reminder could come too late)";
+    switch (s.topics) {
+      case (#all) {};
+      case (#only(keys)) {
+        if (keys.size() == 0 or keys.size() > 50) return ?"Choose 1 to 50 topics, or #all";
+        for (k in keys.vals()) if (k.size() == 0 or k.size() > 64) return ?"A topic key is 1 to 64 characters";
+      };
+    };
+    null;
+  };
+
+  func myWatch(u : Principal, w : Watch) : MyWatch {
+    let key = targetKey(w.target);
+    let (governance, name) = switch (Map.get(targets, Map.thash, key)) { case (?s) (s.governance, s.name); case null (tuning.nns_governance, "") };
+    let (neurons, at) : (?Nat, Int) = switch (w.target) {
+      case (#nns) (?nnsNeuronsOf(u).size(), 0);
+      case (#sns(_)) switch (Map.get(user_neurons, Map.thash, cacheKey(u, key))) { case (?c) (?c.ids.size(), c.at); case null (null, 0) };
+    };
+    {
+      target = w.target; topic = #proposals; governance; name; settings = w.settings;
+      price_per_check_e8s = perCheck(w.settings.every_min); next_check_at = if (w.last_check_at == 0) 0 else w.last_check_at + w.settings.every_min * MIN_NS;
+      pending = Array.filter<Pending>(pendingOf(u), func(p) = p.key == key).size(); neurons; neurons_at = at;
+    };
+  };
+
+  public query ({ caller }) func get_my_watches() : async [MyWatch] {
+    Array.map<Watch, MyWatch>(watchesOf(caller), func(w) = myWatch(caller, w));
+  };
+
+  public query ({ caller }) func get_watch(target : Target) : async ?MyWatch {
+    switch (findWatch(caller, targetKey(target))) { case (?w) ?myWatch(caller, w); case null null };
+  };
+
+  /// Re-read your neurons in a watched SNS now (after adding one), at most every
+  /// user_refresh_min_s per watch. NNS neurons are read when a check is due; set_nns_neurons
+  /// changes which.
+  public shared ({ caller }) func refresh_my_neurons(target : Target) : async ResultNat {
+    if (Principal.isAnonymous(caller)) return #err("Please sign in");
+    let key = targetKey(target);
+    let w = switch (findWatch(caller, key)) { case (?w) w; case null return #err("Not watching") };
+    let governance = switch (Map.get(targets, Map.thash, key)) { case (?s) s.governance; case null return #err("Not watching") };
+    switch (target) { case (#nns) return #ok(nnsNeuronsOf(caller).size()); case (#sns(_)) {} };
+    if (now() - w.user_refresh_at < tuning.user_refresh_min_s * 1_000_000_000) return #err("At most every " # Nat.toText(tuning.user_refresh_min_s / 60) # " minutes");
+    updateWatch(caller, key, func(x) = { x with user_refresh_at = now() });
+    switch (await* readNeurons(key, governance, caller, false)) {
+      case (?ids) #ok(ids.size());
+      case null #err("The SNS governance did not answer; try again later");
+    };
+  };
+
+  /// The NNS neurons sneed_mon checks for you (their public info: recent ballots, dissolve delay,
+  /// voting power). Up to max_nns_neurons ids; an empty list clears them. sneed_mon never needs a
+  /// hotkey. A private neuron's ballots are hidden, so it is counted for new proposals only.
+  public shared ({ caller }) func set_nns_neurons(ids : [Nat64]) : async Result {
+    if (Principal.isAnonymous(caller)) return #err("Please sign in");
+    if (ids.size() > tuning.max_nns_neurons) return #err("At most " # Nat.toText(tuning.max_nns_neurons) # " neurons");
+    let uniq = Buffer.Buffer<Nat64>(ids.size());
+    for (i in ids.vals()) if (Array.find<Nat64>(Buffer.toArray(uniq), func(x) = x == i) == null) uniq.add(i);
+    if (uniq.size() == 0) Map.delete(nns_neurons, Map.phash, caller) else Map.set(nns_neurons, Map.phash, caller, Buffer.toArray(uniq));
+    #ok("Saved " # Nat.toText(uniq.size()) # " neurons");
+  };
+
+  public query ({ caller }) func get_my_nns_neurons() : async [Nat64] { nnsNeuronsOf(caller) };
+
+  /// The topic keys a watch on `target` can filter by (SNS: list_topics, or the proposal types for
+  /// an SNS without topics; NNS: its topic numbers). Read from governance at most once a day.
+  public shared ({ caller }) func list_target_topics(target : Target) : async { #ok : [TopicOption]; #err : Text } {
+    if (Principal.isAnonymous(caller)) return #err("Please sign in");
+    let key = targetKey(target);
+    let root = switch (target) { case (#nns) return #ok(NNS_TOPICS); case (#sns(r)) r };
+    switch (Map.get(topic_options, Map.thash, key)) {
+      case (?(at, opts)) if (now() - at < tuning.topic_cache_s * 1_000_000_000) return #ok(opts);
+      case null {};
+    };
+    let governance = switch (Map.get(targets, Map.thash, key)) {
+      case (?s) s.governance;
+      case null {
+        let g = try { await* SnsDirectory.governanceOf(directory, config.sns_wasm, root) } catch (e) { return #err("SNS-W did not answer: " # Error.message(e)) };
+        switch g { case (?g) g; case null return #err("Not the root of an SNS listed by SNS-W") };
+      };
+    };
+    calls_total += 1;
+    let opts = try {
+      let r = await gov(governance).list_topics({});
+      let out = Buffer.Buffer<TopicOption>(8);
+      switch (r.topics) {
+        case (?ts) for (t in ts.vals()) switch (t.topic) {
+          case (?x) out.add({ key = snsTopicName(x); name = switch (t.name) { case (?n) clip(n, 100); case null snsTopicName(x) }; description = switch (t.description) { case (?d) clip(d, 300); case null "" } });
+          case null {};
+        };
+        case null {};
+      };
+      if (out.size() == 0) await* functionOptions(governance) else Buffer.toArray(out);
+    } catch (_) {
+      // an SNS from before topics: its proposal types (nervous system functions)
+      try { await* functionOptions(governance) } catch (e) { return #err("The SNS governance did not answer: " # Error.message(e)) };
+    };
+    Map.set(topic_options, Map.thash, key, (now(), opts));
+    #ok(opts);
+  };
+
+  func functionOptions(governance : Principal) : async* [TopicOption] {
+    calls_total += 1;
+    let r = await gov(governance).list_nervous_system_functions();
+    Array.map<{ id : Nat64; name : Text; description : ?Text }, TopicOption>(r.functions, func(f) = {
+      key = "fn:" # Nat64.toText(f.id); name = clip(f.name, 100); description = switch (f.description) { case (?d) clip(d, 300); case null "" };
+    });
+  };
+
+  /// The last list_target_topics answer for `target` (null: not read yet).
+  public query func get_target_topics(target : Target) : async ?[TopicOption] {
+    switch (target) { case (#nns) return ?NNS_TOPICS; case (#sns(_)) {} };
+    switch (Map.get(topic_options, Map.thash, targetKey(target))) { case (?(_, o)) ?o; case null null };
+  };
+
+  func nnsTopic(id : Nat, name : Text) : TopicOption = { key = Nat.toText(id); name; description = "" };
+  transient let NNS_TOPICS : [TopicOption] = [
+    nnsTopic(1, "Neuron Management"), nnsTopic(2, "Exchange Rate"), nnsTopic(3, "Network Economics"), nnsTopic(4, "Governance"),
+    nnsTopic(5, "Node Admin"), nnsTopic(6, "Participant Management"), nnsTopic(7, "Subnet Management"), nnsTopic(8, "Network Canister Management"),
+    nnsTopic(9, "KYC"), nnsTopic(10, "Node Provider Rewards"), nnsTopic(12, "IC OS Version Deployment"), nnsTopic(13, "IC OS Version Election"),
+    nnsTopic(14, "SNS & Neurons' Fund"), nnsTopic(15, "API Boundary Node Management"), nnsTopic(16, "Subnet Rental"),
+    nnsTopic(17, "Protocol Canister Management"), nnsTopic(18, "Service Nervous System Management"),
+  ];
+
+  // ---------------------------------------------------------------------------------------------
+  // Users: the prepaid balance (spec §3)
+  // ---------------------------------------------------------------------------------------------
+
+  /// Where to send ICP to top up: your own subaccount of this canister on the ICP ledger. Nothing
+  /// is counted until you call credit_deposit.
+  public query ({ caller }) func get_deposit_account() : async Account { depositAccount(caller) };
+
+  func subaccountOf(p : Principal) : Blob {
+    let bytes = Blob.toArray(Principal.toBlob(p));
+    Blob.fromArray(Array.tabulate<Nat8>(32, func(i) = if (i == 0) Nat8.fromNat(bytes.size()) else if (i <= bytes.size()) bytes[i - 1] else 0));
+  };
+  func depositAccount(p : Principal) : Account = { owner = Principal.fromActor(this); subaccount = ?subaccountOf(p) };
+  func ledger() : T.Ledger = actor (Principal.toText(billing.icp_ledger));
+
+  func userBalancesTotal() : Nat {
+    var t = 0;
+    for (a in Map.vals(accounts)) t += a.balance_e8s;
+    t;
+  };
+  func feesAvailable() : Nat = fees_collected_e8s - fees_withdrawn_e8s; // never negative: withdrawals are capped by it
+
+  public query ({ caller }) func get_my_balance() : async MyBalance {
+    let a = acct(caller);
+    let ws = watchesOf(caller);
+    {
+      balance_e8s = a.balance_e8s; paused = a.paused; watches = ws.size(); per_round_of_checks_e8s = checksCost(ws); per_day_e8s = dailyCost(ws);
+      charged_e8s = a.charged_e8s; checks = a.checks; deposited_e8s = a.deposited_e8s; withdrawn_e8s = a.withdrawn_e8s; deposit_account = depositAccount(caller);
+    };
+  };
+
+  /// Your paid checks, newest first: `start` entries skipped, at most `len` (100) returned, of the
+  /// last 200 kept.
+  public query ({ caller }) func get_my_charges(start : Nat, len : Nat) : async { total : Nat; entries : [ChargeEntry] } {
+    let all = switch (Map.get(charges, Map.phash, caller)) { case (?c) c; case null [] };
+    let n = all.size();
+    if (start >= n) return { total = n; entries = [] };
+    let m = Nat.min(Nat.min(len, 100), n - start);
+    { total = n; entries = Array.tabulate<ChargeEntry>(m, func(i) = all[n - 1 - start - i]) };
+  };
+
+  func lock(u : Principal) : Bool {
+    if (Map.has(in_flight, Map.phash, u)) return false;
+    Map.set(in_flight, Map.phash, u, ());
+    true;
+  };
+
+  /// Move what arrived in your deposit subaccount into your balance (less one ledger fee for the
+  /// move). Safe to call any time: with nothing new it credits nothing. Resumes paused monitoring
+  /// when the balance pays one check of each watch.
+  public shared ({ caller }) func credit_deposit() : async CreditResult {
+    if (Principal.isAnonymous(caller)) return #err("Please sign in");
+    if (not lock(caller)) return #err("A deposit or withdrawal of yours is under way; try again in a moment");
+    try { await* creditDeposit(caller) } finally { Map.delete(in_flight, Map.phash, caller) };
+  };
+
+  func creditDeposit(u : Principal) : async* CreditResult {
+    let from = subaccountOf(u);
+    let fee = billing.ledger_fee_e8s;
+    let found = try { await ledger().icrc1_balance_of(depositAccount(u)) } catch (e) { return #err("The ledger did not answer: " # Error.message(e)) };
+    if (found <= fee) {
+      let a = acct(u);
+      return #ok({ credited_e8s = 0; balance_e8s = a.balance_e8s; paused = a.paused });
+    };
+    let amount = found - fee : Nat;
+    // An unbounded-wait call: a reject means the transfer did not happen, so nothing is credited
+    // and nothing is lost (the ICP stays in the subaccount for the next try).
+    let r = try {
+      await ledger().icrc1_transfer({ from_subaccount = ?from; to = { owner = Principal.fromActor(this); subaccount = null }; amount; fee = ?fee; memo = null; created_at_time = ?Nat64.fromNat(Int.abs(now())) });
+    } catch (e) { return #err("The ledger did not answer (nothing moved): " # Error.message(e)) };
+    switch r {
+      case (#Ok _) {
+        let a = acct(u);
+        putAcct(u, { a with balance_e8s = a.balance_e8s + amount; deposited_e8s = a.deposited_e8s + amount });
+        deposits_e8s += amount;
+        ignore maybeResume(u);
+        let b = acct(u);
+        #ok({ credited_e8s = amount; balance_e8s = b.balance_e8s; paused = b.paused });
+      };
+      case (#Err(#BadFee(x))) { billing := { billing with ledger_fee_e8s = x.expected_fee }; #err("The ledger fee changed; try again") };
+      case (#Err(#InsufficientFunds(x))) #err("The deposit subaccount holds " # Nat.toText(x.balance) # " e8s, not enough to move");
+      case (#Err _) #err("The ledger refused the transfer");
+    };
+  };
+
+  /// Withdraw unspent balance: `amount_e8s` comes off your balance and `to` receives it less the
+  /// ledger fee. Returns the ledger block.
+  public shared ({ caller }) func withdraw_balance(amount_e8s : Nat, to : Account) : async ResultNat {
+    if (Principal.isAnonymous(caller)) return #err("Please sign in");
+    if (not lock(caller)) return #err("A deposit or withdrawal of yours is under way; try again in a moment");
+    try { await* withdrawBalance(caller, amount_e8s, to) } finally { Map.delete(in_flight, Map.phash, caller) };
+  };
+
+  func withdrawBalance(u : Principal, amount : Nat, to : Account) : async* ResultNat {
+    let fee = billing.ledger_fee_e8s;
+    let a = acct(u);
+    if (amount > a.balance_e8s) return #err("Your balance is " # Nat.toText(a.balance_e8s) # " e8s");
+    if (amount <= fee) return #err("The amount must be more than the ledger fee (" # Nat.toText(fee) # " e8s)");
+    // debit before the call, so nothing else can spend it meanwhile; put back if it fails
+    putAcct(u, { a with balance_e8s = a.balance_e8s - amount : Nat; withdrawn_e8s = a.withdrawn_e8s + amount });
+    withdrawals_e8s += amount;
+    func undo() {
+      let b = acct(u);
+      putAcct(u, { b with balance_e8s = b.balance_e8s + amount; withdrawn_e8s = b.withdrawn_e8s - amount : Nat });
+      withdrawals_e8s -= amount;
+    };
+    let r = try {
+      await ledger().icrc1_transfer({ from_subaccount = null; to; amount = amount - fee : Nat; fee = ?fee; memo = null; created_at_time = ?Nat64.fromNat(Int.abs(now())) });
+    } catch (e) { undo(); return #err("The ledger did not answer (nothing moved): " # Error.message(e)) };
+    switch r {
+      case (#Ok(block)) #ok(block);
+      case (#Err(#BadFee(x))) { undo(); billing := { billing with ledger_fee_e8s = x.expected_fee }; #err("The ledger fee changed; try again") };
+      case (#Err _) { undo(); #err("The ledger refused the transfer") };
+    };
+  };
+
+  /// Totals (never per user): what sneed_mon owes its users and how much of the collected fees is
+  /// left. Its main ledger account holds at least `obligations_e8s`.
+  public query func get_accounting() : async Accounting {
+    let ub = userBalancesTotal();
+    var paused = 0;
+    for (a in Map.vals(accounts)) if (a.paused) paused += 1;
+    {
+      icp_ledger = billing.icp_ledger; user_balances_e8s = ub; fees_available_e8s = feesAvailable(); obligations_e8s = ub + feesAvailable();
+      fees_collected_e8s; fees_withdrawn_e8s; fees_forwarded_e8s; fee_forwards; deposits_e8s; withdrawals_e8s; accounts = Map.size(accounts); paused_users = paused;
+    };
+  };
+
+  public query func get_billing_config() : async BillingConfig { billing };
+
+  /// The frequency tiers with their prices.
+  public query func get_tiers() : async { base_daily_price_e8s : Nat; tiers : [TierPrice] } {
+    { base_daily_price_e8s = tier_table.base_daily_price_e8s; tiers = tierPrices() };
+  };
+
+  // ---------------------------------------------------------------------------------------------
+  // Rounds (spec §2): poll the due targets, read neurons, match ballots, check the due watches
   // ---------------------------------------------------------------------------------------------
 
   func busy() : Bool = switch running_since { case (?t) now() - t < STALE_RUN_NS; case null false };
 
+  /// The timer (and admin_run_now): go on with the open round, or start one. A new round never
+  /// starts while one is open.
   func startRound() : async () {
     if (config.paused or busy()) return;
-    // a round that is still resuming keeps going instead of starting over
-    if (qpos < queue.size()) return await work();
+    if (round_open) return await work();
     round_no += 1;
+    round_open := true;
+    round_ticks := 0;
+    round_cycles := 0;
     last_round_start := now();
     calls_last_round := 0;
-    queue := Iter.toArray(Map.keys(snses));
-    qpos := 0;
     continuations := 0;
     notify_broken := false;
-    Map.clear(ballot_cache);
-    if (Map.size(neuron_cache) > 20_000) Map.clear(neuron_cache);
+    notices_done := false;
+    refreshed_this_round := 0;
+    Map.clear(nns_info);
+    // paused users whose balance pays again (a lower price) resume
+    for ((u, a) in Map.entries(accounts)) if (a.paused) ignore maybeResume(u);
+    // a target with no active watcher forgets its proposals; it starts afresh when one returns
+    for (s in Map.vals(targets)) if (activeEvery(s) == null and (s.open.size() > 0 or s.listed_at != 0)) {
+      Map.set(targets, Map.thash, s.key, { s with open = []; listed_at = 0; last_polled_at = 0 });
+    };
     await work();
   };
 
-  /// One tick: at most max_calls_per_tick calls, then a follow-up tick if work is left.
+  /// One tick: at most max_calls_per_tick calls, then a follow-up tick if work is left. Every
+  /// phase skips what is done already, so a tick (or an upgrade) can stop anywhere.
   func work() : async () {
     if (busy()) return;
     running_since := ?now();
+    let c0 = Cycles.balance();
     budget := config.max_calls_per_tick;
-    label run while (qpos < queue.size()) {
-      if (config.paused) break run;
-      let done = try { await* processSns(queue[qpos]) } catch (e) { noteError(?queue[qpos], "round: " # Error.message(e)); true };
-      if (not done) break run;
-      qpos += 1;
-    };
+    round_ticks += 1;
+    var finished = false;
+    try {
+      if (await* phaseList()) if (await* phaseRefresh(true)) if (await* phaseMatch()) if (await* phaseChecks()) if (await* phaseRefresh(false)) { await* forwardFees(); finished := true };
+    } catch (e) { noteError(null, "round: " # Error.message(e)); finished := true };
     running_since := null;
-    if (qpos >= queue.size()) {
+    let c1 = Cycles.balance();
+    let burned = if (c0 > c1) c0 - c1 : Nat else 0;
+    round_cycles += burned;
+    addEconomics({ cycles_burned = burned; revenue_e8s = 0; checks = 0; rounds = if (finished or config.paused) 1 else 0 });
+    if (finished or config.paused) {
+      round_open := false;
       last_round_end := now();
-    } else if (not config.paused and continuations < config.max_continuations) {
+      last_round_duration := last_round_end - last_round_start;
+      last_round_cycles := round_cycles;
+    } else if (continuations < config.max_continuations) {
       continuations += 1;
       ignore Timer.setTimer<system>(#seconds 1, work);
-    } else {
-      // the rest waits for the next round; the passes' cursors keep their place
-      queue := [];
-      qpos := 0;
-      last_round_end := now();
     };
+    // else: the round stays open and the next timer tick goes on with it
   };
 
-  /// true when this SNS is finished for the round, false when the budget ran out first.
-  func processSns(root : Principal) : async* Bool {
-    let s = switch (Map.get(snses, Map.phash, root)) { case (?s) s; case null return true };
-    if (s.listed_round != round_no) {
+  // ---- phase 1: list_proposals for each target due (as often as its fastest active watcher) ----
+
+  type Found = { id : Nat64; title : Text; deadline_s : Nat64; created_s : Nat64; topic_key : Text; fn_key : Text };
+
+  func pollDue(s : TargetState) : Bool = switch (activeEvery(s)) {
+    case (?m) s.listed_round != round_no and now() - s.last_polled_at + SLACK_NS >= m * MIN_NS;
+    case null false;
+  };
+
+  func phaseList() : async* Bool {
+    let todo = Buffer.Buffer<TargetState>(16);
+    for (s in Map.vals(targets)) if (pollDue(s)) todo.add(s);
+    var i = 0;
+    while (i < todo.size()) {
       if (budget == 0) return false;
-      let ok = await* listProposals(root);
-      if (not ok) return true;
-    };
-    if (config.notifications == null) return true;
-    let props = switch (Map.get(snses, Map.phash, root)) { case (?s) s.open; case null return true };
-    for (p in props.vals()) {
-      if (notify_broken) return true;
-      if (p.new_pass != #done) {
-        if (not (await* runPass(root, p.id, #new))) return false;
+      let n = Nat.min(par(), todo.size() - i);
+      let chunk = Array.tabulate<TargetState>(n, func(k) = todo.get(i + k));
+      i += n;
+      // fire the first pages together, then await them
+      let snsF = Buffer.Buffer<(Text, async { proposals : [T.ListedProposal] })>(n);
+      let nnsF = Buffer.Buffer<(Text, async { proposal_info : [T.NnsProposalInfo] })>(1);
+      for (s in chunk.vals()) {
+        spend();
+        if (isNns(s.key)) nnsF.add((s.key, nnsGov().list_proposals(nnsArgs(null))))
+        else snsF.add((s.key, gov(s.governance).list_proposals(snsArgs(null))));
       };
-      switch (findOpen(root, p.id)) {
-        case (?q) if (q.reminder_pass != #done and q.new_pass == #done and inWindow(q.deadline_s)) {
-          if (not (await* runPass(root, q.id, #reminder))) return false;
-        };
-        case null {};
+      for ((key, f) in snsF.vals()) {
+        let r = try { ?(await f) } catch (e) { noteError(?key, "list_proposals: " # Error.message(e)); markListed(key); null };
+        switch r { case (?r) await* applySns(key, r.proposals); case null {} };
+      };
+      for ((key, f) in nnsF.vals()) {
+        let r = try { ?(await f) } catch (e) { noteError(?key, "list_proposals: " # Error.message(e)); markListed(key); null };
+        switch r { case (?r) await* applyNns(key, r.proposal_info); case null {} };
       };
     };
     true;
   };
 
-  func findOpen(root : Principal, id : Nat64) : ?OpenProposal = switch (Map.get(snses, Map.phash, root)) {
-    case (?s) Array.find<OpenProposal>(s.open, func(p) = p.id == id);
-    case null null;
+  func snsArgs(before : ?T.ProposalId) : { include_reward_status : [Int32]; before_proposal : ?T.ProposalId; limit : Nat32; exclude_type : [Nat64]; include_status : [Int32]; include_topics : ?[{}] } =
+    { include_reward_status = [ACCEPT_VOTES]; before_proposal = before; limit = Nat32.fromNat(PROPOSAL_PAGE); exclude_type = []; include_status = []; include_topics = null };
+  func nnsArgs(before : ?T.ProposalId) : { include_reward_status : [Int32]; omit_large_fields : ?Bool; before_proposal : ?T.ProposalId; limit : Nat32; exclude_topic : [Int32]; include_all_manage_neuron_proposals : ?Bool; include_status : [Int32] } =
+    { include_reward_status = [ACCEPT_VOTES]; omit_large_fields = ?true; before_proposal = before; limit = Nat32.fromNat(NNS_PAGE); exclude_topic = []; include_all_manage_neuron_proposals = ?false; include_status = [] };
+
+  /// A failed listing: not again this round (retried next round).
+  func markListed(key : Text) {
+    switch (Map.get(targets, Map.thash, key)) { case (?cur) Map.set(targets, Map.thash, key, { cur with listed_round = round_no }); case null {} };
   };
 
-  func updateOpen(root : Principal, id : Nat64, f : OpenProposal -> OpenProposal) {
-    switch (Map.get(snses, Map.phash, root)) {
-      case (?s) Map.set(snses, Map.phash, root, { s with open = Array.map<OpenProposal, OpenProposal>(s.open, func(p) = if (p.id == id) f(p) else p) });
+  func snsFound(ps : [T.ListedProposal], t : Nat64, out : Buffer.Buffer<Found>) : (Bool, ?T.ProposalId) {
+    var lastOpen = false;
+    var before : ?T.ProposalId = null;
+    for (p in ps.vals()) switch (p.id) {
+      case (?pid) {
+        let d = deadlineOf(p.proposal_creation_timestamp_seconds, p.initial_voting_period_seconds, p.wait_for_quiet_state);
+        lastOpen := d > t;
+        if (d > t) out.add({
+          id = pid.id; title = switch (p.proposal) { case (?x) x.title; case null "" }; deadline_s = d; created_s = p.proposal_creation_timestamp_seconds;
+          topic_key = switch (p.topic) { case (?x) snsTopicName(x); case null "" }; fn_key = "fn:" # Nat64.toText(p.action);
+        });
+        before := ?pid;
+      };
       case null {};
     };
+    (lastOpen, before);
   };
 
-  func setPass(root : Principal, id : Nat64, kind : PassKind, st : PassState) {
-    updateOpen(root, id, func(p) = switch kind { case (#new) ({ p with new_pass = st }); case (#reminder) ({ p with reminder_pass = st }) });
-  };
-
-  /// One round's list_proposals for an SNS: only those still accepting votes, newest first, a few
-  /// pages at most (the deadline is checked here too).
-  func listProposals(root : Principal) : async* Bool {
-    let s = switch (Map.get(snses, Map.phash, root)) { case (?s) s; case null return false };
+  func applySns(key : Text, first : [T.ListedProposal]) : async* () {
+    let governance = switch (Map.get(targets, Map.thash, key)) { case (?s) s.governance; case null return };
     let t = nowS();
-    let found = Buffer.Buffer<(Nat64, Text, Nat64)>(16);
-    var before : ?T.ProposalId = null;
-    var page = 0;
-    try {
-      label pages while (page < config.proposal_pages) {
-        page += 1;
-        spend();
-        let r = await gov(s.governance).list_proposals({ include_reward_status = [ACCEPT_VOTES]; before_proposal = before; limit = Nat32.fromNat(PROPOSAL_PAGE); exclude_type = []; include_status = []; include_topics = null });
-        var lastOpen = false;
-        for (p in r.proposals.vals()) switch (p.id) {
-          case (?pid) {
-            let d = deadlineOf(p.proposal_creation_timestamp_seconds, p.initial_voting_period_seconds, p.wait_for_quiet_state);
-            lastOpen := d > t;
-            if (d > t) found.add((pid.id, switch (p.proposal) { case (?x) x.title; case null "" }, d));
-            before := ?pid;
-          };
-          case null {};
-        };
-        if (r.proposals.size() < PROPOSAL_PAGE or not lastOpen or budget == 0) break pages;
-      };
-    } catch (e) {
-      noteError(?root, "list_proposals: " # Error.message(e));
-      switch (Map.get(snses, Map.phash, root)) { case (?cur) Map.set(snses, Map.phash, root, { cur with listed_round = round_no }); case null {} };
-      return false;
+    let found = Buffer.Buffer<Found>(16);
+    var page = first;
+    var pages = 1;
+    label more loop {
+      let (lastOpen, before) = snsFound(page, t, found);
+      if (page.size() < PROPOSAL_PAGE or not lastOpen or pages >= config.proposal_pages or budget == 0) break more;
+      spend();
+      pages += 1;
+      page := try { (await gov(governance).list_proposals(snsArgs(before))).proposals } catch (e) { noteError(?key, "list_proposals: " # Error.message(e)); break more };
     };
-    let cur = switch (Map.get(snses, Map.phash, root)) { case (?c) c; case null return false };
+    applyListing(key, Buffer.toArray(found));
+  };
+
+  func applyNns(key : Text, first : [T.NnsProposalInfo]) : async* () {
+    let t = nowS();
+    let found = Buffer.Buffer<Found>(32);
+    var page = first;
+    var pages = 1;
+    label more loop {
+      var lastOpen = false;
+      var before : ?T.ProposalId = null;
+      for (p in page.vals()) switch (p.id, p.deadline_timestamp_seconds) {
+        case (?pid, ?d) {
+          lastOpen := d > t;
+          if (d > t) found.add({
+            id = pid.id; title = switch (p.proposal) { case (?x) switch (x.title) { case (?tt) tt; case null "" }; case null "" }; deadline_s = d;
+            created_s = p.proposal_timestamp_seconds; topic_key = Int.toText(Int32.toInt(p.topic)); fn_key = "";
+          });
+          before := ?pid;
+        };
+        case (?pid, null) before := ?pid;
+        case _ {};
+      };
+      if (page.size() < NNS_PAGE or not lastOpen or pages >= config.proposal_pages or budget == 0) break more;
+      spend();
+      pages += 1;
+      page := try { (await nnsGov().list_proposals(nnsArgs(before))).proposal_info } catch (e) { noteError(?key, "list_proposals: " # Error.message(e)); break more };
+    };
+    applyListing(key, Buffer.toArray(found));
+  };
+
+  /// The open proposals after a listing. New since the last listing (or every open one on a
+  /// target's first listing since it became active) need their "new" match; one seen before but
+  /// dropped only gets reminders.
+  func applyListing(key : Text, found : [Found]) {
+    let cur = switch (Map.get(targets, Map.thash, key)) { case (?c) c; case null return };
+    let t = nowS();
     let firstListing = cur.listed_at == 0;
-    let open = Buffer.Buffer<OpenProposal>(found.size());
+    let open = Buffer.Buffer<OpenP>(found.size());
     var maxSeen = cur.max_seen_id;
-    for ((id, title, d) in found.vals()) {
-      if (id > maxSeen) maxSeen := id;
-      switch (Array.find<OpenProposal>(cur.open, func(p) = p.id == id)) {
-        case (?p) open.add({ p with title = clip(title, 120); deadline_s = d });
-        // new since the last round (or every open one the first time): announce it; one we had
-        // seen before but dropped is only reminded about
-        case null open.add({ id; title = clip(title, 120); deadline_s = d; new_pass = if (firstListing or id > cur.max_seen_id) #todo else #done; reminder_pass = #todo; fails = 0 });
+    for (f in found.vals()) {
+      if (f.id > maxSeen) maxSeen := f.id;
+      switch (Array.find<OpenP>(cur.open, func(p) = p.id == f.id)) {
+        case (?p) open.add({ p with title = clip(f.title, 120); deadline_s = f.deadline_s; created_s = f.created_s; topic_key = f.topic_key; fn_key = f.fn_key });
+        case null open.add({
+          id = f.id; title = clip(f.title, 120); deadline_s = f.deadline_s; created_s = f.created_s; topic_key = f.topic_key; fn_key = f.fn_key;
+          new_matched = not (firstListing or f.id > cur.max_seen_id); windows_done = []; fails = 0;
+        });
       };
     };
     // open ones beyond the pages read stay while their deadline is ahead
-    for (p in cur.open.vals()) if (p.deadline_s > t and Array.find<(Nat64, Text, Nat64)>(Buffer.toArray(found), func((id, _, _)) = id == p.id) == null) open.add(p);
-    let sorted = Array.sort<OpenProposal>(Buffer.toArray(open), func(a, b) = Nat64.compare(a.id, b.id));
-    let kept = if (sorted.size() > MAX_OPEN_PER_SNS) Array.subArray<OpenProposal>(sorted, (sorted.size() - MAX_OPEN_PER_SNS : Nat), MAX_OPEN_PER_SNS) else sorted;
-    Map.set(snses, Map.phash, root, { cur with open = kept; max_seen_id = maxSeen; listed_round = round_no; listed_at = now() });
-    true;
+    for (p in cur.open.vals()) if (p.deadline_s > t and Array.find<Found>(found, func(f) = f.id == p.id) == null) open.add(p);
+    let sorted = Array.sort<OpenP>(Buffer.toArray(open), func(a, b) = Nat64.compare(a.id, b.id));
+    let kept = if (sorted.size() > MAX_OPEN_PER_TARGET) Array.subArray<OpenP>(sorted, (sorted.size() - MAX_OPEN_PER_TARGET : Nat), MAX_OPEN_PER_TARGET) else sorted;
+    Map.set(targets, Map.thash, key, { cur with open = kept; max_seen_id = maxSeen; listed_round = round_no; listed_at = now(); last_polled_at = now() });
   };
 
-  func kindText(k : PassKind) : Text = switch k { case (#new) "new"; case (#reminder) "reminder" };
+  // ---- phases 2 and 5: the active watchers' SNS neurons (missing ones first, then stale ones) ----
 
-  /// The proposal's ballots, fetched once per pass and round (list_proposals only returns the
-  /// caller's own ballots, so get_proposal is needed). false when the pass can't go on this round.
-  func ballotKey(root : Principal, id : Nat64, kind : PassKind) : Text = Principal.toText(root) # "/" # Nat64.toText(id) # "/" # kindText(kind);
-
-  func ballotsFor(root : Principal, s : WatchedSns, id : Nat64, kind : PassKind) : async* Bool {
-    let key = ballotKey(root, id, kind);
-    if (Map.has(ballot_cache, Map.thash, key)) return true;
-    spend();
-    try {
-      let r = await gov(s.governance).get_proposal({ proposal_id = ?{ id } });
-      switch (r.result) {
-        case (?#Proposal(p)) {
-          let m = Map.new<Text, Int32>();
-          for ((k, b) in p.ballots.vals()) Map.set(m, Map.thash, k, b.vote);
-          Map.set(ballot_cache, Map.thash, key, m);
-          let d = deadlineOf(p.proposal_creation_timestamp_seconds, p.initial_voting_period_seconds, p.wait_for_quiet_state);
-          updateOpen(root, id, func(o) = { o with deadline_s = d });
-          true;
-        };
-        case _ {
-          noteError(?root, "get_proposal " # Nat64.toText(id) # ": not found");
-          setPass(root, id, kind, #done);
-          false;
-        };
-      };
-    } catch (e) {
-      noteError(?root, "get_proposal " # Nat64.toText(id) # ": " # Error.message(e));
-      updateOpen(root, id, func(o) = if (o.fails + 1 >= MAX_FAILS) { { o with fails = o.fails + 1; new_pass = if (kind == #new) #done else o.new_pass; reminder_pass = if (kind == #reminder) #done else o.reminder_pass } } else { { o with fails = o.fails + 1 } });
-      false;
-    };
-  };
-
-  /// The hex ids of `user`'s neurons in this SNS on which they hold the vote permission (cached
-  /// for neuron_cache_s). null when governance did not answer.
-  func voteNeurons(root : Principal, governance : Principal, user : Principal) : async* ?[Text] {
-    let key = Principal.toText(user) # "/" # Principal.toText(root);
-    switch (Map.get(neuron_cache, Map.thash, key)) {
-      case (?(at, ids)) if (now() - at < config.neuron_cache_s * 1_000_000_000) return ?ids;
-      case null {};
-    };
-    let ids = Buffer.Buffer<Text>(4);
-    var start : ?T.NeuronId = null;
-    var page = 0;
-    try {
-      label pages while (page < config.neuron_pages) {
-        page += 1;
-        spend();
-        let r = await gov(governance).list_neurons({ of_principal = ?user; limit = Nat32.fromNat(NEURON_PAGE); start_page_at = start });
-        for (n in r.neurons.vals()) switch (n.id) {
-          case (?nid) {
-            start := ?nid;
-            if (Array.find<{ principal : ?Principal; permission_type : [Int32] }>(n.permissions, func(x) = x.principal == ?user and Array.find<Int32>(x.permission_type, func(t) = t == PERMISSION_VOTE) != null) != null) ids.add(hex(nid.id));
-          };
-          case null {};
-        };
-        if (r.neurons.size() < NEURON_PAGE) break pages;
-      };
-    } catch (e) {
-      noteError(?root, "list_neurons: " # Error.message(e));
+  /// The hex ids of `user`'s neurons on which they hold the vote permission, read from governance
+  /// and cached. null when governance did not answer (the cache keeps its old ids; retried in an hour).
+  func readNeurons(key : Text, governance : Principal, user : Principal, inRound : Bool) : async* ?[Text] {
+    if (inRound) spend() else calls_total += 1;
+    let first = try { await gov(governance).list_neurons({ of_principal = ?user; limit = Nat32.fromNat(NEURON_PAGE); start_page_at = null }) } catch (e) {
+      neuronsFailed(key, user, "list_neurons: " # Error.message(e));
       return null;
     };
+    await* neuronsFrom(key, governance, user, first.neurons, inRound);
+  };
+
+  func neuronsFailed(key : Text, user : Principal, msg : Text) {
+    noteError(?key, msg);
+    let ck = cacheKey(user, key);
+    let old = switch (Map.get(user_neurons, Map.thash, ck)) { case (?c) c.ids; case null [] };
+    // looks an hour old to the stale check... unless refresh_s is shorter than that
+    let back : Int = Int.max(0, tuning.neuron_refresh_s * 1_000_000_000 - HOUR_NS);
+    Map.set(user_neurons, Map.thash, ck, { ids = old; at = now() - back; ok = false });
+  };
+
+  func neuronsFrom(key : Text, governance : Principal, user : Principal, first : [T.Neuron], inRound : Bool) : async* ?[Text] {
+    let ids = Buffer.Buffer<Text>(4);
+    var page = first;
+    var pages = 1;
+    label more loop {
+      var start : ?T.NeuronId = null;
+      for (n in page.vals()) switch (n.id) {
+        case (?nid) {
+          start := ?nid;
+          if (Array.find<{ principal : ?Principal; permission_type : [Int32] }>(n.permissions, func(x) = x.principal == ?user and Array.find<Int32>(x.permission_type, func(t) = t == PERMISSION_VOTE) != null) != null) ids.add(hex(nid.id));
+        };
+        case null {};
+      };
+      if (page.size() < NEURON_PAGE or pages >= config.neuron_pages) break more;
+      if (inRound) spend() else calls_total += 1;
+      pages += 1;
+      page := try { (await gov(governance).list_neurons({ of_principal = ?user; limit = Nat32.fromNat(NEURON_PAGE); start_page_at = start })).neurons } catch (e) {
+        neuronsFailed(key, user, "list_neurons: " # Error.message(e));
+        return null;
+      };
+    };
     let out = Buffer.toArray(ids);
-    Map.set(neuron_cache, Map.thash, key, (now(), out));
+    Map.set(user_neurons, Map.thash, cacheKey(user, key), { ids = out; at = now(); ok = true });
     ?out;
   };
 
-  func message(s : WatchedSns, p : OpenProposal, kind : PassKind, user : Principal, neurons : Nat) : T.NotifyInput {
-    let idText = Nat64.toText(p.id);
-    let link = LINK_BASE # idText # "&sns=" # Principal.toText(s.root);
-    let ns = if (neurons == 1) "1 of your neurons" else Nat.toText(neurons) # " of your neurons";
-    let what = if (p.title == "") "" else "\"" # p.title # "\"\n\n";
-    switch kind {
-      case (#new) ({
-        user; topic = TOPIC_PROPOSALS; sponsored = config.sponsored; link = ?link;
-        title = clip(s.name # " proposal #" # idText # ": you can vote", 200);
-        body = what # ns # " can vote on it. Voting closes " # hoursLeft(p.deadline_s) # ".";
-        dedupe = ?("prop:" # Principal.toText(s.root) # ":" # idText);
-      });
-      case (#reminder) ({
-        user; topic = TOPIC_PROPOSALS; sponsored = config.sponsored; link = ?link;
-        title = clip(s.name # " proposal #" # idText # " closes soon", 200);
-        body = what # "Voting closes " # hoursLeft(p.deadline_s) # " and " # ns # (if (neurons == 1) " hasn't" else " haven't") # " voted yet.";
-        dedupe = ?("propdl:" # Principal.toText(s.root) # ":" # idText);
-      });
-    };
-  };
+  /// A cache is stale after neuron_refresh_s, or after the watch's own interval if that is longer
+  /// (a daily watch needs its neurons read at most daily).
+  func staleBefore(w : Watch) : Int = now() - Nat.max(tuning.neuron_refresh_s * 1_000_000_000, w.settings.every_min * MIN_NS);
 
-  /// One pass of one proposal over the SNS's watchers, from where it stopped. true when the SNS
-  /// may go on (the pass finished, or can't go on this round), false when the budget ran out.
-  func runPass(root : Principal, id : Nat64, kind : PassKind) : async* Bool {
-    let s0 = switch (Map.get(snses, Map.phash, root)) { case (?s) s; case null return true };
-    if (budget == 0) return false;
-    if (not (await* ballotsFor(root, s0, id, kind))) return true;
-    let ballots = switch (Map.get(ballot_cache, Map.thash, ballotKey(root, id, kind))) { case (?b) b; case null return true };
-    let s = switch (Map.get(snses, Map.phash, root)) { case (?s) s; case null return true };
-    let p = switch (Array.find<OpenProposal>(s.open, func(x) = x.id == id)) { case (?p) p; case null return true };
-    let state = switch kind { case (#new) p.new_pass; case (#reminder) p.reminder_pass };
-    let after : ?Principal = switch state { case (#done) return true; case (#todo) null; case (#after(u)) ?u };
-    // a proposal first announced within the reminder window already says when it closes
-    if (kind == #new and state == #todo and inWindow(p.deadline_s)) setPass(root, id, #reminder, #done);
-    let batch = Buffer.Buffer<T.NotifyInput>(config.batch_size);
-    var last : ?Principal = null; // the last watcher looked at whose result is not committed yet
-    for (u in s.watchers.vals()) {
-      let ahead = switch after { case (?a) Principal.compare(u, a) == #greater; case null true };
-      if (ahead) {
-        if (budget == 0) {
-          ignore await* flushAndCommit(root, id, kind, batch, last);
-          return false;
+  /// Missing caches (a watcher whose neurons were never read) first, then stale ones, of active
+  /// users only, at most max_refresh_per_round a round, in parallel.
+  func phaseRefresh(missingOnly : Bool) : async* Bool {
+    let todo = Buffer.Buffer<(Principal, Text, Principal)>(16);
+    label scan for ((u, ws) in Map.entries(watches)) {
+      if (isPausedUser(u)) continue scan;
+      for (w in ws.vals()) switch (w.target) {
+        case (#sns(_)) {
+          let key = targetKey(w.target);
+          let due = switch (Map.get(user_neurons, Map.thash, cacheKey(u, key))) { case (?c) not missingOnly and c.at < staleBefore(w); case null true };
+          if (due) switch (Map.get(targets, Map.thash, key)) { case (?s) todo.add((u, key, s.governance)); case null {} };
         };
-        // still watching? (the list is the one from the start of the pass)
-        if (has(watchesOf(u), root)) {
-          switch (await* voteNeurons(root, s.governance, u)) {
-            case (?mine) {
-              var n = 0;
-              for (h in mine.vals()) switch (Map.get(ballots, Map.thash, h)) { case (?v) if (v == 0) n += 1; case null {} };
-              if (n > 0) {
-                let cur = switch (findOpen(root, id)) { case (?c) c; case null p };
-                batch.add(message(s, cur, kind, u, n));
-              };
-            };
-            case null {
-              // governance did not answer: stop here, the pass resumes next round
-              ignore await* flushAndCommit(root, id, kind, batch, last);
-              return true;
-            };
-          };
-        };
-        last := ?u;
-        if (batch.size() >= Nat.min(config.batch_size, 100)) {
-          if (not (await* flushAndCommit(root, id, kind, batch, last))) return true;
-        } else if (batch.size() == 0) setPass(root, id, kind, #after(u));
+        case (#nns) {};
+      };
+      if (refreshed_this_round + todo.size() >= tuning.max_refresh_per_round) break scan;
+    };
+    var i = 0;
+    while (i < todo.size() and refreshed_this_round < tuning.max_refresh_per_round) {
+      if (budget == 0) return false;
+      let n = Nat.min(Nat.min(par(), todo.size() - i), tuning.max_refresh_per_round - refreshed_this_round);
+      let fs = Buffer.Buffer<(Principal, Text, Principal, async { neurons : [T.Neuron] })>(n);
+      for (k in Iter.range(0, n - 1)) {
+        let (u, key, g) = todo.get(i + k);
+        spend();
+        fs.add((u, key, g, gov(g).list_neurons({ of_principal = ?u; limit = Nat32.fromNat(NEURON_PAGE); start_page_at = null })));
+      };
+      i += n;
+      refreshed_this_round += n;
+      for ((u, key, g, f) in fs.vals()) {
+        let r = try { ?(await f) } catch (e) { neuronsFailed(key, u, "list_neurons: " # Error.message(e)); null };
+        switch r { case (?r) ignore await* neuronsFrom(key, g, u, r.neurons, true); case null {} };
       };
     };
-    if (await* flushAndCommit(root, id, kind, batch, last)) setPass(root, id, kind, #done);
     true;
   };
 
-  /// Send the batch; on success move the pass's cursor to `last`. false when nothing was sent
-  /// (the call failed, or the notifications canister doesn't know us), so the users are tried again.
-  func flushAndCommit(root : Principal, id : Nat64, kind : PassKind, batch : Buffer.Buffer<T.NotifyInput>, last : ?Principal) : async* Bool {
-    if (batch.size() == 0) {
-      switch last { case (?u) setPass(root, id, kind, #after(u)); case null {} };
-      return true;
+  // ---- phase 3: each due proposal's ballots read once, matched against every watcher ----
+
+  /// The reminder windows the active watchers of `s` use (with reminders on).
+  func windowsOf(s : TargetState) : [Nat] {
+    let out = Buffer.Buffer<Nat>(2);
+    for (u in s.watchers.vals()) if (not isPausedUser(u)) switch (findWatch(u, s.key)) {
+      case (?w) if (w.settings.reminders and not hasNat(Buffer.toArray(out), w.settings.reminder_window_s)) out.add(w.settings.reminder_window_s);
+      case null {};
     };
-    let n : T.Notifications = switch (config.notifications) { case (?n) actor (Principal.toText(n)); case null return false };
-    let inputs = Buffer.toArray(batch);
-    batch.clear();
-    spend();
-    let results = try { await n.notify_batch(inputs) } catch (e) {
-      noteError(?root, "notify_batch: " # Error.message(e));
-      notify_broken := true;
-      return false;
+    Buffer.toArray(out);
+  };
+
+  /// Reminder windows of `s` due for `p`: reached and not matched yet.
+  func dueWindows(s : TargetState, p : OpenP) : [Nat] = Array.filter<Nat>(windowsOf(s), func(w) = not hasNat(p.windows_done, w) and within(p.deadline_s, w));
+
+  /// Only targets polled this round are matched (their proposals are fresh).
+  func phaseMatch() : async* Bool {
+    let jobs = Buffer.Buffer<(Text, Nat64)>(16);
+    for (s in Map.vals(targets)) if (s.listed_round == round_no and s.listed_at != 0) for (p in s.open.vals()) {
+      if (not p.new_matched or dueWindows(s, p).size() > 0) {
+        if (isNns(s.key)) matchProposal(s.key, p.id, null) else jobs.add((s.key, p.id));
+      };
     };
-    var refused = false;
-    for (r in results.vals()) switch r {
-      case (#ok(x)) if (x.deduplicated) deduplicated += 1 else sent += 1;
-      case (#err(#not_allowed)) skipped_not_allowed += 1;
-      case (#err(#rate_limited)) skipped_rate_limited += 1;
-      case (#err(#no_funds) or #err(#invalid _)) skipped_other += 1;
-      case (#err(#not_registered) or #err(#unknown_topic)) refused := true;
+    var i = 0;
+    while (i < jobs.size()) {
+      if (budget == 0) return false;
+      let n = Nat.min(par(), jobs.size() - i);
+      let fs = Buffer.Buffer<(Text, Nat64, async { result : ?{ #Error : { error_message : Text; error_type : Int32 }; #Proposal : T.FullProposal } })>(n);
+      for (k in Iter.range(0, n - 1)) {
+        let (key, id) = jobs.get(i + k);
+        switch (Map.get(targets, Map.thash, key)) {
+          case (?s) { spend(); fs.add((key, id, gov(s.governance).get_proposal({ proposal_id = ?{ id } }))) };
+          case null {};
+        };
+      };
+      i += n;
+      for ((key, id, f) in fs.vals()) {
+        try {
+          switch ((await f).result) {
+            case (?#Proposal(p)) {
+              let m = Map.new<Text, Int32>();
+              for ((k, b) in p.ballots.vals()) Map.set(m, Map.thash, k, b.vote);
+              let d = deadlineOf(p.proposal_creation_timestamp_seconds, p.initial_voting_period_seconds, p.wait_for_quiet_state);
+              updateOpen(key, id, func(o) = { o with deadline_s = d });
+              matchProposal(key, id, ?m);
+            };
+            case _ { noteError(?key, "get_proposal " # Nat64.toText(id) # ": not found"); giveUp(key, id) };
+          };
+        } catch (e) {
+          noteError(?key, "get_proposal " # Nat64.toText(id) # ": " # Error.message(e));
+          updateOpen(key, id, func(o) = { o with fails = o.fails + 1 });
+          switch (findOpen(key, id)) { case (?o) if (o.fails >= MAX_FAILS) giveUp(key, id); case null {} };
+        };
+      };
     };
-    if (refused) {
-      noteError(null, "Sneed Notifications does not accept our messages (not registered, or no `proposals` topic): run admin_register_with_notifications");
-      notify_broken := true;
-      return false;
-    };
-    switch last { case (?u) setPass(root, id, kind, #after(u)); case null {} };
     true;
+  };
+
+  func giveUp(key : Text, id : Nat64) {
+    switch (Map.get(targets, Map.thash, key)) {
+      case (?s) { let ws = windowsOf(s); updateOpen(key, id, func(o) = { o with new_matched = true; windows_done = ws }) };
+      case null {};
+    };
+  };
+
+  func findOpen(key : Text, id : Nat64) : ?OpenP = switch (Map.get(targets, Map.thash, key)) {
+    case (?s) Array.find<OpenP>(s.open, func(p) = p.id == id);
+    case null null;
+  };
+
+  func updateOpen(key : Text, id : Nat64, f : OpenP -> OpenP) {
+    switch (Map.get(targets, Map.thash, key)) {
+      case (?s) Map.set(targets, Map.thash, key, { s with open = Array.map<OpenP, OpenP>(s.open, func(p) = if (p.id == id) f(p) else p) });
+      case null {};
+    };
+  };
+
+  /// Match one proposal against every active watcher of its target, with no calls: SNS by the
+  /// ballots just read and the watchers' cached neurons; NNS as candidates checked against the
+  /// user's registered neurons at the watch's next check. The new match runs once; each reminder
+  /// window once (a window already reached when the proposal is announced counts as done: the
+  /// message says when voting closes).
+  func matchProposal(key : Text, id : Nat64, ballots : ?Map.Map<Text, Int32>) {
+    let s = switch (Map.get(targets, Map.thash, key)) { case (?s) s; case null return };
+    let p = switch (Array.find<OpenP>(s.open, func(x) = x.id == id)) { case (?p) p; case null return };
+    let due = dueWindows(s, p);
+    let isNew = not p.new_matched;
+    for (u in s.watchers.vals()) if (not isPausedUser(u)) switch (findWatch(u, key)) {
+      case (?w) if (topicOk(w.settings, p)) {
+        let inWin = w.settings.reminders and hasNat(due, w.settings.reminder_window_s);
+        let kind : ?PendingKind = if (isNew) {
+          if (w.settings.new_proposals) ?#new else if (inWin) ?#reminder else null;
+        } else if (inWin) ?#reminder else null;
+        switch kind {
+          case (?k) switch ballots {
+            case (?b) {
+              let mine = switch (Map.get(user_neurons, Map.thash, cacheKey(u, key))) { case (?c) c.ids; case null [] };
+              var n = 0;
+              for (h in mine.vals()) switch (Map.get(b, Map.thash, h)) { case (?v) if (v == 0) n += 1; case null {} };
+              if (n > 0) addPending(u, { key; id; kind = k; title = p.title; deadline_s = p.deadline_s; created_s = p.created_s; neurons = n; nns_check = false });
+            };
+            case null if (nnsNeuronsOf(u).size() > 0) addPending(u, { key; id; kind = k; title = p.title; deadline_s = p.deadline_s; created_s = p.created_s; neurons = 0; nns_check = true });
+          };
+          case null {};
+        };
+      };
+      case null {};
+    };
+    updateOpen(key, id, func(o) = { o with new_matched = true; windows_done = Array.append(o.windows_done, Array.filter<Nat>(due, func(w) = not hasNat(o.windows_done, w))) });
+  };
+
+  func addPending(u : Principal, item : Pending) {
+    let cur = pendingOf(u);
+    if (Array.find<Pending>(cur, func(x) = x.key == item.key and x.id == item.id and x.kind == item.kind) != null) return;
+    let all = Array.append(cur, [item]);
+    let max = tuning.max_pending_per_user;
+    Map.set(pending, Map.phash, u, if (all.size() > max) Array.subArray<Pending>(all, (all.size() - max : Nat), max) else all);
+  };
+
+  // ---- phase 4: check the due watches: charge, then one message (or digest) per topic ----
+
+  type Group = { user : Principal; key : Text; kind : PendingKind; items : [Pending] };
+  type Check = { user : Principal; key : Text; target : Target; every_min : Nat; price : Nat; prev_check_at : Int; first : Nat; groups : Nat };
+
+  func phaseChecks() : async* Bool {
+    if (not notices_done) {
+      if (budget == 0) return false;
+      await* sendPauseNotices();
+      notices_done := true;
+    };
+    // no checks while Sneed Notifications can't take messages: they stay due, uncharged
+    let n : T.Notifications = switch (config.notifications) { case (?n) actor (Principal.toText(n)); case null return true };
+    if (notify_broken) return true;
+    // closed proposals are dropped
+    let t = nowS();
+    for ((u, ps) in Map.entries(pending)) {
+      let live = Array.filter<Pending>(ps, func(p) = p.deadline_s > t);
+      if (live.size() != ps.size()) setPending(u, live);
+    };
+    // the checks due now (active users)
+    let due = Buffer.Buffer<(Principal, Watch)>(16);
+    for ((u, ws) in Map.entries(watches)) if (not isPausedUser(u)) for (w in ws.vals()) if (isDue(w)) due.add((u, w));
+    // NNS candidates of due NNS watches: read the users' neurons (once a round), then count
+    let needNns = Buffer.Buffer<Principal>(8);
+    for ((u, w) in due.vals()) if (isNns(targetKey(w.target)) and not Map.has(nns_info, Map.phash, u) and Array.find<Pending>(pendingOf(u), func(p) = p.nns_check) != null) needNns.add(u);
+    if (not (await* readNnsNeurons(Buffer.toArray(needNns)))) return false;
+    for (u in needNns.vals()) resolveNns(u);
+    let size = Nat.max(1, Nat.min(config.batch_size, 100));
+    var i = 0;
+    while (i < due.size()) {
+      if (budget == 0) return false;
+      // charge checks until their messages fill par() batches
+      let groups = Buffer.Buffer<Group>(16);
+      let checks = Buffer.Buffer<Check>(16);
+      let maxGroups = size * par();
+      while (i < due.size() and groups.size() < maxGroups) {
+        let (u, w0) = due.get(i);
+        i += 1;
+        let key = targetKey(w0.target);
+        switch (findWatch(u, key)) {
+          case (?w) if (not isPausedUser(u) and isDue(w)) {
+            let price = perCheck(w.settings.every_min);
+            if (not chargeCheck(u, price)) pauseUser(u) else {
+              updateWatch(u, key, func(x) = { x with last_check_at = now() });
+              let first = groups.size();
+              let ps = pendingOf(u);
+              for (kind in [#new, #reminder].vals()) {
+                let items = Array.filter<Pending>(ps, func(p) = p.key == key and p.kind == kind and not p.nns_check);
+                if (items.size() > 0) groups.add({ user = u; key; kind; items });
+              };
+              checks.add({ user = u; key; target = w.target; every_min = w.settings.every_min; price; prev_check_at = w.last_check_at; first; groups = groups.size() - first });
+            };
+          };
+          case _ {};
+        };
+      };
+      // send the groups, up to par() batches at once
+      let outcome = Array.init<Text>(groups.size(), "");
+      let calls = Buffer.Buffer<(Nat, Nat, async [T.NotifyResult])>(4);
+      var g = 0;
+      while (g < groups.size()) {
+        let m = Nat.min(size, groups.size() - g);
+        let gs = Array.tabulate<Group>(m, func(k) = groups.get(g + k));
+        spend();
+        calls.add((g, m, n.notify_batch(Array.map<Group, T.NotifyInput>(gs, message))));
+        g += m;
+      };
+      for ((start, m, f) in calls.vals()) {
+        let results = try { await f } catch (e) { noteError(null, "notify_batch: " # Error.message(e)); notify_broken := true; [] };
+        var refused = results.size() < m;
+        var k = 0;
+        for (r in results.vals()) {
+          if (k < m) {
+            let grp = groups.get(start + k);
+            switch r {
+              case (#ok(x)) { if (x.deduplicated) deduplicated += 1 else sent += 1; done(grp); outcome[start + k] := "sent" };
+              case (#err(#not_allowed)) { skipped_not_allowed += 1; done(grp); outcome[start + k] := "not delivered: Sneed Monitor is not allowed in your notification centre" };
+              case (#err(#rate_limited)) { skipped_rate_limited += 1; done(grp); outcome[start + k] := "not delivered: your daily cap for the app" };
+              case (#err(#no_funds) or #err(#invalid _)) { skipped_other += 1; done(grp); outcome[start + k] := "not delivered" };
+              case (#err(#not_registered) or #err(#unknown_topic)) { refused := true; outcome[start + k] := "unavailable" };
+            };
+          };
+          k += 1;
+        };
+        if (refused) {
+          for (j in Iter.range(start, start + m - 1)) if (outcome[j] == "") outcome[j] := "unavailable";
+          if (not notify_broken) noteError(null, "Sneed Notifications does not accept our messages (not registered, or a topic missing): run admin_register_with_notifications or admin_update_notifications_app");
+          notify_broken := true;
+        };
+      };
+      // the charge history; a check whose messages Sneed Notifications could not take is refunded
+      for (c in checks.vals()) {
+        var proposals = 0;
+        var failed = false;
+        var note = "";
+        var j = c.first;
+        while (j < c.first + c.groups) {
+          proposals += groups.get(j).items.size();
+          if (outcome[j] == "unavailable") failed := true else if (outcome[j] != "sent") note := outcome[j];
+          j += 1;
+        };
+        if (failed) {
+          refundCheck(c.user, c.price);
+          updateWatch(c.user, c.key, func(x) = { x with last_check_at = c.prev_check_at });
+        } else {
+          let text = if (c.groups == 0) "nothing new" else Nat.toText(proposals) # (if (proposals == 1) " proposal" else " proposals") # (if (note == "") ", sent" else ", " # note);
+          addCharge(c.user, { at = now(); target = c.target; every_min = c.every_min; price_e8s = c.price; outcome = text });
+          addEconomics({ cycles_burned = 0; revenue_e8s = c.price; checks = 1; rounds = 0 });
+        };
+      };
+      if (notify_broken) return true;
+    };
+    true;
+  };
+
+  /// Forward the collected fees to fee_destination in one transfer once they reach
+  /// fee_sweep_threshold_e8s (at most once a round; the ledger fee comes off the amount). The
+  /// counters move only after the ledger accepted; a failure leaves the fees for the next round.
+  func forwardFees() : async* () {
+    if (fees_checked_round == round_no) return;
+    fees_checked_round := round_no;
+    let to = switch (billing.fee_destination) { case (?a) a; case null return };
+    let amount = feesAvailable();
+    let fee = billing.ledger_fee_e8s;
+    if (fees_in_flight or amount < billing.fee_sweep_threshold_e8s or amount <= fee) return;
+    fees_in_flight := true;
+    spend();
+    try {
+      let r = try {
+        await ledger().icrc1_transfer({ from_subaccount = null; to; amount = amount - fee : Nat; fee = ?fee; memo = null; created_at_time = ?Nat64.fromNat(Int.abs(now())) });
+      } catch (e) { noteError(null, "fee forward: " # Error.message(e)); return };
+      switch r {
+        case (#Ok _) { fees_withdrawn_e8s += amount; fees_forwarded_e8s += amount; fee_forwards += 1 };
+        case (#Err(#BadFee(x))) { billing := { billing with ledger_fee_e8s = x.expected_fee }; noteError(null, "fee forward: the ledger fee changed") };
+        case (#Err _) noteError(null, "fee forward: the ledger refused the transfer");
+      };
+    } finally { fees_in_flight := false };
+  };
+
+  /// A group was answered: its proposals are not sent again.
+  func done(g : Group) {
+    setPending(g.user, Array.filter<Pending>(pendingOf(g.user), func(p) = not (p.key == g.key and p.kind == g.kind and Array.find<Pending>(g.items, func(x) = x.id == p.id) != null)));
+  };
+
+  /// get_neuron_info for each registered neuron of these users, in parallel. false when the
+  /// budget ran out (the users read so far are kept for the round).
+  func readNnsNeurons(users : [Principal]) : async* Bool {
+    for (u in users.vals()) if (not Map.has(nns_info, Map.phash, u)) {
+      let ids = nnsNeuronsOf(u);
+      let got = Buffer.Buffer<(Nat64, ?T.NnsNeuronInfo)>(ids.size());
+      var i = 0;
+      while (i < ids.size()) {
+        if (budget == 0) return false;
+        let n = Nat.min(par(), ids.size() - i);
+        let fs = Buffer.Buffer<(Nat64, async { #Ok : T.NnsNeuronInfo; #Err : { error_message : Text; error_type : Int32 } })>(n);
+        for (k in Iter.range(0, n - 1)) { spend(); fs.add((ids[i + k], nnsGov().get_neuron_info(ids[i + k]))) };
+        i += n;
+        for ((id, f) in fs.vals()) {
+          let info : ?T.NnsNeuronInfo = try { switch (await f) { case (#Ok(x)) ?x; case (#Err _) null } } catch (e) { noteError(?NNS_KEY, "get_neuron_info: " # Error.message(e)); null };
+          got.add((id, info));
+        };
+      };
+      Map.set(nns_info, Map.phash, u, Buffer.toArray(got));
+    };
+    true;
+  };
+
+  /// Count, for each NNS candidate of `u`, the registered neurons that can vote on it and haven't:
+  /// voting power, a dissolve delay of six months, created before the proposal, and no vote in
+  /// its recent ballots. A private neuron hides its ballots: counted for new proposals only.
+  /// Candidates with none are dropped.
+  func resolveNns(u : Principal) {
+    let infos = switch (Map.get(nns_info, Map.phash, u)) { case (?i) i; case null return };
+    let out = Buffer.Buffer<Pending>(8);
+    for (p in pendingOf(u).vals()) {
+      if (not p.nns_check) out.add(p) else {
+        var n = 0;
+        for ((_, oi) in infos.vals()) switch oi {
+          case (?x) {
+            let vp = switch (x.deciding_voting_power) { case (?v) v; case null x.voting_power };
+            let hidden = x.visibility == ?(2 : Int32);
+            let voted = Array.find<{ vote : Int32; proposal_id : ?T.ProposalId }>(x.recent_ballots, func(b) = b.proposal_id == ?{ id = p.id } and b.vote != 0) != null;
+            if (vp > 0 and x.dissolve_delay_seconds >= NNS_MIN_DISSOLVE_S and x.created_timestamp_seconds <= p.created_s and not voted and not (hidden and p.kind == #reminder)) n += 1;
+          };
+          case null {};
+        };
+        if (n > 0) out.add({ p with neurons = n; nns_check = false });
+      };
+    };
+    setPending(u, Buffer.toArray(out));
+  };
+
+  func proposalLink(key : Text, id : Nat64) : Text =
+    if (isNns(key)) SITE # "/icp_proposal?proposalid=" # Nat64.toText(id) else SITE # "/proposal?proposalid=" # Nat64.toText(id) # "&sns=" # key;
+  func listLink(key : Text) : Text = if (isNns(key)) SITE # "/icp_proposals" else SITE # "/proposals?sns=" # key;
+  func neuronsText(n : Nat) : Text = if (n == 1) "1 of your neurons" else Nat.toText(n) # " of your neurons";
+
+  /// One proposal: the full message; several: a digest listing them (up to 10 lines).
+  func message(g : Group) : T.NotifyInput {
+    let name = switch (Map.get(targets, Map.thash, g.key)) { case (?s) s.name; case null g.key };
+    let topic = switch (g.kind) { case (#new) TOPIC_PROPOSALS; case (#reminder) TOPIC_DEADLINES };
+    let sorted = Array.sort<Pending>(g.items, func(a, b) = Nat64.compare(a.id, b.id));
+    if (sorted.size() == 1) {
+      let p = sorted[0];
+      let idText = Nat64.toText(p.id);
+      let what = if (p.title == "") "" else "\"" # p.title # "\"\n\n";
+      let ns = neuronsText(p.neurons);
+      return switch (g.kind) {
+        case (#new) ({
+          user = g.user; topic; sponsored = config.sponsored; link = ?proposalLink(g.key, p.id);
+          title = clip(name # " proposal #" # idText # ": you can vote", 200);
+          body = what # ns # " can vote on it. Voting closes " # hoursLeft(p.deadline_s) # ".";
+          dedupe = ?("prop:" # g.key # ":" # idText);
+        });
+        case (#reminder) ({
+          user = g.user; topic; sponsored = config.sponsored; link = ?proposalLink(g.key, p.id);
+          title = clip(name # " proposal #" # idText # " closes soon", 200);
+          body = what # "Voting closes " # hoursLeft(p.deadline_s) # " and " # ns # (if (p.neurons == 1) " hasn't" else " haven't") # " voted yet.";
+          dedupe = ?("propdl:" # g.key # ":" # idText);
+        });
+      };
+    };
+    var lines = "";
+    var k = 0;
+    for (p in sorted.vals()) {
+      if (k < DIGEST_LINES) lines #= "#" # Nat64.toText(p.id) # (if (p.title == "") "" else " " # clip(p.title, 80)) # ": " # neuronsText(p.neurons) # ", closes " # hoursLeft(p.deadline_s) # "\n";
+      k += 1;
+    };
+    if (sorted.size() > DIGEST_LINES) lines #= "and " # Nat.toText(sorted.size() - DIGEST_LINES : Nat) # " more\n";
+    let count = Nat.toText(sorted.size());
+    let ids = Nat64.toText(sorted[0].id) # "-" # Nat64.toText(sorted[sorted.size() - 1].id) # ":" # count;
+    switch (g.kind) {
+      case (#new) ({
+        user = g.user; topic; sponsored = config.sponsored; link = ?listLink(g.key);
+        title = clip(count # " proposals to vote on in " # name, 200);
+        body = lines; dedupe = ?("propd:" # g.key # ":" # ids);
+      });
+      case (#reminder) ({
+        user = g.user; topic; sponsored = config.sponsored; link = ?listLink(g.key);
+        title = clip(count # " proposals in " # name # " close soon", 200);
+        body = lines # "Your neurons haven't voted on these yet."; dedupe = ?("propdld:" # g.key # ":" # ids);
+      });
+    };
   };
 
   transient var timer : Timer.TimerId = Timer.recurringTimer<system>(#seconds(config.interval_s), startRound);
 
   // ---------------------------------------------------------------------------------------------
+  // Upgrade from the 1bbee49a build (SNS watches in `user_watches` / `snses`)
+  // ---------------------------------------------------------------------------------------------
+
+  system func postupgrade() { migrateLegacy() };
+
+  func migrateLegacy() {
+    for ((root, s) in Map.entries(snses)) {
+      let key = Principal.toText(root);
+      if (not Map.has(targets, Map.thash, key)) Map.set(targets, Map.thash, key, {
+        target = #sns(root); key; governance = s.governance; name = s.name; watchers = s.watchers;
+        open = Array.map<OpenProposal, OpenP>(s.open, func(p) = {
+          id = p.id; title = p.title; deadline_s = p.deadline_s; created_s = 0; topic_key = ""; fn_key = "";
+          // a pass under way counts as done: better one user missed than one told twice
+          new_matched = p.new_pass != #todo; windows_done = if (p.reminder_pass == #done) [86_400] else []; fails = p.fails;
+        });
+        max_seen_id = s.max_seen_id; listed_round = 0; listed_at = s.listed_at; last_polled_at = 0; last_error = s.last_error; errors = s.errors;
+      });
+    };
+    for ((u, roots) in Map.entries(user_watches)) {
+      let have = watchesOf(u);
+      let add = Array.mapFilter<Principal, Watch>(roots, func(r) = if (Array.find<Watch>(have, func(w) = w.target == #sns(r)) != null) null else ?{
+        target = #sns(r); settings = tuning.defaults; created_at = now(); last_check_at = 0; user_refresh_at = 0;
+      });
+      if (add.size() > 0) Map.set(watches, Map.phash, u, Array.append(have, add));
+    };
+    Map.clear(snses);
+    Map.clear(user_watches);
+  };
+
+  // ---------------------------------------------------------------------------------------------
   // Public reads
   // ---------------------------------------------------------------------------------------------
 
+  func backlog() : Backlog {
+    var fetch = 0;
+    for (s in Map.vals(targets)) if (s.listed_at != 0) for (p in s.open.vals()) if (not p.new_matched or dueWindows(s, p).size() > 0) fetch += 1;
+    var msgs = 0;
+    for (ps in Map.vals(pending)) msgs += ps.size();
+    var missing = 0;
+    var stale = 0;
+    var checksDue = 0;
+    for ((u, ws) in Map.entries(watches)) if (not isPausedUser(u)) for (w in ws.vals()) {
+      if (isDue(w)) checksDue += 1;
+      switch (w.target) {
+        case (#sns(_)) switch (Map.get(user_neurons, Map.thash, cacheKey(u, targetKey(w.target)))) { case (?c) if (c.at < staleBefore(w)) stale += 1; case null missing += 1 };
+        case (#nns) {};
+      };
+    };
+    { round_open; ballots_to_fetch = fetch; pending_messages = msgs; users_with_pending = Map.size(pending); neuron_caches_missing = missing; neuron_caches_stale = stale; checks_due = checksDue };
+  };
+
   public query func get_status() : async Status {
     var open = 0;
-    var watches = 0;
-    for (s in Map.vals(snses)) { open += s.open.size(); watches += s.watchers.size() };
+    var n = 0;
+    for (s in Map.vals(targets)) { open += s.open.size(); n += s.watchers.size() };
     {
-      paused = config.paused; running = busy() or qpos < queue.size(); users = Map.size(user_watches); watches; snses = Map.size(snses);
+      paused = config.paused; running = busy() or round_open; users = Map.size(watches); watches = n; targets = Map.size(targets);
       open_proposals = open; rounds = round_no; last_round_start; last_round_end; interval_s = config.interval_s;
       calls_last_round; calls_total; sent; deduplicated; skipped_not_allowed; skipped_rate_limited; skipped_other;
       errors; last_error; notifications = config.notifications; app_id; cycles = Cycles.balance();
+      paused_users = Iter.size(Iter.filter<UserAccount>(Map.vals(accounts), func(a) = a.paused));
+      economics = { total = econ_total; last_24h = window(24); last_30d = window(HOURS_KEPT); last_round_cycles };
+      last_round_duration_ns = last_round_duration; round_ticks; backlog = backlog();
     };
   };
 
-  /// The watched SNSes (counts only, never who watches).
-  public query func get_snses() : async [SnsInfo] {
-    Iter.toArray(Iter.map<WatchedSns, SnsInfo>(Map.vals(snses), func(s) = {
-      root = s.root; governance = s.governance; name = s.name; watchers = s.watchers.size(); listed_at = s.listed_at; last_error = s.last_error; errors = s.errors;
-      open = Array.map<OpenProposal, { id : Nat64; title : Text; deadline_s : Nat64; new_done : Bool; reminder_done : Bool }>(s.open, func(p) = { id = p.id; title = p.title; deadline_s = p.deadline_s; new_done = p.new_pass == #done; reminder_done = p.reminder_pass == #done });
+  /// The watched targets (counts only, never who watches).
+  public query func get_targets() : async [TargetInfo] {
+    Iter.toArray(Iter.map<TargetState, TargetInfo>(Map.vals(targets), func(s) {
+      var active = 0;
+      for (u in s.watchers.vals()) if (not isPausedUser(u)) active += 1;
+      {
+        target = s.target; governance = s.governance; name = s.name; watchers = s.watchers.size(); active_watchers = active; poll_every_min = activeEvery(s);
+        listed_at = s.listed_at; last_error = s.last_error; errors = s.errors;
+        open = Array.map<OpenP, { id : Nat64; title : Text; deadline_s : Nat64; topic_key : Text; new_done : Bool; windows_done : [Nat] }>(s.open, func(p) = { id = p.id; title = p.title; deadline_s = p.deadline_s; topic_key = p.topic_key; new_done = p.new_matched; windows_done = p.windows_done });
+      };
     }));
   };
 
-  public query func get_config() : async Config { config };
+  /// Every setting (core, tuning, billing, tiers), for an admin page.
+  public query func get_config() : async T.AllConfig { { core = config; tuning; billing; tiers = tier_table } };
+  public query func get_tuning() : async Tuning { tuning };
   public query func get_admins() : async [Principal] { admins };
 
   /// The topics sneed_mon sends under (what admin_register_with_notifications registers).
   public query func get_topics() : async [T.NTopic] { topics() };
 
   func topics() : [T.NTopic] = [
-    { id = TOPIC_PROPOSALS; title = "Proposals to vote on"; level = #normal; description = "A new proposal in an SNS you watch that one of your neurons can vote on, and a reminder about a day before voting closes if it still hasn't voted." },
+    { id = TOPIC_PROPOSALS; title = "Proposals to vote on"; level = #normal; description = "A new proposal in an SNS or the NNS you watch that one of your neurons can vote on (several at once as one digest)." },
+    { id = TOPIC_DEADLINES; title = "Proposals closing soon"; level = #urgent; description = "Before voting closes on a proposal in an SNS or the NNS you watch, if one of your neurons still hasn't voted." },
+    { id = TOPIC_ACCOUNT; title = "Your Sneed Monitor balance"; level = #normal; description = "Your prepaid balance can't pay the next check: monitoring is paused until you top up." },
   ];
+
+  func appInput() : T.AppInput = {
+    name = APP_NAME;
+    logo = ?"https://app.sneeddao.com/sneed_logo.png";
+    description = "Sneed Monitor (app.sneeddao.com) watches the SNSes and the NNS for you and tells you when one of your neurons can vote on a proposal, and again before voting closes. Each check costs a small fee from your prepaid ICP balance while you watch.";
+    canisters = [Principal.fromActor(this)];
+    topics = topics();
+  };
 
   // ---------------------------------------------------------------------------------------------
   // Admin (controllers and the admin list)
@@ -603,6 +1587,32 @@ shared (deployer) persistent actor class SneedMon() = this {
     #ok("Saved");
   };
 
+  /// Defaults for new watches, refresh pace, parallelism and caps. Existing watches keep their settings.
+  public shared ({ caller }) func admin_set_tuning(t : Tuning) : async Result {
+    if (not isAdmin(caller)) return #err("Admins only");
+    switch (checkSettings(t.defaults)) { case (?e) return #err("defaults: " # e); case null {} };
+    if (t.parallel_calls == 0 or t.parallel_calls > 50) return #err("parallel_calls 1 to 50");
+    if (t.max_nns_neurons > 100 or t.max_pending_per_user == 0) return #err("max_nns_neurons at most 100, max_pending_per_user at least 1");
+    tuning := t;
+    #ok("Saved");
+  };
+
+  /// The price table: base_daily_price_e8s and the tiers (every_min must divide 1440 and be at
+  /// least 10; a tier in use by a watch or the defaults can't be removed).
+  public shared ({ caller }) func admin_set_tiers(t : TierTable) : async Result {
+    if (not isAdmin(caller)) return #err("Admins only");
+    if (t.tiers.size() == 0 or t.tiers.size() > 10) return #err("1 to 10 tiers");
+    for (x in t.tiers.vals()) {
+      if (x.every_min < 10 or 1440 % x.every_min != 0) return #err("every_min must be at least 10 and divide 1440");
+      if (Array.filter<Tier>(t.tiers, func(y) = y.every_min == x.every_min).size() > 1) return #err("A tier appears twice");
+    };
+    let kept = func(m : Nat) : Bool = Array.find<Tier>(t.tiers, func(x) = x.every_min == m) != null;
+    if (not kept(tuning.defaults.every_min)) return #err("The default frequency (" # Nat.toText(tuning.defaults.every_min) # " min) must stay a tier");
+    for (ws in Map.vals(watches)) for (w in ws.vals()) if (not kept(w.settings.every_min)) return #err("Watches use " # Nat.toText(w.settings.every_min) # " min");
+    tier_table := t;
+    #ok("Saved");
+  };
+
   func resetTimer<system>() {
     Timer.cancelTimer(timer);
     timer := Timer.recurringTimer<system>(#seconds(config.interval_s), startRound);
@@ -615,29 +1625,75 @@ shared (deployer) persistent actor class SneedMon() = this {
     #ok("Saved");
   };
 
-  /// Register sneed_mon with Sneed Notifications as the app "Sneed Hub" (this canister only,
-  /// topic `proposals`). Alternatively an admin of Sneed Notifications adds this canister and the
-  /// topic to an existing app with update_app; then admin_set_app_id records it here.
+  /// Register sneed_mon with Sneed Notifications as the app "Sneed Monitor" (this canister only,
+  /// the topics of get_topics). sneed_mon becomes the app's owner.
   public shared ({ caller }) func admin_register_with_notifications() : async ResultNat {
     if (not isAdmin(caller)) return #err("Admins only");
     let n : T.Notifications = switch (config.notifications) { case (?n) actor (Principal.toText(n)); case null return #err("No notifications canister set") };
-    let r = try {
-      await n.register_app({
-        name = "Sneed Hub";
-        logo = ?"https://app.sneeddao.com/sneed_logo.png";
-        description = "Sneed Hub (app.sneeddao.com): proposals you can vote on in the SNSes you watch.";
-        canisters = [Principal.fromActor(this)];
-        topics = topics();
-      });
-    } catch (e) { return #err("Sneed Notifications did not answer: " # Error.message(e)) };
+    let r = try { await n.register_app(appInput()) } catch (e) { return #err("Sneed Notifications did not answer: " # Error.message(e)) };
     switch r { case (#ok(id)) app_id := ?id; case (#err _) {} };
     r;
+  };
+
+  /// Bring the registered app (app_id) up to date: name, description and topics as this build has
+  /// them, same id. Sneed Notifications lets the app's owner do this, which sneed_mon is when it
+  /// registered the app itself.
+  public shared ({ caller }) func admin_update_notifications_app() : async Result {
+    if (not isAdmin(caller)) return #err("Admins only");
+    let n : T.Notifications = switch (config.notifications) { case (?n) actor (Principal.toText(n)); case null return #err("No notifications canister set") };
+    let id = switch app_id { case (?i) i; case null return #err("No app id: run admin_register_with_notifications or admin_set_app_id") };
+    try { await n.update_app(id, appInput()) } catch (e) { #err("Sneed Notifications did not answer: " # Error.message(e)) };
   };
 
   public shared ({ caller }) func admin_set_app_id(id : ?Nat) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     app_id := id;
     #ok("Saved");
+  };
+
+  /// Where collected fees go (null: they stay for admin_withdraw_fees).
+  public shared ({ caller }) func admin_set_fee_destination(a : ?Account) : async Result {
+    if (not isAdmin(caller)) return #err("Admins only");
+    switch a { case (?x) switch (x.subaccount) { case (?s) if (s.size() != 32) return #err("A subaccount is 32 bytes"); case null {} }; case null {} };
+    billing := { billing with fee_destination = a };
+    #ok("Saved");
+  };
+
+  public shared ({ caller }) func admin_set_fee_sweep_threshold(e8s : Nat) : async Result {
+    if (not isAdmin(caller)) return #err("Admins only");
+    billing := { billing with fee_sweep_threshold_e8s = e8s };
+    #ok("Saved");
+  };
+
+  /// Set the ledger, its fee, the fee destination and threshold. The ledger can't change while
+  /// anyone has a balance or fees are left to withdraw.
+  public shared ({ caller }) func admin_set_billing(b : BillingConfig) : async Result {
+    if (not isAdmin(caller)) return #err("Admins only");
+    if (b.icp_ledger != billing.icp_ledger and userBalancesTotal() + feesAvailable() > 0) return #err("Balances are held on the current ledger");
+    billing := b;
+    #ok("Saved");
+  };
+
+  /// Withdraw collected fees (never the users' balances): `amount_e8s` comes off the available
+  /// fees and `to` receives it less the ledger fee. Returns the ledger block.
+  public shared ({ caller }) func admin_withdraw_fees(amount_e8s : Nat, to : Account) : async ResultNat {
+    if (not isAdmin(caller)) return #err("Admins only");
+    if (fees_in_flight) return #err("A fee withdrawal is under way");
+    let fee = billing.ledger_fee_e8s;
+    if (amount_e8s > feesAvailable()) return #err("Fees available: " # Nat.toText(feesAvailable()) # " e8s");
+    if (amount_e8s <= fee) return #err("The amount must be more than the ledger fee (" # Nat.toText(fee) # " e8s)");
+    fees_in_flight := true;
+    fees_withdrawn_e8s += amount_e8s;
+    try {
+      let r = try {
+        await ledger().icrc1_transfer({ from_subaccount = null; to; amount = amount_e8s - fee : Nat; fee = ?fee; memo = null; created_at_time = ?Nat64.fromNat(Int.abs(now())) });
+      } catch (e) { fees_withdrawn_e8s -= amount_e8s; return #err("The ledger did not answer (nothing moved): " # Error.message(e)) };
+      switch r {
+        case (#Ok(block)) #ok(block);
+        case (#Err(#BadFee(x))) { fees_withdrawn_e8s -= amount_e8s; billing := { billing with ledger_fee_e8s = x.expected_fee }; #err("The ledger fee changed; try again") };
+        case (#Err _) { fees_withdrawn_e8s -= amount_e8s; #err("The ledger refused the transfer") };
+      };
+    } finally { fees_in_flight := false };
   };
 
   public shared ({ caller }) func admin_pause() : async Result {
@@ -660,7 +1716,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     #ok("Saved");
   };
 
-  /// Start a round now (or go on with the current one), and wait for its first tick.
+  /// Start a round (or go on with the open one), and wait for its first tick.
   public shared ({ caller }) func admin_run_now() : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     if (config.paused) return #err("Paused");
@@ -692,17 +1748,40 @@ shared (deployer) persistent actor class SneedMon() = this {
   system func inspect({ caller : Principal; arg : Blob; msg : {
     #get_api_doc : Any;
     #get_status : Any;
-    #get_snses : Any;
+    #get_targets : Any;
     #get_config : Any;
+    #get_tuning : Any;
+    #get_tiers : Any;
     #get_admins : Any;
     #get_topics : Any;
     #get_my_watches : Any;
-    #watch_sns : Any;
-    #unwatch_sns : Any;
+    #get_watch : Any;
+    #get_my_nns_neurons : Any;
+    #get_target_topics : Any;
+    #get_deposit_account : Any;
+    #get_my_balance : Any;
+    #get_my_charges : Any;
+    #get_accounting : Any;
+    #get_billing_config : Any;
+    #watch : Any;
+    #unwatch : Any;
+    #update_watch : Any;
+    #refresh_my_neurons : Any;
+    #set_nns_neurons : Any;
+    #list_target_topics : Any;
+    #credit_deposit : Any;
+    #withdraw_balance : Any;
     #admin_set_config : Any;
+    #admin_set_tuning : Any;
+    #admin_set_tiers : Any;
     #admin_set_notifications_canister : Any;
     #admin_register_with_notifications : Any;
+    #admin_update_notifications_app : Any;
     #admin_set_app_id : Any;
+    #admin_set_billing : Any;
+    #admin_set_fee_destination : Any;
+    #admin_set_fee_sweep_threshold : Any;
+    #admin_withdraw_fees : Any;
     #admin_pause : Any;
     #admin_resume : Any;
     #admin_set_interval : Any;
@@ -711,9 +1790,12 @@ shared (deployer) persistent actor class SneedMon() = this {
     #admin_remove_admin : Any;
   } }) : Bool {
     switch msg {
-      case (#get_api_doc _ or #get_status _ or #get_snses _ or #get_config _ or #get_admins _ or #get_topics _ or #get_my_watches _) false;
-      case (#watch_sns _ or #unwatch_sns _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG;
-      case (#admin_set_config _ or #admin_set_notifications_canister _ or #admin_register_with_notifications _ or #admin_set_app_id _ or #admin_pause _ or #admin_resume _ or #admin_set_interval _ or #admin_run_now _ or #admin_add_admin _ or #admin_remove_admin _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
+      case (#get_api_doc _ or #get_status _ or #get_targets _ or #get_config _ or #get_tuning _ or #get_tiers _ or #get_admins _ or #get_topics _ or #get_my_watches _ or #get_watch _ or #get_my_nns_neurons _ or #get_target_topics _ or #get_deposit_account _ or #get_my_balance _ or #get_my_charges _ or #get_accounting _ or #get_billing_config _) false;
+      case (#watch _ or #unwatch _ or #refresh_my_neurons _ or #set_nns_neurons _ or #list_target_topics _ or #credit_deposit _ or #withdraw_balance _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG;
+      // a topic filter of up to 50 keys of 64 characters
+      case (#update_watch _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.textArg(50 * 64);
+      case (#admin_set_tuning _) isAdmin(caller) and arg.size() <= IngressGuard.textArg(50 * 64);
+      case (#admin_set_config _ or #admin_set_tiers _ or #admin_set_notifications_canister _ or #admin_register_with_notifications _ or #admin_update_notifications_app _ or #admin_set_app_id _ or #admin_set_billing _ or #admin_set_fee_destination _ or #admin_set_fee_sweep_threshold _ or #admin_withdraw_fees _ or #admin_pause _ or #admin_resume _ or #admin_set_interval _ or #admin_run_now _ or #admin_add_admin _ or #admin_remove_admin _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
     };
   };
 };

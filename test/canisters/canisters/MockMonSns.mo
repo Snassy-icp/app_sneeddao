@@ -24,9 +24,15 @@ persistent actor class MockMonSns() = this {
   };
   public type Ballot = { vote : Int32; cast_timestamp_seconds : Nat64; voting_power : Nat64 };
   public type ProposalId = { id : Nat64 };
+  public type Topic = {
+    #DaoCommunitySettings; #SnsFrameworkManagement; #DappCanisterManagement; #ApplicationBusinessLogic;
+    #Governance; #TreasuryAssetManagement; #CriticalDappOperations;
+  };
+  public type NervousSystemFunction = { id : Nat64; name : Text; description : ?Text; function_type : ?{ #NativeNervousSystemFunction : {} } };
   public type ProposalData = {
     id : ?ProposalId;
     action : Nat64;
+    topic : ?Topic;
     ballots : [(Text, Ballot)];
     proposal : ?{ title : Text; url : Text; summary : Text; action : ?{ #Motion : { motion_text : Text } } };
     proposer : ?NeuronId;
@@ -46,6 +52,7 @@ persistent actor class MockMonSns() = this {
   var calls_list_proposals : Nat = 0;
   var calls_get_proposal : Nat = 0;
   var calls_list_neurons : Nat = 0;
+  var topics_supported : Bool = true;
 
   let HEX : [Char] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'];
   func hex(b : Blob) : Text {
@@ -64,7 +71,7 @@ persistent actor class MockMonSns() = this {
   /// A proposal with ballots for the given neurons (all unvoted), open until `deadline_s`.
   public shared func add_proposal(id : Nat64, title : Text, created_s : Nat64, deadline_s : Nat64, ballot_neurons : [Blob]) : async () {
     let p : ProposalData = {
-      id = ?{ id }; action = 1;
+      id = ?{ id }; action = 1; topic = if (topics_supported) ?#Governance else null;
       ballots = Array.map<Blob, (Text, Ballot)>(ballot_neurons, func(b) = (hex(b), { vote = 0; cast_timestamp_seconds = 0; voting_power = 100 }));
       proposal = ?{ title; url = ""; summary = "summary"; action = ?#Motion({ motion_text = "motion" }) };
       proposer = null; proposal_creation_timestamp_seconds = created_s;
@@ -79,6 +86,16 @@ persistent actor class MockMonSns() = this {
       { p with ballots = Array.map<(Text, Ballot), (Text, Ballot)>(p.ballots, func((k, b)) = if (k == h) (k, { b with vote; cast_timestamp_seconds = (1 : Nat64) }) else (k, b)) };
     });
   };
+  /// The proposal's topic (and action id), as a governance with topics files it.
+  public shared func set_topic(id : Nat64, topic : Text, action : Nat64) : async () {
+    let t : ?Topic = switch topic {
+      case "Governance" ?#Governance; case "TreasuryAssetManagement" ?#TreasuryAssetManagement;
+      case "DaoCommunitySettings" ?#DaoCommunitySettings; case "CriticalDappOperations" ?#CriticalDappOperations; case _ null;
+    };
+    proposals := Array.map<ProposalData, ProposalData>(proposals, func(p) = if (p.id != ?{ id }) p else { { p with topic = if (topics_supported) t else null; action } });
+  };
+  /// false: an SNS from before topics (list_topics traps, proposals carry no topic).
+  public shared func set_topics_supported(b : Bool) : async () { topics_supported := b };
   public query func counters() : async { list_proposals : Nat; get_proposal : Nat; list_neurons : Nat } {
     { list_proposals = calls_list_proposals; get_proposal = calls_get_proposal; list_neurons = calls_list_neurons };
   };
@@ -119,6 +136,21 @@ persistent actor class MockMonSns() = this {
       case (?p) { { result = ?#Proposal(p) } };
       case null { { result = ?#Error({ error_message = "No proposal"; error_type = 0 }) } };
     };
+  };
+
+  public query func list_topics(_ : {}) : async { topics : ?[{ topic : ?Topic; name : ?Text; description : ?Text; native_functions : ?[NervousSystemFunction]; custom_functions : ?[NervousSystemFunction]; is_critical : ?Bool }]; uncategorized_functions : ?[NervousSystemFunction] } {
+    if (not topics_supported) { assert false };
+    {
+      topics = ?[
+        { topic = ?#Governance; name = ?"Governance"; description = ?"Motions and governance"; native_functions = null; custom_functions = null; is_critical = ?false },
+        { topic = ?#TreasuryAssetManagement; name = ?"Treasury & asset management"; description = ?"Treasury"; native_functions = null; custom_functions = null; is_critical = ?true },
+      ];
+      uncategorized_functions = ?[];
+    };
+  };
+
+  public query func list_nervous_system_functions() : async { reserved_ids : [Nat64]; functions : [NervousSystemFunction] } {
+    { reserved_ids = []; functions = [{ id = 1; name = "Motion"; description = ?"A motion"; function_type = ?#NativeNervousSystemFunction({}) }, { id = 1000; name = "Custom thing"; description = null; function_type = null }] };
   };
 
   public shared func list_neurons(args : { of_principal : ?Principal; limit : Nat32; start_page_at : ?NeuronId }) : async { neurons : [Neuron] } {

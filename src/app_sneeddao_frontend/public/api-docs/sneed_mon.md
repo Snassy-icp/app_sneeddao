@@ -1,13 +1,13 @@
-# Sneed Mon canister API
+# Sneed Monitor canister API
 
-Sneed Mon (`sneed_mon`) is Sneed Hub's watcher. It does on-chain, on a timer, what the notification bar in the Sneed Hub header does in the browser, so users hear about things while the browser is closed. It sends through [Sneed Notifications](/api-docs/sneed_notifications.md) as the app **"Sneed Hub"**, so each user's channels, levels, quiet hours and caps apply (Sneed SMS inbox, phone push, Discord...).
+Sneed Monitor (`sneed_mon`) is Sneed Hub's watcher. It does on-chain, on a timer, what the notification bar in the Sneed Hub header does in the browser, so users hear about proposals while the browser is closed. It sends through [Sneed Notifications](/api-docs/sneed_notifications.md) as the app **"Sneed Monitor"**, so each user's channels, levels, quiet hours and caps apply (Sneed SMS inbox, phone push, Discord...).
 
-Step 1 watches **SNS proposals**: a user who watches an SNS is told when a proposal appears that one of their neurons can vote on, and once more about a day before voting closes if that neuron still hasn't voted. Low cycles and unclaimed rewards are planned topics.
+A user watches **SNSes or the NNS**. They are told when one of their neurons can vote on a proposal and hasn't, and again before voting closes if it still hasn't. Each check of a watch is charged from the user's **prepaid ICP balance**, at the watch's frequency tier.
 
 | | |
 |---|---|
 | Production canister | not deployed yet |
-| Staging canister | not deployed yet |
+| Staging canister | `v53u4-6iaaa-aaaay-aadva-cai` |
 | Candid interface | [sneed_mon.did](/api-docs/sneed_mon.did) · [JavaScript IDL factory](/api-docs/sneed_mon.did.js) |
 | Source | [src/sneed_mon/main.mo](https://github.com/Snassy-icp/app_sneeddao/blob/main/src/sneed_mon/main.mo) · [Types.mo](https://github.com/Snassy-icp/app_sneeddao/blob/main/src/sneed_mon/Types.mo) |
 | Design notes | [spec/sneed_mon.md](https://github.com/Snassy-icp/app_sneeddao/blob/main/spec/sneed_mon.md) |
@@ -23,58 +23,68 @@ Step 1 watches **SNS proposals**: a user who watches an SNS is told when a propo
 
 | Concept | What it is |
 |---|---|
-| **Watch** | A user's opt-in for one SNS (`watch_sns(root)`), with a topic (`proposals` today). At most `max_watches_per_user` (default 10) per user. |
-| **Watched SNS** | An SNS at least one user watches: its root, its governance canister (from SNS-W), its name (governance `get_metadata`), its sorted watcher list and its open proposals. |
-| **Round** | Every `interval_s` (default 600 s): for each watched SNS one `list_proposals`, then the passes that are due. |
-| **Pass** | One walk over an SNS's watchers for one proposal: the **new** pass (once per proposal) and the **reminder** pass (once, when the deadline is within `reminder_window_s`, default 24 h). Each pass fetches the proposal's ballots once (`get_proposal`) and each watcher's neurons (`list_neurons` with `of_principal`, cached for `neuron_cache_s`). |
+| **Target** | `variant { sns : principal; nns }`: an SNS by its root canister (listed by SNS-W), or the NNS. |
+| **Watch** | A user's opt-in for one target, with settings: `every_min` (how often it is checked: a tier), a topic filter, new-proposal messages on/off, reminders on/off, the reminder window. At most 10 per user. |
+| **Tier** | A check frequency with its price: 10 minutes, 1 hour, 3 hours or 1 day (`get_tiers`). |
+| **Round** | Every 10 minutes: poll the targets that are due, match new proposals against the watchers, check the watches that are due. |
+| **Check** | A watch comes due: it is charged, and the proposals waiting for it are sent, one message per topic. |
+| **Balance** | The user's prepaid ICP in sneed_mon, filled through a deposit subaccount. |
 
 ### 1.2 Who is told
 
-A watcher is told about a proposal when at least one neuron of theirs:
+A watcher is told about a proposal when at least one neuron of theirs can vote on it and hasn't:
 
-- lists them with **permission type 4 (vote)**, and
-- has a **ballot** on the proposal with `vote = 0` (not voted yet).
+- **SNS:** the neuron lists them with **permission type 4 (vote)** and has a **ballot** on the proposal with `vote = 0`. A neuron without a ballot can't vote on that proposal (SNS ballots are fixed when the proposal is made). sneed_mon reads the ballots once per proposal (`get_proposal`) and matches them against every watcher's cached neurons (`list_neurons` of the principal, re-read every 6 hours, or at once with `refresh_my_neurons`).
+- **NNS:** the user registers neuron ids with `set_nns_neurons` (at most 20; NNS `list_neurons` only shows a caller's own neurons, and sneed_mon never needs a hotkey). At the user's check sneed_mon reads `get_neuron_info` of each: a neuron counts when it has voting power, a dissolve delay of at least six months, was created before the proposal, and has no vote on it in `recent_ballots`. A **private** neuron hides its ballots, so it counts for new proposals but not for reminders.
 
-A neuron without a ballot can't vote on that proposal (SNS ballots are fixed when the proposal is made), so it doesn't count. This is the same check the header bar makes in the browser (`VotableProposalsUtils.js`), with the ballots as the measure of voting power.
-
-`list_proposals` on SNS governance only returns the ballots of the caller's own neurons, so sneed_mon reads the ballots with `get_proposal`: once for the new pass, once for the reminder.
+And the proposal passes the watch's **topic filter** (`all`, or `only` keys from `list_target_topics`).
 
 ### 1.3 The messages
 
-| | Title | Dedupe key | When |
+| Topic (level) | One proposal | Several at one check | Dedupe key |
 |---|---|---|---|
-| New | `<SNS name> proposal #<id>: you can vote` | `prop:<root>:<id>` | The first round that sees the proposal open (on the first listing of a newly watched SNS: every open proposal). |
-| Reminder | `<SNS name> proposal #<id> closes soon` | `propdl:<root>:<id>` | The deadline (wait-for-quiet included) is within `reminder_window_s`, and the neuron still hasn't voted. Not sent if the proposal was first announced inside that window. |
+| `proposals` (normal) | `<name> proposal #<id>: you can vote` | `<n> proposals to vote on in <name>` | `prop:<target>:<id>` / `propd:…` |
+| `proposal_deadlines` (urgent) | `<name> proposal #<id> closes soon` | `<n> proposals in <name> close soon` | `propdl:<target>:<id>` / `propdld:…` |
+| `account` (normal) | `Monitoring paused: top up` | | none |
 
-Both use topic `proposals` (level `normal`), link `https://app.sneeddao.com/proposal?proposalid=<id>&sns=<root>`, and a body with the proposal's title, how many of the user's neurons can vote, and when voting closes. `sponsored` is `get_config().sponsored` (default `false`: the user's notification balance pays for paid channels; Sneed SMS is free).
+`<name>` is the SNS's name (governance metadata) or `NNS`. The body has the title, how many of the user's neurons can vote, and when voting closes; a digest lists up to 10 proposals. Links: SNS `https://app.sneeddao.com/proposal?proposalid=<id>&sns=<root>` (digest `/proposals?sns=<root>`), NNS `https://app.sneeddao.com/icp_proposal?proposalid=<id>` (digest `/icp_proposals`).
 
-Each user gets each message at most once: the passes keep their place (a cursor into the sorted watcher list) in stable state, and Sneed Notifications folds a repeated dedupe key within an hour as a second guard. Someone who starts watching an SNS after a proposal was announced is not told about it, only reminded.
+A "you can vote" message is sent once per user and proposal; a reminder once, when the deadline comes within the watch's `reminder_window_s` (default a day). A proposal first seen inside the window gets the first message only. Someone who starts watching an SNS later is not told about proposals announced before, only reminded.
 
 ### 1.4 What Sneed Notifications decides
 
-sneed_mon only sends; the user's settings in Sneed Notifications decide where a message goes. A user who has **not allowed** the app "Sneed Hub" gets nothing (`not_allowed`, counted in `skipped_not_allowed`); `watch_sns` asks for the permission on their behalf (`request_permission`, shown in the notification centre). Past the user's daily cap for the app the message is dropped (`skipped_rate_limited`). Neither is retried.
+sneed_mon only sends; the user's settings in Sneed Notifications decide where a message goes. A user who has **not allowed** "Sneed Monitor" gets nothing (`skipped_not_allowed`); `watch` asks for the permission on their behalf. Past the user's daily cap for the app the message is dropped (`skipped_rate_limited`). Neither is retried. Messages are not sponsored: paid channels (push, Discord) charge the user's notification balance there; Sneed SMS is free.
 
-### 1.5 Bounded work
+### 1.5 Polling and bounded work
 
-A tick makes at most `max_calls_per_tick` inter-canister calls (default 200). A round that needs more goes on in follow-up ticks one second apart, up to `max_continuations` (default 10); the rest waits for the next round, and the passes resume where they stopped, also after an upgrade. `list_proposals` reads at most `proposal_pages` pages of 50, `list_neurons` at most `neuron_pages` pages of 100 per user. `notify_batch` sends `batch_size` messages at a time (default 50).
+A target is polled as often as its most frequent **active** (paid-up) watcher wants, and not at all when it has none (it then forgets its proposals, and starts afresh when a watcher returns). The calls per proposal don't depend on the number of watchers. A round makes at most `max_calls_per_tick` calls a tick (200); a bigger round goes on in follow-up ticks, and a new round never starts while one is open. Independent calls are issued in parallel (`tuning.parallel_calls`, 20). `get_status().backlog` and `last_round_duration_ns` show how far behind it is.
 
-Global caps: `max_users` watching users (default 1,000) and `max_snses` watched SNSes (default 100).
+### 1.6 Billing
 
-### 1.6 Failures
+| | |
+|---|---|
+| Deposit | Send ICP to `get_deposit_account()` (your own subaccount of sneed_mon), then `credit_deposit()`: it moves the ICP to sneed_mon's main account, less one ledger fee, and credits your balance. Safe to repeat; nothing is counted twice. |
+| Charges | Per check, at the watch's tier: per check = floor(daily price × every_min / 1440), daily price = `base_daily_price_e8s` × multiplier. Bookkeeping only, no ledger transfer. History: `get_my_charges`. |
+| Default prices | base 14,400 e8s a day: daily ×1 = 14,400 e8s a check; 3-hourly ×2 = 3,600; hourly ×3 = 1,800; 10-minute ×6 = 600 (a day of 10-minute checks: 86,400 e8s). |
+| Pause | A check the balance can't pay is not made: the user's watches pause (kept), one `account` message says so, and `credit_deposit` resumes them once the balance pays one check of each watch. No watches, no charge. |
+| Withdraw | `withdraw_balance(amount_e8s, to)`: `to` receives the amount less the ledger fee (10,000 e8s). |
+| Fees | Forwarded in one transfer (less the ledger fee) to `fee_destination` once they reach `fee_sweep_threshold_e8s` (0.1 ICP), at most once a round. Default destination: the account Sneed Premium pays into, the Neutrinite pylon's ICP splitter `6jvpj-sqaaa-aaaaj-azwnq-cai` with subaccount `0100000000060000000000000000000000000000000000000000000000000000`, which feeds the RLL. |
+| Solvency | `get_accounting()`: user balances + fees not yet forwarded = `obligations_e8s`; sneed_mon's main ICP account holds at least that. |
+
+### 1.7 Failures
 
 | What fails | What sneed_mon does |
 |---|---|
-| `list_proposals` | The SNS is skipped this round (error recorded on it). |
-| `get_proposal` | The pass waits for the next round; after 3 failures it is given up. |
-| `list_neurons` | The pass stops before that user and resumes next round. |
-| `notify_batch` call fails, or answers `not_registered` / `unknown_topic` | Nothing is marked sent; no more passes this round; tried again next round. Run `admin_register_with_notifications` (or fix the app in Sneed Notifications). |
-| `not_allowed`, `rate_limited`, `no_funds`, `invalid` for one user | That user is skipped for that message, not retried. |
+| `list_proposals` | The target is skipped this round (error recorded on it). |
+| `get_proposal` | Retried next poll; given up after 3 failures. |
+| `list_neurons` | The old cache stays; retried in an hour. |
+| `notify_batch` fails, or answers `not_registered` / `unknown_topic` | No more checks that round; the check is refunded and its proposals kept. Run `admin_register_with_notifications` or `admin_update_notifications_app`. |
+| `not_allowed`, `rate_limited`, `no_funds`, `invalid` for one user | That message is dropped (the check is still charged). |
+| Ledger (deposit, withdrawal, fee forward) | Nothing is credited or debited unless the ledger accepted. |
 
-Errors are counted and the last one kept, in `get_status()` and per SNS in `get_snses()`.
+### 1.8 Calls the canister refuses at ingress
 
-### 1.7 Calls the canister refuses at ingress
-
-Queries sent as update calls; the anonymous principal for `watch_sns` / `unwatch_sns`; every `admin_*` method from anyone but a controller or listed admin; arguments over 4 KB.
+Queries sent as update calls; the anonymous principal for user updates; every `admin_*` method from anyone but a controller or listed admin; arguments over 4 KB (16 KB for `update_watch` and `admin_set_tuning`).
 
 ## 2. Quick start
 
@@ -90,27 +100,42 @@ export function monActor(identity, canisterId) {
 }
 ```
 
-### 2.2 For a user: watch an SNS
+### 2.2 Casual: top up and watch
 
 ```js
 const mon = monActor(identity, SNEED_MON);
-await mon.watch_sns(Principal.fromText('fp274-iaaaa-aaaaq-aacha-cai')); // Sneed DAO's SNS root
-// then allow "Sneed Hub" in https://app.sneeddao.com/notifications (the request is waiting there)
-await mon.get_my_watches(); // [{ topic: { proposals: null }, root, governance, name }]
-await mon.unwatch_sns(root);
+const dep = await mon.get_deposit_account();         // { owner, subaccount: [Uint8Array] }
+// send e.g. 0.01 ICP to dep with the ICP ledger (icrc1_transfer), then:
+await mon.credit_deposit();                           // { ok: { credited_e8s, balance_e8s, paused } }
+await mon.watch({ sns: Principal.fromText('fp274-iaaaa-aaaaq-aacha-cai') }); // Sneed DAO
+await mon.watch({ nns: null });
+await mon.set_nns_neurons([123456789n]);              // NNS: your neuron ids (public info only)
+// then allow "Sneed Monitor" in https://app.sneeddao.com/notifications (the request is waiting there)
 ```
 
-`watch_sns` answers `ok`: `Watching` or `Already watching`; `err`: `Please sign in`, `At most 10 SNSes per user`, `sneed_mon is full (watcher limit); try again later`, `sneed_mon watches as many SNSes as it may; try again later`, `Not the root of an SNS listed by SNS-W (try again in a minute if it is new)`, `SNS-W did not answer: …`. `unwatch_sns` answers `Stopped watching` or `Not watching`.
+`watch` answers `ok`: `Watching; …` or `Already watching`; `err`: `Please sign in`, `Top up first: …`, `At most 10 watches per user`, `sneed_mon is full (watcher limit); try again later`, `sneed_mon watches as many SNSes as it may; try again later`, `Not the root of an SNS listed by SNS-W (try again in a minute if it is new)`, `SNS-W did not answer: …`.
 
-### 2.3 For an operator: connect to Sneed Notifications
+### 2.3 Pro: tune a watch
+
+```js
+const opt = (v) => (v === undefined ? [] : [v]);
+const topics = await mon.list_target_topics({ sns: root }); // { ok: [{ key, name, description }] }
+await mon.update_watch({ sns: root }, {
+  every_min: opt(10n), topics: opt({ only: ['Governance'] }), new_proposals: opt(), reminders: opt(true), reminder_window_s: opt(14_400n),
+});
+await mon.get_my_watches();      // settings, price per check, next check, pending, neurons found
+await mon.get_my_charges(0n, 20n); // { total, entries: [{ at, target, every_min, price_e8s, outcome }] }, newest first
+await mon.refresh_my_neurons({ sns: root }); // after adding a neuron
+```
+
+### 2.4 For an operator
 
 ```bash
-dfx canister --network ic call sneed_mon admin_set_notifications_canister '(opt principal "vuy7a-iaaaa-aaaay-aaduq-cai")'
-dfx canister --network ic call sneed_mon admin_register_with_notifications   # registers the app "Sneed Hub" for this canister
+dfx canister --network ic call sneed_mon admin_register_with_notifications   # the app "Sneed Monitor"
+dfx canister --network ic call sneed_mon admin_update_notifications_app      # after an upgrade: name and topics, same app id
+dfx canister --network ic call sneed_mon get_config --query
 dfx canister --network ic call sneed_mon get_status --query
 ```
-
-Instead of a separate app, an admin of Sneed Notifications can add this canister and the `proposals` topic (`get_topics()`) to the existing "Sneed Hub" app with `update_app`, then record the id here with `admin_set_app_id`.
 
 ## 3. Method reference
 
@@ -118,56 +143,71 @@ Instead of a separate app, an admin of Sneed Notifications can add this canister
 
 | Method | Kind | Returns | Notes |
 |---|---|---|---|
-| `watch_sns(root : principal)` | update | `Result` | 2.2. Checks the root with SNS-W. |
-| `unwatch_sns(root : principal)` | update | `Result` | The last watcher leaving drops the SNS and its proposals. |
-| `get_my_watches()` | query | `vec MyWatch` | The caller's watches. |
+| `watch(Target)` | update | `Result` | 2.2. Default settings. |
+| `unwatch(Target)` | update | `Result` | The last watcher leaving drops the target. |
+| `update_watch(Target, WatchSettingsInput)` | update | `Result` | Only the fields given change. `every_min`: a tier; `reminder_window_s`: 3600, 14400, 43200, 86400 or 172800, at least the check interval; `topics`: `all` or `only` 1 to 50 keys. |
+| `refresh_my_neurons(Target)` | update | `ResultNat` | SNS: re-reads your vote neurons (at most every 10 min); returns how many. |
+| `set_nns_neurons(vec nat64)` | update | `Result` | At most 20; empty clears. |
+| `list_target_topics(Target)` | update | `variant { ok : vec TopicOption; err : text }` | Read from governance, cached a day. |
+| `credit_deposit()` | update | `CreditResult` | 1.6. |
+| `withdraw_balance(nat, Account)` | update | `ResultNat` | The ledger block. |
+| `get_my_watches()` / `get_watch(Target)` | query | `vec MyWatch` / `opt MyWatch` | |
+| `get_my_nns_neurons()` | query | `vec nat64` | |
+| `get_target_topics(Target)` | query | `opt vec TopicOption` | The cached `list_target_topics` answer. |
+| `get_deposit_account()` | query | `Account` | |
+| `get_my_balance()` | query | `MyBalance` | Balance, paused, watches, one round of checks and a day's cost at your tiers, totals. |
+| `get_my_charges(start : nat, len : nat)` | query | `record { total : nat; entries : vec ChargeEntry }` | Newest first, at most 100 per call, the last 200 kept. |
 
 ### 3.2 Public reads
 
 | Method | Kind | Returns | Notes |
 |---|---|---|---|
-| `get_status()` | query | `Status` | Counts (users, watches, SNSes, open proposals), rounds, calls, sent / deduplicated / skipped, errors, the notifications canister, the app id, cycles. `running` is true while a round is under way. |
-| `get_snses()` | query | `vec SnsInfo` | Per watched SNS: governance, name, number of watchers (never who), open proposals with their deadlines and whether each pass is done, last error. |
-| `get_config()` | query | `Config` | |
-| `get_topics()` | query | `vec NTopic` | What `admin_register_with_notifications` registers. |
-| `get_admins()` | query | `vec principal` | The admin list (controllers are admins too). |
-| `get_api_doc()` | query | `text` | |
+| `get_status()` | query | `Status` | Counts, rounds, calls, sent / skipped, errors, `backlog`, `last_round_duration_ns`, `economics` (revenue, checks, rounds, cycles burned: total, last 24 h, last 30 days). |
+| `get_targets()` | query | `vec TargetInfo` | Per target: name, watchers (count only), active watchers, poll interval, open proposals with their topic and match state. |
+| `get_config()` | query | `record { core; tuning; billing; tiers }` | Every setting. |
+| `get_tuning()` / `get_billing_config()` | query | | Parts of `get_config`. |
+| `get_tiers()` | query | `record { base_daily_price_e8s; tiers : vec TierPrice }` | With per-check and daily prices. |
+| `get_accounting()` | query | `Accounting` | Totals only. |
+| `get_topics()` | query | `vec NTopic` | What is registered with Sneed Notifications. |
+| `get_admins()` / `get_api_doc()` | query | | |
 
 ### 3.3 Admin methods (controllers and listed admins)
 
-| Method | Returns | Notes |
-|---|---|---|
-| `admin_set_config(Config)` | `Result` | `interval_s` at least 60, `batch_size` 1 to 100, `max_calls_per_tick` at least 1. A new interval restarts the timer. |
-| `admin_set_notifications_canister(opt principal)` | `Result` | Clears the recorded app id. |
-| `admin_register_with_notifications()` | `ResultNat` | Calls `register_app` on Sneed Notifications (name "Sneed Hub", this canister, topic `proposals`); records the app id. Returns Sneed Notifications' answer. |
-| `admin_set_app_id(opt nat)` | `Result` | When the canister was added to an existing app instead. |
-| `admin_pause()` / `admin_resume()` | `Result` | A paused canister starts no rounds. |
-| `admin_set_interval(nat)` | `Result` | Seconds, at least 60. |
-| `admin_run_now()` | `Result` | Starts a round (or goes on with the current one) and returns after its first tick. `err`: `Paused`, `A tick is running`. |
-| `admin_add_admin(principal)` / `admin_remove_admin(principal)` | `Result` | |
+| Method | Notes |
+|---|---|
+| `admin_set_config(Config)` | Core: notifications canister, SNS-W, interval (≥ 60 s), caps, call budget, batch size, pages. |
+| `admin_set_tuning(Tuning)` | Watch defaults, NNS governance, neuron refresh, parallel calls, NNS neuron cap, topic cache. |
+| `admin_set_tiers(TierTable)` | Base daily price and tiers (every_min ≥ 10 dividing 1440; a tier in use can't be removed). |
+| `admin_set_billing(BillingConfig)` | Ledger (not while balances are held), ledger fee, fee destination and threshold. |
+| `admin_set_fee_destination(opt Account)` / `admin_set_fee_sweep_threshold(nat)` | `null` keeps fees in the canister. |
+| `admin_withdraw_fees(nat, Account)` | At most the fees not yet forwarded; never user balances. |
+| `admin_set_notifications_canister(opt principal)` | Clears the app id. |
+| `admin_register_with_notifications()` | `register_app` ("Sneed Monitor", this canister, three topics); records the app id. |
+| `admin_update_notifications_app()` | `update_app(app_id, …)`: name, description and topics as this build has them, same id. |
+| `admin_set_app_id(opt nat)` | |
+| `admin_pause()` / `admin_resume()` / `admin_set_interval(nat)` / `admin_run_now()` | `admin_run_now` starts a round (or goes on with the open one) and returns after its first tick. |
+| `admin_add_admin(principal)` / `admin_remove_admin(principal)` | |
 
 ## 4. Types
 
 ```candid
-type MonTopic = variant { proposals };
-type MyWatch = record { topic : MonTopic; root : principal; governance : principal; name : text };
-type SnsInfo = record {
-  root : principal; governance : principal; name : text; watchers : nat;
-  open : vec record { id : nat64; title : text; deadline_s : nat64; new_done : bool; reminder_done : bool };
-  listed_at : int; last_error : opt record { int; text }; errors : nat;
+type Target = variant { sns : principal; nns };
+type TopicFilter = variant { all; only : vec text };
+type WatchSettings = record { every_min : nat; topics : TopicFilter; new_proposals : bool; reminders : bool; reminder_window_s : nat };
+type MyWatch = record {
+  target : Target; topic : variant { proposals }; governance : principal; name : text; settings : WatchSettings;
+  price_per_check_e8s : nat; next_check_at : int; pending : nat; neurons : opt nat; neurons_at : int;
 };
-type Config = record {
-  notifications : opt principal; sns_wasm : principal; interval_s : nat; paused : bool; sponsored : bool;
-  max_users : nat; max_watches_per_user : nat; max_snses : nat;
-  max_calls_per_tick : nat; max_continuations : nat; reminder_window_s : nat; batch_size : nat;
-  neuron_pages : nat; proposal_pages : nat; neuron_cache_s : nat;
-};
+type ChargeEntry = record { at : int; target : Target; every_min : nat; price_e8s : nat; outcome : text };
+type Account = record { owner : principal; subaccount : opt blob };
+type BillingConfig = record { icp_ledger : principal; ledger_fee_e8s : nat; fee_destination : opt Account; fee_sweep_threshold_e8s : nat };
+type TierTable = record { base_daily_price_e8s : nat; tiers : vec record { every_min : nat; daily_multiplier : nat } };
 ```
 
-`Status` and the rest are in [sneed_mon.did](/api-docs/sneed_mon.did). Times in `Status` and `SnsInfo` (`last_round_start`, `listed_at`, the error times) are `int` nanoseconds; `deadline_s` is seconds.
+`Status`, `Tuning`, `Accounting` and the rest are in [sneed_mon.did](/api-docs/sneed_mon.did). Times are `int` nanoseconds except `deadline_s` (seconds).
 
-## 5. Limits of step 1
+## 5. Limits
 
-- SNS proposals only; NNS proposals, low cycles and rewards are planned.
-- No per-user choice of which proposal topics or types to hear about yet.
-- The SNS name comes from its governance metadata at the time the first user watched it.
+- Proposals only; low cycles and rewards are planned.
+- A daily watch's reminder arrives within a day of the window opening; choose a 48-hour window for a daily watch to be safe.
+- The SNS name comes from its governance metadata when the first user watched it.
