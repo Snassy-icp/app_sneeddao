@@ -17,6 +17,8 @@ import { createActor as createSnsRootActor } from 'external/sns_root';
 import { getAllSnses } from '../utils/SnsUtils';
 import { setCanisterName, setPrincipalNickname } from '../utils/BackendUtils';
 import { padIdl, PAD_CANISTER_ID } from '../tokensafety/padIdl.js';
+import { padQuoteTiers } from '../tokensafety/padPrices.js';
+import PriceTierBadge from '../components/PriceTierBadge';
 import { GUARDIANS, policySummary } from '../tokensafety/guardianIdl.js';
 import { FaRocket, FaSpinner, FaPlus, FaTrash, FaShieldAlt, FaExternalLinkAlt, FaExclamationTriangle } from 'react-icons/fa';
 
@@ -47,6 +49,7 @@ export function LaunchPanel({ onLaunched }) {
     const [logoWarning, setLogoWarning] = useState(false);
     const [names, setNames] = useState({ ledgerPublic: '', indexPublic: '', ledgerPrivate: '', indexPrivate: '', busy: '', done: [], errors: [] });
     const [quote, setQuote] = useState(null);
+    const [quoteTiers, setQuoteTiers] = useState(null); // admin / partner price badges for the quote
     const [quoting, setQuoting] = useState(false);
     const [launching, setLaunching] = useState(null); // step text
     const [result, setResult] = useState(null);
@@ -173,9 +176,14 @@ export function LaunchPanel({ onLaunched }) {
     };
 
     const getQuote = async () => {
-        const a = padActor(false); if (!a || !built.config) return;
-        setQuoting(true); setError(null);
-        try { const r = await a.get_quote(built.config); if ('Err' in r) setError(r.Err); else setQuote(r.Ok); }
+        // signed when logged in: the quote is the caller's (member, admin and partner prices)
+        const a = padActor(!!identity); if (!a || !built.config) return;
+        setQuoting(true); setError(null); setQuoteTiers(null);
+        try {
+            const r = await a.get_quote(built.config);
+            if ('Err' in r) setError(r.Err);
+            else { setQuote(r.Ok); if (identity) padQuoteTiers(a, identity.getPrincipal(), r.Ok).then(setQuoteTiers).catch(() => {}); }
+        }
         catch (e) { setError(e?.message || String(e)); }
         finally { setQuoting(false); }
     };
@@ -379,8 +387,8 @@ export function LaunchPanel({ onLaunched }) {
                         <button type="button" style={btn(false, !built.config || quoting || !PAD_CANISTER_ID)} disabled={!built.config || quoting || !PAD_CANISTER_ID} onClick={getQuote}>{quoting ? <FaSpinner className="health-spin" /> : null} Get the price</button>
                         {quote && (
                             <table style={{ fontSize: '0.85rem', color: theme.colors.secondaryText, borderCollapse: 'collapse' }}><tbody>
-                                <tr><td style={{ paddingRight: 14 }}>Launch fee{quote.premium ? ', Sneed Premium member rate' : ''} (to the DAO's reward loop)</td><td>{fmtIcp(quote.creation_fee_e8s)}</td></tr>
-                                {quote.control_fee_e8s > 0n && <tr><td style={{ paddingRight: 14 }}>Handover fee (Sneed DAO takes over the canisters)</td><td>{fmtIcp(quote.control_fee_e8s)}</td></tr>}
+                                <tr><td style={{ paddingRight: 14 }}>Launch fee{quote.premium ? ', Sneed Premium member rate' : ''} (to the DAO's reward loop)</td><td>{fmtIcp(quote.creation_fee_e8s)}<PriceTierBadge tier={quoteTiers?.creation.tier} partnerLabel={quoteTiers?.creation.partnerLabel} /></td></tr>
+                                {quote.control_fee_e8s > 0n && <tr><td style={{ paddingRight: 14 }}>Handover fee (Sneed DAO takes over the canisters)</td><td>{fmtIcp(quote.control_fee_e8s)}<PriceTierBadge tier={quoteTiers?.control.tier} partnerLabel={quoteTiers?.control.partnerLabel} /></td></tr>}
                                 <tr><td style={{ paddingRight: 14 }}>Cycles for the ledger{quote.index_cycles > 0n ? ' and index' : ''} ({fmtT(quote.ledger_cycles + quote.index_cycles)})</td><td>{fmtIcp(quote.icp_for_cycles_e8s)}</td></tr>
                                 <tr><td style={{ paddingRight: 14 }}>Ledger fees</td><td>{fmtIcp(quote.ledger_fees_e8s)}</td></tr>
                                 <tr style={{ color: theme.colors.primaryText, fontWeight: 700 }}><td style={{ paddingRight: 14 }}>Total (plus one approval fee)</td><td>{fmtIcp(quote.total_e8s)}</td></tr>

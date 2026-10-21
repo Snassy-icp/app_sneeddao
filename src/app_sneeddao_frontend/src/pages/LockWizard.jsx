@@ -19,6 +19,8 @@ import { get_short_timezone, format_duration, dateToReadable, getInitialExpiry }
 import { formatNsDuration } from '../utils/lockTime';
 import ConfirmationModal from '../ConfirmationModal';
 import { usePremiumStatus, PremiumBadge } from '../hooks/usePremiumStatus';
+import PriceTierBadge from '../components/PriceTierBadge';
+import { fetchSpecialPricesFor, effectivePrice } from '../utils/specialPrices';
 
 // Custom CSS for animations
 const customStyles = `
@@ -132,6 +134,7 @@ function LockWizard() {
     // Lock fee state (shown and paid in step 3, together with the lock)
     const [requiredFee, setRequiredFee] = useState(0n);
     const [feeIsPremium, setFeeIsPremium] = useState(false);
+    const [feeTier, setFeeTier] = useState({ tier: 'regular', partnerLabel: null }); // special prices (spec/special_prices.md)
     const [paymentBalance, setPaymentBalance] = useState(0n);
     const [paymentSubaccount, setPaymentSubaccount] = useState(null);
     const [loadingPayment, setLoadingPayment] = useState(false);
@@ -223,6 +226,19 @@ function LockWizard() {
                     ? (isPositionLock ? feeConfig.premium_position_lock_fee_icp_e8s : feeConfig.premium_token_lock_fee_icp_e8s)
                     : (isPositionLock ? feeConfig.position_lock_fee_icp_e8s : feeConfig.token_lock_fee_icp_e8s));
             }
+            // Which tier gave the fee (getEffectiveLockFee already answers the lowest applicable price);
+            // against a canister without special prices this stays regular / premium.
+            const special = await fetchSpecialPricesFor(sneedLockActor, principal);
+            let tier = { tier: 'regular', partnerLabel: null };
+            if (special) {
+                try {
+                    const feeConfig = await sneedLockActor.get_lock_fees_icp();
+                    const field = isPositionLock ? 'position_lock_fee_icp_e8s' : 'token_lock_fee_icp_e8s';
+                    const eff = effectivePrice({ regular: feeConfig[field], premium: feeConfig[`premium_${field}`], isPremium: premium, special, field });
+                    if (eff.amount === fee) tier = { tier: eff.tier, partnerLabel: eff.partnerLabel };
+                } catch { /* keep regular */ }
+            }
+            setFeeTier(tier);
             setRequiredFee(fee);
             setFeeIsPremium(premium);
 
@@ -1789,7 +1805,9 @@ function LockWizard() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
                     <span style={{ color: theme.colors.secondaryText, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
                         Lock fee
-                        {!loadingPayment && (feeIsPremium ? <PremiumBadge size="small" /> : <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>standard</span>)}
+                        {!loadingPayment && (feeTier.tier === 'admin' || feeTier.tier === 'partner'
+                            ? <PriceTierBadge tier={feeTier.tier} partnerLabel={feeTier.partnerLabel} style={{ marginLeft: 0 }} />
+                            : (feeIsPremium ? <PremiumBadge size="small" /> : <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>standard</span>))}
                     </span>
                     {loadingPayment ? (
                         <FaSpinner style={{ ...styles.spinner, color: lockPrimary }} />

@@ -17,6 +17,9 @@ import { createActor as createSnsGovernanceActor } from 'external/sns_governance
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { GUARDIANS, guardianIdl, policySummary } from '../tokensafety/guardianIdl.js';
 import { customStyles } from '../health/TreeView.jsx';
+import SpecialPricesCard from '../components/SpecialPricesCard';
+import PriceTierBadge from '../components/PriceTierBadge';
+import { fetchSpecialPricesFor, effectivePrice } from '../utils/specialPrices';
 
 const HOST = 'https://icp-api.io';
 const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
@@ -118,6 +121,17 @@ function Guardian() {
     };
     const isGuardianOf = (child) => !!(me && child && child.policy.guardians.some((p) => p.toText() === me));
     const isAdmin = !!(cfg && me && cfg.admins.some((p) => p.toText() === me));
+    // special prices (spec/special_prices.md): the admin card, and the caller's own op fee
+    const adminActor = useMemo(() => (isAdmin ? actor(true) : null), [isAdmin, actor]);
+    const specialFields = useMemo(() => [{ key: 'op_fee_e8s', label: 'Op fee', regular: cfg?.op_fee_e8s, premium: cfg?.premium_op_fee_e8s }], [cfg]);
+    const [mySpecial, setMySpecial] = useState(null);
+    useEffect(() => {
+        if (!me || !dep) { setMySpecial(null); return; }
+        let live = true;
+        fetchSpecialPricesFor(actor(false), Principal.fromText(me)).then((r) => { if (live) setMySpecial(r); });
+        return () => { live = false; };
+    }, [me, dep, actor, cfg]);
+    const myFee = cfg ? effectivePrice({ regular: cfg.op_fee_e8s, special: mySpecial, field: 'op_fee_e8s' }) : null;
     const isApprover = !!(cfg && me && (cfg.approvers.some((p) => p.toText() === me) || isAdmin));
 
     const functionId = cfg?.approve_function_id?.[0] ?? null;
@@ -263,7 +277,7 @@ function Guardian() {
                 {stage && (
                     <div style={{ ...card, borderColor: amber }}>
                         <h2 style={{ margin: '0 0 8px', fontSize: '1.05rem', color: theme.colors.primaryText }}>Stage an op on {childOf(stage.child)?.title || stage.child}</h2>
-                        <div style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, marginBottom: 10, lineHeight: 1.5 }}>Anyone may stage. The op fee ({cfg ? (Number(cfg.op_fee_e8s) / 1e8).toFixed(2) : '?'} ICP) is pulled from your wallet. It then needs {cfg?.threshold} of {cfg?.approvers.length} approvers (by DAO proposal), passes the child's veto window, and anyone executes it.</div>
+                        <div style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, marginBottom: 10, lineHeight: 1.5 }}>Anyone may stage. The op fee ({myFee ? (Number(myFee.amount) / 1e8).toFixed(myFee.tier === 'regular' ? 2 : 8) : '?'} ICP{myFee && <PriceTierBadge tier={myFee.tier} partnerLabel={myFee.partnerLabel} />}{myFee && myFee.tier === 'regular' && cfg && cfg.premium_op_fee_e8s < cfg.op_fee_e8s ? `, ${(Number(cfg.premium_op_fee_e8s) / 1e8).toFixed(2)} for Sneed Premium members` : ''}) is paid from your wallet. It then needs {cfg?.threshold} of {cfg?.approvers.length} approvers (by DAO proposal), passes the child's veto window, and anyone executes it.</div>
                         {stage.kind === 'policy' && (
                             <div style={{ display: 'grid', gap: 8 }}>
                                 {stage.guardians.map((v, i) => (
@@ -301,6 +315,8 @@ function Guardian() {
                         </div>
                     </div>
                 )}
+
+                {adminActor && <SpecialPricesCard actor={adminActor} fields={specialFields} />}
 
                 <div style={card}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

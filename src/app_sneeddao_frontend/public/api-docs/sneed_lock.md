@@ -373,6 +373,8 @@ async function ensureLockFee({ identity, icpLedger, isPositionLock }) {
 }
 ```
 
+**Special prices.** Besides the regular and premium fees, Sneed Lock has an **admin price** (applies to this canister's admins who are people, that is self-authenticating principals; canisters on the admin list such as SNS governance never get it) and **partner prices** (per principal, usually a partner canister that integrates with Sneed Lock, for example a partner game canister; each entry has a public label, overrides and an optional expiry). Every override is optional, per fee: `token_lock_fee_icp_e8s` and `position_lock_fee_icp_e8s` (e8s ICP). The fee charged is the **lowest applicable** of regular, premium (members), admin (admins) and partner (that principal, before its expiry); on a tie the earlier tier is reported. With nothing set, fees are exactly the regular and premium ones. `getEffectiveLockFee` answers the effective fee; `get_special_prices()` lists the admin prices and every partner entry (expired ones too); `get_special_prices_for(principal)` returns the admin prices when the principal gets them and its partner entry when it has a live one. Each payment records which tier it paid: `price_tier` in its `sneedlock_fee_pay` block, and `admin_get_payment_price_tiers(ids)` for the payment log. See [spec/special_prices.md](https://github.com/Snassy-icp/app_sneeddao/blob/main/spec/special_prices.md).
+
 A `create_lock` or `create_position_lock` without enough deposit fails with `ICP payment verification failed: Insufficient ICP payment. Required: N e8s, Available: M e8s` and changes nothing.
 
 ---
@@ -470,7 +472,9 @@ See 3.4. Errors (text) include `Caller does not own position ...`, `Position ...
 
 | Method | Kind | Returns | Notes |
 |---|---|---|---|
-| `getEffectiveLockFee(user, is_position_lock)` | update | `{ fee_e8s : nat64; is_premium : bool }` | Authoritative fee for `user`. |
+| `getEffectiveLockFee(user, is_position_lock)` | update | `{ fee_e8s : nat64; is_premium : bool }` | Authoritative fee for `user`: the lowest applicable of regular, premium, admin and partner prices. |
+| `get_special_prices()` | query | `{ admin_prices : SpecialLockPrices; partners : vec { principal; label; prices; expires_at : opt int } }` | The admin prices and every partner entry (public). `SpecialLockPrices = record { token_lock_fee_icp_e8s : opt nat; position_lock_fee_icp_e8s : opt nat }`. |
+| `get_special_prices_for(p)` | query | `{ admin_prices : opt SpecialLockPrices; partner : opt record { label; prices; expires_at } }` | The special prices that apply to `p`. |
 | `get_lock_fees_icp()` | query | fee table and recipient | `token_lock_fee_icp_e8s`, `position_lock_fee_icp_e8s`, `premium_*`, `fee_recipient_*`, `sneed_premium_canister_id`. |
 | `getPaymentSubaccount(user)` | query | `blob` | The user's payment subaccount on Sneed Lock. |
 | `getPaymentBalance(user)` | update | `nat` | ICP e8s currently deposited (reads the ledger). |
@@ -530,6 +534,10 @@ Restricted to Sneed governance, the canister's controllers and listed admins (`g
 | `admin_set_icp_fee_recipient(principal, subaccount)` | Where collected lock fees go (null: this canister). |
 | `admin_set_sneed_premium_canister_id(opt principal)` | The Sneed Premium canister used for premium fees. |
 | `admin_get_payment_log(offset, limit)`, `admin_get_payment_log_count()` | Read the fee payment log. |
+| `admin_get_payment_price_tiers(ids)` | The `price_tier` of payment log entries by id (`null` for payments made before special prices). |
+| `set_admin_prices(SpecialLockPrices)` | The admin price per fee (null = none). Returns `variant { ok; err : text }`. |
+| `set_partner_prices(principal, record { label; prices; expires_at })` | Add or replace a partner entry (label 1 to 100 characters, expiry in the future or null, at most 200 partners). |
+| `remove_partner_prices(principal)` | Remove a partner entry. |
 | `admin_return_token(ledger, amount, user)` | Send `amount` from `user`'s Sneed wallet to `user`'s default account. |
 | `admin_return_token_from_failed_request(ledger, amount, recipient)` | Send `amount` from the canister's main account to `recipient`'s default account. |
 | `admin_rescue_stuck_tokens(ledger, recipient)` | Send the canister main account's balance of a token (stuck outside any user's wallet) to `recipient`. |
@@ -715,7 +723,7 @@ Fees:
 
 | `btype` | When | `tx` fields |
 |---|---|---|
-| `sneedlock_fee_pay` | The ICP lock fee was transferred out of the payer's payment subaccount. | `cid`, `caller`, `payer`, `lock_type` (`token` or `position`), `fee_e8s` (fee charged), `amount_e8s` (amount transferred: the fee minus the ICP ledger fee), `to` (account), `icp_tx` (ICP ledger block index) |
+| `sneedlock_fee_pay` | The ICP lock fee was transferred out of the payer's payment subaccount. | `cid`, `caller`, `payer`, `lock_type` (`token` or `position`), `fee_e8s` (fee charged), `amount_e8s` (amount transferred: the fee minus the ICP ledger fee), `to` (account), `icp_tx` (ICP ledger block index), `price_tier` (`regular`, `premium`, `admin` or `partner`; payments since special prices) |
 
 Admin and governance (only admins, governance or controllers can trigger these):
 
@@ -727,7 +735,7 @@ Admin and governance (only admins, governance or controllers can trigger these):
 | `sneedlock_admin_pool_withdraw` | `admin_withdraw_pool_balance_to_user` succeeded. | `cid`, `caller`, `pool`, `ledger`, `amount`, `user`, `accepted` |
 | `sneedlock_config_update` | A setting changed. | `cid`, `caller`, `key`, `value` (Text or Nat), `old_value` when known |
 
-`sneedlock_config_update` keys: `max_lock_length_ns`, `token_lock_fee_icp_e8s`, `position_lock_fee_icp_e8s`, `premium_token_lock_fee_icp_e8s`, `premium_position_lock_fee_icp_e8s`, `icp_fee_recipient`, `sneed_premium_canister_id`, `admin_added`, `admin_removed`, `claim_history_cleared`, `failed_claim_history_cleared`, `icrc3_proposal_neuron` (the SNS neuron that submits archive registration proposals; value is its 32-byte id as a Blob, or the text `none`), and the log's own settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
+`sneedlock_config_update` keys: `max_lock_length_ns`, `token_lock_fee_icp_e8s`, `position_lock_fee_icp_e8s`, `premium_token_lock_fee_icp_e8s`, `premium_position_lock_fee_icp_e8s`, `icp_fee_recipient`, `sneed_premium_canister_id`, `admin_added`, `admin_removed`, `claim_history_cleared`, `failed_claim_history_cleared`, `icrc3_proposal_neuron` (the SNS neuron that submits archive registration proposals; value is its 32-byte id as a Blob, or the text `none`), and the log's own settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`; for special prices, `admin_prices` (value and `old_value`: a map of the set overrides) and `partner_prices` (with a `partner` principal field; value `{ label; prices; expires_at? }` or the text `removed`, `old_value` the previous entry).
 
 NFTs (the standard block types of [ICRC-7](https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-7/ICRC-7.md) and [ICRC-37](https://github.com/dfinity/ICRC/blob/main/ICRCs/ICRC-37/ICRC-37.md); accounts as `[owner, subaccount?]`):
 

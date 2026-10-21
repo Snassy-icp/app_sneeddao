@@ -24,7 +24,23 @@ const PadConfig = IDL.Record({
     creation_fee_e8s: IDL.Nat, premium_creation_fee_e8s: IDL.Nat, sneed_dao_control_fee_e8s: IDL.Nat, index_creation_fee_e8s: IDL.Nat, premium_index_creation_fee_e8s: IDL.Nat, sneed_premium: IDL.Opt(IDL.Principal), ledger_cycles: IDL.Nat, index_cycles: IDL.Nat, fee_destination: Account, cycle_reserve: IDL.Nat, paused: IDL.Bool,
     follow_nns: IDL.Bool, guardians: IDL.Vec(IDL.Principal), wasm_last_check: IDL.Int, wasm_last_refresh: IDL.Int, wasm_last_error: IDL.Opt(IDL.Text),
 });
+
+// Special prices (spec/special_prices.md): admin price and partner prices.
+const SpPrices = IDL.Record({ creation_fee_e8s: IDL.Opt(IDL.Nat), index_creation_fee_e8s: IDL.Opt(IDL.Nat), sneed_dao_control_fee_e8s: IDL.Opt(IDL.Nat) });
+const SpPartner = IDL.Record({ label: IDL.Text, prices: SpPrices, expires_at: IDL.Opt(IDL.Int) });
+const SpResult = IDL.Variant({ ok: IDL.Null, err: IDL.Text });
+const SpTier = IDL.Variant({ regular: IDL.Null, premium: IDL.Null, admin: IDL.Null, partner: IDL.Null });
+const specialPricesMethods = {
+    set_admin_prices: IDL.Func([SpPrices], [SpResult], []),
+    set_partner_prices: IDL.Func([IDL.Principal, SpPartner], [SpResult], []),
+    remove_partner_prices: IDL.Func([IDL.Principal], [SpResult], []),
+    get_special_prices: IDL.Func([], [IDL.Record({ admin_prices: SpPrices, partners: IDL.Vec(IDL.Record({ principal: IDL.Principal, label: IDL.Text, prices: SpPrices, expires_at: IDL.Opt(IDL.Int) })) })], ['query']),
+    get_special_prices_for: IDL.Func([IDL.Principal], [IDL.Record({ admin_prices: IDL.Opt(SpPrices), partner: IDL.Opt(SpPartner) })], ['query']),
+    get_launch_price_tiers: IDL.Func([IDL.Nat], [IDL.Opt(IDL.Record({ creation_fee: SpTier, control_fee: SpTier }))], ['query']),
+    get_index_launch_price_tiers: IDL.Func([IDL.Nat], [IDL.Opt(IDL.Record({ creation_fee: SpTier, control_fee: SpTier }))], ['query']),
+};
 export const padIdl = ({ IDL }) => IDL.Service({
+    ...specialPricesMethods,
     get_index_quote: IDL.Func([IndexConfig], [IDL.Variant({ Ok: Quote, Err: IDL.Text })], []),
     create_index: IDL.Func([IndexConfig], [IDL.Variant({ Ok: IndexLaunch, Err: IDL.Text })], []),
     list_index_launches: IDL.Func([IDL.Nat, IDL.Nat], [IDL.Record({ total: IDL.Nat, launches: IDL.Vec(IndexLaunch) })], ['query']),

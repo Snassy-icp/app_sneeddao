@@ -432,7 +432,7 @@ Call the query first and fall back to the update. **`getCanisterInfo(offerId, as
 
 | Method | Kind | Returns |
 |---|---|---|
-| `getEffectiveOfferCreationFee(user)` | update | `nat64` e8s: the premium fee if `user` is a Sneed Premium member, else the regular fee (0 when the regular fee is 0). Authoritative. |
+| `getEffectiveOfferCreationFee(user)` | update | `nat64` e8s: the premium fee if `user` is a Sneed Premium member, else the regular fee (0 when the regular fee is 0), lowered by an admin or partner price when one applies (section 4.4). Authoritative. |
 | `getFeeConfig()` | query | `{ regularCreationFeeE8s; premiumCreationFeeE8s; regularAuctionCutBps; premiumAuctionCutBps }` |
 | `getOfferCreationFee()`, `getPremiumOfferCreationFee()` | query | `nat64` e8s |
 | `getOfferCreationPaymentSubaccount(user)` | query | `blob` |
@@ -445,7 +445,7 @@ At the time of writing production charges 0.01 ICP (1,000,000 e8s) per offer, an
 
 ### 4.2 Marketplace cut (price token)
 
-Each offer records `fee_rate_bps` at creation: the premium cut if a premium rate is set and the creator is a Sneed Premium member, otherwise the regular rate (`getMarketplaceFeeRate()`; at the time of writing 250 bps regular, 175 bps premium). When the winning bid is paid out:
+Each offer records `fee_rate_bps` at creation: the premium cut if a premium rate is set and the creator is a Sneed Premium member, otherwise the regular rate, lowered by an admin or partner cut when one applies (section 4.4) (`getMarketplaceFeeRate()`; at the time of writing 250 bps regular, 175 bps premium). When the winning bid is paid out:
 
 ```
 rawCut     = bid.amount × fee_rate_bps / 10_000
@@ -469,6 +469,31 @@ The cut goes to the fee recipient of the price ledger: a per-ledger override (`g
 | Creation fee to the recipient | The payment subaccount (0.0001 ICP) |
 
 ---
+
+### 4.4 Special prices: admin and partner prices
+
+Next to the regular and premium prices, Sneedex has an **admin price** (for principals on its admin list that are people, i.e. self-authenticating; canisters such as SNS governance never get it) and **partner prices** (per principal, usually a partner canister that integrates with Sneedex, for example a partner game canister that lists items; each with a public label and an optional expiry). Both cover the two fees:
+
+```candid
+type SpecialPriceOverrides = record {
+  offer_creation_fee_e8s : opt nat;   // ICP e8s; 0 or at least 10_000 (one ICP ledger fee)
+  auction_cut_bps : opt nat;          // at most 5000
+};
+type PartnerPrices = record { label : text; prices : SpecialPriceOverrides; expires_at : opt int };  // ns since 1970
+```
+
+**Rule.** For each fee the caller pays the lowest applicable value among regular, premium (members, exactly as before), admin (when it applies and the override is set) and partner (when the caller's entry exists, has not expired, and the override is set). On a tie the earlier of regular, premium, admin, partner is reported. Unset overrides change nothing. The cut is decided once, at `createOffer`, and locked in as the offer's `fee_rate_bps`; `getEffectiveOfferCreationFee(user)` returns the fee including special prices.
+
+| method | kind | description |
+|---|---|---|
+| `get_special_prices()` | query | `{ admin_prices; partners : vec { principal; label; prices; expires_at } }`, expired entries included. Public. |
+| `get_special_prices_for(principal)` | query | `{ admin_prices : opt …; partner : opt PartnerPrices }`: what applies to that principal now. |
+| `get_offer_price_tiers(offerId)` | query | `opt { creation_fee : opt PriceTier; cut : PriceTier }` with `PriceTier = variant { regular; premium; admin; partner }`; null for offers created before special prices. |
+| `set_admin_prices(SpecialPriceOverrides)` | update, admin | Replaces the admin overrides. `variant { ok; err : text }`. |
+| `set_partner_prices(principal, PartnerPrices)` | update, admin | Adds or replaces an entry. Refuses the anonymous principal, an empty label or one over 100 characters, a past expiry, a 201st partner, and overrides the regular setters would refuse. |
+| `remove_partner_prices(principal)` | update, admin | Removes an entry (`err` when there is none). |
+
+Every change is a `sneedex_config_update` block (`admin_prices` / `partner_prices`); the fee and cut blocks carry `price_tier` (section 8).
 
 ## 5. Concurrency, errors and retries
 
@@ -570,7 +595,7 @@ Creator, `PendingEscrow → Active`. Errors: `All assets must be escrowed before
 
 ### 6.5 Fees, payment and notifications
 
-`getEffectiveOfferCreationFee`, `getFeeConfig`, `getOfferCreationFee`, `getPremiumOfferCreationFee`, `getPremiumAuctionCutBps`, `getMarketplaceFeeRate`, `getFeeRecipient`, `getLedgerFeeRecipients`, `getOfferCreationPaymentSubaccount`, `getUserOfferCreationBalance`, `withdrawOfferCreationPayment`, `getPaymentStats`: section 4. `getMyNotificationSettings`, `setMyNotificationSettings`: section 3.10.
+`getEffectiveOfferCreationFee`, `getFeeConfig`, `getOfferCreationFee`, `getPremiumOfferCreationFee`, `getPremiumAuctionCutBps`, `getMarketplaceFeeRate`, `getFeeRecipient`, `getLedgerFeeRecipients`, `getOfferCreationPaymentSubaccount`, `getUserOfferCreationBalance`, `withdrawOfferCreationPayment`, `getPaymentStats`: section 4. `get_special_prices`, `get_special_prices_for`, `get_offer_price_tiers`, `set_admin_prices`, `set_partner_prices`, `remove_partner_prices`: section 4.4. `getMyNotificationSettings`, `setMyNotificationSettings`: section 3.10.
 
 ### 6.6 Admin methods
 
@@ -582,7 +607,7 @@ Restricted to the canister's controllers (the Sneed SNS on production) and `conf
 | `setMinIncrementSettings(min, max, target, fallback)` | Frontend increment hints (`Target must be between range min and max`). |
 | `addAssetType(name, description)`, `deactivateAssetType(id)`, `reactivateAssetType(id)` | Asset type registry. |
 | `setMarketplaceFeeRate(bps)`, `setPremiumAuctionCutBps(bps)` | Regular and premium cut, at most 5,000 bps. |
-| `setOfferCreationFee(e8s)`, `setPremiumOfferCreationFee(e8s)` | Creation fees. |
+| `setOfferCreationFee(e8s)`, `setPremiumOfferCreationFee(e8s)` | Creation fees: 0 (free) or at least the ICP ledger fee, 10_000 e8s (smaller fees are refused). |
 | `setFeeRecipient(account)`, `setLedgerFeeRecipient(ledger, account)`, `removeLedgerFeeRecipient(ledger)` | Where fees go. |
 | `setSneedPremiumCanisterId`, `setSneedSmsCanisterId`, `setBackendCanisterId`, `setNeuronManagerFactoryCanisterId`, `setSneedLockCanisterId` | Wiring to other Sneed canisters. |
 | `startExpirationTimer()`, `stopExpirationTimer()`, `setExpirationCheckInterval(seconds)`, `triggerExpirationCheck()` | The expiry timer (interval at least 60 s). |
@@ -754,7 +779,7 @@ Offers:
 
 | `btype` | When | `tx` fields |
 |---|---|---|
-| `sneedex_offer_create` | `createOffer` recorded a Draft offer. | `caller`, `offer_id`, `price_ledger`, `fee_rate_bps` (cut locked in); `min_bid`, `buyout`, `expiration`, `min_increment_fee_multiple` when set; `approved_bidders` (private offer); `creation_fee_e8s`, `creation_fee_icp_tx` when a fee was paid |
+| `sneedex_offer_create` | `createOffer` recorded a Draft offer. | `caller`, `offer_id`, `price_ledger`, `fee_rate_bps` (cut locked in); `min_bid`, `buyout`, `expiration`, `min_increment_fee_multiple` when set; `approved_bidders` (private offer); `creation_fee_e8s`, `creation_fee_icp_tx`, `price_tier` when a fee was paid; `cut_price_tier` (section 4.4) |
 | `sneedex_asset_add` | `addAsset` | `caller`, `offer_id`, `asset_index`, `asset` |
 | `sneedex_offer_finalize` | `finalizeAssets` (to PendingEscrow) | `caller`, `offer_id`, `asset_count` |
 | `sneedex_asset_escrow` | An `escrow*` call confirmed custody of one asset. | `caller`, `offer_id`, `asset_index`, `asset` (with snapshots); `pulled` (1 when Sneedex pulled NFTs through an ICRC-37 approval); EXT: `account_id` (Text, the escrow account id) |
@@ -775,9 +800,9 @@ Bids and payments:
 | `sneedex_bid_lost` | A bid became Lost. | `bid_id`, `offer_id`, `bidder`, `amount`, `escrowed` (0 for a reservation never confirmed), `reason` (`outbid`, `offer_completed`, `offer_cancelled`, `offer_closed`: confirmed after the offer closed, `buyout_race`: another buyout won) |
 | `sneedex_bid_refund` | A Lost bid's escrow went back to the bidder (`refundBid` or the auto-refund). | `bid_id`, `offer_id`, `bidder`, `ledger`, `amount`, `to`, `ledger_tx`; `caller` or `via` |
 | `sneedex_bid_escrow_withdraw` | `withdrawBidEscrow` | `caller`, `bid_id`, `offer_id`, `ledger`, `amount`, `to`, `ledger_tx` |
-| `sneedex_cut_pay` | The marketplace cut left the winning escrow. | `offer_id`, `bid_id`, `ledger`, `cut` (charged), `amount` (transferred: cut less one ledger fee), `fee_rate_bps`, `to`, `ledger_tx`; `caller` or `via` |
+| `sneedex_cut_pay` | The marketplace cut left the winning escrow. | `offer_id`, `bid_id`, `ledger`, `cut` (charged), `amount` (transferred: cut less one ledger fee), `fee_rate_bps`, `to`, `ledger_tx`; `caller` or `via`; `price_tier` (tier of the cut, offers created since special prices) |
 | `sneedex_seller_pay` | The seller was paid (the bid becomes ClaimedBySeller). | `offer_id`, `bid_id`, `seller`, `ledger`, `bid_amount`, `cut`, `amount`, `to`, `ledger_tx`; `caller` or `via` |
-| `sneedex_creation_fee_pay` | The offer creation fee left the payer's payment subaccount. | `caller`, `payer`, `fee_e8s`, `amount_e8s` (transferred), `to`, `icp_tx` |
+| `sneedex_creation_fee_pay` | The offer creation fee left the payer's payment subaccount. | `caller`, `payer`, `fee_e8s`, `amount_e8s` (transferred), `to`, `icp_tx`, `price_tier` |
 | `sneedex_creation_payment_withdraw` | `withdrawOfferCreationPayment` | `caller`, `amount_e8s`, `to`, `icp_tx` |
 
 Admin (controllers and admins only):
@@ -789,7 +814,7 @@ Admin (controllers and admins only):
 | `sneedex_admin_ext_return` | `adminReturnMisplacedExtNft` | `caller`, `collection`, `token_index`, `token_identifier`, `from_offer_id` when given, `from_account_id` (Text), `to` (principal) |
 | `sneedex_config_update` | A setting changed. | `caller`, `key`, `value`; `old_value` when known |
 
-`sneedex_config_update` keys: `admin_added`, `admin_removed`; one block per changed field of the configuration (`admins`, `min_offer_duration_ns`, `max_assets_per_offer`, `min_increment_usd_range_min`, `min_increment_usd_range_max`, `min_increment_usd_target`, `min_increment_fallback_tokens`); `marketplace_fee_rate_bps`, `premium_auction_cut_bps`, `offer_creation_fee_e8s`, `premium_offer_creation_fee_e8s`, `fee_recipient` (account), `ledger_fee_recipient` (Map `ledger`, `account`), `ledger_fee_recipient_removed`; `sneed_premium_canister_id`, `backend_canister_id`, `neuron_manager_factory_canister_id`, `sneed_sms_canister_id` (principal, or Text `none`), `sneed_lock_canister_id`; `asset_type_added` (Map `id`, `name`), `asset_type_deactivated`, `asset_type_reactivated`; `expiration_timer` (`on` / `off`), `expiration_check_interval_seconds`, `neuron_info_cache_staleness_seconds`; `icrc3_proposal_neuron` and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
+`sneedex_config_update` keys: `admin_prices` (Map of the set overrides; `old_value` the previous Map), `partner_prices` (with `partner`; value Map `label`, `prices`, `expires_at` when set, or Text `removed`); `admin_added`, `admin_removed`; one block per changed field of the configuration (`admins`, `min_offer_duration_ns`, `max_assets_per_offer`, `min_increment_usd_range_min`, `min_increment_usd_range_max`, `min_increment_usd_target`, `min_increment_fallback_tokens`); `marketplace_fee_rate_bps`, `premium_auction_cut_bps`, `offer_creation_fee_e8s`, `premium_offer_creation_fee_e8s`, `fee_recipient` (account), `ledger_fee_recipient` (Map `ledger`, `account`), `ledger_fee_recipient_removed`; `sneed_premium_canister_id`, `backend_canister_id`, `neuron_manager_factory_canister_id`, `sneed_sms_canister_id` (principal, or Text `none`), `sneed_lock_canister_id`; `asset_type_added` (Map `id`, `name`), `asset_type_deactivated`, `asset_type_reactivated`; `expiration_timer` (`on` / `off`), `expiration_check_interval_seconds`, `neuron_info_cache_staleness_seconds`; `icrc3_proposal_neuron` and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
 
 Not logged: notification settings, the staking-bot info cache, cached stakes, wallet registration in Sneed Hub, and reads.
 

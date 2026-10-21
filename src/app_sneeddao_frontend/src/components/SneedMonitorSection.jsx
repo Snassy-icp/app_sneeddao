@@ -14,6 +14,8 @@ import { useWalletOptional } from '../contexts/WalletContext';
 import { useDenomination } from '../contexts/DenominationContext';
 import priceService from '../services/PriceService';
 import PrincipalInput from './PrincipalInput';
+import PriceTierBadge from './PriceTierBadge';
+import { fetchSpecialPricesFor, effectivePrice } from '../utils/specialPrices';
 import { computeAccountId } from '../utils/PrincipalUtils';
 import { getAllSnses, getSnsById } from '../utils/SnsUtils';
 import { getRelevantSnses, getRelevantNnsNeurons } from '../utils/VotableProposalsUtils';
@@ -57,12 +59,13 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
 
     const load = useCallback(async () => {
         if (!actor) return;
-        const [balance, watches, tiers, nnsIds, config, status] = await Promise.all([
+        const [balance, watches, tiers, nnsIds, config, status, special] = await Promise.all([
             actor.get_my_balance(), actor.get_my_watches(), actor.get_tiers(), actor.get_my_nns_neurons(), actor.get_config(), actor.get_status(),
+            fetchSpecialPricesFor(actor, identity.getPrincipal()), // admin / partner price (spec/special_prices.md); null on an older canister
         ]);
-        setD({ balance, watches, tiers, nnsIds: Array.from(nnsIds), config, appId: status.app_id.length ? status.app_id[0] : null });
+        setD({ balance, watches, tiers, special, nnsIds: Array.from(nnsIds), config, appId: status.app_id.length ? status.app_id[0] : null });
         setLoadErr(null);
-    }, [actor]);
+    }, [actor, identity]);
     useEffect(() => { load().catch((e) => setLoadErr(e.message || String(e))); }, [load]);
     useEffect(() => { priceService.getICPUSDPrice().then((p) => setIcpUsd(Number(p) || null)).catch(() => {}); }, []);
     useEffect(() => { if (identity && !wdTo) setWdTo(identity.getPrincipal().toText()); }, [identity, wdTo]);
@@ -89,8 +92,24 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
     if (loadErr && !d) return <div style={card}><h2 style={h2}><FaSatelliteDish color={accent} /> Sneed Monitor</h2><p style={{ ...muted, color: c.error }}>Sneed Monitor did not answer: {loadErr}</p></div>;
     if (!d) return <div style={card}><h2 style={h2}><FaSatelliteDish color={accent} /> Sneed Monitor</h2><p style={muted}>Loading…</p></div>;
 
-    const { balance, watches, tiers, config } = d;
+    const { balance, watches, config } = d;
     const fee = config.billing.ledger_fee_e8s;
+    // the user's own price table: an admin or partner price overrides the base daily price, the tier
+    // multipliers apply on top, and the lowest per-check price wins (as sneed_mon charges)
+    const special = d.special;
+    const baseFor = special ? effectivePrice({ regular: d.tiers.base_daily_price_e8s, special, field: 'base_daily_price_e8s' }) : null;
+    const tiers = {
+        ...d.tiers,
+        tiers: d.tiers.tiers.map((t) => {
+            if (!baseFor || baseFor.tier === 'regular') return { ...t, priceTier: 'regular' };
+            const per = (baseFor.amount * t.daily_multiplier * t.every_min) / 1440n;
+            return per < t.per_check_e8s
+                ? { ...t, per_check_e8s: per, daily_price_e8s: baseFor.amount * t.daily_multiplier, priceTier: baseFor.tier }
+                : { ...t, priceTier: 'regular' };
+        }),
+    };
+    const specialTier = tiers.tiers.find((t) => t.priceTier !== 'regular')?.priceTier || null;
+    const badge = specialTier && <PriceTierBadge tier={specialTier} partnerLabel={baseFor?.partnerLabel} />;
     const tierOf = (min) => tiers.tiers.find((t) => t.every_min === BigInt(min));
     const defMin = config.tuning.defaults.every_min;
     const defTier = tierOf(defMin);
@@ -220,7 +239,9 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
         setTopicEdit(null);
     };
     const loadCharges = (start = 0) => run(async () => {
-        const r = await actor.get_my_charges(BigInt(start), 20n);
+        // with each check's price tier where the canister has it (special prices), else the plain list
+        let r;
+        try { r = await actor.get_my_charges_with_tier(BigInt(start), 20n); } catch { r = await actor.get_my_charges(BigInt(start), 20n); }
         setCharges({ total: Number(r.total), entries: r.entries, start });
     });
     const withdraw = () => run(async () => {
@@ -266,9 +287,9 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
             <div style={{ ...muted, display: 'grid', gap: 4 }}>
                 <span>Sneed Monitor balance: <strong style={{ color: c.primaryText }}>{money(balance.balance_e8s)}</strong></span>
                 {on
-                    ? <span>Watching {watches.map((w) => w.name).join(', ')}. Estimated cost: <strong style={{ color: c.primaryText }}>≈ {money(monthNow)} a month</strong>{balance.per_day_e8s > 0n && balance.balance_e8s > 0n && <> · lasts about {Math.floor(Number(balance.balance_e8s) / Number(balance.per_day_e8s))} days</>}</span>
+                    ? <span>Watching {watches.map((w) => w.name).join(', ')}. Estimated cost: <strong style={{ color: c.primaryText }}>≈ {money(monthNow)} a month</strong>{badge}{balance.per_day_e8s > 0n && balance.balance_e8s > 0n && <> · lasts about {Math.floor(Number(balance.balance_e8s) / Number(balance.per_day_e8s))} days</>}</span>
                     : planTargets.length > 0
-                        ? <span>Turning it on watches {planTargets.map(nameOf).join(', ')} ({tierLabel(defMin).toLowerCase()} checks): <strong style={{ color: c.primaryText }}>≈ {money(monthPlan)} a month</strong>.</span>
+                        ? <span>Turning it on watches {planTargets.map(nameOf).join(', ')} ({tierLabel(defMin).toLowerCase()} checks): <strong style={{ color: c.primaryText }}>≈ {money(monthPlan)} a month</strong>{badge}.</span>
                         : <span>{wallet?.neuronCacheInitialized ? 'We have not found neurons you can vote with. You can still watch an SNS under Advanced.' : 'Looking for your neurons…'}</span>}
                 {on && planTargets.length > 0 && <span>Also found: {planTargets.map(nameOf).join(', ')}. <button type="button" style={{ ...btn(false), padding: '2px 8px', fontSize: '0.78rem' }} disabled={busy} onClick={turnOn}>Watch them too</button></span>}
                 {skippedForCap > 0 && <span>At most {maxWatches} watches per user: {skippedForCap} left out.</span>}
@@ -317,7 +338,7 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
             </button>
             {advanced && (
                 <div style={{ paddingTop: 4 }}>
-                    <h3 style={h3}>Prices per check</h3>
+                    <h3 style={h3}>Prices per check{badge}</h3>
                     <div style={{ ...muted, display: 'grid', gap: 2 }}>
                         {tiers.tiers.map((t) => (
                             <span key={String(t.every_min)}>{tierLabel(t.every_min)}: {fmtIcp(t.per_check_e8s)} a check, {money(t.daily_price_e8s * BigInt(MONTH_DAYS))} a month</span>
@@ -334,7 +355,7 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
                             <div key={key} style={{ borderTop: `1px solid ${c.border}`, padding: '10px 0', display: 'grid', gap: 8, fontSize: '0.85rem', color: c.secondaryText }}>
                                 <div style={row}>
                                     <strong style={{ color: c.primaryText, flex: 1, minWidth: 140 }}>{w.name}</strong>
-                                    <span style={muted}>{fmtIcp(w.price_per_check_e8s)} a check</span>
+                                    <span style={muted}>{fmtIcp(w.price_per_check_e8s)} a check{tierOf(s.every_min)?.priceTier !== 'regular' && <PriceTierBadge tier={tierOf(s.every_min)?.priceTier} partnerLabel={baseFor?.partnerLabel} />}</span>
                                     <button type="button" style={btn(false)} disabled={busy} onClick={() => run(async () => { ok(await actor.unwatch(w.target)); setMsg({ ok: `Stopped watching ${w.name}` }); })} aria-label={`Stop watching ${w.name}`}><FaTrash size={11} /> Remove</button>
                                 </div>
                                 <div style={row}>
@@ -428,7 +449,7 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
                             <span style={{ minWidth: 140 }}>{nsToDate(e.at).toLocaleString()}</span>
                             <span style={{ flex: 1, minWidth: 120, color: c.primaryText }}>{nameOf(e.target)}</span>
                             <span>{tierLabel(e.every_min).toLowerCase()}</span>
-                            <span>{fmtIcp(e.price_e8s)}</span>
+                            <span>{fmtIcp(e.price_e8s)}{e.price_tier && <PriceTierBadge tier={e.price_tier} />}</span>
                             <span style={{ ...muted, flexBasis: '100%' }}>{e.outcome}</span>
                         </div>
                     ))}

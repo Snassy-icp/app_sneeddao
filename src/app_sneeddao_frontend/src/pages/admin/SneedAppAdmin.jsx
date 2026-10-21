@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../AuthContext';
 import { useAdminCheck } from '../../hooks/useAdminCheck';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
@@ -7,6 +7,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { FaSave, FaPlus, FaTrash, FaUpload, FaSpinner, FaCheckCircle, FaExclamationTriangle, FaEdit, FaTimes, FaSearch, FaCloudDownloadAlt, FaCheck, FaBan, FaWallet, FaChartBar, FaUsers, FaTags } from 'react-icons/fa';
 import PrincipalInput from '../../components/PrincipalInput';
+import SpecialPricesCard from '../../components/SpecialPricesCard';
 import { parseAccount, hexToBytes } from '../../utils/AccountParser';
 
 const appPrimary = '#06b6d4';
@@ -99,6 +100,13 @@ export default function SneedAppAdmin() {
             }
         });
     }, [identity]);
+    // one actor for the special-prices card (it reloads when the actor changes)
+    const specialPricesActor = useMemo(() => getFactory(), [getFactory]);
+    const specialPriceFields = useMemo(() => [{
+        key: 'mint_fee_e8s', label: 'Mint fee (Sneed DAO apps)', decimals: 8, unit: 'ICP',
+        regular: paymentConfig ? paymentConfig.creationFeeE8s : null,
+        hint: 'Applies to Sneed DAO apps (publisher 0) and createNeuronManager; third-party app prices are never overridden. Must still cover the cycles of a mint.',
+    }], [paymentConfig]);
 
     const showSuccess = (msg) => { setSuccess(msg); setError(''); setTimeout(() => setSuccess(''), 3000); };
     const showError = (msg) => { setError(msg); setSuccess(''); };
@@ -1235,6 +1243,11 @@ export default function SneedAppAdmin() {
                             <button onClick={handleUpdatePremiumConfig} disabled={loading} style={{ marginTop: 12, padding: '10px 20px', borderRadius: 8, background: 'linear-gradient(135deg, #FFD700, #FFA500)', color: '#1a1a2e', border: 'none', fontWeight: 700, cursor: 'pointer' }}>
                                 {loading ? <FaSpinner className="fa-spin" /> : <FaSave />} Update Premium Config
                             </button>
+                        </div>
+
+                        {/* Admin & partner prices (spec/special_prices.md): the mint fee of Sneed DAO apps and createNeuronManager */}
+                        <div style={{ marginTop: 16 }}>
+                            <SpecialPricesCard actor={specialPricesActor} fields={specialPriceFields} />
                         </div>
                     </div>
                 )}

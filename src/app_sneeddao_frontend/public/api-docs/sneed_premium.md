@@ -166,7 +166,7 @@ else console.log(Object.keys(r.err)[0]);   // NothingToWithdraw, InProgress, Tra
 
 1. Refuses the anonymous principal (`NotAuthorized`).
 2. Reads the ICP balance of the caller's deposit account.
-3. Finds the active ICP tier whose `amountE8s` equals that balance (the longest one if several are equal). None: `InvalidTier`.
+3. Finds the active ICP tier whose price for the caller equals that balance (the longest one if several are equal): its `amountE8s`, or the caller's special price for it (see 3.5). None: `InvalidTier`.
 4. Reads the ledger fee. If the balance is not larger than the fee: `InsufficientPayment { required; received }`.
 5. Transfers `balance − fee` to the DAO's payment recipient (`getConfig().paymentRecipient`). A ledger error returns `TransferFailed(text)` and changes nothing.
 6. Records the payment, extends the membership by the tier's duration (from the current expiry, or from now if it has passed), records the claim, and returns `ok(Membership)`.
@@ -217,6 +217,23 @@ Because a cached answer can outlive an admin revocation, treat a cache as "good 
 
 ---
 
+### 3.5 Special prices: admin and partner prices
+
+Next to the regular tier prices the canister has an **admin price** and **partner prices** (spec/special_prices.md). Buying premium has one fee, the ICP tier price, so the override is a share of every active ICP tier's price in basis points:
+
+```candid
+type SpecialPrices = record { icp_tier_price_bps : opt nat };   // 10_000 = the regular price, 5_000 = half; null = no override
+type PartnerPrices = record { label : text; prices : SpecialPrices; expires_at : opt int };   // expires_at: ns since 1970
+type PriceTier = variant { regular; premium; admin; partner };
+```
+
+- The **admin price** applies to admins (controllers and `getConfig().admins`) whose principal is a person's key (self-authenticating); a canister on the admin list, such as SNS governance, never gets it.
+- A **partner price** applies to one principal (usually a partner canister that integrates with Sneed Premium, for example a partner game canister buying memberships for its players), until `expires_at` if set.
+- The caller's share is the lowest of 10_000 (regular), the admin share (if it applies) and the partner share (if it applies); on a tie the earlier of regular, admin, partner is reported. A tier then costs `amountE8s * bps / 10_000` (rounded down), and `purchaseWithIcp` accepts a deposit of exactly that amount, as `price_tier = admin` or `partner`. A deposit of a tier's regular `amountE8s` still buys that tier too, as `regular`. There is no premium price for buying premium. With no admin price and no partners nothing changes.
+- `get_icp_tier_prices_for(principal)` lists every active tier with the amount that principal deposits for it (`price_e8s`) and the `price_tier`; partner canisters should read it before each purchase.
+- Every purchase since special prices exist records its `price_tier`: `get_icp_payment_price_tier(id)` for an ICP payment log id (older payments are `regular`) and the `price_tier` field of the `premium_icp_purchase` block.
+- Every change is public (`get_special_prices`) and a `premium_config_update` block (keys `admin_prices`, `partner_prices`).
+
 ## 4. Concurrency, errors and retries
 
 **Result shapes.** User updates return `variant { ok : Membership; err : … }` with a variant error per method (section 6). Admin methods return `AdminResult` (`ok` or `err : AdminError`, where `AdminError` is `NotAuthorized`, `NotFound` or `InvalidInput(text)`).
@@ -256,6 +273,10 @@ Because a cached answer can outlive an admin revocation, treat a cache as "good 
 | `getAllVotingPowerTiers()` | `vec VotingPowerTier` | Same for voting power tiers. |
 | `getConfig()` | `Config` | `admins`, `icpLedgerId`, `sneedGovernanceId`, `paymentRecipient`, `minClaimIntervalNs`. |
 | `isCallerAdmin()` | `bool` | Controllers and listed admins are admins. |
+| `get_special_prices()` | `record { admin_prices : SpecialPrices; partners : vec record { principal; label; prices; expires_at } }` | The admin price and every partner entry, expired ones too (3.5). |
+| `get_special_prices_for(principal)` | `record { admin_prices : opt SpecialPrices; partner : opt PartnerPrices }` | What applies to that principal: the admin price if it is an admin and a person, its partner entry if it has not expired. |
+| `get_icp_tier_prices_for(principal)` | `vec record { tier : IcpTier; price_e8s : nat; price_tier : PriceTier }` | Every active ICP tier with the amount that principal deposits for it. |
+| `get_icp_payment_price_tier(id)` | `opt PriceTier` | The price tier ICP payment `id` (payment log id) paid; `null` for an unknown id; payments from before special prices are `regular`. |
 
 ### 5.3 Getting membership (updates)
 
@@ -284,6 +305,9 @@ Admins are the canister's controllers (the SNS root on production) and the princ
 | `setMembershipAdmin(principal, expirationNs)` | Set a membership's expiry directly (complimentary memberships). |
 | `extendMembershipAdmin(principal, durationNs)` | Extend a membership. |
 | `revokeMembership(principal)` | Remove a membership. |
+| `set_admin_prices(SpecialPrices)` | The admin price (3.5); `icp_tier_price_bps` 1 to 10_000 or null. Returns `variant { ok; err : text }`. |
+| `set_partner_prices(principal, PartnerPrices)` | Add or replace a partner (label 1 to 100 characters, expiry in the future, at most 200 partners, not the anonymous principal). |
+| `remove_partner_prices(principal)` | Remove a partner (`err` if it has none). |
 | `createPromoCode`, `deactivatePromoCode`, `reactivatePromoCode`, `deletePromoCode` | Promo codes. |
 | `getPromoCodes()`, `getPromoCodeClaims(code)` | Read promo codes and their claims (`err NotAuthorized` for others). |
 | `getPromoCodeIds()` | Every promo code with the `code_id` the activity log names it by (`err NotAuthorized` for others). |
@@ -388,7 +412,7 @@ All types carry the `premium_` prefix. A block is appended only once its action 
 
 | `btype` | When | `tx` fields |
 |---|---|---|
-| `premium_icp_purchase` | `purchaseWithIcp` swept the deposit to the payment recipient and extended the membership. | `caller`, `tier` (name), `duration_ns`, `amount_e8s` (the deposit charged), `fee_e8s` (ledger fee), `to` (payment recipient account), `icp_tx` (ICP ledger block of the sweep), `previous_expiration`, `new_expiration` |
+| `premium_icp_purchase` | `purchaseWithIcp` swept the deposit to the payment recipient and extended the membership. | `caller`, `tier` (name), `duration_ns`, `amount_e8s` (the deposit charged), `fee_e8s` (ledger fee), `to` (payment recipient account), `icp_tx` (ICP ledger block of the sweep), `price_tier` (`regular`, `admin` or `partner`, section 3.5), `previous_expiration`, `new_expiration` |
 | `premium_vp_claim` | `claimWithVotingPower` granted a tier. | `caller`, `voting_power`, `tier`, `duration_ns`, `previous_expiration`, `new_expiration` (not additive: may equal the previous one) |
 | `premium_deposit_withdraw` | `withdrawDeposit` sent the caller's deposit back. | `caller`, `amount_e8s` (transferred), `fee_e8s`, `to` (account), `icp_tx` |
 | `premium_promo_create` | `createPromoCode` | `caller`, `code_id`, `duration_ns`, `max_claims`; `code_expiration` when set |
@@ -404,7 +428,7 @@ All types carry the `premium_` prefix. A block is appended only once its action 
 | `premium_tier_remove` | `removeIcpTier`, `removeVpTier` | `caller`, `kind`, `index`, `old_tier` |
 | `premium_config_update` | A setting changed. | `caller`, `key`, `value`; `old_value` when known |
 
-`premium_config_update` keys: `admin_added`, `admin_removed` (only when the list changed); `admins`, `icp_ledger_id`, `sneed_governance_id`, `payment_recipient` (account), `min_claim_interval_ns` (from the single setters, and one block per changed field from `updateConfig`); `icrc3_proposal_neuron` and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
+`premium_config_update` keys: `admin_added`, `admin_removed` (only when the list changed); `admins`, `icp_ledger_id`, `sneed_governance_id`, `payment_recipient` (account), `min_claim_interval_ns` (from the single setters, and one block per changed field from `updateConfig`); `icrc3_proposal_neuron` and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`; `admin_prices` (map of the set overrides) and `partner_prices` (with a `partner` field; value `{ label; prices; expires_at }` or `removed`) for special prices (section 3.5).
 
 Not logged: the time of each voting power claim (the rate limit), the legacy claim and payment log entries and statistics (they repeat these blocks), promo code texts and notes, and reads.
 

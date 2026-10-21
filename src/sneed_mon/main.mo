@@ -18,6 +18,7 @@ import Timer "mo:base/Timer";
 import Map "mo:map/Map";
 
 import IngressGuard "../IngressGuard";
+import SP "../SpecialPrices";
 import SnsDirectory "../sneed_names/SnsDirectory";
 import ApiDoc "ApiDoc";
 import T "Types";
@@ -68,6 +69,13 @@ shared (deployer) persistent actor class SneedMon() = this {
   public type Accounting = T.Accounting;
   public type Account = T.Account;
   public type CreditResult = T.CreditResult;
+  public type MonPrices = T.MonPrices;
+  public type MonPartner = T.MonPartner;
+  public type MonPartnerListing = T.MonPartnerListing;
+  public type SpecialPrices = T.SpecialPrices;
+  public type SpecialPricesFor = T.SpecialPricesFor;
+  public type SpResult = T.SpResult;
+  public type ChargeEntryTiered = T.ChargeEntryTiered;
 
   // ---------------------------------------------------------------------------------------------
   // State (enhanced orthogonal persistence, like sneed_notifications)
@@ -159,6 +167,12 @@ shared (deployer) persistent actor class SneedMon() = this {
   };
   let accounts = Map.new<Principal, UserAccount>();
   let charges = Map.new<Principal, [ChargeEntry]>(); // user -> the last MAX_CHARGES_KEPT checks, oldest first
+  // special prices (spec/special_prices.md; added after f9d8db0b, empty on upgrade = no effect)
+  var admin_prices : MonPrices = { base_daily_price_e8s = null };
+  let partner_prices = Map.new<Principal, SP.Partner<MonPrices>>();
+  // user -> the price tier of each entry in `charges`, aligned from the newest end (entries from
+  // before special prices have none and were regular)
+  let charge_tiers = Map.new<Principal, [SP.Tier]>();
   var fees_collected_e8s : Nat = 0;
   var fees_withdrawn_e8s : Nat = 0;
   var fees_forwarded_e8s : Nat = 0;
@@ -317,24 +331,39 @@ shared (deployer) persistent actor class SneedMon() = this {
 
   func tierOf(everyMin : Nat) : ?Tier = Array.find<Tier>(tier_table.tiers, func(t) = t.every_min == everyMin);
   /// floor(daily price × every_min / 1440): a day of checks never costs more than the tier's daily price.
-  func perCheck(everyMin : Nat) : Nat = switch (tierOf(everyMin)) {
-    case (?t) tier_table.base_daily_price_e8s * t.daily_multiplier * everyMin / 1440;
+  func perCheckAt(base : Nat, everyMin : Nat) : Nat = switch (tierOf(everyMin)) {
+    case (?t) base * t.daily_multiplier * everyMin / 1440;
     case null 0;
   };
+  func perCheck(everyMin : Nat) : Nat = perCheckAt(tier_table.base_daily_price_e8s, everyMin);
+  /// The admin price applies to people on the admin list (controllers and admins), never canisters.
+  func getsAdminPrice(u : Principal) : Bool = isAdmin(u) and SP.isPerson(u);
+  /// What `u` pays per check of a watch at `everyMin`, and the price tier: the lowest of the regular
+  /// price, the admin price (admins) and the partner price (active partner entry), each the base
+  /// daily price override times the tier's multiplier.
+  func priceFor(u : Principal, everyMin : Nat) : (Nat, SP.Tier) {
+    let adminP : ?Nat = if (getsAdminPrice(u)) switch (admin_prices.base_daily_price_e8s) { case (?b) ?perCheckAt(b, everyMin); case null null } else null;
+    let partnerP : ?Nat = switch (SP.activePartner(partner_prices, u, now())) {
+      case (?e) switch (e.prices.base_daily_price_e8s) { case (?b) ?perCheckAt(b, everyMin); case null null };
+      case null null;
+    };
+    SP.lowest(perCheck(everyMin), null, adminP, partnerP);
+  };
+  func perCheckFor(u : Principal, everyMin : Nat) : Nat = priceFor(u, everyMin).0;
   func tierPrices() : [TierPrice] = Array.map<Tier, TierPrice>(tier_table.tiers, func(t) = {
     every_min = t.every_min; daily_multiplier = t.daily_multiplier; daily_price_e8s = tier_table.base_daily_price_e8s * t.daily_multiplier;
     per_check_e8s = perCheck(t.every_min); checks_per_day = 1440 / t.every_min;
   });
 
   /// One check of each of these watches: the least balance to start or resume watching.
-  func checksCost(ws : [Watch]) : Nat {
+  func checksCost(u : Principal, ws : [Watch]) : Nat {
     var c = 0;
-    for (w in ws.vals()) c += perCheck(w.settings.every_min);
+    for (w in ws.vals()) c += perCheckFor(u, w.settings.every_min);
     c;
   };
-  func dailyCost(ws : [Watch]) : Nat {
+  func dailyCost(u : Principal, ws : [Watch]) : Nat {
     var c = 0;
-    for (w in ws.vals()) c += perCheck(w.settings.every_min) * (1440 / w.settings.every_min);
+    for (w in ws.vals()) c += perCheckFor(u, w.settings.every_min) * (1440 / w.settings.every_min);
     c;
   };
 
@@ -349,7 +378,7 @@ shared (deployer) persistent actor class SneedMon() = this {
   func maybeResume(u : Principal) : Bool {
     let a = acct(u);
     if (not a.paused) return false;
-    if (a.balance_e8s < checksCost(watchesOf(u))) return false;
+    if (a.balance_e8s < checksCost(u, watchesOf(u))) return false;
     putAcct(u, { a with paused = false; notice_sent = false });
     true;
   };
@@ -370,10 +399,13 @@ shared (deployer) persistent actor class SneedMon() = this {
     fees_collected_e8s -= price;
   };
 
-  func addCharge(u : Principal, e : ChargeEntry) {
+  func addCharge(u : Principal, e : ChargeEntry, tier : SP.Tier) {
     let cur = switch (Map.get(charges, Map.phash, u)) { case (?c) c; case null [] };
     let all = Array.append(cur, [e]);
     Map.set(charges, Map.phash, u, if (all.size() > MAX_CHARGES_KEPT) Array.subArray<ChargeEntry>(all, (all.size() - MAX_CHARGES_KEPT : Nat), MAX_CHARGES_KEPT) else all);
+    let curT = switch (Map.get(charge_tiers, Map.phash, u)) { case (?c) c; case null [] };
+    let allT = Array.append(curT, [tier]);
+    Map.set(charge_tiers, Map.phash, u, if (allT.size() > MAX_CHARGES_KEPT) Array.subArray<SP.Tier>(allT, (allT.size() - MAX_CHARGES_KEPT : Nat), MAX_CHARGES_KEPT) else allT);
   };
 
   func plus(a : Period, b : Period) : Period = {
@@ -423,7 +455,7 @@ shared (deployer) persistent actor class SneedMon() = this {
         {
           user = u; topic = TOPIC_ACCOUNT; sponsored = config.sponsored; link = null; dedupe = null;
           title = "Monitoring paused: top up";
-          body = "Your Sneed Monitor balance can't pay the next check, so it stopped watching proposals for you (" # (if (ws.size() == 1) "1 watch" else Nat.toText(ws.size()) # " watches") # "). Your watches are kept: deposit ICP and credit it (at least " # e8sText(checksCost(ws)) # " ICP) and monitoring resumes.";
+          body = "Your Sneed Monitor balance can't pay the next check, so it stopped watching proposals for you (" # (if (ws.size() == 1) "1 watch" else Nat.toText(ws.size()) # " watches") # "). Your watches are kept: deposit ICP and credit it (at least " # e8sText(checksCost(u, ws)) # " ICP) and monitoring resumes.";
         };
       });
       spend();
@@ -512,7 +544,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     if (mine.size() >= config.max_watches_per_user) return ?#err("At most " # Nat.toText(config.max_watches_per_user) # " watches per user");
     if (mine.size() == 0 and Map.size(watches) >= config.max_users) return ?#err("sneed_mon is full (watcher limit); try again later");
     if (not Map.has(targets, Map.thash, key) and Map.size(targets) >= config.max_snses) return ?#err("sneed_mon watches as many SNSes as it may; try again later");
-    let need = checksCost(mine) + perCheck(tuning.defaults.every_min);
+    let need = checksCost(caller, mine) + perCheckFor(caller, tuning.defaults.every_min);
     let have = acct(caller).balance_e8s;
     if (have < need) return ?#err("Top up first: one check of each of your watches costs " # e8sText(need) # " ICP and your balance is " # e8sText(have) # " ICP (send ICP to get_deposit_account, then call credit_deposit)");
     null;
@@ -581,7 +613,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     };
     {
       target = w.target; topic = #proposals; governance; name; settings = w.settings;
-      price_per_check_e8s = perCheck(w.settings.every_min); next_check_at = if (w.last_check_at == 0) 0 else w.last_check_at + w.settings.every_min * MIN_NS;
+      price_per_check_e8s = perCheckFor(u, w.settings.every_min); next_check_at = if (w.last_check_at == 0) 0 else w.last_check_at + w.settings.every_min * MIN_NS;
       pending = Array.filter<Pending>(pendingOf(u), func(p) = p.key == key).size(); neurons; neurons_at = at;
     };
   };
@@ -711,7 +743,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     let a = acct(caller);
     let ws = watchesOf(caller);
     {
-      balance_e8s = a.balance_e8s; paused = a.paused; watches = ws.size(); per_round_of_checks_e8s = checksCost(ws); per_day_e8s = dailyCost(ws);
+      balance_e8s = a.balance_e8s; paused = a.paused; watches = ws.size(); per_round_of_checks_e8s = checksCost(caller, ws); per_day_e8s = dailyCost(caller, ws);
       charged_e8s = a.charged_e8s; checks = a.checks; deposited_e8s = a.deposited_e8s; withdrawn_e8s = a.withdrawn_e8s; deposit_account = depositAccount(caller);
     };
   };
@@ -724,6 +756,25 @@ shared (deployer) persistent actor class SneedMon() = this {
     if (start >= n) return { total = n; entries = [] };
     let m = Nat.min(Nat.min(len, 100), n - start);
     { total = n; entries = Array.tabulate<ChargeEntry>(m, func(i) = all[n - 1 - start - i]) };
+  };
+
+  /// get_my_charges with the price tier of each check (`regular`, `admin` or `partner`; checks from
+  /// before special prices existed are `regular`).
+  public query ({ caller }) func get_my_charges_with_tier(start : Nat, len : Nat) : async { total : Nat; entries : [ChargeEntryTiered] } {
+    let all = switch (Map.get(charges, Map.phash, caller)) { case (?c) c; case null [] };
+    let tiers = switch (Map.get(charge_tiers, Map.phash, caller)) { case (?c) c; case null [] };
+    let n = all.size();
+    if (start >= n) return { total = n; entries = [] };
+    let m = Nat.min(Nat.min(len, 100), n - start);
+    {
+      total = n;
+      entries = Array.tabulate<ChargeEntryTiered>(m, func(i) {
+        let e = all[n - 1 - start - i];
+        let back = start + i; // 0 = newest
+        let tier = if (back < tiers.size()) SP.tierText(tiers[tiers.size() - 1 - back]) else "regular";
+        { at = e.at; target = e.target; every_min = e.every_min; price_e8s = e.price_e8s; outcome = e.outcome; price_tier = tier };
+      });
+    };
   };
 
   func lock(u : Principal) : Bool {
@@ -1226,7 +1277,7 @@ shared (deployer) persistent actor class SneedMon() = this {
   // ---- phase 4: check the due watches: charge, then one message (or digest) per topic ----
 
   type Group = { user : Principal; key : Text; kind : PendingKind; items : [Pending] };
-  type Check = { user : Principal; key : Text; target : Target; every_min : Nat; price : Nat; prev_check_at : Int; first : Nat; groups : Nat };
+  type Check = { user : Principal; key : Text; target : Target; every_min : Nat; price : Nat; tier : SP.Tier; prev_check_at : Int; first : Nat; groups : Nat };
 
   func phaseChecks() : async* Bool {
     if (not notices_done) {
@@ -1265,7 +1316,7 @@ shared (deployer) persistent actor class SneedMon() = this {
         let key = targetKey(w0.target);
         switch (findWatch(u, key)) {
           case (?w) if (not isPausedUser(u) and isDue(w)) {
-            let price = perCheck(w.settings.every_min);
+            let (price, tier) = priceFor(u, w.settings.every_min);
             if (not chargeCheck(u, price)) pauseUser(u) else {
               updateWatch(u, key, func(x) = { x with last_check_at = now() });
               let first = groups.size();
@@ -1274,7 +1325,7 @@ shared (deployer) persistent actor class SneedMon() = this {
                 let items = Array.filter<Pending>(ps, func(p) = p.key == key and p.kind == kind and not p.nns_check);
                 if (items.size() > 0) groups.add({ user = u; key; kind; items });
               };
-              checks.add({ user = u; key; target = w.target; every_min = w.settings.every_min; price; prev_check_at = w.last_check_at; first; groups = groups.size() - first });
+              checks.add({ user = u; key; target = w.target; every_min = w.settings.every_min; price; tier; prev_check_at = w.last_check_at; first; groups = groups.size() - first });
             };
           };
           case _ {};
@@ -1330,7 +1381,7 @@ shared (deployer) persistent actor class SneedMon() = this {
           updateWatch(c.user, c.key, func(x) = { x with last_check_at = c.prev_check_at });
         } else {
           let text = if (c.groups == 0) "nothing new" else Nat.toText(proposals) # (if (proposals == 1) " proposal" else " proposals") # (if (note == "") ", sent" else ", " # note);
-          addCharge(c.user, { at = now(); target = c.target; every_min = c.every_min; price_e8s = c.price; outcome = text });
+          addCharge(c.user, { at = now(); target = c.target; every_min = c.every_min; price_e8s = c.price; outcome = text }, c.tier);
           addEconomics({ cycles_burned = 0; revenue_e8s = c.price; checks = 1; rounds = 0 });
         };
       };
@@ -1613,6 +1664,42 @@ shared (deployer) persistent actor class SneedMon() = this {
     #ok("Saved");
   };
 
+  // ---- special prices (spec/special_prices.md) ----
+
+  /// The admin price: an override of the base daily price for people on the admin list (null: none).
+  public shared ({ caller }) func set_admin_prices(p : MonPrices) : async SpResult {
+    if (not isAdmin(caller)) return #err("Admins only");
+    admin_prices := p;
+    #ok;
+  };
+
+  /// Add or replace a partner's prices: a public label, an override of the base daily price, and
+  /// an optional expiry (ns since 1970).
+  public shared ({ caller }) func set_partner_prices(partner : Principal, e : MonPartner) : async SpResult {
+    if (not isAdmin(caller)) return #err("Admins only");
+    switch (SP.validatePartner(partner_prices, partner, e, now())) { case (?err) return #err(err); case null {} };
+    Map.set(partner_prices, Map.phash, partner, e);
+    #ok;
+  };
+
+  public shared ({ caller }) func remove_partner_prices(partner : Principal) : async SpResult {
+    if (not isAdmin(caller)) return #err("Admins only");
+    if (not Map.has(partner_prices, Map.phash, partner)) return #err("No partner prices for this principal");
+    Map.delete(partner_prices, Map.phash, partner);
+    #ok;
+  };
+
+  /// The admin price and every partner entry (expired ones too), public.
+  public query func get_special_prices() : async SpecialPrices {
+    { admin_prices; partners = SP.listing(partner_prices) };
+  };
+
+  /// The special prices that apply to `p`: the admin price when `p` is an admin (a person) and the
+  /// partner entry when it has one that has not expired.
+  public query func get_special_prices_for(p : Principal) : async SpecialPricesFor {
+    { admin_prices = if (getsAdminPrice(p)) ?admin_prices else null; partner = SP.activePartner(partner_prices, p, now()) };
+  };
+
   func resetTimer<system>() {
     Timer.cancelTimer(timer);
     timer := Timer.recurringTimer<system>(#seconds(config.interval_s), startRound);
@@ -1763,6 +1850,12 @@ shared (deployer) persistent actor class SneedMon() = this {
     #get_my_charges : Any;
     #get_accounting : Any;
     #get_billing_config : Any;
+    #get_my_charges_with_tier : Any;
+    #get_special_prices : Any;
+    #get_special_prices_for : Any;
+    #set_admin_prices : Any;
+    #set_partner_prices : Any;
+    #remove_partner_prices : Any;
     #watch : Any;
     #unwatch : Any;
     #update_watch : Any;
@@ -1790,11 +1883,13 @@ shared (deployer) persistent actor class SneedMon() = this {
     #admin_remove_admin : Any;
   } }) : Bool {
     switch msg {
-      case (#get_api_doc _ or #get_status _ or #get_targets _ or #get_config _ or #get_tuning _ or #get_tiers _ or #get_admins _ or #get_topics _ or #get_my_watches _ or #get_watch _ or #get_my_nns_neurons _ or #get_target_topics _ or #get_deposit_account _ or #get_my_balance _ or #get_my_charges _ or #get_accounting _ or #get_billing_config _) false;
+      case (#get_api_doc _ or #get_status _ or #get_targets _ or #get_config _ or #get_tuning _ or #get_tiers _ or #get_admins _ or #get_topics _ or #get_my_watches _ or #get_watch _ or #get_my_nns_neurons _ or #get_target_topics _ or #get_deposit_account _ or #get_my_balance _ or #get_my_charges _ or #get_accounting _ or #get_billing_config _ or #get_my_charges_with_tier _ or #get_special_prices _ or #get_special_prices_for _) false;
       case (#watch _ or #unwatch _ or #refresh_my_neurons _ or #set_nns_neurons _ or #list_target_topics _ or #credit_deposit _ or #withdraw_balance _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       // a topic filter of up to 50 keys of 64 characters
       case (#update_watch _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.textArg(50 * 64);
       case (#admin_set_tuning _) isAdmin(caller) and arg.size() <= IngressGuard.textArg(50 * 64);
+      case (#set_admin_prices _ or #remove_partner_prices _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
+      case (#set_partner_prices _) isAdmin(caller) and arg.size() <= IngressGuard.textArg(SP.MAX_LABEL_CHARS);
       case (#admin_set_config _ or #admin_set_tiers _ or #admin_set_notifications_canister _ or #admin_register_with_notifications _ or #admin_update_notifications_app _ or #admin_set_app_id _ or #admin_set_billing _ or #admin_set_fee_destination _ or #admin_set_fee_sweep_threshold _ or #admin_withdraw_fees _ or #admin_pause _ or #admin_resume _ or #admin_set_interval _ or #admin_run_now _ or #admin_add_admin _ or #admin_remove_admin _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
     };
   };

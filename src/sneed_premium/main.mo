@@ -17,6 +17,9 @@ import T "Types";
 import Utils "Utils";
 import IngressGuard "../IngressGuard";
 import ApiDoc "ApiDoc";
+import SP "../SpecialPrices";
+import Map "mo:map/Map";
+import { phash; nhash } "mo:map/Map";
 
 shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = this {
     // ============================================
@@ -86,6 +89,14 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
     // when this is first installed get ids in list order (see the end of the actor body).
     var promoCodeIds : [(Text, Nat)] = [];
     var nextPromoCodeId : Nat = 0;
+
+    // Special prices (spec/special_prices.md): an admin price and partner prices as a share of
+    // every ICP tier's price in basis points; unset = no effect. New stable fields (additive).
+    var specialAdminPrices : T.SpecialPrices = { icp_tier_price_bps = null };
+    var specialPartners : Map.Map<Principal, SP.Partner<T.SpecialPrices>> = Map.new();
+    // price_tier of every ICP payment made since special prices exist (payment log id -> tier);
+    // payments from before are regular
+    var icpPaymentPriceTiers : Map.Map<Nat, T.PriceTier> = Map.new();
     
     // ============================================
     // PRIVATE HELPERS
@@ -205,6 +216,53 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
                 id;
             };
         };
+    };
+
+    // ---- special prices ----
+
+    transient let FULL_PRICE_BPS : Nat = 10_000;
+
+    /// The share of the tier prices `p` pays (bps) and the tier that gives it: the lowest of the
+    /// regular price (10_000), the admin price (admins who are persons) and the partner price
+    /// (an entry that has not expired). Buying premium has no premium price.
+    func priceBpsFor(p : Principal) : (Nat, T.PriceTier) {
+        let adminBps = if (isAdmin(p) and SP.isPerson(p)) { specialAdminPrices.icp_tier_price_bps } else { null };
+        let partnerBps = switch (SP.activePartner(specialPartners, p, Time.now())) { case (?e) e.prices.icp_tier_price_bps; case null null };
+        SP.lowest(FULL_PRICE_BPS, null, adminBps, partnerBps);
+    };
+
+    func tierPriceAt(t : T.IcpTier, bps : Nat) : Nat { t.amountE8s * bps / FULL_PRICE_BPS };
+
+    /// The tier a deposit of `amount` buys for `p`, with the price tier: an active tier whose
+    /// price for `p` (special, when one applies) or regular price equals the amount exactly; the
+    /// longest such tier wins, the first on a tie (as Utils.findIcpTier). Without special prices
+    /// this is exactly Utils.findIcpTier.
+    func matchIcpTier(p : Principal, amount : Nat) : ?(T.IcpTier, Nat, T.PriceTier) {
+        let (bps, special) = priceBpsFor(p);
+        var best : ?(T.IcpTier, Nat, T.PriceTier) = null;
+        let consider = func(t : T.IcpTier, price : Nat, pt : T.PriceTier) {
+            switch (best) {
+                case null { best := ?(t, price, pt) };
+                case (?(c, _, _)) { if (t.durationNs > c.durationNs) { best := ?(t, price, pt) } };
+            };
+        };
+        for (t in icpTiers.vals()) {
+            if (t.active) {
+                if (special != #regular and tierPriceAt(t, bps) == amount) { consider(t, amount, special) }
+                else if (t.amountE8s == amount) { consider(t, amount, #regular) };
+            };
+        };
+        best;
+    };
+
+    func pricesFields(p : T.SpecialPrices) : [(Text, ?Nat)] { [("icp_tier_price_bps", p.icp_tier_price_bps)] };
+
+    func validatePrices(p : T.SpecialPrices) : ?Text {
+        switch (p.icp_tier_price_bps) {
+            case (?b) { if (b == 0 or b > FULL_PRICE_BPS) { return ?"icp_tier_price_bps must be 1 to 10000 (10000 = the regular price)" } };
+            case null {};
+        };
+        null;
     };
 
     // ---- ICRC-3 block helpers ----
@@ -486,9 +544,9 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             subaccount = ?userSubaccount;
         });
         
-        // Find matching tier
-        let tier = switch (Utils.findIcpTier(icpTiers, balance)) {
-            case (?t) { t };
+        // Find matching tier (at the caller's price: special prices, spec/special_prices.md)
+        let (tier, tierPrice, priceTier) = switch (matchIcpTier(caller, balance)) {
+            case (?m) { m };
             case null {
                 return #err(#InvalidTier);
             };
@@ -499,7 +557,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         
         // Ensure we have enough to pay the fee
         if (balance <= fee) {
-            return #err(#InsufficientPayment({ required = tier.amountE8s; received = balance }));
+            return #err(#InsufficientPayment({ required = tierPrice; received = balance }));
         };
         
         // Transfer ICP to payment recipient (as configured now: the log names this account)
@@ -530,7 +588,8 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             case (#Ok(txId)) { txId };
         };
         
-        // Record the ICP payment
+        // Record the ICP payment (and the price tier it paid)
+        Map.set(icpPaymentPriceTiers, nhash, nextIcpPaymentLogId, priceTier);
         recordIcpPayment(
             caller,
             balance,
@@ -571,7 +630,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
 
         icrc3_add("premium_icp_purchase", Array.flatten<(Text, T3.Value)>([
             [("caller", pv(caller)), ("tier", #Text(tier.name)), ("duration_ns", #Nat(tier.durationNs)), ("amount_e8s", #Nat(balance)),
-             ("fee_e8s", #Nat(fee)), ("to", av(recipient)), ("icp_tx", #Nat(transactionId))],
+             ("fee_e8s", #Nat(fee)), ("to", av(recipient)), ("icp_tx", #Nat(transactionId)), ("price_tier", #Text(SP.tierText(priceTier)))],
             prevExp(previous),
             [("new_expiration", tv(newExpiration))],
         ]));
@@ -1250,6 +1309,84 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
     };
     
     // ============================================
+    // SPECIAL PRICES (spec/special_prices.md)
+    // ============================================
+
+    /// Set the admin price (admin only): the share of every ICP tier's price, in basis points,
+    /// that this canister's admins pay (people only, never canisters). null = no admin price.
+    public shared ({ caller }) func set_admin_prices(prices : T.SpecialPrices) : async { #ok; #err : Text } {
+        if (not isAdmin(caller)) { return #err("not authorized: admins only") };
+        switch (validatePrices(prices)) { case (?e) { return #err(e) }; case null {} };
+        let old = specialAdminPrices;
+        specialAdminPrices := prices;
+        icrc3_config(caller, "admin_prices", SP.overridesValue(pricesFields(prices)), ?SP.overridesValue(pricesFields(old)));
+        #ok;
+    };
+
+    /// Add or replace a partner's prices (admin only): a public label, the overrides and an
+    /// optional expiry (ns since 1970).
+    public shared ({ caller }) func set_partner_prices(partner : Principal, entry : T.PartnerPrices) : async { #ok; #err : Text } {
+        if (not isAdmin(caller)) { return #err("not authorized: admins only") };
+        switch (SP.validatePartner(specialPartners, partner, entry, Time.now())) { case (?e) { return #err(e) }; case null {} };
+        switch (validatePrices(entry.prices)) { case (?e) { return #err(e) }; case null {} };
+        let old = Map.get(specialPartners, phash, partner);
+        Map.set(specialPartners, phash, partner, entry);
+        let base : [(Text, T3.Value)] = [("caller", pv(caller)), ("key", #Text("partner_prices")), ("partner", pv(partner)), ("value", SP.partnerValue(entry.label_, pricesFields(entry.prices), entry.expires_at))];
+        icrc3_add("premium_config_update", switch (old) {
+            case (?o) Array.append(base, [("old_value", SP.partnerValue(o.label_, pricesFields(o.prices), o.expires_at))]);
+            case null base;
+        });
+        #ok;
+    };
+
+    /// Remove a partner's prices (admin only).
+    public shared ({ caller }) func remove_partner_prices(partner : Principal) : async { #ok; #err : Text } {
+        if (not isAdmin(caller)) { return #err("not authorized: admins only") };
+        switch (Map.remove(specialPartners, phash, partner)) {
+            case null { #err("no partner prices for this principal") };
+            case (?o) {
+                icrc3_add("premium_config_update", [
+                    ("caller", pv(caller)), ("key", #Text("partner_prices")), ("partner", pv(partner)), ("value", #Text("removed")),
+                    ("old_value", SP.partnerValue(o.label_, pricesFields(o.prices), o.expires_at)),
+                ]);
+                #ok;
+            };
+        };
+    };
+
+    /// The admin price and every partner entry (expired ones too, with their expiry). Public.
+    public query func get_special_prices() : async { admin_prices : T.SpecialPrices; partners : [SP.PartnerListing<T.SpecialPrices>] } {
+        { admin_prices = specialAdminPrices; partners = SP.listing(specialPartners) };
+    };
+
+    /// The special prices that apply to `principal`: the admin price when it is an admin and a
+    /// person, its partner entry when it has one that has not expired.
+    public query func get_special_prices_for(principal : Principal) : async { admin_prices : ?T.SpecialPrices; partner : ?T.PartnerPrices } {
+        {
+            admin_prices = if (isAdmin(principal) and SP.isPerson(principal)) { ?specialAdminPrices } else { null };
+            partner = SP.activePartner(specialPartners, principal, Time.now());
+        };
+    };
+
+    /// Every active ICP tier with what `principal` pays for it (the amount to deposit) and the
+    /// price tier that gives it. Depositing a tier's regular amount still buys it too.
+    public query func get_icp_tier_prices_for(principal : Principal) : async [T.IcpTierPrice] {
+        let (bps, special) = priceBpsFor(principal);
+        let active = Array.filter<T.IcpTier>(icpTiers, func(t) { t.active });
+        Array.map<T.IcpTier, T.IcpTierPrice>(active, func(t) {
+            if (special == #regular) { { tier = t; price_e8s = t.amountE8s; price_tier = #regular } }
+            else { { tier = t; price_e8s = tierPriceAt(t, bps); price_tier = special } };
+        });
+    };
+
+    /// The price tier an ICP payment (payment log id) paid: null for an unknown id; payments
+    /// from before special prices existed are regular.
+    public query func get_icp_payment_price_tier(id : Nat) : async ?T.PriceTier {
+        if (id >= nextIcpPaymentLogId) { return null };
+        switch (Map.get(icpPaymentPriceTiers, nhash, id)) { case (?t) ?t; case null ?#regular };
+    };
+
+    // ============================================
     // PAYMENT & CLAIM LOG QUERIES (Admin only)
     // ============================================
     
@@ -1545,6 +1682,13 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
     // would go through consensus at our cost, and arguments are capped in size.
     system func inspect({ caller : Principal; arg : Blob; msg : {
         #get_api_doc : Any;
+        #set_admin_prices : Any;
+        #set_partner_prices : Any;
+        #remove_partner_prices : Any;
+        #get_special_prices : Any;
+        #get_special_prices_for : Any;
+        #get_icp_tier_prices_for : Any;
+        #get_icp_payment_price_tier : Any;
         #admin_icrc3_register_archives_now : Any;
         #admin_icrc3_repair_archive_controllers : Any;
         #admin_icrc3_reset_archive_registration : Any;
@@ -1606,6 +1750,10 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         switch (msg) {
             case (
                 #get_api_doc _
+                or #get_special_prices _
+                or #get_special_prices_for _
+                or #get_icp_tier_prices_for _
+                or #get_icp_payment_price_tier _
                 or #checkMembership _
                 or #getActivePremiumMembers _
                 or #getAllIcpTiers _
@@ -1637,6 +1785,8 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             // codes are 8 letters; leave room for what people paste
             case (#claimPromoCode f) arg.size() <= IngressGuard.textArg(MAX_PROMO_CODE) and IngressGuard.text(f(), MAX_PROMO_CODE);
             // admin tools with free-form content
+            // special prices (labels are at most 100 characters: a small argument)
+            case (#set_admin_prices _ or #set_partner_prices _ or #remove_partner_prices _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
             case (#addIcpTier _ or #addVpTier _ or #updateIcpTier _ or #updateVpTier _ or #createPromoCode _ or #deactivatePromoCode _ or #reactivatePromoCode _ or #deletePromoCode _ or #updateConfig _) isAdmin(caller);
             case _ arg.size() <= IngressGuard.SMALL_ARG;
         };

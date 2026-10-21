@@ -123,8 +123,8 @@ Mints and money:
 
 | btype | when | tx fields |
 |---|---|---|
-| `sneedapp_mint` | `mintCanister` or the legacy `createNeuronManager` completed: paid, installed, handed to the minter, mint log written | `caller` (the minter, now sole controller), `canister_id`, `app_id`, `numeric_app_id`, `publisher_id`, `ver`, `wasm_sha256`, `wasm_size`, `price_e8s` (0 when payment is off), `premium`; when paid: `cycles_icp_e8s` + `cycles_tx` (to the factory's main account, for the CMC), `publisher_share_e8s` (+ `publisher_share_to`, `publisher_share_tx` when > 0), `dao_cut_e8s` (+ `dao_cut_to`, `dao_cut_tx` when > 0), `fees_e8s` (every ledger fee of the mint, the CMC transfer's included); `cycles_received` when the CMC top-up answered; `method` = `createNeuronManager` for the legacy flow |
-| `sneedapp_mint_refund` | a paid mint aborted after ICP had left the deposit; the moved ICP was sent back to the deposit | `caller`, `app_id`, `ver`, `price_e8s`, `reason`, `payment_txs` (ledger blocks of the legs that had moved), `moved_e8s`, `returned_e8s` (arrived back in the deposit), `stuck_e8s` (could not be returned; held by the factory for a manual return), `refund_txs`, `canister_id` when a canister had been created (and deleted, or see the orphan block) |
+| `sneedapp_mint` | `mintCanister` or the legacy `createNeuronManager` completed: paid, installed, handed to the minter, mint log written | `caller` (the minter, now sole controller), `canister_id`, `app_id`, `numeric_app_id`, `publisher_id`, `ver`, `wasm_sha256`, `wasm_size`, `price_e8s` (0 when payment is off), `premium`, `price_tier` (`regular`, `premium`, `admin` or `partner`; spec/special_prices.md); when paid: `cycles_icp_e8s` + `cycles_tx` (to the factory's main account, for the CMC), `publisher_share_e8s` (+ `publisher_share_to`, `publisher_share_tx` when > 0), `dao_cut_e8s` (+ `dao_cut_to`, `dao_cut_tx` when > 0), `fees_e8s` (every ledger fee of the mint, the CMC transfer's included); `cycles_received` when the CMC top-up answered; `method` = `createNeuronManager` for the legacy flow |
+| `sneedapp_mint_refund` | a paid mint aborted after ICP had left the deposit; the moved ICP was sent back to the deposit | `caller`, `app_id`, `ver`, `price_e8s`, `price_tier`, `reason`, `payment_txs` (ledger blocks of the legs that had moved), `moved_e8s`, `returned_e8s` (arrived back in the deposit), `stuck_e8s` (could not be returned; held by the factory for a manual return), `refund_txs`, `canister_id` when a canister had been created (and deleted, or see the orphan block) |
 | `sneedapp_orphan_canister` | a canister of a failed mint stays with the factory (deleting it, or handing it over, failed); `getOrphanCanisters` | `caller` (minter), `canister_id`, `app_id`, `reason`; after a full payment whose hand-over failed also `ver`, `price_e8s` and the payment fields of `sneedapp_mint` (untested path: PocketIC cannot make `update_settings` or `delete_canister` fail) |
 | `sneedapp_deposit_withdraw` | `withdrawUserPayment` | `caller`, `amount_e8s`, `fee_e8s`, `to`, `icp_tx` |
 | `sneedapp_publisher_withdraw` | `withdrawPublisherFunds`, `withdrawAppFunds` | `caller`, `publisher_id`, `numeric_app_id` (app funds), `amount_e8s`, `fee_e8s`, `to`, `icp_tx` |
@@ -149,7 +149,9 @@ Configuration:
 `authorized_caller_removed` (Blob); `sneed_governance`, `sneed_premium_canister_id` (Blob or
 Text `none`); `creation_fee_e8s`, `premium_creation_fee_e8s`, `target_cycles`,
 `canister_creation_cycles` (Nat); `fee_destination` (account); `payment_required` (0/1);
-`current_version` (`ver`); `icrc3_proposal_neuron` (Blob or Text `none`) and the log settings
+`current_version` (`ver`); `admin_prices` (Map of the set overrides, `old_value` the previous
+map) and `partner_prices` (with `partner`; value `{ label; prices; expires_at? }` or Text `removed`;
+`old_value` the previous entry) (spec/special_prices.md); `icrc3_proposal_neuron` (Blob or Text `none`) and the log settings
 `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`,
 `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
 `setPaymentConfig` writes one block per field that changed.

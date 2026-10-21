@@ -310,7 +310,7 @@ Types are in section 6. "Caller" is the principal signing the call. *query* meth
 Mints a canister of `appId` for the caller, see 3.1. Give all three version numbers to pick a version; any `null` means the latest version with a WASM. Errors: `AppNotFound`, `AppDisabled`, `PublisherNotFound`, `PublisherNotVerified`, `VersionNotFound`, `NoWasmForVersion`, `InsufficientCycles`, `InsufficientPayment { required; provided }`, `CanisterCreationFailed(text)`, `TransferFailed(text)`.
 
 **`getAppMintPrice(appId : text, user : principal) → record { regular : nat64; premium : nat64; applicable : nat64; isPremium : bool }`** (update)
-The fee `user` would pay. All zero for an unknown app.
+The fee `user` would pay. All zero for an unknown app. `applicable` includes special prices (5.2.1); `regular` and `premium` are the app's own prices.
 
 **`getPaymentSubaccount(user) → blob`** (query), **`getUserPaymentBalance(user) → nat`** (update), **`withdrawUserPayment() → TransferResult`** (update): see 3.2.
 
@@ -324,6 +324,25 @@ The fee `user` would pay. All zero for an unknown app.
 | `getSneedPremiumCanisterId()` | query | `opt principal` | Where premium membership is checked. |
 | `calculateIcpForCycles(targetCycles)` | update | `nat64` | ICP e8s that buy `targetCycles` at the CMC rate plus 5%; `0` if the rate is unavailable. |
 | `getConversionRate()` | update | `{ cyclesPerIcp; xdrPermyriadPerIcp }` | Live CMC rate. |
+
+#### 5.2.1 Special prices: admin and partner prices
+
+Next to the regular and premium prices, the mint fee of **Sneed DAO apps** (publisher 0) and of the legacy `createNeuronManager` has an **admin price** and **partner prices** (spec: `spec/special_prices.md`). Third-party publishers' app prices are theirs and are never overridden.
+
+- The price charged is the **lowest applicable** one: the regular price; the premium price (Sneed Premium members); the admin price (callers on Sneedapp's admin list who are people, i.e. self-authenticating principals; canisters on the list never get it); the caller's partner price (a principal the DAO names, usually a partner canister such as a partner game canister that mints for its users, until the entry's expiry). On a tie the earlier tier in that order is reported.
+- Every override is optional: unset means no special price. With nothing set, prices are exactly the regular and premium ones.
+- An override is checked like a regular price: at mint time a price that cannot cover the cycles a new canister costs is refused (`CanisterCreationFailed`, nothing charged).
+- `Prices = record { mint_fee_e8s : opt nat }`; `PartnerPrices = record { label : text; prices : Prices; expires_at : opt int }` (`expires_at` in nanoseconds since 1970; `label` is public).
+
+| Method | Kind | Returns | Notes |
+|---|---|---|---|
+| `get_special_prices()` | query | `record { admin_prices : Prices; partners : vec record { principal; label; prices; expires_at } }` | Public, expired partner entries included. |
+| `get_special_prices_for(principal)` | query | `record { admin_prices : opt Prices; partner : opt PartnerPrices }` | What applies to that principal now (admin prices only when it is a person on the admin list; the partner entry only before its expiry). |
+| `set_admin_prices(Prices)`† | update | `variant { ok; err : text }` | Admins or SNS governance. Logged as `sneedapp_config_update` key `admin_prices`. |
+| `set_partner_prices(principal, PartnerPrices)`† | update | `variant { ok; err : text }` | Adds or replaces one entry. Refuses the anonymous principal, an empty label or one over 100 characters, an expiry in the past, more than 200 partners, a fee above nat64. Logged as key `partner_prices` with `partner`. |
+| `remove_partner_prices(principal)`† | update | `variant { ok; err : text }` | `err` when there is no entry. Logged as key `partner_prices`, value `removed`. |
+
+Every `sneedapp_mint` and `sneedapp_mint_refund` block carries `price_tier`: `regular`, `premium`, `admin` or `partner`.
 
 ### 5.3 Mint log (queries)
 
@@ -409,6 +428,7 @@ Restricted to Sneedapp admins (`getAdmins()`); those marked † also accept the 
 | `addAdmin`, `removeAdmin` | Manage admins (at least one stays). |
 | `setSneedGovernance` | Set the governance principal. |
 | `setPaymentConfig`†, `setCreationFee`†, `setTargetCycles`†, `setFeeDestination`†, `setPaymentRequired`†, `setPremiumCreationFee`†, `setCanisterCreationCycles`†, `setSneedPremiumCanisterId`† | Payment and cycles configuration. |
+| `set_admin_prices`†, `set_partner_prices`†, `remove_partner_prices`† | Special prices for Sneed DAO mints (5.2.1). |
 | `verifyPublisher`, `unverifyPublisher` | Allow or stop minting of a publisher's apps. |
 | `setPublisherDaoCut`, `setAppDaoCut` | DAO cut in basis points (app override `null` = publisher default). |
 | `removeApp(numericAppId)` | Delete an app from the catalogue together with its versions and WASM blobs. `Err("N canister(s) were minted from this app ...")` while the mint log has canisters minted from it: their owners upgrade from its versions, so disable it with `setAppEnabled` instead. |
@@ -600,8 +620,8 @@ Mints and money:
 
 | `btype` | When | `tx` fields |
 |---|---|---|
-| `sneedapp_mint` | `mintCanister` or the legacy `createNeuronManager` completed | `caller` (the minter, now the canister's only controller), `canister_id`, `app_id`, `numeric_app_id`, `publisher_id`, `ver`, `wasm_sha256` and `wasm_size` (the module installed), `price_e8s` (0 when payment is off), `premium`; when paid: `cycles_icp_e8s` and `cycles_tx` (to the factory's main account, converted to cycles), `publisher_share_e8s` (with `publisher_share_to` and `publisher_share_tx` when above 0), `dao_cut_e8s` (with `dao_cut_to` and `dao_cut_tx` when above 0), `fees_e8s` (every ledger fee of the mint); `cycles_received` when the cycles minting canister answered; `method` = `createNeuronManager` for the legacy flow |
-| `sneedapp_mint_refund` | a paid mint aborted after ICP had left the payment subaccount, and the moved ICP was sent back to it | `caller`, `app_id`, `ver`, `price_e8s`, `reason`, `payment_txs` (ledger blocks of the legs that had moved), `moved_e8s`, `returned_e8s` (arrived back), `stuck_e8s` (could not be returned; held by the factory for a manual return), `refund_txs`; `canister_id` when a canister had been created and was deleted |
+| `sneedapp_mint` | `mintCanister` or the legacy `createNeuronManager` completed | `caller` (the minter, now the canister's only controller), `canister_id`, `app_id`, `numeric_app_id`, `publisher_id`, `ver`, `wasm_sha256` and `wasm_size` (the module installed), `price_e8s` (0 when payment is off), `premium`, `price_tier` (`regular`, `premium`, `admin` or `partner`: which price applied, 5.2.1); when paid: `cycles_icp_e8s` and `cycles_tx` (to the factory's main account, converted to cycles), `publisher_share_e8s` (with `publisher_share_to` and `publisher_share_tx` when above 0), `dao_cut_e8s` (with `dao_cut_to` and `dao_cut_tx` when above 0), `fees_e8s` (every ledger fee of the mint); `cycles_received` when the cycles minting canister answered; `method` = `createNeuronManager` for the legacy flow |
+| `sneedapp_mint_refund` | a paid mint aborted after ICP had left the payment subaccount, and the moved ICP was sent back to it | `caller`, `app_id`, `ver`, `price_e8s`, `price_tier`, `reason`, `payment_txs` (ledger blocks of the legs that had moved), `moved_e8s`, `returned_e8s` (arrived back), `stuck_e8s` (could not be returned; held by the factory for a manual return), `refund_txs`; `canister_id` when a canister had been created and was deleted |
 | `sneedapp_orphan_canister` | a canister of a failed mint stays with the factory (deleting it or handing it over failed); `getOrphanCanisters` | `caller` (the minter), `canister_id`, `app_id`, `reason`; after a full payment whose hand-over failed also `ver`, `price_e8s` and the payment fields of `sneedapp_mint` |
 | `sneedapp_deposit_withdraw` | `withdrawUserPayment` | `caller`, `amount_e8s`, `fee_e8s`, `to`, `icp_tx` |
 | `sneedapp_publisher_withdraw` | `withdrawPublisherFunds`, `withdrawAppFunds` | `caller`, `publisher_id`, `numeric_app_id` (app funds), `amount_e8s`, `fee_e8s`, `to`, `icp_tx` |
@@ -622,7 +642,7 @@ Configuration:
 |---|---|---|
 | `sneedapp_config_update` | a setting changed | `caller`, `key`, `value`; `old_value` except for list additions and removals |
 
-`sneedapp_config_update` keys: `admin_added`, `admin_removed`, `authorized_caller_added`, `authorized_caller_removed`; `sneed_governance`, `sneed_premium_canister_id` (Blob, or Text `none`); `creation_fee_e8s`, `premium_creation_fee_e8s`, `target_cycles`, `canister_creation_cycles`; `fee_destination` (account); `payment_required`; `current_version` (`ver`); `icrc3_proposal_neuron` and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`. `setPaymentConfig` writes one block per field that changed.
+`sneedapp_config_update` keys: `admin_added`, `admin_removed`, `authorized_caller_added`, `authorized_caller_removed`; `sneed_governance`, `sneed_premium_canister_id` (Blob, or Text `none`); `creation_fee_e8s`, `premium_creation_fee_e8s`, `target_cycles`, `canister_creation_cycles`; `fee_destination` (account); `payment_required`; `current_version` (`ver`); `admin_prices` (Map of the set overrides, e.g. `{ mint_fee_e8s }`; `old_value` the previous map); `partner_prices` (with `partner` = the principal; value `{ label; prices; expires_at? }`, or Text `removed`; `old_value` the previous entry when there was one); `icrc3_proposal_neuron` and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`. `setPaymentConfig` writes one block per field that changed.
 
 Not logged: a user's own bookmarks, reads, release notes, descriptions, icons, logos and links, the premium check of `getAppMintPrice`, and the admin creation and financial logs (they repeat the mint blocks).
 

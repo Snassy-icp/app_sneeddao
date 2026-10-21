@@ -29,7 +29,22 @@ const CyclesRow = IDL.Record({ canister_id: IDL.Principal, title: IDL.Text, kind
 const Upgradable = IDL.Record({ canister_id: IDL.Principal, kind: Kind, title: IDL.Text, current: IDL.Opt(IDL.Vec(IDL.Nat8)), next: IDL.Vec(IDL.Nat8), auto_upgrade: IDL.Bool });
 const Res = (t) => IDL.Variant({ Ok: t, Err: IDL.Text });
 
+
+// Special prices (spec/special_prices.md): admin price and partner prices.
+const SpPrices = IDL.Record({ op_fee_e8s: IDL.Opt(IDL.Nat) });
+const SpPartner = IDL.Record({ label: IDL.Text, prices: SpPrices, expires_at: IDL.Opt(IDL.Int) });
+const SpResult = IDL.Variant({ ok: IDL.Null, err: IDL.Text });
+const SpTier = IDL.Variant({ regular: IDL.Null, premium: IDL.Null, admin: IDL.Null, partner: IDL.Null });
+const specialPricesMethods = {
+    set_admin_prices: IDL.Func([SpPrices], [SpResult], []),
+    set_partner_prices: IDL.Func([IDL.Principal, SpPartner], [SpResult], []),
+    remove_partner_prices: IDL.Func([IDL.Principal], [SpResult], []),
+    get_special_prices: IDL.Func([], [IDL.Record({ admin_prices: SpPrices, partners: IDL.Vec(IDL.Record({ principal: IDL.Principal, label: IDL.Text, prices: SpPrices, expires_at: IDL.Opt(IDL.Int) })) })], ['query']),
+    get_special_prices_for: IDL.Func([IDL.Principal], [IDL.Record({ admin_prices: IDL.Opt(SpPrices), partner: IDL.Opt(SpPartner) })], ['query']),
+    get_op_price_tier: IDL.Func([IDL.Nat], [IDL.Opt(SpTier)], ['query']),
+};
 export const guardianIdl = ({ IDL }) => IDL.Service({
+    ...specialPricesMethods,
     get_config: IDL.Func([], [Config], ['query']),
     get_child: IDL.Func([IDL.Principal], [IDL.Opt(Child)], ['query']),
     list_children: IDL.Func([], [IDL.Vec(Child)], ['query']),

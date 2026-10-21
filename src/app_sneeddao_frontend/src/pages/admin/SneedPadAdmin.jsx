@@ -1,12 +1,13 @@
 // /admin/pad: the launchpad's settings, code source, launches, and the
 // rescue of canisters a failed launch left behind. Every call here is an
 // admin method of sneed_pad (governance, controllers or listed admins).
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import Header from '../../components/Header';
 import PrincipalInput from '../../components/PrincipalInput';
+import SpecialPricesCard from '../../components/SpecialPricesCard';
 import { useAuth } from '../../AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAdminCheck } from '../../hooks/useAdminCheck';
@@ -45,6 +46,13 @@ export default function SneedPadAdmin() {
         if (!PAD_CANISTER_ID) return null;
         return Actor.createActor(padIdl, { agent: new HttpAgent({ host: HOST, ...(withIdentity && identity ? { identity } : {}) }), canisterId: PAD_CANISTER_ID });
     }, [identity]);
+
+    const padSigned = useMemo(() => (identity && isAuthenticated ? pad(true) : null), [identity, isAuthenticated, pad]);
+    const specialFields = useMemo(() => [
+        { key: 'creation_fee_e8s', label: 'Launch fee', regular: config?.creation_fee_e8s, premium: config?.premium_creation_fee_e8s },
+        { key: 'index_creation_fee_e8s', label: 'Index fee', regular: config?.index_creation_fee_e8s, premium: config?.premium_index_creation_fee_e8s },
+        { key: 'sneed_dao_control_fee_e8s', label: 'Sneed DAO handover fee', regular: config?.sneed_dao_control_fee_e8s },
+    ], [config]);
 
     const load = useCallback(async () => {
         const a = pad(false); if (!a) return;
@@ -153,6 +161,8 @@ export default function SneedPadAdmin() {
                         </>
                     )}
                 </div>
+
+                {padSigned && <SpecialPricesCard actor={padSigned} fields={specialFields} />}
 
                 <div style={card}>
                     <h2 style={h2}><FaLifeRing size={14} color="#10b981" /> Rescue a canister</h2>

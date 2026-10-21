@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import PriceTierBadge from '../components/PriceTierBadge';
+import { mintPriceTier } from '../utils/sneedappPricing';
 import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
@@ -119,7 +121,8 @@ export default function SneedAppMint() {
                     factory.getAppMintPrice(appId, identity.getPrincipal())
                 ]);
                 setPaymentSubaccount(subaccount);
-                setPricingInfo(pricing);
+                const tierInfo = await mintPriceTier(factory, identity.getPrincipal(), pricing);
+                setPricingInfo({ ...pricing, tier: tierInfo.tier, partnerLabel: tierInfo.partnerLabel });
             } catch (e) {
                 console.error('Failed to load payment info:', e);
             }
@@ -468,6 +471,7 @@ export default function SneedAppMint() {
                                 <>
                                     <div style={{ color: theme.colors.primaryText, fontSize: 20, fontWeight: 600 }}>
                                         {formatIcp(pricingInfo.applicable)} ICP
+                                        <PriceTierBadge tier={pricingInfo.tier} partnerLabel={pricingInfo.partnerLabel} />
                                     </div>
 
                                     {pricingInfo.isPremium && Number(pricingInfo.regular) > Number(pricingInfo.premium) ? (

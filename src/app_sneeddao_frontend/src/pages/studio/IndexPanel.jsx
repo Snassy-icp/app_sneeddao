@@ -14,6 +14,8 @@ import { useAuth } from '../../AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { padIdl, PAD_CANISTER_ID } from '../../tokensafety/padIdl.js';
+import { padQuoteTiers } from '../../tokensafety/padPrices.js';
+import PriceTierBadge from '../../components/PriceTierBadge';
 import { GUARDIANS, guardianIdl, guardianById } from '../../tokensafety/guardianIdl.js';
 import { ledgerIndexUpgradeArg, readStatus } from '../../utils/management.js';
 import { parsePrincipal } from '../../utils/icrc3/client.js';
@@ -38,6 +40,7 @@ export function IndexPanel({ ledgerId: initialLedger, header }) {
     const [guardianKey, setGuardianKey] = useState(GUARDIANS[0]?.key || '');
     const [snsRoot, setSnsRoot] = useState('');
     const [quote, setQuote] = useState(null);
+    const [quoteTiers, setQuoteTiers] = useState(null); // admin / partner price badges for the quote
     const [busy, setBusy] = useState('');
     const [error, setError] = useState('');
     const [result, setResult] = useState(null);
@@ -72,7 +75,12 @@ export function IndexPanel({ ledgerId: initialLedger, header }) {
     };
     const getQuote = async () => {
         setError(''); setQuote(null); setBusy('quote');
-        try { const r = await pad(true).get_index_quote({ ledger: Principal.fromText(ledger), control: controlValue() }); if ('Err' in r) throw new Error(r.Err); setQuote(r.Ok); }
+        setQuoteTiers(null);
+        try {
+            const a = pad(true);
+            const r = await a.get_index_quote({ ledger: Principal.fromText(ledger), control: controlValue() }); if ('Err' in r) throw new Error(r.Err); setQuote(r.Ok);
+            if (identity) padQuoteTiers(a, identity.getPrincipal(), r.Ok, { index: true }).then(setQuoteTiers).catch(() => {});
+        }
         catch (e) { setError(e?.message || String(e)); }
         finally { setBusy(''); }
     };
@@ -154,8 +162,8 @@ export function IndexPanel({ ledgerId: initialLedger, header }) {
                     {quote && (
                         <div style={{ marginTop: 12, fontSize: '0.88rem', color: theme.colors.secondaryText }}>
                             <table style={{ borderCollapse: 'collapse' }}><tbody>
-                                <tr><td style={{ paddingRight: 14 }}>Index fee{quote.premium ? ', Sneed Premium member rate' : ''}</td><td>{fmtIcp(quote.creation_fee_e8s)}</td></tr>
-                                {quote.control_fee_e8s > 0n && <tr><td style={{ paddingRight: 14 }}>Handover fee</td><td>{fmtIcp(quote.control_fee_e8s)}</td></tr>}
+                                <tr><td style={{ paddingRight: 14 }}>Index fee{quote.premium ? ', Sneed Premium member rate' : ''}</td><td>{fmtIcp(quote.creation_fee_e8s)}<PriceTierBadge tier={quoteTiers?.creation.tier} partnerLabel={quoteTiers?.creation.partnerLabel} /></td></tr>
+                                {quote.control_fee_e8s > 0n && <tr><td style={{ paddingRight: 14 }}>Handover fee</td><td>{fmtIcp(quote.control_fee_e8s)}<PriceTierBadge tier={quoteTiers?.control.tier} partnerLabel={quoteTiers?.control.partnerLabel} /></td></tr>}
                                 <tr><td style={{ paddingRight: 14 }}>Cycles for the index ({fmtT(quote.index_cycles)})</td><td>{fmtIcp(quote.icp_for_cycles_e8s)}</td></tr>
                                 <tr><td style={{ paddingRight: 14 }}>Ledger fees</td><td>{fmtIcp(quote.ledger_fees_e8s)}</td></tr>
                                 <tr><td style={{ paddingRight: 14, fontWeight: 700, color: theme.colors.primaryText }}>Total</td><td style={{ fontWeight: 700, color: theme.colors.primaryText }}>{fmtIcp(quote.total_e8s)}</td></tr>

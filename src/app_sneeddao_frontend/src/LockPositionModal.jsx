@@ -7,6 +7,8 @@ import { Principal } from '@dfinity/principal';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { FaSpinner, FaWallet, FaCheck, FaCrown, FaLock, FaCreditCard, FaCheckCircle } from 'react-icons/fa';
+import PriceTierBadge from './components/PriceTierBadge';
+import { fetchSpecialPricesFor, effectivePrice } from './utils/specialPrices';
 
 const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 
@@ -211,6 +213,7 @@ function LockPositionModal({ show, onClose, liquidityPosition, onAddLockPosition
     // Payment state
     const [lockFeeConfig, setLockFeeConfig] = useState(null);
     const [requiredFee, setRequiredFee] = useState(0n);
+    const [feeTier, setFeeTier] = useState({ tier: 'regular', partnerLabel: null }); // special prices (spec/special_prices.md)
     const [paymentBalance, setPaymentBalance] = useState(0n);
     const [paymentSubaccount, setPaymentSubaccount] = useState(null);
     const [loadingPayment, setLoadingPayment] = useState(false);
@@ -242,8 +245,11 @@ function LockPositionModal({ show, onClose, liquidityPosition, onAddLockPosition
             setLockFeeConfig(feeConfig);
             
             // Determine required fee based on premium status (position lock)
-            const fee = isPremium ? feeConfig.premium_position_lock_fee_icp_e8s : feeConfig.position_lock_fee_icp_e8s;
-            setRequiredFee(fee);
+            // ... or a lower admin / partner price (null against a canister without special prices)
+            const special = await fetchSpecialPricesFor(sneedLockActor, identity.getPrincipal());
+            const eff = effectivePrice({ regular: feeConfig.position_lock_fee_icp_e8s, premium: feeConfig.premium_position_lock_fee_icp_e8s, isPremium, special, field: 'position_lock_fee_icp_e8s' });
+            setRequiredFee(eff.amount);
+            setFeeTier({ tier: eff.tier, partnerLabel: eff.partnerLabel });
             
             // Get payment subaccount
             const subaccount = await sneedLockActor.getPaymentSubaccount(identity.getPrincipal());
@@ -612,6 +618,7 @@ function LockPositionModal({ show, onClose, liquidityPosition, onAddLockPosition
                                         fontWeight: '600'
                                     }}>
                                         {BigInt(requiredFee) === 0n ? 'FREE' : formatIcp(requiredFee)}
+                                        <PriceTierBadge tier={feeTier.tier} partnerLabel={feeTier.partnerLabel} />
                                     </span>
                                 </div>
                                 

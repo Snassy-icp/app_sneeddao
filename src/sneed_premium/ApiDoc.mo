@@ -27,6 +27,7 @@ Sneed Premium is the membership registry of Sneed DAO: one record per principal 
 - A balance that matches no tier returns `InvalidTier` and the ICP stays in the deposit account. `withdrawDeposit()` sends the caller's own deposit balance **minus the ledger fee** to the caller's default account.
 - ICP purchases and promo codes add time to the remaining membership; voting power claims do not stack (they set `max(current, now + duration)`).
 - Tier amounts and durations are DAO-managed and change: read `getIcpTiers()` / `getVotingPowerTiers()` every time, never hard-code them.
+- Special prices: an admin price (admins who are persons) and partner prices (one principal each, public label, optional expiry), as `icp_tier_price_bps` (a share of every tier's price, 10_000 = regular). The lowest applicable share wins; a tier then costs `amountE8s * bps / 10_000` (rounded down) and a deposit of exactly that buys it (a regular amount still buys it too). `get_icp_tier_prices_for(principal)` gives the amount to deposit per tier; `get_special_prices()` lists everything (public). Purchases record `price_tier` (`regular`, `admin`, `partner`): the block field and `get_icp_payment_price_tier(id)`. Admin setters: `set_admin_prices`, `set_partner_prices`, `remove_partner_prices`.
 
 ## Asynchronous lifecycle and polling
 
@@ -54,7 +55,7 @@ Sneed Premium is the membership registry of Sneed DAO: one record per principal 
 ## Start with these methods
 
 - `checkMembership(principal)`, `getActivePremiumMembers()`, `getMembershipDetails(principal)`
-- `getIcpTiers()`, `getVotingPowerTiers()`, `getConfig()`, `getDepositAccount(user)`, `getPaymentStats()`
+- `getIcpTiers()`, `getVotingPowerTiers()`, `getConfig()`, `getDepositAccount(user)`, `getPaymentStats()`, `get_icp_tier_prices_for(principal)`, `get_special_prices()`
 - `purchaseWithIcp()`, `claimWithVotingPower()`, `claimPromoCode(code)`, `withdrawDeposit()`
 
 ## Full reference

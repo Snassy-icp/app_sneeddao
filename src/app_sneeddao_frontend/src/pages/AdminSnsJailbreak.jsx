@@ -8,6 +8,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAdminCheck } from '../hooks/useAdminCheck';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
+import SpecialPricesCard from '../components/SpecialPricesCard';
 import { fetchAndCacheSnsData, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
 import { HttpAgent } from '@dfinity/agent';
 
@@ -64,6 +65,9 @@ function AdminSnsJailbreak() {
     // Fee settings (stored in e8s, displayed in ICP)
     const [feePremium, setFeePremium] = useState('0');
     const [feeRegular, setFeeRegular] = useState('0');
+    const [savedFees, setSavedFees] = useState({ regular: null, premium: null }); // e8s as saved on the canister
+    // the "Admin & partner prices" card's one field (shown with the saved regular and premium fees)
+    const specialFields = useMemo(() => [{ key: 'jailbreak_fee_e8s', label: 'Jailbreak fee', decimals: 8, unit: 'ICP', regular: savedFees.regular, premium: savedFees.premium }], [savedFees]);
     
     // ICRC1 Account settings
     const [feeAccountOwner, setFeeAccountOwner] = useState('');
@@ -94,6 +98,7 @@ function AdminSnsJailbreak() {
                 // Convert e8s to ICP for display
                 setFeePremium((Number(settings.fee_premium_e8s) / 100_000_000).toString());
                 setFeeRegular((Number(settings.fee_regular_e8s) / 100_000_000).toString());
+                setSavedFees({ regular: settings.fee_regular_e8s, premium: settings.fee_premium_e8s });
                 
                 // Fee account owner
                 if (settings.fee_account_owner && settings.fee_account_owner.length > 0) {
@@ -324,6 +329,7 @@ function AdminSnsJailbreak() {
             
             if ('ok' in result) {
                 setSaved(true);
+                setSavedFees({ regular: BigInt(regularE8s), premium: BigInt(premiumE8s) });
                 setTimeout(() => setSaved(false), 3000);
             } else {
                 setError(result.err || 'Failed to save settings');
@@ -703,6 +709,9 @@ function AdminSnsJailbreak() {
                             </div>
                         </div>
                         
+                        {/* Admin & partner prices (spec/special_prices.md) */}
+                        {backendActor && <SpecialPricesCard actor={backendActor} fields={specialFields} />}
+
                         {/* Fee Recipient Account Card */}
                         <div style={styles.card}>
                             <h2 style={styles.cardTitle}>

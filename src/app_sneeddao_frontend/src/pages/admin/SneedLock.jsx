@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../AuthContext';
 import { useAdminCheck } from '../../hooks/useAdminCheck';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import Header from '../../components/Header';
+import SpecialPricesCard from '../../components/SpecialPricesCard';
 import { Principal } from '@dfinity/principal';
 
 // Claim history, paged (Sneed Lock v2 removed the whole-history queries). Empty against an
@@ -99,6 +100,15 @@ export default function SneedLockAdmin() {
       fetchInitialData();
     }
   }, [isAuthenticated, identity]);
+
+  // the special-prices card needs a stable actor (spec/special_prices.md)
+  const specialPricesActor = useMemo(() => (identity ? createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } }) : null), [identity]);
+
+  // memoised: the card reloads whenever its fields change
+  const specialPriceFields = useMemo(() => [
+    { key: 'token_lock_fee_icp_e8s', label: 'Token lock fee', decimals: 8, unit: 'ICP', regular: icpFeeConfig?.token_lock_fee_icp_e8s, premium: icpFeeConfig?.premium_token_lock_fee_icp_e8s },
+    { key: 'position_lock_fee_icp_e8s', label: 'Position lock fee', decimals: 8, unit: 'ICP', regular: icpFeeConfig?.position_lock_fee_icp_e8s, premium: icpFeeConfig?.premium_position_lock_fee_icp_e8s },
+  ], [icpFeeConfig]);
 
   const getSneedLockActor = () => {
     if (!identity) return null;
@@ -2073,6 +2083,14 @@ export default function SneedLockAdmin() {
           </button>
         </form>
       </div>
+
+      {/* Admin & partner prices (spec/special_prices.md) */}
+      {specialPricesActor && (
+        <SpecialPricesCard
+          actor={specialPricesActor}
+          fields={specialPriceFields}
+        />
+      )}
 
       {/* ICP Fee Recipient */}
       <div style={{

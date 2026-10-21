@@ -14,12 +14,15 @@ import Error "mo:base/Error";
 import Time "mo:base/Time";
 import Int "mo:base/Int";
 import Timer "mo:base/Timer";
+import Map "mo:map/Map";
+import { nhash; phash } "mo:map/Map";
 
 import T "Types";
 import PremiumClient "../PremiumClient";
 import IngressGuard "../IngressGuard";
 import ApiDoc "ApiDoc";
 import Donations "Donations";
+import SpecialPrices "../SpecialPrices";
 
 shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
@@ -234,6 +237,17 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   // Fee recipient ICRC1 account (owner + optional subaccount). Null = canister keeps fees
   var stable_jailbreak_fee_account_owner : ?Principal = null;
   var stable_jailbreak_fee_account_subaccount : ?Blob = null;
+
+  // Special prices (spec/special_prices.md): an admin price (admins who are people) and partner
+  // prices (per principal, public label, optional expiry) next to the regular and premium jailbreak
+  // fees; the lowest applicable one is charged. All unset = charges exactly as before.
+  type SpecialPriceSet = { jailbreak_fee_e8s : ?Nat };
+  type PartnerPrices = SpecialPrices.Partner<SpecialPriceSet>;
+  var special_admin_prices : SpecialPriceSet = { jailbreak_fee_e8s = null };
+  var special_partner_prices : Map.Map<Principal, PartnerPrices> = Map.new<Principal, PartnerPrices>();
+  // price tier of each jailbreak payment log entry (by log id) recorded since special prices; older
+  // entries are #premium or #regular by their is_premium flag
+  var jailbreak_payment_tiers : Map.Map<Nat, SpecialPrices.Tier> = Map.new<Nat, SpecialPrices.Tier>();
   
   // Stable storage for user token registrations (user -> list of ledger IDs)
   var stable_user_tokens : [(Principal, [Principal])] = [];
@@ -3254,13 +3268,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
       case null {};
     };
 
-    // Get the fee for this user and check if premium
+    // Get the fee for this user (lowest of regular, premium, admin and partner prices)
     let isPremium = await* is_premium_member(caller);
-    let fee = if (isPremium) {
-      stable_jailbreak_fee_premium
-    } else {
-      stable_jailbreak_fee_regular
-    };
+    let (fee, priceTier) = jailbreak_price(caller, isPremium);
 
     // If there's a fee, process payment
     if (fee > 0) {
@@ -3322,6 +3332,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
             timestamp = Time.now();
           };
           jailbreak_payment_logs.add(paymentLog);
+          Map.set(jailbreak_payment_tiers, nhash, paymentLog.id, priceTier);
           next_jailbreak_payment_log_id += 1;
         };
       };
@@ -3442,13 +3453,86 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   };
 
   // Get the fee that would be charged for a user to create a jailbreak script
+  // (the lowest applicable price: regular, premium, admin or partner; see get_my_jailbreak_price)
   public shared ({ caller }) func get_my_jailbreak_fee() : async Nat {
     let is_premium = await* is_premium_member(caller);
-    if (is_premium) {
-      stable_jailbreak_fee_premium
-    } else {
-      stable_jailbreak_fee_regular
-    }
+    jailbreak_price(caller, is_premium).0
+  };
+
+  // The fee the caller would pay and the tier that gives it (regular, premium, admin or partner).
+  public shared ({ caller }) func get_my_jailbreak_price() : async { amount_e8s : Nat; price_tier : SpecialPrices.Tier } {
+    let is_premium = await* is_premium_member(caller);
+    let (amount, tier) = jailbreak_price(caller, is_premium);
+    { amount_e8s = amount; price_tier = tier };
+  };
+
+  // ============================================
+  // SPECIAL PRICES (admin and partner prices, spec/special_prices.md)
+  // ============================================
+
+  // The admin price applies to admins who are people (never canisters such as SNS root).
+  func gets_admin_price(p : Principal) : Bool { is_admin(p) and SpecialPrices.isPerson(p) };
+
+  func jailbreak_price(user : Principal, isPremium : Bool) : (Nat, SpecialPrices.Tier) {
+    let admin = if (gets_admin_price(user)) { special_admin_prices.jailbreak_fee_e8s } else { null };
+    let partner = switch (SpecialPrices.activePartner(special_partner_prices, user, Time.now())) {
+      case (?e) { e.prices.jailbreak_fee_e8s };
+      case null { null };
+    };
+    SpecialPrices.lowest(stable_jailbreak_fee_regular, if (isPremium) { ?stable_jailbreak_fee_premium } else { null }, admin, partner);
+  };
+
+  func payment_tier(log : JailbreakPaymentLog) : SpecialPrices.Tier {
+    switch (Map.get(jailbreak_payment_tiers, nhash, log.id)) {
+      case (?t) { t };
+      case null { if (log.is_premium) { #premium } else { #regular } };
+    };
+  };
+
+  public shared ({ caller }) func set_admin_prices(prices : SpecialPriceSet) : async { #ok; #err : Text } {
+    if (not is_admin(caller)) { return #err("Not authorized: admin access required") };
+    special_admin_prices := prices;
+    #ok;
+  };
+
+  public shared ({ caller }) func set_partner_prices(partner : Principal, entry : PartnerPrices) : async { #ok; #err : Text } {
+    if (not is_admin(caller)) { return #err("Not authorized: admin access required") };
+    switch (SpecialPrices.validatePartner(special_partner_prices, partner, entry, Time.now())) {
+      case (?e) { return #err(e) };
+      case null {};
+    };
+    Map.set(special_partner_prices, phash, partner, entry);
+    #ok;
+  };
+
+  public shared ({ caller }) func remove_partner_prices(partner : Principal) : async { #ok; #err : Text } {
+    if (not is_admin(caller)) { return #err("Not authorized: admin access required") };
+    switch (Map.remove(special_partner_prices, phash, partner)) {
+      case (?_) { #ok };
+      case null { #err("no partner prices for this principal") };
+    };
+  };
+
+  public query func get_special_prices() : async { admin_prices : SpecialPriceSet; partners : [SpecialPrices.PartnerListing<SpecialPriceSet>] } {
+    { admin_prices = special_admin_prices; partners = SpecialPrices.listing(special_partner_prices) };
+  };
+
+  public query func get_special_prices_for(p : Principal) : async { admin_prices : ?SpecialPriceSet; partner : ?PartnerPrices } {
+    {
+      admin_prices = if (gets_admin_price(p)) { ?special_admin_prices } else { null };
+      partner = SpecialPrices.activePartner(special_partner_prices, p, Time.now());
+    };
+  };
+
+  // The price tier of jailbreak payments by log id (admin only, like the logs): ids without a log
+  // entry are left out.
+  public query ({ caller }) func get_jailbreak_payment_price_tiers(ids : [Nat]) : async Result.Result<[(Nat, SpecialPrices.Tier)], Text> {
+    if (not is_admin(caller)) { return #err("Not authorized: admin access required") };
+    let out = Buffer.Buffer<(Nat, SpecialPrices.Tier)>(ids.size());
+    for (log in jailbreak_payment_logs.vals()) {
+      if (Array.find<Nat>(ids, func(i) { i == log.id }) != null) { out.add((log.id, payment_tier(log))) };
+    };
+    #ok(Buffer.toArray(out));
   };
 
   // ============================================
@@ -4317,6 +4401,13 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     #get_my_canister_groups_usage : Any;
     #get_my_jailbreak_configs : Any;
     #get_my_jailbreak_fee : Any;
+    #get_my_jailbreak_price : Any;
+    #set_admin_prices : Any;
+    #set_partner_prices : Any;
+    #remove_partner_prices : Any;
+    #get_special_prices : Any;
+    #get_special_prices_for : Any;
+    #get_jailbreak_payment_price_tiers : Any;
     #get_my_nickname_usage : Any;
     #get_my_settings : Any;
     #get_neuron_name : Any;
@@ -4417,6 +4508,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
         or #get_jailbreak_fee_settings _
         or #get_jailbreak_payment_logs _
         or #get_jailbreak_payment_stats _
+        or #get_special_prices _
+        or #get_special_prices_for _
+        or #get_jailbreak_payment_price_tiers _
         or #get_jailbreak_payment_subaccount _
         or #get_last_seen_log_id _
         or #get_ledger_canister_ids _

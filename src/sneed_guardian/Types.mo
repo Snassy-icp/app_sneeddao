@@ -191,4 +191,9 @@ module {
     install_code : shared ({ mode : { #install; #reinstall; #upgrade : ?{ skip_pre_upgrade : ?Bool } }; canister_id : Principal; wasm_module : Blob; arg : Blob; sender_canister_version : ?Nat64 }) -> async ();
     update_settings : shared ({ canister_id : Principal; settings : CanisterSettings; sender_canister_version : ?Nat64 }) -> async ();
   };
+
+  // ---- special prices (spec/special_prices.md) ----
+  /// Override of the op fee: the admin price and each partner's price. Null = no special price.
+  public type Prices = { op_fee_e8s : ?Nat };
+  public type Tier = { #regular; #premium; #admin; #partner };
 };

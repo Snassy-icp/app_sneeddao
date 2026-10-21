@@ -287,6 +287,20 @@ ledger itself is the minting account), `#sneed_dao` or `#principal`. Not built: 
 (locks and liquidity from the pad) and plan-then-pay across stages. The pad is still on
 staging only.
 
+**Special prices (2026-10-21, spec/special_prices.md):** next to the regular and premium fees,
+an admin price and partner prices with `Prices = { creation_fee_e8s; index_creation_fee_e8s;
+sneed_dao_control_fee_e8s }` (each `opt nat`; the creation fee override covers both the regular
+and the member launch fee). Each fee of a quote is the lowest of the base fee as before, the
+admin price (caller is an admin and a person) and the caller's unexpired partner price; the
+handover fee is only overridden when one is charged. `get_quote` / `get_index_quote` already
+return the effective fees. Admin methods `set_admin_prices`, `set_partner_prices`,
+`remove_partner_prices` (governance, controllers or listed admins, like `admin_set_config`);
+public queries `get_special_prices`, `get_special_prices_for(principal)`,
+`get_launch_price_tiers(id)` and `get_index_launch_price_tiers(id)` (`{ creation_fee; control_fee }`
+tiers, null for launches before special prices). Changes are `sneedpad_config_update` blocks (key
+`admin_prices`, or `partner_prices` with `partner`); `sneedpad_token_create` and the standalone
+`sneedpad_index_create` carry `price_tier` and `control_price_tier`.
+
 **Token Studio (2026-10-13):** the front end for all of this is one page,
 `/studio`, with three tabs. Check is the rating (was /tools/token_safety),
 with a fix button on every failing or weak line (src/tokensafety/fixes.js maps

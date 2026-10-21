@@ -206,4 +206,11 @@ module {
     install_code : shared ({ mode : { #install; #reinstall; #upgrade : ?{ skip_pre_upgrade : ?Bool } }; canister_id : Principal; wasm_module : Blob; arg : Blob; sender_canister_version : ?Nat64 }) -> async ();
     update_settings : shared ({ canister_id : Principal; settings : CanisterSettings; sender_canister_version : ?Nat64 }) -> async ();
   };
+
+  // ---- special prices (spec/special_prices.md) ----
+  /// Overrides of the pad's fees: the admin price and each partner's prices. Null = no special price for that fee.
+  public type Prices = { creation_fee_e8s : ?Nat; index_creation_fee_e8s : ?Nat; sneed_dao_control_fee_e8s : ?Nat };
+  public type Tier = { #regular; #premium; #admin; #partner };
+  /// Which price a launch paid: for its creation fee (token or index) and for its handover fee.
+  public type PriceTiers = { creation_fee : Tier; control_fee : Tier };
 };

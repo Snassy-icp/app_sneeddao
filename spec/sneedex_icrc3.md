@@ -68,7 +68,7 @@ Offers:
 
 | btype | when | tx fields |
 |---|---|---|
-| `sneedex_offer_create` | `createOffer` recorded the offer (Draft) | `caller`, `offer_id`, `price_ledger`, `fee_rate_bps` (cut locked in for this offer); `min_bid`, `buyout`, `expiration`, `min_increment_fee_multiple` when set; `approved_bidders` (Array of Blob) for a private offer; `creation_fee_e8s` and `creation_fee_icp_tx` when a creation fee was paid |
+| `sneedex_offer_create` | `createOffer` recorded the offer (Draft) | `caller`, `offer_id`, `price_ledger`, `fee_rate_bps` (cut locked in for this offer); `min_bid`, `buyout`, `expiration`, `min_increment_fee_multiple` when set; `approved_bidders` (Array of Blob) for a private offer; `creation_fee_e8s`, `creation_fee_icp_tx` and `price_tier` when a creation fee was paid; `cut_price_tier` (tier of `fee_rate_bps`: `regular`, `premium`, `admin` or `partner`; spec/special_prices.md) |
 | `sneedex_asset_add` | `addAsset` | `caller`, `offer_id`, `asset_index`, `asset` |
 | `sneedex_offer_finalize` | `finalizeAssets` (Draft → PendingEscrow) | `caller`, `offer_id`, `asset_count` |
 | `sneedex_asset_escrow` | an `escrow*` call verified custody of one asset | `caller`, `offer_id`, `asset_index`, `asset` (with snapshots); `pulled` = 1 when Sneedex pulled NFTs through an ICRC-37 approval; for EXT `account_id` (Text, the escrow account id the tokens were verified in) |
@@ -89,14 +89,14 @@ Bids:
 | `sneedex_bid_lost` | a bid became Lost | `bid_id`, `offer_id`, `bidder`, `amount`, `escrowed` (0 for a reservation never confirmed), `reason` (`outbid`, `offer_completed`, `offer_cancelled`, `offer_closed` = confirmed after the offer had closed, `buyout_race` = a concurrent buyout won) |
 | `sneedex_bid_refund` | a Lost bid's escrow was returned (`refundBid` or the auto-refund timer; the bid becomes Refunded) | `bid_id`, `offer_id`, `bidder`, `ledger`, `amount` (transferred), `to`, `ledger_tx`; `caller` or `via` |
 | `sneedex_bid_escrow_withdraw` | `withdrawBidEscrow` | `caller`, `bid_id`, `offer_id`, `ledger`, `amount`, `to`, `ledger_tx` |
-| `sneedex_cut_pay` | the marketplace cut left the winning bid's escrow | `offer_id`, `bid_id`, `ledger`, `cut` (charged), `amount` (transferred: the cut less one ledger fee), `fee_rate_bps`, `to` (account), `ledger_tx`; `caller` or `via` |
+| `sneedex_cut_pay` | the marketplace cut left the winning bid's escrow | `offer_id`, `bid_id`, `ledger`, `cut` (charged), `amount` (transferred: the cut less one ledger fee), `fee_rate_bps`, `to` (account), `ledger_tx`; `caller` or `via`; `price_tier` (tier of the cut) for offers created since special prices |
 | `sneedex_seller_pay` | the seller was paid (the bid becomes ClaimedBySeller) | `offer_id`, `bid_id`, `seller`, `ledger`, `bid_amount`, `cut`, `amount` (transferred), `to`, `ledger_tx`; `caller` or `via` |
 
 Offer creation fees (ICP):
 
 | btype | when | tx fields |
 |---|---|---|
-| `sneedex_creation_fee_pay` | the fee left the payer's payment subaccount | `caller`, `payer`, `fee_e8s` (charged), `amount_e8s` (transferred), `to` (account), `icp_tx` |
+| `sneedex_creation_fee_pay` | the fee left the payer's payment subaccount | `caller`, `payer`, `fee_e8s` (charged), `amount_e8s` (transferred), `to` (account), `icp_tx`, `price_tier` (`regular`, `premium`, `admin`, `partner`) |
 | `sneedex_creation_payment_withdraw` | `withdrawOfferCreationPayment` | `caller`, `amount_e8s`, `to`, `icp_tx` |
 
 Admin (admins and controllers only):
@@ -108,7 +108,7 @@ Admin (admins and controllers only):
 | `sneedex_admin_ext_return` | `adminReturnMisplacedExtNft` | `caller`, `collection`, `token_index`, `token_identifier`, `from_offer_id` when given, `from_account_id` (Text), `to` (principal) |
 | `sneedex_config_update` | a setting changed | `caller`, `key`, `value`; `old_value` when known |
 
-`sneedex_config_update` keys and values: `admin_added`, `admin_removed` (Blob);
+`sneedex_config_update` keys and values: `admin_prices` (Map of the set overrides `offer_creation_fee_e8s`, `auction_cut_bps`; `old_value` the previous Map), `partner_prices` (with `partner` (Blob); value Map `label`, `prices`, `expires_at` when set, or Text `removed`; `old_value` the previous entry); `admin_added`, `admin_removed` (Blob);
 `admins` (Array of Blob), `min_offer_duration_ns`, `max_assets_per_offer`,
 `min_increment_usd_range_min`, `min_increment_usd_range_max`, `min_increment_usd_target`,
 `min_increment_fallback_tokens` (Nat; written per changed field by `updateConfig`,

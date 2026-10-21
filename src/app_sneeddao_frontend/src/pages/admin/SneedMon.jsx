@@ -9,6 +9,7 @@ import { Principal } from '@dfinity/principal';
 import { FaSatelliteDish, FaSpinner, FaSync, FaPlay, FaPause, FaTrash, FaPlus } from 'react-icons/fa';
 import Header from '../../components/Header';
 import PrincipalInput from '../../components/PrincipalInput';
+import SpecialPricesCard from '../../components/SpecialPricesCard';
 import ConfirmationModal from '../../ConfirmationModal';
 import { useAuth } from '../../AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -20,6 +21,8 @@ import { getCkUsdcTerms } from '../../utils/CyclePayService';
 import { monEnabled, monId, monActor, tierLabel, fmtIcp, e8sToIcp, icpToE8s, unwrap } from '../../utils/SneedMonService';
 
 const accent = '#f59e0b';
+// special prices (spec/special_prices.md): one override, the base daily price; tier multipliers apply on top
+const SPECIAL_PRICE_FIELDS = [{ key: 'base_daily_price_e8s', label: 'Base daily price', decimals: 8, unit: 'ICP', hint: 'Per check = floor(base × multiplier × every_min / 1440); the lowest per-check price applies.' }];
 const hexOf = (b) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
 const fromHex = (h) => Uint8Array.from(h.match(/../g).map((x) => parseInt(x, 16)));
 const isPrincipal = (v) => v && typeof v === 'object' && typeof v.toText === 'function' && !Array.isArray(v);
@@ -286,6 +289,8 @@ export default function AdminSneedMon() {
                     }}>Save tiers</button>
                 </div>
             </section>
+
+            <SpecialPricesCard actor={actor} fields={SPECIAL_PRICE_FIELDS} />
 
             <section style={card}>
                 <h2 style={h2}>Core config</h2>

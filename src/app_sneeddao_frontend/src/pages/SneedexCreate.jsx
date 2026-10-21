@@ -56,6 +56,8 @@ import { getExtCollections, loadExtCollection, isKnownExtCollection, accountId a
 import { collectionStandardCached, rememberCollectionStandard, ExtBadge } from '../components/NftAssetView';
 import { escrowExtAsset } from '../utils/SneedexExt';
 import { useExtEscrowConfirm } from '../components/ExtEscrowConfirm';
+import PriceTierBadge from '../components/PriceTierBadge';
+import { fetchSpecialPricesFor, effectivePrice } from '../utils/specialPrices';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
@@ -200,8 +202,19 @@ function SneedexCreate() {
     const [premiumAuctionCut, setPremiumAuctionCut] = useState(0); // Premium auction cut in bps
     const [userPaymentBalance, setUserPaymentBalance] = useState(0n);
     
-    // Effective fee is calculated from premium status (not fetched)
-    const offerCreationFee = isPremiumUser ? premiumOfferCreationFee : regularOfferCreationFee;
+    // Admin / partner prices for this user (spec/special_prices.md; null against a Sneedex without them)
+    const [specialPrices, setSpecialPrices] = useState(null);
+    // Effective fee as Sneedex computes it: nothing when the regular fee is 0, else the premium fee for
+    // members (the regular fee otherwise), lowered by an admin or partner price when one applies
+    const baseCreationFee = regularOfferCreationFee === 0n ? 0n : (isPremiumUser ? premiumOfferCreationFee : regularOfferCreationFee);
+    const creationFeeEff = effectivePrice({ regular: baseCreationFee, special: regularOfferCreationFee === 0n ? null : specialPrices, field: 'offer_creation_fee_e8s' });
+    const offerCreationFee = creationFeeEff.amount;
+    const creationFeeTier = creationFeeEff.tier;
+    // The cut locked in at creation, the same way
+    const premiumCutApplies = isPremiumUser && premiumAuctionCut > 0;
+    const baseCutBps = premiumCutApplies ? premiumAuctionCut : (marketplaceFeeRate ?? 0);
+    const cutEff = effectivePrice({ regular: BigInt(baseCutBps), special: specialPrices, field: 'auction_cut_bps' });
+    const specialCutBps = cutEff.tier === 'admin' || cutEff.tier === 'partner' ? Number(cutEff.amount) : null;
     const [paymentSubaccount, setPaymentSubaccount] = useState(null);
     const [loadingFeeInfo, setLoadingFeeInfo] = useState(true);
     const [withdrawingPayment, setWithdrawingPayment] = useState(false);
@@ -289,6 +302,7 @@ function SneedexCreate() {
                 actor.getMinIncrementSettings(),
             ]);
             
+            fetchSpecialPricesFor(actor, userPrincipal).then(setSpecialPrices);
             setRegularOfferCreationFee(feeConfig.regularCreationFeeE8s);
             setPremiumOfferCreationFee(feeConfig.premiumCreationFeeE8s);
             setMarketplaceFeeRate(Number(feeConfig.regularAuctionCutBps));
@@ -3421,9 +3435,10 @@ function SneedexCreate() {
                                 <span style={{ fontSize: '1.5rem' }}>💰</span>
                                 <div>
                                     <strong style={{ color: isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate ? '#FFD700' : theme.colors.warning }}>
-                                        Sneedex Marketplace Fee: {isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate 
+                                        Sneedex Marketplace Fee: {specialCutBps !== null ? formatFeeRate(specialCutBps) : isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate 
                                             ? formatFeeRate(premiumAuctionCut)
                                             : formatFeeRate(marketplaceFeeRate)}
+                                        <PriceTierBadge tier={cutEff.tier} partnerLabel={cutEff.partnerLabel} />
                                         {isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate && (
                                             <span style={{ marginLeft: '8px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #FFD700, #FFA500)', color: '#1a1a2e', padding: '2px 8px', borderRadius: '10px' }}>
                                                 👑 PREMIUM
@@ -3435,7 +3450,7 @@ function SneedexCreate() {
                                         color: theme.colors.mutedText, 
                                         margin: '4px 0 0 0' 
                                     }}>
-                                        When your offer sells, Sneedex will take a {isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate 
+                                        When your offer sells, Sneedex will take a {specialCutBps !== null ? formatFeeRate(specialCutBps) : isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate 
                                             ? formatFeeRate(premiumAuctionCut)
                                             : formatFeeRate(marketplaceFeeRate)} cut from the winning bid.
                                         The remaining amount goes to you. This rate is locked when the offer is created.
@@ -5075,7 +5090,22 @@ function SneedexCreate() {
                                 padding: '1rem',
                             }}>
                                 <div style={{ ...styles.reviewLabel, marginBottom: '0.5rem' }}>Sneedex Cut</div>
-                                {isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate ? (
+                                {specialCutBps !== null ? (
+                                    <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+                                            <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: theme.colors.success }}>
+                                                {formatFeeRate(specialCutBps)}
+                                            </span>
+                                            <span style={{ fontSize: '0.9rem', textDecoration: 'line-through', color: theme.colors.mutedText }}>
+                                                {formatFeeRate(baseCutBps)}
+                                            </span>
+                                            <PriceTierBadge tier={cutEff.tier} partnerLabel={cutEff.partnerLabel} />
+                                        </div>
+                                        <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>
+                                            Taken from the winning bid when the sale completes
+                                        </div>
+                                    </div>
+                                ) : isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate ? (
                                     <div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
                                             <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#FFD700' }}>
@@ -5574,7 +5604,7 @@ function SneedexCreate() {
                                     <div style={{ color: theme.colors.mutedText, margin: '0 0 1rem 0', fontSize: '0.9rem' }}>
                                         {isPremiumUser ? (
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                                <span>Fee: <strong style={{ color: '#FFD700' }}>{Number(offerCreationFee) / Number(E8S)} ICP</strong></span>
+                                                <span>Fee: <strong style={{ color: '#FFD700' }}>{Number(offerCreationFee) / Number(E8S)} ICP</strong><PriceTierBadge tier={creationFeeTier} partnerLabel={creationFeeEff.partnerLabel} /></span>
                                                 <span style={{ textDecoration: 'line-through', color: theme.colors.mutedText, fontSize: '0.8rem' }}>
                                                     {Number(regularOfferCreationFee) / Number(E8S)} ICP
                                                 </span>
@@ -5583,7 +5613,7 @@ function SneedexCreate() {
                                                 </span>
                                             </div>
                                         ) : (
-                                            <span>Fee: <strong style={{ color: '#FFD700' }}>{Number(offerCreationFee) / Number(E8S)} ICP</strong></span>
+                                            <span>Fee: <strong style={{ color: '#FFD700' }}>{Number(offerCreationFee) / Number(E8S)} ICP</strong><PriceTierBadge tier={creationFeeTier} partnerLabel={creationFeeEff.partnerLabel} /></span>
                                         )}
                                         {!isPremiumUser && premiumOfferCreationFee < regularOfferCreationFee && (
                                             <div style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>

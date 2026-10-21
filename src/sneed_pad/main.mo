@@ -34,6 +34,9 @@ import T "Types";
 import Icrc3Log "../icrc3/Log";
 import T3 "../icrc3/Types";
 import Icrc3Sns "../icrc3/SnsRegister";
+import SP "../SpecialPrices";
+import Map "mo:map/Map";
+import { phash; nhash } "mo:map/Map";
 
 shared ({ caller = installer }) persistent actor class SneedPad() = this {
   // ---- well-known canisters ----
@@ -88,6 +91,14 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   stable var index_creation_fee_e8s : Nat = 100_000_000; // 1 ICP for an index of an existing ledger
   stable var premium_index_creation_fee_e8s : Nat = 50_000_000;
   stable var index_launches : [T.IndexLaunch] = [];
+  // Special prices (spec/special_prices.md): the admin price (admins who are people) and partner
+  // prices (per principal, public label, optional expiry). The lowest applicable price is charged.
+  transient let NO_PRICES : T.Prices = { creation_fee_e8s = null; index_creation_fee_e8s = null; sneed_dao_control_fee_e8s = null };
+  stable var admin_prices : T.Prices = { creation_fee_e8s = null; index_creation_fee_e8s = null; sneed_dao_control_fee_e8s = null };
+  stable var partner_prices = Map.new<Principal, SP.Partner<T.Prices>>();
+  // the tiers each launch paid (Launch and IndexLaunch keep their types), by launch id
+  stable var launch_price_tiers = Map.new<Nat, T.PriceTiers>();
+  stable var index_launch_price_tiers = Map.new<Nat, T.PriceTiers>();
   stable var next_index_launch_id : Nat = 1;
   // The wasm hashes follow the NNS: once a day the pad asks the SNS wasm
   // canister for the latest SNS version and takes its ledger and index
@@ -256,17 +267,39 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     if (cyclesPerIcp == 0) { return 0 };
     (cycles * 100_000_000 * 105) / (cyclesPerIcp * 100);
   };
-  private func makeQuote(c : T.TokenConfig, rate : Nat64, premium : Bool) : T.Quote {
+  // ---- special prices ----
+  private type Special = { admin : ?T.Prices; partner : ?T.Prices };
+  /// The special prices `p` gets: the admin price when it is an admin and a person, its partner entry when it has not expired.
+  private func specialFor(p : Principal) : Special {
+    {
+      admin = if (SP.isPerson(p) and isAdmin(p)) { ?admin_prices } else { null };
+      partner = switch (SP.activePartner(partner_prices, p, Time.now())) { case (?e) { ?e.prices }; case null { null } };
+    };
+  };
+  /// The base price exactly as before (members pay the premium price), then the admin or partner price when lower.
+  private func pick(base : Nat, premium : Bool, sp : Special, field : T.Prices -> ?Nat) : (Nat, T.Tier) {
+    let admin = switch (sp.admin) { case (?a) { field(a) }; case null { null } };
+    let partner = switch (sp.partner) { case (?a) { field(a) }; case null { null } };
+    let (v, t) = SP.lowest(base, null, admin, partner);
+    (v, if (premium and t == #regular) { #premium } else { t });
+  };
+  /// The handover fee: only when one is charged at all (control to Sneed DAO or a custody canister).
+  private func pickControl(control : T.ControlChoice, sp : Special) : (Nat, T.Tier) {
+    let base = handoverFee(control);
+    if (base == 0) { return (0, #regular) };
+    pick(base, false, sp, func(x) { x.sneed_dao_control_fee_e8s });
+  };
+  private func makeQuote(c : T.TokenConfig, rate : Nat64, premium : Bool, sp : Special) : (T.Quote, T.PriceTiers) {
     let idx = if (c.with_index) { index_cycles } else { 0 };
     let forCycles = icpForCycles(ledger_cycles + idx, rate);
     let fees = ICP_FEE * 3; // pull, CMC transfer, fee transfer
-    let fee = if (premium) { premium_creation_fee_e8s } else { creation_fee_e8s };
-    let controlFee = handoverFee(c.control);
-    {
+    let (fee, feeTier) = pick(if (premium) { premium_creation_fee_e8s } else { creation_fee_e8s }, premium, sp, func(x) { x.creation_fee_e8s });
+    let (controlFee, controlTier) = pickControl(c.control, sp);
+    ({
       creation_fee_e8s = fee; control_fee_e8s = controlFee; ledger_cycles = ledger_cycles; index_cycles = idx;
       icp_for_cycles_e8s = forCycles; ledger_fees_e8s = fees; total_e8s = fee + controlFee + forCycles + fees;
       xdr_permyriad_per_icp = rate; premium;
-    };
+    }, { creation_fee = feeTier; control_fee = controlTier });
   };
   /// Sneed Premium membership (cached by the shared client); never blocks a launch when the membership canister is unreachable.
   private func isPremium(p : Principal) : async* Bool {
@@ -281,7 +314,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     switch (validate(c)) { case (?e) { return #Err(e) }; case null {} };
     let premium = await* isPremium(caller);
     let rate = try { (await cmc().get_icp_xdr_conversion_rate()).data.xdr_permyriad_per_icp } catch (e) { return #Err("could not read the ICP/XDR rate: " # Error.message(e)) };
-    #Ok(makeQuote(c, rate, premium));
+    #Ok(makeQuote(c, rate, premium, specialFor(caller)).0);
   };
 
   // ---- the launch ----
@@ -299,7 +332,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     let cid = newCid();
     let premium = await* isPremium(caller);
     let rate = try { (await cmc().get_icp_xdr_conversion_rate()).data.xdr_permyriad_per_icp } catch (e) { return #Err("could not read the ICP/XDR rate: " # Error.message(e)) };
-    let quote = makeQuote(c, rate, premium);
+    let (quote, tiers) = makeQuote(c, rate, premium, specialFor(caller));
     let needCycles = cycle_reserve + quote.ledger_cycles + quote.index_cycles;
     // The creator pays for the cycles, but the CMC credit arrives after the
     // canisters would be created; the pad fronts them from its own balance.
@@ -324,6 +357,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     };
     launch := step({ launch with paid_e8s = quote.total_e8s }, "paid");
     putLaunch(launch);
+    Map.set(launch_price_tiers, nhash, launch.id, tiers);
     logText(cid, "info", "launch " # Nat.toText(launch.id) # ": " # Nat.toText(quote.total_e8s) # " e8s pulled from " # Principal.toText(caller));
 
     // 2. ICP to cycles through the CMC (best effort: the pad fronted the cycles already)
@@ -410,6 +444,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
       ("symbol", #Text(c.symbol)), ("name", #Text(c.name)), ("decimals", #Nat(Nat8.toNat(c.decimals))), ("supply", #Nat(supply)), ("transfer_fee", #Nat(c.transfer_fee)),
       ("minting_account", Icrc3Log.principal(mintingAccount.owner)), ("paid_e8s", #Nat(quote.total_e8s)), ("ledger_cycles", #Nat(quote.ledger_cycles)),
       ("wasm_hash", switch (ledger_wasm_hash) { case (?h) { #Blob(h) }; case null { #Text("") } }),
+      ("price_tier", #Text(SP.tierText(tiers.creation_fee))), ("control_price_tier", #Text(SP.tierText(tiers.control_fee))),
     ]);
 
     // 5. the index
@@ -482,12 +517,12 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   };
 
   // ---- an index for an existing ledger ----
-  private func makeIndexQuote(control : T.ControlChoice, rate : Nat64, premium : Bool) : T.Quote {
+  private func makeIndexQuote(control : T.ControlChoice, rate : Nat64, premium : Bool, sp : Special) : (T.Quote, T.PriceTiers) {
     let forCycles = icpForCycles(index_cycles, rate);
     let fees = ICP_FEE * 3;
-    let fee = if (premium) { premium_index_creation_fee_e8s } else { index_creation_fee_e8s };
-    let controlFee = handoverFee(control);
-    { creation_fee_e8s = fee; control_fee_e8s = controlFee; ledger_cycles = 0; index_cycles = index_cycles; icp_for_cycles_e8s = forCycles; ledger_fees_e8s = fees; total_e8s = fee + controlFee + forCycles + fees; xdr_permyriad_per_icp = rate; premium };
+    let (fee, feeTier) = pick(if (premium) { premium_index_creation_fee_e8s } else { index_creation_fee_e8s }, premium, sp, func(x) { x.index_creation_fee_e8s });
+    let (controlFee, controlTier) = pickControl(control, sp);
+    ({ creation_fee_e8s = fee; control_fee_e8s = controlFee; ledger_cycles = 0; index_cycles = index_cycles; icp_for_cycles_e8s = forCycles; ledger_fees_e8s = fees; total_e8s = fee + controlFee + forCycles + fees; xdr_permyriad_per_icp = rate; premium }, { creation_fee = feeTier; control_fee = controlTier });
   };
   private func findIndexLaunch(id : Nat) : ?T.IndexLaunch { Array.find<T.IndexLaunch>(index_launches, func(l) { l.id == id }) };
   private func putIndexLaunch(l : T.IndexLaunch) {
@@ -506,7 +541,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     switch (validateControl(c.control)) { case (?e) { return #Err(e) }; case null {} };
     let premium = await* isPremium(caller);
     let rate = try { (await cmc().get_icp_xdr_conversion_rate()).data.xdr_permyriad_per_icp } catch (e) { return #Err("could not read the ICP/XDR rate: " # Error.message(e)) };
-    #Ok(makeIndexQuote(c.control, rate, premium));
+    #Ok(makeIndexQuote(c.control, rate, premium, specialFor(caller)).0);
   };
   /// Create an index canister (the NNS-blessed index wasm) for a ledger that already exists. Same
   /// payment flow as a token launch. Pointing the ledger at it (ICRC-106) is the ledger
@@ -523,7 +558,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     let cid = newCid();
     let premium = await* isPremium(caller);
     let rate = try { (await cmc().get_icp_xdr_conversion_rate()).data.xdr_permyriad_per_icp } catch (e) { return #Err("could not read the ICP/XDR rate: " # Error.message(e)) };
-    let quote = makeIndexQuote(c.control, rate, premium);
+    let (quote, tiers) = makeIndexQuote(c.control, rate, premium, specialFor(caller));
     if (Cycles.balance() < cycle_reserve + quote.index_cycles) { return #Err("the launchpad is low on cycles; try again later") };
     var launch : T.IndexLaunch = { id = next_index_launch_id; creator = caller; created_at = Time.now(); config = c; quote; paid_e8s = 0; index = null; index_wasm_hash = index_wasm_hash; controllers = []; status = #created; steps = [] };
     next_index_launch_id += 1;
@@ -539,6 +574,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     };
     launch := istep({ launch with paid_e8s = quote.total_e8s }, "paid");
     putIndexLaunch(launch);
+    Map.set(index_launch_price_tiers, nhash, launch.id, tiers);
     // 2. ICP to cycles (best effort)
     if (quote.icp_for_cycles_e8s > ICP_FEE) {
       try {
@@ -576,7 +612,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     } catch (e) { return ifail(cid, launch, "the index could not be installed: " # Error.message(e)) };
     launch := istep(launch, "index_installed");
     putIndexLaunch(launch);
-    icrc3_add("sneedpad_index_create", [("cid", #Nat(cid)), ("launch", #Nat(launch.id)), ("ledger", Icrc3Log.principal(c.ledger)), ("index", Icrc3Log.principal(indexId)), ("index_cycles", #Nat(quote.index_cycles)), ("standalone", #Text("true")), ("creator", Icrc3Log.principal(caller)), ("paid_e8s", #Nat(quote.total_e8s))]);
+    icrc3_add("sneedpad_index_create", [("cid", #Nat(cid)), ("launch", #Nat(launch.id)), ("ledger", Icrc3Log.principal(c.ledger)), ("index", Icrc3Log.principal(indexId)), ("index_cycles", #Nat(quote.index_cycles)), ("standalone", #Text("true")), ("creator", Icrc3Log.principal(caller)), ("paid_e8s", #Nat(quote.total_e8s)), ("price_tier", #Text(SP.tierText(tiers.creation_fee))), ("control_price_tier", #Text(SP.tierText(tiers.control_fee)))]);
     // 5. control
     switch (c.control) {
       case (#guardian(g)) {
@@ -647,6 +683,54 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
   public query func get_cycle_balance() : async Nat { Cycles.balance() };
   public query func get_text_log(last : Nat) : async [Text] { let n = text_log.size(); let from = if (last >= n) { 0 } else { n - last }; Array.tabulate<Text>(n - from, func(i) { text_log[from + i] }) };
   public query func get_admins() : async [Principal] { admins };
+
+  // ---- special prices (spec/special_prices.md) ----
+  private func pricesFields(x : T.Prices) : [(Text, ?Nat)] {
+    [("creation_fee_e8s", x.creation_fee_e8s), ("index_creation_fee_e8s", x.index_creation_fee_e8s), ("sneed_dao_control_fee_e8s", x.sneed_dao_control_fee_e8s)];
+  };
+  private func priceNote(caller : Principal, key : Text, extra : [(Text, T3.Value)], old : T3.Value, new_ : T3.Value) {
+    icrc3_add("sneedpad_config_update", Array.append<(Text, T3.Value)>([("cid", #Nat(newCid())), ("caller", Icrc3Log.principal(caller)), ("key", #Text(key))], Array.append<(Text, T3.Value)>(extra, [("old_value", old), ("value", new_)])));
+  };
+  private func partnerV(e : ?SP.Partner<T.Prices>) : T3.Value {
+    switch (e) { case (?x) { SP.partnerValue(x.label_, pricesFields(x.prices), x.expires_at) }; case null { #Text("none") } };
+  };
+  /// The admin price (admin): applies to this canister's admins who are people. Null fields: no admin price for that fee.
+  public shared ({ caller }) func set_admin_prices(p : T.Prices) : async { #ok; #err : Text } {
+    if (not isAdmin(caller)) { return #err("admin only") };
+    let old = admin_prices;
+    admin_prices := p;
+    priceNote(caller, "admin_prices", [], SP.overridesValue(pricesFields(old)), SP.overridesValue(pricesFields(p)));
+    #ok;
+  };
+  /// Add or replace a partner's prices (admin). The label is public; `expires_at` (ns) is optional.
+  public shared ({ caller }) func set_partner_prices(partner : Principal, e : SP.Partner<T.Prices>) : async { #ok; #err : Text } {
+    if (not isAdmin(caller)) { return #err("admin only") };
+    switch (SP.validatePartner(partner_prices, partner, e, Time.now())) { case (?why) { return #err(why) }; case null {} };
+    let old = Map.get(partner_prices, phash, partner);
+    Map.set(partner_prices, phash, partner, e);
+    priceNote(caller, "partner_prices", [("partner", Icrc3Log.principal(partner))], partnerV(old), partnerV(?e));
+    #ok;
+  };
+  /// Remove a partner's prices (admin).
+  public shared ({ caller }) func remove_partner_prices(partner : Principal) : async { #ok; #err : Text } {
+    if (not isAdmin(caller)) { return #err("admin only") };
+    switch (Map.remove(partner_prices, phash, partner)) {
+      case (?old) { priceNote(caller, "partner_prices", [("partner", Icrc3Log.principal(partner))], partnerV(?old), #Text("removed")); #ok };
+      case null { #err("no partner prices for that principal") };
+    };
+  };
+  /// The admin price and every partner entry (expired ones too, with their expiry). Public.
+  public query func get_special_prices() : async { admin_prices : T.Prices; partners : [SP.PartnerListing<T.Prices>] } {
+    { admin_prices; partners = SP.listing(partner_prices) };
+  };
+  /// The special prices that apply to `p`: the admin price when it is an admin and a person, its partner entry when it has not expired.
+  public query func get_special_prices_for(p : Principal) : async { admin_prices : ?T.Prices; partner : ?SP.Partner<T.Prices> } {
+    { admin_prices = specialFor(p).admin; partner = SP.activePartner(partner_prices, p, Time.now()) };
+  };
+  /// Which price a token launch paid (creation fee and handover fee); null for launches before special prices.
+  public query func get_launch_price_tiers(id : Nat) : async ?T.PriceTiers { Map.get(launch_price_tiers, nhash, id) };
+  /// Which price an index launch paid; null for launches before special prices.
+  public query func get_index_launch_price_tiers(id : Nat) : async ?T.PriceTiers { Map.get(index_launch_price_tiers, nhash, id) };
   public query func get_ledger_registration_status() : async Icrc3Sns.Status { Icrc3Sns.status(ledger_registrations, ledger_registration_env()) };
 
   // ---- wasms: follow the NNS, or hashes the DAO pinned; the bytes always come from the NNS ----
@@ -869,14 +953,18 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     #get_admins : Any;
     #get_config : Any;
     #get_cycle_balance : Any;
+    #get_index_launch_price_tiers : Any;
     #get_index_launches_by_creator : Any;
     #get_index_quote : () -> T.IndexConfig;
     #get_indexes_of_ledger : Any;
     #get_launch : Any;
     #get_launch_by_ledger : Any;
+    #get_launch_price_tiers : Any;
     #get_launches_by_creator : Any;
     #get_ledger_registration_status : Any;
     #get_quote : () -> T.TokenConfig;
+    #get_special_prices : Any;
+    #get_special_prices_for : Any;
     #get_text_log : Any;
     #icrc10_supported_standards : Any;
     #icrc3_get_archives : Any;
@@ -888,6 +976,9 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
     #list_index_launches : Any;
     #list_launches : Any;
     #refresh_wasms : Any;
+    #remove_partner_prices : Any;
+    #set_admin_prices : Any;
+    #set_partner_prices : () -> (Principal, SP.Partner<T.Prices>);
   } }) : Bool {
     switch (msg) {
       case (
@@ -898,6 +989,10 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
         or #get_indexes_of_ledger _
         or #get_launch _
         or #get_launch_by_ledger _
+        or #get_launch_price_tiers _
+        or #get_index_launch_price_tiers _
+        or #get_special_prices _
+        or #get_special_prices_for _
         or #get_launches_by_creator _
         or #get_ledger_registration_status _
         or #get_text_log _
@@ -916,6 +1011,7 @@ shared ({ caller = installer }) persistent actor class SneedPad() = this {
       case (#get_quote f) tokenConfigOk(arg, f());
       case (#create_index f) arg.size() <= IngressGuard.SMALL_ARG and controlOk(f().control);
       case (#get_index_quote f) arg.size() <= IngressGuard.SMALL_ARG and controlOk(f().control);
+      case (#set_partner_prices f) arg.size() <= IngressGuard.SMALL_ARG and IngressGuard.text(f().1.label_, SP.MAX_LABEL_CHARS);
       case _ arg.size() <= IngressGuard.SMALL_ARG;
     };
   };

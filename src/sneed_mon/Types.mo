@@ -261,6 +261,20 @@ module {
   /// One paid check of a watch (get_my_charges).
   public type ChargeEntry = { at : Int; target : Target; every_min : Nat; price_e8s : Nat; outcome : Text };
 
+  /// Special prices (spec/special_prices.md): an override of the base daily price. The tier
+  /// multipliers apply on top, so every frequency tier gets the same proportional change; the
+  /// charge per check is the lowest of the regular, admin and partner per-check prices.
+  public type MonPrices = { base_daily_price_e8s : ?Nat };
+  /// A partner's entry (`label_` is `label` in Candid).
+  public type MonPartner = { label_ : Text; prices : MonPrices; expires_at : ?Int };
+  public type MonPartnerListing = { principal : Principal; label_ : Text; prices : MonPrices; expires_at : ?Int };
+  public type SpecialPrices = { admin_prices : MonPrices; partners : [MonPartnerListing] };
+  public type SpecialPricesFor = { admin_prices : ?MonPrices; partner : ?MonPartner };
+  public type SpResult = { #ok; #err : Text };
+  /// One paid check with the price tier that applied (get_my_charges_with_tier): `regular`,
+  /// `admin` or `partner` (sneed_mon has no premium price).
+  public type ChargeEntryTiered = { at : Int; target : Target; every_min : Nat; price_e8s : Nat; outcome : Text; price_tier : Text };
+
   public type MyBalance = {
     balance_e8s : Nat;
     paused : Bool;

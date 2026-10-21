@@ -36,6 +36,9 @@ import IngressGuard "../IngressGuard";
 import T "Types";
 import Icrc3Log "../icrc3/Log";
 import T3 "../icrc3/Types";
+import SP "../SpecialPrices";
+import Map "mo:map/Map";
+import { phash; nhash } "mo:map/Map";
 
 shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.Init) = this {
   transient let ICP_LEDGER_ID = "ryjl3-tyaaa-aaaaa-aaaba-cai";
@@ -68,6 +71,12 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
   stable var fee_destination : T.Account = switch (init.fee_destination) { case (?a) { a }; case null { { owner = Principal.fromText(RLL_ID); subaccount = null } } };
   stable var op_fee_e8s : Nat = 100_000_000; // 1 ICP
   stable var premium_op_fee_e8s : Nat = 50_000_000;
+  // Special prices (spec/special_prices.md): the admin price (admins who are people) and partner
+  // prices (per principal, public label, optional expiry). The lowest applicable op fee is charged.
+  stable var admin_prices : T.Prices = { op_fee_e8s = null };
+  stable var partner_prices = Map.new<Principal, SP.Partner<T.Prices>>();
+  // the tier each op's fee was set at (Op keeps its type), by op id
+  stable var op_price_tiers = Map.new<Nat, T.Tier>();
   stable var op_ttl_ns : Nat = 30 * 86_400 * 1_000_000_000;
   stable var self_window_ns : Nat = 0;
   stable var status_interval_s : Nat = 6 * 3600;
@@ -335,12 +344,21 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     switch (validateOp(child, kind)) { case (?e) { return #Err(e) }; case null {} };
     let who = switch (payer) { case (?p) { p }; case null { caller } };
     if (Principal.isAnonymous(who)) { return #Err("the payer cannot be the anonymous principal") };
-    let fee = if (child == self()) { 0 } else if (await* isPremium(who)) { premium_op_fee_e8s } else { op_fee_e8s };
+    // the base fee exactly as before (members pay the premium fee); the admin or partner price when
+    // lower, for the caller paying for itself (a named payer never lends its special price)
+    let (fee, tier) : (Nat, T.Tier) = if (child == self()) { (0, #regular) } else {
+      let premium = await* isPremium(who);
+      let base = if (premium) { premium_op_fee_e8s } else { op_fee_e8s };
+      let sp = if (who == caller) { specialFor(caller) } else { { admin = null; partner = null } };
+      let (v, t) = SP.lowest(base, null, sp.admin, sp.partner);
+      (v, if (premium and t == #regular) { #premium } else { t });
+    };
     let op : T.Op = { id = next_op_id; child; kind; staged_by = caller; staged_at = Time.now(); memo; payer = who; fee_e8s = fee; fee_paid_e8s = 0; refunded_e8s = 0; approvals = []; oks = []; vetoes = []; state = #pending };
     next_op_id += 1;
     ops := Array.append(ops, [op]);
+    Map.set(op_price_tiers, nhash, op.id, tier);
     let cid = newCid();
-    icrc3_add("guardian_op_stage", [("cid", #Nat(cid)), ("caller", pv(caller)), ("op", #Nat(op.id)), ("canister", pv(child)), ("what", #Text(opKindText(kind))), ("fee_e8s", #Nat(fee)), ("payer", pv(who)), ("memo", #Text(memo))]);
+    icrc3_add("guardian_op_stage", [("cid", #Nat(cid)), ("caller", pv(caller)), ("op", #Nat(op.id)), ("canister", pv(child)), ("what", #Text(opKindText(kind))), ("fee_e8s", #Nat(fee)), ("payer", pv(who)), ("memo", #Text(memo)), ("price_tier", #Text(SP.tierText(tier)))]);
     logText(cid, "info", "op " # Nat.toText(op.id) # " staged by " # Principal.toText(caller) # ": " # opKindText(kind) # " on " # Principal.toText(child));
     #Ok(op);
   };
@@ -475,7 +493,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
       let sweep = try { await icp_ledger().icrc1_transfer({ from_subaccount = ?opSubaccount(id); to = fee_destination; amount = op.fee_e8s; fee = ?ICP_FEE; memo = null; created_at_time = null }) } catch (e) { return #Err("fee transfer failed: " # Error.message(e)) };
       switch (sweep) { case (#Err(e)) { return #Err("fee transfer failed: " # debug_show(e)) }; case (#Ok(_)) {} };
       switch (findOp(id)) { case (?o) { putOp({ o with fee_paid_e8s = op.fee_e8s }) }; case null {} };
-      icrc3_add("guardian_op_fee", [("cid", #Nat(cid)), ("op", #Nat(id)), ("payer", pv(op.payer)), ("amount_e8s", #Nat(op.fee_e8s)), ("to", pv(fee_destination.owner))]);
+      icrc3_add("guardian_op_fee", [("cid", #Nat(cid)), ("op", #Nat(id)), ("payer", pv(op.payer)), ("amount_e8s", #Nat(op.fee_e8s)), ("to", pv(fee_destination.owner)), ("price_tier", #Text(SP.tierText(opTier(id))))]);
     };
     let r = await* perform(op, cid);
     // re-read: the op may have been cancelled or executed by a concurrent call across the awaits
@@ -752,6 +770,64 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     #Ok;
   };
   public query func get_admins() : async [Principal] { admins };
+
+  // ---- special prices (spec/special_prices.md) ----
+  /// The op fee's special prices `p` gets: the admin price when it is an admin and a person, its
+  /// partner entry when it has not expired.
+  private func specialFor(p : Principal) : { admin : ?Nat; partner : ?Nat } {
+    {
+      admin = if (SP.isPerson(p) and isAdmin(p)) { admin_prices.op_fee_e8s } else { null };
+      partner = switch (SP.activePartner(partner_prices, p, Time.now())) { case (?e) { e.prices.op_fee_e8s }; case null { null } };
+    };
+  };
+  private func opTier(id : Nat) : T.Tier { switch (Map.get(op_price_tiers, nhash, id)) { case (?t) { t }; case null { #regular } } };
+  /// Who may set special prices: whoever can change the op fee on its own. An admin can (its
+  /// approval of a #set_config op counts as the whole threshold), and so can an approver when it
+  /// alone is the threshold (a single DAO). With several approvers only admins can, since special
+  /// prices are not an op kind (adding one would change stage_op's and get_op's Candid).
+  private func canSetPrices(p : Principal) : Bool { isAdmin(p) or (isApprover(p) and threshold <= 1) };
+  private func pricesFields(x : T.Prices) : [(Text, ?Nat)] { [("op_fee_e8s", x.op_fee_e8s)] };
+  private func priceNote(caller : Principal, key : Text, extra : [(Text, T3.Value)], old : T3.Value, new_ : T3.Value) {
+    icrc3_add("guardian_config_update", Array.append<(Text, T3.Value)>([("cid", #Nat(newCid())), ("caller", pv(caller)), ("key", #Text(key))], Array.append<(Text, T3.Value)>(extra, [("old_value", old), ("value", new_)])));
+  };
+  private func partnerV(e : ?SP.Partner<T.Prices>) : T3.Value {
+    switch (e) { case (?x) { SP.partnerValue(x.label_, pricesFields(x.prices), x.expires_at) }; case null { #Text("none") } };
+  };
+  /// The admin price of the op fee (admins, or the approver when it alone is the threshold).
+  public shared ({ caller }) func set_admin_prices(p : T.Prices) : async { #ok; #err : Text } {
+    if (not canSetPrices(caller)) { return #err("admins only (or the approver, when it alone is the threshold)") };
+    let old = admin_prices;
+    admin_prices := p;
+    priceNote(caller, "admin_prices", [], SP.overridesValue(pricesFields(old)), SP.overridesValue(pricesFields(p)));
+    #ok;
+  };
+  /// Add or replace a partner's op fee. The label is public; `expires_at` (ns) is optional.
+  public shared ({ caller }) func set_partner_prices(partner : Principal, e : SP.Partner<T.Prices>) : async { #ok; #err : Text } {
+    if (not canSetPrices(caller)) { return #err("admins only (or the approver, when it alone is the threshold)") };
+    switch (SP.validatePartner(partner_prices, partner, e, Time.now())) { case (?why) { return #err(why) }; case null {} };
+    let old = Map.get(partner_prices, phash, partner);
+    Map.set(partner_prices, phash, partner, e);
+    priceNote(caller, "partner_prices", [("partner", pv(partner))], partnerV(old), partnerV(?e));
+    #ok;
+  };
+  /// Remove a partner's prices.
+  public shared ({ caller }) func remove_partner_prices(partner : Principal) : async { #ok; #err : Text } {
+    if (not canSetPrices(caller)) { return #err("admins only (or the approver, when it alone is the threshold)") };
+    switch (Map.remove(partner_prices, phash, partner)) {
+      case (?old) { priceNote(caller, "partner_prices", [("partner", pv(partner))], partnerV(?old), #Text("removed")); #ok };
+      case null { #err("no partner prices for that principal") };
+    };
+  };
+  /// The admin price and every partner entry (expired ones too, with their expiry). Public.
+  public query func get_special_prices() : async { admin_prices : T.Prices; partners : [SP.PartnerListing<T.Prices>] } {
+    { admin_prices; partners = SP.listing(partner_prices) };
+  };
+  /// The special prices that apply to `p` when it stages and pays an op itself.
+  public query func get_special_prices_for(p : Principal) : async { admin_prices : ?T.Prices; partner : ?SP.Partner<T.Prices> } {
+    { admin_prices = if (SP.isPerson(p) and isAdmin(p)) { ?admin_prices } else { null }; partner = SP.activePartner(partner_prices, p, Time.now()) };
+  };
+  /// Which price an op's fee was set at; null for ops staged before special prices.
+  public query func get_op_price_tier(id : Nat) : async ?T.Tier { Map.get(op_price_tiers, nhash, id) };
   /// Admins record the generic function's id during the trial period (afterwards: a #set_config op).
   public shared ({ caller }) func admin_set_approve_function_id(id : ?Nat64) : async { #Ok; #Err : Text } {
     if (not isAdmin(caller)) { return #Err("admins only") };
@@ -797,6 +873,9 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     #get_cycles_report : Any;
     #get_op : Any;
     #get_op_payment : Any;
+    #get_op_price_tier : Any;
+    #get_special_prices : Any;
+    #get_special_prices_for : Any;
     #get_suite : Any;
     #get_text_log : Any;
     #icrc10_supported_standards : Any;
@@ -814,6 +893,9 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
     #refresh_blessed : Any;
     #refresh_status : Any;
     #refund_op : Any;
+    #remove_partner_prices : Any;
+    #set_admin_prices : Any;
+    #set_partner_prices : () -> (Principal, SP.Partner<T.Prices>);
     #register : () -> (Principal, T.Kind, T.Policy, ?Principal, Text);
     #stage_op : () -> (Principal, T.OpKind, Text, ?Principal);
     #validate_approve_op : Any;
@@ -826,6 +908,9 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
         or #get_config _
         or #get_cycles_report _
         or #get_op _
+        or #get_op_price_tier _
+        or #get_special_prices _
+        or #get_special_prices_for _
         or #get_suite _
         or #get_text_log _
         or #icrc10_supported_standards _
@@ -843,6 +928,7 @@ shared ({ caller = installer }) persistent actor class SneedGuardian(init : T.In
       // the limits of register and stage_op; an install may carry an upgrade argument
       case (#register f) arg.size() <= IngressGuard.textArg(MAX_TITLE) and IngressGuard.text(f().4, MAX_TITLE);
       case (#stage_op f) arg.size() <= MAX_STAGE_ARG and IngressGuard.text(f().2, MAX_MEMO);
+      case (#set_partner_prices f) arg.size() <= IngressGuard.SMALL_ARG and IngressGuard.text(f().1.label_, SP.MAX_LABEL_CHARS);
       case _ arg.size() <= IngressGuard.SMALL_ARG;
     };
   };

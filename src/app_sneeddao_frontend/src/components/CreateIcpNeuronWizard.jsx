@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import PriceTierBadge from './PriceTierBadge';
+import { mintPriceTier } from '../utils/sneedappPricing';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
@@ -106,11 +108,14 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                 feeDestination: config.feeDestination,
                 paymentRequired: config.paymentRequired,
             });
+            const tierInfo = await mintPriceTier(factory, identity.getPrincipal(), appPrice);
             setPricingInfo({
                 regular: Number(appPrice.regular),
                 premium: Number(appPrice.premium),
                 applicable: Number(appPrice.applicable),
                 isPremium: appPrice.isPremium,
+                tier: tierInfo.tier,
+                partnerLabel: tierInfo.partnerLabel,
             });
             setPaymentSubaccount(Array.from(subaccount));
         } catch (err) {
@@ -791,6 +796,7 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                             <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>Creation Fee:</span>
                             <span style={{ color: pricingInfo?.isPremium ? '#FFD700' : theme.colors.primaryText, fontWeight: '600' }}>
                                 {formatIcp(effectiveFeeE8s)} ICP
+                                <PriceTierBadge tier={pricingInfo?.tier} partnerLabel={pricingInfo?.partnerLabel} />
                                 {pricingInfo?.isPremium && discountPercent > 0 && (
                                     <span style={{ 
                                         marginLeft: '8px', 

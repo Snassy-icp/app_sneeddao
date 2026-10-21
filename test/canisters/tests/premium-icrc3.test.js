@@ -211,8 +211,8 @@ describe('ICP purchases', () => {
     const sweep2 = await lastTx();
     const blocks = await since(mark);
     expect(blocks).toEqual([
-      { i: mark, t: 'premium_icp_purchase', caller: P(alice), tier: '1 Month', duration_ns: MONTH, amount_e8s: ICP, fee_e8s: ICP_FEE, to: A(carol), icp_tx: sweep.index, new_expiration: m.expiration },
-      { i: mark + 1, t: 'premium_icp_purchase', caller: P(alice), tier: '1 Year', duration_ns: YEAR, amount_e8s: 10n * ICP, fee_e8s: ICP_FEE, to: A(carol), icp_tx: sweep2.index, previous_expiration: m.expiration, new_expiration: m2.expiration },
+      { i: mark, t: 'premium_icp_purchase', caller: P(alice), tier: '1 Month', duration_ns: MONTH, amount_e8s: ICP, fee_e8s: ICP_FEE, to: A(carol), icp_tx: sweep.index, price_tier: 'regular', new_expiration: m.expiration },
+      { i: mark + 1, t: 'premium_icp_purchase', caller: P(alice), tier: '1 Year', duration_ns: YEAR, amount_e8s: 10n * ICP, fee_e8s: ICP_FEE, to: A(carol), icp_tx: sweep2.index, price_tier: 'regular', previous_expiration: m.expiration, new_expiration: m2.expiration },
     ]);
     expect(m2.expiration).toBe(m.expiration + YEAR);
   });

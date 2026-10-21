@@ -14,6 +14,8 @@ import PrincipalInput from '../components/PrincipalInput';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
+import PriceTierBadge from '../components/PriceTierBadge';
+import { fetchSpecialPricesFor, effectivePrice } from '../utils/specialPrices';
 
 // Custom CSS for animations
 const customStyles = `
@@ -151,6 +153,7 @@ function SnsJailbreak() {
     const [jailbreakFee, setJailbreakFee] = useState(null); // Fee in e8s (user's actual fee)
     const [regularFee, setRegularFee] = useState(null); // Regular (non-premium) fee in e8s
     const [premiumFee, setPremiumFee] = useState(null); // Premium fee in e8s
+    const [specialPrices, setSpecialPrices] = useState(null); // admin / partner prices for this user (spec/special_prices.md)
     const [paymentSubaccount, setPaymentSubaccount] = useState(null); // User's payment subaccount (Uint8Array)
     const [paymentBalance, setPaymentBalance] = useState(null); // Balance on subaccount in e8s
     const [walletIcpBalance, setWalletIcpBalance] = useState(null); // User's wallet ICP balance in e8s
@@ -162,6 +165,11 @@ function SnsJailbreak() {
     
     // Premium status
     const { isPremium, loading: premiumLoading } = usePremiumStatus(identity);
+    const feeTier = useMemo(() => {
+        if (jailbreakFee === null || regularFee === null || !specialPrices) return null;
+        const eff = effectivePrice({ regular: regularFee, premium: premiumFee, isPremium, special: specialPrices, field: 'jailbreak_fee_e8s' });
+        return Number(eff.amount) === jailbreakFee ? eff : null;
+    }, [jailbreakFee, regularFee, premiumFee, isPremium, specialPrices]);
     
     // Step 5: Verification
     const [verificationStatus, setVerificationStatus] = useState(null); // null, 'loading', 'success', 'error'
@@ -459,6 +467,8 @@ function SnsJailbreak() {
             setJailbreakFee(Number(fee));
             setRegularFee(Number(feeSettings.fee_regular_e8s));
             setPremiumFee(Number(feeSettings.fee_premium_e8s));
+            // admin / partner prices: only for the badge (the canister's get_my_jailbreak_fee already charges the lowest)
+            fetchSpecialPricesFor(backendActor, identity.getPrincipal()).then(setSpecialPrices).catch(() => setSpecialPrices(null));
             
             // Get the payment subaccount
             const subaccount = await backendActor.get_jailbreak_payment_subaccount();
@@ -1934,6 +1944,7 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                                 <FaCheck style={{ color: theme.colors.success, marginBottom: '8px' }} size={24} />
                                 <p style={{ color: theme.colors.success, fontWeight: '600', margin: 0 }}>
                                     Free! No payment required.
+                                    {feeTier && <PriceTierBadge tier={feeTier.tier} partnerLabel={feeTier.partnerLabel} />}
                                 </p>
                                 {/* Premium member savings info */}
                                 {isPremium && regularFee !== null && regularFee > 0 && (
@@ -1969,7 +1980,7 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                                         <span style={{ color: theme.colors.mutedText }}>Script Fee:</span>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             {/* Show original price crossed out if premium user saved money */}
-                                            {isPremium && regularFee !== null && regularFee > jailbreakFee && (
+                                            {(isPremium || feeTier?.tier === 'admin' || feeTier?.tier === 'partner') && regularFee !== null && regularFee > jailbreakFee && (
                                                 <span style={{ 
                                                     textDecoration: 'line-through', 
                                                     color: theme.colors.mutedText, 
@@ -1981,6 +1992,7 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                                             <span style={{ fontWeight: '600', color: theme.colors.primaryText, fontSize: '1.1rem' }}>
                                                 {formatIcp(jailbreakFee)} ICP
                                             </span>
+                                            {feeTier && <PriceTierBadge tier={feeTier.tier} partnerLabel={feeTier.partnerLabel} />}
                                         </div>
                                     </div>
                                     

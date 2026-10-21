@@ -25,6 +25,7 @@ import Icrc3Log "../icrc3/Log";
 import Icrc3Sns "../icrc3/SnsRegister";
 import T3 "../icrc3/Types";
 import Ext "../sneed_names/Ext";
+import SpecialPrices "../SpecialPrices";
 
 shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this {
     // ============================================
@@ -123,6 +124,14 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // Sneed Premium integration
     var sneedPremiumCanisterId : ?Principal = null;
     var premiumCache = PremiumClient.emptyCache();
+
+    // Special prices (spec/special_prices.md): an admin price for this canister's admins (people
+    // only) and partner prices per principal, next to the regular and premium prices. The lowest
+    // applicable one is charged; all unset = the regular and premium prices as before.
+    var specialAdminPrices : T.SpecialPriceOverrides = { offer_creation_fee_e8s = null; auction_cut_bps = null };
+    var specialPartnerPrices : Map.Map<Principal, SpecialPrices.Partner<T.SpecialPriceOverrides>> = Map.new();
+    // The tiers each offer's creator got (creation fee and the cut locked in at creation)
+    var offerPriceTiers : Map.Map<T.OfferId, T.OfferPriceTiers> = Map.new();
     
     // ICP Ledger for offer creation fees
     let ICP_LEDGER_ID : Text = "ryjl3-tyaaa-aaaaa-aaaba-cai";
@@ -836,6 +845,51 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     func isAdmin(caller : Principal) : Bool {
         Principal.isController(caller) or Utils.principalInList(caller, config.admins);
     };
+
+    // ---- special prices ----
+    func specialOverridesFields(o : T.SpecialPriceOverrides) : [(Text, ?Nat)] {
+        [("offer_creation_fee_e8s", o.offer_creation_fee_e8s), ("auction_cut_bps", o.auction_cut_bps)];
+    };
+    /// The admin overrides when `p` gets the admin price (an admin who is a person).
+    func adminPricesFor(p : Principal) : ?T.SpecialPriceOverrides {
+        if (isAdmin(p) and SpecialPrices.isPerson(p)) { ?specialAdminPrices } else { null };
+    };
+    func partnerPricesFor(p : Principal) : ?SpecialPrices.Partner<T.SpecialPriceOverrides> {
+        SpecialPrices.activePartner(specialPartnerPrices, p, Time.now());
+    };
+    /// Apply the admin and partner overrides of `p` on top of the price it gets today (`base`
+    /// from `baseTier`, regular or premium): the lowest wins, ties keep the base tier.
+    func applySpecial(p : Principal, base : Nat, baseTier : SpecialPrices.Tier, pick : T.SpecialPriceOverrides -> ?Nat) : (Nat, SpecialPrices.Tier) {
+        let admin = switch (adminPricesFor(p)) { case (?o) { pick(o) }; case null { null } };
+        let partner = switch (partnerPricesFor(p)) { case (?e) { pick(e.prices) }; case null { null } };
+        let (n, t) = SpecialPrices.lowest(base, null, admin, partner);
+        (n, if (t == #regular) { baseTier } else { t });
+    };
+    /// Offer creation fee for `user` and its tier: regular, premium as before, then admin / partner.
+    func effectiveCreationFee(user : Principal) : async* (Nat64, SpecialPrices.Tier) {
+        if (offerCreationFeeE8s == 0) { return (0, #regular) };
+        var base = offerCreationFeeE8s;
+        var tier : SpecialPrices.Tier = #regular;
+        switch (sneedPremiumCanisterId) {
+            case (?canisterId) {
+                if (await* PremiumClient.isPremium(premiumCache, canisterId, user)) { base := premiumOfferCreationFeeE8s; tier := #premium };
+            };
+            case null {};
+        };
+        let (n, t) = applySpecial(user, Nat64.toNat(base), tier, func(o) { o.offer_creation_fee_e8s });
+        (Nat64.fromNat(n), t);
+    };
+    func validateSpecialOverrides(o : T.SpecialPriceOverrides) : ?Text {
+        switch (o.offer_creation_fee_e8s) {
+            case (?f) {
+                if (f > 0 and f < Nat64.toNat(ICP_FEE)) { return ?"offer_creation_fee_e8s: 0 or at least one ICP ledger fee (10000 e8s)" };
+                if (f > 18_446_744_073_709_551_615) { return ?"offer_creation_fee_e8s: too large" };
+            };
+            case null {};
+        };
+        switch (o.auction_cut_bps) { case (?b) { if (b > 5000) { return ?"auction_cut_bps: cannot exceed 50% (5000 bps)" } }; case null {} };
+        null;
+    };
     
     func getOffer(offerId : T.OfferId) : ?T.Offer {
         for (offer in offers.vals()) {
@@ -1362,11 +1416,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             bid.amount,
                             offer.fee_rate_bps
                         );
-                        icrc3_add("sneedex_cut_pay", [
+                        icrc3_add("sneedex_cut_pay", Array.append<(Text, T3.Value)>([
                             ("offer_id", #Nat(offer.id)), ("bid_id", #Nat(bid.id)), ("ledger", pv(offer.price_token_ledger)),
                             ("cut", #Nat(marketplaceFee)), ("amount", #Nat(marketplaceFee - fee)), ("fee_rate_bps", #Nat(offer.fee_rate_bps)),
                             ("to", acctV(cutRecipient)), ("ledger_tx", #Nat(txId)), whoV(caller),
-                        ]);
+                        ], switch (Map.get(offerPriceTiers, nhash, offer.id)) { case (?t) { [("price_tier", #Text(SpecialPrices.tierText(t.cut)))] }; case null { [] } }));
                     };
                 };
             };
@@ -2077,7 +2131,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         
         // Check and collect offer creation fee
         var creationFeePaid : ?(Nat, Nat) = null; // (fee charged, ICP block), for the offer's block
-        let effectiveFee = await getEffectiveOfferCreationFee(caller);
+        let (effectiveFee, creationFeeTier) = await* effectiveCreationFee(caller);
         if (effectiveFee > 0) {
             let paymentSubaccount = Utils.userPaymentSubaccount(caller);
             let icpLedger : T.ICRC1Actor = actor(ICP_LEDGER_ID);
@@ -2127,7 +2181,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         creationFeePaid := ?(requiredAmount, txId);
                         icrc3_add("sneedex_creation_fee_pay", [
                             ("caller", pv(caller)), ("payer", pv(caller)), ("fee_e8s", #Nat(requiredAmount)), ("amount_e8s", #Nat(transferAmount)),
-                            ("to", acctV(icpFeeRecipient)), ("icp_tx", #Nat(txId)),
+                            ("to", acctV(icpFeeRecipient)), ("icp_tx", #Nat(txId)), ("price_tier", #Text(SpecialPrices.tierText(creationFeeTier))),
                         ]);
                     };
                 };
@@ -2136,17 +2190,23 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         
         // Determine the fee rate for this offer (premium members may get lower rate)
         var offerFeeRateBps = marketplaceFeeRateBps;
+        var cutTier : SpecialPrices.Tier = #regular;
         if (premiumAuctionCutBps > 0) {
             switch (sneedPremiumCanisterId) {
                 case (?canisterId) {
                     let isPremiumMember = await* PremiumClient.isPremium(premiumCache, canisterId, caller);
                     if (isPremiumMember) {
                         offerFeeRateBps := premiumAuctionCutBps;
+                        cutTier := #premium;
                     };
                 };
                 case null {};
             };
         };
+        // admin and partner cuts (special prices), decided now like the premium cut
+        let (specialRate, specialCutTier) = applySpecial(caller, offerFeeRateBps, cutTier, func(o) { o.auction_cut_bps });
+        offerFeeRateBps := specialRate;
+        cutTier := specialCutTier;
         
         let offerId = nextOfferId;
         nextOfferId += 1;
@@ -2170,14 +2230,16 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
         
         offers := Array.append(offers, [offer]);
+        let chargedFeeTier : ?SpecialPrices.Tier = switch (creationFeePaid) { case (?_) { ?creationFeeTier }; case null { null } };
+        Map.set(offerPriceTiers, nhash, offerId, { creation_fee = chargedFeeTier; cut = cutTier });
         icrc3_add("sneedex_offer_create", Array.flatten<(Text, T3.Value)>([
-            [("caller", pv(caller)), ("offer_id", #Nat(offerId)), ("price_ledger", pv(offer.price_token_ledger)), ("fee_rate_bps", #Nat(offerFeeRateBps))],
+            [("caller", pv(caller)), ("offer_id", #Nat(offerId)), ("price_ledger", pv(offer.price_token_ledger)), ("fee_rate_bps", #Nat(offerFeeRateBps)), ("cut_price_tier", #Text(SpecialPrices.tierText(cutTier)))],
             optNatF("min_bid", offer.min_bid_price),
             optNatF("buyout", offer.buyout_price),
             optNatF("expiration", switch (offer.expiration) { case (?e) { ?Int.abs(e) }; case null { null } }),
             optNatF("min_increment_fee_multiple", offer.min_bid_increment_fee_multiple),
             switch (offer.approved_bidders) { case (?list) { [("approved_bidders", #Array(Array.map<Principal, T3.Value>(list, pv)))] }; case null { [] } },
-            switch (creationFeePaid) { case (?(fee, tx)) { [("creation_fee_e8s", #Nat(fee)), ("creation_fee_icp_tx", #Nat(tx))] }; case null { [] } },
+            switch (creationFeePaid) { case (?(fee, tx)) { [("creation_fee_e8s", #Nat(fee)), ("creation_fee_icp_tx", #Nat(tx)), ("price_tier", #Text(SpecialPrices.tierText(creationFeeTier)))] }; case null { [] } },
         ]));
         
         #ok(offerId);
@@ -4628,6 +4690,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         if (not isAdmin(caller)) {
             return #err(#NotAuthorized);
         };
+        // createOffer forwards fee - ledger fee: a fee below the ledger fee would trap there
+        if (feeE8s > 0 and feeE8s < ICP_FEE) {
+            return #err(#InvalidInput("a creation fee is 0 or at least the ICP ledger fee (10_000 e8s)"));
+        };
         let old = offerCreationFeeE8s;
         offerCreationFeeE8s := feeE8s;
         icrc3_config(caller, "offer_creation_fee_e8s", Icrc3Log.nat64(feeE8s), ?Icrc3Log.nat64(old));
@@ -4638,6 +4704,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     public shared ({ caller }) func setPremiumOfferCreationFee(feeE8s : Nat64) : async T.Result<()> {
         if (not isAdmin(caller)) {
             return #err(#NotAuthorized);
+        };
+        // createOffer forwards fee - ledger fee: a fee below the ledger fee would trap there
+        if (feeE8s > 0 and feeE8s < ICP_FEE) {
+            return #err(#InvalidInput("a creation fee is 0 or at least the ICP ledger fee (10_000 e8s)"));
         };
         let old = premiumOfferCreationFeeE8s;
         premiumOfferCreationFeeE8s := feeE8s;
@@ -4728,25 +4798,77 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
     
-    /// Get the effective offer creation fee for a user (checks premium status)
+    /// Get the effective offer creation fee for a user: premium status, then the admin and partner
+    /// prices (special prices; the lowest applicable is charged)
     public func getEffectiveOfferCreationFee(user : Principal) : async Nat64 {
-        // If no fee is set, return 0
-        if (offerCreationFeeE8s == 0) {
-            return 0;
-        };
-        
-        // Check if user is premium
-        switch (sneedPremiumCanisterId) {
-            case (?canisterId) {
-                let isPremiumMember = await* PremiumClient.isPremium(premiumCache, canisterId, user);
-                if (isPremiumMember) {
-                    return premiumOfferCreationFeeE8s;
-                };
+        (await* effectiveCreationFee(user)).0;
+    };
+
+    // ============================================
+    // SPECIAL PRICES (spec/special_prices.md)
+    // ============================================
+
+    /// Admin prices: apply to this canister's admins who are people (never canisters). Admin only.
+    public shared ({ caller }) func set_admin_prices(prices : T.SpecialPriceOverrides) : async { #ok; #err : Text } {
+        if (not isAdmin(caller)) { return #err("Only admins can set special prices") };
+        switch (validateSpecialOverrides(prices)) { case (?e) { return #err(e) }; case null {} };
+        let old = specialAdminPrices;
+        specialAdminPrices := prices;
+        icrc3_config(caller, "admin_prices", SpecialPrices.overridesValue(specialOverridesFields(prices)), ?SpecialPrices.overridesValue(specialOverridesFields(old)));
+        #ok;
+    };
+
+    /// Add or replace a partner's prices (label shown publicly, optional expiry in ns). Admin only.
+    public shared ({ caller }) func set_partner_prices(partner : Principal, entry : SpecialPrices.Partner<T.SpecialPriceOverrides>) : async { #ok; #err : Text } {
+        if (not isAdmin(caller)) { return #err("Only admins can set special prices") };
+        switch (SpecialPrices.validatePartner(specialPartnerPrices, partner, entry, Time.now())) { case (?e) { return #err(e) }; case null {} };
+        switch (validateSpecialOverrides(entry.prices)) { case (?e) { return #err(e) }; case null {} };
+        let old = Map.get(specialPartnerPrices, phash, partner);
+        Map.set(specialPartnerPrices, phash, partner, entry);
+        let v = func(e : SpecialPrices.Partner<T.SpecialPriceOverrides>) : T3.Value { SpecialPrices.partnerValue(e.label_, specialOverridesFields(e.prices), e.expires_at) };
+        icrc3_add("sneedex_config_update", Array.append<(Text, T3.Value)>(
+            [("caller", pv(caller)), ("key", #Text("partner_prices")), ("partner", pv(partner)), ("value", v(entry))],
+            switch (old) { case (?o) { [("old_value", v(o))] }; case null { [] } },
+        ));
+        #ok;
+    };
+
+    /// Remove a partner's prices. Admin only.
+    public shared ({ caller }) func remove_partner_prices(partner : Principal) : async { #ok; #err : Text } {
+        if (not isAdmin(caller)) { return #err("Only admins can set special prices") };
+        switch (Map.remove(specialPartnerPrices, phash, partner)) {
+            case null { #err("no partner prices for this principal") };
+            case (?o) {
+                icrc3_add("sneedex_config_update", [
+                    ("caller", pv(caller)), ("key", #Text("partner_prices")), ("partner", pv(partner)), ("value", #Text("removed")),
+                    ("old_value", SpecialPrices.partnerValue(o.label_, specialOverridesFields(o.prices), o.expires_at)),
+                ]);
+                #ok;
             };
-            case null {};
         };
-        
-        offerCreationFeeE8s;
+    };
+
+    /// The admin prices and every partner entry (expired ones too). Public.
+    public query func get_special_prices() : async {
+        admin_prices : T.SpecialPriceOverrides;
+        partners : [SpecialPrices.PartnerListing<T.SpecialPriceOverrides>];
+    } {
+        { admin_prices = specialAdminPrices; partners = SpecialPrices.listing(specialPartnerPrices) };
+    };
+
+    /// The special prices that apply to `p`: the admin prices if it gets them, its partner entry if
+    /// one exists and has not expired. Public.
+    public query func get_special_prices_for(p : Principal) : async {
+        admin_prices : ?T.SpecialPriceOverrides;
+        partner : ?SpecialPrices.Partner<T.SpecialPriceOverrides>;
+    } {
+        { admin_prices = adminPricesFor(p); partner = partnerPricesFor(p) };
+    };
+
+    /// The price tiers an offer's creator got: the creation fee's (null when none was charged) and
+    /// the cut's (locked in as the offer's fee_rate_bps). Null for offers created before special prices.
+    public query func get_offer_price_tiers(offerId : T.OfferId) : async ?T.OfferPriceTiers {
+        Map.get(offerPriceTiers, nhash, offerId);
     };
     
     // ============================================
@@ -5630,6 +5752,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         #getNextBidId : Any;
         #getNextOfferId : Any;
         #getOfferCreationFee : Any;
+        #get_offer_price_tiers : Any;
+        #get_special_prices : Any;
+        #get_special_prices_for : Any;
+        #remove_partner_prices : Any;
+        #set_admin_prices : Any;
+        #set_partner_prices : Any;
         #getOfferCreationPaymentSubaccount : Any;
         #getOfferEscrowSubaccount : Any;
         #getOfferEscrowAccountId : Any;
@@ -5716,6 +5844,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 or #getNextBidId _
                 or #getNextOfferId _
                 or #getOfferCreationFee _
+                or #get_offer_price_tiers _
+                or #get_special_prices _
+                or #get_special_prices_for _
                 or #getOfferCreationPaymentSubaccount _
                 or #getOfferEscrowSubaccount _
                 or #getOfferEscrowAccountId _

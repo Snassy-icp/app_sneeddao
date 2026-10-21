@@ -106,6 +106,14 @@ usual (`sponsored = false`).
   every_min / 1440), so a day of checks never costs more than the tier's daily price: 6,000, 18,000,
   36,000 and 144,000 e8s. Each check goes into the user's charge history (`get_my_charges`, the last
   200: time, target, tier, price, outcome such as "nothing new" or "2 proposals, sent").
+- **Special prices** (spec/special_prices.md): an admin price (people on the admin list, never a
+  canister admin) and partner prices (per principal, public label, optional expiry), each a
+  `MonPrices = { base_daily_price_e8s : ?Nat }` override of the base daily price with the tier
+  multipliers on top. A check costs the lowest of the regular, admin and partner per-check prices
+  for the watch's owner, decided at each charge; the tier is kept per charge in `charge_tiers`
+  (aligned with `charges`, `get_my_charges_with_tier`). No premium price, no ICRC-3 log here.
+  Setters: `set_admin_prices`, `set_partner_prices`, `remove_partner_prices` (admins); public
+  reads `get_special_prices`, `get_special_prices_for`.
 - **Pause:** a check the balance can't pay is not made: the user is paused (watches kept, no checks,
   pending proposals dropped, no charges) and told once (topic `account`). `credit_deposit` (or
   `watch`, `unwatch`, a lower price at round start) resumes them when the balance pays one check of

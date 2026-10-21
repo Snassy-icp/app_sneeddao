@@ -66,10 +66,32 @@ A target is polled as often as its most frequent **active** (paid-up) watcher wa
 | Deposit | Send ICP to `get_deposit_account()` (your own subaccount of sneed_mon), then `credit_deposit()`: it moves the ICP to sneed_mon's main account, less one ledger fee, and credits your balance. Safe to repeat; nothing is counted twice. |
 | Charges | Per check, at the watch's tier: per check = floor(daily price × every_min / 1440), daily price = `base_daily_price_e8s` × multiplier. Bookkeeping only, no ledger transfer. History: `get_my_charges`. |
 | Default prices | base 144,000 e8s a day: daily ×1 = 144,000 e8s a check; 3-hourly ×2 = 36,000; hourly ×3 = 18,000 (432,000 e8s a day); 10-minute ×6 = 6,000 (a day of 10-minute checks: 864,000 e8s). A deployed canister keeps its stored tiers; `get_tiers` is authoritative. |
+| Special prices | An admin price and partner prices ([§1.6a](#special-prices)): the lowest applicable per-check price is charged. |
 | Pause | A check the balance can't pay is not made: the user's watches pause (kept), one `account` message says so, and `credit_deposit` resumes them once the balance pays one check of each watch. No watches, no charge. |
 | Withdraw | `withdraw_balance(amount_e8s, to)`: `to` receives the amount less the ledger fee (10,000 e8s). |
 | Fees | Forwarded in one transfer (less the ledger fee) to `fee_destination` once they reach `fee_sweep_threshold_e8s` (0.1 ICP), at most once a round. Default destination: the account Sneed Premium pays into, the Neutrinite pylon's ICP splitter `6jvpj-sqaaa-aaaaj-azwnq-cai` with subaccount `0100000000060000000000000000000000000000000000000000000000000000`, which feeds the RLL. |
 | Solvency | `get_accounting()`: user balances + fees not yet forwarded = `obligations_e8s`; sneed_mon's main ICP account holds at least that. |
+
+<a id="special-prices"></a>
+### 1.6a Special prices (admin and partner)
+
+Next to the regular price (sneed_mon has no premium price) there are two kinds of special price
+([spec/special_prices.md](https://github.com/Snassy-icp/app_sneeddao/blob/main/spec/special_prices.md)):
+
+- **Admin price**: for callers on sneed_mon's admin list (controllers and `get_admins`) who are
+  people (self-authenticating principals; a canister admin never gets it). Default: unset.
+- **Partner prices**: per principal (usually a partner canister that integrates with sneed_mon),
+  with a public `label` and an optional expiry (`expires_at`, ns since 1970).
+
+Both are `MonPrices = record { base_daily_price_e8s : opt nat }`: an override of the base daily
+price, with the tier multipliers applied on top as for the regular price. Each check is charged
+the **lowest** per-check price among regular, admin (admins) and partner (an entry that has not
+expired), floor(base × multiplier × every_min / 1440) each; on a tie the regular price is
+reported. Unset overrides change nothing. `get_my_watches().price_per_check_e8s` and
+`get_my_balance()` show the price that applies to the caller; `get_tiers()` stays the regular table.
+Every check records its tier (`get_my_charges_with_tier`: `price_tier` = `regular`, `admin` or
+`partner`; checks from before special prices are `regular`). sneed_mon has no ICRC-3 log; the
+special prices are public through `get_special_prices()`.
 
 ### 1.7 Failures
 
@@ -157,6 +179,7 @@ dfx canister --network ic call sneed_mon get_status --query
 | `get_deposit_account()` | query | `Account` | |
 | `get_my_balance()` | query | `MyBalance` | Balance, paused, watches, one round of checks and a day's cost at your tiers, totals. |
 | `get_my_charges(start : nat, len : nat)` | query | `record { total : nat; entries : vec ChargeEntry }` | Newest first, at most 100 per call, the last 200 kept. |
+| `get_my_charges_with_tier(start : nat, len : nat)` | query | `record { total : nat; entries : vec ChargeEntryTiered }` | The same entries with `price_tier`. |
 
 ### 3.2 Public reads
 
@@ -168,6 +191,8 @@ dfx canister --network ic call sneed_mon get_status --query
 | `get_tuning()` / `get_billing_config()` | query | | Parts of `get_config`. |
 | `get_tiers()` | query | `record { base_daily_price_e8s; tiers : vec TierPrice }` | With per-check and daily prices. |
 | `get_accounting()` | query | `Accounting` | Totals only. |
+| `get_special_prices()` | query | `record { admin_prices : MonPrices; partners : vec record { principal; label; prices : MonPrices; expires_at : opt int } }` | Expired partners are listed too. |
+| `get_special_prices_for(principal)` | query | `record { admin_prices : opt MonPrices; partner : opt MonPartner }` | What applies to that principal now. |
 | `get_topics()` | query | `vec NTopic` | What is registered with Sneed Notifications. |
 | `get_admins()` / `get_api_doc()` | query | | |
 
@@ -187,6 +212,9 @@ dfx canister --network ic call sneed_mon get_status --query
 | `admin_set_app_id(opt nat)` | |
 | `admin_pause()` / `admin_resume()` / `admin_set_interval(nat)` / `admin_run_now()` | `admin_run_now` starts a round (or goes on with the open one) and returns after its first tick. |
 | `admin_add_admin(principal)` / `admin_remove_admin(principal)` | |
+| `set_admin_prices(MonPrices)` | The admin price (`null` field: none). Returns `variant { ok; err : text }`. |
+| `set_partner_prices(principal, MonPartner)` | Add or replace a partner: label 1–100 characters, expiry in the future or none, at most 200 partners, not the anonymous principal. |
+| `remove_partner_prices(principal)` | Refuses a principal without an entry. |
 
 ## 4. Types
 
@@ -199,6 +227,9 @@ type MyWatch = record {
   price_per_check_e8s : nat; next_check_at : int; pending : nat; neurons : opt nat; neurons_at : int;
 };
 type ChargeEntry = record { at : int; target : Target; every_min : nat; price_e8s : nat; outcome : text };
+type ChargeEntryTiered = record { at : int; target : Target; every_min : nat; price_e8s : nat; outcome : text; price_tier : text };
+type MonPrices = record { base_daily_price_e8s : opt nat };
+type MonPartner = record { label : text; prices : MonPrices; expires_at : opt int };
 type Account = record { owner : principal; subaccount : opt blob };
 type BillingConfig = record { icp_ledger : principal; ledger_fee_e8s : nat; fee_destination : opt Account; fee_sweep_threshold_e8s : nat };
 type TierTable = record { base_daily_price_e8s : nat; tiers : vec record { every_min : nat; daily_multiplier : nat } };

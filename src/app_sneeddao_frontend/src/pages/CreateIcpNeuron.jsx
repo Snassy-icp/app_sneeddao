@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import PriceTierBadge from '../components/PriceTierBadge';
+import { mintPriceTier } from '../utils/sneedappPricing';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { IDL } from '@dfinity/candid';
@@ -259,11 +261,14 @@ function CreateIcpNeuron() {
             });
             
             if (appPrice) {
+                const tierInfo = await mintPriceTier(factory, identity.getPrincipal(), appPrice);
                 setPricingInfo({
                     regular: Number(appPrice.regular),
                     premium: Number(appPrice.premium),
                     applicable: Number(appPrice.applicable),
                     isPremium: appPrice.isPremium,
+                    tier: tierInfo.tier,
+                    partnerLabel: tierInfo.partnerLabel,
                 });
             }
             
@@ -813,6 +818,7 @@ function CreateIcpNeuron() {
                                         Creation fee: <strong style={{ color: pricingInfo?.isPremium ? '#FFD700' : theme.colors.primaryText }}>
                                             {formatIcp(effectiveFeeE8s)} ICP
                                         </strong>
+                                        <PriceTierBadge tier={pricingInfo?.tier} partnerLabel={pricingInfo?.partnerLabel} />
                                         {pricingInfo?.isPremium && discountPercent > 0 && (
                                             <span style={{
                                                 marginLeft: '8px',

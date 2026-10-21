@@ -211,6 +211,23 @@ git archive "$SNEEDAPP_PROD_COMMIT" src | tar -x -C "$PREV_SRC"
 "$MOC" $PKGS "$PREV_SRC/src/sneedapp/main.mo" -o "$OUT/sneedapp_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
 rm -rf "$PREV_SRC"
 test -s "$OUT/sneedapp_prod.wasm"
+# every charging canister as of f9d8db0b, before special prices (spec/special_prices.md): for
+# sneedex, sneedapp, sneed_lock, sneed_premium and app_sneeddao_backend this source is what
+# production runs (`dfx build --network ic` of it at /home/snassy/app_sneeddao gives the live
+# module hashes f789d6dd…, dac5cd66…, ea866993…, ba260de0…, 41826a2e…); sneed_pad, sneed_guardian
+# and sneed_mon are on staging only. For the tests that upgrade from it (and that run the
+# special-price tests against it to see them fail). EOP for backend and sneed_mon, as dfx.json builds them.
+PRESP_COMMIT=f9d8db0b
+echo "== charging canisters at $PRESP_COMMIT (moc, for the special-prices upgrade tests)"
+PREV_SRC="$(mktemp -d)"
+git archive "$PRESP_COMMIT" src | tar -x -C "$PREV_SRC"
+for c in sneedex sneedapp sneed_lock sneed_premium sneed_pad sneed_guardian app_sneeddao_backend sneed_mon; do
+  EOP=""; case "$c" in app_sneeddao_backend|sneed_mon) EOP="--enhanced-orthogonal-persistence" ;; esac
+  # shellcheck disable=SC2086
+  "$MOC" $PKGS $EOP "$PREV_SRC/src/$c/main.mo" -o "$OUT/${c}_presp.wasm" 2>&1 | grep -i "error" | head -5 || true
+  test -s "$OUT/${c}_presp.wasm"
+done
+rm -rf "$PREV_SRC"
 for c in MockLedger MockLedgerV2 MockLedgerFaulty MockRejectLedger MockSwapPool MockDexPool MockIcpswapFactory MockKongSwap \
          MockSnsGovernance MockSnsNeurons MockHubSns MockForumGovernance MockForumSnsW MockRllGovernance MockNnsGovernance \
          MockCmc MockSnsWasm MockPremium MockSneedApp MockIcpSwapList MockIcpSwapTokenList MockNamesModerator MockIcpLedger MockMrSneedGov MockNotifySender MockExt MockMonSns MockMonNns Icrc3Demo; do

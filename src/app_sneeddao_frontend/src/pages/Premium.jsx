@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Header from '../components/Header';
+import PriceTierBadge from '../components/PriceTierBadge';
+import { fetchSpecialPricesFor, tierName } from '../utils/specialPrices';
 import { Principal } from '@dfinity/principal';
 import { 
     createSneedPremiumActor, 
@@ -220,8 +222,27 @@ export default function Premium() {
                 actor.getDepositAccount(principal),
             ]);
             
+            // Special prices (spec/special_prices.md): the amount this user deposits per tier, when the
+            // canister has them; an older canister keeps the regular amounts. `amountE8s` becomes the
+            // user's price (what the page shows and transfers), `regularE8s` keeps the regular one.
+            let tiersForUser = icpTiersResult;
+            if (typeof actor.get_icp_tier_prices_for === 'function') {
+                try {
+                    const prices = await actor.get_icp_tier_prices_for(principal);
+                    if (prices.length === icpTiersResult.length) {
+                        const special = await fetchSpecialPricesFor(actor, principal);
+                        tiersForUser = prices.map((p) => ({
+                            ...p.tier,
+                            amountE8s: p.price_e8s,
+                            regularE8s: p.tier.amountE8s,
+                            priceTier: tierName(p.price_tier),
+                            partnerLabel: special?.partner?.label ?? null,
+                        }));
+                    }
+                } catch { /* the canister has no special prices yet */ }
+            }
             setMembershipStatus(statusResult);
-            setIcpTiers(icpTiersResult);
+            setIcpTiers(tiersForUser);
             setVpTiers(vpTiersResult);
             setDepositAccount(depositResult);
             
@@ -465,7 +486,7 @@ export default function Premium() {
             icon: <FaCoins style={{ fontSize: '2.5rem', color: '#FFD700' }} />,
             details: [
                 { label: 'Tier', value: tier.name },
-                { label: 'Cost', value: formatIcp(tier.amountE8s) },
+                { label: 'Cost', value: formatIcp(tier.amountE8s) + (tier.priceTier === 'admin' ? ' (admin price)' : tier.priceTier === 'partner' ? ' (partner price)' : '') },
                 { label: 'Duration', value: formatDuration(tier.durationNs) },
             ],
             highlight: isActive 
@@ -1926,7 +1947,13 @@ export default function Premium() {
                                             />
                                         )}
                                         <div style={styles.tierName}>{tier.name}</div>
-                                        <div style={styles.tierPrice}>{formatIcp(tier.amountE8s)}</div>
+                                        <div style={styles.tierPrice}>
+                                            {formatIcp(tier.amountE8s)}
+                                            <PriceTierBadge tier={tier.priceTier} partnerLabel={tier.partnerLabel} />
+                                        </div>
+                                        {tier.regularE8s !== undefined && BigInt(tier.regularE8s) !== BigInt(tier.amountE8s) && (
+                                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textDecoration: 'line-through' }}>{formatIcp(tier.regularE8s)}</div>
+                                        )}
                                         {formatIcpDenom(tier.amountE8s) && denomTokenId !== ICP_LEDGER_ID && (
                                             <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '2px' }}>
                                                 ≈ {formatIcpDenom(tier.amountE8s)}

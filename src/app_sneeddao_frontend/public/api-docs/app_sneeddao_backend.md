@@ -149,6 +149,32 @@ The [SNS Jailbreak](/help/sns_jailbreak) wizard (`/tools/sns_jailbreak`) produce
 
 `get_jailbreak_payment_stats()` gives public totals for the revenue page.
 
+#### Special prices
+
+Next to the regular and premium fee (`get_jailbreak_fee_settings`) the jailbreak fee has an **admin price** and **partner prices** ([spec](https://github.com/Snassy-icp/app_sneeddao/blob/main/spec/special_prices.md)):
+
+- The admin price applies to callers on this canister's admin list who are people (self-authenticating principals; canisters such as SNS root never get it).
+- A partner price applies to one principal (usually a partner canister that integrates with Sneed Hub, for example a partner game canister), with a public label and an optional expiry (nanoseconds since 1970).
+- The fee charged is the **lowest applicable** one among regular, premium (members), admin and partner. On a tie the earlier tier in that order is reported. Unset overrides change nothing.
+
+`get_my_jailbreak_fee()` returns that lowest fee; `get_my_jailbreak_price()` (update) returns `{ amount_e8s; price_tier }`. Each payment log entry has a price tier (`get_jailbreak_payment_price_tiers(ids)`, admin only like the logs). A fee of 0 (for example a partner override of 0) is not a payment and leaves no log entry, as before.
+
+```candid
+type SpecialPriceSet = record { jailbreak_fee_e8s : opt nat };
+type PartnerPrices = record { label : text; prices : SpecialPriceSet; expires_at : opt int };
+type Tier = variant { regular; premium; admin; partner };
+
+get_special_prices : () -> (record { admin_prices : SpecialPriceSet; partners : vec record { principal : principal; label : text; prices : SpecialPriceSet; expires_at : opt int } }) query;
+get_special_prices_for : (principal) -> (record { admin_prices : opt SpecialPriceSet; partner : opt PartnerPrices }) query;
+get_my_jailbreak_price : () -> (record { amount_e8s : nat; price_tier : Tier });
+set_admin_prices : (SpecialPriceSet) -> (variant { ok; err : text });                    // admin
+set_partner_prices : (principal, PartnerPrices) -> (variant { ok; err : text });         // admin
+remove_partner_prices : (principal) -> (variant { ok; err : text });                     // admin
+get_jailbreak_payment_price_tiers : (vec nat) -> (variant { ok : vec record { nat; Tier }; err : text }) query;  // admin
+```
+
+`set_partner_prices` refuses the anonymous principal, an empty label, a label over 100 characters, an expiry in the past and a 201st partner; `remove_partner_prices` refuses a principal without an entry.
+
 ### 3.7 Directories and helpers
 
 - `get_partners()`, `get_partner(id)`, `get_projects()`, `get_project(id)`: the partner and project directories shown in Sneed Hub (`index` is the display order).
@@ -191,6 +217,7 @@ Result shapes vary: most methods return `variant { ok; err : text }`; some regis
 | `get_feedback_config()` | `FeedbackConfig` |
 | `get_jailbreak_fee_settings()` | `{ fee_regular_e8s; fee_premium_e8s; fee_account_owner; fee_account_subaccount }` |
 | `get_jailbreak_payment_stats()` | `Result` with totals (scripts, revenue e8s, premium/regular counts, unique users) |
+| `get_special_prices()`, `get_special_prices_for(principal)` | the admin and partner prices (3.6, Special prices) |
 | `get_nickname_limits_config()`, `get_canister_groups_limits_config()` | limit records |
 | `check_ban_status(user)` | `variant { ok; err : text }` |
 | `get_admins()`, `get_authorized_for_callers()`, `get_names_canisters()`, `get_names_frozen()` | configuration |
@@ -212,7 +239,7 @@ Result shapes vary: most methods return `variant { ok; err : text }`; some regis
 | `get_my_canister_groups_usage()`, `get_my_nickname_usage()` | usage records | 3.4, 3.7 |
 | `set_cached_token_meta(pool, meta)` | `()` | 3.1 |
 | `register_donation(RegisterArgs)` | `variant { ok : Donation; err : text }` | 3.5 |
-| `save_jailbreak_config`, `delete_jailbreak_config`, `get_my_jailbreak_fee`, `get_jailbreak_payment_balance`, `withdraw_jailbreak_payment` | see 3.6 | 3.6 |
+| `save_jailbreak_config`, `delete_jailbreak_config`, `get_my_jailbreak_fee`, `get_my_jailbreak_price`, `get_jailbreak_payment_balance`, `withdraw_jailbreak_payment` | see 3.6 | 3.6 |
 | `get_canister_info(canister_id)` | `variant { ok : record { controllers; module_hash }; err : text }` | 3.7 |
 | `get_user_neurons()` | `variant { ok : vec Neuron; err : text }` | 3.7 |
 
@@ -233,6 +260,7 @@ Restricted to admins (`get_admins()`), the canister's controllers and the deploy
 | `admin_set_names_canisters`, `admin_set_names_frozen`, `admin_clear_avatar`, `admin_export_principal_nicknames`, `admin_export_neuron_nicknames`, `admin_export_avatars` | Name migration to the naming service. |
 | `set_nickname_premium_canister`, `update_nickname_limits`, `update_canister_groups_limits` | Limits and the Sneed Premium canister. |
 | `set_jailbreak_fee_settings`, `get_jailbreak_payment_logs`, `get_all_jailbreak_configs_count` | Jailbreak fees and logs. |
+| `set_admin_prices`, `set_partner_prices`, `remove_partner_prices`, `get_jailbreak_payment_price_tiers` | Special prices (3.6). |
 | `admin_set_donation_account`, `admin_set_donation_hidden`, `admin_get_donations` | Donations. |
 | `admin_set_feedback_config` | Feedback topics and recipients. |
 | `send_tokens`, `transfer_position` | Recovery of tokens or ICPSwap positions held by the backend. |

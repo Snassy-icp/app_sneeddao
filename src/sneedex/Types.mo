@@ -847,5 +847,21 @@ module {
         // The cached info
         info : NeuronManagerInfo;
     };
+
+    // ============================================
+    // SPECIAL PRICES (spec/special_prices.md)
+    // ============================================
+
+    /// Admin or partner overrides; null = no special price for that fee.
+    public type SpecialPriceOverrides = {
+        offer_creation_fee_e8s : ?Nat; // ICP e8s; 0 = free, otherwise at least one ICP ledger fee (10_000)
+        auction_cut_bps : ?Nat;        // basis points of the winning bid, at most 5000
+    };
+    public type PriceTier = { #regular; #premium; #admin; #partner };
+    /// The tiers an offer's creator got (recorded from the special-prices upgrade on).
+    public type OfferPriceTiers = {
+        creation_fee : ?PriceTier; // null when no creation fee was charged
+        cut : PriceTier;           // tier of the cut locked in as fee_rate_bps
+    };
 };
 

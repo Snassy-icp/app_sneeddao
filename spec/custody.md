@@ -194,6 +194,21 @@ used by any code path yet.
 | blessed auto-upgrade | 0 | nobody |
 | an op | `op_fee_e8s` (1 ICP), `premium_op_fee_e8s` (0.5 ICP) | the op's payer, into the op's payment subaccount; swept at execution |
 
+**Special prices** (spec/special_prices.md, 2026-10-21): next to the regular and premium op fee,
+an admin price and partner prices (`Prices = { op_fee_e8s : opt nat }`). The fee of an op is the
+lowest of the base fee as before (premium for members), the admin price (when the caller is an
+admin and a person) and the caller's partner price (when it has an entry that has not expired).
+They apply only when the caller pays for its own op (`payer` null or the caller): a named payer
+never lends its special price. Ops on the guardian itself stay free. Methods:
+`set_admin_prices`, `set_partner_prices(principal, { label; prices; expires_at })`,
+`remove_partner_prices` (admins, or an approver when it alone is the threshold: the same
+principals who can change the op fee on their own today; special prices are not an op kind,
+because a new `OpKind` case would change the Candid of `stage_op`, `get_op` and `list_ops`), and
+the public queries `get_special_prices`, `get_special_prices_for(principal)` and
+`get_op_price_tier(op_id)`. Every change is a `guardian_config_update` block (key `admin_prices`,
+or `partner_prices` with `partner`); `guardian_op_stage` and `guardian_op_fee` carry
+`price_tier` (`regular`, `premium`, `admin`, `partner`).
+
 Fees are set by `#set_config` ops and go to the RLL. The payment-subaccount pattern
 ("pay first, the validator checks, the execution charges") works for any DAO service
 granted by proposal, not only custody. A project that only ever needs

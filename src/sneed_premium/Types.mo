@@ -337,5 +337,24 @@ module {
         tierName : Text;                    // Tier name purchased
         durationGrantedNs : Nat;            // Duration of premium granted
     };
+
+    // ============================================
+    // SPECIAL PRICES (spec/special_prices.md)
+    // ============================================
+
+    /// The override of an admin or partner price. Buying premium has one fee, the ICP tier
+    /// price, and tiers are picked by the exact deposited amount, so the override is a share of
+    /// every active ICP tier's price in basis points: 10_000 = the regular price, 5_000 = half,
+    /// 1 = a ten-thousandth. Price of a tier = amountE8s * bps / 10_000 (rounded down).
+    public type SpecialPrices = { icp_tier_price_bps : ?Nat };
+
+    /// Which price a purchase paid (`price_tier`). Buying premium has no premium price, so it
+    /// is regular, admin or partner.
+    public type PriceTier = { #regular; #premium; #admin; #partner };
+
+    public type PartnerPrices = { label_ : Text; prices : SpecialPrices; expires_at : ?Int };
+
+    /// An active ICP tier with what a given principal pays for it.
+    public type IcpTierPrice = { tier : IcpTier; price_e8s : Nat; price_tier : PriceTier };
 };
 

@@ -3,6 +3,7 @@ import { useAuth } from '../../AuthContext';
 import { useAdminCheck } from '../../hooks/useAdminCheck';
 import { useTheme } from '../../contexts/ThemeContext';
 import Header from '../../components/Header';
+import SpecialPricesCard from '../../components/SpecialPricesCard';
 import { Principal } from '@dfinity/principal';
 import { 
     createSneedPremiumActor, 
@@ -192,6 +193,14 @@ export default function SneedPremiumAdmin() {
     useEffect(() => {
         actorRef.current = null;
     }, [identity]);
+
+    // The actor for the Admin & partner prices card (spec/special_prices.md)
+    const [specialActor, setSpecialActor] = useState(null);
+    useEffect(() => {
+        let live = true;
+        getActor().then((a) => { if (live) setSpecialActor(a); }).catch(() => {});
+        return () => { live = false; };
+    }, [getActor]);
     
     const fetchData = useCallback(async () => {
         if (!isAuthenticated || !identity) return;
@@ -2587,6 +2596,21 @@ export default function SneedPremiumAdmin() {
                     </div>
                 </section>
                 
+                {/* Admin & partner prices: a share of every ICP tier's price (bps, 10000 = regular) */}
+                {specialActor && (
+                    <SpecialPricesCard
+                        actor={specialActor}
+                        fields={[{
+                            key: 'icp_tier_price_bps',
+                            label: 'Share of every ICP tier price',
+                            unit: 'bps',
+                            decimals: 0,
+                            regular: 10000n,
+                            hint: '10000 = regular price, 5000 = half, 100 = 1%. A tier then costs amount × bps / 10000; that exact deposit buys it.',
+                        }]}
+                    />
+                )}
+
                 {/* VP Tiers */}
                 <section style={styles.section}>
                     <h2 style={styles.sectionTitle}>

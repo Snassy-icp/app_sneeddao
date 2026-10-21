@@ -177,7 +177,9 @@ describe('a buyout with a creation fee and a marketplace cut', () => {
     expect(created).toEqual({
       i: created.i, t: 'sneedex_offer_create', caller: P(alice), offer_id: id, price_ledger: P(icpId), fee_rate_bps: 1000n, buyout: 2n * E8,
       creation_fee_e8s: 10_000_000n, creation_fee_icp_tx: fee.icp_tx,
+      cut_price_tier: 'regular', price_tier: 'regular', // special prices (spec/special_prices.md)
     });
+    expect(fee.price_tier).toBe('regular');
     // nothing private (note_to_buyer) and no notes at all
     expect(JSON.stringify(blocks, (_, v) => (typeof v === 'bigint' ? v.toString() : v))).not.toMatch(/secret|for the log/);
     const asset = { type: 'icrc1', ledger: P(tokenAId), amount: 100_000n };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../AuthContext';
 import { useAdminCheck } from '../../hooks/useAdminCheck';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -12,6 +12,7 @@ import { createActor as createICRC1Actor } from 'external/icrc1_ledger';
 import { PrincipalDisplay } from '../../utils/PrincipalUtils';
 import InfoModal from '../../components/InfoModal';
 import ConfirmationModal from '../../ConfirmationModal';
+import SpecialPricesCard from '../../components/SpecialPricesCard';
 import { 
     FaCog, FaPercent, FaWallet, FaSave, FaSpinner, FaUserShield, 
     FaPlus, FaTrash, FaClock, FaCubes, FaChartLine, FaLayerGroup,
@@ -146,6 +147,11 @@ export default function SneedexAdmin() {
         if (!identity) return null;
         return createSneedexActor(identity);
     }, [identity]);
+    const sneedexActorForPrices = useMemo(() => (identity ? createSneedexActor(identity) : null), [identity]);
+    const specialPriceFields = useMemo(() => [
+        { key: 'offer_creation_fee_e8s', label: 'Offer creation fee', decimals: 8, unit: 'ICP', regular: offerCreationFee, premium: premiumOfferCreationFee, hint: '0, or at least 0.0001 ICP' },
+        { key: 'auction_cut_bps', label: 'Auction cut', decimals: 0, unit: 'bps', regular: feeRate === null ? null : BigInt(feeRate), premium: premiumAuctionCutBps > 0 ? BigInt(premiumAuctionCutBps) : null, hint: 'basis points, at most 5000' },
+    ], [offerCreationFee, premiumOfferCreationFee, feeRate, premiumAuctionCutBps]);
     
     const fetchData = useCallback(async () => {
         if (!isAuthenticated || !identity) return;
@@ -1722,6 +1728,14 @@ export default function SneedexAdmin() {
                         </button>
                     </div>
                 </section>
+
+                {/* Admin & partner prices (spec/special_prices.md) */}
+                {identity && (
+                    <SpecialPricesCard
+                        actor={sneedexActorForPrices}
+                        fields={specialPriceFields}
+                    />
+                )}
                 
                 {/* Min Increment Settings */}
                 <section style={styles.section}>

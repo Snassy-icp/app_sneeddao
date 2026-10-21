@@ -28,6 +28,7 @@ import T "Types";
 import CircularBuffer "CircularBuffer";
 import PremiumClient "../PremiumClient";
 import IngressGuard "../IngressGuard";
+import SP "../SpecialPrices";
 import ApiDoc "ApiDoc";
 import Timer "mo:base/Timer";
 
@@ -92,6 +93,10 @@ shared (deployer) persistent actor class SneedLock() = this {
   transient let minute_ns : Nat64 = 60 * second_ns; // 1 minute in nanoseconds
   transient let hour_ns : Nat64 = 60 * minute_ns; // 1 hour in nanoseconds
   transient let day_ns : Nat64 = 24 * hour_ns; // 1 day in nanoseconds
+  /// Special-price overrides (spec/special_prices.md): one optional ICP amount (e8s) per lock fee.
+  public type SpecialLockPrices = { token_lock_fee_icp_e8s : ?Nat; position_lock_fee_icp_e8s : ?Nat };
+  public type SpecialLockPartner = SP.Partner<SpecialLockPrices>;
+
   // dex consts
   transient let dex_icpswap : T.Dex = 1;
   // claim queue consts
@@ -156,6 +161,14 @@ shared (deployer) persistent actor class SneedLock() = this {
   // Payment log stable storage
   stable var payment_log : [T.PaymentLogEntry] = [];
   stable var next_payment_log_id : Nat = 0;
+
+  // Special prices (spec/special_prices.md): an admin price for this canister's admins (people
+  // only) and partner prices per principal; each override is optional and the lowest applicable
+  // price among regular, premium, admin and partner is charged. Nothing set = as before.
+  stable var special_admin_prices : SpecialLockPrices = { token_lock_fee_icp_e8s = null; position_lock_fee_icp_e8s = null };
+  stable var special_partner_prices : Map.Map<Principal, SP.Partner<SpecialLockPrices>> = Map.new();
+  // The price tier each payment log entry paid (payment id -> tier), for payments made since special prices.
+  stable var payment_price_tiers : Map.Map<Nat, SP.Tier> = Map.new();
 
   // Dissolve delays (spec/sneed_lock_v2.md, section 1; rules in Dissolve.mo). One entry per
   // lock that has or had a delay, kept after the lock is archived so its history reads
@@ -1430,7 +1443,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
       // Step 1: Verify ICP funds are available (balance check only)
       let icp_verify_result = await* verifyLockFeeIcp(caller, correlation_id, false);
-      let fee_to_charge = switch (icp_verify_result) {
+      let fee_and_tier = switch (icp_verify_result) {
           case (#Err(e)) {
             let create_lock_error : CreateLockError = {
               message = "ICP payment verification failed: " # e;
@@ -1442,6 +1455,7 @@ shared (deployer) persistent actor class SneedLock() = this {
           };
           case (#Ok(fee)) { fee };
       };
+      let (fee_to_charge, fee_tier) = fee_and_tier;
 
       // Step 2: Create the lock. With a delay its record carries NEVER until it dissolves.
       let lock = add_new_lock_for_principal(caller, icrc1_ledger_canister_id, amount, if (delay > 0) { D.NEVER } else { expires_at });
@@ -1461,7 +1475,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
       // Step 3: Charge the ICP fee (only after lock is successfully created)
       if (fee_to_charge > 0) {
-        let charge_result = await chargeLockFeeIcp(caller, correlation_id, fee_to_charge, #TokenLock);
+        let charge_result = await chargeLockFeeIcp(caller, correlation_id, fee_to_charge, #TokenLock, fee_tier);
         switch (charge_result) {
           case (#Err(e)) {
             // Lock was created but fee charge failed - log this but don't fail the lock
@@ -1619,7 +1633,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
             // Step 1: Verify ICP funds are available (balance check only)
             let icp_verify_result = await* verifyLockFeeIcp(caller, correlation_id, true);
-            let fee_to_charge = switch (icp_verify_result) {
+            let fee_and_tier = switch (icp_verify_result) {
                 case (#Err(e)) {
                   return #Err({
                     message = "ICP payment verification failed: " # e;
@@ -1628,6 +1642,7 @@ shared (deployer) persistent actor class SneedLock() = this {
                 };
                 case (#Ok(fee)) { fee };
             };
+            let (fee_to_charge, fee_tier) = fee_and_tier;
 
             // Step 2: Create the position lock. With a delay its record carries NEVER until it dissolves.
             let new_position_lock = add_new_position_lock_for_principal(
@@ -1649,7 +1664,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
             // Step 3: Charge the ICP fee (only after lock is successfully created)
             if (fee_to_charge > 0) {
-              let charge_result = await chargeLockFeeIcp(caller, correlation_id, fee_to_charge, #PositionLock);
+              let charge_result = await chargeLockFeeIcp(caller, correlation_id, fee_to_charge, #PositionLock, fee_tier);
               switch (charge_result) {
                 case (#Err(e)) {
                   // Lock was created but fee charge failed - log this but don't fail the lock
@@ -3612,35 +3627,110 @@ shared (deployer) persistent actor class SneedLock() = this {
     is_premium : Bool;
   } {
     let is_premium = await* checkUserPremium(user);
-    
-    let fee_e8s = if (is_position_lock) {
-      if (is_premium) { premium_position_lock_fee_icp_e8s } else { position_lock_fee_icp_e8s }
-    } else {
-      if (is_premium) { premium_token_lock_fee_icp_e8s } else { token_lock_fee_icp_e8s }
+    // the lowest applicable price, special prices included (capped to the Nat64 of this answer)
+    let (fee, _) = effectiveLockFee(user, is_premium, is_position_lock);
+    { fee_e8s = Nat64.fromNat(Nat.min(fee, 18_446_744_073_709_551_615)); is_premium };
+  };
+
+  ////////////////
+  // Special prices (spec/special_prices.md)
+  ////////////////
+
+  /// The lowest applicable lock fee for `user` and the tier that gave it: regular, premium (members),
+  /// admin (admins who are people) or partner (an entry that has not expired).
+  private func effectiveLockFee(user : Principal, is_premium : Bool, is_position_lock : Bool) : (Nat, SP.Tier) {
+    let pick = func(p : SpecialLockPrices) : ?Nat { if (is_position_lock) { p.position_lock_fee_icp_e8s } else { p.token_lock_fee_icp_e8s } };
+    let regular = Nat64.toNat(if (is_position_lock) { position_lock_fee_icp_e8s } else { token_lock_fee_icp_e8s });
+    let premium = if (is_premium) { ?Nat64.toNat(if (is_position_lock) { premium_position_lock_fee_icp_e8s } else { premium_token_lock_fee_icp_e8s }) } else { null };
+    let admin = if (isAdmin(user) and SP.isPerson(user)) { pick(special_admin_prices) } else { null };
+    let partner = switch (SP.activePartner(special_partner_prices, user, Time.now())) { case (?e) { pick(e.prices) }; case null { null } };
+    SP.lowest(regular, premium, admin, partner);
+  };
+
+  private func specialPricesFields(p : SpecialLockPrices) : [(Text, ?Nat)] {
+    [("token_lock_fee_icp_e8s", p.token_lock_fee_icp_e8s), ("position_lock_fee_icp_e8s", p.position_lock_fee_icp_e8s)];
+  };
+
+  private func validSpecialPrices(p : SpecialLockPrices) : ?Text {
+    let max64 = 18_446_744_073_709_551_615;
+    for ((k, v) in specialPricesFields(p).vals()) {
+      switch (v) { case (?n) { if (n > max64) { return ?(k # " does not fit in 64 bits") } }; case null {} };
     };
-    
-    { fee_e8s; is_premium };
+    null;
+  };
+
+  /// Admin: set the admin prices (applies to admins who are people; null = no admin price for that fee).
+  public shared ({ caller }) func set_admin_prices(prices : SpecialLockPrices) : async { #ok; #err : Text } {
+    if (not isAdmin(caller)) { return #err("Only admins can set admin prices") };
+    switch (validSpecialPrices(prices)) { case (?e) { return #err(e) }; case null {} };
+    let old = special_admin_prices;
+    special_admin_prices := prices;
+    icrc3_config(caller, get_next_correlation_id(), "admin_prices", SP.overridesValue(specialPricesFields(prices)), ?SP.overridesValue(specialPricesFields(old)));
+    #ok;
+  };
+
+  /// Admin: add or replace a partner's prices (public label, overrides, optional expiry in ns).
+  public shared ({ caller }) func set_partner_prices(partner : Principal, entry : SpecialLockPartner) : async { #ok; #err : Text } {
+    if (not isAdmin(caller)) { return #err("Only admins can set partner prices") };
+    switch (SP.validatePartner(special_partner_prices, partner, entry, Time.now())) { case (?e) { return #err(e) }; case null {} };
+    switch (validSpecialPrices(entry.prices)) { case (?e) { return #err(e) }; case null {} };
+    let old = Map.get(special_partner_prices, phash, partner);
+    Map.set(special_partner_prices, phash, partner, entry);
+    icrc3_partner_config(caller, partner, SP.partnerValue(entry.label_, specialPricesFields(entry.prices), entry.expires_at),
+      switch (old) { case (?o) { ?SP.partnerValue(o.label_, specialPricesFields(o.prices), o.expires_at) }; case null { null } });
+    #ok;
+  };
+
+  /// Admin: remove a partner's prices.
+  public shared ({ caller }) func remove_partner_prices(partner : Principal) : async { #ok; #err : Text } {
+    if (not isAdmin(caller)) { return #err("Only admins can remove partner prices") };
+    switch (Map.remove(special_partner_prices, phash, partner)) {
+      case (?o) {
+        icrc3_partner_config(caller, partner, #Text("removed"), ?SP.partnerValue(o.label_, specialPricesFields(o.prices), o.expires_at));
+        #ok;
+      };
+      case null { #err("No partner prices for " # Principal.toText(partner)) };
+    };
+  };
+
+  private func icrc3_partner_config(caller : Principal, partner : Principal, value : T3.Value, old_value : ?T3.Value) {
+    let base : [(Text, T3.Value)] = [("cid", #Nat(get_next_correlation_id())), ("caller", Icrc3Log.principal(caller)), ("key", #Text("partner_prices")), ("partner", Icrc3Log.principal(partner)), ("value", value)];
+    icrc3_add("sneedlock_config_update", switch (old_value) { case (?o) { Array.append(base, [("old_value", o)]) }; case null { base } });
+  };
+
+  /// Public: the admin prices and every partner entry (expired ones too, with their expiry).
+  public query func get_special_prices() : async { admin_prices : SpecialLockPrices; partners : [SP.PartnerListing<SpecialLockPrices>] } {
+    { admin_prices = special_admin_prices; partners = SP.listing(special_partner_prices) };
+  };
+
+  /// Public: the special prices that apply to `p` (admin prices when it is an admin who is a person;
+  /// its partner entry when it has one that has not expired).
+  public query func get_special_prices_for(p : Principal) : async { admin_prices : ?SpecialLockPrices; partner : ?SpecialLockPartner } {
+    {
+      admin_prices = if (isAdmin(p) and SP.isPerson(p)) { ?special_admin_prices } else { null };
+      partner = SP.activePartner(special_partner_prices, p, Time.now());
+    };
+  };
+
+  /// Admin: the price tier of payment log entries, by payment id (null for payments made before special prices).
+  public shared query ({ caller }) func admin_get_payment_price_tiers(ids : [Nat]) : async [(Nat, ?Text)] {
+    assert (isAdmin(caller));
+    Array.map<Nat, (Nat, ?Text)>(ids, func(id) { (id, switch (Map.get(payment_price_tiers, nhash, id)) { case (?t) { ?SP.tierText(t) }; case null { null } }) });
   };
 
   // Collect ICP lock fee from user's payment subaccount
   // Verify that user has sufficient ICP in payment subaccount (balance check only)
   // Returns the fee amount if sufficient, or error if insufficient
-  private func verifyLockFeeIcp(caller : Principal, correlation_id : Nat, is_position_lock : Bool) : async* { #Ok : Nat; #Err : Text } {
-    // Check premium status and get effective fee
+  private func verifyLockFeeIcp(caller : Principal, correlation_id : Nat, is_position_lock : Bool) : async* { #Ok : (Nat, SP.Tier); #Err : Text } {
+    // Check premium status and get effective fee (the lowest applicable price, spec/special_prices.md)
     let is_premium = await* checkUserPremium(caller);
-    let fee_e8s = if (is_position_lock) {
-      if (is_premium) { premium_position_lock_fee_icp_e8s } else { position_lock_fee_icp_e8s }
-    } else {
-      if (is_premium) { premium_token_lock_fee_icp_e8s } else { token_lock_fee_icp_e8s }
-    };
+    let (fee_nat, tier) = effectiveLockFee(caller, is_premium, is_position_lock);
     
     // If fee is 0, no payment needed
-    if (fee_e8s == 0) {
+    if (fee_nat == 0) {
       log_info(caller, correlation_id, "Lock fee is 0, no payment required");
-      return #Ok(0);
+      return #Ok((0, tier));
     };
-    
-    let fee_nat = Nat64.toNat(fee_e8s);
     
     // Check payment balance
     let subaccount = userPaymentSubaccount(caller);
@@ -3658,13 +3748,13 @@ shared (deployer) persistent actor class SneedLock() = this {
       return #Err("Insufficient ICP payment. Required: " # Nat.toText(fee_nat) # " e8s, Available: " # Nat.toText(balance) # " e8s");
     };
     
-    log_info(caller, correlation_id, "ICP payment verified: " # Nat.toText(fee_nat) # " e8s available");
-    #Ok(fee_nat);
+    log_info(caller, correlation_id, "ICP payment verified: " # Nat.toText(fee_nat) # " e8s available (" # SP.tierText(tier) # " price)");
+    #Ok((fee_nat, tier));
   };
 
   // Charge the ICP lock fee (transfer from user's payment subaccount to main account)
   // Should only be called after lock is successfully created
-  private func chargeLockFeeIcp(caller : Principal, correlation_id : Nat, fee_nat : Nat, lock_type : T.LockType) : async { #Ok : Nat; #Err : Text } {
+  private func chargeLockFeeIcp(caller : Principal, correlation_id : Nat, fee_nat : Nat, lock_type : T.LockType, tier : SP.Tier) : async { #Ok : Nat; #Err : Text } {
     // If fee is 0, nothing to charge
     if (fee_nat == 0) {
       return #Ok(0);
@@ -3719,6 +3809,7 @@ shared (deployer) persistent actor class SneedLock() = this {
             correlation_id = correlation_id;
           };
           payment_log := Array.append(payment_log, [payment_entry]);
+          Map.set(payment_price_tiers, nhash, payment_entry.id, tier);
           next_payment_log_id += 1;
           
           icrc3_add("sneedlock_fee_pay", [
@@ -3726,6 +3817,7 @@ shared (deployer) persistent actor class SneedLock() = this {
             ("lock_type", #Text(switch (lock_type) { case (#TokenLock) "token"; case (#PositionLock) "position" })),
             ("fee_e8s", #Nat(fee_nat)), ("amount_e8s", #Nat(transfer_amount)),
             ("to", Icrc3Log.account(recipient_owner, icp_fee_recipient_subaccount)), ("icp_tx", #Nat(blockIdx)),
+            ("price_tier", #Text(SP.tierText(tier))),
           ]);
           log_info(caller, correlation_id, "ICP lock fee charged: " # Nat.toText(transfer_amount) # " e8s, block: " # Nat.toText(blockIdx));
           #Ok(fee_nat);
@@ -4610,6 +4702,12 @@ shared (deployer) persistent actor class SneedLock() = this {
     #admin_clear_failed_claim_requests : Any;
     #admin_get_payment_log : Any;
     #admin_get_payment_log_count : Any;
+    #admin_get_payment_price_tiers : Any;
+    #get_special_prices : Any;
+    #get_special_prices_for : Any;
+    #remove_partner_prices : Any;
+    #set_admin_prices : Any;
+    #set_partner_prices : Any;
     #admin_get_pool_unused_balance : Any;
     #admin_icrc3_import_history : Any;
     #admin_icrc3_register_archives_now : Any;
@@ -4721,6 +4819,9 @@ shared (deployer) persistent actor class SneedLock() = this {
         #get_api_doc _
         or #admin_get_payment_log _
         or #admin_get_payment_log_count _
+        or #admin_get_payment_price_tiers _
+        or #get_special_prices _
+        or #get_special_prices_for _
         or #getPaymentSubaccount _
         or #get_admin_list _
         or #get_claim_request_status _

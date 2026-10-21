@@ -408,7 +408,7 @@ describe('mints', () => {
     expect(txs.map((t) => t.amount)).toEqual([CYCLES_ICP + ICP_FEE, share, daoCut, CYCLES_ICP]);
     expect(strip(await since(mark))).toEqual([{
       t: 'sneedapp_mint', caller: P(carol), canister_id: P(demoMint), app_id: 'demo', numeric_app_id: 0n, publisher_id: 1n,
-      ver: { major: 1n, minor: 1n, patch: 0n }, wasm_sha256: sha(wasmV2), wasm_size: BigInt(wasmV2.length), price_e8s: ICP, premium: 0n,
+      ver: { major: 1n, minor: 1n, patch: 0n }, wasm_sha256: sha(wasmV2), wasm_size: BigInt(wasmV2.length), price_e8s: ICP, premium: 0n, price_tier: 'regular',
       cycles_icp_e8s: CYCLES_ICP, cycles_tx: txs[0].index,
       publisher_share_e8s: share, publisher_share_to: A(factoryId, pubSub1), publisher_share_tx: txs[1].index,
       dao_cut_e8s: daoCut, dao_cut_to: A(treasury), dao_cut_tx: txs[2].index,
@@ -432,13 +432,13 @@ describe('mints', () => {
     const p1 = 80_000_000n - CYCLES_ICP - 4n * ICP_FEE;
     expect(b1).toMatchObject({
       t: 'sneedapp_mint', caller: P(bob), canister_id: P(bobs), ver: { major: 1n, minor: 0n, patch: 0n }, wasm_sha256: sha(wasmV1),
-      price_e8s: 80_000_000n, premium: 1n, dao_cut_e8s: (p1 * 2500n) / 10_000n, publisher_share_e8s: p1 - (p1 * 2500n) / 10_000n,
+      price_e8s: 80_000_000n, premium: 1n, price_tier: 'premium', dao_cut_e8s: (p1 * 2500n) / 10_000n, publisher_share_e8s: p1 - (p1 * 2500n) / 10_000n,
       cycles_tx: txs[0].index, publisher_share_tx: txs[1].index, dao_cut_tx: txs[2].index,
     });
     const p2 = ICP - CYCLES_ICP - 3n * ICP_FEE;
     expect(strip([b2])[0]).toEqual({
       t: 'sneedapp_mint', caller: P(dave), canister_id: P(daves), app_id: 'dao-app', numeric_app_id: 1n, publisher_id: 0n,
-      ver: { major: 1n, minor: 0n, patch: 0n }, wasm_sha256: sha(wasmV1), wasm_size: BigInt(wasmV1.length), price_e8s: ICP, premium: 0n,
+      ver: { major: 1n, minor: 0n, patch: 0n }, wasm_sha256: sha(wasmV1), wasm_size: BigInt(wasmV1.length), price_e8s: ICP, premium: 0n, price_tier: 'regular',
       cycles_icp_e8s: CYCLES_ICP, cycles_tx: txs[4].index, publisher_share_e8s: 0n,
       dao_cut_e8s: p2, dao_cut_to: A(treasury), dao_cut_tx: txs[5].index, fees_e8s: 3n * ICP_FEE, cycles_received: 1n * T,
     });
@@ -452,7 +452,7 @@ describe('mints', () => {
     const [b] = strip(await since(mark));
     expect(b).toEqual({
       t: 'sneedapp_mint', caller: P(eve), canister_id: P(id), app_id: 'dao-app', numeric_app_id: 1n, publisher_id: 0n,
-      ver: { major: 1n, minor: 0n, patch: 0n }, wasm_sha256: sha(wasmV1), wasm_size: BigInt(wasmV1.length), price_e8s: 0n, premium: 0n,
+      ver: { major: 1n, minor: 0n, patch: 0n }, wasm_sha256: sha(wasmV1), wasm_size: BigInt(wasmV1.length), price_e8s: 0n, premium: 0n, price_tier: 'regular',
     });
   }, 120_000);
 
@@ -465,7 +465,7 @@ describe('mints', () => {
     const p = ICP - CYCLES_ICP - 3n * ICP_FEE;
     expect(strip(await since(mark))).toEqual([{
       t: 'sneedapp_mint', caller: P(alice), canister_id: P(id), app_id: 'sneed-icp-staking-bot', numeric_app_id: 0n, publisher_id: 0n,
-      ver: { major: 0n, minor: 9n, patch: 5n }, wasm_sha256: sha(botWasm), wasm_size: BigInt(botWasm.length), price_e8s: ICP, premium: 0n,
+      ver: { major: 0n, minor: 9n, patch: 5n }, wasm_sha256: sha(botWasm), wasm_size: BigInt(botWasm.length), price_e8s: ICP, premium: 0n, price_tier: 'regular',
       cycles_icp_e8s: CYCLES_ICP, cycles_tx: txs[0].index, publisher_share_e8s: 0n, dao_cut_e8s: p, dao_cut_to: A(treasury), dao_cut_tx: txs[1].index,
       fees_e8s: 3n * ICP_FEE, cycles_received: 1n * T, method: 'createNeuronManager',
     }]);
@@ -489,7 +489,7 @@ describe('refunds of aborted mints', () => {
     expect(blocks).toHaveLength(1);
     const { canister_id, ...rest } = blocks[0];
     expect(rest).toEqual({
-      t: 'sneedapp_mint_refund', caller: P(carol), app_id: 'demo', ver: { major: 1n, minor: 1n, patch: 0n }, price_e8s: ICP,
+      t: 'sneedapp_mint_refund', caller: P(carol), app_id: 'demo', ver: { major: 1n, minor: 1n, patch: 0n }, price_e8s: ICP, price_tier: 'regular',
       reason: 'Failed to transfer DAO cut', payment_txs: [txs[0].index, txs[1].index], moved_e8s: CYCLES_ICP + ICP_FEE + share,
       returned_e8s: CYCLES_ICP + share - ICP_FEE, stuck_e8s: 0n, refund_txs: [txs[2].index, txs[3].index],
     });

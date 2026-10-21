@@ -151,7 +151,7 @@ Fees:
 
 | btype | when | tx fields |
 |-------|------|-----------|
-| `sneedlock_fee_pay` | the ICP lock fee was transferred from the payer's payment subaccount | `cid`, `caller`, `payer`, `lock_type` Text (`token` or `position`), `fee_e8s` (fee charged), `amount_e8s` (amount transferred, fee minus ledger fee), `to` Account, `icp_tx` |
+| `sneedlock_fee_pay` | the ICP lock fee was transferred from the payer's payment subaccount | `cid`, `caller`, `payer`, `lock_type` Text (`token` or `position`), `fee_e8s` (fee charged), `amount_e8s` (amount transferred, fee minus ledger fee), `to` Account, `icp_tx`, `price_tier` Text (`regular`, `premium`, `admin`, `partner`; since special prices, spec/special_prices.md) |
 
 Admin and configuration (only callable by admins, governance or controllers):
 
@@ -167,7 +167,9 @@ Admin and configuration (only callable by admins, governance or controllers):
 `position_lock_fee_icp_e8s`, `premium_token_lock_fee_icp_e8s`,
 `premium_position_lock_fee_icp_e8s`, `icp_fee_recipient` (Text account),
 `sneed_premium_canister_id`, `admin_added`, `admin_removed`, `claim_history_cleared` and
-`failed_claim_history_cleared` (value = number of entries), `icrc3_proposal_neuron` (Blob, or Text `none`), and the
+`failed_claim_history_cleared` (value = number of entries), `icrc3_proposal_neuron` (Blob, or Text `none`),
+`admin_prices` (Map of the set overrides) and `partner_prices` (extra field `partner`; value Map
+`{ label; prices; expires_at? }` or Text `removed`; spec/special_prices.md), and the
 ICRC-3 settings below (`icrc3_max_live_blocks` and so on).
 
 Housekeeping (`clear_expired_locks`, archiving expired locks) is not logged: expiry is

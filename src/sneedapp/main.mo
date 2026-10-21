@@ -24,6 +24,8 @@ import T "../sneed_bots/sneed_icp_staking_bot/Types";
 import PremiumClient "../PremiumClient";
 import IngressGuard "../IngressGuard";
 import ApiDoc "ApiDoc";
+import SpecialPrices "../SpecialPrices";
+import Map "mo:map/Map";
 
 shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
@@ -129,6 +131,14 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     
     // Premium membership cache (stable Map - no preupgrade/postupgrade needed)
     var premiumCache = PremiumClient.emptyCache();
+
+    // Special prices (spec/special_prices.md): an admin price and partner prices for the mint fee
+    // of Sneed DAO apps (publisher 0, and the legacy createNeuronManager). Third-party publishers'
+    // app prices are theirs and are never overridden. Unset = no effect.
+    type SpecialMintPrices = { mint_fee_e8s: ?Nat };
+    type PartnerMintPrices = SpecialPrices.Partner<SpecialMintPrices>;
+    var specialAdminPrices: SpecialMintPrices = { mint_fee_e8s = null };
+    var specialPartners: Map.Map<Principal, PartnerMintPrices> = Map.new<Principal, PartnerMintPrices>();
 
     // ============================================
     // MULTI-APP TYPES
@@ -1137,6 +1147,92 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         icrc3_config_change(caller, "premium_creation_fee_e8s", n64(feeE8s), n64(premiumCreationFeeE8s));
         premiumCreationFeeE8s := feeE8s;
     };
+
+    // ============================================
+    // SPECIAL PRICES (spec/special_prices.md)
+    // ============================================
+    // The mint fee of a Sneed DAO app (publisher 0, and createNeuronManager) is the lowest of the
+    // regular price, the premium price (members), the admin price (people on this canister's admin
+    // list) and the caller's partner price (until its expiry). Ties keep the earlier tier.
+
+    func specialPricesFields(p: SpecialMintPrices): [(Text, ?Nat)] { [("mint_fee_e8s", p.mint_fee_e8s)] };
+
+    func validSpecialPrices(p: SpecialMintPrices): ?Text {
+        switch (p.mint_fee_e8s) {
+            case (?v) { if (v > 18_446_744_073_709_551_615) { return ?"mint_fee_e8s is larger than a nat64" } };
+            case null {};
+        };
+        null;
+    };
+
+    /// The admin and partner overrides of the mint fee that apply to `who` now.
+    func specialMintOverrides(who: Principal): (?Nat, ?Nat) {
+        let admin = if (isAdmin(who) and SpecialPrices.isPerson(who)) { specialAdminPrices.mint_fee_e8s } else { null };
+        let partner = switch (SpecialPrices.activePartner(specialPartners, who, Time.now())) {
+            case (?e) { e.prices.mint_fee_e8s };
+            case null { null };
+        };
+        (admin, partner);
+    };
+
+    /// What `who` pays for a mint whose regular and premium prices are given. Members pay the
+    /// premium price as before; special prices apply only to Sneed DAO mints (`daoFee`).
+    func effectiveMintPrice(who: Principal, regular: Nat64, premium: Nat64, isPremiumMember: Bool, daoFee: Bool): (Nat64, SpecialPrices.Tier) {
+        let base: Nat64 = if (isPremiumMember) { premium } else { regular };
+        let baseTier: SpecialPrices.Tier = if (isPremiumMember) { #premium } else { #regular };
+        if (not daoFee) { return (base, baseTier) };
+        let (admin, partner) = specialMintOverrides(who);
+        let (price, tier) = SpecialPrices.lowest(Nat64.toNat(base), null, admin, partner);
+        (Nat64.fromNat(price), switch (tier) { case (#regular) baseTier; case t t });
+    };
+
+    public shared ({ caller }) func set_admin_prices(prices: SpecialMintPrices): async { #ok; #err: Text } {
+        if (not isAdminOrGovernance(caller)) { return #err("Only admins can set special prices") };
+        switch (validSpecialPrices(prices)) { case (?e) { return #err(e) }; case null {} };
+        let old = specialAdminPrices;
+        specialAdminPrices := prices;
+        icrc3_config_change(caller, "admin_prices", SpecialPrices.overridesValue(specialPricesFields(prices)), SpecialPrices.overridesValue(specialPricesFields(old)));
+        #ok;
+    };
+
+    public shared ({ caller }) func set_partner_prices(partner: Principal, entry: PartnerMintPrices): async { #ok; #err: Text } {
+        if (not isAdminOrGovernance(caller)) { return #err("Only admins can set special prices") };
+        switch (SpecialPrices.validatePartner(specialPartners, partner, entry, Time.now())) { case (?e) { return #err(e) }; case null {} };
+        switch (validSpecialPrices(entry.prices)) { case (?e) { return #err(e) }; case null {} };
+        let old = Map.get(specialPartners, Map.phash, partner);
+        Map.set(specialPartners, Map.phash, partner, entry);
+        let value = SpecialPrices.partnerValue(entry.label_, specialPricesFields(entry.prices), entry.expires_at);
+        icrc3_add("sneedapp_config_update", Array.flatten<(Text, T3.Value)>([
+            [("caller", pv(caller)), ("key", #Text("partner_prices")), ("partner", pv(partner)), ("value", value)],
+            switch (old) { case (?o) [("old_value", SpecialPrices.partnerValue(o.label_, specialPricesFields(o.prices), o.expires_at))]; case null [] },
+        ]));
+        #ok;
+    };
+
+    public shared ({ caller }) func remove_partner_prices(partner: Principal): async { #ok; #err: Text } {
+        if (not isAdminOrGovernance(caller)) { return #err("Only admins can set special prices") };
+        switch (Map.remove(specialPartners, Map.phash, partner)) {
+            case null { #err("No partner prices for this principal") };
+            case (?o) {
+                icrc3_add("sneedapp_config_update", [
+                    ("caller", pv(caller)), ("key", #Text("partner_prices")), ("partner", pv(partner)), ("value", #Text("removed")),
+                    ("old_value", SpecialPrices.partnerValue(o.label_, specialPricesFields(o.prices), o.expires_at)),
+                ]);
+                #ok;
+            };
+        };
+    };
+
+    public query func get_special_prices(): async { admin_prices: SpecialMintPrices; partners: [SpecialPrices.PartnerListing<SpecialMintPrices>] } {
+        { admin_prices = specialAdminPrices; partners = SpecialPrices.listing(specialPartners) };
+    };
+
+    public query func get_special_prices_for(who: Principal): async { admin_prices: ?SpecialMintPrices; partner: ?PartnerMintPrices } {
+        {
+            admin_prices = if (isAdmin(who) and SpecialPrices.isPerson(who)) { ?specialAdminPrices } else { null };
+            partner = SpecialPrices.activePartner(specialPartners, who, Time.now());
+        };
+    };
     
     // Get the Sneed Premium canister ID
     public query func getSneedPremiumCanisterId(): async ?Principal {
@@ -1959,13 +2055,14 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         var trackedIcpTransferFeesE8s: Nat64 = 0;
         var trackedCyclesReceivedFromCmc: Nat = 0;
         var wasPremium = false;
+        var priceTier: SpecialPrices.Tier = #regular;
         let cyclesBalanceBefore = Cycles.balance();
         // ledger blocks of the payment's transfers, and the CMC's answer, for the log
         var cyclesTx: Nat = 0;
         var feeTx: ?(Nat, T.Account) = null;
         var cyclesReceivedLogged: ?Nat = null;
         let what = func(price: Nat64): [(Text, T3.Value)] {
-            [("ver", mintVer), ("price_e8s", n64(price)), ("method", #Text("createNeuronManager"))];
+            [("ver", mintVer), ("price_e8s", n64(price)), ("price_tier", #Text(SpecialPrices.tierText(priceTier))), ("method", #Text("createNeuronManager"))];
         };
         let payFields = func(): [(Text, T3.Value)] {
             Array.flatten<(Text, T3.Value)>([
@@ -1998,12 +2095,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             };
             wasPremium := isPremiumMember;
             
-            // Determine the applicable fee (premium members get a discount)
-            let applicableFeeE8s: Nat64 = if (isPremiumMember) {
-                premiumCreationFeeE8s;
-            } else {
-                creationFeeE8s;
-            };
+            // Determine the applicable fee (premium members get a discount; special prices, spec/special_prices.md)
+            let (applicableFeeE8s, appliedTier) = effectiveMintPrice(caller, creationFeeE8s, premiumCreationFeeE8s, isPremiumMember, true);
+            priceTier := appliedTier;
             
             // Check user's balance on their subaccount
             let userBalance = await ledger.icrc1_balance_of({
@@ -2179,7 +2273,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
         icrc3_add("sneedapp_mint", Array.flatten<(Text, T3.Value)>([
             [("caller", pv(caller)), ("canister_id", pv(canisterId)), ("app_id", #Text(STAKING_BOT_APP_ID)), ("numeric_app_id", #Nat(0)), ("publisher_id", #Nat(0)),
-             ("ver", mintVer), ("wasm_sha256", #Text(wasmSha)), ("wasm_size", #Nat(wasm.size())), ("price_e8s", n64(trackedIcpPaidE8s)), ("premium", flag(wasPremium))],
+             ("ver", mintVer), ("wasm_sha256", #Text(wasmSha)), ("wasm_size", #Nat(wasm.size())), ("price_e8s", n64(trackedIcpPaidE8s)), ("premium", flag(wasPremium)), ("price_tier", #Text(SpecialPrices.tierText(priceTier)))],
             if (paid) payFields() else [],
             opt("cycles_received", switch (cyclesReceivedLogged) { case (?c) ?#Nat(c); case null null }),
             [("method", #Text("createNeuronManager"))],
@@ -3032,13 +3126,14 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         var trackedPublisherRevenueE8s: Nat64 = 0;
         let cyclesBalanceBefore = Cycles.balance();
         var wasPremium = false;
+        var priceTier: SpecialPrices.Tier = #regular;
         // ledger blocks of the payment's transfers (with the accounts paid), and the CMC's answer, for the log
         var cyclesTx: Nat = 0;
         var pubTx: ?(Nat, T.Account) = null;
         var daoTx: ?(Nat, T.Account) = null;
         var cyclesReceivedLogged: ?Nat = null;
         let what = func(price: Nat64): [(Text, T3.Value)] {
-            [("ver", mintVer), ("price_e8s", n64(price))];
+            [("ver", mintVer), ("price_e8s", n64(price)), ("price_tier", #Text(SpecialPrices.tierText(priceTier)))];
         };
         let payFields = func(): [(Text, T3.Value)] {
             Array.flatten<(Text, T3.Value)>([
@@ -3072,11 +3167,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             };
             wasPremium := isPremiumMember;
             
-            let applicableFeeE8s: Nat64 = if (isPremiumMember) {
-                app.premiumMintPriceE8s;
-            } else {
-                app.mintPriceE8s;
-            };
+            // special prices apply to Sneed DAO apps only (spec/special_prices.md)
+            let (applicableFeeE8s, appliedTier) = effectiveMintPrice(caller, app.mintPriceE8s, app.premiumMintPriceE8s, isPremiumMember, app.publisherId == 0);
+            priceTier := appliedTier;
             
             let userBalance = await ledger.icrc1_balance_of({
                 owner = Principal.fromActor(this);
@@ -3289,7 +3382,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         icrc3_add("sneedapp_mint", Array.flatten<(Text, T3.Value)>([
             [("caller", pv(caller)), ("canister_id", pv(newCanisterId)), ("app_id", #Text(appId)), ("numeric_app_id", #Nat(app.numericAppId)),
              ("publisher_id", #Nat(app.publisherId)), ("ver", mintVer), ("wasm_sha256", #Text(wasmSha)), ("wasm_size", #Nat(wasm.size())),
-             ("price_e8s", n64(trackedIcpPaidE8s)), ("premium", flag(wasPremium))],
+             ("price_e8s", n64(trackedIcpPaidE8s)), ("premium", flag(wasPremium)), ("price_tier", #Text(SpecialPrices.tierText(priceTier)))],
             if (paid) payFields() else [],
             opt("cycles_received", switch (cyclesReceivedLogged) { case (?c) ?#Nat(c); case null null }),
         ]));
@@ -3315,7 +3408,8 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         {
             regular = app.mintPriceE8s;
             premium = app.premiumMintPriceE8s;
-            applicable = if (isPremiumMember) { app.premiumMintPriceE8s } else { app.mintPriceE8s };
+            // what `user` pays, special prices included (spec/special_prices.md)
+            applicable = effectiveMintPrice(user, app.mintPriceE8s, app.premiumMintPriceE8s, isPremiumMember, app.publisherId == 0).0;
             isPremium = isPremiumMember;
         };
     };
@@ -4234,6 +4328,11 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // would go through consensus at our cost, and arguments are capped in size.
     system func inspect({ caller : Principal; arg : Blob; msg : {
         #get_api_doc : Any;
+        #get_special_prices : Any;
+        #get_special_prices_for : Any;
+        #set_admin_prices : Any;
+        #set_partner_prices : Any;
+        #remove_partner_prices : Any;
         #admin_icrc3_register_archives_now : Any;
         #admin_icrc3_repair_archive_controllers : Any;
         #admin_icrc3_reset_archive_registration : Any;
@@ -4380,6 +4479,8 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         switch (msg) {
             case (
                 #get_api_doc _
+                or #get_special_prices _
+                or #get_special_prices_for _
                 or #getAdmins _
                 or #getAllAppRevenueStats _
                 or #getAllPublisherStats _
@@ -4464,6 +4565,8 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             // admin tools with free-form content
             case (#addOfficialVersion _ or #updateOfficialVersion _ or #removeOfficialVersion _ or #setOfficialVersions _ or #adminBulkRegisterCanisters _ or #adminRegisterCanister _) isAdmin(caller);
             case (#setManagerWasm _) isAdminOrGovernance(caller);
+            // special prices (spec/special_prices.md)
+            case (#set_admin_prices _ or #set_partner_prices _ or #remove_partner_prices _) isAdminOrGovernance(caller) and arg.size() <= IngressGuard.SMALL_ARG;
             // anyone signed in may start a publisher
             case (#createPublisher _) not Principal.isAnonymous(caller) and (arg.size() <= IngressGuard.MEDIUM_ARG or isAdmin(caller));
             // an app id
