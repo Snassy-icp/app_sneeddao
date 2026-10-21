@@ -43,6 +43,23 @@ const getProxyLogoUrl = (canisterId) => `${LOGO_PROXY_BASE}/${canisterId}`;
 
 // Accent colors for Sneedex
 const sneedexPrimary = '#8b5cf6'; // Purple
+
+// The asset pills on the offers page; each offer asset falls in exactly one category
+const ASSET_CATEGORIES = [
+    { id: 'neurons', label: 'Neurons', icon: FaBrain },      // SNS neurons and ICP staking bots (canisters holding ICP neurons)
+    { id: 'tokens', label: 'Tokens', icon: FaCoins },
+    { id: 'nfts', label: 'NFTs', icon: FaImage },
+    { id: 'locks', label: 'Sneed Locks', icon: FaLock },
+    { id: 'apps', label: 'Apps & bots', icon: FaRobot },    // other canisters, trading bots included
+];
+const assetCategoryOf = (type, details) => {
+    if (type === 'SNSNeuron') return 'neurons';
+    if (type === 'Canister') return details?.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER ? 'neurons' : 'apps';
+    if (type === 'ICRC1Token') return 'tokens';
+    if (type === 'ICRC7NFT' || type === 'EXTNFT') return 'nfts';
+    if (type === 'SneedLock') return 'locks';
+    return 'apps';
+};
 const sneedexSecondary = '#a78bfa';
 const sneedexAccent = '#c4b5fd';
 
@@ -109,7 +126,9 @@ function SneedexOffers() {
     const [error, setError] = useState('');
     const [searchOfferId, setSearchOfferId] = useState(''); // Search by offer ID
     const [searchSellerPrincipal, setSearchSellerPrincipal] = useState(''); // Search by seller principal
-    const [filterType, setFilterType] = useState('all'); // all, canister, neuron, token, neuron_manager
+    // Asset pills: the categories a visitor wants to see (none picked = everything)
+    const [assetCats, setAssetCats] = useState([]);
+    const toggleAssetCat = (id) => setAssetCats((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
     const [sortBy, setSortBy] = useState('newest'); // newest, ending_soon, highest_bid, lowest_price
     const { whitelistedTokens } = useWhitelistTokens();
     const [offerTab, setOfferTab] = useState('public'); // 'public' or 'private'
@@ -628,8 +647,8 @@ function SneedexOffers() {
         return totalUsd;
     }, [tokenPrices, icpPrice, neuronInfo, neuronManagerInfo, getTokenInfo, getSnsLedgerFromGovernance, getSnsInfo]);
     
-    // Check if any filters are active (excluding sortBy and filterType as defaults)
-    const hasActiveFilters = bidTokenFilter || minPriceFilter || maxPriceFilter || assetTokenFilter || minAssetAmountFilter || maxAssetAmountFilter || minPriceUsdFilter || maxPriceUsdFilter || minEstValueUsdFilter || maxEstValueUsdFilter || valueRatioFilter || searchOfferId || searchSellerPrincipal || filterType !== 'all';
+    // Check if any filters are active (the asset pills count when any is picked; sortBy doesn't)
+    const hasActiveFilters = bidTokenFilter || minPriceFilter || maxPriceFilter || assetTokenFilter || minAssetAmountFilter || maxAssetAmountFilter || minPriceUsdFilter || maxPriceUsdFilter || minEstValueUsdFilter || maxEstValueUsdFilter || valueRatioFilter || searchOfferId || searchSellerPrincipal || assetCats.length > 0;
     
     // Clear all filters
     const clearAllFilters = () => {
@@ -641,7 +660,7 @@ function SneedexOffers() {
         setMaxAssetAmountFilter('');
         setSearchOfferId('');
         setSearchSellerPrincipal('');
-        setFilterType('all');
+        setAssetCats([]);
         setMinPriceUsdFilter('');
         setMaxPriceUsdFilter('');
         setMinEstValueUsdFilter('');
@@ -677,19 +696,8 @@ function SneedexOffers() {
         );
         if (!stateMatch) return false;
         
-        if (filterType !== 'all') {
-            const hasType = offer.assets.some(a => {
-                const type = getAssetType(a.asset);
-                const details = getAssetDetails(a);
-                if (filterType === 'canister') return type === 'Canister' && details.canister_kind !== CANISTER_KIND_ICP_NEURON_MANAGER && details.canister_kind !== CANISTER_KIND_TRADING_BOT;
-                if (filterType === 'neuron_manager') return type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER;
-                if (filterType === 'trading_bot') return type === 'Canister' && details.canister_kind === CANISTER_KIND_TRADING_BOT;
-                if (filterType === 'neuron') return type === 'SNSNeuron';
-                if (filterType === 'token') return type === 'ICRC1Token';
-                if (filterType === 'nft') return type === 'ICRC7NFT' || type === 'EXTNFT';
-                if (filterType === 'lock') return type === 'SneedLock';
-                return true;
-            });
+        if (assetCats.length > 0) {
+            const hasType = offer.assets.some(a => assetCats.includes(assetCategoryOf(getAssetType(a.asset), getAssetDetails(a))));
             if (!hasType) return false;
         }
         
@@ -929,7 +937,7 @@ function SneedexOffers() {
     // Reset to page 1 when filters/search/tab change
     useEffect(() => {
         setCurrentPage(1);
-    }, [filterType, searchOfferId, searchSellerPrincipal, sortBy, offerTab, bidTokenFilter, minPriceFilter, maxPriceFilter, assetTokenFilter, minAssetAmountFilter, maxAssetAmountFilter, showActiveOffers, showSoldOffers, showExpiredOffers]);
+    }, [assetCats, searchOfferId, searchSellerPrincipal, sortBy, offerTab, bidTokenFilter, minPriceFilter, maxPriceFilter, assetTokenFilter, minAssetAmountFilter, maxAssetAmountFilter, showActiveOffers, showSoldOffers, showExpiredOffers]);
 
     const styles = {
         container: {
@@ -1633,6 +1641,26 @@ function SneedexOffers() {
                     </div>
                 )}
                 
+                {/* Asset pills: pick what you're interested in (several at once); none picked shows everything */}
+                <div role="group" aria-label="Asset types" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '1rem' }}>
+                    {[{ id: 'all', label: 'All', icon: FaGlobe }, ...ASSET_CATEGORIES].map(({ id, label, icon: Icon }) => {
+                        const on = id === 'all' ? assetCats.length === 0 : assetCats.includes(id);
+                        return (
+                            <button key={id} type="button" aria-pressed={on}
+                                onClick={() => (id === 'all' ? setAssetCats([]) : toggleAssetCat(id))}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '999px',
+                                    border: `1px solid ${on ? sneedexPrimary : theme.colors.border}`,
+                                    background: on ? sneedexPrimary : theme.colors.secondaryBg,
+                                    color: on ? '#fff' : theme.colors.primaryText,
+                                    fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s ease', whiteSpace: 'nowrap',
+                                }}>
+                                <Icon size={13} /> {label}
+                            </button>
+                        );
+                    })}
+                </div>
+
                 <div className="sneedex-controls" style={styles.controls}>
                     <button
                         type="button"
@@ -1647,7 +1675,7 @@ function SneedexOffers() {
                         Filters
                         {hasActiveFilters && (
                             <span style={styles.activeFilterBadge}>
-                                {[filterType !== 'all', bidTokenFilter, minPriceFilter || maxPriceFilter, assetTokenFilter, minAssetAmountFilter || maxAssetAmountFilter, searchOfferId, searchSellerPrincipal].filter(Boolean).length}
+                                {[assetCats.length > 0, bidTokenFilter, minPriceFilter || maxPriceFilter, assetTokenFilter, minAssetAmountFilter || maxAssetAmountFilter, searchOfferId, searchSellerPrincipal].filter(Boolean).length}
                             </span>
                         )}
                         {showAdvancedFilters ? <FaChevronUp size={12} /> : <FaChevronDown size={12} />}
@@ -1746,25 +1774,6 @@ function SneedexOffers() {
                         </div>
                         
                         <div className="sneedex-advanced-filter-grid" style={styles.advancedFilterGrid}>
-                            {/* Asset Type Filter */}
-                            <div style={styles.filterGroup}>
-                                <label style={styles.filterLabel}>Asset Type</label>
-                                <select
-                                    style={{ ...styles.filterInput, padding: '10px 12px' }}
-                                    value={filterType}
-                                    onChange={(e) => setFilterType(e.target.value)}
-                                >
-                                    <option value="all">All Assets</option>
-                                    <option value="canister">Apps</option>
-                                    <option value="neuron_manager">ICP Staking Bots</option>
-                                    <option value="trading_bot">Trading Bots</option>
-                                    <option value="neuron">SNS Neurons</option>
-                                    <option value="token">ICRC1 Tokens</option>
-                                    <option value="nft">NFTs</option>
-                                    <option value="lock">Sneed Locks</option>
-                                </select>
-                            </div>
-                            
                             {/* Payment Token Filter */}
                             <div style={styles.filterGroup}>
                                 <label style={styles.filterLabel}>Payment Token <span style={styles.filterLabelHint}>(Bid Currency)</span></label>
