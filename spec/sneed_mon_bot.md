@@ -1242,3 +1242,21 @@ published.
     in Sneed Notifications?
 24. **Q24** When a bot with its own app is adopted by Sneed Monitor, deregister its own app?
 25. **Q25** Gas from the Monitor balance at cost, or with a margin?
+
+## 17. Decisions (2026-10-21)
+
+- **Custodian = `sneed_guardian`, not a new `sneed_bot_custodian` (Q21).** The guardian already
+  holds canisters under a "blessed hashes only" rule, with per-child policies (vetoes, oks,
+  `auto_upgrade`), status/cycles reads and an ICRC-3 log (spec/custody.md). It needs a new child
+  kind, e.g. `#sneedapp_bot : { app_id }`, whose blessed path is the app's ordered list of
+  published versions in Sneedapp (instead of SNS-W's `list_upgrade_steps`), stepping through
+  every published version as bots require. Shared custody = the user and the guardian are both
+  controllers; "Sneed as sole custodian" = the guardian alone, with the user named in the child's
+  policy (e.g. as a guardian who can veto, and the principal released to on request). Routine
+  upgrades along the published path run under `auto_upgrade` without a DAO vote; anything else is
+  a guardian op as today. This replaces Q21's new canister and is shared with the managed-bots
+  service (spec/pipeline.md).
+- **Bots may draft and submit proposals (Q14): yes.** The ICP staking bot can already make
+  proposals through its neurons; sneed_mon_bot's `propose` action is allowed, off by default per
+  workflow, and goes through the bot's own neuron permissions (SNS hotkey or neuron the bot
+  controls). It never executes proposals; execution stays with governance (spec/sneed_proxy.md).
