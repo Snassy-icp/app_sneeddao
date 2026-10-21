@@ -11,7 +11,7 @@ import {
     FaUserShield, FaSpinner, FaSync, FaPlus, FaTrash, 
     FaChevronDown, FaChevronUp, FaCheck, FaTimes, FaDatabase,
     FaLock, FaComments, FaEnvelope, FaCrown, FaExchangeAlt, FaCopy,
-    FaBrain, FaMinus, FaGift, FaIdBadge, FaTag, FaImage, FaAddressBook
+    FaMinus, FaGift, FaIdBadge, FaTag, FaImage, FaAddressBook, FaStore
 } from 'react-icons/fa';
 
 // Import actors
@@ -143,8 +143,8 @@ const CANISTERS = {
     },
     neuron_manager_factory: {
         id: factoryCanisterId,
-        name: 'Staking Bot Factory',
-        icon: FaBrain,
+        name: 'Sneedapp (app store & bots)',
+        icon: FaStore,
         color: '#8b5cf6',
         getActor: (identity) => createFactoryActor(factoryCanisterId, { agentOptions: { identity, host: getHost() } }),
         getAdmins: async (actor) => await actor.getAdmins(),
