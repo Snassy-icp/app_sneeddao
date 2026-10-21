@@ -6,6 +6,7 @@ import _Array "mo:base/Array";
 import _Buffer "mo:base/Buffer";
 import Nat32 "mo:base/Nat32";
 import Vector "mo:vector";
+import T3 "../icrc3/Types";
 
 module {
     // SNS cache types
@@ -267,6 +268,10 @@ module {
         
         // Read tracking
         user_thread_reads: Map.Map<Text, UserThreadReadData>; // "{user_principal}:{thread_id}" -> read_data
+
+        // Appends a block to the ICRC-3 activity log (main.mo; spec/forum_icrc3.md): btype without
+        // its prefix, the calling principal, tx fields. Used for the structure lib.mo creates itself.
+        log: (Text, Principal, [(Text, T3.Value)]) -> ();
     };
 
     // Input types for creation functions

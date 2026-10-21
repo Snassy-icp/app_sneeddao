@@ -6,6 +6,10 @@ import Vector "mo:vector";
 import Nat64 "mo:base/Nat64";
 import Nat "mo:base/Nat";
 import Time "mo:base/Time";
+import Int "mo:base/Int";
+import Text "mo:base/Text";
+import Debug "mo:base/Debug";
+import Sha256 "mo:sha2/Sha256";
 
 import T "Types";
 import Lib "lib";
@@ -14,6 +18,10 @@ import IngressGuard "../IngressGuard";
 import Mentions "Mentions";
 import TipVerify "TipVerify";
 import ApiDoc "ApiDoc";
+import Icrc3Log "../icrc3/Log";
+import T3 "../icrc3/Types";
+import TextLog "../sneed_names/TextLog";
+import NT "../sneed_names/Types";
 
 persistent actor SneedSNSForum {
     // NNS SNS-W canister interface for getting deployed SNS instances
@@ -143,6 +151,64 @@ persistent actor SneedSNSForum {
     };
     var stable_premium_cache = PremiumClient.emptyCache();
 
+    // ICRC-3 activity log (spec/forum_icrc3.md; library src/icrc3): tips verified on the ledger,
+    // moderation, admins, configuration, forum structure and proposal threads. Ordinary posts,
+    // threads and votes are not logged (public already, and the bulk of all calls). Enhanced
+    // orthogonal persistence: these are new stable variables, so an upgrade starts an empty log.
+    var icrc3 : Icrc3Log.State = Icrc3Log.init();
+    transient let icrc3_rt : Icrc3Log.Runtime = Icrc3Log.runtime();
+    // operational messages of the log (spills, archive creation, failures), admins read them with get_log
+    let icrc3_textlog : TextLog.State = TextLog.init();
+
+    transient let SNEED_SNS_ROOT : Principal = Principal.fromText("fp274-iaaaa-aaaaq-aacha-cai");
+
+    transient let icrc3_catalogue : Icrc3Log.Config = {
+        block_types_url = "https://app.sneeddao.com/api/sneed_sns_forum#block-types";
+        block_types = [
+            "sneedforum_tip",
+            "sneedforum_tip_verified",
+            "sneedforum_tip_rejected",
+            "sneedforum_delete",
+            "sneedforum_undelete",
+            "sneedforum_edit",
+            "sneedforum_forum_create",
+            "sneedforum_forum_update",
+            "sneedforum_topic_create",
+            "sneedforum_topic_update",
+            "sneedforum_proposals_topic_set",
+            "sneedforum_proposals_topic_remove",
+            "sneedforum_proposal_thread_create",
+            "sneedforum_admin_add",
+            "sneedforum_admin_remove",
+            "sneedforum_config_update",
+        ];
+    };
+
+    func icrc3_self() : Principal = Principal.fromActor(SneedSNSForum);
+
+    func icrc3_env() : Icrc3Log.Environment {
+        {
+            self = icrc3_self();
+            archive_controllers = [SNEED_SNS_ROOT]; // added next to the forum on every archive
+            cycle_reserve = 2_000_000_000_000; // never spend the forum's balance below 2 T
+            new_correlation_id = func() : Nat = TextLog.correlationId(icrc3_textlog);
+            log_info = func(cid : Nat, m : Text) = TextLog.add(icrc3_textlog, #info, cid, icrc3_self(), m);
+            log_error = func(cid : Nat, m : Text) = TextLog.add(icrc3_textlog, #error, cid, icrc3_self(), m);
+        };
+    };
+
+    /// Appends one block: `sneedforum_<btype>`, with the calling principal first.
+    func block(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) {
+        ignore Icrc3Log.append(icrc3, "sneedforum_" # btype, Int.abs(Time.now()), Array.append<(Text, T3.Value)>([("caller", Icrc3Log.principal(caller))], tx));
+    };
+
+    func pv(p : Principal) : T3.Value = Icrc3Log.principal(p);
+    func cat(parts : [[(Text, T3.Value)]]) : [(Text, T3.Value)] = Array.flatten<(Text, T3.Value)>(parts);
+    func sha(t : Text) : T3.Value = #Blob(Sha256.fromBlob(#sha256, Text.encodeUtf8(t)));
+    func optNat(key : Text, n : ?Nat) : [(Text, T3.Value)] = switch n { case (?x) [(key, #Nat(x))]; case null [] };
+    func optSha(key : Text, t : ?Text) : [(Text, T3.Value)] = switch t { case (?x) [(key, sha(x))]; case null [] };
+    func optPrincipal(p : ?Principal) : T3.Value = switch p { case (?x) pv(x); case null #Text("none") };
+
     // Runtime state that directly references stable storage
     private transient var state : T.ForumState = {
         var next_id = stable_next_id;
@@ -177,6 +243,7 @@ persistent actor SneedSNSForum {
         proposal_threads = stable_proposal_threads;
         thread_proposals = stable_thread_proposals;
         user_thread_reads = stable_user_thread_reads;
+        log = block;
     };
 
 
@@ -186,11 +253,15 @@ persistent actor SneedSNSForum {
 
     // Admin management endpoints
     public shared ({ caller }) func add_admin(new_admin: Principal) : async T.Result<(), T.ForumError> {
-        Lib.add_admin(state, caller, new_admin)
+        let r = Lib.add_admin(state, caller, new_admin);
+        switch (r) { case (#ok) block("admin_add", caller, [("principal", pv(new_admin))]); case _ {} };
+        r
     };
 
     public shared ({ caller }) func remove_admin(admin_to_remove: Principal) : async T.Result<(), T.ForumError> {
-        Lib.remove_admin(state, caller, admin_to_remove)
+        let r = Lib.remove_admin(state, caller, admin_to_remove);
+        switch (r) { case (#ok) block("admin_remove", caller, [("principal", pv(admin_to_remove))]); case _ {} };
+        r
     };
 
     public query func get_admins() : async [T.AdminInfo] {
@@ -207,7 +278,13 @@ persistent actor SneedSNSForum {
     };
 
     public shared ({ caller }) func update_forum(id: Nat, input: T.CreateForumInput) : async T.Result<(), T.ForumError> {
-        Lib.update_forum(state, caller, id, input)
+        let r = Lib.update_forum(state, caller, id, input);
+        switch (r, Map.get(state.forums, Map.nhash, id)) {
+            case (#ok, ?f) block("forum_update", caller, cat([[("forum_id", #Nat(id)), ("title", #Text(f.title))],
+                switch (f.sns_root_canister_id) { case (?root) [("sns_root", pv(root))]; case null [] }]));
+            case _ {};
+        };
+        r
     };
 
     public query ({ caller }) func get_forum(id: Nat) : async ?T.ForumResponse {
@@ -230,7 +307,14 @@ persistent actor SneedSNSForum {
     };
 
     public shared ({ caller }) func update_topic(id: Nat, input: T.CreateTopicInput) : async T.Result<(), T.ForumError> {
-        Lib.update_topic(state, caller, id, input)
+        let old_parent = switch (Map.get(state.topics, Map.nhash, id)) { case (?t) t.parent_topic_id; case null null };
+        let r = Lib.update_topic(state, caller, id, input);
+        switch (r, Map.get(state.topics, Map.nhash, id)) {
+            case (#ok, ?t) block("topic_update", caller, cat([[("topic_id", #Nat(id)), ("forum_id", #Nat(t.forum_id)), ("title", #Text(t.title))],
+                optNat("parent_topic_id", t.parent_topic_id), if (old_parent != t.parent_topic_id) optNat("old_parent_topic_id", old_parent) else []]));
+            case _ {};
+        };
+        r
     };
 
     public shared ({ caller }) func create_special_topic(input: T.CreateSpecialTopicInput) : async T.Result<Nat, T.ForumError> {
@@ -287,7 +371,12 @@ persistent actor SneedSNSForum {
                 };
             };
         };
+        let before = Map.get(state.threads, Map.nhash, id);
         let r = Lib.update_thread(state, caller, id, title, body, body_max_override);
+        switch (r, before) {
+            case (#ok, ?old) logEdit(caller, "thread", id, old.created_by, old.title, old.body, title, body);
+            case _ {};
+        };
         switch (r) { case (#ok) { let m = recordMentions(caller, id, null, body); await* notifyMentions(id, null, body, m) }; case _ {} };
         r
     };
@@ -364,7 +453,12 @@ persistent actor SneedSNSForum {
                 };
             };
         };
+        let before = Map.get(state.posts, Map.nhash, id);
         let r = Lib.update_post(state, caller, id, title, body, body_max_override);
+        switch (r, before) {
+            case (#ok, ?old) logEdit(caller, "post", id, old.created_by, old.title, old.body, title, body);
+            case _ {};
+        };
         switch (r, Map.get(state.posts, Map.nhash, id)) {
             case (#ok, ?post) { let m = recordMentions(caller, post.thread_id, ?id, body); await* notifyMentions(post.thread_id, ?id, body, m) };
             case _ {};
@@ -510,6 +604,7 @@ persistent actor SneedSNSForum {
             case (#unchecked reason) recordTip(caller, input, #unchecked, ?reason, ?key);
             case (#verified) {
                 let r = recordTip(caller, input, #verified, null, ?key);
+                switch (r) { case (#ok id) logTip("tip", caller, id, []); case _ {} };
                 switch (r) {
                     case (#ok _) if (to_principal != caller) await* sendNotifications([{
                         user = to_principal; topic = "tip"; title = "Your post got a tip"; body = "Someone tipped your post in " # threadName(post.thread_id) # ".";
@@ -534,6 +629,15 @@ persistent actor SneedSNSForum {
         r
     };
 
+    /// A tip block: the tip as recorded, the ledger block that backs it and `extra` fields.
+    func logTip(btype : Text, caller : Principal, tip_id : Nat, extra : [(Text, T3.Value)]) {
+        let ?tip = Map.get(state.tips, Map.nhash, tip_id) else return;
+        let who = func(i : Nat32) : T3.Value = switch (authorOf(i)) { case (?p) pv(p); case null #Text("unknown") };
+        block(btype, caller, cat([[("tip_id", #Nat(tip_id)), ("from", who(tip.from_principal)), ("to", who(tip.to_principal)),
+            ("post_id", #Nat(tip.post_id)), ("thread_id", #Nat(tip.thread_id)), ("ledger", pv(tip.token_ledger_principal)), ("amount", #Nat(tip.amount))],
+            optNat("ledger_block", tip.transaction_block_index), extra]));
+    };
+
     /// Checks a tip on the ledger again: a tip recorded unverified because its block could not be
     /// read, or one recorded before the forum checked tips. Anyone signed in may ask; a verified or
     /// rejected tip is final. Answers whether the tip is now verified (the reason is in the tip's
@@ -546,7 +650,14 @@ persistent actor SneedSNSForum {
             case (?{ status = #rejected }) return #ok(false);
             case _ {};
         };
-        let set = func(status : T.TipCheckStatus, note : ?Text) { Map.set(stable_tip_checks, Map.nhash, tip_id, { status; note; checked_at = Time.now() }) };
+        let set = func(status : T.TipCheckStatus, note : ?Text) {
+            Map.set(stable_tip_checks, Map.nhash, tip_id, { status; note; checked_at = Time.now() });
+            switch (status, note) {
+                case (#verified, _) logTip("tip_verified", caller, tip_id, []);
+                case (#rejected, ?reason) logTip("tip_rejected", caller, tip_id, [("reason", #Text(reason))]);
+                case _ {};
+            };
+        };
         let ?block = tip.transaction_block_index else { set(#unchecked, ?"No block index was given"); return #ok(false) };
         let (?from, ?to) = (authorOf(tip.from_principal), authorOf(tip.to_principal)) else return #err(#InternalError("Unknown principal index"));
         let post_author = switch (Map.get(state.posts, Map.nhash, tip.post_id)) { case (?p) authorOf(p.created_by); case null null };
@@ -730,7 +841,9 @@ persistent actor SneedSNSForum {
     /// Admins: where to send notifications (null: nowhere).
     public shared ({ caller }) func admin_set_notifications(canister : ?Principal) : async T.Result<(), T.ForumError> {
         if (not Lib.is_admin(state, caller)) return #err(#Unauthorized("Admins only"));
+        let old = stable_notifications;
         stable_notifications := canister;
+        if (old != canister) configBlock(caller, "notifications_canister", optPrincipal(old), optPrincipal(canister));
         #ok();
     };
 
@@ -826,38 +939,93 @@ persistent actor SneedSNSForum {
         true
     };
 
+    // ---- Moderation (logged: spec/forum_icrc3.md) ----
+
+    /// Whether the principal index `author` is the caller.
+    func isAuthor(caller : Principal, author : Nat32) : Bool = authorOf(author) == ?caller;
+
+    /// An edit of someone else's thread or post (only admins can): hashes of the texts before and
+    /// after, never the texts. Authors editing their own content are not logged.
+    func logEdit(caller : Principal, kind : Text, id : Nat, author : Nat32, old_title : ?Text, old_body : Text, title : ?Text, body : Text) {
+        if (isAuthor(caller, author)) return;
+        block("edit", caller, cat([[("kind", #Text(kind)), ("id", #Nat(id)), ("author", optPrincipal(authorOf(author))),
+            ("old_body_sha256", sha(old_body)), ("body_sha256", sha(body))], optSha("old_title_sha256", old_title), optSha("title_sha256", title)]));
+    };
+
+    /// A delete or undelete that changed the item's state. Forums and topics are always logged;
+    /// threads and posts with their author and the hashes of their texts, a delete only when the
+    /// caller is not the author (a moderator's act, not the author's own retraction).
+    func logModeration(btype : Text, caller : Principal, kind : Text, id : Nat, content : ?(Nat32, ?Text, Text)) {
+        switch (content) {
+            case null block(btype, caller, [("kind", #Text(kind)), ("id", #Nat(id))]);
+            case (?(author, title, body)) {
+                if (btype == "delete" and isAuthor(caller, author)) return;
+                block(btype, caller, cat([[("kind", #Text(kind)), ("id", #Nat(id)), ("author", optPrincipal(authorOf(author))), ("body_sha256", sha(body))], optSha("title_sha256", title)]));
+            };
+        };
+    };
+
+    func forumDeleted(id : Nat) : ?Bool = switch (Map.get(state.forums, Map.nhash, id)) { case (?f) ?f.deleted; case null null };
+    func topicDeleted(id : Nat) : ?Bool = switch (Map.get(state.topics, Map.nhash, id)) { case (?t) ?t.deleted; case null null };
+    func threadContent(id : Nat) : ?(Bool, (Nat32, ?Text, Text)) = switch (Map.get(state.threads, Map.nhash, id)) { case (?t) ?(t.deleted, (t.created_by, t.title, t.body)); case null null };
+    func postContent(id : Nat) : ?(Bool, (Nat32, ?Text, Text)) = switch (Map.get(state.posts, Map.nhash, id)) { case (?p) ?(p.deleted, (p.created_by, p.title, p.body)); case null null };
+
+    /// Runs a delete (`to` = true) or undelete of a forum or topic and logs it when the flag changed.
+    func structureFlag(caller : Principal, kind : Text, id : Nat, to : Bool, was : ?Bool, r : T.Result<(), T.ForumError>) : T.Result<(), T.ForumError> {
+        switch (r, was) {
+            case (#ok, ?w) if (w != to) logModeration(if to "delete" else "undelete", caller, kind, id, null);
+            case _ {};
+        };
+        r
+    };
+    func contentFlag(caller : Principal, kind : Text, id : Nat, to : Bool, was : ?(Bool, (Nat32, ?Text, Text)), r : T.Result<(), T.ForumError>) : T.Result<(), T.ForumError> {
+        switch (r, was) {
+            case (#ok, ?(w, content)) if (w != to) logModeration(if to "delete" else "undelete", caller, kind, id, ?content);
+            case _ {};
+        };
+        r
+    };
+
     // Admin delete endpoints
     public shared ({ caller }) func delete_forum(id: Nat) : async T.Result<(), T.ForumError> {
-        Lib.soft_delete_forum(state, caller, id)
+        let was = forumDeleted(id);
+        structureFlag(caller, "forum", id, true, was, Lib.soft_delete_forum(state, caller, id))
     };
 
     public shared ({ caller }) func delete_topic(id: Nat) : async T.Result<(), T.ForumError> {
-        Lib.soft_delete_topic(state, caller, id)
+        let was = topicDeleted(id);
+        structureFlag(caller, "topic", id, true, was, Lib.soft_delete_topic(state, caller, id))
     };
 
     public shared ({ caller }) func delete_thread(id: Nat) : async T.Result<(), T.ForumError> {
-        Lib.soft_delete_thread(state, caller, id)
+        let was = threadContent(id);
+        contentFlag(caller, "thread", id, true, was, Lib.soft_delete_thread(state, caller, id))
     };
 
     public shared ({ caller }) func delete_post(id: Nat) : async T.Result<(), T.ForumError> {
-        Lib.soft_delete_post(state, caller, id)
+        let was = postContent(id);
+        contentFlag(caller, "post", id, true, was, Lib.soft_delete_post(state, caller, id))
     };
 
     // Admin undelete endpoints
     public shared ({ caller }) func undelete_forum(id: Nat) : async T.Result<(), T.ForumError> {
-        Lib.undelete_forum(state, caller, id)
+        let was = forumDeleted(id);
+        structureFlag(caller, "forum", id, false, was, Lib.undelete_forum(state, caller, id))
     };
 
     public shared ({ caller }) func undelete_topic(id: Nat) : async T.Result<(), T.ForumError> {
-        Lib.undelete_topic(state, caller, id)
+        let was = topicDeleted(id);
+        structureFlag(caller, "topic", id, false, was, Lib.undelete_topic(state, caller, id))
     };
 
     public shared ({ caller }) func undelete_thread(id: Nat) : async T.Result<(), T.ForumError> {
-        Lib.undelete_thread(state, caller, id)
+        let was = threadContent(id);
+        contentFlag(caller, "thread", id, false, was, Lib.undelete_thread(state, caller, id))
     };
 
     public shared ({ caller }) func undelete_post(id: Nat) : async T.Result<(), T.ForumError> {
-        Lib.undelete_post(state, caller, id)
+        let was = postContent(id);
+        contentFlag(caller, "post", id, false, was, Lib.undelete_post(state, caller, id))
     };
 
     // Admin query functions that show deleted items
@@ -927,7 +1095,14 @@ persistent actor SneedSNSForum {
 
     // Proposal management endpoints
     public shared ({ caller }) func set_proposals_topic(input: T.SetProposalTopicInput) : async T.Result<(), T.ForumError> {
-        Lib.set_proposals_topic(state, caller, input)
+        let old = Map.get(state.proposal_topics, Map.nhash, input.forum_id);
+        let r = Lib.set_proposals_topic(state, caller, input);
+        switch (r, old) {
+            case (#ok, ?o) if (o.proposals_topic_id != input.topic_id) block("proposals_topic_set", caller, [("forum_id", #Nat(input.forum_id)), ("topic_id", #Nat(input.topic_id)), ("old_topic_id", #Nat(o.proposals_topic_id))]);
+            case (#ok, null) block("proposals_topic_set", caller, [("forum_id", #Nat(input.forum_id)), ("topic_id", #Nat(input.topic_id))]);
+            case _ {};
+        };
+        r
     };
 
     public query func get_proposals_topic(forum_id: Nat) : async ?T.ProposalTopicMappingResponse {
@@ -942,7 +1117,7 @@ persistent actor SneedSNSForum {
         if (Principal.isAnonymous(caller)) {
             return #err(#Unauthorized("Authentication required to create proposal threads"));
         };
-        Lib.create_proposal_thread(state, caller, input)
+        logProposalThread(caller, input, Lib.create_proposal_thread(state, caller, input))
     };
 
     public shared ({ caller }) func create_proposal_thread_with_auto_setup(input: T.CreateProposalThreadInput) : async T.Result<Nat, T.ForumError> {
@@ -951,7 +1126,7 @@ persistent actor SneedSNSForum {
         };
         let (result, updated_cache) = await Lib.create_proposal_thread_with_auto_setup(state, caller, input, sns_cache);
         sns_cache := updated_cache;
-        result
+        logProposalThread(caller, input, result)
     };
 
     // Create forum with governance and proposals topics for an SNS
@@ -977,7 +1152,25 @@ persistent actor SneedSNSForum {
     };
 
     public shared ({ caller }) func remove_proposals_topic(forum_id: Nat) : async T.Result<(), T.ForumError> {
-        Lib.remove_proposals_topic(state, caller, forum_id)
+        let old = Map.get(state.proposal_topics, Map.nhash, forum_id);
+        let r = Lib.remove_proposals_topic(state, caller, forum_id);
+        switch (r, old) {
+            case (#ok, ?o) block("proposals_topic_remove", caller, [("forum_id", #Nat(forum_id)), ("old_topic_id", #Nat(o.proposals_topic_id))]);
+            case _ {};
+        };
+        r
+    };
+
+    /// A proposal's discussion thread was created (the thread's text is standard: forum title and proposal id).
+    func logProposalThread(caller : Principal, input : T.CreateProposalThreadInput, r : T.Result<Nat, T.ForumError>) : T.Result<Nat, T.ForumError> {
+        switch (r) {
+            case (#ok thread_id) {
+                let topic = switch (Map.get(state.threads, Map.nhash, thread_id)) { case (?t) optNat("topic_id", ?t.topic_id); case null [] };
+                block("proposal_thread_create", caller, cat([[("thread_id", #Nat(thread_id)), ("sns_root", pv(input.sns_root_canister_id)), ("proposal_id", #Nat(input.proposal_id))], topic]));
+            };
+            case _ {};
+        };
+        r
     };
 
     // Feed endpoint
@@ -996,7 +1189,30 @@ persistent actor SneedSNSForum {
     };
 
     public shared ({ caller }) func update_text_limits(input: T.UpdateTextLimitsInput) : async T.Result<(), T.ForumError> {
-        Lib.update_text_limits(state, caller, input)
+        let o = state.text_limits;
+        let r = Lib.update_text_limits(state, caller, input);
+        switch (r) {
+            case (#ok) {
+                let n = state.text_limits;
+                for ((key, a, b) in [
+                    ("post_title_max_length", o.post_title_max_length, n.post_title_max_length),
+                    ("post_body_max_length", o.post_body_max_length, n.post_body_max_length),
+                    ("thread_title_max_length", o.thread_title_max_length, n.thread_title_max_length),
+                    ("thread_body_max_length", o.thread_body_max_length, n.thread_body_max_length),
+                    ("topic_title_max_length", o.topic_title_max_length, n.topic_title_max_length),
+                    ("topic_description_max_length", o.topic_description_max_length, n.topic_description_max_length),
+                    ("forum_title_max_length", o.forum_title_max_length, n.forum_title_max_length),
+                    ("forum_description_max_length", o.forum_description_max_length, n.forum_description_max_length),
+                ].vals()) if (a != b) configBlock(caller, key, #Nat(a), #Nat(b));
+            };
+            case _ {};
+        };
+        r
+    };
+
+    /// A setting changed: its key, the old and the new value.
+    func configBlock(caller : Principal, key : Text, old : T3.Value, value : T3.Value) {
+        block("config_update", caller, [("key", #Text(key)), ("old_value", old), ("value", value)]);
     };
     
     // Premium configuration management endpoints
@@ -1010,6 +1226,7 @@ persistent actor SneedSNSForum {
             return #err(#Unauthorized("Admin access required"));
         };
         
+        let o = state.premium_config;
         // Update config fields
         state.premium_config := {
             sneed_premium_canister_id = switch (input.sneed_premium_canister_id) {
@@ -1028,6 +1245,10 @@ persistent actor SneedSNSForum {
         
         // Sync to stable storage
         stable_premium_config := state.premium_config;
+        let n = state.premium_config;
+        if (o.sneed_premium_canister_id != n.sneed_premium_canister_id) configBlock(caller, "sneed_premium_canister_id", optPrincipal(o.sneed_premium_canister_id), optPrincipal(n.sneed_premium_canister_id));
+        if (o.premium_post_body_max_length != n.premium_post_body_max_length) configBlock(caller, "premium_post_body_max_length", #Nat(o.premium_post_body_max_length), #Nat(n.premium_post_body_max_length));
+        if (o.premium_thread_body_max_length != n.premium_thread_body_max_length) configBlock(caller, "premium_thread_body_max_length", #Nat(o.premium_thread_body_max_length), #Nat(n.premium_thread_body_max_length));
         
         #ok(())
     };
@@ -1065,7 +1286,49 @@ persistent actor SneedSNSForum {
         stable_text_limits := state.text_limits;
     };
 
+    // ---- ICRC-3 interface (spec/forum_icrc3.md) ----
+
+    public query func icrc3_get_blocks(args : T3.GetBlocksArgs) : async T3.GetBlocksResult { Icrc3Log.getBlocks(icrc3, args) };
+    public query func icrc3_get_archives(args : T3.GetArchivesArgs) : async T3.GetArchivesResult { Icrc3Log.getArchives(icrc3, args) };
+    public query func icrc3_get_tip_certificate() : async ?T3.DataCertificate { Icrc3Log.tipCertificate(icrc3) };
+    public query func icrc3_supported_block_types() : async [T3.BlockType] { Icrc3Log.supportedBlockTypes(icrc3_catalogue) };
+    public query func icrc10_supported_standards() : async [T3.SupportedStandard] { Icrc3Log.supportedStandards() };
+    public query func icrc3_log_status() : async T3.LogStatus { Icrc3Log.status(icrc3, icrc3_rt) };
+
+    public shared ({ caller }) func admin_set_icrc3_settings(u : T3.SettingsUpdate) : async { #Ok : T3.Settings; #Err : Text } {
+        if (not Lib.is_admin(state, caller)) return #Err("Admins only");
+        switch (Icrc3Log.applySettings(icrc3, u)) {
+            case (#Err(e)) #Err(e);
+            case (#Ok(changes)) {
+                for ((key, old, new) in changes.vals()) configBlock(caller, key, #Nat(old), #Nat(new));
+                #Ok(icrc3.settings);
+            };
+        };
+    };
+
+    public shared ({ caller }) func admin_icrc3_spill_now() : async { #Ok : Nat; #Err : Text } {
+        if (not Lib.is_admin(state, caller)) return #Err("Admins only");
+        if (icrc3_rt.spilling) return #Err("A spill is already in progress");
+        #Ok(await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), true));
+    };
+
+    public shared ({ caller }) func admin_icrc3_repair_archive_controllers() : async [(Principal, { #Ok; #Err : Text })] {
+        if (not Lib.is_admin(state, caller)) Debug.trap("Admins only");
+        await* Icrc3Log.repairArchiveControllers(icrc3, icrc3_env());
+    };
+
+    /// Admins: the log's operational messages (spills, archives created, failures), oldest first.
+    public query ({ caller }) func get_log(start : Nat, length : Nat) : async [NT.LogEntry] {
+        if (not Lib.is_admin(state, caller)) Debug.trap("Admins only");
+        TextLog.get(icrc3_textlog, start, length);
+    };
+
+    func icrc3_timer_job() : async () { ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false) };
+    func ensure_icrc3_timer<system>() { Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job) };
+
     system func postupgrade() {
+        Icrc3Log.certify(icrc3);
+        ensure_icrc3_timer<system>();
         // State is already initialized with stable values.
         // Put right the poll counts of builds before f9df91bf (first votes went uncounted).
         ignore Lib.recount_poll_votes(state);
@@ -1128,8 +1391,18 @@ persistent actor SneedSNSForum {
 
     // Ingress guard (src/IngressGuard.mo): queries are never accepted as update calls, which
     // would go through consensus at our cost, and arguments are capped in size.
-    system func inspect({ arg : Blob; msg : {
+    system func inspect({ caller : Principal; arg : Blob; msg : {
         #add_admin : Any;
+        #admin_icrc3_repair_archive_controllers : Any;
+        #admin_icrc3_spill_now : Any;
+        #admin_set_icrc3_settings : Any;
+        #get_log : Any;
+        #icrc10_supported_standards : Any;
+        #icrc3_get_archives : Any;
+        #icrc3_get_blocks : Any;
+        #icrc3_get_tip_certificate : Any;
+        #icrc3_log_status : Any;
+        #icrc3_supported_block_types : Any;
         #check_user_premium_status : Any;
         #create_forum : () -> T.CreateForumInput;
         #create_poll : () -> T.CreatePollInput;
@@ -1311,7 +1584,16 @@ persistent actor SneedSNSForum {
                 or #get_user_thread_reads_for_topic _
                 or #health_check _
                 or #is_admin _
+                or #get_log _
+                or #icrc10_supported_standards _
+                or #icrc3_get_archives _
+                or #icrc3_get_blocks _
+                or #icrc3_get_tip_certificate _
+                or #icrc3_log_status _
+                or #icrc3_supported_block_types _
             ) false;
+            // the log's admin methods: admins only, small arguments
+            case (#admin_icrc3_repair_archive_controllers _ or #admin_icrc3_spill_now _ or #admin_set_icrc3_settings _) Lib.is_admin(state, caller) and arg.size() <= IngressGuard.SMALL_ARG;
             // texts against the forum's text limits; a body may be as long as the premium limit, the
             // method itself decides whether the caller is premium
             case (#create_forum f) { let i = f(); forumOk(arg, i.title, i.description) };
@@ -1335,4 +1617,5 @@ persistent actor SneedSNSForum {
         };
     };
 
+    ensure_icrc3_timer<system>();
 }

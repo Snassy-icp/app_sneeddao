@@ -47,6 +47,10 @@ The discussion canister behind the forum on Sneed Hub, also used by other DAOs (
 - Posting in a forum whose SNS is not in SNS-W fails with `InternalError(\"No SNS governance canister found\")`.
 - Mentions are Markdown links `[@Name](https://app.sneeddao.com/principal?id=<principal>)`; plain `@name` is ignored.
 
+## Activity log (ICRC-3)
+- Verified tips (with the ledger block), moderation (admin deletes, undeletes and edits of others' content: ids and SHA-256 of the texts, never the texts), admin and configuration changes, forums and topics created or changed, and proposal threads are blocks of a certified, hash-chained ICRC-3 log: `icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`, `icrc3_log_status` (queries). Block types (`sneedforum_*`): https://app.sneeddao.com/api/sneed_sns_forum#block-types
+- Ordinary threads, posts, votes and polls are not logged (they are public in the canister already). Old blocks move to archive canisters co-controlled by the Sneed SNS root.
+
 ## Start with these methods
 `get_forum_by_sns_root`, `get_topics_by_forum`, `get_threads_by_activity`, `get_posts_by_thread`, `get_text_limits`, `create_thread`, `create_post`, `vote_on_post`, `create_tip`, `get_tips_by_post`, `get_feed`.
 

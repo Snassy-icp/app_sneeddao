@@ -118,6 +118,18 @@ git archive "$PID_NAMES_PROD_COMMIT" src | tar -x -C "$PREV_SRC"
 "$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_pid_names/main.mo" -o "$OUT/sneed_pid_names_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
 rm -rf "$PREV_SRC"
 test -s "$OUT/sneed_pid_names_prod.wasm"
+# sneed_sns_forum as production and staging run it (upgrade proposal #423: tips checked on the ledger,
+# no ICRC-3 log; `dfx build --network ic sneed_sns_forum` of this code gives their module hash
+# 89d0f0e7…), for the test that upgrades from it and starts an empty log (enhanced orthogonal
+# persistence, as dfx.json builds it)
+FORUM_PROD_COMMIT=b483932c
+echo "== sneed_sns_forum at $FORUM_PROD_COMMIT (moc, EOP, for the ICRC-3 upgrade test)"
+PREV_SRC="$(mktemp -d)"
+git archive "$FORUM_PROD_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_sns_forum/main.mo" -o "$OUT/sneed_sns_forum_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneed_sns_forum_prod.wasm"
 # rll as production runs it (no ICRC-3 log; `dfx build --network ic rll` of this code gives the
 # production module hash 2d7e3f23…; src/sneed_rewards unchanged from 25b88246 to 75cef0a7), for
 # the test that upgrades from it and starts an empty log (classic persistence, as dfx.json builds it)

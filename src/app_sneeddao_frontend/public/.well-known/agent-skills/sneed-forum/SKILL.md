@@ -28,7 +28,8 @@ The forum canister stores every forum, topic, thread, post, vote, poll and tip r
 8. **Notifications.** New replies, mentions and tips are also handed to the Sneed Notifications canister (`get_notifications_canister()`), best effort.
 9. **Text limits are configurable.** Read `get_text_limits()` and `get_premium_config()` before posting; Sneed Premium members get longer thread and post bodies (production on 2026-10-20: body 4_000 chars, premium 12_000; titles 200 for threads, 100 for posts). Too long → `InvalidInput`.
 10. **Agent guide.** `get_api_doc()` (query) returns a short Markdown guide to this canister for agents, linking this reference and https://app.sneeddao.com/llms.txt.
-11. **Errors** are `variant { AlreadyExists; InternalError; InvalidInput; NotFound; Unauthorized : text }` inside `Result` (`ok : nat` = new id). Query responses are not certified.
+11. **Activity log (ICRC-3).** Verified tips (with their ledger block), moderation (admin deletes, undeletes and edits of others' content, logged with SHA-256 hashes of the texts, never the texts), admin and config changes, forum/topic structure and proposal threads are blocks of a certified, hash-chained log: `icrc3_get_blocks`, `icrc3_get_tip_certificate`, `icrc3_get_archives`, `icrc3_supported_block_types` (`sneedforum_*`, documented at https://app.sneeddao.com/api/sneed_sns_forum#block-types). Ordinary posts, threads and votes are not logged. Use it to audit moderation or prove a tip; verify as in the reference, section 8.
+12. **Errors** are `variant { AlreadyExists; InternalError; InvalidInput; NotFound; Unauthorized : text }` inside `Result` (`ok : nat` = new id). Query responses are not certified.
 
 ## Procedures
 

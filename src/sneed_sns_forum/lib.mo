@@ -17,6 +17,7 @@ import Char "mo:base/Char";
 import SnsUtil "../SnsUtil";
 
 import T "Types";
+import T3 "../icrc3/Types";
 
 module {
     public type ForumState = T.ForumState;
@@ -631,6 +632,8 @@ module {
         };
 
         ignore Map.put(state.forums, Map.nhash, id, forum);
+        state.log("forum_create", caller, Array.append<(Text, T3.Value)>([("forum_id", #Nat(id)), ("title", #Text(input.title))],
+            switch (sns_root) { case (?r) [("sns_root", #Blob(Principal.toBlob(r)))]; case null [] }));
         #ok(id)
     };
 
@@ -754,6 +757,8 @@ module {
         };
 
         ignore Map.put(state.topics, Map.nhash, id, topic);
+        state.log("topic_create", caller, Array.append<(Text, T3.Value)>([("topic_id", #Nat(id)), ("forum_id", #Nat(input.forum_id)), ("title", #Text(input.title))],
+            switch (input.parent_topic_id) { case (?p) [("parent_topic_id", #Nat(p))]; case null [] }));
         
         // Update indexes
         add_to_index(state.forum_topics, input.forum_id, id);
@@ -3606,7 +3611,11 @@ module {
             set_at = current_time;
         };
 
-        ignore Map.put(state.proposal_topics, Map.nhash, forum_id, mapping);
+        let previous = Map.put(state.proposal_topics, Map.nhash, forum_id, mapping);
+        switch (previous) {
+            case (?p) if (p.proposals_topic_id != proposals_topic_id_final) state.log("proposals_topic_set", caller, [("forum_id", #Nat(forum_id)), ("topic_id", #Nat(proposals_topic_id_final)), ("old_topic_id", #Nat(p.proposals_topic_id))]);
+            case null state.log("proposals_topic_set", caller, [("forum_id", #Nat(forum_id)), ("topic_id", #Nat(proposals_topic_id_final))]);
+        };
 
         (#ok(proposals_topic_id_final), updated_cache)
     };

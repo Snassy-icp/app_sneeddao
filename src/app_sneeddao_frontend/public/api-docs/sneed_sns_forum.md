@@ -79,6 +79,7 @@ Before it accepts an update call from outside the IC, the canister checks it (it
 - **Query methods only answer query calls.** Calling one as an update call is refused. Use the generated declarations, or `--query` with dfx.
 - **Texts are checked against the text limits.** `create_forum`, `update_forum`, `create_topic`, `update_topic`, `create_thread`, `update_thread`, `create_post`, `update_post` and `create_poll` are refused when a title, description or body is longer than the current limit (a body may be as long as the premium limit when premium is configured; the method itself then decides whether the caller is premium). The whole argument may be at most 4 KiB plus 4 bytes per allowed character.
 - **Neuron lists are capped.** `vote_on_post_with_neurons`, `retract_vote_with_neurons` and `vote_on_poll_with_neurons` take at most 1,000 neuron ids and a 64 KiB argument. A poll has at most 100 options.
+- **The activity log's admin methods** (`admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`) are refused unless the caller is an admin.
 - **Everything else** takes at most 4 KiB of argument.
 
 Canisters calling the forum are not affected: the check only applies to calls from outside the IC.
@@ -545,6 +546,7 @@ Admins are Sneed DAO's governance canister (`fi3zi-fyaaa-aaaaq-aachq-cai`), the 
 | `update_text_limits(UpdateTextLimitsInput)` | Change limits; `[]` fields keep their value. |
 | `update_premium_config(UpdatePremiumConfigInput)` | Premium canister and premium body limits (`sneed_premium_canister_id`: `[]` no change, `[[]]` clear, `[[id]]` set). |
 | `admin_set_notifications(opt principal)` | Where notifications go (`Admins only`). |
+| `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`, `get_log(start, length)` | The activity log's settings, archiving and operational messages ([8](#8-activity-log-icrc-3)). |
 
 ---
 
@@ -680,7 +682,71 @@ The Candid file names some of these differently (`Result_1` and friends are gene
 
 ---
 
-## 8. Integration checklist
+## 8. Activity log (ICRC-3)
+
+What matters for trust and accountability is recorded as a block in a hash-chained, certified log, readable through the standard [ICRC-3](https://github.com/dfinity/ICRC-1/tree/main/standards/ICRC-3) interface: tips confirmed on the token's ledger, moderation (admins deleting, restoring or editing other people's content), the admin list, configuration, the forum structure (forums and topics) and proposal discussion threads. Each block carries the hash of the previous block (`phash`), and the canister certifies the index and hash of the latest block, so anyone can download the history and prove it complete and untampered without trusting Sneed DAO or this app. Old blocks move to archive canisters that the forum creates.
+
+The log uses the same library as [Sneed Lock's log](/api/sneed_lock#8-activity-log-icrc-3) ([src/icrc3](https://github.com/Snassy-icp/app_sneeddao/tree/main/src/icrc3)); the design, including what is deliberately not logged, is in [spec/forum_icrc3.md](https://github.com/Snassy-icp/app_sneeddao/blob/main/spec/forum_icrc3.md). It starts empty with the release that introduced it; nothing from before is imported.
+
+### 8.1 Endpoints
+
+| Method | Type | Returns |
+|---|---|---|
+| `icrc3_get_blocks(vec record { start : nat; length : nat })` | query | `{ log_length; blocks : vec { id; block }; archived_blocks : vec { args; callback } }`. Live blocks come back directly; for archived ranges call `callback` (that archive's own `icrc3_get_blocks`) with `args`. |
+| `icrc3_get_archives(record { from : opt principal })` | query | Every archive canister with the first and last block index it holds. |
+| `icrc3_get_tip_certificate()` | query | `opt { certificate; hash_tree }` with `last_block_index` and `last_block_hash`. Null until the first block exists. |
+| `icrc3_supported_block_types()` | query | Every `btype` below, each with the url of [8.3](#83-block-types). |
+| `icrc10_supported_standards()` | query | ICRC-3 and ICRC-10. |
+| `icrc3_log_status()` | query | Log length, live blocks, hash of the last block, archives, spill settings. `history_imported` is always false. |
+
+Admin only: `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers` (as on Sneed Lock) and `get_log(start, length)`, the log's operational messages (spills, archives created, failures). Archives are controlled by the forum and the Sneed SNS root (`fp274-iaaaa-aaaaq-aacha-cai`) until a `RegisterDappCanisters` proposal hands them to SNS root alone.
+
+### 8.2 Block format
+
+A block is a `Map` with `btype` (Text), `ts` (Nat, ns since epoch: when the action happened), `phash` (Blob, absent on block 0) and `tx` (Map). Inside `tx`:
+
+- Principals are `Blob` (raw principal bytes); ids, amounts and ledger block indexes are `Nat`; amounts are in the token's base units.
+- `caller` is the principal that made the call. Optional fields are omitted when absent.
+- **Post and thread texts are never logged**, only the SHA-256 of their UTF-8 bytes (`body_sha256`, `title_sha256`, and on edits `old_body_sha256`, `old_title_sha256`). The texts stay in the canister (deletion only hides them), and anyone holding a copy of a moderated text can prove it is the one the block names. Forum and topic titles are logged as text (they are short, public structure).
+- `kind` is `forum`, `topic`, `thread` or `post`; `author` is the principal that wrote a thread or post.
+- A principal that cannot be named (none set) is the Text `none` in `config_update` values.
+
+### 8.3 Block types
+
+All types carry the `sneedforum_` prefix. A block is appended only once its action is final, in the message that records it; a refused call, and a call that changes nothing (deleting what is already deleted, setting a value it already has), appends nothing.
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `sneedforum_tip` | `create_tip` recorded a tip the token's ledger confirmed. | `caller` (the tipper), `tip_id`, `from`, `to` (the post's author), `post_id`, `thread_id`, `ledger`, `amount`, `ledger_block` |
+| `sneedforum_tip_verified` | `verify_tip` confirmed a tip that was recorded unverified (or before the forum checked tips). | `caller` (who asked), the fields of `sneedforum_tip` |
+| `sneedforum_tip_rejected` | `verify_tip` found the tip contradicted by its ledger block, its block used by another tip, or its recipient not the post's author. Final. | `caller`, the fields of `sneedforum_tip` (`ledger_block` when given), `reason` |
+| `sneedforum_delete` | An admin deleted a forum or topic, or someone deleted a thread or post they did not write. An author deleting their own post is not logged. | `caller`, `kind`, `id`; threads and posts: `author`, `body_sha256`, `title_sha256` |
+| `sneedforum_undelete` | An admin restored a forum, topic, thread or post. | as `sneedforum_delete` |
+| `sneedforum_edit` | `update_thread` / `update_post` by someone other than the author (an admin). | `caller`, `kind`, `id`, `author`, `old_body_sha256`, `body_sha256`, `old_title_sha256`, `title_sha256` |
+| `sneedforum_forum_create` | `create_forum`, or `create_sns_forum_setup` / `create_proposal_thread_with_auto_setup` creating an SNS's forum. | `caller`, `forum_id`, `title`, `sns_root` |
+| `sneedforum_forum_update` | `update_forum` | `caller`, `forum_id`, `title`, `sns_root` (after the change) |
+| `sneedforum_topic_create` | `create_topic`, `create_special_topic`, or the SNS setup creating Governance / Proposals. | `caller`, `topic_id`, `forum_id`, `title`, `parent_topic_id` |
+| `sneedforum_topic_update` | `update_topic` | `caller`, `topic_id`, `forum_id`, `title`, `parent_topic_id`; `old_parent_topic_id` when the parent changed |
+| `sneedforum_proposals_topic_set` | `set_proposals_topic` or the SNS setup changed a forum's proposals topic. | `caller`, `forum_id`, `topic_id`; `old_topic_id` when one was set before |
+| `sneedforum_proposals_topic_remove` | `remove_proposals_topic` | `caller`, `forum_id`, `old_topic_id` |
+| `sneedforum_proposal_thread_create` | `create_proposal_thread` / `create_proposal_thread_with_auto_setup` opened a proposal's discussion thread. | `caller`, `thread_id`, `sns_root`, `proposal_id`, `topic_id` |
+| `sneedforum_admin_add` / `sneedforum_admin_remove` | `add_admin` / `remove_admin` | `caller`, `principal` |
+| `sneedforum_config_update` | A setting changed. | `caller`, `key`, `old_value`, `value` |
+
+`sneedforum_config_update` keys: the text limits `post_title_max_length`, `post_body_max_length`, `thread_title_max_length`, `thread_body_max_length`, `topic_title_max_length`, `topic_description_max_length`, `forum_title_max_length`, `forum_description_max_length`; the premium settings `sneed_premium_canister_id`, `premium_post_body_max_length`, `premium_thread_body_max_length`; `notifications_canister`; and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
+
+Not logged: ordinary threads, posts and replies, an author's edits and deletions of their own content, votes on posts, polls and poll votes, mentions, read marks and seen marks, mention-SMS settings, and tips the ledger has not confirmed (they count nowhere; they are logged when `verify_tip` settles them). All of these are public in the canister already.
+
+### 8.4 Verifying and using the log
+
+- **Verify it:** the procedure and the Node.js script of [Sneed Lock's 8.4](/api/sneed_lock#84-verifying-the-log) work unchanged with the canister id `mcigm-4aaaa-aaaad-qhlkq-cai` (or staging `nrtf2-wiaaa-aaaad-aankq-cai`).
+- **Browse it:** [app.sneeddao.com/tools/icrc3?canister=mcigm-4aaaa-aaaad-qhlkq-cai](https://app.sneeddao.com/tools/icrc3?canister=mcigm-4aaaa-aaaad-qhlkq-cai), the generic ICRC-3 browser.
+- **Audit moderation:** keep the `sneedforum_delete`, `sneedforum_undelete` and `sneedforum_edit` blocks; `caller` is the moderator, `author` the person moderated. To check that a text you kept is the one that was removed, compare its SHA-256 with `body_sha256`.
+- **Check a tip:** `ledger_block` is the block index on `ledger`.
+
+---
+
+## 9. Integration checklist
 
 - [ ] Use the **staging** canister `nrtf2-wiaaa-aaaad-aankq-cai` first. It runs the same code with its own state against the real SNS canisters, so votes use real neurons.
 - [ ] Find a DAO's forum with `get_forum_by_sns_root`; if there is none, `create_sns_forum_setup` makes the standard structure.
