@@ -74,6 +74,8 @@ export const NODES = [
         about: 'Anyone with a browser: Sneed Hub runs in your browser and calls the canisters below directly, signed with your Internet Identity.' },
     { id: 'agents', name: 'AI agents and integrators', role: 'wallets, DEXes, scripts', kind: 'people', cluster: 'access', at: [2, 0], icon: 'FaRobot',
         about: 'Any wallet, dashboard, script or AI agent can call Sneed\'s canisters on the same terms as Sneed Hub: they authorise by calling principal only. Guide: /llms.txt and the API docs.' },
+    { id: 'mcp', name: 'Sneed Hub MCP server', role: 'read-only tools for AI agents', kind: 'offchain', cluster: 'access', at: [3, 0], icon: 'FaPlug',
+        about: 'An MCP server (mcp/sneed-hub in the repo) that an AI agent runs next to itself: it reads public data from Sneed\'s canisters (locks, Sneedex offers, proposals, forum threads, balances) and answers with Sneed Hub links. Read-only: it never signs anything.' },
     { id: 'internet_identity', name: 'Internet Identity', role: 'login', kind: 'external', cluster: 'access', at: [4, 0], icon: 'FaFingerprint',
         ids: { ic: 'rdmx6-jaaaa-aaaaa-aaadq-cai' }, controllers: 'system',
         about: 'The Internet Computer\'s passkey login. It gives you one principal for Sneed Hub; Sneed never sees your keys.' },
@@ -238,7 +240,18 @@ export const EDGES = [
     { from: 'people', to: 'app_sneeddao_frontend', type: 'call', label: 'opens Sneed Hub' },
     { from: 'people', to: 'internet_identity', type: 'call', label: 'logs in' },
     { from: 'people', to: 'vectors', type: 'payment', label: 'Premium and Jailbreak fees, paid straight into the ICP splitter' },
-    { from: 'agents', to: 'app_sneeddao_frontend', type: 'call', label: 'reads /llms.txt and the API docs, then calls the canisters directly' },
+    { from: 'agents', to: 'app_sneeddao_frontend', type: 'call', label: 'reads /llms.txt, the agent skills and the API docs' },
+    { from: 'agents', to: 'mcp', type: 'relay', label: 'asks through MCP tools' },
+    // agents and integrators call the canisters' public APIs directly, as Sneed Hub does (a few main ones shown)
+    { from: 'agents', to: 'sneed_sns_forum', type: 'call', label: 'posts, reads, tips' },
+    { from: 'agents', to: 'sneed_sms', type: 'call', label: 'sends messages' },
+    { from: 'agents', to: 'sneedex', type: 'call', label: 'offers and bids' },
+    { from: 'agents', to: 'sneed_lock', type: 'call', label: 'locks' },
+    { from: 'agents', to: 'sns_governance', type: 'call', label: 'neurons, proposals, votes' },
+    { from: 'mcp', to: 'sneed_lock', type: 'call', label: 'reads locks' },
+    { from: 'mcp', to: 'sneedex', type: 'call', label: 'reads offers' },
+    { from: 'mcp', to: 'sns_governance', type: 'call', label: 'reads proposals' },
+    { from: 'mcp', to: 'sneed_sns_forum', type: 'call', label: 'reads threads' },
     { from: 'app_sneeddao_frontend', to: 'icpswap', type: 'call', label: 'Swap page: quotes and swaps from your browser' },
     { from: 'app_sneeddao_frontend', to: 'kong', type: 'call', label: 'Swap page: quotes and swaps from your browser' },
 
@@ -396,7 +409,7 @@ export const SERVICES = [
     { id: 'profiles', name: 'Profiles and avatars', cluster: 'identity', route: '/me', canisters: ['sneed_profiles', 'sneed_avatars', 'sneed_pid_names', 'nft_collections', 'sneed_premium'] },
     // infrastructure
     { id: 'hub', name: 'Sneed Hub web app', cluster: 'infra', route: '/', canisters: ['app_sneeddao_frontend', 'app_sneeddao_backend', 'people', 'internet_identity'] },
-    { id: 'api', name: 'API docs and agents', cluster: 'infra', route: '/api', canisters: ['agents', 'app_sneeddao_frontend'] },
+    { id: 'api', name: 'API docs and agents', cluster: 'infra', route: '/api', canisters: ['agents', 'mcp', 'app_sneeddao_frontend'] },
     { id: 'logs', name: 'Activity logs (ICRC-3)', cluster: 'infra', route: '/tools/icrc3', canisters: ['icrc3_archives', ...ICRC3_LOGS] },
     { id: 'cycles', name: 'Cycles', cluster: 'infra', route: '/health', canisters: ['unicycle', 'cmc', 'sns_root'] },
 ];

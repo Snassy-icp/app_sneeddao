@@ -12,7 +12,7 @@ import {
     FaShieldAlt, FaStore, FaBrain, FaChartLine, FaImage, FaEnvelope, FaBell, FaEye, FaBroadcastTower, FaUserTag, FaTags,
     FaUserCircle, FaAddressCard, FaArchive, FaBolt, FaLayerGroup, FaCogs, FaUniversity, FaBook, FaNetworkWired, FaWater,
     FaProjectDiagram, FaCircle, FaSearch, FaExpand, FaPlus, FaMinus, FaTimes, FaExternalLinkAlt, FaArrowRight,
-    FaFileAlt, FaSpinner, FaCopy, FaCheck, FaInfoCircle,
+    FaFileAlt, FaSpinner, FaCopy, FaCheck, FaInfoCircle, FaPlug,
 } from 'react-icons/fa';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
@@ -27,7 +27,7 @@ const ICONS = {
     FaSitemap, FaListUl, FaGift, FaPiggyBank, FaUserTie, FaLaptopCode, FaLock, FaExchangeAlt, FaCrown, FaRocket,
     FaShieldAlt, FaStore, FaBrain, FaChartLine, FaImage, FaEnvelope, FaBell, FaEye, FaBroadcastTower, FaUserTag, FaTags,
     FaUserCircle, FaAddressCard, FaArchive, FaBolt, FaLayerGroup, FaCogs, FaUniversity, FaBook, FaNetworkWired, FaWater,
-    FaProjectDiagram, FaCircle,
+    FaProjectDiagram, FaCircle, FaPlug,
 };
 const Icon = ({ name, ...rest }) => { const C = ICONS[name] || FaCircle; return <C {...rest} />; };
 
