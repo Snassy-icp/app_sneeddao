@@ -31,6 +31,8 @@ import { isUntilDissolved } from './utils/lockTime';
 import { LockUntil, LockTimeLeftAtLeast, LockAge } from './components/LockUntil';
 import LockGas from './components/LockGas';
 import MintTokenDialog, { useIsMinter } from './components/MintTokenDialog';
+import ConvertButton from './components/convert/ConvertButton';
+import { TokenApprovalsBadge, TokenApprovalsRow } from './components/ApprovalsList';
 
 // Amount text to base units by string parsing (commas ignored, no float math, extra
 // decimals cut off); null when it is not a positive number.
@@ -1660,6 +1662,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 </span>
                             );
                         })()}
+                        {/* Approvals (ICRC-2 allowances granted) count */}
+                        <TokenApprovalsBadge ledgerId={token.ledger_canister_id} decimals={token.decimals} />
                         {/* Neurons icon with count */}
                         {neurons.length > 0 && (
                             <span 
@@ -1840,6 +1844,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             Mint
                         </button>
                     )}
+
+                    {/* Convert ckBTC/ckETH/ckERC20 to and from BTC/ETH/ERC-20 (renders nothing for other tokens) */}
+                    <ConvertButton ledgerId={tokenCanisterId} />
 
                     {/* Send button (always rightmost) */}
                     {token.available > 0n && (
@@ -2289,6 +2296,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     )}
                 </div>
             )}
+
+            {/* Approvals granted on this token (shows only when there are any) */}
+            {activeTab === 'balance' && <TokenApprovalsRow token={token} />}
 
             {/* Locks Tab Content */}
             {activeTab === 'locks' && (

@@ -52,6 +52,12 @@ export default function Notifications() {
         if (smsActor) setSmsPreview(await smsActor.get_notification_preview().catch(() => null)); // an older SMS canister has no setting
     }, [actor, identity, smsActor]);
     useEffect(() => { load().catch((e) => setMsg({ err: e.message || String(e) })); }, [load]);
+    // a link to a section (/notifications#message-balance, from the low-balance alert) scrolls there once it is drawn
+    const loaded = !!data;
+    useEffect(() => {
+        const h = window.location.hash.slice(1);
+        if (loaded && h) setTimeout(() => document.getElementById(h)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    }, [loaded]);
     // a code from a tapped notification (/notifications?code=123456) fills the channels waiting for one
     const codeFromLinkParam = useMemo(() => { const c = new URLSearchParams(window.location.search).get('code'); return /^\d{6}$/.test(c || '') ? c : null; }, []);
     // the service worker also keeps the last code this device received (sw.js), for phones where
@@ -89,7 +95,7 @@ export default function Notifications() {
             <Header />
             <div style={{ maxWidth: 820, margin: '0 auto', padding: '1.25rem 16px 3rem' }}>
                 <h1 style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 0.4rem', color: c.primaryText, fontSize: '1.6rem' }}><FaBell color={accent} /> Notifications</h1>
-                <p style={{ ...muted, margin: '0 0 1.25rem', fontSize: '0.9rem' }}>Decide which apps may notify you, about what, and where. Nothing reaches you from an app you haven't allowed.</p>
+                <p style={{ ...muted, margin: '0 0 1.25rem', fontSize: '0.9rem' }}>Decide which apps may notify you, about what, and where. Nothing reaches you from an app you haven't allowed. {isAuthenticated && notificationsEnabled && <Link to="/notifications/inbox" style={{ color: accent, fontWeight: 600, textDecoration: 'none' }}>Your inbox →</Link>}</p>
                 {body}
             </div>
         </>
@@ -324,12 +330,12 @@ export default function Notifications() {
             </div>
 
             <div style={card}>
-                <h2 style={h2}><FaHistory color={accent} /> Recent</h2>
+                <h2 style={h2}><FaHistory color={accent} /> Recent <Link to="/notifications/inbox" style={{ marginLeft: 'auto', fontSize: '0.82rem', fontWeight: 600, color: accent, textDecoration: 'none' }}>See all →</Link></h2>
                 {history.length === 0 && <p style={muted}>Nothing yet.</p>}
                 {history.map((n) => (
                     <div key={String(n.id)} style={{ borderTop: `1px solid ${c.border}`, padding: '8px 0', fontSize: '0.86rem' }}>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
-                            <strong style={{ color: c.primaryText }}>{n.title}</strong>
+                            <Link to={`/notifications/${n.id}`} style={{ color: c.primaryText, fontWeight: 700, textDecoration: 'none' }}>{n.title}</Link>
                             <span style={muted}>{n.app_name} · {levelOf(n.level)} · {new Date(Number(n.created_at / 1_000_000n)).toLocaleString()}</span>
                         </div>
                         {n.body && <div style={{ color: c.secondaryText, marginTop: 2, whiteSpace: 'pre-wrap' }}>{n.body.length > 300 ? `${n.body.slice(0, 300)}…` : n.body}</div>}

@@ -9,6 +9,7 @@
 
 import { Actor } from '@dfinity/agent';
 import { idlFactory as ledgerIdlFactory } from 'external/icrc1_ledger/icrc1_ledger.did.js';
+import { approveAndRecord } from '../../utils/approvals.js';
 
 // ─── Cache ────────────────────────────────────────────────────────────────────
 
@@ -199,7 +200,7 @@ export async function checkAllowance(tokenCanisterId, agent, owner, spender) {
  */
 export async function approve(tokenCanisterId, agent, spender, amount) {
   const ledger = Actor.createActor(ledgerIdlFactory, { agent, canisterId: tokenCanisterId });
-  const result = await ledger.icrc2_approve({
+  const result = await approveAndRecord(ledger, tokenCanisterId, {
     spender: { owner: spender, subaccount: [] },
     amount,
     fee: [],

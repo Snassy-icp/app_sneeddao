@@ -73,6 +73,8 @@ import Projects from './pages/Projects';
 import PairApp from './pages/PairApp';
 import ConnectAgent from './pages/ConnectAgent';
 import Notifications from './pages/Notifications';
+import NotificationInbox from './pages/NotificationInbox';
+import NotificationView from './pages/NotificationView';
 import Rewards from './pages/Rewards';
 import Disclaimer from './pages/Disclaimer';
 import Principal from './pages/Principal';
@@ -134,6 +136,7 @@ import NftBrowser from './pages/NftBrowser';
 import RllLedger from './pages/RllLedger';
 import Revenue from './pages/Revenue';
 import Donate from './pages/Donate';
+import Convert from './pages/Convert';
 import Feedback from './pages/Feedback';
 import MrSneed from './pages/MrSneed';
 import Lore from './pages/Lore';
@@ -142,6 +145,7 @@ import NftItem from './pages/NftItem';
 import SnsJailbreak from './pages/SnsJailbreak';
 import SnsJailbreakList from './pages/SnsJailbreakList';
 import ToolsAccount from './pages/ToolsAccount';
+import ToolsRecoverTopUp from './pages/ToolsRecoverTopUp';
 import ToolsIcrc3 from './pages/ToolsIcrc3';
 import TokenSafety from './pages/TokenSafety';
 import FollowMoney from './pages/FollowMoney';
@@ -244,6 +248,7 @@ function App() {
                     <Route path="/rll_ledger" element={<RllLedger />} />
                     <Route path="/revenue" element={<Revenue />} />
                     <Route path="/donate" element={<Donate />} />
+                    <Route path="/convert" element={<Convert />} />
                     <Route path="/feedback" element={<Feedback />} />
                     <Route path="/mr-sneed" element={<MrSneed />} />
                     <Route path="/lore" element={<Lore />} />
@@ -280,6 +285,8 @@ function App() {
                     <Route path="/pair" element={<PairApp />} />
                     <Route path="/connect-agent" element={<ConnectAgent />} />
                     <Route path="/notifications" element={<Notifications />} />
+                    <Route path="/notifications/inbox" element={<NotificationInbox />} />
+                    <Route path="/notifications/:id" element={<NotificationView />} />
                     <Route path="/proposals" element={<Proposals />} />
                     <Route path="/icp_proposals" element={<IcpProposals />} />
                     <Route path="/icp_proposal" element={<IcpProposal />} />
@@ -340,6 +347,7 @@ function App() {
                     <Route path="/tools/token_safety" element={<TokenSafety />} />
                     <Route path="/tools/token_safety/:ledgerId" element={<TokenSafety />} />
                     <Route path="/tools/money" element={<FollowMoney />} />
+                    <Route path="/tools/recover-topup" element={<ToolsRecoverTopUp />} />
                     <Route path="/tools/pad" element={<ComingSoonPage title="Token launcher"><SneedPad /></ComingSoonPage>} />
                     <Route path="/tools/escrow" element={<ToolsEscrow />} />
                     <Route path="/tools/escrow/swap" element={<EscrowSwap />} />

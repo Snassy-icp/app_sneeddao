@@ -3,6 +3,7 @@
 import { Principal } from '@dfinity/principal';
 import { createActor, canisterId as notificationsEnv } from 'declarations/sneed_notifications';
 import { createActor as createLedger } from 'external/icrc1_ledger';
+import { approveAndRecord } from './approvals';
 
 const realCanisterId = (text) => {
     try { const b = Principal.fromText(text).toUint8Array(); return b.length === 10 && b[9] === 1 ? text : null; } catch { return null; }
@@ -35,7 +36,7 @@ export const levelOf = (v) => Object.keys(v || {})[0];
 /// Approve the notifications canister for `amountE8s` (+ fee) on the ICP ledger, then top up.
 export async function topUp(identity, amountE8s) {
     const ledger = createLedger(ICP_LEDGER, { agentOptions: { host, identity } });
-    const approve = await ledger.icrc2_approve({ from_subaccount: [], spender: { owner: Principal.fromText(notificationsId), subaccount: [] }, amount: amountE8s + ICP_FEE, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] });
+    const approve = await approveAndRecord(ledger, ICP_LEDGER, { from_subaccount: [], spender: { owner: Principal.fromText(notificationsId), subaccount: [] }, amount: amountE8s + ICP_FEE, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] });
     if ('Err' in approve) throw new Error(`The ledger refused the approval: ${JSON.stringify(approve.Err, (k, v) => (typeof v === 'bigint' ? v.toString() : v))}`);
     const r = await notificationsActor(identity).top_up(amountE8s);
     if ('err' in r) throw new Error(r.err);

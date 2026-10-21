@@ -13,6 +13,7 @@ import PrincipalInput from '../../components/PrincipalInput';
 import { useAuth } from '../../AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { approveAndRecord } from '../../utils/approvals';
 import { padIdl, PAD_CANISTER_ID } from '../../tokensafety/padIdl.js';
 import { padQuoteTiers } from '../../tokensafety/padPrices.js';
 import PriceTierBadge from '../../components/PriceTierBadge';
@@ -89,7 +90,7 @@ export function IndexPanel({ ledgerId: initialLedger, header }) {
         setError(''); setBusy('create');
         try {
             const icp = createLedgerActor(ICP_LEDGER, { agentOptions: { identity, host: HOST } });
-            const ap = await icp.icrc2_approve({ from_subaccount: [], spender: { owner: Principal.fromText(PAD_CANISTER_ID), subaccount: [] }, amount: quote.total_e8s + ICP_FEE, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] });
+            const ap = await approveAndRecord(icp, ICP_LEDGER, { from_subaccount: [], spender: { owner: Principal.fromText(PAD_CANISTER_ID), subaccount: [] }, amount: quote.total_e8s + ICP_FEE, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] });
             if ('Err' in ap) throw new Error(`approval failed: ${JSON.stringify(ap.Err, (k, v) => (typeof v === 'bigint' ? v.toString() : v))}`);
             const r = await pad(true).create_index({ ledger: Principal.fromText(ledger), control: controlValue() });
             if ('Err' in r) throw new Error(r.Err);

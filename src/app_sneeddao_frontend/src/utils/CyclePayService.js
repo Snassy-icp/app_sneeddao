@@ -4,6 +4,7 @@
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { createActor as createLedger } from 'external/icrc1_ledger';
+import { approveAndRecord } from './approvals';
 
 export const CYCLEPAY_CANISTER_ID = '2bwus-iiaaa-aaaac-bee3a-cai';
 export const CKUSDC_LEDGER_ID = 'xevnm-gaaaa-aaaar-qafnq-cai';
@@ -75,7 +76,7 @@ const statusOf = (p) => Object.keys(p.status)[0];
 export async function topUpWithCkUsdc(identity, canisterId, usd, { feeAtomic, onStatus } = {}) {
     const amount = toAtomicCents(usd);
     const fee = feeAtomic ?? 10_000n;
-    const approve = await ckUsdcLedger(identity).icrc2_approve({
+    const approve = await approveAndRecord(ckUsdcLedger(identity), CKUSDC_LEDGER_ID, {
         from_subaccount: [], spender: { owner: Principal.fromText(CYCLEPAY_CANISTER_ID), subaccount: [] },
         amount: amount + fee, expected_allowance: [], expires_at: [BigInt(Date.now() + 10 * 60_000) * 1_000_000n],
         fee: [], memo: [], created_at_time: [],

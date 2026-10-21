@@ -29,6 +29,7 @@ import { Principal } from '@dfinity/principal';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
+import { topUpCanisterWithIcp, cyclesOrThrow } from '../utils/cyclesTopUp';
 import { useTheme } from '../contexts/ThemeContext';
 import { formatAmountRaw } from '../utils/StringUtils';
 import { useNaming } from '../NamingContext';
@@ -42,6 +43,7 @@ import ConfirmDialog from './ConfirmDialog';
 import BotEventPanel from './BotEventPanel';
 import { getTokenMetadataSync, fetchAndCacheTokenMetadata } from '../hooks/useTokenCache';
 import { upgradeSteps } from '../utils/upgradePath';
+import { fetchBotCyclesBalance } from '../utils/botCycles';
 import StatusLamp, {
     LAMP_OFF, LAMP_OK, LAMP_ACTIVE, LAMP_WARN, LAMP_ERROR, LAMP_CB,
     LAMP_COLORS, LAMP_LABELS, CHORE_DEADLINES,
@@ -235,6 +237,8 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
 
     // Canister status
     const [canisterStatus, setCanisterStatus] = useState(null);
+    // cycles from the bot's public getCyclesBalance query, for non-controllers (canister_status is controller-only)
+    const [publicCycles, setPublicCycles] = useState(null);
     const [controllers, setControllers] = useState([]);
     const [botVersion, setBotVersion] = useState('');
 
@@ -451,8 +455,8 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
     // Load canister status (cycles, memory, controllers, module hash)
     const loadCanisterStatus = useCallback(async () => {
         if (!canisterId || !identity) return;
+        const agent = getAgent();
         try {
-            const agent = getAgent();
             if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
                 await agent.fetchRootKey();
             }
@@ -469,8 +473,9 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
             });
             setControllers(result.settings.controllers);
         } catch (err) {
-            // Non-controllers can't fetch status — that's OK
+            // Non-controllers can't fetch status — the bot's public query still gives its cycles
             console.warn('Could not fetch canister status:', err.message);
+            setPublicCycles(await fetchBotCyclesBalance(agent, canisterId));
         }
     }, [canisterId, identity, getAgent]);
 
@@ -1036,6 +1041,7 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
     // VERSION MATCHING
     // ==========================================
     const moduleHashLower = canisterStatus?.moduleHash?.toLowerCase() || '';
+    const cyclesShown = canisterStatus ? canisterStatus.cycles : publicCycles;
     const matchedOfficialVersion = moduleHashLower && officialVersions.length > 0
         ? officialVersions.find(v => v.wasmHash && v.wasmHash.toLowerCase() === moduleHashLower)
         : null;
@@ -1293,40 +1299,12 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
             const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://ic0.app' : 'http://localhost:4943';
             const agent = new HttpAgent({ identity, host });
             if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
-            const canisterPrincipal = Principal.fromText(canisterId);
-            const cmcPrincipal = Principal.fromText(CMC_CANISTER_ID);
-            // Step 1: Transfer ICP to CMC with canister's subaccount
+            // ICP -> CMC subaccount, then notify_top_up; the block is kept as a pending top-up until the
+            // CMC answers, and a retry finishes it instead of paying again (utils/cyclesTopUp.js)
             const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
-            const subaccount = principalToSubaccount(canisterPrincipal);
-            const transferResult = await ledger.icrc1_transfer({
-                to: { owner: cmcPrincipal, subaccount: [subaccount] },
-                amount: amountE8s,
-                fee: [BigInt(ICP_FEE)],
-                memo: [TOP_UP_MEMO],
-                from_subaccount: [],
-                created_at_time: [],
-            });
-            if ('Err' in transferResult) {
-                const err = transferResult.Err;
-                if ('InsufficientFunds' in err) throw new Error(`Insufficient funds: ${formatIcp(Number(err.InsufficientFunds.balance))} ICP available`);
-                throw new Error(`Transfer failed: ${JSON.stringify(err)}`);
-            }
-            const blockIndex = transferResult.Ok;
-            // Step 2: Notify CMC to mint cycles
-            const cmcHost = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://ic0.app' : host;
-            const cmcAgent = HttpAgent.createSync({ host: cmcHost, identity });
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await cmcAgent.fetchRootKey();
-            const cmc = createCmcActor(CMC_CANISTER_ID, { agent: cmcAgent });
-            const notifyResult = await cmc.notify_top_up({ block_index: blockIndex, canister_id: canisterPrincipal });
-            if ('Err' in notifyResult) {
-                const err = notifyResult.Err;
-                if ('Refunded' in err) throw new Error(`Top-up refunded: ${err.Refunded.reason}`);
-                else if ('InvalidTransaction' in err) throw new Error(`Invalid transaction: ${err.InvalidTransaction}`);
-                else if ('Other' in err) throw new Error(`CMC error: ${err.Other.error_message}`);
-                else if ('Processing' in err) throw new Error('Transaction is still being processed. Please try again in a moment.');
-                throw new Error(`Unknown CMC error: ${JSON.stringify(err)}`);
-            }
-            const cyclesAdded = Number(notifyResult.Ok);
+            const cmc = createCmcActor(CMC_CANISTER_ID, { agent });
+            const topUp = await topUpCanisterWithIcp({ ledger, cmc, canisterId: canisterId, amountE8s, owner: identity.getPrincipal().toText() });
+            const cyclesAdded = cyclesOrThrow(topUp);
             setTopUpSuccessDialog({ cyclesAdded, icpSpent: icpAmount });
             setTopUpAmount('');
             setShowTopUpSection(false);
@@ -1444,15 +1422,15 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                         {botIcon || <FaRobot style={{ color: accent, fontSize: '16px' }} />}
                     </div>
                     <span style={{ fontSize: '1.05rem', fontWeight: '600' }}>{botName}</span>
-                    {canisterStatus && (
+                    {cyclesShown != null && (
                         <span style={{
                             fontSize: '0.75rem',
-                            color: getCyclesColor(canisterStatus.cycles, cycleSettings),
-                            backgroundColor: `${getCyclesColor(canisterStatus.cycles, cycleSettings)}15`,
+                            color: getCyclesColor(cyclesShown, cycleSettings),
+                            backgroundColor: `${getCyclesColor(cyclesShown, cycleSettings)}15`,
                             padding: '4px 10px', borderRadius: '8px', fontWeight: '600',
                             display: 'flex', alignItems: 'center', gap: '4px',
                         }}>
-                            ⚡ {formatCycles(canisterStatus.cycles)}
+                            ⚡ {formatCycles(cyclesShown)}
                         </span>
                     )}
                     {choreStatuses.length > 0 && (
@@ -1538,11 +1516,11 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                                 showCopyButton={true} isAuthenticated={isAuthenticated} noLink={true} />
                                         </div>
                                     </div>
-                                    {canisterStatus && (
+                                    {cyclesShown != null && (
                                         <div style={{ textAlign: 'right' }}>
                                             <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Cycles</div>
-                                            <div style={{ color: getCyclesColor(canisterStatus.cycles, cycleSettings), fontSize: '24px', fontWeight: '700', marginTop: '4px' }}>
-                                                {formatCycles(canisterStatus.cycles)}
+                                            <div style={{ color: getCyclesColor(cyclesShown, cycleSettings), fontSize: '24px', fontWeight: '700', marginTop: '4px' }}>
+                                                {formatCycles(cyclesShown)}
                                             </div>
                                         </div>
                                     )}

@@ -12,6 +12,7 @@ import { cyclePayAvailable, getCkUsdcTerms, getCkUsdcBalance, topUpWithCkUsdc } 
 import { formatCyclesCompact, parseCyclesInput } from '../utils/NeuronManagerSettings';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
+import { topUpCanisterWithIcp, cyclesOrThrow } from '../utils/cyclesTopUp';
 
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const E8S_ICP = 100_000_000;
@@ -378,47 +379,10 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
 
                 try {
                     const amountE8s = BigInt(Math.floor(icpForThis * E8S_ICP));
-                    const canisterPrincipal = Principal.fromText(c.canisterId);
-                    const subaccount = principalToSubAccount(canisterPrincipal);
-
-                    // Step 1: Transfer ICP to CMC
-                    const transferResult = await ledger.icrc1_transfer({
-                        to: {
-                            owner: cmcPrincipal,
-                            subaccount: [subaccount],
-                        },
-                        amount: amountE8s,
-                        fee: [BigInt(ICP_FEE)],
-                        memo: [TOP_UP_MEMO],
-                        from_subaccount: [],
-                        created_at_time: [],
-                    });
-
-                    if ('Err' in transferResult) {
-                        const err = transferResult.Err;
-                        throw new Error('InsufficientFunds' in err
-                            ? `Insufficient funds: ${(Number(err.InsufficientFunds.balance) / E8S_ICP).toFixed(4)} ICP`
-                            : `Transfer failed: ${JSON.stringify(err)}`);
-                    }
-
-                    const blockIndex = transferResult.Ok;
-
-                    // Step 2: Notify CMC
-                    const notifyResult = await cmc.notify_top_up({
-                        block_index: blockIndex,
-                        canister_id: canisterPrincipal,
-                    });
-
-                    if ('Err' in notifyResult) {
-                        const err = notifyResult.Err;
-                        if ('Refunded' in err) throw new Error(`Refunded: ${err.Refunded.reason}`);
-                        if ('InvalidTransaction' in err) throw new Error(`Invalid: ${err.InvalidTransaction}`);
-                        if ('Other' in err) throw new Error(`CMC: ${err.Other.error_message}`);
-                        if ('Processing' in err) throw new Error('Still processing, try again');
-                        throw new Error(`CMC error: ${JSON.stringify(err)}`);
-                    }
-
-                    const cyclesAdded = Number(notifyResult.Ok);
+                    // ICP -> CMC subaccount, then notify_top_up; the block is kept as a pending top-up
+                    // until the CMC answers, and a retry finishes it instead of paying again
+                    const topUp = await topUpCanisterWithIcp({ ledger, cmc, canisterId: c.canisterId, amountE8s, owner: identity.getPrincipal().toText() });
+                    const cyclesAdded = cyclesOrThrow(topUp, formatCyclesCompact);
                     setTopUpStatus(prev => ({ ...prev, [c.canisterId]: 'success' }));
                     setTopUpResults(prev => ({ ...prev, [c.canisterId]: cyclesAdded }));
                 } catch (err) {

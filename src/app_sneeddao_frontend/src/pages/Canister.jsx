@@ -14,6 +14,7 @@ import { useNaming } from '../NamingContext';
 import { FaEdit, FaSave, FaTimes, FaExternalLinkAlt, FaGasPump, FaUpload, FaExclamationTriangle, FaCube, FaChevronDown, FaChevronRight, FaArrowLeft, FaCheckCircle, FaMemory, FaUsers, FaLock, FaUnlock, FaCode, FaSpinner, FaCoins, FaUser } from 'react-icons/fa';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
+import { topUpCanisterWithIcp, cyclesOrThrow } from '../utils/cyclesTopUp';
 import { getCyclesColor, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
 
 // Custom CSS for animations
@@ -874,78 +875,12 @@ export default function CanisterPage() {
                 await agent.fetchRootKey();
             }
             
-            const canisterPrincipal = Principal.fromText(canisterIdParam);
-            const cmcPrincipal = Principal.fromText(CMC_CANISTER_ID);
-            
-            // Step 1: Transfer ICP to CMC with canister's subaccount and TPUP memo
+            // ICP -> CMC subaccount, then notify_top_up; the block is kept as a pending top-up until the
+            // CMC answers, and a retry finishes it instead of paying again (utils/cyclesTopUp.js)
             const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
-            const subaccount = principalToSubaccount(canisterPrincipal);
-            
-            console.log('Transferring ICP to CMC...');
-            console.log('Amount:', icpAmount, 'ICP');
-            console.log('To CMC:', CMC_CANISTER_ID);
-            console.log('Subaccount:', Array.from(subaccount).map(b => b.toString(16).padStart(2, '0')).join(''));
-            console.log('Memo (TPUP):', Array.from(TOP_UP_MEMO).map(b => b.toString(16).padStart(2, '0')).join(''));
-            
-            const transferResult = await ledger.icrc1_transfer({
-                to: {
-                    owner: cmcPrincipal,
-                    subaccount: [subaccount],
-                },
-                amount: amountE8s,
-                fee: [BigInt(ICP_FEE)],
-                memo: [TOP_UP_MEMO],
-                from_subaccount: [],
-                created_at_time: [],
-            });
-            
-            if ('Err' in transferResult) {
-                const err = transferResult.Err;
-                if ('InsufficientFunds' in err) {
-                    throw new Error(`Insufficient funds: ${formatIcp(Number(err.InsufficientFunds.balance))} ICP available`);
-                }
-                throw new Error(`Transfer failed: ${JSON.stringify(err)}`);
-            }
-            
-            const blockIndex = transferResult.Ok;
-            console.log('Transfer successful, block index:', blockIndex.toString());
-            
-            // Step 2: Notify CMC to mint cycles
-            // For mainnet, use mainnet CMC; for local, this won't work
-            const cmcHost = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
-                ? 'https://ic0.app' 
-                : host;
-            const cmcAgent = HttpAgent.createSync({ host: cmcHost, identity });
-            
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                await cmcAgent.fetchRootKey();
-            }
-            
-            const cmc = createCmcActor(CMC_CANISTER_ID, { agent: cmcAgent });
-            
-            console.log('Notifying CMC to mint cycles...');
-            const notifyResult = await cmc.notify_top_up({
-                block_index: blockIndex,
-                canister_id: canisterPrincipal,
-            });
-            
-            if ('Err' in notifyResult) {
-                const err = notifyResult.Err;
-                if ('Refunded' in err) {
-                    throw new Error(`Top-up refunded: ${err.Refunded.reason}`);
-                } else if ('InvalidTransaction' in err) {
-                    throw new Error(`Invalid transaction: ${err.InvalidTransaction}`);
-                } else if ('Other' in err) {
-                    throw new Error(`CMC error: ${err.Other.error_message}`);
-                } else if ('Processing' in err) {
-                    throw new Error('Transaction is still being processed. Please try again in a moment.');
-                } else if ('TransactionTooOld' in err) {
-                    throw new Error('Transaction too old');
-                }
-                throw new Error(`Unknown CMC error: ${JSON.stringify(err)}`);
-            }
-            
-            const cyclesAdded = Number(notifyResult.Ok);
+            const cmc = createCmcActor(CMC_CANISTER_ID, { agent });
+            const topUp = await topUpCanisterWithIcp({ ledger, cmc, canisterId: canisterIdParam, amountE8s, owner: identity.getPrincipal().toText() });
+            const cyclesAdded = cyclesOrThrow(topUp, formatCycles);
             console.log('Cycles added:', cyclesAdded);
             
             setSuccessMessage(`✅ Successfully topped up ${formatCycles(cyclesAdded)} cycles to the canister!`);

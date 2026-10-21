@@ -10,6 +10,7 @@ import { createActor as createFactoryActor, canisterId as factoryCanisterId } fr
 import { createActor as createManagerActor } from 'declarations/sneed_icp_staking_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
+import { topUpCanisterWithIcp, describeTopUpResult } from '../utils/cyclesTopUp';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { computeAccountId } from '../utils/PrincipalUtils';
@@ -286,41 +287,18 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                 addProgress(`Topping up canister with ${formatIcp(extraGasE8s)} ICP for gas...`, 'active');
                 
                 try {
-                    // Use principalToSubAccount for correct subaccount computation
-                    const subaccount = principalToSubAccount(newCanisterId);
-                    
-                    // Transfer to CMC
-                    const topUpTransfer = await ledger.icrc1_transfer({
-                        to: {
-                            owner: Principal.fromText(CMC_CANISTER_ID),
-                            subaccount: [subaccount],
-                        },
-                        amount: BigInt(extraGasE8s),
-                        fee: [BigInt(ICP_FEE)],
-                        memo: [TOP_UP_MEMO],
-                        from_subaccount: [],
-                        created_at_time: [],
-                    });
-                    
-                    if ('Err' in topUpTransfer) {
-                        console.error('Top-up transfer failed:', topUpTransfer.Err);
-                        updateLastProgress('warning');
-                        addProgress('⚠️ Gas top-up failed (canister was still created)', 'warning');
+                    // ICP -> CMC subaccount, then notify_top_up; an unfinished top-up stays pending
+                    // (wallet "Pending top-ups") instead of being lost (utils/cyclesTopUp.js)
+                    const cmc = createCmcActor(CMC_CANISTER_ID, { agent });
+                    const topUp = await topUpCanisterWithIcp({ ledger, cmc, canisterId: newCanisterIdText, amountE8s: BigInt(extraGasE8s), owner: identity.getPrincipal().toText() });
+                    if (topUp.status === 'ok' && !topUp.resumed) {
+                        updateLastProgress('complete');
                     } else {
-                        // Notify CMC to top up the canister
-                        const cmc = createCmcActor(CMC_CANISTER_ID, { agent });
-                        const notifyResult = await cmc.notify_top_up({
-                            canister_id: newCanisterId,
-                            block_index: topUpTransfer.Ok,
-                        });
-                        
-                        if ('Err' in notifyResult) {
-                            console.error('CMC notify failed:', notifyResult.Err);
-                            updateLastProgress('warning');
-                            addProgress(`⚠️ CMC notification failed: ${JSON.stringify(notifyResult.Err)}`, 'warning');
-                        } else {
-                            updateLastProgress('complete');
-                        }
+                        console.error('Gas top-up not completed:', topUp);
+                        updateLastProgress('warning');
+                        addProgress(topUp.status === 'transfer_failed'
+                            ? `⚠️ Gas top-up failed (canister was still created): ${topUp.reason}`
+                            : `⚠️ ${describeTopUpResult(topUp)}`, 'warning');
                     }
                 } catch (topUpErr) {
                     console.error('Top-up error:', topUpErr);

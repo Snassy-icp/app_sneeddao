@@ -1394,7 +1394,7 @@ function Hub() {
             }}
         >
             <style>{customStyles}</style>
-            <Header showSnsDropdown={true} />
+            <Header />
             
             <main style={{
                 maxWidth: '1200px',

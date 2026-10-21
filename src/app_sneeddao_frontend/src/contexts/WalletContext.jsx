@@ -27,6 +27,7 @@ import { getNeuronManagerSettings, getCanisterManagerSettings } from '../utils/N
 import { getCachedRewards, setCachedRewards } from '../hooks/useRewardsCache';
 import priceService from '../services/PriceService';
 import { fetchLedgerSuiteVersions, ledgerSuiteVersion, TOKEN_APP_IDS } from '../utils/ledgerSuite';
+import { fetchBotCyclesBalance } from '../utils/botCycles';
 
 const WalletContext = createContext(null);
 
@@ -2626,9 +2627,11 @@ export const WalletProvider = ({ children }) => {
                     cyclesMap[canisterId] = Number(status.cycles);
                     moduleHashMap[canisterId] = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
                 } catch (err) {
-                    // Not a controller
+                    // Not a controller: the bot's public query still gives its cycles
                     controllerMap[canisterId] = false;
                     moduleHashMap[canisterId] = null;
+                    const publicCycles = await fetchBotCyclesBalance(agent, canisterId);
+                    if (publicCycles !== null) cyclesMap[canisterId] = publicCycles;
                 }
             }
             setNeuronManagerIsController(controllerMap);

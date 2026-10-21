@@ -10,6 +10,7 @@ import { Principal } from '@dfinity/principal';
 import { encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { createActor, canisterId as monEnv } from 'declarations/sneed_mon';
 import { createActor as createLedger } from 'external/icrc1_ledger';
+import { approveAndRecord } from './approvals';
 
 const realCanisterId = (text) => {
     try { const b = Principal.fromText(text).toUint8Array(); return b.length === 10 && b[9] === 1 ? text : null; } catch { return null; }
@@ -85,7 +86,7 @@ const ledgerFor = (identity, ledgerId) => createLedger(typeof ledgerId === 'stri
 /// icrc2_approve on `ledgerId` from the user's (sub)account for `spender` ({ owner, subaccount }),
 /// replacing any earlier approval. expiresAtNs null = no expiry. Returns the block.
 export async function approveSpender(identity, ledgerId, spender, amountE8s, expiresAtNs, fromSubaccount) {
-    const r = await ledgerFor(identity, ledgerId).icrc2_approve({
+    const r = await approveAndRecord(ledgerFor(identity, ledgerId), ledgerId, {
         from_subaccount: fromSubaccount ? [fromSubaccount] : [], spender, amount: amountE8s, expected_allowance: [],
         expires_at: expiresAtNs ? [expiresAtNs] : [], fee: [], memo: [], created_at_time: [],
     });

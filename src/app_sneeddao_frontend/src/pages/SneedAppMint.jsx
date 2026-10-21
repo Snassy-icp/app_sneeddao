@@ -7,6 +7,7 @@ import { Principal } from '@dfinity/principal';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
+import { topUpCanisterWithIcp, describeTopUpResult } from '../utils/cyclesTopUp';
 import { principalToSubAccount } from '@dfinity/utils';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
@@ -48,6 +49,7 @@ export default function SneedAppMint() {
     const [creating, setCreating] = useState(false);
     const [createdCanisterId, setCreatedCanisterId] = useState(null);
     const [progressMessage, setProgressMessage] = useState('');
+    const [gasTopUpWarning, setGasTopUpWarning] = useState('');
 
     // Payment
     const [paymentSubaccount, setPaymentSubaccount] = useState(null);
@@ -212,6 +214,7 @@ export default function SneedAppMint() {
     const handleMint = async () => {
         if (!selectedVersion || !identity || !paymentSubaccount) return;
         setCreating(true);
+        setGasTopUpWarning('');
         setError('');
         setProgressMessage('');
         try {
@@ -252,27 +255,23 @@ export default function SneedAppMint() {
                 if (extraGasE8s > 0) {
                     setProgressMessage('Topping up canister with gas...');
                     try {
-                        const subaccount = principalToSubAccount(newCanisterId);
-                        const topUpTransfer = await ledger.icrc1_transfer({
-                            to: { owner: Principal.fromText(CMC_CANISTER_ID), subaccount: [subaccount] },
-                            amount: BigInt(extraGasE8s),
-                            fee: [BigInt(ICP_FEE)],
-                            memo: [TOP_UP_MEMO],
-                            from_subaccount: [],
-                            created_at_time: [],
-                        });
-                        if (topUpTransfer.Ok !== undefined) {
-                            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
-                                ? 'https://icp0.io' : 'http://localhost:4943';
-                            const agent = HttpAgent.createSync({ host, identity });
-                            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                                await agent.fetchRootKey();
-                            }
-                            const cmc = createCmcActor(CMC_CANISTER_ID, { agent });
-                            await cmc.notify_top_up({ canister_id: newCanisterId, block_index: topUpTransfer.Ok });
+                        const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
+                            ? 'https://icp0.io' : 'http://localhost:4943';
+                        const agent = HttpAgent.createSync({ host, identity });
+                        if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                            await agent.fetchRootKey();
+                        }
+                        const cmc = createCmcActor(CMC_CANISTER_ID, { agent });
+                        // ICP -> CMC subaccount, then notify_top_up, result checked; an unfinished top-up
+                        // stays pending (wallet "Pending top-ups") instead of being lost
+                        const topUp = await topUpCanisterWithIcp({ ledger, cmc, canisterId: newCanisterIdText, amountE8s: BigInt(extraGasE8s), owner: identity.getPrincipal().toText() });
+                        if (!(topUp.status === 'ok' && !topUp.resumed)) {
+                            console.error('Gas top-up not completed (canister was still created):', topUp);
+                            setGasTopUpWarning(describeTopUpResult(topUp));
                         }
                     } catch (topUpErr) {
                         console.error('Gas top-up failed (canister was still created):', topUpErr);
+                        setGasTopUpWarning(topUpErr.message || String(topUpErr));
                     }
                 }
 
@@ -775,6 +774,17 @@ export default function SneedAppMint() {
                                 <FaCopy />
                             </button>
                         </div>
+
+                        {gasTopUpWarning && (
+                            <div style={{
+                                background: '#f59e0b18', border: '1px solid #f59e0b55', borderRadius: 8, padding: 12,
+                                marginBottom: 20, color: theme.colors.primaryText, fontSize: 13, textAlign: 'left',
+                                display: 'flex', gap: 8, alignItems: 'flex-start'
+                            }}>
+                                <FaExclamationTriangle style={{ color: '#f59e0b', flexShrink: 0, marginTop: 2 }} />
+                                <span>Gas top-up not completed (the canister was still created): {gasTopUpWarning}</span>
+                            </div>
+                        )}
 
                         <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
                             {app?.viewUrl && app.viewUrl.length > 0 && (

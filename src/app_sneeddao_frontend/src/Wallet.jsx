@@ -33,6 +33,10 @@ import { get_short_timezone, format_duration, bigDateToReadable, dateToReadable 
 import { formatAmount, toJsonString, formatAmountWithConversion, parseAmountToBigInt } from './utils/StringUtils';
 import TokenCard from './TokenCard';
 import TokenCardModal from './components/TokenCardModal';
+import WalletApprovals from './components/WalletApprovals';
+import { useApprovalsMany } from './hooks/useApprovals';
+import { approveAndRecord } from './utils/approvals';
+import { FaHandshake } from 'react-icons/fa';
 import DappCardModal from './components/DappCardModal';
 import PositionCardModal from './components/PositionCardModal';
 import PositionCard from './PositionCard';
@@ -61,6 +65,8 @@ import { createActor as createFactoryActor, canisterId as factoryCanisterId } fr
 import { createActor as createManagerActor } from 'declarations/sneed_icp_staking_bot';
 import { createActor as createTradingBotActor } from 'external/sneed_trading_bot';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
+import { topUpCanisterWithIcp, cyclesOrThrow } from './utils/cyclesTopUp';
+import PendingTopUpsNotice from './components/PendingTopUpsNotice';
 import { useNaming } from './NamingContext';
 import { useWhitelistTokens } from './contexts/WhitelistTokensContext';
 import { useWallet } from './contexts/WalletContext';
@@ -82,6 +88,7 @@ import { IDL } from '@dfinity/candid';
 import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt, FaSearch, FaArrowUp, FaBolt, FaSpinner, FaChartLine, FaStore, FaChartPie } from 'react-icons/fa';
 import BotIcon from './components/BotIcon';
 import { sendLockNft, positionNftId, isMissingMethod } from './utils/lockNft';
+import { fetchBotCyclesBalance } from './utils/botCycles';
 
 // Custom CSS for Wallet page animations
 const walletCustomStyles = `
@@ -1026,6 +1033,9 @@ function Wallet() {
             return 'tokens';
         }
     });
+    // ICRC-2 approvals of the wallet's tokens (cached, a few ledgers at a time): the Approvals tab and the token cards' counts
+    const approvalLedgerIds = useMemo(() => tokens.map(t => normalizeId(t.ledger_canister_id)).filter(Boolean), [tokens]);
+    const { approvals: walletApprovals } = useApprovalsMany({ ledgerIds: approvalLedgerIds, owner: identity ? identity.getPrincipal().toText() : null, positions: liquidityPositions });
     const [newTrackedCanisterId, setNewTrackedCanisterId] = useState('');
     const [addingTrackedCanister, setAddingTrackedCanister] = useState(false);
     const [addTrackedCanisterError, setAddTrackedCanisterError] = useState('');
@@ -2110,8 +2120,8 @@ function Wallet() {
                     moduleHash = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
                     isController = true;
                 } catch (cyclesErr) {
-                    // Not a controller - try backend fallback for module_hash
-                    cycles[canisterId] = null;
+                    // Not a controller - cycles from the bot's public query, module_hash from the backend
+                    cycles[canisterId] = await fetchBotCyclesBalance(agent, canisterId);
                     memory[canisterId] = null;
                     try {
                         const result = await getCanisterInfo(identity, canisterId);
@@ -2516,8 +2526,9 @@ function Wallet() {
                 setNeuronManagerMemory(prev => ({ ...prev, [canisterId]: Number(status.memory_size) }));
                 setNeuronManagerIsController(prev => ({ ...prev, [canisterId]: true }));
             } catch (err) {
-                // Not a controller
-                setNeuronManagerCycles(prev => ({ ...prev, [canisterId]: null }));
+                // Not a controller: the bot's public query still gives its cycles
+                const publicCycles = await fetchBotCyclesBalance(agent, canisterIdPrincipal);
+                setNeuronManagerCycles(prev => ({ ...prev, [canisterId]: publicCycles }));
                 setNeuronManagerMemory(prev => ({ ...prev, [canisterId]: null }));
             }
             
@@ -2653,61 +2664,11 @@ function Wallet() {
                 return;
             }
             
-            const canisterPrincipal = Principal.fromText(managerCanisterId);
-            const cmcPrincipal = Principal.fromText(CMC_CANISTER_ID);
-            
-            // Step 1: Transfer ICP to CMC with canister's subaccount and TPUP memo
-            const subaccount = principalToSubAccount(canisterPrincipal);
-            
-            console.log('Transferring ICP to CMC for cycles top-up...');
-            
-            const transferResult = await ledger.icrc1_transfer({
-                to: {
-                    owner: cmcPrincipal,
-                    subaccount: [subaccount],
-                },
-                amount: amountE8s,
-                fee: [BigInt(ICP_FEE)],
-                memo: [TOP_UP_MEMO],
-                from_subaccount: [],
-                created_at_time: [],
-            });
-            
-            if ('Err' in transferResult) {
-                const err = transferResult.Err;
-                if ('InsufficientFunds' in err) {
-                    throw new Error(`Insufficient funds: ${(Number(err.InsufficientFunds.balance) / E8S_ICP).toFixed(4)} ICP available`);
-                }
-                throw new Error(`Transfer failed: ${JSON.stringify(err)}`);
-            }
-            
-            const blockIndex = transferResult.Ok;
-            console.log('Transfer successful, block index:', blockIndex.toString());
-            
-            // Step 2: Notify CMC to mint cycles
+            // ICP -> CMC subaccount, then notify_top_up; the block is kept as a pending top-up until the
+            // CMC answers, and a retry finishes it instead of paying again (utils/cyclesTopUp.js)
             const cmc = createCmcActor(CMC_CANISTER_ID, { agent });
-            
-            console.log('Notifying CMC to mint cycles...');
-            const notifyResult = await cmc.notify_top_up({
-                block_index: blockIndex,
-                canister_id: canisterPrincipal,
-            });
-            
-            if ('Err' in notifyResult) {
-                const err = notifyResult.Err;
-                if ('Refunded' in err) {
-                    throw new Error(`Top-up refunded: ${err.Refunded.reason}`);
-                } else if ('InvalidTransaction' in err) {
-                    throw new Error(`Invalid transaction: ${err.InvalidTransaction}`);
-                } else if ('Other' in err) {
-                    throw new Error(`CMC error: ${err.Other.error_message}`);
-                } else if ('Processing' in err) {
-                    throw new Error('Transaction is still being processed. Please try again in a moment.');
-                }
-                throw new Error(`Unknown CMC error: ${JSON.stringify(err)}`);
-            }
-            
-            const cyclesAdded = Number(notifyResult.Ok);
+            const topUp = await topUpCanisterWithIcp({ ledger, cmc, canisterId: managerCanisterId, amountE8s, owner: identity.getPrincipal().toText() });
+            const cyclesAdded = cyclesOrThrow(topUp, formatCyclesCompact);
             setTopUpSuccess(`✅ Added ${formatCyclesCompact(cyclesAdded)} cycles!`);
             setTopUpAmount('');
             setTopUpManagerId(null);
@@ -2764,61 +2725,11 @@ function Wallet() {
                 return;
             }
             
-            const canisterPrincipal = Principal.fromText(canisterId);
-            const cmcPrincipal = Principal.fromText(CMC_CANISTER_ID);
-            
-            // Step 1: Transfer ICP to CMC with canister's subaccount and TPUP memo
-            const subaccount = principalToSubAccount(canisterPrincipal);
-            
-            console.log('Transferring ICP to CMC for cycles top-up...');
-            
-            const transferResult = await ledger.icrc1_transfer({
-                to: {
-                    owner: cmcPrincipal,
-                    subaccount: [subaccount],
-                },
-                amount: amountE8s,
-                fee: [BigInt(ICP_FEE)],
-                memo: [TOP_UP_MEMO],
-                from_subaccount: [],
-                created_at_time: [],
-            });
-            
-            if ('Err' in transferResult) {
-                const err = transferResult.Err;
-                if ('InsufficientFunds' in err) {
-                    throw new Error(`Insufficient funds: ${(Number(err.InsufficientFunds.balance) / E8S_ICP).toFixed(4)} ICP available`);
-                }
-                throw new Error(`Transfer failed: ${JSON.stringify(err)}`);
-            }
-            
-            const blockIndex = transferResult.Ok;
-            console.log('Transfer successful, block index:', blockIndex.toString());
-            
-            // Step 2: Notify CMC to mint cycles
+            // ICP -> CMC subaccount, then notify_top_up; the block is kept as a pending top-up until the
+            // CMC answers, and a retry finishes it instead of paying again (utils/cyclesTopUp.js)
             const cmc = createCmcActor(CMC_CANISTER_ID, { agent });
-            
-            console.log('Notifying CMC to mint cycles...');
-            const notifyResult = await cmc.notify_top_up({
-                block_index: blockIndex,
-                canister_id: canisterPrincipal,
-            });
-            
-            if ('Err' in notifyResult) {
-                const err = notifyResult.Err;
-                if ('Refunded' in err) {
-                    throw new Error(`Top-up refunded: ${err.Refunded.reason}`);
-                } else if ('InvalidTransaction' in err) {
-                    throw new Error(`Invalid transaction: ${err.InvalidTransaction}`);
-                } else if ('Other' in err) {
-                    throw new Error(`CMC error: ${err.Other.error_message}`);
-                } else if ('Processing' in err) {
-                    throw new Error('Transaction is still being processed. Please try again in a moment.');
-                }
-                throw new Error(`Unknown CMC error: ${JSON.stringify(err)}`);
-            }
-            
-            const cyclesAdded = Number(notifyResult.Ok);
+            const topUp = await topUpCanisterWithIcp({ ledger, cmc, canisterId: canisterId, amountE8s, owner: identity.getPrincipal().toText() });
+            const cyclesAdded = cyclesOrThrow(topUp, formatCyclesCompact);
             setCanisterTopUpSuccess(`✅ Added ${formatCyclesCompact(cyclesAdded)} cycles!`);
             setCanisterTopUpAmount('');
             setTopUpCanisterId(null);
@@ -3921,7 +3832,7 @@ function Wallet() {
         if (currentAllowance.allowance < approveAmount) {
             console.log('Insufficient allowance, calling icrc2_approve...');
             
-            const approveResult = await gldtLedgerActor.icrc2_approve({
+            const approveResult = await approveAndRecord(gldtLedgerActor, GLDT_CANISTER_ID, {
                 spender: { owner: Principal.fromText(SGLDT_CANISTER_ID), subaccount: [] },
                 amount: approveAmount,
                 fee: [],
@@ -5878,6 +5789,7 @@ function Wallet() {
             `}</style>
             <style>{walletCustomStyles}</style>
             <Header />
+            <PendingTopUpsNotice style={{ maxWidth: 1200, width: 'calc(100% - 32px)', margin: '12px auto', boxSizing: 'border-box' }} />
             
             {/* Hero Section - Streamlined */}
             <div style={{
@@ -6458,6 +6370,7 @@ function Wallet() {
                         { id: 'tokens', label: 'Tokens', icon: <FaCoins size={14} />, subtitle: tokensTotal > 0 ? denomFormatCompact(tokensTotal) : null },
                         { id: 'positions', label: 'Liquidity', icon: <FaExchangeAlt size={14} />, subtitle: lpPositionsTotal > 0 ? denomFormatCompact(lpPositionsTotal) : null },
                         { id: 'dapps', label: 'Apps', icon: <FaBox size={14} />, subtitle: (() => { const appsCount = neuronManagers.length + trackedCanisters.length; const appsUsd = managerNeuronsTotal > 0 && icpPrice ? managerNeuronsTotal * icpPrice : 0; if (appsCount === 0 && appsUsd === 0) return null; const parts = []; if (appsUsd > 0) parts.push(denomFormatCompact(appsUsd)); if (appsCount > 0 && appsUsd === 0) parts.push(`${appsCount}`); return parts.join('') || null; })() },
+                        { id: 'approvals', label: 'Approvals', icon: <FaHandshake size={14} />, subtitle: walletApprovals.length > 0 ? `${walletApprovals.length}` : null },
                         { id: 'stats', label: 'Statistics', icon: <FaChartPie size={14} />, subtitle: totalDollarValue ? denomFormatCompact(totalDollarValue) : null }
                     ].map(tab => (
                         <button
@@ -10109,6 +10022,10 @@ function Wallet() {
                 )}
 
                 {/* Statistics Tab Content */}
+                {activeWalletTab === 'approvals' && (
+                    <WalletApprovals tokens={tokens} positions={liquidityPositions} accent={walletPrimary} />
+                )}
+
                 {activeWalletTab === 'stats' && (
                     <div style={{ marginBottom: '20px' }}>
                         <h3 style={{

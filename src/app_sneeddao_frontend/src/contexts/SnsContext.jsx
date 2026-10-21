@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { getSnsById, fetchSingleSnsData, SNS_CACHE_UPDATED_EVENT } from '../utils/SnsUtils';
+import { getSnsById, fetchSingleSnsData, fetchAndCacheSnsData, SNS_CACHE_UPDATED_EVENT } from '../utils/SnsUtils';
 
 const SnsContext = createContext();
 
@@ -23,6 +23,19 @@ export function SnsProvider({ children }) {
             return SNEED_SNS_ROOT;
         }
     });
+
+    // Load the full SNS list in the background on every page (once the page is idle), so the SNS
+    // selector is ready when a page that uses it opens. A complete cached list returns at once;
+    // otherwise this joins the shared fetch, so it never fetches twice.
+    useEffect(() => {
+        const start = () => { fetchAndCacheSnsData().catch(() => { /* a page that needs it will retry */ }); };
+        if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+            const id = window.requestIdleCallback(start, { timeout: 3000 });
+            return () => window.cancelIdleCallback?.(id);
+        }
+        const t = setTimeout(start, 1500);
+        return () => clearTimeout(t);
+    }, []);
 
     // Persist to localStorage whenever selection changes
     useEffect(() => {
