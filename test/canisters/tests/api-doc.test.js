@@ -18,6 +18,7 @@ const CANISTERS = [
   ['sneedex', 'sneedex', { initTypes: sneedexInit({ IDL }), initArgs: [[]] }],
   ['sneed_sms', 'sneed_sms'],
   ['sneed_notifications', 'sneed_notifications'],
+  ['sneed_mon', 'sneed_mon'],
   ['sneed_pid_names', 'sneed_names'],
   ['sneed_neuron_names', 'sneed_names'],
   ['sneed_pid_nicknames', 'sneed_names'],

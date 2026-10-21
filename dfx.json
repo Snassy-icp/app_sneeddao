@@ -197,6 +197,11 @@
       "type": "motoko",
       "args": "--enhanced-orthogonal-persistence"
     },
+    "sneed_mon": {
+      "main": "src/sneed_mon/main.mo",
+      "type": "motoko",
+      "args": "--enhanced-orthogonal-persistence"
+    },
     "icrc7_demo": {
       "main": "src/icrc7_demo/main.mo",
       "type": "motoko"

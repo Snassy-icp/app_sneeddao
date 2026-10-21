@@ -17,6 +17,7 @@ Each reference has Markdown (`.md`), Candid (`.did`) and a JavaScript IDL factor
 - [Sneed SMS](https://app.sneeddao.com/api-docs/sneed_sms.md): direct messages between principals
 - [Sneed names](https://app.sneeddao.com/api-docs/sneed_names.md): public names, private nicknames, profiles and avatars
 - [Sneed notifications](https://app.sneeddao.com/api-docs/sneed_notifications.md): notification preferences, channels and app registration
+- [Sneed Mon](https://app.sneeddao.com/api-docs/sneed_mon.md): watch SNSes and get notified of proposals your neurons can vote on (not deployed yet)
 - [Sneed Premium](https://app.sneeddao.com/api-docs/sneed_premium.md): membership
 - [RLL](https://app.sneeddao.com/api-docs/rll.md): revenue and rewards distribution
 - [Sneedapp](https://app.sneeddao.com/api-docs/sneedapp.md): app store that mints bot canisters

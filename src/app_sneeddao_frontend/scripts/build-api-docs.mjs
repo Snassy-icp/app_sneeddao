@@ -22,7 +22,7 @@ const skillsDir = join(frontendDir, 'public', '.well-known', 'agent-skills');
 const documented = [
     'sneed_lock', 'sneedex', 'sneed_sns_forum', 'sneed_sms', 'sneed_notifications', 'sneed_premium', 'rll', 'sneedapp',
     'mr_sneed', 'app_sneeddao_backend', 'sneed_pid_names', 'sneed_neuron_names', 'sneed_pid_nicknames',
-    'sneed_neuron_nicknames', 'sneed_profiles', 'sneed_avatars',
+    'sneed_neuron_nicknames', 'sneed_profiles', 'sneed_avatars', 'sneed_mon',
 ];
 // (sneed_names.did / .did.js, the index of the six naming interfaces, are hand-written and kept in git)
 
