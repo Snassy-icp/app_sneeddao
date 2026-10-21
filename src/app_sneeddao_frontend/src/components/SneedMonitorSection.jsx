@@ -6,7 +6,7 @@
 // Renders nothing on a network where sneed_mon has no canister id (prod, for now).
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FaSatelliteDish, FaChevronDown, FaChevronRight, FaCopy, FaSync, FaTrash, FaPlus, FaWallet, FaHistory, FaExclamationTriangle } from 'react-icons/fa';
+import { FaSatelliteDish, FaSpinner, FaChevronDown, FaChevronRight, FaCopy, FaSync, FaTrash, FaPlus, FaWallet, FaHistory, FaExclamationTriangle } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
@@ -45,6 +45,9 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
     const [d, setD] = useState(null); // { balance, watches, tiers, nnsIds, config, appId }
     const [loadErr, setLoadErr] = useState(null);
     const [busy, setBusy] = useState(false);
+    // the switch moves at once while turning on/off runs, with what is happening right under it
+    const [switching, setSwitching] = useState(null); // 'on' | 'off' | null
+    const [progress, setProgress] = useState('');
     const [icpUsd, setIcpUsd] = useState(null);
     const [showDeposit, setShowDeposit] = useState(false);
     const [pendingEnable, setPendingEnable] = useState(false); // turn on once the deposit is credited
@@ -161,10 +164,14 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
             const merged = [...new Set([...d.nnsIds, ...found.nnsIds].map(String))].slice(0, Number(config.tuning.max_nns_neurons)).map((x) => BigInt(x));
             ok(await actor.set_nns_neurons(merged));
         }
-        for (const t of targets) {
+        setProgress(`Watching ${targets.map(nameOf).join(', ')}…`);
+        // one call per place, all at once (each is a few seconds on its own)
+        await Promise.all(targets.map(async (t) => {
             const r = await actor.watch(t);
             if ('err' in r) errors.push(`${nameOf(t)}: ${r.err}`); else done++;
-        }
+            setProgress(`Watching… ${done + errors.length} of ${targets.length} done`);
+        }));
+        setProgress('Allowing Sneed Monitor to notify you…');
         const allowed = await allowApp();
         if (allowed) onNotificationsChanged?.();
         const parts = [`Watching ${done} more ${done === 1 ? 'place' : 'places'}`];
@@ -173,7 +180,8 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
         else setMsg({ ok: `${parts.join('; ')}.` });
     };
 
-    const turnOn = () => run(async () => {
+    const withSwitch = (dir, f) => () => { setSwitching(dir); setProgress(dir === 'on' ? 'Turning on…' : 'Turning off…'); return run(f).finally(() => { setSwitching(null); setProgress(''); }); };
+    const turnOn = withSwitch('on', async () => {
         if (!planTargets.length) {
             setMsg({ err: found.snses.length || found.nnsIds.length ? 'You are watching everything we found already.' : 'We have not found neurons you can vote with yet (they load in the background after you log in). Add an SNS under Advanced, or try again in a moment.' });
             return;
@@ -186,8 +194,8 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
         }
         await enableNow(planTargets);
     });
-    const turnOff = () => run(async () => {
-        for (const w of watches) ok(await actor.unwatch(w.target));
+    const turnOff = withSwitch('off', async () => {
+        await Promise.all(watches.map(async (w) => ok(await actor.unwatch(w.target))));
         setPendingEnable(false);
         setMsg({ ok: `Stopped. Nothing more is charged; your Sneed Monitor balance (${fmtIcp(balance.balance_e8s)}) stays until you withdraw it under Advanced.` });
     });
@@ -279,11 +287,15 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
             {/* the casual switch */}
             <div style={{ ...row, justifyContent: 'space-between', padding: '10px 0', borderTop: `1px solid ${c.border}` }}>
                 <span style={{ color: c.primaryText, fontWeight: 600, flex: 1, minWidth: 200 }}>Tell me about proposals I can vote on</span>
-                <button type="button" role="switch" aria-checked={on} disabled={busy} onClick={on ? turnOff : turnOn}
-                    style={{ width: 52, height: 28, borderRadius: 999, border: 'none', padding: 3, cursor: busy ? 'wait' : 'pointer', background: on ? '#10b981' : c.border, display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start', transition: 'background .2s' }}>
-                    <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#fff', display: 'block' }} />
+                <button type="button" role="switch" aria-checked={switching ? switching === 'on' : on} aria-busy={!!switching} disabled={busy} onClick={on ? turnOff : turnOn}
+                    style={{ width: 52, height: 28, borderRadius: 999, border: 'none', padding: 3, cursor: busy ? 'wait' : 'pointer', opacity: switching ? 0.75 : 1, background: (switching ? switching === 'on' : on) ? '#10b981' : c.border, display: 'flex', justifyContent: (switching ? switching === 'on' : on) ? 'flex-end' : 'flex-start', transition: 'background .2s' }}>
+                    <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {switching && <FaSpinner size={12} color="#10b981" style={{ animation: 'sneedMonSpin 0.9s linear infinite' }} />}
+                    </span>
                 </button>
+                <style>{'@keyframes sneedMonSpin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }'}</style>
             </div>
+            {switching && <div style={{ ...muted, color: c.primaryText, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><FaSpinner size={12} style={{ animation: 'sneedMonSpin 0.9s linear infinite' }} /> {progress}</div>}
             <div style={{ ...muted, display: 'grid', gap: 4 }}>
                 <span>Sneed Monitor balance: <strong style={{ color: c.primaryText }}>{money(balance.balance_e8s)}</strong></span>
                 {on
