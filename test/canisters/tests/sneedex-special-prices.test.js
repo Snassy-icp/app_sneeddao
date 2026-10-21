@@ -126,7 +126,6 @@ describe('setters', () => {
   it('validates overrides like the regular fees, and partner entries', async () => {
     const a = as(admin);
     expect((await a.set_admin_prices(prices(null, 5001n))).err).toMatch(/5000/);
-    expect((await a.set_admin_prices(prices(9_999n, null))).err).toMatch(/ledger fee/);
     expect((await a.set_partner_prices(carol, { label: 'p', prices: prices(null, 6000n), expires_at: [] })).err).toMatch(/5000/);
     expect((await a.set_partner_prices(Principal.anonymous(), { label: 'p', prices: NONE, expires_at: [] })).err).toMatch(/anonymous/);
     expect((await a.set_partner_prices(carol, { label: '  ', prices: NONE, expires_at: [] })).err).toMatch(/label/);
@@ -140,20 +139,27 @@ describe('setters', () => {
   });
 });
 
-// Found along the way: a regular creation fee between 1 and 9_999 e8s was accepted, and then every
-// createOffer trapped (it forwards fee - ledger fee). The setters now refuse it, like the overrides.
-describe('regular creation fee setters', () => {
-  it('refuse a fee below the ledger fee (other than 0), so createOffer cannot trap', async () => {
+// Found along the way: a regular creation fee between 1 and 9_999 e8s made every createOffer trap
+// (it forwards fee - ledger fee). A fee below the ledger fee was meant as "no fee", so it now is one.
+describe('a creation fee below the ledger fee', () => {
+  it('means no fee: createOffer works and charges nothing', async () => {
     const a = as(admin);
-    const r1 = await a.setOfferCreationFee(5_000n);
-    const r2 = await a.setPremiumOfferCreationFee(9_999n);
-    // restore before asserting, so a failure here does not break the tests that follow
-    unwrap(await a.setOfferCreationFee(50_000_000n));
-    unwrap(await a.setPremiumOfferCreationFee(20_000_000n));
-    expect(r1).toHaveProperty('err');
-    expect(r2).toHaveProperty('err');
-    unwrap(await a.setPremiumOfferCreationFee(ICP_FEE)); // the ledger fee itself is fine
-    unwrap(await a.setPremiumOfferCreationFee(20_000_000n));
+    unwrap(await a.setOfferCreationFee(5_000n));
+    unwrap(await a.setPremiumOfferCreationFee(9_999n));
+    let res;
+    try {
+      const quoted = await as(erin).getEffectiveOfferCreationFee(alice);
+      const [id, , charged] = await createPaid(alice);
+      res = { quoted, charged };
+      unwrap(await as(alice).cancelOffer(id));
+    } catch (e) {
+      res = { error: String(e).slice(0, 120) };
+    } finally {
+      // restore before asserting, so a failure here does not break the tests that follow
+      unwrap(await a.setOfferCreationFee(50_000_000n));
+      unwrap(await a.setPremiumOfferCreationFee(20_000_000n));
+    }
+    expect(res).toEqual({ quoted: 0n, charged: 0n });
   });
 });
 

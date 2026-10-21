@@ -877,12 +877,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             case null {};
         };
         let (n, t) = applySpecial(user, Nat64.toNat(base), tier, func(o) { o.offer_creation_fee_e8s });
-        (Nat64.fromNat(n), t);
+        // a fee below one ledger fee means no fee: createOffer forwards fee - ledger fee
+        (if (n < Nat64.toNat(ICP_FEE)) { 0 } else { Nat64.fromNat(n) }, t);
     };
     func validateSpecialOverrides(o : T.SpecialPriceOverrides) : ?Text {
         switch (o.offer_creation_fee_e8s) {
             case (?f) {
-                if (f > 0 and f < Nat64.toNat(ICP_FEE)) { return ?"offer_creation_fee_e8s: 0 or at least one ICP ledger fee (10000 e8s)" };
                 if (f > 18_446_744_073_709_551_615) { return ?"offer_creation_fee_e8s: too large" };
             };
             case null {};
@@ -4690,10 +4690,6 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         if (not isAdmin(caller)) {
             return #err(#NotAuthorized);
         };
-        // createOffer forwards fee - ledger fee: a fee below the ledger fee would trap there
-        if (feeE8s > 0 and feeE8s < ICP_FEE) {
-            return #err(#InvalidInput("a creation fee is 0 or at least the ICP ledger fee (10_000 e8s)"));
-        };
         let old = offerCreationFeeE8s;
         offerCreationFeeE8s := feeE8s;
         icrc3_config(caller, "offer_creation_fee_e8s", Icrc3Log.nat64(feeE8s), ?Icrc3Log.nat64(old));
@@ -4704,10 +4700,6 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     public shared ({ caller }) func setPremiumOfferCreationFee(feeE8s : Nat64) : async T.Result<()> {
         if (not isAdmin(caller)) {
             return #err(#NotAuthorized);
-        };
-        // createOffer forwards fee - ledger fee: a fee below the ledger fee would trap there
-        if (feeE8s > 0 and feeE8s < ICP_FEE) {
-            return #err(#InvalidInput("a creation fee is 0 or at least the ICP ledger fee (10_000 e8s)"));
         };
         let old = premiumOfferCreationFeeE8s;
         premiumOfferCreationFeeE8s := feeE8s;
