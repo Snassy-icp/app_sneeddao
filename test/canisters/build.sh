@@ -95,6 +95,21 @@ git archive "$SNEEDEX_PROD_COMMIT" src/sneedex src/PremiumClient.mo src/IngressG
 rm -rf "$PREV_SRC"
 test -s "$OUT/sneedex_prod.wasm"
 
+# sneedex before the 2026-10-21 support fixes (stake caching and escrow writing back a stale offer,
+# adminReclaimStuckTokens without a state guard), for the fail-before runs of
+# sneedex-support.test.js (SNEEDEX_WASM=sneedex_prefix); and as production runs it now (EXT assets,
+# no special prices; proposal #442), for the upgrade test there
+for pair in 9415d517:prefix ab7da0ad:prod442; do
+  commit="${pair%%:*}"; tag="${pair##*:}"
+  echo "== sneedex at $commit (moc, sneedex_$tag)"
+  PREV_SRC="$(mktemp -d)"
+  git archive "$commit" src | tar -x -C "$PREV_SRC"
+  # shellcheck disable=SC2086
+  "$MOC" $PKGS "$PREV_SRC/src/sneedex/main.mo" -o "$OUT/sneedex_$tag.wasm" 2>&1 | grep -i "error" | head -5 || true
+  rm -rf "$PREV_SRC"
+  test -s "$OUT/sneedex_$tag.wasm"
+done
+
 # sneedapp from before the user wallet (bookmarks in the legacy userRegistrations map) and as it was
 # before the 2026-10-20 fixes (legacy staking bots filed under "icp-staking-bot"), for the tests that
 # upgrade from them
@@ -240,7 +255,7 @@ rm -rf "$PREV_SRC"
 test -s "$OUT/sneed_mon_preatu.wasm"
 for c in MockLedger MockLedgerV2 MockLedgerFaulty MockRejectLedger MockSwapPool MockDexPool MockIcpswapFactory MockKongSwap \
          MockSnsGovernance MockSnsNeurons MockHubSns MockForumGovernance MockForumSnsW MockRllGovernance MockNnsGovernance \
-         MockCmc MockSnsWasm MockPremium MockSneedApp MockIcpSwapList MockIcpSwapTokenList MockNamesModerator MockIcpLedger MockMrSneedGov MockNotifySender MockExt MockMonSns MockMonNns MockProxyGov MockProxyTarget Icrc3Demo; do
+         MockCmc MockSnsWasm MockPremium MockSneedApp MockIcpSwapList MockIcpSwapTokenList MockNamesModerator MockIcpLedger MockMrSneedGov MockNotifySender MockExt MockMonSns MockMonNns MockProxyGov MockProxyTarget MockCkBtcMinter MockCkEthMinter Icrc3Demo; do
   echo "== $c"
   # shellcheck disable=SC2086
   "$MOC" -c $PKGS -o "$OUT/$c.wasm" "$HERE/canisters/$c.mo" 2>&1 | grep -i "error" -A5 || true

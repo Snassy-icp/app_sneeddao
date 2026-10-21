@@ -11,6 +11,7 @@ import Blob "mo:base/Blob";
 import Buffer "mo:base/Buffer";
 import Debug "mo:base/Debug";
 import Nat32 "mo:base/Nat32";
+import Error "mo:base/Error";
 
 import Map "mo:map/Map";
 import { phash; nhash } "mo:map/Map";
@@ -186,6 +187,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // assets already delivered. A retry only redoes the others; the offer becomes Claimed or
     // Reclaimed only once every asset is delivered, and its entry is then removed.
     var settlementDelivered : [(T.OfferId, [Nat])] = [];
+
+    // Support log: a bounded ring of the errors the background work used to swallow (timers,
+    // stake caching, auto settlement) and of admin interventions (adminReclaimStuckTokens*).
+    // Public (getSupportLog / getSupportLogFor): principals, ids and error text only, as on-chain
+    // records already are. The oldest entries drop out past SUPPORT_LOG_MAX.
+    var supportLog : [T.SupportLogEntry] = [];
+    var nextSupportLogId : Nat = 0;
 
     // In-flight guard for asset settlement, per offer (transient, like bidEscrowLocks): the
     // auto-delivery timers and the manual claim/reclaim must not hand over the same offer at once.
@@ -846,6 +854,24 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         Principal.isController(caller) or Utils.principalInList(caller, config.admins);
     };
 
+    transient let SUPPORT_LOG_MAX = 500;
+    transient let SUPPORT_LOG_TEXT_MAX = 500;
+    transient let MAX_ADMIN_REASON = 500;
+    /// Append to the support log (kind "error" or "admin"), keeping at most SUPPORT_LOG_MAX entries.
+    func noteSupport(kind : Text, op : Text, principal : ?Principal, offerId : ?T.OfferId, bidId : ?T.BidId, text : Text) {
+        let clipped = if (text.size() <= SUPPORT_LOG_TEXT_MAX) { text } else {
+            var out = ""; var n = 0;
+            label clip for (c in text.chars()) { if (n >= SUPPORT_LOG_TEXT_MAX) { break clip }; out #= Text.fromChar(c); n += 1 };
+            out # "…";
+        };
+        let entry : T.SupportLogEntry = { id = nextSupportLogId; time = Time.now(); kind; op; principal; offer_id = offerId; bid_id = bidId; text = clipped };
+        nextSupportLogId += 1;
+        let kept = if (supportLog.size() >= SUPPORT_LOG_MAX) {
+            Array.tabulate<T.SupportLogEntry>(SUPPORT_LOG_MAX - 1, func(i) { supportLog[supportLog.size() - (SUPPORT_LOG_MAX - 1) + i] });
+        } else { supportLog };
+        supportLog := Array.append(kept, [entry]);
+    };
+
     // ---- special prices ----
     func specialOverridesFields(o : T.SpecialPriceOverrides) : [(Text, ?Nat)] {
         [("offer_creation_fee_e8s", o.offer_creation_fee_e8s), ("auction_cut_bps", o.auction_cut_bps)];
@@ -958,8 +984,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             );
 
                             switch (transferResult) {
-                                case (#err(_e)) {
+                                case (#err(e)) {
                                     // Transfer failed - user can manually refund later
+                                    noteSupport("error", "autoRefundBid", ?bid.bidder, ?bid.offer_id, ?bid.id, errorText(e));
                                 };
                                 case (#ok(txId)) {
                                     // Update bid state to Refunded
@@ -1342,7 +1369,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             case (?bid) {
                                 switch (await* settleAssets(offerId, true, false, bid.bidder, ?bid, null)) {
                                     case (#ok(_)) { scheduleWalletRegistration<system>(offer, bid.bidder, true) };
-                                    case (#err(_)) {};
+                                    case (#err(e)) { noteSupport("error", "autoDeliverAssets", ?bid.bidder, ?offerId, ?bid.id, errorText(e)) };
                                 };
                             };
                         };
@@ -1474,7 +1501,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     case (?bid) {
                         if (bid.state != #Won) { return }; // Already claimed
                         // Errors (a payout in flight, a failed transfer) leave the seller to claim by hand.
-                        ignore await* payWinningBidToSeller(offer, bid, null);
+                        switch (await* payWinningBidToSeller(offer, bid, null)) {
+                            case (#ok) {};
+                            case (#err(e)) { noteSupport("error", "autoDeliverPayment", ?offer.creator, ?offerId, ?bid.id, errorText(e)) };
+                        };
                     };
                 };
             };
@@ -1492,7 +1522,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 };
                 switch (await* settleAssets(offerId, false, false, offer.creator, null, null)) {
                     case (#ok(_)) { scheduleWalletRegistration<system>(offer, offer.creator, false) };
-                    case (#err(_)) {};
+                    case (#err(e)) { noteSupport("error", "autoReclaimAssets", ?offer.creator, ?offerId, null, errorText(e)) };
                 };
             };
         };
@@ -1520,123 +1550,83 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     };
     
     /// Cache stake values for SNS neurons and ICP neuron managers in an offer
-    /// This is called via Timer after activation to avoid instruction limits
+    /// This is called via Timer after activation to avoid instruction limits.
+    /// The stakes are looked up first (awaits), then merged into the offer as it is *now*: a buyout,
+    /// accept, cancel or expiry that lands during the lookups is never overwritten. Only the cached
+    /// stake field of an asset that is still the same asset (same neuron / canister) changes.
     func cacheAssetStakes(offerId : T.OfferId) : async () {
-        switch (getOffer(offerId)) {
-            case null { /* Offer not found, ignore */ };
-            case (?offer) {
-                // Only cache for Active offers
-                if (offer.state != #Active) { return };
-                
-                var updatedAssets = Buffer.Buffer<T.AssetEntry>(offer.assets.size());
-                
-                for (entry in offer.assets.vals()) {
-                    if (not entry.escrowed) {
-                        updatedAssets.add(entry);
-                    } else {
-                        switch (entry.asset) {
-                            case (#SNSNeuron(neuronAsset)) {
-                                // Fetch stake from SNS governance using get_neuron
-                                try {
-                                    let governance : T.SNSGovernanceActor = actor(Principal.toText(neuronAsset.governance_canister_id));
-                                    let response = await governance.get_neuron({
-                                        neuron_id = ?neuronAsset.neuron_id;
-                                    });
-                                    
-                                    var cachedStake : ?Nat64 = null;
-                                    
-                                    switch (response.result) {
-                                        case (?#Neuron(neuron)) {
-                                            cachedStake := ?neuron.cached_neuron_stake_e8s;
-                                        };
-                                        case (_) {};
-                                    };
-                                    
-                                    let updatedAsset : T.Asset = #SNSNeuron({
-                                        governance_canister_id = neuronAsset.governance_canister_id;
-                                        neuron_id = neuronAsset.neuron_id;
-                                        hotkeys_snapshot = neuronAsset.hotkeys_snapshot;
-                                        cached_stake_e8s = cachedStake;
-                                    });
-                                    updatedAssets.add({ asset = updatedAsset; escrowed = true });
-                                } catch (_e) {
-                                    // On error, keep original asset without cache
-                                    updatedAssets.add(entry);
+        let offer = switch (getOffer(offerId)) { case (?o) { o }; case null { return } };
+        if (offer.state != #Active) { return };
+
+        // (asset index, asset with the cached stake filled in)
+        let found = Buffer.Buffer<(Nat, T.Asset)>(0);
+        for (i in offer.assets.keys()) {
+            let entry = offer.assets[i];
+            if (entry.escrowed) {
+                switch (entry.asset) {
+                    case (#SNSNeuron(neuronAsset)) {
+                        try {
+                            let governance : T.SNSGovernanceActor = actor(Principal.toText(neuronAsset.governance_canister_id));
+                            let response = await governance.get_neuron({ neuron_id = ?neuronAsset.neuron_id });
+                            switch (response.result) {
+                                case (?#Neuron(neuron)) {
+                                    found.add((i, #SNSNeuron({ neuronAsset with cached_stake_e8s = ?neuron.cached_neuron_stake_e8s })));
                                 };
+                                case (_) {};
                             };
-                            case (#Canister(canisterAsset)) {
-                                // Only cache for ICP Neuron Managers
-                                let isNeuronManager = switch (canisterAsset.canister_kind) {
-                                    case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
-                                    case null { false };
-                                };
-                                
-                                if (isNeuronManager) {
-                                    try {
-                                        let manager : T.ICPNeuronManagerActor = actor(Principal.toText(canisterAsset.canister_id));
-                                        let neuronsInfo = await manager.getAllNeuronsInfo();
-                                        
-                                        var totalStake : Nat64 = 0;
-                                        for ((_, maybeInfo) in neuronsInfo.vals()) {
-                                            switch (maybeInfo) {
-                                                case (?info) {
-                                                    totalStake += info.stake_e8s;
-                                                };
-                                                case null {};
-                                            };
-                                        };
-                                        
-                                        let updatedAsset : T.Asset = #Canister({
-                                            canister_id = canisterAsset.canister_id;
-                                            canister_kind = canisterAsset.canister_kind;
-                                            controllers_snapshot = canisterAsset.controllers_snapshot;
-                                            cached_total_stake_e8s = ?totalStake;
-                                            title = canisterAsset.title;
-                                            description = canisterAsset.description;
-                                        });
-                                        updatedAssets.add({ asset = updatedAsset; escrowed = true });
-                                    } catch (_e) {
-                                        // On error, keep original asset without cache
-                                        updatedAssets.add(entry);
-                                    };
-                                } else {
-                                    // Not a neuron manager, keep original
-                                    updatedAssets.add(entry);
-                                };
-                            };
-                            case (#ICRC1Token(_)) {
-                                // No caching needed for tokens
-                                updatedAssets.add(entry);
-                            };
-                            case (#ICRC7NFT(_)) { updatedAssets.add(entry) };
-                            case (#SneedLock(_)) { updatedAssets.add(entry) };
-                            case (#EXTNFT(_)) { updatedAssets.add(entry) };
+                        } catch (e) {
+                            noteSupport("error", "cacheAssetStakes", null, ?offerId, null, "get_neuron failed for asset " # Nat.toText(i) # ": " # Error.message(e));
                         };
                     };
+                    case (#Canister(canisterAsset)) {
+                        let isNeuronManager = switch (canisterAsset.canister_kind) {
+                            case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
+                            case null { false };
+                        };
+                        if (isNeuronManager) {
+                            try {
+                                let manager : T.ICPNeuronManagerActor = actor(Principal.toText(canisterAsset.canister_id));
+                                let neuronsInfo = await manager.getAllNeuronsInfo();
+                                var totalStake : Nat64 = 0;
+                                for ((_, maybeInfo) in neuronsInfo.vals()) {
+                                    switch (maybeInfo) { case (?info) { totalStake += info.stake_e8s }; case null {} };
+                                };
+                                found.add((i, #Canister({ canisterAsset with cached_total_stake_e8s = ?totalStake })));
+                            } catch (e) {
+                                noteSupport("error", "cacheAssetStakes", null, ?offerId, null, "getAllNeuronsInfo failed for asset " # Nat.toText(i) # ": " # Error.message(e));
+                            };
+                        };
+                    };
+                    case (_) {};
                 };
-                
-                // Update offer with cached values
-                let updatedOffer : T.Offer = {
-                    id = offer.id;
-                    creator = offer.creator;
-                    min_bid_price = offer.min_bid_price;
-                    buyout_price = offer.buyout_price;
-                    expiration = offer.expiration;
-                    price_token_ledger = offer.price_token_ledger;
-                    assets = Buffer.toArray(updatedAssets);
-                    state = offer.state;
-                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
-                    approved_bidders = offer.approved_bidders;
-                    fee_rate_bps = offer.fee_rate_bps;
-                    public_note = offer.public_note;
-                    note_to_buyer = offer.note_to_buyer;
-                    created_at = offer.created_at;
-                    activated_at = offer.activated_at;
-                };
-                
-                updateOffer(offerId, updatedOffer);
             };
         };
+        if (found.size() == 0) { return };
+
+        // re-read: the offer may have been bought, accepted, cancelled or expired across the awaits
+        let current = switch (getOffer(offerId)) { case (?o) { o }; case null { return } };
+        if (current.state != #Active) { return };
+        var assets = current.assets;
+        for ((i, cached) in found.vals()) {
+            if (i < assets.size() and assets[i].escrowed) {
+                let same = switch (assets[i].asset, cached) {
+                    case (#SNSNeuron(a), #SNSNeuron(b)) {
+                        Principal.equal(a.governance_canister_id, b.governance_canister_id) and a.neuron_id.id == b.neuron_id.id
+                    };
+                    case (#Canister(a), #Canister(b)) { Principal.equal(a.canister_id, b.canister_id) };
+                    case (_) { false };
+                };
+                if (same) {
+                    let merged : T.Asset = switch (assets[i].asset, cached) {
+                        case (#SNSNeuron(a), #SNSNeuron(b)) { #SNSNeuron({ a with cached_stake_e8s = b.cached_stake_e8s }) };
+                        case (#Canister(a), #Canister(b)) { #Canister({ a with cached_total_stake_e8s = b.cached_total_stake_e8s }) };
+                        case (other, _) { other };
+                    };
+                    assets := Utils.updateAt(assets, i, { assets[i] with asset = merged });
+                };
+            };
+        };
+        updateOffer(offerId, { current with assets });
     };
     
     /// Schedule caching of asset stakes (1 second delay to let activation complete)
@@ -2545,6 +2535,28 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // ============================================
     
     /// Escrow a canister asset
+    /// The end of an escrow, after its awaits: mark asset `assetIndex` escrowed (as `updatedEntry`)
+    /// on the offer as it is *now*, never on the copy read before the awaits, so a concurrent
+    /// escrow of another asset or a cancel is never undone. #written gives the offer's current
+    /// state: anything but PendingEscrow means it was cancelled during the escrow, and the asset
+    /// (which Sneedex now holds) is recorded as escrowed so the reclaim hands it back.
+    func commitEscrow(offerId : T.OfferId, assetIndex : Nat, original : T.Asset, updatedEntry : T.AssetEntry) : { #written : T.OfferState; #alreadyEscrowed; #gone } {
+        let current = switch (getOffer(offerId)) { case (?o) { o }; case null { return #gone } };
+        if (assetIndex >= current.assets.size() or current.assets[assetIndex].asset != original) { return #gone };
+        if (current.assets[assetIndex].escrowed) { return #alreadyEscrowed };
+        updateOffer(offerId, { current with assets = Utils.updateAt(current.assets, assetIndex, updatedEntry) });
+        #written(current.state);
+    };
+
+    /// The answer of an escrow that `commitEscrow` recorded on an offer no longer PendingEscrow.
+    func escrowAfterCancel<system>(offerId : T.OfferId, state : T.OfferState) : T.Result<()> {
+        switch (state) {
+            case (#Cancelled or #Expired) { scheduleAutoReclaimAssets<system>(offerId) };
+            case (_) {};
+        };
+        #err(#InvalidState("The offer was cancelled while this asset was being escrowed; the asset is recorded as escrowed and goes back to the seller (reclaimAssets)"));
+    };
+
     public shared ({ caller }) func escrowCanister(offerId : T.OfferId, assetIndex : Nat) : async T.Result<()> {
         switch (getOffer(offerId)) {
             case null { return #err(#OfferNotFound) };
@@ -2609,28 +2621,14 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             escrowed = true;
                                         };
                                         
-                                        let updatedAssets = Utils.updateAt(offer.assets, assetIndex, updatedEntry);
-                                        
-                                        let updatedOffer : T.Offer = {
-                                            id = offer.id;
-                                            creator = offer.creator;
-                                            min_bid_price = offer.min_bid_price;
-                                            buyout_price = offer.buyout_price;
-                                            expiration = offer.expiration;
-                                            price_token_ledger = offer.price_token_ledger;
-                                            assets = updatedAssets;
-                                            state = offer.state;
-                                            min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
-                                            approved_bidders = offer.approved_bidders;
-                                            fee_rate_bps = offer.fee_rate_bps;
-                                            public_note = offer.public_note;
-                                            note_to_buyer = offer.note_to_buyer;
-                                            created_at = offer.created_at;
-                                            activated_at = offer.activated_at;
+                                        // re-read: written onto the offer as it is now (see commitEscrow)
+                                        let cstate = switch (commitEscrow(offerId, assetIndex, assetEntry.asset, updatedEntry)) {
+                                            case (#gone) { return #err(#InvalidState("Offer changed while escrowing")) };
+                                            case (#alreadyEscrowed) { return #err(#InvalidAsset("Asset already escrowed")) };
+                                            case (#written(st)) { st };
                                         };
-                                        
-                                        updateOffer(offerId, updatedOffer);
                                         icrc3_add("sneedex_asset_escrow", [("caller", pv(caller)), ("offer_id", #Nat(offerId)), ("asset_index", #Nat(assetIndex)), ("asset", assetV(updatedAsset))]);
+                                        if (cstate != #PendingEscrow) { return escrowAfterCancel<system>(offerId, cstate) };
                                         
                                         // Deregister canister from seller's wallet (best effort, non-blocking)
                                         ignore Timer.setTimer<system>(#seconds 0, func () : async () {
@@ -2734,28 +2732,14 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             escrowed = true;
                                         };
                                         
-                                        let updatedAssets = Utils.updateAt(offer.assets, assetIndex, updatedEntry);
-                                        
-                                        let updatedOffer : T.Offer = {
-                                            id = offer.id;
-                                            creator = offer.creator;
-                                            min_bid_price = offer.min_bid_price;
-                                            buyout_price = offer.buyout_price;
-                                            expiration = offer.expiration;
-                                            price_token_ledger = offer.price_token_ledger;
-                                            assets = updatedAssets;
-                                            state = offer.state;
-                                            min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
-                                            approved_bidders = offer.approved_bidders;
-                                            fee_rate_bps = offer.fee_rate_bps;
-                                            public_note = offer.public_note;
-                                            note_to_buyer = offer.note_to_buyer;
-                                            created_at = offer.created_at;
-                                            activated_at = offer.activated_at;
+                                        // re-read: written onto the offer as it is now (see commitEscrow)
+                                        let cstate = switch (commitEscrow(offerId, assetIndex, assetEntry.asset, updatedEntry)) {
+                                            case (#gone) { return #err(#InvalidState("Offer changed while escrowing")) };
+                                            case (#alreadyEscrowed) { return #err(#InvalidAsset("Asset already escrowed")) };
+                                            case (#written(st)) { st };
                                         };
-                                        
-                                        updateOffer(offerId, updatedOffer);
                                         icrc3_add("sneedex_asset_escrow", [("caller", pv(caller)), ("offer_id", #Nat(offerId)), ("asset_index", #Nat(assetIndex)), ("asset", assetV(updatedAsset))]);
+                                        if (cstate != #PendingEscrow) { return escrowAfterCancel<system>(offerId, cstate) };
                                         #ok();
                                     };
                                 };
@@ -2815,28 +2799,14 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     escrowed = true;
                                 };
                                 
-                                let updatedAssets = Utils.updateAt(offer.assets, assetIndex, updatedEntry);
-                                
-                                let updatedOffer : T.Offer = {
-                                    id = offer.id;
-                                    creator = offer.creator;
-                                    min_bid_price = offer.min_bid_price;
-                                    buyout_price = offer.buyout_price;
-                                    expiration = offer.expiration;
-                                    price_token_ledger = offer.price_token_ledger;
-                                    assets = updatedAssets;
-                                    state = offer.state;
-                                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
-                                    approved_bidders = offer.approved_bidders;
-                                    fee_rate_bps = offer.fee_rate_bps;
-                                    public_note = offer.public_note;
-                                    note_to_buyer = offer.note_to_buyer;
-                                    created_at = offer.created_at;
-                                    activated_at = offer.activated_at;
+                                // re-read: written onto the offer as it is now (see commitEscrow)
+                                let cstate = switch (commitEscrow(offerId, assetIndex, assetEntry.asset, updatedEntry)) {
+                                    case (#gone) { return #err(#InvalidState("Offer changed while escrowing")) };
+                                    case (#alreadyEscrowed) { return #err(#InvalidAsset("Asset already escrowed")) };
+                                    case (#written(st)) { st };
                                 };
-                                
-                                updateOffer(offerId, updatedOffer);
                                 icrc3_add("sneedex_asset_escrow", [("caller", pv(caller)), ("offer_id", #Nat(offerId)), ("asset_index", #Nat(assetIndex)), ("asset", assetV(assetEntry.asset))]);
+                                if (cstate != #PendingEscrow) { return escrowAfterCancel<system>(offerId, cstate) };
                                 #ok();
                             };
                         };
@@ -4395,6 +4365,60 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         });
     };
     
+    /// Every bid of a bidder, unconfirmed reservations included (getBidsByBidder hides those):
+    /// for support, to find a bid escrow a user deposited into without confirming.
+    public query func getBidsByBidderAll(bidder : Principal) : async [T.Bid] {
+        Array.filter<T.Bid>(bids, func(b : T.Bid) : Bool { Principal.equal(b.bidder, bidder) });
+    };
+
+    /// Where an offer's settlement stands: its state, the winning bid (if any), the indices of the
+    /// assets already handed over by a settlement still in progress, and whether one is running now.
+    public query func getSettlement(offerId : T.OfferId) : async ?{
+        state : T.OfferState;
+        winning_bid : ?T.Bid;
+        delivered_asset_indices : [Nat];
+        settlement_in_progress : Bool;
+    } {
+        switch (getOffer(offerId)) {
+            case null { null };
+            case (?offer) {
+                ?{
+                    state = offer.state;
+                    winning_bid = findWinningBid(offer);
+                    delivered_asset_indices = deliveredIndicesOf(offerId);
+                    settlement_in_progress = Map.has(settlementLocks, nhash, offerId);
+                };
+            };
+        };
+    };
+
+    /// The support log, newest first: errors of background work (timers, stake caching, auto
+    /// settlement) and admin interventions. `before` pages back (entries with id < before).
+    public query func getSupportLog(before : ?Nat, limit : Nat) : async [T.SupportLogEntry] {
+        let lim = Nat.min(limit, 100);
+        let out = Buffer.Buffer<T.SupportLogEntry>(lim);
+        var i = supportLog.size();
+        while (i > 0 and out.size() < lim) {
+            i -= 1;
+            let e = supportLog[i];
+            let ok = switch (before) { case (?b) { e.id < b }; case null { true } };
+            if (ok) { out.add(e) };
+        };
+        Buffer.toArray(out);
+    };
+
+    /// The support log entries that name a principal (as party or admin), newest first.
+    public query func getSupportLogFor(p : Principal) : async [T.SupportLogEntry] {
+        let out = Buffer.Buffer<T.SupportLogEntry>(0);
+        var i = supportLog.size();
+        while (i > 0) {
+            i -= 1;
+            let e = supportLog[i];
+            if (e.principal == ?p) { out.add(e) };
+        };
+        Buffer.toArray(out);
+    };
+
     /// Get bid by ID
     public query func queryBid(bidId : T.BidId) : async ?T.Bid {
         getBid(bidId);
@@ -5134,20 +5158,85 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
 
     /// Admin function to manually reclaim stuck tokens from an offer
     /// This is useful when autoReclaimAssets failed to transfer tokens
-    /// but already updated the state to Reclaimed
+    /// but already updated the state to Reclaimed.
+    /// Only for offers whose assets belong back with the seller: Cancelled, Expired or Reclaimed,
+    /// with no winning bid. Refused otherwise (an Active offer, or a Completed/Claimed one whose
+    /// buyer is owed the assets). Every call is written to the support log.
     public shared ({ caller }) func adminReclaimStuckTokens(offerId : T.OfferId) : async T.Result<Text> {
+        await* adminReclaimStuckTokensInternal(caller, offerId, "");
+    };
+
+    /// adminReclaimStuckTokens with the reason for the intervention (kept in the support log and
+    /// in the activity-log block of every asset returned).
+    public shared ({ caller }) func adminReclaimStuckTokensWithReason(offerId : T.OfferId, reason : Text) : async T.Result<Text> {
+        if (reason.size() > MAX_ADMIN_REASON) { return #err(#InvalidState("The reason is limited to " # Nat.toText(MAX_ADMIN_REASON) # " characters")) };
+        await* adminReclaimStuckTokensInternal(caller, offerId, reason);
+    };
+
+    func adminReclaimStuckTokensInternal(caller : Principal, offerId : T.OfferId, reason : Text) : async* T.Result<Text> {
         if (not isAdmin(caller)) {
             return #err(#NotAuthorized);
         };
-        
-        switch (getOffer(offerId)) {
-            case null { return #err(#OfferNotFound) };
-            case (?offer) {
+        func refuse(e : T.SneedexError) : T.Result<Text> {
+            noteSupport("admin", "adminReclaimStuckTokens", ?caller, ?offerId, null, "refused: " # errorText(e) # (if (reason == "") { "" } else { "; reason: " # reason }));
+            #err(e);
+        };
+        let offer = switch (getOffer(offerId)) { case (?o) { o }; case null { return refuse(#OfferNotFound) } };
+        switch (offer.state) {
+            // PendingEscrow: no bid can exist yet; each returned asset loses its escrowed flag, so the
+            // offer cannot be activated over an empty escrow
+            case (#Cancelled or #Expired or #Reclaimed or #PendingEscrow) {};
+            case (_) {
+                return refuse(#InvalidState("Only a PendingEscrow, Cancelled, Expired or Reclaimed offer can have its assets returned to the seller; this offer is " # offerStateText(offer.state)));
+            };
+        };
+        // a winning bid means the buyer is owed the assets, whatever the offer state says
+        for (b in getBidsForOffer(offerId).vals()) {
+            if (b.state == #Won or b.state == #ClaimedBySeller) {
+                return refuse(#InvalidState("Bid #" # Nat.toText(b.id) # " won this offer; its assets belong to the buyer"));
+            };
+        };
+        // serialised with the settlement of the same offer (auto reclaim, reclaimAssets)
+        if (Map.has(settlementLocks, nhash, offerId)) {
+            return refuse(#InvalidState("A hand-over of this offer's assets is already in progress; try again shortly"));
+        };
+        Map.set(settlementLocks, nhash, offerId, ());
+        try {
+            let reasonField : [(Text, T3.Value)] = if (reason == "") { [] } else { [("reason", #Text(reason))] };
+            let message = await* adminReturnOfferAssets(caller, offer, reasonField);
+            noteSupport("admin", "adminReclaimStuckTokens", ?caller, ?offerId, null, (if (reason == "") { "" } else { "reason: " # reason # "; " }) # message);
+            #ok(message);
+        } finally {
+            Map.delete(settlementLocks, nhash, offerId);
+        };
+    };
+
+    func offerStateText(st : T.OfferState) : Text {
+        switch (st) {
+            case (#Draft) { "Draft" }; case (#PendingEscrow) { "PendingEscrow" }; case (#Active) { "Active" };
+            case (#Completed(_)) { "Completed" }; case (#Expired) { "Expired" }; case (#Cancelled) { "Cancelled" };
+            case (#Claimed) { "Claimed" }; case (#Reclaimed) { "Reclaimed" };
+        };
+    };
+
+    /// Return every escrowed asset of `offer` to its creator, best effort; answers the per-asset results.
+    /// Each step moves only what Sneedex still holds, so calling again does no harm.
+    func adminReturnOfferAssets(caller : Principal, offer : T.Offer, extra : [(Text, T3.Value)]) : async* Text {
+        let offerId = offer.id;
+        do {
                 var message = "Results for offer #" # Nat.toText(offerId) # ":\n";
                 func returned(assetIndex : Nat, asset : T.Asset, details : [(Text, T3.Value)]) {
-                    icrc3_add("sneedex_admin_asset_return", Array.append<(Text, T3.Value)>([
+                    switch (getOffer(offerId)) {
+                        case (?current) {
+                            if (current.state == #PendingEscrow and assetIndex < current.assets.size() and current.assets[assetIndex].asset == asset) {
+                                updateOffer(offerId, { current with assets = Utils.updateAt(current.assets, assetIndex, { current.assets[assetIndex] with escrowed = false }) });
+                            };
+                        };
+                        case null {};
+                    };
+                    icrc3_add("sneedex_admin_asset_return", Array.append<(Text, T3.Value)>(Array.append<(Text, T3.Value)>([
                         ("caller", pv(caller)), ("offer_id", #Nat(offerId)), ("asset_index", #Nat(assetIndex)), ("asset", assetV(asset)), ("to", pv(offer.creator)),
-                    ], details));
+                    ], details), extra));
                 };
                 
                 for (assetIndex in offer.assets.keys()) {
@@ -5293,8 +5382,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     };
                 };
                 
-                #ok(message);
-            };
+                message;
         };
     };
     
@@ -5690,6 +5778,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         #addAsset : () -> T.AddAssetRequest;
         #addAssetType : Any;
         #adminReclaimStuckTokens : Any;
+        #adminReclaimStuckTokensWithReason : Any;
+        #getBidsByBidderAll : Any;
+        #getSettlement : Any;
+        #getSupportLog : Any;
+        #getSupportLogFor : Any;
         #adminReturnMisplacedNft : Any;
         #adminReturnMisplacedExtNft : Any;
         #admin_icrc3_register_archives_now : Any;
@@ -5816,6 +5909,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 or #getBackendCanisterId _
                 or #getBidEscrowSubaccount _
                 or #getBidsByBidder _
+                or #getBidsByBidderAll _
+                or #getSettlement _
+                or #getSupportLog _
+                or #getSupportLogFor _
                 or #getCachedNeuronManagerInfoQuery _
                 or #getCanisterKinds _
                 or #getConfig _
@@ -5883,6 +5980,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             };
             // admin tools with free-form content
             case (#addAssetType _ or #updateConfig _) isAdmin(caller);
+            case (#adminReclaimStuckTokensWithReason _) isAdmin(caller) and arg.size() <= IngressGuard.textArg(MAX_ADMIN_REASON);
             case _ arg.size() <= IngressGuard.SMALL_ARG;
         };
     };

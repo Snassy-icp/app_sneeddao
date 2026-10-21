@@ -7,7 +7,10 @@
 /// may always remove its own. Removing a permission a principal does not hold
 /// is an error, and a principal whose last permission goes is dropped from
 /// the neuron. A test helper creates neurons, another makes `manage_neuron`
-/// fail so escrow error handling can be exercised.
+/// fail so escrow error handling can be exercised, and `set_hold` keeps
+/// `get_neuron` / `manage_neuron` calls waiting (yielding to other messages
+/// through self-calls) until released, so a test can land other calls while
+/// a caller sits in its await.
 import Array "mo:base/Array";
 import Buffer "mo:base/Buffer";
 import Int32 "mo:base/Int32";
@@ -42,6 +45,18 @@ persistent actor MockSnsNeurons {
   stable var neurons : [(Blob, Neuron)] = [];
   stable var fail : Bool = false;
   stable var calls : [(Principal, Text)] = [];
+  transient var holdGet : Bool = false;
+  transient var holdManage : Bool = false;
+  transient var waiting : Nat = 0;
+
+  /// Wait (yielding) while `held()` says so; at most ~5000 rounds so nothing spins forever.
+  func waitWhile(held : () -> Bool) : async () {
+    if (not held()) { return };
+    waiting += 1;
+    var i = 0;
+    while (held() and i < 5000) { await async {}; i += 1 };
+    waiting -= 1;
+  };
 
   func find(id : Blob) : ?Neuron {
     switch (Array.find<(Blob, Neuron)>(neurons, func((n, _)) { n == id })) { case (?(_, n)) ?n; case null null };
@@ -58,7 +73,9 @@ persistent actor MockSnsNeurons {
     { id = n.id; permissions = perms; cached_neuron_stake_e8s = n.cached_neuron_stake_e8s; maturity_e8s_equivalent = n.maturity_e8s_equivalent; dissolve_state = n.dissolve_state };
   };
 
-  public query func get_neuron(req : { neuron_id : ?NeuronId }) : async { result : ?{ #Error : GovernanceError; #Neuron : Neuron } } {
+  // an update (not a query) so that it can wait while held; callers are canisters, unaffected
+  public func get_neuron(req : { neuron_id : ?NeuronId }) : async { result : ?{ #Error : GovernanceError; #Neuron : Neuron } } {
+    await waitWhile(func() { holdGet });
     switch (req.neuron_id) {
       case null { { result = ?#Error({ error_message = "No neuron id"; error_type = 1 }) } };
       case (?nid) {
@@ -71,6 +88,7 @@ persistent actor MockSnsNeurons {
   };
 
   public shared ({ caller }) func manage_neuron(req : ManageNeuron) : async ManageNeuronResponse {
+    await waitWhile(func() { holdManage });
     if (fail) { return err("governance refuses (test mode)") };
     let neuron = switch (find(req.subaccount)) { case (?n) n; case null { return err("Neuron not found") } };
     switch (req.command) {
@@ -117,6 +135,9 @@ persistent actor MockSnsNeurons {
     neurons := Array.append(Array.filter<(Blob, Neuron)>(neurons, func((k, _)) { k != id }), [(id, n)]);
   };
   public shared func set_fail(f : Bool) : async () { fail := f };
+  public shared func set_hold(get : Bool, manage : Bool) : async () { holdGet := get; holdManage := manage };
+  /// how many get_neuron / manage_neuron calls are waiting now
+  public query func waiting_calls() : async Nat { waiting };
   public query func permissions_of(id : Blob) : async [(Principal, [Int32])] {
     switch (find(id)) {
       case (?n) {

@@ -327,8 +327,10 @@ describe('admin rescues', () => {
     expect(unwrap(await dex.admin.adminReclaimStuckTokens(id))).toMatch(/EXT tokens returned to the seller: 1/);
     expect(await holderOf(card)).toBe(extAccountId(alice));
     expect(only(await dex.since(mark), 'sneedex_admin_asset_return').map((b) => [b.asset_index, b.moved, b.asset.type])).toEqual([[0n, 1n, 'ext']]);
+    // the returned card is no longer escrowed (the offer cannot be activated over an empty escrow)
+    expect((await dex.bob.queryOffer(id))[0].assets[0].escrowed).toBe(false);
     // run again: nothing left in escrow, nothing moves or is logged
-    expect(unwrap(await dex.admin.adminReclaimStuckTokens(id))).toMatch(/EXT tokens returned to the seller: 0/);
+    expect(unwrap(await dex.admin.adminReclaimStuckTokens(id))).not.toMatch(/EXT tokens returned/);
     expect(only(await dex.since(mark), 'sneedex_admin_asset_return')).toHaveLength(1);
     unwrap(await dex.alice.cancelOffer(id));
   }, 120_000);

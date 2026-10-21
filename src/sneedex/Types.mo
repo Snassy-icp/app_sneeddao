@@ -439,6 +439,19 @@ module {
     };
     
     // Asset with escrow status
+    /// One entry of the public support log: an error swallowed by background work, or an admin
+    /// intervention. kind is "error" or "admin"; op names the operation.
+    public type SupportLogEntry = {
+        id : Nat;
+        time : Int;
+        kind : Text;
+        op : Text;
+        principal : ?Principal;
+        offer_id : ?Nat;
+        bid_id : ?Nat;
+        text : Text;
+    };
+
     public type AssetEntry = {
         asset : Asset;
         escrowed : Bool;

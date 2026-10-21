@@ -50,7 +50,7 @@ Calls are authorised by the signing principal. The creator manages an offer; the
 
 ## Activity log (ICRC-3)
 
-Every market action is a block in a hash-chained, certified ICRC-3 log: offers, escrow, bids, each asset handed over, cuts and seller payments, refunds, creation fees and admin changes (block types `sneedex_*`, documented at https://app.sneeddao.com/api/sneedex#block-types). Read `icrc3_get_blocks` (follow `archived_blocks` callbacks into the archives) and verify `icrc3_get_tip_certificate`. Transfers name their ledger block (`ledger_tx`); automatic steps carry `via = \"timer\"` instead of `caller`. The log starts with the release that added it.
+Every market action is a block in a hash-chained, certified ICRC-3 log: offers, escrow, bids, each asset handed over, cuts and seller payments, refunds, creation fees and admin changes (block types `sneedex_*`, documented at https://app.sneeddao.com/api/sneedex#block-types). Read `icrc3_get_blocks` (follow `archived_blocks` callbacks into the archives) and verify `icrc3_get_tip_certificate`. Transfers name their ledger block (`ledger_tx`); automatic steps carry `via = \"timer\"` instead of `caller`. The log starts with the release that added it. Support lookups: `getBidsByBidderAll(p)` (reservations included), `getSettlement(offerId)`, and `getSupportLog(before, limit)` / `getSupportLogFor(p)` for background errors and admin interventions.
 
 ## Start with these methods
 
