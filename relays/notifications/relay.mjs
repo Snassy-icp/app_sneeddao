@@ -22,7 +22,12 @@ import webpush from 'web-push';
 const DIR = process.env.RELAY_DIR || `${process.env.HOME}/.config/mr-sneed/relay`;
 const CANISTER = process.argv[2];
 const ONCE = process.argv.includes('--once');
-const HUB = 'https://app.sneeddao.com';
+// The Sneed Hub a relay links to: prod by default; the staging relay runs with SNEED_HUB_URL set to the
+// staging frontend, so a tapped push opens the site (and the installed app) it came from.
+const HUB = (process.env.SNEED_HUB_URL || 'https://app.sneeddao.com').replace(/\/+$/, '');
+// Link pushes to the single-notification page only where that frontend has it (NOTIFICATION_PAGES=1);
+// otherwise to /notifications, which every deployed frontend has.
+const NOTIFICATION_PAGES = process.env.NOTIFICATION_PAGES === '1';
 if (!CANISTER) { console.error('usage: node relay.mjs <notifications canister id> [--once]'); process.exit(2); }
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -78,7 +83,7 @@ function titleHash(text) {
     for (const b of Buffer.from(String(text || ''), 'utf8')) { h ^= b; h = Math.imul(h, 0x01000193) >>> 0; }
     return h.toString(36);
 }
-const notificationPage = (job) => `${HUB}/notifications/push?t=${String(job.created_at)}&h=${titleHash(job.title)}`;
+const notificationPage = (job) => (NOTIFICATION_PAGES ? `${HUB}/notifications/push?t=${String(job.created_at)}&h=${titleHash(job.title)}` : `${HUB}/notifications`);
 
 // A channel's verification code, if this job carries one (the canister's "Your Sneed Notifications code: 123456").
 const verificationCode = (job) => (job.app === 'Sneed Notifications' && /code: (\d{6})$/.exec(job.title)?.[1]) || null;
