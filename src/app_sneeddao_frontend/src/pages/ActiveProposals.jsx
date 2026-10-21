@@ -9,7 +9,8 @@ import { getAllSnses, fetchSnsLogo } from '../utils/SnsUtils';
 import { getRelevantSnses, getRelevantNnsNeurons } from '../utils/VotableProposalsUtils';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { HttpAgent } from '@dfinity/agent';
-import { uint8ArrayToHex, safePrincipalString } from '../utils/NeuronUtils';
+import { uint8ArrayToHex, safePrincipalString, formatNeuronDisplayWithContext } from '../utils/NeuronUtils';
+import { useNaming } from '../NamingContext';
 import { calculateVotingPower } from '../utils/VotingPowerUtils';
 import { isProposalAcceptingVotes, getProposalStatus, getVotingTimeRemaining } from '../utils/ProposalUtils';
 import {
@@ -49,6 +50,14 @@ const proposalAccent = '#10b981'; // Green for voting
 
 function ActiveProposals() {
     const { theme } = useTheme();
+    const { neuronNames, neuronNicknames, verifiedNames } = useNaming();
+    // who submitted a proposal: one of the first things to check
+    const proposerInfo = (snsRoot, neuronId) => {
+        const hex = uint8ArrayToHex(neuronId);
+        if (!hex) return null;
+        const k = `${snsRoot}:${hex}`;
+        return { name: neuronNames?.get(k), nickname: neuronNicknames?.get(k), isVerified: verifiedNames?.get(k) };
+    };
     const { identity, isAuthenticated } = useAuth();
     const { neuronCache } = useWallet();
     
@@ -1123,6 +1132,18 @@ function ActiveProposals() {
                                                     >
                                                         {proposalTitle}
                                                     </Link>
+
+                                                    {/* Proposer */}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', fontSize: '0.82rem', color: theme.colors.secondaryText, margin: '-0.4rem 0 0.75rem' }}>
+                                                        <span>Proposer:</span>
+                                                        {isNns
+                                                            ? (proposal.proposer?.[0]?.id !== undefined
+                                                                ? <a href={`https://dashboard.internetcomputer.org/neuron/${proposal.proposer[0].id.toString()}`} target="_blank" rel="noopener noreferrer" style={{ color: theme.colors.accent, textDecoration: 'none' }}>NNS neuron {proposal.proposer[0].id.toString()}</a>
+                                                                : <span>unknown</span>)
+                                                            : (proposal.proposer?.[0]?.id
+                                                                ? formatNeuronDisplayWithContext(proposal.proposer[0].id, snsInfo.rootCanisterId, proposerInfo(snsInfo.rootCanisterId, proposal.proposer[0].id), { isAuthenticated: true })
+                                                                : <span>unknown</span>)}
+                                                    </div>
 
                                                     <VoteBar tally={proposal.latest_tally} theme={theme} />
                                                     
