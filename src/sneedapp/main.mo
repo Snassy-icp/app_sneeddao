@@ -13,7 +13,12 @@ import Error "mo:base/Error";
 import Cycles "mo:base/ExperimentalCycles";
 import Text "mo:base/Text";
 import Debug "mo:base/Debug";
+import Int "mo:base/Int";
 import Sha256 "mo:sha2/Sha256";
+
+import Icrc3Log "../icrc3/Log";
+import Icrc3Sns "../icrc3/SnsRegister";
+import T3 "../icrc3/Types";
 
 import T "../sneed_bots/sneed_icp_staking_bot/Types";
 import PremiumClient "../PremiumClient";
@@ -361,6 +366,19 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     };
     var orphanCanisters: [OrphanCanister] = [];
 
+    // ICRC-3 activity log: a hash-chained, certified block per catalogue, version and Wasm
+    // change (the supply chain), mint and ICP movement, privileged wallet write and config
+    // change, with archive canisters for old blocks. Library src/icrc3; design and block
+    // catalogue: spec/sneedapp_icrc3.md. New stable fields (additive); the runtimes are transient.
+    var icrc3 : Icrc3Log.State = Icrc3Log.init();
+    transient let icrc3_rt : Icrc3Log.Runtime = Icrc3Log.runtime();
+    // SNS registration of archives (skipped until a hotkeyed neuron is configured)
+    var icrc3_sns : Icrc3Sns.State = Icrc3Sns.init();
+    transient let icrc3_sns_rt : Icrc3Sns.Runtime = Icrc3Sns.runtime();
+    transient let SNEED_SNS_ROOT : Principal = Principal.fromText("fp274-iaaaa-aaaaq-aacha-cai");
+    transient let SNEED_SNS_GOVERNANCE : Principal = Principal.fromText("fi3zi-fyaaa-aaaaq-aachq-cai");
+    transient var icrc3_next_cid : Nat = 0; // groups the canister-log lines of one spill run
+
     // ============================================
     // PUBLISHER STATE
     // ============================================
@@ -476,6 +494,10 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
         // Migration (idempotent): staking bots filed under the legacy slug move to the catalogue slug
         relabelLegacyStakingBotEntries();
+
+        // ICRC-3: republish the certified tip (certified data does not survive an upgrade);
+        // the spill timer is started by the actor body
+        Icrc3Log.certify(icrc3);
     };
 
     // Wallet and mint-log entries filed under "icp-staking-bot" (the legacy flow's
@@ -555,6 +577,122 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
     func walletGetCanisterIds(user: Principal): [Principal] {
         Array.map<UserCanisterEntry, Principal>(walletGetEntries(user), func(e) { e.canisterId });
+    };
+
+    // walletAdd / walletRemove, telling whether the user's list changed
+    func walletAddChanged(user: Principal, canisterId: Principal, appId: Text): Bool {
+        let before = walletGetEntries(user);
+        walletAdd(user, canisterId, appId);
+        walletGetEntries(user) != before;
+    };
+
+    // -- ICRC-3 block helpers (spec/sneedapp_icrc3.md) --
+
+    /// Append one block for a change that has just been committed to local state.
+    func icrc3_add(btype: Text, tx: [(Text, T3.Value)]) {
+        ignore Icrc3Log.append(icrc3, btype, Int.abs(Time.now()), tx);
+    };
+    func pv(p: Principal): T3.Value { Icrc3Log.principal(p) };
+    func av(a: T.Account): T3.Value { Icrc3Log.account(a.owner, a.subaccount) };
+    func n64(n: Nat64): T3.Value { Icrc3Log.nat64(n) };
+    func tv(t: Int): T3.Value { if (t >= 0) #Nat(Int.abs(t)) else #Int(t) };
+    func flag(b: Bool): T3.Value { #Nat(if b 1 else 0) };
+    func optPv(p: ?Principal): T3.Value { switch (p) { case (?x) pv(x); case null #Text("none") } };
+    func txts(ts: [Text]): T3.Value { #Array(Array.map<Text, T3.Value>(ts, func(t) { #Text(t) })) };
+    func nats(ns: [Nat]): T3.Value { #Array(Array.map<Nat, T3.Value>(ns, func(n) { #Nat(n) })) };
+    /// Optional fields: present when `?v`, omitted when null.
+    func opt(key: Text, v: ?T3.Value): [(Text, T3.Value)] { switch (v) { case (?x) [(key, x)]; case null [] } };
+    func optText(t: ?Text): ?T3.Value { switch (t) { case (?x) ?#Text(x); case null null } };
+
+    func appValue(a: AppInfo): T3.Value {
+        #Map(Array.flatten<(Text, T3.Value)>([
+            [("app_id", #Text(a.appId)), ("numeric_app_id", #Nat(a.numericAppId)), ("publisher_id", #Nat(a.publisherId)),
+             ("name", #Text(a.name)), ("mint_price_e8s", n64(a.mintPriceE8s)), ("premium_mint_price_e8s", n64(a.premiumMintPriceE8s)),
+             ("families", txts(a.families)), ("enabled", flag(a.enabled))],
+            opt("view_url", optText(a.viewUrl)), opt("manage_url", optText(a.manageUrl)), opt("mint_url", optText(a.mintUrl)),
+            opt("payment_account", switch (a.paymentAccount) { case (?acc) ?av(acc); case null null }),
+            opt("dao_cut_bps", switch (a.daoCutBasisPoints) { case (?b) ?#Nat(b); case null null }),
+        ]));
+    };
+    func publisherValue(p: PublisherInfo): T3.Value {
+        #Map(Array.flatten<(Text, T3.Value)>([
+            [("publisher_id", #Nat(p.publisherId)), ("name", #Text(p.name))],
+            opt("website_url", optText(p.websiteUrl)),
+            [("owners", #Array(Array.map<Principal, T3.Value>(p.owners, pv))), ("verified", flag(p.verified)), ("families", txts(p.families)),
+             ("default_payment_account", av(p.defaultPaymentAccount)), ("dao_cut_bps", #Nat(p.daoCutBasisPoints))],
+        ]));
+    };
+    func versionValue(v: AppVersion): T3.Value {
+        #Map(Array.flatten<(Text, T3.Value)>([
+            [("major", #Nat(v.major)), ("minor", #Nat(v.minor)), ("patch", #Nat(v.patch))],
+            if (v.wasmHash == "") [] else [("wasm_hash", #Text(v.wasmHash))],
+            [("wasm_size", #Nat(v.wasmSize)), ("release_date", tv(v.releaseDate))],
+            opt("wasm_url", optText(v.wasmUrl)), opt("source_url", optText(v.sourceUrl)),
+        ]));
+    };
+    func verValue(major: Nat, minor: Nat, patch: Nat): T3.Value {
+        #Map([("major", #Nat(major)), ("minor", #Nat(minor)), ("patch", #Nat(patch))]);
+    };
+    func officialValue(v: T.OfficialVersion): T3.Value {
+        #Map([("major", #Nat(v.major)), ("minor", #Nat(v.minor)), ("patch", #Nat(v.patch)),
+              ("wasm_hash", #Text(v.wasmHash)), ("wasm_url", #Text(v.wasmUrl)), ("source_url", #Text(v.sourceUrl))]);
+    };
+
+    func icrc3_config(caller: Principal, key: Text, value: T3.Value, old_value: ?T3.Value) {
+        let base: [(Text, T3.Value)] = [("caller", pv(caller)), ("key", #Text(key)), ("value", value)];
+        icrc3_add("sneedapp_config_update", switch (old_value) { case (?o) Array.append(base, [("old_value", o)]); case null base });
+    };
+    /// A config-update block when the value changed.
+    func icrc3_config_change(caller: Principal, key: Text, value: T3.Value, old_value: T3.Value) {
+        if (value != old_value) { icrc3_config(caller, key, value, ?old_value) };
+    };
+    // update blocks only when a logged field changed (a description-only edit appends nothing)
+    func icrc3_app_update(caller: Principal, method: Text, old: AppInfo, new: AppInfo) {
+        if (appValue(old) != appValue(new)) {
+            icrc3_add("sneedapp_app_update", [("caller", pv(caller)), ("method", #Text(method)), ("app", appValue(new)), ("old_app", appValue(old))]);
+        };
+    };
+    /// After an app was written: its update block, when a logged field changed.
+    func icrc3_app_written(caller: Principal, method: Text, old: AppInfo) {
+        switch (appByNumericId.get(old.numericAppId)) {
+            case (?now) { icrc3_app_update(caller, method, old, now) };
+            case null {};
+        };
+    };
+    func icrc3_publisher_update(caller: Principal, method: Text, old: PublisherInfo, new: PublisherInfo) {
+        if (publisherValue(old) != publisherValue(new)) {
+            icrc3_add("sneedapp_publisher_update", [("caller", pv(caller)), ("method", #Text(method)), ("publisher", publisherValue(new)), ("old_publisher", publisherValue(old))]);
+        };
+    };
+    /// After a publisher was written: its update block, when it changed.
+    func icrc3_publisher_written(caller: Principal, method: Text, old: PublisherInfo) {
+        switch (publisherMap.get(old.publisherId)) {
+            case (?now) { icrc3_publisher_update(caller, method, old, now) };
+            case null {};
+        };
+    };
+    /// One block per official version (keyed by lowercase hash) that the change added, replaced or dropped.
+    func icrc3_official_changes(caller: Principal, method: Text, old: [T.OfficialVersion], new: [T.OfficialVersion]) {
+        let find = func(list: [T.OfficialVersion], hash: Text): ?T.OfficialVersion {
+            Array.find<T.OfficialVersion>(list, func(v) { Text.toLowercase(v.wasmHash) == hash });
+        };
+        for (v in old.vals()) {
+            if (find(new, Text.toLowercase(v.wasmHash)) == null) {
+                icrc3_add("sneedapp_official_version_remove", [("caller", pv(caller)), ("method", #Text(method)), ("old_official", officialValue(v))]);
+            };
+        };
+        for (v in new.vals()) {
+            let base: [(Text, T3.Value)] = [("caller", pv(caller)), ("method", #Text(method)), ("official", officialValue(v))];
+            switch (find(old, Text.toLowercase(v.wasmHash))) {
+                case null { icrc3_add("sneedapp_official_version_set", base) };
+                case (?o) { if (o != v) { icrc3_add("sneedapp_official_version_set", Array.append(base, [("old_official", officialValue(o))])) } };
+            };
+        };
+    };
+    func icrc3_wallet_register(caller: Principal, user: Principal, canisterId: Principal, appId: Text) {
+        icrc3_add("sneedapp_wallet_register", Array.append<(Text, T3.Value)>(
+            [("caller", pv(caller)), ("user", pv(user)), ("canister_id", pv(canisterId))],
+            if (appId == "") [] else [("app_id", #Text(appId))]));
     };
 
     // -- App Version Helpers --
@@ -874,13 +1012,16 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         assert(isAdmin(caller));
         if (not isAdmin(newAdmin)) {
             admins := Array.append(admins, [newAdmin]);
+            icrc3_config(caller, "admin_added", pv(newAdmin), null);
         };
     };
 
     public shared ({ caller }) func removeAdmin(adminToRemove: Principal): async () {
         assert(isAdmin(caller));
         assert(admins.size() > 1); // Keep at least one admin
+        let wasAdmin = isAdmin(adminToRemove);
         admins := Array.filter<Principal>(admins, func(a) { not Principal.equal(a, adminToRemove) });
+        if (wasAdmin) { icrc3_config(caller, "admin_removed", pv(adminToRemove), null) };
     };
 
     public query func getAdmins(): async [Principal] {
@@ -889,7 +1030,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
     public shared ({ caller }) func setSneedGovernance(governance: ?Principal): async () {
         assert(isAdmin(caller));
+        let old = sneedGovernance;
         sneedGovernance := governance;
+        icrc3_config_change(caller, "sneed_governance", optPv(governance), optPv(old));
     };
 
     public query func getSneedGovernance(): async ?Principal {
@@ -902,6 +1045,10 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
     public shared ({ caller }) func setPaymentConfig(config: T.PaymentConfig): async () {
         assert(isAdminOrGovernance(caller));
+        icrc3_config_change(caller, "creation_fee_e8s", n64(config.creationFeeE8s), n64(creationFeeE8s));
+        icrc3_config_change(caller, "target_cycles", #Nat(config.targetCyclesAmount), #Nat(targetCyclesAmount));
+        icrc3_config_change(caller, "fee_destination", av(config.feeDestination), av(feeDestination));
+        icrc3_config_change(caller, "payment_required", flag(config.paymentRequired), flag(paymentRequired));
         creationFeeE8s := config.creationFeeE8s;
         targetCyclesAmount := config.targetCyclesAmount;
         feeDestination := config.feeDestination;
@@ -919,16 +1066,19 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
     public shared ({ caller }) func setCreationFee(feeE8s: Nat64): async () {
         assert(isAdminOrGovernance(caller));
+        icrc3_config_change(caller, "creation_fee_e8s", n64(feeE8s), n64(creationFeeE8s));
         creationFeeE8s := feeE8s;
     };
 
     public shared ({ caller }) func setTargetCycles(cycles: Nat): async () {
         assert(isAdminOrGovernance(caller));
+        icrc3_config_change(caller, "target_cycles", #Nat(cycles), #Nat(targetCyclesAmount));
         targetCyclesAmount := cycles;
     };
 
     public shared ({ caller }) func setFeeDestination(destination: T.Account): async () {
         assert(isAdminOrGovernance(caller));
+        icrc3_config_change(caller, "fee_destination", av(destination), av(feeDestination));
         feeDestination := destination;
     };
     
@@ -968,6 +1118,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
     public shared ({ caller }) func setPaymentRequired(required: Bool): async () {
         assert(isAdminOrGovernance(caller));
+        icrc3_config_change(caller, "payment_required", flag(required), flag(paymentRequired));
         paymentRequired := required;
     };
     
@@ -983,6 +1134,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Set the premium creation fee (admin only)
     public shared ({ caller }) func setPremiumCreationFee(feeE8s: Nat64): async () {
         assert(isAdminOrGovernance(caller));
+        icrc3_config_change(caller, "premium_creation_fee_e8s", n64(feeE8s), n64(premiumCreationFeeE8s));
         premiumCreationFeeE8s := feeE8s;
     };
     
@@ -994,6 +1146,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Set the Sneed Premium canister ID (admin only)
     public shared ({ caller }) func setSneedPremiumCanisterId(canisterId: ?Principal): async () {
         assert(isAdminOrGovernance(caller));
+        icrc3_config_change(caller, "sneed_premium_canister_id", optPv(canisterId), optPv(sneedPremiumCanisterId));
         sneedPremiumCanisterId := canisterId;
     };
 
@@ -1018,6 +1171,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Set the cycles allocated to new canisters (admin only)
     public shared ({ caller }) func setCanisterCreationCycles(cycles: Nat): async () {
         assert(isAdminOrGovernance(caller));
+        icrc3_config_change(caller, "canister_creation_cycles", #Nat(cycles), #Nat(canisterCreationCycles));
         canisterCreationCycles := cycles;
     };
 
@@ -1069,6 +1223,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             createdAt = Time.now();
         };
         publisherMap.put(id, pub);
+        icrc3_add("sneedapp_publisher_create", [("caller", pv(caller)), ("publisher", publisherValue(pub))]);
         #Ok(id);
     };
 
@@ -1091,6 +1246,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     daoCutBasisPoints = pub.daoCutBasisPoints;
                     createdAt = pub.createdAt;
                 });
+                icrc3_publisher_written(caller, "updatePublisher", pub);
                 #Ok;
             };
         };
@@ -1117,6 +1273,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     daoCutBasisPoints = pub.daoCutBasisPoints;
                     createdAt = pub.createdAt;
                 });
+                icrc3_publisher_written(caller, "addPublisherOwner", pub);
                 #Ok;
             };
         };
@@ -1144,6 +1301,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     daoCutBasisPoints = pub.daoCutBasisPoints;
                     createdAt = pub.createdAt;
                 });
+                icrc3_publisher_written(caller, "removePublisherOwner", pub);
                 #Ok;
             };
         };
@@ -1170,6 +1328,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     daoCutBasisPoints = pub.daoCutBasisPoints;
                     createdAt = pub.createdAt;
                 });
+                icrc3_publisher_written(caller, "addPublisherFamily", pub);
                 #Ok;
             };
         };
@@ -1195,6 +1354,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     daoCutBasisPoints = pub.daoCutBasisPoints;
                     createdAt = pub.createdAt;
                 });
+                icrc3_publisher_written(caller, "removePublisherFamily", pub);
                 // Cascade: remove this family from all of this publisher's apps
                 apps := Array.map<AppInfo, AppInfo>(apps, func(a) {
                     if (a.publisherId == publisherId) {
@@ -1208,6 +1368,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                             createdAt = a.createdAt; enabled = a.enabled;
                         };
                         appByNumericId.put(updatedApp.numericAppId, updatedApp);
+                        icrc3_app_update(caller, "removePublisherFamily", a, updatedApp);
                         updatedApp;
                     } else { a };
                 });
@@ -1229,6 +1390,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     defaultPaymentAccount = pub.defaultPaymentAccount;
                     daoCutBasisPoints = pub.daoCutBasisPoints; createdAt = pub.createdAt;
                 });
+                if (not pub.verified) { icrc3_add("sneedapp_publisher_verify", [("caller", pv(caller)), ("publisher_id", #Nat(publisherId))]) };
             };
         };
     };
@@ -1245,6 +1407,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     defaultPaymentAccount = pub.defaultPaymentAccount;
                     daoCutBasisPoints = pub.daoCutBasisPoints; createdAt = pub.createdAt;
                 });
+                if (pub.verified) { icrc3_add("sneedapp_publisher_unverify", [("caller", pv(caller)), ("publisher_id", #Nat(publisherId))]) };
             };
         };
     };
@@ -1262,6 +1425,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     defaultPaymentAccount = pub.defaultPaymentAccount;
                     daoCutBasisPoints = basisPoints; createdAt = pub.createdAt;
                 });
+                icrc3_publisher_written(caller, "setPublisherDaoCut", pub);
             };
         };
     };
@@ -1275,6 +1439,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     public shared ({ caller }) func setManagerWasm(wasm: Blob): async () {
         assert(isAdminOrGovernance(caller));
         managerWasm := ?wasm;
+        icrc3_add("sneedapp_manager_wasm_set", [("caller", pv(caller)), ("wasm_sha256", #Text(wasmSha256Hex(wasm))), ("wasm_size", #Nat(wasm.size()))]);
     };
 
     // Check if manager WASM is set
@@ -1296,6 +1461,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Clear manager WASM (admin only)
     public shared ({ caller }) func clearManagerWasm(): async () {
         assert(isAdminOrGovernance(caller));
+        if (managerWasm != null) { icrc3_add("sneedapp_manager_wasm_clear", [("caller", pv(caller))]) };
         managerWasm := null;
     };
 
@@ -1312,6 +1478,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Should be called when uploading a new WASM
     public shared ({ caller }) func setCurrentVersion(version: T.Version): async () {
         assert(isAdminOrGovernance(caller));
+        icrc3_config_change(caller, "current_version", verValue(version.major, version.minor, version.patch), verValue(currentVersion.major, currentVersion.minor, currentVersion.patch));
         currentVersion := version;
     };
 
@@ -1338,6 +1505,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Add a new official version (admin only)
     public shared ({ caller }) func addOfficialVersion(version: T.OfficialVersion): async () {
         assert(isAdmin(caller));
+        let old = officialVersions;
         
         // Check if version with same hash already exists
         let lowerHash = Text.toLowercase(version.wasmHash);
@@ -1354,18 +1522,20 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                         };
                     }
                 );
+                icrc3_official_changes(caller, "addOfficialVersion", old, officialVersions);
                 return;
             };
         };
         
         // Add new version
         officialVersions := Array.append(officialVersions, [version]);
+        icrc3_official_changes(caller, "addOfficialVersion", old, officialVersions);
     };
 
     // Update an official version (admin only)
     public shared ({ caller }) func updateOfficialVersion(wasmHash: Text, version: T.OfficialVersion): async Bool {
         assert(isAdmin(caller));
-        
+        let old = officialVersions;
         let lowerHash = Text.toLowercase(wasmHash);
         var found = false;
         officialVersions := Array.map<T.OfficialVersion, T.OfficialVersion>(
@@ -1379,6 +1549,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 };
             }
         );
+        icrc3_official_changes(caller, "updateOfficialVersion", old, officialVersions);
         found;
     };
 
@@ -1388,17 +1559,21 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         
         let lowerHash = Text.toLowercase(wasmHash);
         let originalSize = officialVersions.size();
+        let old = officialVersions;
         officialVersions := Array.filter<T.OfficialVersion>(
             officialVersions,
             func(ov) { Text.toLowercase(ov.wasmHash) != lowerHash }
         );
+        icrc3_official_changes(caller, "removeOfficialVersion", old, officialVersions);
         officialVersions.size() < originalSize;
     };
 
     // Set all official versions at once (admin only, for bulk updates)
     public shared ({ caller }) func setOfficialVersions(versions: [T.OfficialVersion]): async () {
         assert(isAdmin(caller));
+        let old = officialVersions;
         officialVersions := versions;
+        icrc3_official_changes(caller, "setOfficialVersions", old, versions);
     };
 
     // ============================================
@@ -1499,7 +1674,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             // Withdraw to caller's main account (balance - fee)
             let withdrawAmount = balance - fee;
 
-            await ledger.icrc1_transfer({
+            let result = await ledger.icrc1_transfer({
                 to = { owner = caller; subaccount = null };
                 fee = ?fee;
                 memo = null;
@@ -1507,6 +1682,16 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 created_at_time = null;
                 amount = withdrawAmount;
             });
+            switch (result) {
+                case (#Ok(blockIndex)) {
+                    icrc3_add("sneedapp_deposit_withdraw", [
+                        ("caller", pv(caller)), ("amount_e8s", #Nat(withdrawAmount)), ("fee_e8s", #Nat(fee)),
+                        ("to", av({ owner = caller; subaccount = null })), ("icp_tx", #Nat(blockIndex)),
+                    ]);
+                };
+                case (#Err(_)) {};
+            };
+            result;
         } finally {
             unlockPayment(caller);
         };
@@ -1518,9 +1703,12 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // amount moved there). Returns the total e8s that could NOT be returned —
     // that ICP then still sits inside this canister's own accounts (never
     // externally), so it can be returned manually.
-    func undoPaymentTransfers(userSubaccount: Blob, moved: [(?Blob, Nat64)]): async* Nat64 {
+    // Also returns what arrived back in the subaccount and the ledger blocks of the returns.
+    func undoPaymentTransfers(userSubaccount: Blob, moved: [(?Blob, Nat64)]): async* { stuck: Nat64; returned: Nat64; txs: [Nat] } {
         let fee = T.ICP_FEE;
         var stuck: Nat64 = 0;
+        var returnedE8s: Nat64 = 0;
+        let txs = Buffer.Buffer<Nat>(moved.size());
         for ((fromSubaccount, amountE8s) in moved.vals()) {
             // Dust at or below one ledger fee cannot be returned and was never
             // material; skip it.
@@ -1534,14 +1722,31 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                         created_at_time = null;
                         amount = Nat64.toNat(amountE8s - fee);
                     })) {
-                        case (#Ok(_)) { true };
+                        case (#Ok(blockIndex)) { txs.add(blockIndex); true };
                         case (#Err(_)) { false };
                     };
                 } catch (_) { false };
-                if (not returned) { stuck += amountE8s };
+                if (returned) { returnedE8s += amountE8s - fee } else { stuck += amountE8s };
             };
         };
-        stuck;
+        { stuck = stuck; returned = returnedE8s; txs = Buffer.toArray(txs) };
+    };
+
+    // Returns the ICP an aborted paid mint had moved to the caller's payment subaccount and
+    // logs it (sneedapp_mint_refund): what the mint was for (`mint`), the ledger blocks of the
+    // legs that had moved, what came back and what is stuck. Returns the stuck e8s.
+    func refundPayment(caller: Principal, appId: Text, userSubaccount: Blob, moved: [(?Blob, Nat64)], mint: [(Text, T3.Value)], paymentTxs: [Nat], reason: Text, canisterId: ?Principal): async* Nat64 {
+        let r = await* undoPaymentTransfers(userSubaccount, moved);
+        var movedE8s: Nat64 = 0;
+        for ((_, amountE8s) in moved.vals()) { movedE8s += amountE8s };
+        icrc3_add("sneedapp_mint_refund", Array.flatten<(Text, T3.Value)>([
+            [("caller", pv(caller)), ("app_id", #Text(appId))],
+            mint,
+            [("reason", #Text(reason)), ("payment_txs", nats(paymentTxs)), ("moved_e8s", n64(movedE8s)),
+             ("returned_e8s", n64(r.returned)), ("stuck_e8s", n64(r.stuck)), ("refund_txs", nats(r.txs))],
+            opt("canister_id", switch (canisterId) { case (?c) ?pv(c); case null null }),
+        ]));
+        r.stuck;
     };
 
     func paymentAbortMessage(step: Text, stuckE8s: Nat64): Text {
@@ -1633,7 +1838,8 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
     transient let EMPTY_ARGS: Blob = "\44\49\44\4c\00\00"; // DIDL header for empty args
 
-    func recordOrphan(canisterId: Principal, minter: Principal, appId: Text, reason: Text) {
+    // `extra`: the payment fields of the mint when it had been paid in full (hand-over failed)
+    func recordOrphan(canisterId: Principal, minter: Principal, appId: Text, reason: Text, extra: [(Text, T3.Value)]) {
         orphanCanisters := Array.append(orphanCanisters, [{
             canisterId = canisterId;
             minter = minter;
@@ -1641,6 +1847,8 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             recordedAt = Time.now();
             reason = reason;
         }]);
+        icrc3_add("sneedapp_orphan_canister", Array.append<(Text, T3.Value)>(
+            [("caller", pv(minter)), ("canister_id", pv(canisterId)), ("app_id", #Text(appId)), ("reason", #Text(reason))], extra));
     };
 
     // Stops and deletes a canister the factory created for a mint that did not
@@ -1651,7 +1859,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             await icLifecycle.stop_canister({ canister_id = canisterId });
             await icLifecycle.delete_canister({ canister_id = canisterId });
         } catch (e) {
-            recordOrphan(canisterId, minter, appId, reason # "; deleting it failed: " # Error.message(e));
+            recordOrphan(canisterId, minter, appId, reason # "; deleting it failed: " # Error.message(e), []);
         };
     };
 
@@ -1689,7 +1897,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
     // Makes `owner` the canister's only controller (the factory steps down).
     // On failure the canister is recorded for the admins, who can hand it over.
-    func handOver(canisterId: Principal, owner: Principal, appId: Text): async* { #Ok; #Err: Text } {
+    func handOver(canisterId: Principal, owner: Principal, appId: Text, payment: [(Text, T3.Value)]): async* { #Ok; #Err: Text } {
         try {
             await ic.update_settings({
                 canister_id = canisterId;
@@ -1703,7 +1911,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             #Ok;
         } catch (e) {
             let msg = "Canister " # Principal.toText(canisterId) # " was created and installed but handing control to you failed (" # Error.message(e) # "); it is recorded for the admins to hand over";
-            recordOrphan(canisterId, owner, appId, msg);
+            recordOrphan(canisterId, owner, appId, msg, payment);
             #Err(msg);
         };
     };
@@ -1734,6 +1942,10 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         if (not looksLikeWasm(wasm)) {
             return #Err(#CanisterCreationFailed("The manager WASM is not a WebAssembly module"));
         };
+        // what the log names: the module installed and the version it is filed under
+        let wasmSha = wasmSha256Hex(wasm);
+        let version = currentVersion;
+        let mintVer = verValue(version.major, version.minor, version.patch);
 
         // Check cycles
         if (Cycles.balance() < canisterCreationCycles) {
@@ -1748,8 +1960,24 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         var trackedCyclesReceivedFromCmc: Nat = 0;
         var wasPremium = false;
         let cyclesBalanceBefore = Cycles.balance();
+        // ledger blocks of the payment's transfers, and the CMC's answer, for the log
+        var cyclesTx: Nat = 0;
+        var feeTx: ?(Nat, T.Account) = null;
+        var cyclesReceivedLogged: ?Nat = null;
+        let what = func(price: Nat64): [(Text, T3.Value)] {
+            [("ver", mintVer), ("price_e8s", n64(price)), ("method", #Text("createNeuronManager"))];
+        };
+        let payFields = func(): [(Text, T3.Value)] {
+            Array.flatten<(Text, T3.Value)>([
+                [("cycles_icp_e8s", n64(trackedIcpForCyclesE8s)), ("cycles_tx", #Nat(cyclesTx)), ("publisher_share_e8s", #Nat(0)),
+                 ("dao_cut_e8s", n64(trackedIcpProfitE8s))],
+                switch (feeTx) { case (?(b, to)) [("dao_cut_to", av(to)), ("dao_cut_tx", #Nat(b))]; case null [] },
+                [("fees_e8s", n64(trackedIcpTransferFeesE8s))],
+            ]);
+        };
 
-        let canisterId: Principal = if (paymentRequired) {
+        let paid = paymentRequired;
+        let canisterId: Principal = if (paid) {
             let userSubaccount = principalToSubaccount(caller);
 
             // Serialize with any other operation on this caller's payment
@@ -1828,13 +2056,13 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     // Nothing has moved yet.
                     return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer ICP for cycles", 0)));
                 };
-                case (#Ok(_)) {};
+                case (#Ok(b)) { cyclesTx := b };
             };
 
             // Step 2: create the canister and install the manager
             let newId = switch (await* createAndInstall(caller, STAKING_BOT_APP_ID, wasm)) {
                 case (#Err(msg)) {
-                    let stuck = await* undoPaymentTransfers(userSubaccount, [(null, cyclesLeg)]);
+                    let stuck = await* refundPayment(caller, STAKING_BOT_APP_ID, userSubaccount, [(null, cyclesLeg)], what(applicableFeeE8s), [cyclesTx], msg, null);
                     return #Err(#CanisterCreationFailed(paymentAbortMessage(msg, stuck)));
                 };
                 case (#Ok(id)) { id };
@@ -1842,8 +2070,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
             // Step 3: Transfer the creation fee to the fee destination (external, last)
             if (feeAmount > 0) {
+                let feeTo = feeDestination; // as configured now: the log names this account
                 let feeTransfer = await ledger.icrc1_transfer({
-                    to = feeDestination;
+                    to = feeTo;
                     fee = ?Nat64.toNat(T.ICP_FEE);
                     memo = null;
                     from_subaccount = ?userSubaccount;
@@ -1855,15 +2084,15 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     case (#Err(_)) {
                         // Discard the canister and undo step 1 so the caller is not left partially charged.
                         await* discardCanister(newId, caller, STAKING_BOT_APP_ID, "creation fee transfer failed");
-                        let stuck = await* undoPaymentTransfers(userSubaccount, [(null, cyclesLeg)]);
+                        let stuck = await* refundPayment(caller, STAKING_BOT_APP_ID, userSubaccount, [(null, cyclesLeg)], what(applicableFeeE8s), [cyclesTx], "Failed to transfer creation fee", ?newId);
                         return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer creation fee", stuck)));
                     };
-                    case (#Ok(_)) {};
+                    case (#Ok(b)) { feeTx := ?(b, feeTo) };
                 };
             };
 
             // Step 4: the caller becomes the only controller
-            switch (await* handOver(newId, caller, STAKING_BOT_APP_ID)) {
+            switch (await* handOver(newId, caller, STAKING_BOT_APP_ID, Array.append(what(applicableFeeE8s), payFields()))) {
                 case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
                 case (#Ok) {};
             };
@@ -1877,6 +2106,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 case (#Ok(cyclesReceived)) {
                     // Track: Cycles received from CMC
                     trackedCyclesReceivedFromCmc := cyclesReceived;
+                    cyclesReceivedLogged := ?cyclesReceived;
                 };
             };
             newId;
@@ -1889,7 +2119,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
                 case (#Ok(id)) { id };
             };
-            switch (await* handOver(newId, caller, STAKING_BOT_APP_ID)) {
+            switch (await* handOver(newId, caller, STAKING_BOT_APP_ID, what(0))) {
                 case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
                 case (#Ok) {};
             };
@@ -1945,7 +2175,15 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         totalCyclesSpentOnCreation += trackedCyclesSpentOnCreation;
 
         // Bridge: Record in immutable mint log
-        addMintLogEntry(canisterId, caller, STAKING_BOT_APP_ID, 0, 0, currentVersion.major, currentVersion.minor, currentVersion.patch, trackedIcpPaidE8s, wasPremium, trackedIcpProfitE8s, 0);
+        addMintLogEntry(canisterId, caller, STAKING_BOT_APP_ID, 0, 0, version.major, version.minor, version.patch, trackedIcpPaidE8s, wasPremium, trackedIcpProfitE8s, 0);
+
+        icrc3_add("sneedapp_mint", Array.flatten<(Text, T3.Value)>([
+            [("caller", pv(caller)), ("canister_id", pv(canisterId)), ("app_id", #Text(STAKING_BOT_APP_ID)), ("numeric_app_id", #Nat(0)), ("publisher_id", #Nat(0)),
+             ("ver", mintVer), ("wasm_sha256", #Text(wasmSha)), ("wasm_size", #Nat(wasm.size())), ("price_e8s", n64(trackedIcpPaidE8s)), ("premium", flag(wasPremium))],
+            if (paid) payFields() else [],
+            opt("cycles_received", switch (cyclesReceivedLogged) { case (?c) ?#Nat(c); case null null }),
+            [("method", #Text("createNeuronManager"))],
+        ]));
 
         #Ok({
             canisterId = canisterId;
@@ -1956,7 +2194,14 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Admin function to manually top up factory with cycles from its ICP balance
     public shared ({ caller }) func adminTopUpCycles(icpAmountE8s: Nat64): async T.NotifyTopUpResult {
         assert(isAdmin(caller));
-        await* topUpSelfWithCycles(icpAmountE8s);
+        let result = await* topUpSelfWithCycles(icpAmountE8s);
+        switch (result) {
+            case (#Ok(cycles)) {
+                icrc3_add("sneedapp_admin_top_up", [("caller", pv(caller)), ("amount_e8s", n64(icpAmountE8s)), ("cycles", #Nat(cycles))]);
+            };
+            case (#Err(_)) {};
+        };
+        result;
     };
 
     // Get all manager canister IDs registered by the caller (bookmarks)
@@ -2048,6 +2293,11 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             case (?entry) {
                 ignore walletRemove(caller, canisterId);
                 walletAdd(newOwner, canisterId, entry.appId);
+                icrc3_add("sneedapp_wallet_transfer", Array.flatten<(Text, T3.Value)>([
+                    [("caller", pv(caller)), ("canister_id", pv(canisterId))],
+                    if (entry.appId == "") [] else [("app_id", #Text(entry.appId))],
+                    [("new_owner", pv(newOwner))],
+                ]));
                 #Ok;
             };
         };
@@ -2063,11 +2313,13 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     
     public shared ({ caller }) func addAuthorizedForCaller(canisterId: Principal): async () {
         assert(isAdminOrGovernance(caller));
+        if (authorizedForCallers.get(canisterId) == null) { icrc3_config(caller, "authorized_caller_added", pv(canisterId), null) };
         authorizedForCallers.put(canisterId, true);
     };
     
     public shared ({ caller }) func removeAuthorizedForCaller(canisterId: Principal): async () {
         assert(isAdminOrGovernance(caller));
+        if (authorizedForCallers.get(canisterId) != null) { icrc3_config(caller, "authorized_caller_removed", pv(canisterId), null) };
         authorizedForCallers.delete(canisterId);
     };
     
@@ -2079,7 +2331,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     public shared ({ caller }) func registerManagerFor(user: Principal, canisterId: Principal): async { #Ok; #Err: Text } {
         if (not isAuthorizedForCaller(caller)) { return #Err("Not authorized"); };
         if (Principal.isAnonymous(user)) { return #Err("Cannot register for anonymous"); };
-        walletAdd(user, canisterId, "");
+        if (walletAddChanged(user, canisterId, "")) { icrc3_wallet_register(caller, user, canisterId, "") };
         #Ok;
     };
     
@@ -2087,7 +2339,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     public shared ({ caller }) func deregisterManagerFor(user: Principal, canisterId: Principal): async { #Ok; #Err: Text } {
         if (not isAuthorizedForCaller(caller)) { return #Err("Not authorized"); };
         if (Principal.isAnonymous(user)) { return #Err("Cannot deregister for anonymous"); };
-        ignore walletRemove(user, canisterId);
+        if (walletRemove(user, canisterId)) {
+            icrc3_add("sneedapp_wallet_deregister", [("caller", pv(caller)), ("user", pv(user)), ("canister_id", pv(canisterId))]);
+        };
         #Ok;
     };
 
@@ -2155,6 +2409,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         apps := Array.append(apps, [app]);
         appByNumericId.put(numId, app);
         appByStringId.put(input.appId, numId);
+        icrc3_add("sneedapp_app_add", [("caller", pv(caller)), ("app", appValue(app))]);
         #Ok(numId);
     };
 
@@ -2194,6 +2449,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     enabled = app.enabled;
                 };
                 updateAppInStorage(updated);
+                icrc3_app_update(caller, "updateApp", app, updated);
                 #Ok;
             };
         };
@@ -2215,6 +2471,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 if (minted > 0) {
                     return #Err(Nat.toText(minted) # " canister(s) were minted from this app and their owners rely on its versions; disable it with setAppEnabled instead");
                 };
+                let removedVersions = getVersionsForApp(app.appId);
                 for (v in getVersionsForApp(app.appId).vals()) {
                     appVersionWasmsMap.delete(makeVersionKey(app.appId, v.major, v.minor, v.patch));
                 };
@@ -2222,6 +2479,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 apps := Array.filter<AppInfo>(apps, func(a) { a.numericAppId != numericAppId });
                 appByNumericId.delete(numericAppId);
                 appByStringId.delete(app.appId);
+                icrc3_add("sneedapp_app_remove", [
+                    ("caller", pv(caller)), ("app", appValue(app)), ("versions", #Array(Array.map<AppVersion, T3.Value>(removedVersions, versionValue))),
+                ]);
                 #Ok;
             };
         };
@@ -2250,6 +2510,11 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     daoCutBasisPoints = app.daoCutBasisPoints; createdAt = app.createdAt;
                     enabled = enabled;
                 });
+                if (app.enabled != enabled) {
+                    icrc3_add(if enabled "sneedapp_app_enable" else "sneedapp_app_disable", [
+                        ("caller", pv(caller)), ("app_id", #Text(app.appId)), ("numeric_app_id", #Nat(app.numericAppId)), ("publisher_id", #Nat(app.publisherId)),
+                    ]);
+                };
                 #Ok;
             };
         };
@@ -2270,6 +2535,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     daoCutBasisPoints = app.daoCutBasisPoints; createdAt = app.createdAt;
                     enabled = app.enabled;
                 });
+                icrc3_app_written(caller, "setAppPricing", app);
                 #Ok;
             };
         };
@@ -2290,6 +2556,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     daoCutBasisPoints = app.daoCutBasisPoints; createdAt = app.createdAt;
                     enabled = app.enabled;
                 });
+                icrc3_app_written(caller, "setAppPaymentAccount", app);
                 #Ok;
             };
         };
@@ -2314,6 +2581,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     daoCutBasisPoints = basisPoints; createdAt = app.createdAt;
                     enabled = app.enabled;
                 });
+                icrc3_app_written(caller, "setAppDaoCut", app);
             };
         };
     };
@@ -2343,6 +2611,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     daoCutBasisPoints = app.daoCutBasisPoints; createdAt = app.createdAt;
                     enabled = app.enabled;
                 });
+                icrc3_app_written(caller, "setAppFamilies", app);
                 #Ok;
             };
         };
@@ -2418,6 +2687,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         };
         if (not inserted) { buf.add(version) };
         setVersionsForApp(appId, Buffer.toArray(buf));
+        icrc3_add("sneedapp_version_add", [("caller", pv(caller)), ("app_id", #Text(appId)), ("version", versionValue(version))]);
     };
 
     // Update version metadata (publisher owner or admin)
@@ -2434,9 +2704,10 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             case null { input.wasmHash };
             case (?blob) { checkedWasmHash(input.wasmHash, blob) };
         };
+        var changed: ?(AppVersion, AppVersion) = null; // (old, new)
         setVersionsForApp(appId, Array.map<AppVersion, AppVersion>(versions, func(v) {
             if (v.major == major and v.minor == minor and v.patch == patch) {
-                {
+                let updated: AppVersion = {
                     major = input.major;
                     minor = input.minor;
                     patch = input.patch;
@@ -2447,20 +2718,38 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     releaseDate = input.releaseDate;
                     wasmSize = currentWasmSize;
                 };
+                changed := ?(v, updated);
+                updated;
             } else { v };
         }));
+        switch (changed) {
+            case (?(old, new)) {
+                if (versionValue(old) != versionValue(new)) {
+                    icrc3_add("sneedapp_version_update", [("caller", pv(caller)), ("app_id", #Text(appId)), ("version", versionValue(new)), ("old_version", versionValue(old))]);
+                };
+            };
+            case null {};
+        };
     };
 
     // Remove a version (publisher owner or admin)
     public shared ({ caller }) func removeAppVersion(appId: Text, major: Nat, minor: Nat, patch: Nat): async () {
         assertAppVersionAuth(caller, appId);
         let versions = getVersionsForApp(appId);
+        let removed = findVersion(appId, major, minor, patch);
         setVersionsForApp(appId, Array.filter<AppVersion>(versions, func(v) {
             not (v.major == major and v.minor == minor and v.patch == patch);
         }));
         // Also remove WASM blob if any
         let key = makeVersionKey(appId, major, minor, patch);
+        let hadWasm = appVersionWasmsMap.get(key) != null;
         appVersionWasmsMap.delete(key);
+        switch (removed) {
+            case (?old) {
+                icrc3_add("sneedapp_version_remove", [("caller", pv(caller)), ("app_id", #Text(appId)), ("old_version", versionValue(old)), ("had_wasm", flag(hadWasm))]);
+            };
+            case null {};
+        };
     };
 
     // Upload WASM blob for a version (publisher owner or admin)
@@ -2493,13 +2782,27 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 };
             } else { v };
         }));
+        switch (findVersion(appId, major, minor, patch)) {
+            case (?v) {
+                icrc3_add("sneedapp_wasm_upload", [("caller", pv(caller)), ("app_id", #Text(appId)), ("version", versionValue(v)), ("wasm_sha256", #Text(verifiedHash))]);
+            };
+            case null {};
+        };
     };
 
     // Clear WASM blob for a version (publisher owner or admin)
     public shared ({ caller }) func clearAppVersionWasm(appId: Text, major: Nat, minor: Nat, patch: Nat): async () {
         assertAppVersionAuth(caller, appId);
         let key = makeVersionKey(appId, major, minor, patch);
+        let dropped = appVersionWasmsMap.get(key);
+        let before = findVersion(appId, major, minor, patch);
         appVersionWasmsMap.delete(key);
+        switch (dropped, before) {
+            case (?blob, ?v) {
+                icrc3_add("sneedapp_wasm_clear", [("caller", pv(caller)), ("app_id", #Text(appId)), ("version", versionValue(v)), ("wasm_size", #Nat(blob.size()))]);
+            };
+            case _ {};
+        };
         // Update wasmSize to 0
         let versions = getVersionsForApp(appId);
         setVersionsForApp(appId, Array.map<AppVersion, AppVersion>(versions, func(v) {
@@ -2630,7 +2933,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     public shared ({ caller }) func registerCanisterFor(user: Principal, canisterId: Principal, appId: Text): async { #Ok; #Err: Text } {
         if (not isAuthorizedForCaller(caller)) { return #Err("Not authorized") };
         if (Principal.isAnonymous(user)) { return #Err("Cannot register for anonymous") };
-        walletAdd(user, canisterId, appId);
+        if (walletAddChanged(user, canisterId, appId)) { icrc3_wallet_register(caller, user, canisterId, appId) };
         #Ok;
     };
 
@@ -2638,7 +2941,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     public shared ({ caller }) func deregisterCanisterFor(user: Principal, canisterId: Principal): async { #Ok; #Err: Text } {
         if (not isAuthorizedForCaller(caller)) { return #Err("Not authorized") };
         if (Principal.isAnonymous(user)) { return #Err("Cannot deregister for anonymous") };
-        ignore walletRemove(user, canisterId);
+        if (walletRemove(user, canisterId)) {
+            icrc3_add("sneedapp_wallet_deregister", [("caller", pv(caller)), ("user", pv(user)), ("canister_id", pv(canisterId))]);
+        };
         #Ok;
     };
 
@@ -2708,6 +3013,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         if (not looksLikeWasm(wasm)) {
             return #Err(#CanisterCreationFailed("The wasm of this version is not a WebAssembly module"));
         };
+        // the log names the module actually installed, hashed here from the blob
+        let wasmSha = wasmSha256Hex(wasm);
+        let mintVer = verValue(version.major, version.minor, version.patch);
 
         // 4. Check cycles
         if (Cycles.balance() < canisterCreationCycles) {
@@ -2724,9 +3032,27 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         var trackedPublisherRevenueE8s: Nat64 = 0;
         let cyclesBalanceBefore = Cycles.balance();
         var wasPremium = false;
+        // ledger blocks of the payment's transfers (with the accounts paid), and the CMC's answer, for the log
+        var cyclesTx: Nat = 0;
+        var pubTx: ?(Nat, T.Account) = null;
+        var daoTx: ?(Nat, T.Account) = null;
+        var cyclesReceivedLogged: ?Nat = null;
+        let what = func(price: Nat64): [(Text, T3.Value)] {
+            [("ver", mintVer), ("price_e8s", n64(price))];
+        };
+        let payFields = func(): [(Text, T3.Value)] {
+            Array.flatten<(Text, T3.Value)>([
+                [("cycles_icp_e8s", n64(trackedIcpForCyclesE8s)), ("cycles_tx", #Nat(cyclesTx)), ("publisher_share_e8s", n64(trackedPublisherRevenueE8s))],
+                switch (pubTx) { case (?(b, to)) [("publisher_share_to", av(to)), ("publisher_share_tx", #Nat(b))]; case null [] },
+                [("dao_cut_e8s", n64(trackedDaoCutE8s))],
+                switch (daoTx) { case (?(b, to)) [("dao_cut_to", av(to)), ("dao_cut_tx", #Nat(b))]; case null [] },
+                [("fees_e8s", n64(trackedIcpTransferFeesE8s))],
+            ]);
+        };
 
         // 5. Process payment and create the canister
-        let newCanisterId: Principal = if (paymentRequired) {
+        let paid = paymentRequired;
+        let newCanisterId: Principal = if (paid) {
             let userSubaccount = principalToSubaccount(caller);
 
             // Serialize with any other operation on this caller's payment
@@ -2816,13 +3142,14 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     // Nothing has moved yet.
                     return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer ICP for cycles", 0)));
                 };
-                case (#Ok(_)) {};
+                case (#Ok(b)) { cyclesTx := b };
             };
 
             // Step 2: Transfer publisher share to revenue subaccount (internal)
             if (publisherShare > 0) {
+                let pubTo: T.Account = { owner = Principal.fromActor(this); subaccount = ?revSubaccount };
                 let pubTransfer = await ledger.icrc1_transfer({
-                    to = { owner = Principal.fromActor(this); subaccount = ?revSubaccount };
+                    to = pubTo;
                     fee = ?Nat64.toNat(T.ICP_FEE);
                     memo = null;
                     from_subaccount = ?userSubaccount;
@@ -2832,19 +3159,20 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 switch (pubTransfer) {
                     case (#Err(_)) {
                         // Undo step 1.
-                        let stuck = await* undoPaymentTransfers(userSubaccount, [(null, cyclesLeg)]);
+                        let stuck = await* refundPayment(caller, appId, userSubaccount, [(null, cyclesLeg)], what(applicableFeeE8s), [cyclesTx], "Failed to transfer publisher share", null);
                         return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer publisher share", stuck)));
                     };
-                    case (#Ok(_)) {};
+                    case (#Ok(b)) { pubTx := ?(b, pubTo) };
                 };
             };
             let internalMoves: [(?Blob, Nat64)] = [(?revSubaccount, publisherShare), (null, cyclesLeg)];
+            let movedTxs: [Nat] = switch (pubTx) { case (?(b, _)) [cyclesTx, b]; case null [cyclesTx] };
 
             // Step 3: create the canister and install the version's wasm
             let newId = switch (await* createAndInstall(caller, appId, wasm)) {
                 case (#Err(msg)) {
                     // Undo steps 2 and 1.
-                    let stuck = await* undoPaymentTransfers(userSubaccount, internalMoves);
+                    let stuck = await* refundPayment(caller, appId, userSubaccount, internalMoves, what(applicableFeeE8s), movedTxs, msg, null);
                     return #Err(#CanisterCreationFailed(paymentAbortMessage(msg, stuck)));
                 };
                 case (#Ok(id)) { id };
@@ -2852,8 +3180,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
             // Step 4: Transfer DAO profit / DAO cut to the fee destination (external, last)
             if (daoCut > 0) {
+                let daoTo = feeDestination; // as configured now: the log names this account
                 let daoCutTransfer = await ledger.icrc1_transfer({
-                    to = feeDestination;
+                    to = daoTo;
                     fee = ?Nat64.toNat(T.ICP_FEE);
                     memo = null;
                     from_subaccount = ?userSubaccount;
@@ -2865,15 +3194,15 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                         // Discard the canister, undo steps 2 and 1.
                         let step = if (isSneedDao) { "Failed to transfer DAO profit" } else { "Failed to transfer DAO cut" };
                         await* discardCanister(newId, caller, appId, step);
-                        let stuck = await* undoPaymentTransfers(userSubaccount, internalMoves);
+                        let stuck = await* refundPayment(caller, appId, userSubaccount, internalMoves, what(applicableFeeE8s), movedTxs, step, ?newId);
                         return #Err(#TransferFailed(paymentAbortMessage(step, stuck)));
                     };
-                    case (#Ok(_)) {};
+                    case (#Ok(b)) { daoTx := ?(b, daoTo) };
                 };
             };
 
             // Step 5: the caller becomes the only controller
-            switch (await* handOver(newId, caller, appId)) {
+            switch (await* handOver(newId, caller, appId, Array.append(what(applicableFeeE8s), payFields()))) {
                 case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
                 case (#Ok) {};
             };
@@ -2884,6 +3213,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 case (#Err(_)) {};
                 case (#Ok(cyclesReceived)) {
                     trackedCyclesReceivedFromCmc := cyclesReceived;
+                    cyclesReceivedLogged := ?cyclesReceived;
                 };
             };
             newId;
@@ -2896,7 +3226,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
                 case (#Ok(id)) { id };
             };
-            switch (await* handOver(newId, caller, appId)) {
+            switch (await* handOver(newId, caller, appId, what(0))) {
                 case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
                 case (#Ok) {};
             };
@@ -2955,6 +3285,14 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             totalDaoCutReceivedE8s += Nat64.toNat(trackedDaoCutE8s);
         };
         updateStatsOnMint(app.publisherId, app.numericAppId, Nat64.toNat(trackedPublisherRevenueE8s), Nat64.toNat(trackedDaoCutE8s));
+
+        icrc3_add("sneedapp_mint", Array.flatten<(Text, T3.Value)>([
+            [("caller", pv(caller)), ("canister_id", pv(newCanisterId)), ("app_id", #Text(appId)), ("numeric_app_id", #Nat(app.numericAppId)),
+             ("publisher_id", #Nat(app.publisherId)), ("ver", mintVer), ("wasm_sha256", #Text(wasmSha)), ("wasm_size", #Nat(wasm.size())),
+             ("price_e8s", n64(trackedIcpPaidE8s)), ("premium", flag(wasPremium))],
+            if (paid) payFields() else [],
+            opt("cycles_received", switch (cyclesReceivedLogged) { case (?c) ?#Nat(c); case null null }),
+        ]));
 
         #Ok({
             canisterId = newCanisterId;
@@ -3042,8 +3380,12 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         });
         switch (result) {
             case (#Err(_)) { #Err("Transfer failed") };
-            case (#Ok(_)) {
+            case (#Ok(blockIndex)) {
                 updateStatsOnWithdrawal(publisherId, null, withdrawAmount);
+                icrc3_add("sneedapp_publisher_withdraw", [
+                    ("caller", pv(caller)), ("publisher_id", #Nat(publisherId)), ("amount_e8s", #Nat(withdrawAmount)), ("fee_e8s", #Nat(fee)),
+                    ("to", av(publisher.defaultPaymentAccount)), ("icp_tx", #Nat(blockIndex)),
+                ]);
                 #Ok(withdrawAmount);
             };
         };
@@ -3079,8 +3421,12 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         });
         switch (result) {
             case (#Err(_)) { #Err("Transfer failed") };
-            case (#Ok(_)) {
+            case (#Ok(blockIndex)) {
                 updateStatsOnWithdrawal(publisherId, ?numericAppId, withdrawAmount);
+                icrc3_add("sneedapp_publisher_withdraw", [
+                    ("caller", pv(caller)), ("publisher_id", #Nat(publisherId)), ("numeric_app_id", #Nat(numericAppId)), ("amount_e8s", #Nat(withdrawAmount)),
+                    ("fee_e8s", #Nat(fee)), ("to", av(dest)), ("icp_tx", #Nat(blockIndex)),
+                ]);
                 #Ok(withdrawAmount);
             };
         };
@@ -3431,7 +3777,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Register a canister in a user's wallet (admin only, for migration)
     public shared ({ caller }) func adminRegisterCanister(user: Principal, canisterId: Principal, appId: Text) : async () {
         assert(isAdmin(caller));
-        walletAdd(user, canisterId, appId);
+        if (walletAddChanged(user, canisterId, appId)) { icrc3_wallet_register(caller, user, canisterId, appId) };
     };
 
     // Bulk register canisters for users (admin only, for migration)
@@ -3439,7 +3785,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         assert(isAdmin(caller));
         var count: Nat = 0;
         for ((user, canisterId, appId) in entries.vals()) {
-            walletAdd(user, canisterId, appId);
+            if (walletAddChanged(user, canisterId, appId)) { icrc3_wallet_register(caller, user, canisterId, appId) };
             count += 1;
         };
         count;
@@ -3470,7 +3816,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Admin: Withdraw ICP from factory's main account
     public shared ({ caller }) func adminWithdrawIcp(amount: Nat64, to: T.Account): async T.TransferResult {
         assert(isAdmin(caller));
-        await ledger.icrc1_transfer({
+        let result = await ledger.icrc1_transfer({
             to = to;
             fee = ?Nat64.toNat(T.ICP_FEE);
             memo = null;
@@ -3478,6 +3824,15 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             created_at_time = null;
             amount = Nat64.toNat(amount);
         });
+        switch (result) {
+            case (#Ok(blockIndex)) {
+                icrc3_add("sneedapp_admin_withdraw", [
+                    ("caller", pv(caller)), ("amount_e8s", n64(amount)), ("fee_e8s", n64(T.ICP_FEE)), ("to", av(to)), ("icp_tx", #Nat(blockIndex)),
+                ]);
+            };
+            case (#Err(_)) {};
+        };
+        result;
     };
 
     // Compute account identifier
@@ -3691,6 +4046,174 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94, 0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d
     ];
 
+    // ============================================
+    // ICRC-3 ACTIVITY LOG (library src/icrc3, design spec/sneedapp_icrc3.md)
+    // ============================================
+
+    transient let icrc3_catalogue : Icrc3Log.Config = {
+        block_types_url = "https://app.sneeddao.com/api/sneedapp#block-types";
+        block_types = [
+            "sneedapp_app_add",
+            "sneedapp_app_update",
+            "sneedapp_app_enable",
+            "sneedapp_app_disable",
+            "sneedapp_app_remove",
+            "sneedapp_version_add",
+            "sneedapp_version_update",
+            "sneedapp_version_remove",
+            "sneedapp_wasm_upload",
+            "sneedapp_wasm_clear",
+            "sneedapp_official_version_set",
+            "sneedapp_official_version_remove",
+            "sneedapp_manager_wasm_set",
+            "sneedapp_manager_wasm_clear",
+            "sneedapp_publisher_create",
+            "sneedapp_publisher_update",
+            "sneedapp_publisher_verify",
+            "sneedapp_publisher_unverify",
+            "sneedapp_mint",
+            "sneedapp_mint_refund",
+            "sneedapp_orphan_canister",
+            "sneedapp_deposit_withdraw",
+            "sneedapp_publisher_withdraw",
+            "sneedapp_admin_withdraw",
+            "sneedapp_admin_top_up",
+            "sneedapp_wallet_transfer",
+            "sneedapp_wallet_register",
+            "sneedapp_wallet_deregister",
+            "sneedapp_config_update",
+        ];
+    };
+
+    func icrc3_cid(): Nat { icrc3_next_cid += 1; icrc3_next_cid };
+    // Sneedapp has no text log; the library's lines go to the canister log
+    func icrc3_print(cid: Nat, message: Text) { Debug.print("[icrc3 " # Nat.toText(cid) # "] " # message) };
+
+    func icrc3_env(): Icrc3Log.Environment {
+        {
+            self = Principal.fromActor(this);
+            archive_controllers = [SNEED_SNS_ROOT];
+            cycle_reserve = 2_000_000_000_000; // never spend this canister's balance below 2 T
+            new_correlation_id = icrc3_cid;
+            log_info = icrc3_print;
+            log_error = icrc3_print;
+        };
+    };
+
+    func icrc3_sns_env(): Icrc3Sns.Environment {
+        {
+            // the configured Sneed governance, else Sneed's (production leaves it unset)
+            governance = switch (sneedGovernance) { case (?g) g; case null SNEED_SNS_GOVERNANCE };
+            name = "Sneedapp";
+            doc_url = "https://app.sneeddao.com/api/sneedapp#activity-log-icrc-3";
+            new_correlation_id = icrc3_cid;
+            log_info = icrc3_print;
+            log_error = icrc3_print;
+            describe = null;
+        };
+    };
+
+    // ---- standard ICRC-3 read interface ----
+
+    public query func icrc3_get_blocks(args: T3.GetBlocksArgs): async T3.GetBlocksResult {
+        Icrc3Log.getBlocks(icrc3, args);
+    };
+
+    public query func icrc3_get_archives(args: T3.GetArchivesArgs): async T3.GetArchivesResult {
+        Icrc3Log.getArchives(icrc3, args);
+    };
+
+    public query func icrc3_get_tip_certificate(): async ?T3.DataCertificate {
+        Icrc3Log.tipCertificate(icrc3);
+    };
+
+    public query func icrc3_supported_block_types(): async [T3.BlockType] {
+        Icrc3Log.supportedBlockTypes(icrc3_catalogue);
+    };
+
+    public query func icrc10_supported_standards(): async [T3.SupportedStandard] {
+        Icrc3Log.supportedStandards();
+    };
+
+    public query func icrc3_log_status(): async T3.LogStatus {
+        Icrc3Log.status(icrc3, icrc3_rt);
+    };
+
+    // ---- administration (admins and the configured governance) ----
+
+    public shared ({ caller }) func admin_set_icrc3_settings(update: T3.SettingsUpdate): async { #Ok: T3.Settings; #Err: Text } {
+        if (not isAdminOrGovernance(caller)) { return #Err("Only admins can change the ICRC-3 settings") };
+        switch (Icrc3Log.applySettings(icrc3, update)) {
+            case (#Err(e)) { #Err(e) };
+            case (#Ok(changes)) {
+                for ((key, old_value, new_value) in changes.vals()) {
+                    icrc3_config(caller, key, #Nat(new_value), ?#Nat(old_value));
+                };
+                #Ok(icrc3.settings);
+            };
+        };
+    };
+
+    /// Move every live block to the archives now (creating archives as needed). Returns the number of blocks moved.
+    public shared ({ caller }) func admin_icrc3_spill_now(): async { #Ok: Nat; #Err: Text } {
+        if (not isAdminOrGovernance(caller)) { return #Err("Only admins can trigger a spill") };
+        if (icrc3_rt.spilling) { return #Err("A spill is already in progress") };
+        let moved = await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), true);
+        ignore await* Icrc3Sns.registerMissing(icrc3_sns, icrc3_sns_rt, icrc3.archives, icrc3_sns_env());
+        #Ok(moved);
+    };
+
+    /// Re-apply the intended controllers (this canister and SNS root) to every archive.
+    public shared ({ caller }) func admin_icrc3_repair_archive_controllers(): async [(Principal, { #Ok; #Err: Text })] {
+        if (not isAdminOrGovernance(caller)) { Debug.trap("Only admins can repair archive controllers") };
+        await* Icrc3Log.repairArchiveControllers(icrc3, icrc3_env());
+    };
+
+    // ---- SNS registration of archives ----
+
+    /// Where each archive stands with its RegisterDappCanisters proposal.
+    public query func icrc3_registration_status(): async Icrc3Sns.Status {
+        Icrc3Sns.status(icrc3_sns, icrc3_sns_env());
+    };
+
+    /// The SNS neuron (32-byte id) that has this canister as a hotkey and submits the
+    /// registration proposals; null switches the step off.
+    public shared ({ caller }) func admin_set_icrc3_proposal_neuron(neuron: ?Blob): async { #Ok; #Err: Text } {
+        if (not isAdminOrGovernance(caller)) { return #Err("Only admins can set the proposal neuron") };
+        let old = icrc3_sns.neuron;
+        switch (Icrc3Sns.setNeuron(icrc3_sns, neuron)) {
+            case (#Err(e)) { #Err(e) };
+            case (#Ok) {
+                let asValue = func(n: ?Blob): T3.Value { switch (n) { case (?b) { #Blob(b) }; case null { #Text("none") } } };
+                icrc3_config_change(caller, "icrc3_proposal_neuron", asValue(neuron), asValue(old));
+                #Ok;
+            };
+        };
+    };
+
+    /// Submit the pending registration proposals now instead of at the next spill check.
+    public shared ({ caller }) func admin_icrc3_register_archives_now(): async { #Ok: Nat; #Err: Text } {
+        if (not isAdminOrGovernance(caller)) { return #Err("Only admins can submit registration proposals") };
+        #Ok(await* Icrc3Sns.registerMissing(icrc3_sns, icrc3_sns_rt, icrc3.archives, icrc3_sns_env()));
+    };
+
+    /// Forget an archive's proposal (after a rejection) so a new one is submitted.
+    public shared ({ caller }) func admin_icrc3_reset_archive_registration(canister_id: Principal): async { #Ok: Bool; #Err: Text } {
+        if (not isAdminOrGovernance(caller)) { return #Err("Only admins can reset a registration") };
+        #Ok(Icrc3Sns.reset(icrc3_sns, canister_id));
+    };
+
+    // ---- background work ----
+
+    func icrc3_timer_job(): async () {
+        ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false);
+        ignore await* Icrc3Sns.registerMissing(icrc3_sns, icrc3_sns_rt, icrc3.archives, icrc3_sns_env());
+    };
+
+    // the ICRC-3 spill check (every 15 minutes; started on install and on every upgrade, as the
+    // actor body runs then too)
+    Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job);
+
     // Checks of the ingress guard below
     transient let MAX_APP_ID : Nat = 256;
     func appIdOk(arg : Blob, appId : Text) : Bool = arg.size() <= IngressGuard.textArg(MAX_APP_ID) and IngressGuard.text(appId, MAX_APP_ID);
@@ -3711,6 +4234,19 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // would go through consensus at our cost, and arguments are capped in size.
     system func inspect({ caller : Principal; arg : Blob; msg : {
         #get_api_doc : Any;
+        #admin_icrc3_register_archives_now : Any;
+        #admin_icrc3_repair_archive_controllers : Any;
+        #admin_icrc3_reset_archive_registration : Any;
+        #admin_icrc3_spill_now : Any;
+        #admin_set_icrc3_proposal_neuron : Any;
+        #admin_set_icrc3_settings : Any;
+        #icrc10_supported_standards : Any;
+        #icrc3_get_archives : Any;
+        #icrc3_get_blocks : Any;
+        #icrc3_get_tip_certificate : Any;
+        #icrc3_log_status : Any;
+        #icrc3_registration_status : Any;
+        #icrc3_supported_block_types : Any;
         #addAdmin : Any;
         #addApp : () -> (Nat, AddAppInput);
         #addAppVersion : () -> (Text, AppVersionInput);
@@ -3905,6 +4441,13 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 or #hasManagerWasm _
                 or #lookupMintedCanister _
                 or #wasMintedByUs _
+                or #icrc10_supported_standards _
+                or #icrc3_get_archives _
+                or #icrc3_get_blocks _
+                or #icrc3_get_tip_certificate _
+                or #icrc3_log_status _
+                or #icrc3_registration_status _
+                or #icrc3_supported_block_types _
             ) false;
             // a publisher's own content (wasms included): its owners and admins only
             case (#addApp f) isPublisherOwnerOrAdmin(caller, f().0);

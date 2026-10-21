@@ -47,6 +47,11 @@ Sneedapp is Sneed DAO's app factory: a catalogue of apps (canister programs such
 - WASM uploads are single ingress messages (2 MiB max): gzip them.
 - Query methods sent as update calls are refused by the ingress guard. Arguments are capped (most methods 4 KiB; `appId` at most 256 characters).
 
+## Activity log (ICRC-3)
+
+- Every app, version and Wasm change (with the Wasm's SHA-256 and size), every mint (the installed module's SHA-256, the price and the ICP ledger block of each transfer), refunds, withdrawals, publisher and config changes are blocks in a public, certified ICRC-3 log (`icrc3_get_blocks`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`, `icrc3_log_status`), with archive canisters for old blocks. Block types: https://app.sneeddao.com/api/sneedapp#block-types
+- A user's own bookmarks are not logged; `transferManager` and writes to other users' wallets are. A refused call, or one that changes nothing, appends nothing.
+
 ## Start with these methods
 
 - `getApps()`, `getApp(appId)`, `getVerifiedPublishers()`, `getAppVersions(appId)`, `getLatestAppVersion(appId)`

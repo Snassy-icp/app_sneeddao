@@ -166,6 +166,17 @@ git archive "$PREMIUM_PROD_COMMIT" src/sneed_premium src/IngressGuard.mo | tar -
 "$MOC" $PKGS "$PREV_SRC/src/sneed_premium/main.mo" -o "$OUT/sneed_premium_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
 rm -rf "$PREV_SRC"
 test -s "$OUT/sneed_premium_prod.wasm"
+# sneedapp as production and staging run it (no ICRC-3 log; `dfx build --network ic sneedapp` of
+# this code gives their module hash 96f4f055…; src/sneedapp unchanged from 25b88246 until the log),
+# for the test that upgrades from it and starts an empty log (classic persistence, as dfx.json builds it)
+SNEEDAPP_PROD_COMMIT=25b88246
+echo "== sneedapp at $SNEEDAPP_PROD_COMMIT (moc, for the ICRC-3 upgrade test)"
+PREV_SRC="$(mktemp -d)"
+git archive "$SNEEDAPP_PROD_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS "$PREV_SRC/src/sneedapp/main.mo" -o "$OUT/sneedapp_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneedapp_prod.wasm"
 for c in MockLedger MockLedgerV2 MockLedgerFaulty MockRejectLedger MockSwapPool MockDexPool MockIcpswapFactory MockKongSwap \
          MockSnsGovernance MockSnsNeurons MockHubSns MockForumGovernance MockForumSnsW MockRllGovernance MockNnsGovernance \
          MockCmc MockSnsWasm MockPremium MockSneedApp MockIcpSwapList MockIcpSwapTokenList MockNamesModerator MockIcpLedger MockMrSneedGov MockNotifySender MockExt Icrc3Demo; do

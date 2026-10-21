@@ -10,6 +10,8 @@ The **Sneedapp** canister (`IcpNeuronManagerFactory`) currently serves as a fact
 > - **No upgrade method.** Sneedapp hands a minted canister to the minter as its only controller and keeps no power over it. Owners upgrade through the management canister (`install_code`, mode upgrade, empty argument), stepping through every published version in order, since each version's migration is written against the one before it (the frontend does this; see api-docs section 3.6).
 > - `getManagerByCanisterId` always returns `null` and `updateManagerNeuronId` does nothing (legacy stubs; ask the manager canister for its neuron).
 > - Ingress guard (`inspect`): query methods are refused as update calls, arguments are size-capped, and publisher/app/version mutations are accepted at ingress only from the publisher's owners and admins.
+>
+> ICRC-3 activity log (2026-10-21, not deployed): a certified block per app, version and Wasm change (with the SHA-256 and size), mint (installed module's SHA-256, price, ledger block of every transfer), refund, withdrawal, publisher, official version and config change, `transferManager` and privileged wallet writes (a user's own bookmarks are not logged), with archives. Design and catalogue: [sneedapp_icrc3.md](sneedapp_icrc3.md); public docs: API doc section 7.
 
 ### Goals
 

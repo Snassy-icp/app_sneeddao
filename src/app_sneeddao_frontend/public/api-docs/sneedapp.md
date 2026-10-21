@@ -532,7 +532,110 @@ type OfficialVersion = record {
 
 ---
 
-## 7. Integration checklist
+## 7. Activity log (ICRC-3)
+
+Every change to the catalogue (apps, versions, Wasm modules, publishers, official versions), every mint with the ICP it cost and where each part went, every refund, withdrawal and top-up, the privileged wallet writes and every configuration change is recorded as a block in a hash-chained, certified log, readable through the standard [ICRC-3](https://github.com/dfinity/ICRC-1/tree/main/standards/ICRC-3) interface. Each block carries the hash of the previous block (`phash`), and the canister certifies the index and hash of the latest block, so anyone can download the history and prove it complete and untampered without trusting Sneed DAO or this app. Old blocks move to archive canisters that Sneedapp creates.
+
+Two things make it worth reading: the **supply chain** (which code was published under which app, by whom, with the SHA-256 and size of every Wasm; every mint names the SHA-256 of the module it actually installed, computed from the blob at mint time) and the **money** (the price of every mint, the ledger block of every transfer, refunds and withdrawals).
+
+The log uses the same library as [Sneed Lock's log](/api/sneed_lock#8-activity-log-icrc-3) ([src/icrc3](https://github.com/Snassy-icp/app_sneeddao/tree/main/src/icrc3)); the design is in [spec/sneedapp_icrc3.md](https://github.com/Snassy-icp/app_sneeddao/blob/main/spec/sneedapp_icrc3.md). It starts empty with the release that introduced it; apps, versions and mints from before are not imported (the mint log, `getMintLog`, has every mint).
+
+### 7.1 Endpoints
+
+| Method | Type | Returns |
+|---|---|---|
+| `icrc3_get_blocks(vec record { start : nat; length : nat })` | query | `{ log_length; blocks : vec { id; block }; archived_blocks : vec { args; callback } }`. Live blocks come back directly; for archived ranges call `callback` (that archive's own `icrc3_get_blocks`) with `args`. |
+| `icrc3_get_archives(record { from : opt principal })` | query | Every archive canister with the first and last block index it holds. |
+| `icrc3_get_tip_certificate()` | query | `opt { certificate; hash_tree }` with `last_block_index` and `last_block_hash`. Null until the first block exists. |
+| `icrc3_supported_block_types()` | query | Every `btype` below, each with the url of [7.3](#73-block-types). |
+| `icrc10_supported_standards()` | query | ICRC-3 and ICRC-10. |
+| `icrc3_log_status()` | query | Log length, live blocks, hash of the last block, archives, spill settings. `history_imported` is always false. |
+| `icrc3_registration_status()` | query | Per archive, the SNS proposal that registered it as a DAO canister. |
+
+Admins and the governance principal only: `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`, `admin_set_icrc3_proposal_neuron`, `admin_icrc3_register_archives_now`, `admin_icrc3_reset_archive_registration` (as on Sneed Lock). Archives are controlled by Sneedapp and the Sneed SNS root until a `RegisterDappCanisters` proposal hands them to SNS root alone.
+
+### 7.2 Block format
+
+A block is a `Map` with `btype` (Text), `ts` (Nat, ns since epoch: when the action happened), `phash` (Blob, absent on block 0) and `tx` (Map). Inside `tx`:
+
+- Principals are `Blob` (raw principal bytes); ICRC-1 accounts are `Array [owner, subaccount?]`.
+- ICP amounts are `Nat` e8s; cycles, sizes, ids and ledger block indexes `Nat`; flags `Nat` 0 or 1. Optional fields are omitted when absent.
+- Hashes are lowercase hex `Text`: `wasm_sha256` is computed by the canister from the blob; `wasm_hash` is the hash a version declares (equal to its Wasm's SHA-256 once one is uploaded, which the upload enforces).
+- `caller` is the principal that made the call; nothing on the IC is anonymous.
+- `app`: `Map { app_id; numeric_app_id; publisher_id; name; mint_price_e8s; premium_mint_price_e8s; families; enabled; view_url?; manage_url?; mint_url?; payment_account?; dao_cut_bps? }` (descriptions and icons are not logged).
+- `publisher`: `Map { publisher_id; name; website_url?; owners; verified; families; default_payment_account; dao_cut_bps }` (description, logo and links are not logged).
+- `version`: `Map { major; minor; patch; wasm_hash?; wasm_size; release_date; wasm_url?; source_url? }` (release notes are not logged). `ver`: `Map { major; minor; patch }`. `official`: `Map { major; minor; patch; wasm_hash; wasm_url; source_url }`.
+
+### 7.3 Block types
+
+All types carry the `sneedapp_` prefix. A block is appended only once its action is final, in the message that records it: after every ledger transfer of a mint returned `Ok`, the canister was handed over and the mint log written. A refused or failed call appends nothing, and neither does a call that changes nothing; the exceptions are a mint that aborted after ICP had moved (`sneedapp_mint_refund` records the ICP going back) and a canister left with the factory (`sneedapp_orphan_canister`).
+
+Catalogue and supply chain:
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `sneedapp_app_add` | `addApp` | `caller`, `app` |
+| `sneedapp_app_update` | `updateApp`, `setAppPricing`, `setAppPaymentAccount`, `setAppDaoCut`, `setAppFamilies`, or `removePublisherFamily` took the family from the app; only when a logged field changed | `caller`, `method`, `app`, `old_app` |
+| `sneedapp_app_enable`, `sneedapp_app_disable` | `setAppEnabled` changed the flag | `caller`, `app_id`, `numeric_app_id`, `publisher_id` |
+| `sneedapp_app_remove` | `removeApp` | `caller`, `app`, `versions` (Array of `version`, removed with their Wasms) |
+| `sneedapp_version_add` | `addAppVersion` | `caller`, `app_id`, `version` |
+| `sneedapp_version_update` | `updateAppVersion` changed a logged field | `caller`, `app_id`, `version`, `old_version` |
+| `sneedapp_version_remove` | `removeAppVersion` removed a version | `caller`, `app_id`, `old_version`, `had_wasm` |
+| `sneedapp_wasm_upload` | `uploadAppVersionWasm` stored a module | `caller`, `app_id`, `version` (after the upload), `wasm_sha256` |
+| `sneedapp_wasm_clear` | `clearAppVersionWasm` dropped a stored module | `caller`, `app_id`, `version` (before), `wasm_size` (of the dropped module) |
+| `sneedapp_official_version_set` | `addOfficialVersion`, `updateOfficialVersion`, `setOfficialVersions` added or changed an entry (keyed by hash) | `caller`, `method`, `official`; `old_official` when it replaced one |
+| `sneedapp_official_version_remove` | those methods or `removeOfficialVersion` dropped an entry | `caller`, `method`, `old_official` |
+| `sneedapp_manager_wasm_set` | `setManagerWasm` (the legacy `createNeuronManager` module) | `caller`, `wasm_sha256`, `wasm_size` |
+| `sneedapp_manager_wasm_clear` | `clearManagerWasm` dropped it | `caller` |
+
+Publishers:
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `sneedapp_publisher_create` | `createPublisher` | `caller`, `publisher` |
+| `sneedapp_publisher_update` | `updatePublisher`, `addPublisherOwner`, `removePublisherOwner`, `addPublisherFamily`, `removePublisherFamily`, `setPublisherDaoCut` changed a logged field | `caller`, `method`, `publisher`, `old_publisher` |
+| `sneedapp_publisher_verify`, `sneedapp_publisher_unverify` | `verifyPublisher`, `unverifyPublisher` changed the flag | `caller`, `publisher_id` |
+
+Mints and money:
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `sneedapp_mint` | `mintCanister` or the legacy `createNeuronManager` completed | `caller` (the minter, now the canister's only controller), `canister_id`, `app_id`, `numeric_app_id`, `publisher_id`, `ver`, `wasm_sha256` and `wasm_size` (the module installed), `price_e8s` (0 when payment is off), `premium`; when paid: `cycles_icp_e8s` and `cycles_tx` (to the factory's main account, converted to cycles), `publisher_share_e8s` (with `publisher_share_to` and `publisher_share_tx` when above 0), `dao_cut_e8s` (with `dao_cut_to` and `dao_cut_tx` when above 0), `fees_e8s` (every ledger fee of the mint); `cycles_received` when the cycles minting canister answered; `method` = `createNeuronManager` for the legacy flow |
+| `sneedapp_mint_refund` | a paid mint aborted after ICP had left the payment subaccount, and the moved ICP was sent back to it | `caller`, `app_id`, `ver`, `price_e8s`, `reason`, `payment_txs` (ledger blocks of the legs that had moved), `moved_e8s`, `returned_e8s` (arrived back), `stuck_e8s` (could not be returned; held by the factory for a manual return), `refund_txs`; `canister_id` when a canister had been created and was deleted |
+| `sneedapp_orphan_canister` | a canister of a failed mint stays with the factory (deleting it or handing it over failed); `getOrphanCanisters` | `caller` (the minter), `canister_id`, `app_id`, `reason`; after a full payment whose hand-over failed also `ver`, `price_e8s` and the payment fields of `sneedapp_mint` |
+| `sneedapp_deposit_withdraw` | `withdrawUserPayment` | `caller`, `amount_e8s`, `fee_e8s`, `to`, `icp_tx` |
+| `sneedapp_publisher_withdraw` | `withdrawPublisherFunds`, `withdrawAppFunds` | `caller`, `publisher_id`, `numeric_app_id` (app funds), `amount_e8s`, `fee_e8s`, `to`, `icp_tx` |
+| `sneedapp_admin_withdraw` | `adminWithdrawIcp` | `caller`, `amount_e8s`, `fee_e8s`, `to`, `icp_tx` |
+| `sneedapp_admin_top_up` | `adminTopUpCycles` | `caller`, `amount_e8s`, `cycles` |
+
+Wallet: bookmarks are not ownership, so **a user's own bookmarks are not logged** (`registerCanister`, `deregisterCanister`, `registerManager`, `deregisterManager`): they carry no trust and would publish every canister each user tracks. Logged are the writes that hand an entry to someone else or act on someone else's list:
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `sneedapp_wallet_transfer` | `transferManager` | `caller` (the old holder), `canister_id`, `app_id` (when known), `new_owner` |
+| `sneedapp_wallet_register` | `registerCanisterFor`, `registerManagerFor`, `adminRegisterCanister`, `adminBulkRegisterCanisters` added or labelled an entry | `caller`, `user`, `canister_id`, `app_id` (when known) |
+| `sneedapp_wallet_deregister` | `deregisterCanisterFor`, `deregisterManagerFor` removed an entry | `caller`, `user`, `canister_id` |
+
+Configuration:
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `sneedapp_config_update` | a setting changed | `caller`, `key`, `value`; `old_value` except for list additions and removals |
+
+`sneedapp_config_update` keys: `admin_added`, `admin_removed`, `authorized_caller_added`, `authorized_caller_removed`; `sneed_governance`, `sneed_premium_canister_id` (Blob, or Text `none`); `creation_fee_e8s`, `premium_creation_fee_e8s`, `target_cycles`, `canister_creation_cycles`; `fee_destination` (account); `payment_required`; `current_version` (`ver`); `icrc3_proposal_neuron` and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`. `setPaymentConfig` writes one block per field that changed.
+
+Not logged: a user's own bookmarks, reads, release notes, descriptions, icons, logos and links, the premium check of `getAppMintPrice`, and the admin creation and financial logs (they repeat the mint blocks).
+
+### 7.4 Verifying and using the log
+
+- **Verify it:** the procedure and the Node.js script of [Sneed Lock's 8.4](/api/sneed_lock#84-verifying-the-log) work unchanged with the canister id `sfamc-kyaaa-aaaau-adnpq-cai` (or staging `34e6r-ayaaa-aaaad-adkoa-cai`).
+- **Browse it:** [app.sneeddao.com/tools/icrc3?canister=sfamc-kyaaa-aaaau-adnpq-cai](https://app.sneeddao.com/tools/icrc3?canister=sfamc-kyaaa-aaaau-adnpq-cai), the generic ICRC-3 browser.
+- **What did this canister install?** Find the `sneedapp_mint` block whose `canister_id` is the canister and compare its `wasm_sha256` with the `sneedapp_wasm_upload` blocks of that app, and with the module hash the IC reports for the canister today (the owner may have upgraded it since).
+- **Check a payment:** `cycles_tx`, `publisher_share_tx`, `dao_cut_tx` and `icp_tx` are block indexes on the ICP ledger.
+
+---
+
+## 8. Integration checklist
 
 - Mint with `mintCanister`; treat `createNeuronManager` as legacy.
 - Show only apps that are `enabled` and whose publisher is verified or `0`; anything else is refused with `AppDisabled` or `PublisherNotVerified`.
