@@ -51,7 +51,7 @@ Each user pays from their own deposit account on the premium canister:
 
 ### 1.5 Public, not private
 
-Membership is public data. `checkMembership` answers for any principal, `getActivePremiumMembers()` lists every current member (the Sneed app uses it to show crown badges next to names), and every purchase or claim is recorded in logs the admins can read. Only `getMembershipDetails` is limited to the principal itself (or an admin), and it only adds `lastUpdated`.
+Membership is public data. `checkMembership` answers for any principal, `getActivePremiumMembers()` lists every current member (the Sneed app uses it to show crown badges next to names), and every purchase, claim, grant and setting change is a block in the public activity log ([section 7](#7-activity-log-icrc-3)). Only `getMembershipDetails` is limited to the principal itself (or an admin), and it only adds `lastUpdated`.
 
 ### 1.6 Calls the canister refuses at ingress
 
@@ -286,6 +286,8 @@ Admins are the canister's controllers (the SNS root on production) and the princ
 | `revokeMembership(principal)` | Remove a membership. |
 | `createPromoCode`, `deactivatePromoCode`, `reactivatePromoCode`, `deletePromoCode` | Promo codes. |
 | `getPromoCodes()`, `getPromoCodeClaims(code)` | Read promo codes and their claims (`err NotAuthorized` for others). |
+| `getPromoCodeIds()` | Every promo code with the `code_id` the activity log names it by (`err NotAuthorized` for others). |
+| `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`, `admin_set_icrc3_proposal_neuron`, `admin_icrc3_register_archives_now`, `admin_icrc3_reset_archive_registration` | The activity log's archives and their SNS registration ([section 7](#7-activity-log-icrc-3)). |
 | `getAllMemberships()` | Every membership record, expired ones included (empty for non-admins). |
 | `getClaimLog(offset, limit)`, `getClaimLogCount()` | Unified log of every purchase and claim, newest first (traps for non-admins). |
 | `getIcpPaymentLog(offset, limit)`, `getIcpPaymentLogCount()` | ICP payments with gross and net amounts and the ledger block index, newest first (traps for non-admins). |
@@ -350,7 +352,72 @@ The complete interface, with the promo code and log types, is in [sneed_premium.
 
 ---
 
-## 7. Integration checklist
+## 7. Activity log (ICRC-3)
+
+Every change to a membership, to the ICP that pays for one, to promo codes, tiers and the configuration is recorded as a block in a hash-chained, certified log, readable through the standard [ICRC-3](https://github.com/dfinity/ICRC-1/tree/main/standards/ICRC-3) interface. Each block carries the hash of the previous block (`phash`), and the canister certifies the index and hash of the latest block, so anyone can download the history and prove it complete and untampered without trusting Sneed DAO or this app. Old blocks move to archive canisters that the premium canister creates.
+
+The log uses the same library as [Sneed Lock's log](/api/sneed_lock#8-activity-log-icrc-3) ([src/icrc3](https://github.com/Snassy-icp/app_sneeddao/tree/main/src/icrc3)); the design is in [spec/sneed_premium_icrc3.md](https://github.com/Snassy-icp/app_sneeddao/blob/main/spec/sneed_premium_icrc3.md). It starts empty with the release that introduced it; memberships and payments from before are not imported (they are in the admin-only `getClaimLog` and `getIcpPaymentLog`, which are still written).
+
+### 7.1 Endpoints
+
+| Method | Type | Returns |
+|---|---|---|
+| `icrc3_get_blocks(vec record { start : nat; length : nat })` | query | `{ log_length; blocks : vec { id; block }; archived_blocks : vec { args; callback } }`. Live blocks come back directly; for archived ranges call `callback` (that archive's own `icrc3_get_blocks`) with `args`. |
+| `icrc3_get_archives(record { from : opt principal })` | query | Every archive canister with the first and last block index it holds. |
+| `icrc3_get_tip_certificate()` | query | `opt { certificate; hash_tree }` with `last_block_index` and `last_block_hash`. Null until the first block exists. |
+| `icrc3_supported_block_types()` | query | Every `btype` below, each with the url of [7.3](#73-block-types). |
+| `icrc10_supported_standards()` | query | ICRC-3 and ICRC-10. |
+| `icrc3_log_status()` | query | Log length, live blocks, hash of the last block, archives, spill settings. `history_imported` is always false. |
+| `icrc3_registration_status()` | query | Per archive, the SNS proposal that registered it as a DAO canister. |
+
+Admin only: `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`, `admin_set_icrc3_proposal_neuron`, `admin_icrc3_register_archives_now`, `admin_icrc3_reset_archive_registration` (as on Sneed Lock), and `getPromoCodeIds()`. Archives are controlled by the premium canister and the Sneed SNS root until a `RegisterDappCanisters` proposal hands them to SNS root alone.
+
+### 7.2 Block format
+
+A block is a `Map` with `btype` (Text), `ts` (Nat, ns since epoch: when the action happened), `phash` (Blob, absent on block 0) and `tx` (Map). Inside `tx`:
+
+- Principals are `Blob` (raw principal bytes); ICRC-1 accounts are `Array [owner, subaccount?]`.
+- ICP amounts and voting power are `Nat` e8s; durations and times are `Nat` nanoseconds (an expiration an admin set before 1970 would be `Int`); flags are `Nat` 0 or 1.
+- `caller` is the principal that made the call. Optional fields are omitted when absent: `previous_expiration` (the membership's expiration before the change) is left out when the principal had no membership record.
+- `tier` / `old_tier`: an ICP tier is `Map { name; amount_e8s; duration_ns; active }`, a voting power tier `Map { name; min_voting_power_e8s; duration_ns; active }`.
+- **Promo codes are named by `code_id`, never by their text**: a code in a public log could be claimed by anyone reading it. Admins map ids to codes with `getPromoCodeIds()`. Promo code notes are not logged either. Everything else in the log is already public (membership, tiers, configuration, ICP transfers on the ICP ledger); nothing on the IC is anonymous.
+
+### 7.3 Block types
+
+All types carry the `premium_` prefix. A block is appended only once its action is final, in the message that records it: after the ICP ledger transfer returned `Ok`, after SNS governance answered and the membership was written. A refused or failed call appends nothing.
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `premium_icp_purchase` | `purchaseWithIcp` swept the deposit to the payment recipient and extended the membership. | `caller`, `tier` (name), `duration_ns`, `amount_e8s` (the deposit charged), `fee_e8s` (ledger fee), `to` (payment recipient account), `icp_tx` (ICP ledger block of the sweep), `previous_expiration`, `new_expiration` |
+| `premium_vp_claim` | `claimWithVotingPower` granted a tier. | `caller`, `voting_power`, `tier`, `duration_ns`, `previous_expiration`, `new_expiration` (not additive: may equal the previous one) |
+| `premium_deposit_withdraw` | `withdrawDeposit` sent the caller's deposit back. | `caller`, `amount_e8s` (transferred), `fee_e8s`, `to` (account), `icp_tx` |
+| `premium_promo_create` | `createPromoCode` | `caller`, `code_id`, `duration_ns`, `max_claims`; `code_expiration` when set |
+| `premium_promo_claim` | `claimPromoCode` granted the code's duration. | `caller`, `code_id`, `duration_ns`, `claim_count` (after this claim), `previous_expiration`, `new_expiration` |
+| `premium_promo_deactivate` | `deactivatePromoCode` | `caller`, `code_id` |
+| `premium_promo_reactivate` | `reactivatePromoCode` | `caller`, `code_id` |
+| `premium_promo_delete` | `deletePromoCode` | `caller`, `code_id`, `claim_count` |
+| `premium_admin_set` | `setMembershipAdmin` | `caller`, `principal`, `previous_expiration`, `new_expiration` |
+| `premium_admin_extend` | `extendMembershipAdmin` | `caller`, `principal`, `duration_ns`, `previous_expiration`, `new_expiration` |
+| `premium_admin_revoke` | `revokeMembership` removed a membership (revoking a non-member logs nothing). | `caller`, `principal`, `previous_expiration` |
+| `premium_tier_add` | `addIcpTier`, `addVpTier` | `caller`, `kind` (`icp` or `vp`), `index`, `tier` |
+| `premium_tier_update` | `updateIcpTier`, `updateVpTier` | `caller`, `kind`, `index`, `tier`, `old_tier` |
+| `premium_tier_remove` | `removeIcpTier`, `removeVpTier` | `caller`, `kind`, `index`, `old_tier` |
+| `premium_config_update` | A setting changed. | `caller`, `key`, `value`; `old_value` when known |
+
+`premium_config_update` keys: `admin_added`, `admin_removed` (only when the list changed); `admins`, `icp_ledger_id`, `sneed_governance_id`, `payment_recipient` (account), `min_claim_interval_ns` (from the single setters, and one block per changed field from `updateConfig`); `icrc3_proposal_neuron` and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
+
+Not logged: the time of each voting power claim (the rate limit), the legacy claim and payment log entries and statistics (they repeat these blocks), promo code texts and notes, and reads.
+
+### 7.4 Verifying and using the log
+
+- **Verify it:** the procedure and the Node.js script of [Sneed Lock's 8.4](/api/sneed_lock#84-verifying-the-log) work unchanged with the canister id `7gump-4aaaa-aaaal-qtyka-cai` (or staging `sf5tm-dqaaa-aaaae-qgyla-cai`).
+- **Browse it:** [app.sneeddao.com/tools/icrc3?canister=7gump-4aaaa-aaaal-qtyka-cai](https://app.sneeddao.com/tools/icrc3?canister=7gump-4aaaa-aaaal-qtyka-cai), the generic ICRC-3 browser.
+- **History of one member:** keep the blocks whose `tx.caller` or `tx.principal` is that principal.
+- **Check a payment:** `icp_tx` is the block index on the ICP ledger.
+
+---
+
+## 8. Integration checklist
 
 - Gate features with `checkMembership` (or `getActivePremiumMembers` for lists), and cache until `expiration`.
 - Read tiers from `getIcpTiers()` / `getVotingPowerTiers()` every time you show them; they are DAO-managed.

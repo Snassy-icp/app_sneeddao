@@ -102,6 +102,8 @@ We will go on to design the user facing frontend experience once this core is in
 - [x] Ingress guard (`inspect_message`): queries called as updates are refused, arguments capped, admin methods with free-form content refused for non-admins
 - [x] Public `getPaymentStats()` (shown on the revenue page)
 
+- [x] ICRC-3 activity log (2026-10-21, not deployed): a certified block per purchase, claim, withdrawal, promo code action (by `code_id`, never the code), admin grant, tier and config change, with archives. Design and catalogue: [sneed_premium_icrc3.md](sneed_premium_icrc3.md); public docs: API doc section 7.
+
 ### Known issues (2026-10-20)
 - Fixed 2026-10-20: a deposit that matched no tier amount could not be refunded. `withdrawDeposit()` now returns the caller's own deposit subaccount balance minus the ledger fee to the caller (per-caller lock shared with `purchaseWithIcp`). Not deployed until the canister is upgraded; the frontend has no button for it yet.
 - Fixed 2026-10-20: promo codes came from an LCG seeded with `Time.now()`, guessable from the creation time; they are now drawn from `Random.blob()` (raw_rand). Codes made before the upgrade keep their (guessable) values: deactivate or delete any that are still open.

@@ -18,7 +18,7 @@ Sneed Premium is the membership registry of Sneed DAO: one record per principal 
 ## Authentication
 
 - Queries answer anyone. Updates that grant membership refuse the anonymous principal (`NotAuthorized`).
-- Membership is public: `checkMembership` answers for any principal and `getActivePremiumMembers` lists every member. Only `getMembershipDetails` is limited to the principal itself or an admin. Purchases and claims are logged; admins read the logs. Calls are signed by a principal that is public on-chain; nothing here is anonymous.
+- Membership is public: `checkMembership` answers for any principal and `getActivePremiumMembers` lists every member. Only `getMembershipDetails` is limited to the principal itself or an admin. Purchases, claims and admin changes are public blocks in the activity log; the older claim and payment logs are admin only. Calls are signed by a principal that is public on-chain; nothing here is anonymous.
 - Admin methods (tiers, config, promo codes, logs, set/extend/revoke memberships) are for controllers and listed admins only.
 
 ## Fees, transfers and irreversible actions
@@ -45,6 +45,11 @@ Sneed Premium is the membership registry of Sneed DAO: one record per principal 
 - Depositing an amount that is not exactly one tier amount (or two deposits that add up to something else): `InvalidTier`. Top up to a tier amount or withdraw.
 - Promo codes are case-sensitive (generated in capitals) and can be claimed once per principal.
 - Query methods sent as update calls are refused by the ingress guard. Arguments are capped (most updates 4 KiB; promo codes at most 64 characters); admin methods with free-form content are refused at ingress for non-admins.
+
+## Activity log (ICRC-3)
+
+- Every purchase (with its ICP ledger block), voting power claim, deposit withdrawal, promo code action, admin grant and tier or config change is a block in a public, certified ICRC-3 log (`icrc3_get_blocks`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`, `icrc3_log_status`), with archive canisters for old blocks. Block types: https://app.sneeddao.com/api/sneed_premium#block-types
+- Promo codes appear by `code_id`, never by their text. A refused or failed call appends nothing.
 
 ## Start with these methods
 
