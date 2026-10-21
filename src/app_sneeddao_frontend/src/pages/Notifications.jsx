@@ -53,7 +53,17 @@ export default function Notifications() {
     }, [actor, identity, smsActor]);
     useEffect(() => { load().catch((e) => setMsg({ err: e.message || String(e) })); }, [load]);
     // a code from a tapped notification (/notifications?code=123456) fills the channels waiting for one
-    const codeFromLink = useMemo(() => { const c = new URLSearchParams(window.location.search).get('code'); return /^\d{6}$/.test(c || '') ? c : null; }, []);
+    const codeFromLinkParam = useMemo(() => { const c = new URLSearchParams(window.location.search).get('code'); return /^\d{6}$/.test(c || '') ? c : null; }, []);
+    // the service worker also keeps the last code this device received (sw.js), for phones where
+    // tapping the notification just dismisses it: shown here for 15 minutes after it arrived
+    const [deviceCode, setDeviceCode] = useState(null); // { code, at }
+    useEffect(() => {
+        if (typeof caches === 'undefined') return;
+        caches.open('sneed-push').then((cache) => cache.match('/__sneed/last-code')).then((r) => (r ? r.json() : null))
+            .then((v) => { if (v && /^\d{6}$/.test(v.code) && Date.now() - v.at < 15 * 60 * 1000) setDeviceCode(v); })
+            .catch(() => {});
+    }, []);
+    const codeFromLink = codeFromLinkParam || deviceCode?.code || null;
     useEffect(() => {
         if (!codeFromLink || !data) return;
         const waiting = data.channels.filter((c) => 'unverified' in c.state);
@@ -266,6 +276,9 @@ export default function Notifications() {
                         <button type="button" style={btn(false)} disabled={busy} onClick={() => run(async () => actor.resend_code(ch.id), 'A new code is on its way (the old one stops working)')}>Send a new code</button>
                     </div>
                 ))}
+                {deviceCode && channels.some((ch) => 'unverified' in ch.state) && (
+                    <p style={{ ...muted, color: c.primaryText }}>This device received the code <strong style={{ fontSize: '1rem', letterSpacing: '0.1em' }}>{deviceCode.code}</strong> at {new Date(deviceCode.at).toLocaleTimeString()}; it's filled in above, so just press Verify.</p>
+                )}
                 <p style={{ ...muted }}>Sneed SMS is your inbox: messages land in <Link to="/sms" style={{ color: accent }}>Sneed SMS</Link> and the bell in the header.</p>
                 {smsPreview !== null && (
                     <label style={{ ...muted, display: 'flex', gap: 8, alignItems: 'center', cursor: busy ? 'default' : 'pointer' }}>
