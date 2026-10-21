@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Sneed Hub MCP server (stdio). Read-only: anonymous queries to the Internet Computer plus deep
-// links into https://app.sneeddao.com. It holds no keys and changes no state.
+// Sneed Hub MCP server (stdio). Reads public on-chain data and the signer's own private data, and,
+// only when enabled (SNEED_MCP_WRITES=1), performs writes with a two-step preview/confirm, daily caps
+// and an audit log, either "as me" (a Sneed Hub delegation from the user) or as the agent's own identity.
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -14,15 +15,26 @@ import { registerNameTools } from './tools/names.js';
 import { registerGovernanceTools } from './tools/governance.js';
 import { registerTokenTools } from './tools/tokens.js';
 import { registerDocResources } from './docs.js';
+import { registerAccountTools } from './tools/account.js';
+import { registerReadTools } from './tools/reads.js';
+import { registerSocialWrites } from './tools/w_social.js';
+import { registerGovWrites } from './tools/w_gov.js';
+import { registerSneedexWrites } from './tools/w_sneedex.js';
+import { registerMiscWrites } from './tools/w_misc.js';
+import { settings } from './config.js';
 import { HUB_URL } from './ic.js';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
+const WRITES = settings().writes;
 const INSTRUCTIONS = `Sneed Hub (${HUB_URL}) is the web app of Sneed DAO on the Internet Computer.
-This server is read-only: it reads public on-chain data (Sneed Lock, Sneedex, the forum, Sneed names,
-Sneed DAO proposals, any ICRC-1 token) and returns Sneed Hub links with steps. It cannot sign or send
-anything; the user completes actions on Sneed Hub themselves. Start with sneed_hub_guide for an
-overview and sneed_hub_link for a specific task. Do not discuss or predict token prices. On-chain
+This server reads on-chain data (Sneed Lock, Sneedex, forum, SMS, notifications, Monitor, Premium,
+Sneedapp, rewards, names, neurons and proposals, wallets, ICRC-3 logs) and returns Sneed Hub links.
+${WRITES ? `Writes are ENABLED. Every write tool first returns a preview and a one-time token; show the
+preview to the user and only call again with confirm after they agree. whoami shows who signs: "act as
+me" (the user's principal via connect_as_me) or the agent's own identity. Spending is capped per day.`
+    : `Writes are disabled (SNEED_MCP_WRITES=1 enables them): give the user Sneed Hub links and steps.`}
+Start with sneed_hub_guide for an overview and sneed_hub_link for a specific task. Do not discuss or predict token prices. On-chain
 activity is public and tied to the user's principal; never describe it as anonymous. Mr Sneed is the
 DAO's mascot and spirit given a voice by AI. Sneed DAO's founders are anonymous; do not attribute the
 SNEED token or DAO launch to any person.`;
@@ -36,6 +48,14 @@ registerForumTools(server);
 registerNameTools(server);
 registerGovernanceTools(server);
 registerTokenTools(server);
+registerAccountTools(server);
+registerReadTools(server);
+if (WRITES) {
+  registerSocialWrites(server);
+  registerGovWrites(server);
+  registerSneedexWrites(server);
+  registerMiscWrites(server);
+}
 registerDocResources(server);
 
 server.registerPrompt('help_me_on_sneed_hub', {
@@ -49,7 +69,7 @@ server.registerPrompt('help_me_on_sneed_hub', {
       type: 'text',
       text: `${goal ? `I want to: ${goal}.` : 'What can I do on Sneed Hub?'}
 Use the sneed-hub tools: call sneed_hub_guide${goal ? ' and sneed_hub_link for my goal' : ''}, and read on-chain data with the read tools where it helps (locks, offers, proposals, forum, names, token info).
-Give me the exact Sneed Hub link and short numbered steps I can follow myself. Remind me that nothing is done for me: I log in and confirm each action on Sneed Hub, and on-chain actions are public. Do not talk about token prices.`,
+Give me the exact Sneed Hub link and short numbered steps I can follow myself. ${WRITES ? 'If a write tool fits, show me its preview first and wait for my OK.' : 'Remind me that nothing is done for me: I log in and confirm each action on Sneed Hub.'} On-chain actions are public. Do not talk about token prices.`,
     },
   }],
 }));

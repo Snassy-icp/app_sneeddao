@@ -40,7 +40,7 @@ Each reference has Markdown (`.md`), Candid (`.did`) and a JavaScript IDL factor
 
 ## MCP server
 
-- Sneed Hub MCP server: see https://github.com/Snassy-icp/app_sneeddao/tree/main/mcp/sneed-hub (read-only lookups of public on-chain data and deep links into Sneed Hub)
+- Sneed Hub MCP server: https://github.com/Snassy-icp/app_sneeddao/tree/main/mcp/sneed-hub. Reads every Sneed service (forum, SMS, notifications, Monitor, Premium, Sneedapp, rewards, names, neurons and votable proposals, wallets, locks, Sneedex, ICRC-3 logs) and, when the user turns writes on, acts: post and tip, message, set a name, vote and propose with a hotkey, bid, buy out and create Sneedex offers (NFTs too), lock tokens, watch proposals, claim rewards. "Act as me": the user approves the agent on /connect-agent (a time-limited delegation to the canisters they choose; no keys leave their browser); or the agent uses its own identity. Every write is previewed and needs a one-time confirmation, with daily spending caps and a local audit log.
 
 ## Help for people
 

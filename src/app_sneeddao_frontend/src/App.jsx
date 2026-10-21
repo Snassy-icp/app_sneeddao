@@ -71,6 +71,7 @@ import RllAdmin from './pages/admin/Rll';
 import SneedMonAdmin from './pages/admin/SneedMon';
 import Projects from './pages/Projects';
 import PairApp from './pages/PairApp';
+import ConnectAgent from './pages/ConnectAgent';
 import Notifications from './pages/Notifications';
 import Rewards from './pages/Rewards';
 import Disclaimer from './pages/Disclaimer';
@@ -277,6 +278,7 @@ function App() {
                     <Route path="/partners" element={<Partners />} />
                     <Route path="/projects" element={<Projects />} />
                     <Route path="/pair" element={<PairApp />} />
+                    <Route path="/connect-agent" element={<ConnectAgent />} />
                     <Route path="/notifications" element={<Notifications />} />
                     <Route path="/proposals" element={<Proposals />} />
                     <Route path="/icp_proposals" element={<IcpProposals />} />

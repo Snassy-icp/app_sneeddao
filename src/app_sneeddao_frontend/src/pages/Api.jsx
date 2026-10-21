@@ -147,11 +147,12 @@ const machineReadable = [
     {
         icon: FaRobot,
         title: 'Agent skills',
-        description: 'Coding agents can discover and load a compact integration guide through the Agent Skills discovery index. Point your agent at the index or the skill file directly.',
+        description: 'Coding agents can discover and load a compact integration guide through the Agent Skills discovery index. Point your agent at the index or the skill file directly. The Sneed Hub MCP server gives an agent tools for every Sneed service; with your approval on /connect-agent it can act as you, each action previewed and confirmed.',
         links: [
             { label: '/.well-known/agent-skills/index.json', href: '/.well-known/agent-skills/index.json' },
             { label: 'sneed-lock/SKILL.md', href: '/.well-known/agent-skills/sneed-lock/SKILL.md' },
             { label: '/llms.txt', href: '/llms.txt' },
+            { label: 'Sneed Hub MCP server', href: 'https://github.com/Snassy-icp/app_sneeddao/tree/main/mcp/sneed-hub' },
         ],
     },
     {

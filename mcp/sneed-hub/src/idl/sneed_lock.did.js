@@ -226,6 +226,21 @@ export const idlFactory = ({ IDL }) => {
     'swap_canister_id' : IDL.Opt(SwapCanisterId),
     'include_archived' : IDL.Bool,
   });
+  const SpecialLockPrices = IDL.Record({
+    'token_lock_fee_icp_e8s' : IDL.Opt(IDL.Nat),
+    'position_lock_fee_icp_e8s' : IDL.Opt(IDL.Nat),
+  });
+  const PartnerListing = IDL.Record({
+    'principal' : IDL.Principal,
+    'label' : IDL.Text,
+    'prices' : SpecialLockPrices,
+    'expires_at' : IDL.Opt(IDL.Int),
+  });
+  const SpecialLockPartner = IDL.Record({
+    'label' : IDL.Text,
+    'prices' : SpecialLockPrices,
+    'expires_at' : IDL.Opt(IDL.Int),
+  });
   const SupportedStandard = IDL.Record({ 'url' : IDL.Text, 'name' : IDL.Text });
   const Account__1 = IDL.Record({
     'owner' : IDL.Principal,
@@ -525,6 +540,11 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'admin_get_payment_log_count' : IDL.Func([], [IDL.Nat], ['query']),
+    'admin_get_payment_price_tiers' : IDL.Func(
+        [IDL.Vec(IDL.Nat)],
+        [IDL.Vec(IDL.Tuple(IDL.Nat, IDL.Opt(IDL.Text)))],
+        ['query'],
+      ),
     'admin_get_pool_unused_balance' : IDL.Func(
         [SwapCanisterId],
         [
@@ -666,6 +686,7 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'get_admin_list' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
+    'get_api_doc' : IDL.Func([], [IDL.Text], ['query']),
     'get_claim_request_status' : IDL.Func(
         [ClaimRequestId],
         [
@@ -786,6 +807,26 @@ export const idlFactory = ({ IDL }) => {
     'get_position_ownerships' : IDL.Func(
         [],
         [IDL.Vec(IDL.Tuple(SwapCanisterId, PositionId))],
+        ['query'],
+      ),
+    'get_special_prices' : IDL.Func(
+        [],
+        [
+          IDL.Record({
+            'admin_prices' : SpecialLockPrices,
+            'partners' : IDL.Vec(PartnerListing),
+          }),
+        ],
+        ['query'],
+      ),
+    'get_special_prices_for' : IDL.Func(
+        [IDL.Principal],
+        [
+          IDL.Record({
+            'admin_prices' : IDL.Opt(SpecialLockPrices),
+            'partner' : IDL.Opt(SpecialLockPartner),
+          }),
+        ],
         ['query'],
       ),
     'get_summed_locks' : IDL.Func(
@@ -941,12 +982,27 @@ export const idlFactory = ({ IDL }) => {
         [LockOpResult],
         [],
       ),
+    'remove_partner_prices' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
+        [],
+      ),
     'request_claim_and_withdraw' : IDL.Func(
         [SwapCanisterId, PositionId],
         [ClaimAndWithdrawResult],
         [],
       ),
+    'set_admin_prices' : IDL.Func(
+        [SpecialLockPrices],
+        [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
+        [],
+      ),
     'set_max_lock_length_days' : IDL.Func([IDL.Nat64], [], []),
+    'set_partner_prices' : IDL.Func(
+        [IDL.Principal, SpecialLockPartner],
+        [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
+        [],
+      ),
     'start_dissolving' : IDL.Func([LockId], [LockOpResult], []),
     'stop_dissolving' : IDL.Func([LockId], [LockOpResult], []),
     'transfer_position' : IDL.Func(

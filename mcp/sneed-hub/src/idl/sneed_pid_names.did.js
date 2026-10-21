@@ -104,6 +104,7 @@ export const idlFactory = ({ IDL }) => {
     'name' : IDL.Opt(IDL.Text),
     'hotkeys' : IDL.Vec(IDL.Principal),
     'created_at' : IDL.Nat64,
+    'nft_avatar_standard' : IDL.Opt(IDL.Text),
     'verification' : IDL.Opt(Verification),
     'avatar' : IDL.Opt(AvatarRef),
     'nft_avatar' : IDL.Opt(NftAvatar),
@@ -129,6 +130,7 @@ export const idlFactory = ({ IDL }) => {
     'dapp' : IDL.Opt(DappId),
     'kind' : IDL.Variant({ 'canister' : IDL.Null, 'account' : AccountId }),
     'name' : IDL.Opt(IDL.Text),
+    'nft_avatar_standard' : IDL.Opt(IDL.Text),
     'avatar' : IDL.Opt(AvatarRef),
     'nft_avatar' : IDL.Opt(NftAvatar),
   });
@@ -201,6 +203,7 @@ export const idlFactory = ({ IDL }) => {
         ),
       }),
     }),
+    'nft_avatar_standard' : IDL.Opt(IDL.Text),
     'avatar' : IDL.Opt(AvatarRef),
     'nft_avatar' : IDL.Opt(NftAvatar),
   });
@@ -264,6 +267,7 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'get_admins' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
+    'get_api_doc' : IDL.Func([], [IDL.Text], ['query']),
     'get_canister_name' : IDL.Func(
         [IDL.Principal],
         [IDL.Opt(CanisterView)],
@@ -365,6 +369,7 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'set_my_avatar' : IDL.Func([IDL.Opt(AvatarRef)], [Result], []),
+    'set_my_ext_nft_avatar' : IDL.Func([IDL.Opt(NftRef)], [Result], []),
     'set_my_name' : IDL.Func([IDL.Text], [Result], []),
     'set_my_nft_avatar' : IDL.Func([IDL.Opt(NftRef)], [Result], []),
     'stats' : IDL.Func([], [Stats], ['query']),

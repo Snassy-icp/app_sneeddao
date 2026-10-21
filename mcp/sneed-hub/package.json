@@ -1,20 +1,30 @@
 {
   "name": "@sneeddao/sneed-hub-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Read-only MCP server for Sneed Hub (Sneed DAO's web app on the Internet Computer): explains what you can do there, reads public on-chain data and hands back deep links.",
+  "description": "MCP server for Sneed Hub (Sneed DAO's web app on the Internet Computer): reads every Sneed service and, when enabled, acts as the user (Sneed Hub delegation) or as its own identity, with preview/confirm, daily caps and an audit log.",
   "type": "module",
-  "bin": { "sneed-hub-mcp": "src/index.js" },
+  "bin": {
+    "sneed-hub-mcp": "src/index.js"
+  },
   "main": "src/index.js",
-  "files": ["src", "README.md"],
-  "engines": { "node": ">=18" },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node src/index.js",
+    "test": "node --test test/*.test.mjs",
     "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "@dfinity/agent": "^2.4.1",
     "@dfinity/candid": "^2.4.1",
+    "@dfinity/identity": "^2.4.1",
+    "@dfinity/identity-secp256k1": "^2.4.1",
     "@dfinity/principal": "^2.4.1",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "zod": "^3.25.76"

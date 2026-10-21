@@ -4,11 +4,16 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const full = process.argv.includes('--full');
 const server = fileURLToPath(new URL('../src/index.js', import.meta.url));
 const client = new Client({ name: 'sneed-hub-smoke', version: '0.0.0' });
-await client.connect(new StdioClientTransport({ command: process.execPath, args: [server], stderr: 'inherit' }));
+// Read-only: writes stay off, and the signer's key (for its own empty inbox etc.) is a throwaway one.
+const env = { ...process.env, SNEED_MCP_WRITES: '0', SNEED_MCP_CONFIG_DIR: process.env.SNEED_MCP_CONFIG_DIR || mkdtempSync(join(tmpdir(), 'sneed-hub-smoke-')) };
+await client.connect(new StdioClientTransport({ command: process.execPath, args: [server], env, stderr: 'ignore' }));
 
 const SNEED_LEDGER = 'hvgxa-wqaaa-aaaaq-aacia-cai';
 const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
@@ -71,6 +76,24 @@ await call('sneed_name_lookup', { name: 'sneed', limit: 3 });
 const props = await call('sneed_dao_proposals', { limit: 3 });
 const pid = props?.proposals?.[0]?.id;
 if (pid) await call('sneed_dao_proposal', { proposal_id: pid });
+
+// services (text outputs)
+const MR_SNEED = 'tksci-hao7i-2jb3u-kjrhm-t6ada-pubbx-rj2rj-dvz3x-eczyu-ogj25-aae';
+await call('whoami');
+await call('sms_read');
+await call('notifications_read', { history: 3 });
+await call('mon_read');
+await call('premium_status', { principal: MR_SNEED });
+await call('sneedapp_apps');
+await call('sneedapp_apps', { app_id: 'sneed-icp-staking-bot' });
+await call('sneedapp_my_bots');
+await call('rll_rewards', { principal: MR_SNEED, stats: true });
+await call('principal_profile', { principal: MR_SNEED });
+await call('wallet_balances', { principal: SNEED_GOV, ledgers: [ICP_LEDGER, SNEED_LEDGER] });
+await call('sns_my_neurons', { principal: MR_SNEED });
+await call('special_prices', { canister: 'sneedex' });
+await call('icrc3_log', { canister: 'sneed_lock', length: 3 });
+await call('connect_as_me', { status: true });
 
 // resources and prompts
 const { resources } = await client.listResources();

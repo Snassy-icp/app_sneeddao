@@ -289,6 +289,31 @@ export const idlFactory = ({ IDL }) => {
     'bids' : IDL.Vec(Bid),
     'highest_bid' : IDL.Opt(Bid),
   });
+  const PriceTier = IDL.Variant({
+    'admin' : IDL.Null,
+    'premium' : IDL.Null,
+    'regular' : IDL.Null,
+    'partner' : IDL.Null,
+  });
+  const OfferPriceTiers = IDL.Record({
+    'cut' : PriceTier,
+    'creation_fee' : IDL.Opt(PriceTier),
+  });
+  const SpecialPriceOverrides = IDL.Record({
+    'auction_cut_bps' : IDL.Opt(IDL.Nat),
+    'offer_creation_fee_e8s' : IDL.Opt(IDL.Nat),
+  });
+  const PartnerListing = IDL.Record({
+    'principal' : IDL.Principal,
+    'label' : IDL.Text,
+    'prices' : SpecialPriceOverrides,
+    'expires_at' : IDL.Opt(IDL.Int),
+  });
+  const Partner = IDL.Record({
+    'label' : IDL.Text,
+    'prices' : SpecialPriceOverrides,
+    'expires_at' : IDL.Opt(IDL.Int),
+  });
   const SupportedStandard = IDL.Record({ 'url' : IDL.Text, 'name' : IDL.Text });
   const GetArchivesArgs = IDL.Record({ 'from' : IDL.Opt(IDL.Principal) });
   const ArchiveRange = IDL.Record({
@@ -594,6 +619,31 @@ export const idlFactory = ({ IDL }) => {
     'getSneedSmsCanisterId' : IDL.Func([], [IDL.Opt(IDL.Principal)], ['query']),
     'getUserOfferCreationBalance' : IDL.Func([IDL.Principal], [IDL.Nat], []),
     'get_api_doc' : IDL.Func([], [IDL.Text], ['query']),
+    'get_offer_price_tiers' : IDL.Func(
+        [OfferId],
+        [IDL.Opt(OfferPriceTiers)],
+        ['query'],
+      ),
+    'get_special_prices' : IDL.Func(
+        [],
+        [
+          IDL.Record({
+            'admin_prices' : SpecialPriceOverrides,
+            'partners' : IDL.Vec(PartnerListing),
+          }),
+        ],
+        ['query'],
+      ),
+    'get_special_prices_for' : IDL.Func(
+        [IDL.Principal],
+        [
+          IDL.Record({
+            'admin_prices' : IDL.Opt(SpecialPriceOverrides),
+            'partner' : IDL.Opt(Partner),
+          }),
+        ],
+        ['query'],
+      ),
     'icrc10_supported_standards' : IDL.Func(
         [],
         [IDL.Vec(SupportedStandard)],
@@ -631,6 +681,11 @@ export const idlFactory = ({ IDL }) => {
     'refundBid' : IDL.Func([BidId], [Result_1], []),
     'removeAdmin' : IDL.Func([IDL.Principal], [Result_1], []),
     'removeLedgerFeeRecipient' : IDL.Func([IDL.Principal], [Result_1], []),
+    'remove_partner_prices' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
+        [],
+      ),
     'reserveBid' : IDL.Func([OfferId], [Result_2], []),
     'setBackendCanisterId' : IDL.Func([IDL.Opt(IDL.Principal)], [Result_1], []),
     'setExpirationCheckInterval' : IDL.Func([IDL.Nat], [Result_1], []),
@@ -669,6 +724,16 @@ export const idlFactory = ({ IDL }) => {
     'setSneedSmsCanisterId' : IDL.Func(
         [IDL.Opt(IDL.Principal)],
         [Result_1],
+        [],
+      ),
+    'set_admin_prices' : IDL.Func(
+        [SpecialPriceOverrides],
+        [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
+        [],
+      ),
+    'set_partner_prices' : IDL.Func(
+        [IDL.Principal, Partner],
+        [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
         [],
       ),
     'startExpirationTimer' : IDL.Func([], [Result_1], []),
