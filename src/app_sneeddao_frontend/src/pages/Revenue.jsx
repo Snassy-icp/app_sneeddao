@@ -12,6 +12,7 @@ import { useDenomination } from '../contexts/DenominationContext';
 import { useStoreVersion } from '../utils/revenueStore';
 import { PRODUCTS, SOURCES, PERIODS, DEFAULT_PERIOD, loadAllProducts, loadProduct, productEntry, productTotals, revenueTotals, loadAllSources, loadSource, sourceEntry, usdOf, fmtAmount, priceOf, useSection, lineOf, loadSection } from '../utils/revenueData';
 import { ICP_LEDGER } from '../utils/rllLedger';
+import RllActivityCard from '../components/RllActivityCard';
 
 const AMBER = '#f59e0b';
 const ICP_COLOR = '#4a90e2';
@@ -255,6 +256,8 @@ export default function Revenue() {
                     ))}
                 </div>
                 <LoopIncome period={period} />
+
+                <RllActivityCard style={{ marginBottom: 16 }} />
 
                 <div style={{ ...card, fontSize: '0.8rem', color: theme.colors.mutedText, lineHeight: 1.5, display: 'flex', gap: 8 }}>
                     <FaInfoCircle style={{ marginTop: 3, flexShrink: 0 }} />

@@ -31,6 +31,7 @@ import { useTheme } from './contexts/ThemeContext';
 import { FaCoins, FaChartLine, FaWallet, FaCubes, FaDollarSign, FaLayerGroup, FaLeaf, FaExternalLinkAlt } from 'react-icons/fa';
 import { useDenomination } from './contexts/DenominationContext';
 import { PRODUCTS, loadAllProducts } from './utils/revenueData';
+import RllActivityCard from './components/RllActivityCard';
 import { LedgerSummary, ProductSummary, ProductsSummary, ledgerLinesFor, ensureTooltipData } from './components/RevenueTooltips';
 
 
@@ -4571,6 +4572,7 @@ function RLLInfo() {
                     )}
                 </div>
 
+                <RllActivityCard style={{ width: '100%', marginTop: 16, boxSizing: 'border-box' }} />
                 </div>
             </main>
         </div>

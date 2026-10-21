@@ -188,8 +188,14 @@ ic-unicycle cycle monitoring.
 
 ## Follow-ups
 
-- `/rll_info` and `/revenue` could link the log (or show recent `rll_distribution` and
-  `rll_claim` blocks) once deployed.
-- The heap event lists (`user_distribution_events` above all) keep growing and already
-  push `get_event_statistics` over the query instruction limit on production; with the
-  log in place they could later be capped or dropped (a separate decision).
+- `/rll_info` and `/revenue` show a "Recent activity" card (components/RllActivityCard.jsx):
+  the latest `rll_distribution` and `rll_claim` blocks, linked to `/tools/icrc3`; before the
+  upgrade it says the log arrives with the next RLL upgrade.
+- The heap event lists (`user_distribution_events` above all) keep growing; they pushed
+  `get_event_statistics` over the query instruction limit on production. Fixed in the
+  release after #443: running counters (transient, rebuilt by one pass in postupgrade:
+  about 10k instructions per stored event, 5B for 500k in the PocketIC suite, far inside
+  the upgrade limit), a 24h window that scans back from the newest event, a per-owner
+  index for the per-owner queries, and paged `get_*_events_page` queries
+  (tests/rll-stats.test.js). No stored data changed. Capping or dropping the lists now
+  that the log exists remains a separate decision.

@@ -35,6 +35,7 @@ const customStyles = `
 const PRESETS = [
     { label: 'Sneed Lock', id: 'pqsms-lqaaa-aaaal-ajjza-cai' },
     { label: 'Sneed Lock (staging)', id: '25fsc-7yaaa-aaaal-qjt5q-cai' },
+    { label: 'RLL', id: 'lvc4n-7aaaa-aaaam-adm6a-cai' },
     { label: 'SNEED ledger', id: 'hvgxa-wqaaa-aaaaq-aacia-cai' },
     { label: 'ckBTC ledger', id: 'mxzaz-hqaaa-aaaar-qaada-cai' },
     { label: 'ckETH ledger', id: 'ss2fx-dyaaa-aaaar-qacoq-cai' },
@@ -441,6 +442,8 @@ function ToolsIcrc3() {
     const [verifying, setVerifying] = useState(false);
     const [chainState, setChainState] = useState(null);
     const requestSeq = useRef(0);
+    // ?block=N (with ?canister=) opens the page holding block N with that block expanded, once
+    const pendingBlock = useRef((() => { try { const b = params.get('block'); return b ? BigInt(b) : null; } catch { return null; } })());
 
     // keep the URL shareable
     useEffect(() => {
@@ -570,6 +573,16 @@ function ToolsIcrc3() {
         goto(p);
         setExpanded(new Set([n]));
     };
+
+    useEffect(() => {
+        const n = pendingBlock.current;
+        if (!overview || n === null) return;
+        pendingBlock.current = null;
+        if (n < 0n || n >= logLength) return;
+        const size = BigInt(pageSize);
+        setPage(newestFirst ? Number((logLength - 1n - n) / size) : Number(n / size));
+        setExpanded(new Set([n]));
+    }, [overview]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const toggle = (id) => setExpanded((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
     const allExpanded = shown.length > 0 && shown.every(({ id }) => expanded.has(id));

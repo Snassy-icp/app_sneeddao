@@ -202,16 +202,22 @@ Types are in section 6. "Caller" is the principal signing the call. Methods mark
 | `get_user_distributions(owner)` | `vec (ledger, nat)` | All-time credited to an owner. |
 | `get_user_token_distribution(owner, ledger)` | `nat` | One token. |
 | `get_distribution_events()` | `vec DistributionEvent` | Every distribution. |
+| `get_distribution_events_page(start, length)` | `record { total : nat; events : vec DistributionEvent }` | Paged, oldest first: positions `start` up to `start + length` (at most 2000 per page); `total` is the list's size, so the newest page starts at `total - length`. |
 | `get_token_distribution_events(ledger)` | `vec DistributionEvent` | Filtered by token. |
-| `get_user_distribution_events()` | `vec UserDistributionEvent` | Every per-owner credit (large). |
-| `get_user_specific_distribution_events(owner)` | `vec UserDistributionEvent` | One owner. |
+| `get_user_distribution_events()` | `vec UserDistributionEvent` | Every per-owner credit. **Too large for one response on production** (hundreds of thousands of credits): use the paged version. |
+| `get_user_distribution_events_page(start, length)` | `record { total : nat; events : vec UserDistributionEvent }` | Paged, as above (at most 2000 per page). |
+| `get_user_specific_distribution_events(owner)` | `vec UserDistributionEvent` | One owner, oldest first (served from a per-owner index: its cost depends on this owner's credits only). |
 | `get_user_token_distribution_events(owner, ledger)` | `vec UserDistributionEvent` | One owner, one token. |
 | `get_claim_events()` | `vec ClaimEvent` | Every claim attempt: a `Pending` entry and then `Success` or `Failed` with the same `sequence_number`. |
+| `get_claim_events_page(start, length)` | `record { total : nat; events : vec ClaimEvent }` | Paged, as above (at most 2000 per page). |
 | `get_claim_events_for_hotkey(principal)` | `vec ClaimEvent` | Claims made by one caller. |
 | `get_hotkey_claimed_amounts(principal)` | `vec (ledger, nat)` | Sum of successful claims (net amounts) by one caller. |
-| `get_event_statistics()` | record | Distribution and claim totals, all-time and last 24 hours, per token, with unique users. |
+| `get_event_statistics()` | record | Distribution and claim totals, all-time and last 24 hours, per token, with unique users. Claims count events: each attempt is a `Pending` and then a `Success` or `Failed` event; amounts sum `Success` events only. |
+| `get_event_statistics_status()` | record | The sizes of the three event lists (for paging) and what the last rebuild of the statistics cost in instructions. |
 
-The event lists are returned whole. They grow with every cycle; prefer the filtered versions.
+The unpaged event lists are returned whole. They grow with every cycle; use the paged or filtered versions.
+
+`get_event_statistics` keeps its all-time figures as running counters, updated as events are logged and rebuilt by one pass over the lists when the canister is upgraded (or a reset tool clears a list); the last-24h figures look only at the newest events, back to the cutoff. Its cost no longer grows with the history (before, a full scan of every list per call exceeded the query instruction limit on production). The figures are the same the full scan gave; `per_token` lists come in no particular order.
 
 ### 5.3 Tokens and distribution limits (queries)
 

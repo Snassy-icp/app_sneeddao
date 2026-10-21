@@ -129,6 +129,31 @@ git archive "$RLL_PROD_COMMIT" src/sneed_rewards src/IngressGuard.mo | tar -x -C
 "$MOC" $PKGS "$PREV_SRC/src/sneed_rewards/main.mo" -o "$OUT/rll_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
 rm -rf "$PREV_SRC"
 test -s "$OUT/rll_prod.wasm"
+# the same production source plus a test-only method that seeds a large synthetic event history
+# (canisters/rll_seed_events.mo.part), for the event-statistics tests: the old full-scan
+# get_event_statistics over a production-sized history, then the upgrade that rebuilds counters
+echo "== rll at $RLL_PROD_COMMIT + test_seed_events (moc, test only)"
+PREV_SRC="$(mktemp -d)"
+git archive "$RLL_PROD_COMMIT" src/sneed_rewards src/IngressGuard.mo | tar -x -C "$PREV_SRC"
+SEED_MAIN="$PREV_SRC/src/sneed_rewards/main.mo"
+sed -i 's/^    #get_api_doc : Any;$/    #get_api_doc : Any;\n    #test_seed_events : Any;/' "$SEED_MAIN"
+grep -q '#test_seed_events : Any;' "$SEED_MAIN"
+sed -i '$ d' "$SEED_MAIN" # the actor's closing brace
+{ cat "$HERE/canisters/rll_seed_events.mo.part"; echo "};"; } >> "$SEED_MAIN"
+# shellcheck disable=SC2086
+"$MOC" $PKGS "$SEED_MAIN" -o "$OUT/rll_prod_seed.wasm" 2>&1 | grep -i "error" -A5 | head -10 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/rll_prod_seed.wasm"
+# rll with the ICRC-3 log (commit 2d6abe89, upgrade proposal #443), for the test that upgrades
+# from it to the event-statistics counters
+RLL_ICRC3_COMMIT=2d6abe89
+echo "== rll at $RLL_ICRC3_COMMIT (moc, for the event-statistics upgrade test)"
+PREV_SRC="$(mktemp -d)"
+git archive "$RLL_ICRC3_COMMIT" src/sneed_rewards src/IngressGuard.mo src/icrc3 | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS "$PREV_SRC/src/sneed_rewards/main.mo" -o "$OUT/rll_icrc3.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/rll_icrc3.wasm"
 for c in MockLedger MockLedgerV2 MockLedgerFaulty MockRejectLedger MockSwapPool MockDexPool MockIcpswapFactory MockKongSwap \
          MockSnsGovernance MockSnsNeurons MockHubSns MockForumGovernance MockForumSnsW MockRllGovernance MockNnsGovernance \
          MockCmc MockSnsWasm MockPremium MockSneedApp MockIcpSwapList MockIcpSwapTokenList MockNamesModerator MockIcpLedger MockMrSneedGov MockNotifySender MockExt Icrc3Demo; do

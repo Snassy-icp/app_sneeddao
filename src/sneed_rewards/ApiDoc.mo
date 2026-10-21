@@ -46,7 +46,7 @@ RLL is where Sneed DAO's Recursive Liquidity Loop pays out. Tokens that reach it
 ## Common pitfalls
 
 - `balances_of_hotkey_neurons(neurons)` is a query that trusts the neurons you pass: fine for display; the claim always asks governance itself. `balances_of_hotkey()` is the certified update version.
-- Unfiltered event lists (`get_claim_events`, `get_user_distribution_events`, `get_distribution_events`) return everything ever logged; prefer the per-principal or per-token versions.
+- Unfiltered event lists (`get_claim_events`, `get_user_distribution_events`, `get_distribution_events`) return everything ever logged (`get_user_distribution_events` no longer fits one response on production); use `get_claim_events_page`, `get_user_distribution_events_page`, `get_distribution_events_page` (start, length; at most 2000, oldest first, with `total`) or the per-principal and per-token versions.
 - Query methods sent as update calls are refused by the ingress guard; update arguments from outside the IC are capped at 4 KiB.
 
 ## Start with these methods

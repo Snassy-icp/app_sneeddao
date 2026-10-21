@@ -21,6 +21,7 @@ import Buffer "mo:base/Buffer";
 import Time "mo:base/Time";
 import Result "mo:base/Result";
 import Hash "mo:base/Hash";
+import IC "mo:base/ExperimentalInternetComputer";
 
 import T "Types";
 import IngressGuard "../IngressGuard";
@@ -1464,7 +1465,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
         total_distributed += amount;
 
         // Log the user distribution event
-        user_distribution_events.add({
+        append_user_distribution_event({
           user = owner;
           token_id = icrc1_ledger_canister_id;
           amount = amount;
@@ -1479,7 +1480,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
       record_distribution(icrc1_ledger_canister_id, total_distributed);
       
       // Log the distribution event
-      distribution_events.add({
+      append_distribution_event({
         token_id = icrc1_ledger_canister_id;
         amount = total_distributed;
         timestamp = timestamp;
@@ -2032,11 +2033,15 @@ shared (deployer) persistent actor class SneedRLL() = this {
     stable_token_min_distributions := [];
     stable_token_max_distributions := [];
 
+    // the event statistics' counters and the per-owner index (transient): one pass over the lists
+    rebuild_event_stats();
+
     recover_timers_after_upgrade<system>();
 
     // ICRC-3: certified data does not survive an upgrade; the spill timer is (re)started
     Icrc3Log.certify(icrc3);
     ensure_icrc3_timer<system>();
+    postupgrade_instructions := IC.performanceCounter(0);
   };
 
   // Timers do not survive an upgrade, but their ids are stable variables: left alone, every
@@ -2126,6 +2131,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     assert is_admin(caller);
     let count = user_distribution_events.size();
     user_distribution_events.clear(); 
+    rebuild_event_stats();
     icrc3_admin(caller, "clear_user_distribution_events", [("count", #Nat(count))]);
   };
 
@@ -2133,6 +2139,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     assert is_admin(caller);
     let count = distribution_events.size();
     distribution_events.clear(); 
+    rebuild_event_stats();
     icrc3_admin(caller, "clear_distribution_events", [("count", #Nat(count))]);
   };
 
@@ -2140,6 +2147,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     assert is_admin(caller);
     let count = claim_events.size();
     claim_events.clear(); 
+    rebuild_event_stats();
     icrc3_admin(caller, "clear_claim_events", [("count", #Nat(count))]);
   };
   
@@ -2158,6 +2166,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     user_distribution_events.clear(); 
     distribution_events.clear(); 
     claim_events.clear(); 
+    rebuild_event_stats();
     icrc3_admin(caller, "clear_all_balances_and_distributions", Array.append<(Text, T3.Value)>([("owners", #Nat(owners_before)), ("totals", totals_before)], counts));
   };
 
@@ -2471,22 +2480,24 @@ shared (deployer) persistent actor class SneedRLL() = this {
   };
 
   // Query function to get distribution events for a specific user
+  // (through the per-owner index: visits only this owner's events)
   public query func get_user_specific_distribution_events(user : Principal) : async [T.UserDistributionEvent] {
-    let events = Buffer.Buffer<T.UserDistributionEvent>(10);
-    for (event in user_distribution_events.vals()) {
-      if (event.user == user) {
-        events.add(event);
-      };
+    switch (event_stats.user_index.get(user)) {
+      case null [];
+      case (?ix) Array.tabulate<T.UserDistributionEvent>(ix.size(), func(k) { user_distribution_events.get(ix.get(k)) });
     };
-    Buffer.toArray(events);
   };
 
   // Query function to get distribution events for a specific user and token
   public query func get_user_token_distribution_events(user : Principal, token_id : Principal) : async [T.UserDistributionEvent] {
     let events = Buffer.Buffer<T.UserDistributionEvent>(10);
-    for (event in user_distribution_events.vals()) {
-      if (event.user == user and event.token_id == token_id) {
-        events.add(event);
+    switch (event_stats.user_index.get(user)) {
+      case null {};
+      case (?ix) {
+        for (i in ix.vals()) {
+          let event = user_distribution_events.get(i);
+          if (event.token_id == token_id) events.add(event);
+        };
       };
     };
     Buffer.toArray(events);
@@ -2502,7 +2513,7 @@ shared (deployer) persistent actor class SneedRLL() = this {
     error_message: ?Text,
     tx_index: ?Nat
   ) {
-    claim_events.add({
+    append_claim_event({
         sequence_number;
         hotkey;
         token_id;
@@ -3221,200 +3232,278 @@ shared (deployer) persistent actor class SneedRLL() = this {
     }
   };
 
-  public query func get_event_statistics() : async {
-    all_time : {
-      server_distributions : {
-        total : Nat;
-        per_token : [(Principal, Nat)];
-      };
-      user_distributions : {
-        total : Nat;
-        unique_users : Nat;
-        per_token : [(Principal, Nat)];
-      };
-      claims : {
-        total : Nat;
-        successful : Nat;
-        failed : Nat;
-        pending : Nat;
-        unique_users : Nat;
-        per_token : [(Principal, Nat)];
+  ////////////////
+  // Event statistics. get_event_statistics used to scan every event list on each call, which
+  // the growing user_distribution_events list pushed over the query instruction limit. The
+  // all-time figures are now running counters, updated whenever an event is appended and
+  // rebuilt from the lists by one pass in postupgrade (and after a reset tool clears a list);
+  // the last-24h figures scan only the newest events, back to the cutoff. All of this is
+  // transient: the event lists stay the only stored data. The same pass keeps an index of
+  // each owner's user distribution events for the per-owner queries.
+  ////////////////
+
+  // per-token sums, as cells: a running total changes with one lookup
+  type TokenAmounts = HashMap.HashMap<Principal, { var v : Nat }>;
+  // Time order of an event list, so the last-24h window can stop at the cutoff: the list is
+  // non-decreasing in time from `sorted_from` on (always 0 for lists appended in real time);
+  // `max_before` is the latest timestamp before `sorted_from`.
+  type TimeOrder = { var last : Int; var max : Int; var sorted_from : Nat; var max_before : Int };
+  type EventStats = {
+    var server_count : Nat;
+    server_amounts : TokenAmounts;
+    var user_count : Nat; // unique owners: the size of user_index
+    user_amounts : TokenAmounts;
+    var claims_total : Nat;
+    var claims_successful : Nat;
+    var claims_failed : Nat;
+    var claims_pending : Nat;
+    claim_users : HashMap.HashMap<Principal, ()>;
+    claim_amounts : TokenAmounts;
+    user_index : HashMap.HashMap<Principal, Buffer.Buffer<Nat>>; // owner -> indices in user_distribution_events
+    server_order : TimeOrder;
+    user_order : TimeOrder;
+    claim_order : TimeOrder;
+  };
+
+  private func new_time_order() : TimeOrder { { var last = 0; var max = 0; var sorted_from = 0; var max_before = 0 } };
+
+  private func new_token_amounts() : TokenAmounts { HashMap.HashMap<Principal, { var v : Nat }>(100, Principal.equal, Principal.hash) };
+
+  private func token_amounts_array(m : TokenAmounts) : [(Principal, Nat)] {
+    Iter.toArray(Iter.map<(Principal, { var v : Nat }), (Principal, Nat)>(m.entries(), func((p, c)) { (p, c.v) }));
+  };
+
+  private func new_event_stats() : EventStats {
+    {
+      var server_count = 0;
+      server_amounts = new_token_amounts();
+      var user_count = 0;
+      user_amounts = new_token_amounts();
+      var claims_total = 0;
+      var claims_successful = 0;
+      var claims_failed = 0;
+      var claims_pending = 0;
+      claim_users = HashMap.HashMap<Principal, ()>(100, Principal.equal, Principal.hash);
+      claim_amounts = new_token_amounts();
+      user_index = HashMap.HashMap<Principal, Buffer.Buffer<Nat>>(100, Principal.equal, Principal.hash);
+      server_order = new_time_order();
+      user_order = new_time_order();
+      claim_order = new_time_order();
+    };
+  };
+
+  transient var event_stats : EventStats = new_event_stats();
+  // what the last rebuild cost (get_event_statistics_status)
+  transient var event_stats_rebuilt_at : Int = 0;
+  transient var event_stats_rebuild_instructions : Nat64 = 0;
+  transient var postupgrade_instructions : Nat64 = 0;
+
+  private func add_amount(map : TokenAmounts, token_id : Principal, amount : Nat) {
+    switch (map.get(token_id)) {
+      case (?c) c.v += amount;
+      case null map.put(token_id, { var v = amount });
+    };
+  };
+
+  // `index` is the event's position in its list (its size before the append)
+  private func order_add(o : TimeOrder, index : Nat, ts : Int) {
+    if (index > 0 and ts < o.last) { o.sorted_from := index; o.max_before := o.max };
+    if (index == 0 or ts > o.max) { o.max := ts };
+    o.last := ts;
+  };
+
+  private func stats_add_server(index : Nat, e : T.DistributionEvent) {
+    let s = event_stats;
+    s.server_count += 1;
+    add_amount(s.server_amounts, e.token_id, e.amount);
+    order_add(s.server_order, index, e.timestamp);
+  };
+
+  private func stats_add_user(index : Nat, e : T.UserDistributionEvent) {
+    let s = event_stats;
+    s.user_count += 1;
+    add_amount(s.user_amounts, e.token_id, e.amount);
+    order_add(s.user_order, index, e.timestamp);
+    switch (s.user_index.get(e.user)) {
+      case (?b) b.add(index);
+      case null { let b = Buffer.Buffer<Nat>(4); b.add(index); s.user_index.put(e.user, b) };
+    };
+  };
+
+  private func stats_add_claim(index : Nat, e : T.ClaimEvent) {
+    let s = event_stats;
+    s.claims_total += 1;
+    if (s.claim_users.get(e.hotkey) == null) s.claim_users.put(e.hotkey, ());
+    switch (e.status) {
+      case (#Success) { s.claims_successful += 1; add_amount(s.claim_amounts, e.token_id, e.amount) };
+      case (#Failed) { s.claims_failed += 1 };
+      case (#Pending) { s.claims_pending += 1 };
+    };
+    order_add(s.claim_order, index, Nat64.toNat(e.timestamp));
+  };
+
+  // Every append to the three event lists goes through these.
+  private func append_distribution_event(e : T.DistributionEvent) {
+    stats_add_server(distribution_events.size(), e);
+    distribution_events.add(e);
+  };
+
+  private func append_user_distribution_event(e : T.UserDistributionEvent) {
+    stats_add_user(user_distribution_events.size(), e);
+    user_distribution_events.add(e);
+  };
+
+  private func append_claim_event(e : T.ClaimEvent) {
+    stats_add_claim(claim_events.size(), e);
+    claim_events.add(e);
+  };
+
+  // One pass over the lists (postupgrade, and after a reset tool cleared one).
+  private func rebuild_event_stats() {
+    let start = IC.performanceCounter(0);
+    event_stats := new_event_stats();
+    var i = 0;
+    for (e in distribution_events.vals()) { stats_add_server(i, e); i += 1 };
+    i := 0;
+    for (e in user_distribution_events.vals()) { stats_add_user(i, e); i += 1 };
+    i := 0;
+    for (e in claim_events.vals()) { stats_add_claim(i, e); i += 1 };
+    event_stats_rebuilt_at := Time.now();
+    event_stats_rebuild_instructions := IC.performanceCounter(0) - start;
+  };
+
+  // The positions of a list whose timestamp may be >= cutoff, oldest first: the newest run back
+  // to the cutoff, preceded by the unsorted head if one exists and reaches the cutoff (then
+  // every position before the run is visited and the caller filters by time).
+  private func window_positions(o : TimeOrder, size : Nat, ts_at : Nat -> Int, cutoff : Int) : Iter.Iter<Nat> {
+    var from = size;
+    while (from > o.sorted_from and ts_at(from - 1) >= cutoff) { from -= 1 };
+    let head = if (o.sorted_from > 0 and o.max_before >= cutoff) o.sorted_from else 0;
+    let first = if (head > 0) 0 else from;
+    var i = first;
+    {
+      next = func() : ?Nat {
+        if (i == head and head > 0) { i := from };
+        if (i >= size) return null;
+        let r = i;
+        i += 1;
+        ?r;
       };
     };
-    last_24h : {
-      server_distributions : {
-        total : Nat;
-        per_token : [(Principal, Nat)];
-      };
-      user_distributions : {
-        total : Nat;
-        unique_users : Nat;
-        per_token : [(Principal, Nat)];
-      };
-      claims : {
-        total : Nat;
-        successful : Nat;
-        failed : Nat;
-        pending : Nat;
-        unique_users : Nat;
-        per_token : [(Principal, Nat)];
+  };
+
+  type PeriodStatistics = {
+    server_distributions : { total : Nat; per_token : [(Principal, Nat)] };
+    user_distributions : { total : Nat; unique_users : Nat; per_token : [(Principal, Nat)] };
+    claims : { total : Nat; successful : Nat; failed : Nat; pending : Nat; unique_users : Nat; per_token : [(Principal, Nat)] };
+  };
+
+  private func last_24h_statistics(cutoff : Int) : PeriodStatistics {
+    let s = event_stats;
+    var server_count = 0;
+    let server_amounts = new_token_amounts();
+    for (i in window_positions(s.server_order, distribution_events.size(), func(i) { distribution_events.get(i).timestamp }, cutoff)) {
+      let e = distribution_events.get(i);
+      if (e.timestamp >= cutoff) { server_count += 1; add_amount(server_amounts, e.token_id, e.amount) };
+    };
+    var user_count = 0;
+    let users = HashMap.HashMap<Principal, ()>(100, Principal.equal, Principal.hash);
+    let user_amounts = new_token_amounts();
+    for (i in window_positions(s.user_order, user_distribution_events.size(), func(i) { user_distribution_events.get(i).timestamp }, cutoff)) {
+      let e = user_distribution_events.get(i);
+      if (e.timestamp >= cutoff) { user_count += 1; if (users.get(e.user) == null) users.put(e.user, ()); add_amount(user_amounts, e.token_id, e.amount) };
+    };
+    var total = 0;
+    var successful = 0;
+    var failed = 0;
+    var pending = 0;
+    let claim_users = HashMap.HashMap<Principal, ()>(100, Principal.equal, Principal.hash);
+    let claim_amounts = new_token_amounts();
+    for (i in window_positions(s.claim_order, claim_events.size(), func(i) { Nat64.toNat(claim_events.get(i).timestamp) }, cutoff)) {
+      let e = claim_events.get(i);
+      if (Nat64.toNat(e.timestamp) >= cutoff) {
+        total += 1;
+        if (claim_users.get(e.hotkey) == null) claim_users.put(e.hotkey, ());
+        switch (e.status) {
+          case (#Success) { successful += 1; add_amount(claim_amounts, e.token_id, e.amount) };
+          case (#Failed) { failed += 1 };
+          case (#Pending) { pending += 1 };
+        };
       };
     };
-  } {
+    {
+      server_distributions = { total = server_count; per_token = token_amounts_array(server_amounts) };
+      user_distributions = { total = user_count; unique_users = users.size(); per_token = token_amounts_array(user_amounts) };
+      claims = { total; successful; failed; pending; unique_users = claim_users.size(); per_token = token_amounts_array(claim_amounts) };
+    };
+  };
+
+  // All-time figures from the counters; last 24 hours by scanning back from the newest event.
+  // Same results as the full scan it replaces (test/canisters/tests/rll-stats.test.js).
+  public query func get_event_statistics() : async { all_time : PeriodStatistics; last_24h : PeriodStatistics } {
     let current_time = Int.abs(Time.now());
-    let twenty_four_hours_ago = current_time - (24 * 60 * 60 * 1_000_000_000); // 24 hours in nanoseconds
-
-    // Initialize counters for all time
-    var all_time_server_dist_count = 0;
-    var all_time_user_dist_count = 0;
-    var all_time_claims_total = 0;
-    var all_time_claims_successful = 0;
-    var all_time_claims_failed = 0;
-    var all_time_claims_pending = 0;
-
-    // Initialize counters for last 24h
-    var last_24h_server_dist_count = 0;
-    var last_24h_user_dist_count = 0;
-    var last_24h_claims_total = 0;
-    var last_24h_claims_successful = 0;
-    var last_24h_claims_failed = 0;
-    var last_24h_claims_pending = 0;
-
-    // Track unique users
-    let all_time_dist_users = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
-    let last_24h_dist_users = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
-    let all_time_claim_users = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
-    let last_24h_claim_users = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
-
-    // Track per-token amounts (only for successful claims)
-    let all_time_server_dist_amounts = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
-    let last_24h_server_dist_amounts = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
-    let all_time_user_dist_amounts = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
-    let last_24h_user_dist_amounts = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
-    let all_time_claim_amounts = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
-    let last_24h_claim_amounts = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
-
-    // Count server distributions
-    for (event in distribution_events.vals()) {
-      all_time_server_dist_count += 1;
-      let current_amount = switch (all_time_server_dist_amounts.get(event.token_id)) {
-        case (null) { 0 };
-        case (?amount) { amount };
-      };
-      all_time_server_dist_amounts.put(event.token_id, current_amount + event.amount);
-      
-      if (event.timestamp >= twenty_four_hours_ago) {
-        last_24h_server_dist_count += 1;
-        let current_24h_amount = switch (last_24h_server_dist_amounts.get(event.token_id)) {
-          case (null) { 0 };
-          case (?amount) { amount };
-        };
-        last_24h_server_dist_amounts.put(event.token_id, current_24h_amount + event.amount);
-      };
-    };
-
-    // Count user distributions
-    for (event in user_distribution_events.vals()) {
-      all_time_user_dist_count += 1;
-      all_time_dist_users.put(event.user, true);
-      let current_amount = switch (all_time_user_dist_amounts.get(event.token_id)) {
-        case (null) { 0 };
-        case (?amount) { amount };
-      };
-      all_time_user_dist_amounts.put(event.token_id, current_amount + event.amount);
-      
-      if (event.timestamp >= twenty_four_hours_ago) {
-        last_24h_user_dist_count += 1;
-        last_24h_dist_users.put(event.user, true);
-        let current_24h_amount = switch (last_24h_user_dist_amounts.get(event.token_id)) {
-          case (null) { 0 };
-          case (?amount) { amount };
-        };
-        last_24h_user_dist_amounts.put(event.token_id, current_24h_amount + event.amount);
-      };
-    };
-
-    // Count claims
-    for (event in claim_events.vals()) {
-      all_time_claims_total += 1;
-      all_time_claim_users.put(event.hotkey, true);
-      
-      switch (event.status) {
-        case (#Success) { 
-          all_time_claims_successful += 1;
-          // Only add amounts for successful claims
-          let current_amount = switch (all_time_claim_amounts.get(event.token_id)) {
-            case (null) { 0 };
-            case (?amount) { amount };
-          };
-          all_time_claim_amounts.put(event.token_id, current_amount + event.amount);
-        };
-        case (#Failed) { all_time_claims_failed += 1; };
-        case (#Pending) { all_time_claims_pending += 1; };
-      };
-
-      // Convert timestamp from Nat64 to Int for comparison
-      let event_time = Int.abs(Nat64.toNat(event.timestamp));
-      if (event_time >= twenty_four_hours_ago) {
-        last_24h_claims_total += 1;
-        last_24h_claim_users.put(event.hotkey, true);
-        
-        switch (event.status) {
-          case (#Success) { 
-            last_24h_claims_successful += 1;
-            // Only add amounts for successful claims
-            let current_24h_amount = switch (last_24h_claim_amounts.get(event.token_id)) {
-              case (null) { 0 };
-              case (?amount) { amount };
-            };
-            last_24h_claim_amounts.put(event.token_id, current_24h_amount + event.amount);
-          };
-          case (#Failed) { last_24h_claims_failed += 1; };
-          case (#Pending) { last_24h_claims_pending += 1; };
-        };
-      };
-    };
-
+    let twenty_four_hours_ago : Int = current_time - (24 * 60 * 60 * 1_000_000_000); // 24 hours in nanoseconds
+    let s = event_stats;
     {
       all_time = {
-        server_distributions = {
-          total = all_time_server_dist_count;
-          per_token = Iter.toArray(all_time_server_dist_amounts.entries());
-        };
-        user_distributions = {
-          total = all_time_user_dist_count;
-          unique_users = all_time_dist_users.size();
-          per_token = Iter.toArray(all_time_user_dist_amounts.entries());
-        };
+        server_distributions = { total = s.server_count; per_token = token_amounts_array(s.server_amounts) };
+        user_distributions = { total = s.user_count; unique_users = s.user_index.size(); per_token = token_amounts_array(s.user_amounts) };
         claims = {
-          total = all_time_claims_total;
-          successful = all_time_claims_successful;
-          failed = all_time_claims_failed;
-          pending = all_time_claims_pending;
-          unique_users = all_time_claim_users.size();
-          per_token = Iter.toArray(all_time_claim_amounts.entries());
+          total = s.claims_total;
+          successful = s.claims_successful;
+          failed = s.claims_failed;
+          pending = s.claims_pending;
+          unique_users = s.claim_users.size();
+          per_token = token_amounts_array(s.claim_amounts);
         };
       };
-      last_24h = {
-        server_distributions = {
-          total = last_24h_server_dist_count;
-          per_token = Iter.toArray(last_24h_server_dist_amounts.entries());
-        };
-        user_distributions = {
-          total = last_24h_user_dist_count;
-          unique_users = last_24h_dist_users.size();
-          per_token = Iter.toArray(last_24h_user_dist_amounts.entries());
-        };
-        claims = {
-          total = last_24h_claims_total;
-          successful = last_24h_claims_successful;
-          failed = last_24h_claims_failed;
-          pending = last_24h_claims_pending;
-          unique_users = last_24h_claim_users.size();
-          per_token = Iter.toArray(last_24h_claim_amounts.entries());
-        };
-      };
-    }
+      last_24h = last_24h_statistics(twenty_four_hours_ago);
+    };
+  };
+
+  // The sizes of the event lists (for the paged queries) and what the last rebuild of the
+  // statistics cost, in instructions (postupgrade_instructions: the whole post-upgrade step,
+  // stable-variable restore included).
+  public query func get_event_statistics_status() : async {
+    distribution_events : Nat;
+    user_distribution_events : Nat;
+    claim_events : Nat;
+    rebuilt_at : Int;
+    rebuild_instructions : Nat64;
+    postupgrade_instructions : Nat64;
+  } {
+    {
+      distribution_events = distribution_events.size();
+      user_distribution_events = user_distribution_events.size();
+      claim_events = claim_events.size();
+      rebuilt_at = event_stats_rebuilt_at;
+      rebuild_instructions = event_stats_rebuild_instructions;
+      postupgrade_instructions;
+    };
+  };
+
+  // Paged reads of the event lists, oldest first (position `start`, at most EVENT_PAGE_MAX
+  // events); `total` is the list's size, so the newest page starts at total - length.
+  transient let EVENT_PAGE_MAX = 2_000;
+
+  private func page_range(size : Nat, start : Nat, length : Nat) : (Nat, Nat) {
+    let from = Nat.min(start, size);
+    (from, Nat.min(size, from + Nat.min(length, EVENT_PAGE_MAX)));
+  };
+
+  public query func get_distribution_events_page(start : Nat, length : Nat) : async { total : Nat; events : [T.DistributionEvent] } {
+    let (from, to) = page_range(distribution_events.size(), start, length);
+    { total = distribution_events.size(); events = Array.tabulate<T.DistributionEvent>(to - from, func(k) { distribution_events.get(from + k) }) };
+  };
+
+  public query func get_user_distribution_events_page(start : Nat, length : Nat) : async { total : Nat; events : [T.UserDistributionEvent] } {
+    let (from, to) = page_range(user_distribution_events.size(), start, length);
+    { total = user_distribution_events.size(); events = Array.tabulate<T.UserDistributionEvent>(to - from, func(k) { user_distribution_events.get(from + k) }) };
+  };
+
+  public query func get_claim_events_page(start : Nat, length : Nat) : async { total : Nat; events : [T.ClaimEvent] } {
+    let (from, to) = page_range(claim_events.size(), start, length);
+    { total = claim_events.size(); events = Array.tabulate<T.ClaimEvent>(to - from, func(k) { claim_events.get(from + k) }) };
   };
 
   public query ({ caller }) func get_error_claim_events() : async Result.Result<[T.ClaimEvent], Text> {
@@ -4095,6 +4184,10 @@ shared (deployer) persistent actor class SneedRLL() = this {
     #get_empty_ballot_proposals : Any;
     #get_error_claim_events : Any;
     #get_event_statistics : Any;
+    #get_event_statistics_status : Any;
+    #get_distribution_events_page : Any;
+    #get_user_distribution_events_page : Any;
+    #get_claim_events_page : Any;
     #get_highest_closed_proposal_id : Any;
     #get_hotkey_claimed_amounts : Any;
     #get_hotkey_voting_power : Any;
@@ -4180,6 +4273,10 @@ shared (deployer) persistent actor class SneedRLL() = this {
         or #get_empty_ballot_proposals _
         or #get_error_claim_events _
         or #get_event_statistics _
+        or #get_event_statistics_status _
+        or #get_distribution_events_page _
+        or #get_user_distribution_events_page _
+        or #get_claim_events_page _
         or #get_highest_closed_proposal_id _
         or #get_hotkey_claimed_amounts _
         or #get_hotkey_voting_power _

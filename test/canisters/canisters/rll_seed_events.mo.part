@@ -1,0 +1,46 @@
+  // TEST BUILD ONLY. build.sh appends this method to a copy of an earlier rll source
+  // (build/rll_prod_seed.wasm) to give the event lists a large synthetic history quickly; it is
+  // never part of a release build. Per round r (from `first_round`), at t0 + (r - first_round)
+  // * step: for each token k, one credit per user u of (u + 1) * (k + 1) + r and a distribution
+  // of their sum; then `claims` claims by users 0, 1, ...: Pending, then Success (or Failed for
+  // every third), amount 100 + r. Returns the size of user_distribution_events.
+  private func test_seed_user(u : Nat) : Principal {
+    Principal.fromBlob(Blob.fromArray([0x5e, Nat8.fromNat(u / 256), Nat8.fromNat(u % 256), 0x01]));
+  };
+
+  public shared func test_seed_events(users : Nat, tokens : [Principal], first_round : Nat, rounds : Nat, t0 : Int, step : Int, claims : Nat) : async Nat {
+    var r = first_round;
+    while (r < first_round + rounds) {
+      let ts : Int = t0 + (r - first_round) * step;
+      let range = { first = 1 : Nat64; last = Nat64.fromNat(r + 1) };
+      for (k in tokens.keys()) {
+        var total = 0;
+        var u = 0;
+        while (u < users) {
+          let amount = (u + 1) * (k + 1) + r;
+          user_distribution_events.add({ user = test_seed_user(u); token_id = tokens[k]; amount; timestamp = ts; proposal_range = range });
+          total += amount;
+          u += 1;
+        };
+        distribution_events.add({ token_id = tokens[k]; amount = total; timestamp = ts; proposal_range = range });
+      };
+      var c = 0;
+      while (c < claims) {
+        let ev = {
+          sequence_number = 1_000_000 + r * claims + c;
+          hotkey = test_seed_user(c);
+          token_id = tokens[c % tokens.size()];
+          amount = 100 + r;
+          fee = 10;
+          timestamp = Nat64.fromNat(Int.abs(ts));
+          error_message = null : ?Text;
+          tx_index = null : ?Nat;
+        };
+        claim_events.add({ ev with status = #Pending });
+        claim_events.add({ ev with status = if (c % 3 == 2) #Failed else #Success });
+        c += 1;
+      };
+      r += 1;
+    };
+    user_distribution_events.size();
+  };
