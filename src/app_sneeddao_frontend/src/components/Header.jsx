@@ -233,7 +233,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/sneedapp'].includes(path) || path.startsWith('/sneedapp/')) return 'Sneedapp';
         if (['/tools/main', '/tools/sns_jailbreak', '/tools/sns_jailbreak_list', '/studio', '/custody'].includes(path) || path.startsWith('/tools/') || path.startsWith('/studio/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
-        if (['/help', '/api'].includes(path) || location.pathname.startsWith('/help/') || location.pathname.startsWith('/api/')) return 'Help';
+        if (['/help', '/api', '/architecture'].includes(path) || location.pathname.startsWith('/help/') || location.pathname.startsWith('/api/')) return 'Help';
         return 'Sneed Hub';
     });
 
@@ -379,7 +379,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('Sneedapp');
         } else if (['/admin'].includes(path) || path.startsWith('/admin/')) {
             setActiveSection('Admin');
-        } else if (['/help', '/api'].includes(path) || path.startsWith('/help/') || path.startsWith('/api/')) {
+        } else if (['/help', '/api', '/architecture'].includes(path) || path.startsWith('/help/') || path.startsWith('/api/')) {
             setActiveSection('Help');
         }
     }, [location.pathname]);
@@ -648,7 +648,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             defaultPath: '/help',
             subMenu: [
                 { name: 'Help', path: '/help' },
-                { name: 'API', path: '/api' }
+                { name: 'API', path: '/api' },
+                { name: 'Architecture', path: '/architecture' }
             ]
         }
     };

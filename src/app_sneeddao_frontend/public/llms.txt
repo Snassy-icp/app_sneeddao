@@ -24,6 +24,7 @@ Each reference has Markdown (`.md`), Candid (`.did`) and a JavaScript IDL factor
 - [Mr Sneed](https://app.sneeddao.com/api-docs/mr_sneed.md): the DAO mascot's on-chain memory and activity log
 - [Sneed Hub backend](https://app.sneeddao.com/api-docs/app_sneeddao_backend.md): settings, whitelisted tokens, partners, projects
 - [Human-readable API pages](https://app.sneeddao.com/api)
+- [Architecture map](https://app.sneeddao.com/architecture): every Sneed DAO canister, its ids, controllers and connections, and which services use it
 
 ## Agent skills
 

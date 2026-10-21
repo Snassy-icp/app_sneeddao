@@ -99,6 +99,7 @@ import HelpWallet from './pages/HelpWallet';
 import HelpApp from './pages/HelpApp';
 import HelpSneedlock from './pages/HelpSneedlock';
 import Api from './pages/Api';
+import Architecture from './pages/Architecture';
 import ApiDoc from './pages/ApiDoc';
 import HelpIcpNeuronManager from './pages/HelpIcpNeuronManager';
 import HelpSneedex from './pages/HelpSneedex';
@@ -232,6 +233,7 @@ function App() {
                     <Route path="/help/sneedapp" element={<HelpSneedapp />} />
                     <Route path="/help/liquid-staking" element={<HelpLiquidStaking />} />
                     <Route path="/api" element={<Api />} />
+                    <Route path="/architecture" element={<Architecture />} />
                     <Route path="/api/:slug" element={<ApiDoc />} />
                     <Route path="/rll" element={<RLL />} />
                     <Route path="/rll_info" element={<RLLInfo />} />

@@ -12,6 +12,7 @@ import { readdirSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, exis
 import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { NODES } from '../src/data/architecture.js';
 
 const frontendDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const declarationsDir = join(frontendDir, '..', 'declarations');
@@ -87,25 +88,17 @@ if (origin) writeFileSync(derivationFile, origin + '\n');
 else if (existsSync(derivationFile)) unlinkSync(derivationFile);
 
 const docsUrl = (slug) => `${origin || 'https://app.sneeddao.com'}/api-docs/${slug}.md`;
-const architecture = [
-    ['app_sneeddao_frontend', 'frontend', 'Sneed Hub, the web app (asset canister). Guide for agents: /llms.txt'],
-    ['app_sneeddao_backend', 'backend', `Settings, whitelisted tokens, partners, projects, name moderation. ${docsUrl('app_sneeddao_backend')}`],
-    ['sneed_lock', 'token and liquidity locks', `Time locks for ICRC-1 tokens and ICPSwap positions; locks are ICRC-7 NFTs; moves real funds. ${docsUrl('sneed_lock')}`],
-    ['sneedex', 'marketplace and escrow', `Offers and bids for tokens, NFTs, neurons, canisters and locks; moves real funds. ${docsUrl('sneedex')}`],
-    ['sneed_sns_forum', 'forum', `Forums, threads, posts, votes, polls, tips, mentions. ${docsUrl('sneed_sns_forum')}`],
-    ['sneed_sms', 'direct messages', `Messages between principals; not public, not encrypted, admins can read them. ${docsUrl('sneed_sms')}`],
-    ['sneed_notifications', 'notifications', `Notifications by Sneed SMS, Discord or phone push; users pay paid channels in ICP. ${docsUrl('sneed_notifications')}`],
-    ['sneed_pid_names', 'names', `Public names of principals and accounts. ${docsUrl('sneed_names')}`],
-    ['sneed_neuron_names', 'neuron names', `Public names of neurons. ${docsUrl('sneed_names')}`],
-    ['sneed_pid_nicknames', 'nicknames', `Private nicknames for principals. ${docsUrl('sneed_names')}`],
-    ['sneed_neuron_nicknames', 'neuron nicknames', `Private nicknames for neurons. ${docsUrl('sneed_names')}`],
-    ['sneed_avatars', 'avatars', `Avatar images, including NFT avatars. ${docsUrl('sneed_names')}`],
-    ['sneed_profiles', 'profiles', `Profiles and dapp entries. ${docsUrl('sneed_names')}`],
-    ['sneed_premium', 'premium membership', `Sneed Premium; paid in ICP or by staked voting power. ${docsUrl('sneed_premium')}`],
-    ['rll', 'rewards', `Shares revenue among Sneed DAO neuron owners; claims pay real tokens. ${docsUrl('rll')}`],
-    ['sneedapp', 'app store', `Mints and lists bot canisters for users; minting costs ICP. ${docsUrl('sneedapp')}`],
-    ['mr_sneed', 'Mr Sneed', `The DAO's mascot and spirit given a voice by AI: personality, memories, activity log. ${docsUrl('mr_sneed')}`],
-];
+// Every canister, its role and description come from the architecture map that /architecture shows
+// (src/data/architecture.js); it must agree with canister_ids.json, so differences are reported here.
+const architecture = NODES.filter((n) => n.kind === 'dao' && n.ids)
+    .map((n) => [n.id, n.role, n.api ? `${n.about} ${docsUrl(n.api)}` : n.about]);
+for (const [name, ids] of Object.entries(canisterIds)) {
+    const node = NODES.find((n) => n.id === name);
+    if (!node) { console.warn(`build-api-docs: ${name} is in canister_ids.json but not in src/data/architecture.js`); continue; }
+    for (const net of ['ic', 'staging']) {
+        if ((node.ids?.[net] || null) !== (ids[net] || null)) console.warn(`build-api-docs: src/data/architecture.js has ${node.ids?.[net] || 'no id'} for ${name} on ${net}, canister_ids.json ${ids[net] || 'none'}`);
+    }
+}
 const archFile = join(wellKnown, 'ic-architecture');
 if (process.env.SNEED_PUBLISH_IC_ARCHITECTURE === '1' && origin) {
     const canisters = architecture.filter(([name]) => idOn(name)).map(([name, role, description]) => ({ id: idOn(name), name, role, description }));

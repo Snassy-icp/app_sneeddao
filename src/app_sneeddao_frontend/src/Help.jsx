@@ -6,7 +6,7 @@ import { FaMobileAlt,
     FaQuestionCircle, FaBook, FaWallet, FaBrain, FaLock, FaServer, 
     FaCubes, FaStore, FaUnlock, FaArrowRight, FaLifeRing, FaChartLine,
     FaIdBadge, FaLandmark, FaVoteYea, FaWater, FaComments, FaEnvelope, FaBell,
-    FaRocket, FaFlask, FaTools, FaRobot, FaCode
+    FaRocket, FaFlask, FaTools, FaRobot, FaCode, FaProjectDiagram
 } from 'react-icons/fa';
 
 // Custom CSS for animations
@@ -364,11 +364,18 @@ function Help() {
                         <p style={{ ...styles.topicDescription, fontSize: '0.95rem' }}>
                             Point your AI agent at <a href="/llms.txt" style={{ color: theme.colors.accent, fontWeight: 600 }}>app.sneeddao.com/llms.txt</a>:
                             it lists what Sneed Hub and the Sneed DAO canisters do and how to call them.
-                            Developers can browse the canister interfaces in the <Link to="/api" style={{ color: theme.colors.accent, fontWeight: 600 }}>API docs</Link>.
+                            Developers can browse the canister interfaces in the <Link to="/api" style={{ color: theme.colors.accent, fontWeight: 600 }}>API docs</Link>,
+                            and see how every canister and service fits together on the <Link to="/architecture" style={{ color: theme.colors.accent, fontWeight: 600 }}>architecture map</Link>.
                         </p>
-                        <div style={styles.topicArrow('#64748b')}>
-                            <FaCode size={12} />
-                            <Link to="/api" style={{ color: 'inherit', textDecoration: 'none' }}>Open the API docs</Link>
+                        <div style={{ display: 'flex', gap: '18px', flexWrap: 'wrap' }}>
+                            <div style={styles.topicArrow('#64748b')}>
+                                <FaCode size={12} />
+                                <Link to="/api" style={{ color: 'inherit', textDecoration: 'none' }}>Open the API docs</Link>
+                            </div>
+                            <div style={styles.topicArrow('#64748b')}>
+                                <FaProjectDiagram size={12} />
+                                <Link to="/architecture" style={{ color: 'inherit', textDecoration: 'none' }}>Open the architecture map</Link>
+                            </div>
                         </div>
                     </div>
                 </section>

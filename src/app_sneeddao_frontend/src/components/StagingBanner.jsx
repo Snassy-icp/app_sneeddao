@@ -14,9 +14,12 @@ export default function StagingBanner() {
             fontWeight: 600, position: 'relative', zIndex: 1001,
         }}>
             <FaFlask style={{ verticalAlign: '-2px', marginRight: 6 }} />
-            STAGING: a test copy of Sneed Hub for trying proposed features before you vote. It uses real tokens,
-            so use small amounts; its names, posts and settings are separate from the real site.{' '}
+            STAGING: a preview of Sneed Hub for trying proposed features before you vote; its names, posts and
+            settings are separate from the real site.{' '}
             <a href="https://app.sneeddao.com" style={{ color: '#1a1200', textDecoration: 'underline' }}>Sneed Hub is at app.sneeddao.com</a>
+            <div style={{ marginTop: 2, fontWeight: 700 }}>
+                Run by the team, not the DAO. It uses real tokens at real prices: only tiny test amounts, never your funds.
+            </div>
         </div>
     );
 }

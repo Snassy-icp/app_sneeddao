@@ -255,6 +255,10 @@ function Api() {
                         on the same terms as the Sneed app itself, and nobody has to ask first. Each document below explains the model,
                         walks through the flows with code, and then lists every method with its errors and types.
                     </p>
+                    <p style={{ ...styles.paragraph, marginTop: '0.75rem' }}>
+                        To see how the canisters fit together, which ones call which and who controls each, open
+                        the <Link to="/architecture" style={{ color: apiPrimary, fontWeight: 600 }}>architecture map</Link>.
+                    </p>
                 </div>
 
                 <h2 style={styles.sectionTitle}><FaBookOpen style={{ color: apiPrimary }} /> Documents</h2>
