@@ -242,7 +242,6 @@ export const EDGES = [
     // people
     { from: 'people', to: 'app_sneeddao_frontend', type: 'call', label: 'opens Sneed Hub' },
     { from: 'people', to: 'internet_identity', type: 'call', label: 'logs in' },
-    { from: 'people', to: 'vectors', type: 'payment', label: 'when you buy Premium or a jailbreak script, your wallet pays the ICP splitter directly (no canister in between)' },
     { from: 'agents', to: 'app_sneeddao_frontend', type: 'call', label: 'reads /llms.txt, the agent skills and the API docs' },
     { from: 'agents', to: 'mcp', type: 'relay', label: 'asks through MCP tools' },
     // agents and integrators call the canisters' public APIs directly, as Sneed Hub does (a few main ones shown)
@@ -344,7 +343,13 @@ export const EDGES = [
     { from: 'sneed_sms', to: 'sneed_notifications', type: 'notify', label: 'new message alerts' },
     { from: 'sneed_notifications', to: 'sneed_sms', type: 'notify', label: 'delivers to your Sneed SMS inbox' },
     { from: 'sneed_notifications', to: 'icp_ledger', type: 'payment', label: 'notification balances in ICP' },
-    { from: 'sneed_notifications', to: 'vectors', type: 'payment', label: 'forwards delivery fees to the ICP splitter (being added)' },
+    { from: 'sneed_notifications', to: 'vectors', type: 'payment', label: 'forwards earned delivery fees to the ICP splitter' },
+    // product revenue: every fee in ICP ends up in the RLL's ICP splitter
+    { from: 'sneed_premium', to: 'vectors', type: 'payment', label: 'membership payments to the ICP splitter' },
+    { from: 'app_sneeddao_backend', to: 'vectors', type: 'payment', label: 'jailbreak fees to the ICP splitter' },
+    { from: 'sneed_lock', to: 'vectors', type: 'payment', label: 'lock fees to the ICP splitter' },
+    { from: 'sneedapp', to: 'vectors', type: 'payment', label: 'the DAO\'s cut of bot mints to the ICP splitter' },
+    { from: 'sneed_mon', to: 'vectors', type: 'payment', label: 'check fees to the ICP splitter' },
     { from: 'relays', to: 'sneed_notifications', type: 'relay', label: 'pulls jobs, delivers by Discord and push, confirms' },
     { from: 'sneed_mon', to: 'sns_w', type: 'call', label: 'checks that an SNS is real' },
     { from: 'sneed_mon', to: 'other_snses', type: 'call', label: 'open proposals, ballots and your neurons' },
