@@ -293,8 +293,8 @@ export default function Notifications() {
             </div>
 
             <div style={card}>
-                <h2 style={h2}><FaWallet color={accent} /> Balance</h2>
-                <p style={{ ...muted, marginTop: 0 }}>You pay for your own deliveries on paid channels (phone push, Discord, email…); Sneed SMS is free. An app may pay for a message itself. Your balance: <strong style={{ color: c.primaryText }}>{formatIcp(data.balance_e8s)}</strong>. Top-ups can't be withdrawn.</p>
+                <h2 style={h2} id="message-balance"><FaWallet color={accent} /> Message balance</h2>
+                <p style={{ ...muted, marginTop: 0 }}>You pay for your own deliveries on paid channels (phone push, Discord, email…); Sneed SMS is free. An app may pay for a message itself. Your message balance: <strong style={{ color: c.primaryText }}>{formatIcp(data.balance_e8s)}</strong>. Top-ups can't be withdrawn. This is separate from your <a href="#sneed-monitor" style={{ color: accent }}>Sneed Monitor balance</a>, which pays for proposal checks.</p>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <input type="number" min="0.0001" step="0.0001" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ ...select, width: 120 }} /> <span style={muted}>ICP</span>
                     <button type="button" style={btn(true)} disabled={busy || !(Number(amount) > 0)} onClick={() => run(async () => { await topUp(identity, BigInt(Math.round(Number(amount) * 1e8))); }, 'Topped up')}>Top up</button>
@@ -302,7 +302,7 @@ export default function Notifications() {
                 </div>
                 {lowAlert !== '' && (
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
-                        <span style={muted}>Warn me when my balance falls below</span>
+                        <span style={muted}>Warn me when my message balance falls below</span>
                         <input type="number" min="0" step="0.0001" value={lowAlert} onChange={(e) => setLowAlert(e.target.value)} style={{ ...select, width: 110 }} /> <span style={muted}>ICP</span>
                         <button type="button" style={btn(false)} disabled={busy || !(Number(lowAlert) >= 0)} onClick={() => run(async () => actor.set_low_balance_alert(BigInt(Math.round(Number(lowAlert) * 1e8))), Number(lowAlert) > 0 ? 'Low-balance alert saved' : 'Low-balance alert turned off')}>Save</button>
                         <span style={{ ...muted, flexBasis: '100%', fontSize: '0.78rem' }}>Sent once, free, to Sneed SMS and your urgent channels; again after a top-up. 0 turns it off.</span>

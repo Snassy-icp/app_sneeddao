@@ -170,7 +170,7 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
     const turnOff = () => run(async () => {
         for (const w of watches) ok(await actor.unwatch(w.target));
         setPendingEnable(false);
-        setMsg({ ok: `Stopped. Nothing more is charged; your balance (${fmtIcp(balance.balance_e8s)}) stays until you withdraw it under Advanced.` });
+        setMsg({ ok: `Stopped. Nothing more is charged; your Sneed Monitor balance (${fmtIcp(balance.balance_e8s)}) stays until you withdraw it under Advanced.` });
     });
 
     // after a credit: go on with turning monitoring on, when that was what the deposit was for
@@ -182,7 +182,7 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
             await enableNow(planTargets);
             return;
         }
-        setMsg({ ok: `Credited ${fmtIcp(credited)}. Your balance: ${fmtIcp(fresh.balance_e8s)}.` });
+        setMsg({ ok: `Credited ${fmtIcp(credited)}. Your Sneed Monitor balance: ${fmtIcp(fresh.balance_e8s)}.` });
     };
     const creditDeposit = () => run(async () => {
         const r = ok(await actor.credit_deposit());
@@ -252,7 +252,7 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
             <h2 style={h2}><FaSatelliteDish color={accent} /> Sneed Monitor</h2>
             <p style={{ ...muted, marginTop: 0 }}>
                 Get a message when one of your neurons can vote on a proposal, and a reminder before voting closes, even while Sneed Hub is closed.
-                You pay a small amount per check from a prepaid ICP balance. <Link to="/help/monitor" style={{ color: accent }}>How it works</Link>
+                Checks are paid from your <strong>Sneed Monitor balance</strong>, a prepaid ICP balance of its own. It is separate from your <a href="#message-balance" style={{ color: accent }}>message balance</a> below, which pays for deliveries on paid channels. <Link to="/help/monitor" style={{ color: accent }}>How it works</Link>
             </p>
 
             {/* the casual switch */}
@@ -264,7 +264,7 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
                 </button>
             </div>
             <div style={{ ...muted, display: 'grid', gap: 4 }}>
-                <span>Balance: <strong style={{ color: c.primaryText }}>{money(balance.balance_e8s)}</strong></span>
+                <span>Sneed Monitor balance: <strong style={{ color: c.primaryText }}>{money(balance.balance_e8s)}</strong></span>
                 {on
                     ? <span>Watching {watches.map((w) => w.name).join(', ')}. Estimated cost: <strong style={{ color: c.primaryText }}>≈ {money(monthNow)} a month</strong>{balance.per_day_e8s > 0n && balance.balance_e8s > 0n && <> · lasts about {Math.floor(Number(balance.balance_e8s) / Number(balance.per_day_e8s))} days</>}</span>
                     : planTargets.length > 0
@@ -272,7 +272,7 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
                         : <span>{wallet?.neuronCacheInitialized ? 'We have not found neurons you can vote with. You can still watch an SNS under Advanced.' : 'Looking for your neurons…'}</span>}
                 {on && planTargets.length > 0 && <span>Also found: {planTargets.map(nameOf).join(', ')}. <button type="button" style={{ ...btn(false), padding: '2px 8px', fontSize: '0.78rem' }} disabled={busy} onClick={turnOn}>Watch them too</button></span>}
                 {skippedForCap > 0 && <span>At most {maxWatches} watches per user: {skippedForCap} left out.</span>}
-                {balance.paused && <span style={{ color: c.error || '#ef4444', display: 'flex', alignItems: 'center', gap: 6 }}><FaExclamationTriangle /> Paused: your balance can't pay the next check. Top up to resume (watches are kept).</span>}
+                {balance.paused && <span style={{ color: c.error || '#ef4444', display: 'flex', alignItems: 'center', gap: 6 }}><FaExclamationTriangle /> Paused: your Sneed Monitor balance can't pay the next check. Top up to resume (watches are kept).</span>}
             </div>
             <div style={{ ...row, marginTop: 10 }}>
                 <button type="button" style={btn(showDeposit)} disabled={busy} onClick={() => { setShowDeposit(!showDeposit); if (!topUpAmt) setTopUpAmt(suggestTopUp(0n)); }}><FaWallet /> Top up</button>
@@ -288,7 +288,7 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
                             <span style={muted}>ICP{usd(icpToE8s(topUpAmt)) && ` (≈ ${usd(icpToE8s(topUpAmt))})`}</span>
                             <button type="button" style={btn(true)} disabled={busy || icpToE8s(topUpAmt) <= 0n} onClick={topUpFromWallet}>Top up from my wallet</button>
                         </div>
-                        <div style={{ ...muted, fontSize: '0.75rem', marginTop: 4 }}>Two ledger fees ({fmtIcp(fee * 2n)}) come on top: one for sending, one for moving it into your balance.</div>
+                        <div style={{ ...muted, fontSize: '0.75rem', marginTop: 4 }}>Two ledger fees ({fmtIcp(fee * 2n)}) come on top: one for sending, one for moving it into your Sneed Monitor balance.</div>
                     </div>
                     <div>
                         <div style={{ ...muted, fontWeight: 600, color: c.primaryText }}>Or send ICP from any wallet to your deposit address</div>
@@ -305,7 +305,7 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
                         )}
                         <div style={{ ...row, marginTop: 8 }}>
                             <button type="button" style={btn(true)} disabled={busy} onClick={creditDeposit}>I've sent it: check deposit</button>
-                            <span style={{ ...muted, fontSize: '0.75rem' }}>Moving it into your balance costs one ledger fee ({fmtIcp(fee)}).</span>
+                            <span style={{ ...muted, fontSize: '0.75rem' }}>Moving it into your Sneed Monitor balance costs one ledger fee ({fmtIcp(fee)}).</span>
                         </div>
                     </div>
                 </div>
@@ -405,7 +405,7 @@ export default function SneedMonitorSection({ notifActor, myApps, onNotification
                         {found.nnsIds.length > 0 && <button type="button" style={btn(false)} disabled={busy} onClick={() => setNnsDraft([...new Set([...d.nnsIds, ...found.nnsIds].map(String))].join(', '))}>Use my NNS neurons ({found.nnsIds.length})</button>}
                     </div>
 
-                    <h3 style={h3}><FaWallet color={accent} /> Balance</h3>
+                    <h3 style={h3}><FaWallet color={accent} /> Sneed Monitor balance</h3>
                     <div style={{ ...muted, display: 'grid', gap: 2 }}>
                         <span>Balance {fmtIcp(balance.balance_e8s)} · deposited {fmtIcp(balance.deposited_e8s)} · charged {fmtIcp(balance.charged_e8s)} for {String(balance.checks)} checks · withdrawn {fmtIcp(balance.withdrawn_e8s)}</span>
                         <span>Your watches cost {fmtIcp(balance.per_day_e8s)} a day; one round of checks {fmtIcp(balance.per_round_of_checks_e8s)}.</span>
