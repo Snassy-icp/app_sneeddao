@@ -130,6 +130,28 @@ git archive "$FORUM_PROD_COMMIT" src | tar -x -C "$PREV_SRC"
 "$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_sns_forum/main.mo" -o "$OUT/sneed_sns_forum_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
 rm -rf "$PREV_SRC"
 test -s "$OUT/sneed_sns_forum_prod.wasm"
+# sneed_mon as staging runs it (step 1, app "Sneed Hub", SNS watches only), for the test that
+# upgrades from it (enhanced orthogonal persistence, as dfx.json builds it)
+MON_STAGING_COMMIT=1bbee49a
+echo "== sneed_mon at $MON_STAGING_COMMIT (moc, EOP, for the upgrade test)"
+PREV_SRC="$(mktemp -d)"
+git archive "$MON_STAGING_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_mon/main.mo" -o "$OUT/sneed_mon_1bbee49a.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneed_mon_1bbee49a.wasm"
+# sneed_notifications as production and staging run it (bootstrap admin, no revenue forwarding;
+# `dfx build --network ic sneed_notifications` of this code at /home/snassy/app_sneeddao gives their
+# module hash 59e473d5…), for the test that upgrades from it and measures the fee backlog
+# (enhanced orthogonal persistence, as dfx.json builds it)
+NOTIF_PROD_COMMIT=e9fc4804
+echo "== sneed_notifications at $NOTIF_PROD_COMMIT (moc, EOP, for the fee-forwarding upgrade test)"
+PREV_SRC="$(mktemp -d)"
+git archive "$NOTIF_PROD_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_notifications/main.mo" -o "$OUT/sneed_notifications_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneed_notifications_prod.wasm"
 # rll as production runs it (no ICRC-3 log; `dfx build --network ic rll` of this code gives the
 # production module hash 2d7e3f23…; src/sneed_rewards unchanged from 25b88246 to 75cef0a7), for
 # the test that upgrades from it and starts an empty log (classic persistence, as dfx.json builds it)
@@ -191,7 +213,7 @@ rm -rf "$PREV_SRC"
 test -s "$OUT/sneedapp_prod.wasm"
 for c in MockLedger MockLedgerV2 MockLedgerFaulty MockRejectLedger MockSwapPool MockDexPool MockIcpswapFactory MockKongSwap \
          MockSnsGovernance MockSnsNeurons MockHubSns MockForumGovernance MockForumSnsW MockRllGovernance MockNnsGovernance \
-         MockCmc MockSnsWasm MockPremium MockSneedApp MockIcpSwapList MockIcpSwapTokenList MockNamesModerator MockIcpLedger MockMrSneedGov MockNotifySender MockExt MockMonSns Icrc3Demo; do
+         MockCmc MockSnsWasm MockPremium MockSneedApp MockIcpSwapList MockIcpSwapTokenList MockNamesModerator MockIcpLedger MockMrSneedGov MockNotifySender MockExt MockMonSns MockMonNns Icrc3Demo; do
   echo "== $c"
   # shellcheck disable=SC2086
   "$MOC" -c $PKGS -o "$OUT/$c.wasm" "$HERE/canisters/$c.mo" 2>&1 | grep -i "error" -A5 || true

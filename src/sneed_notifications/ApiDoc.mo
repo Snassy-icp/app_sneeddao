@@ -26,6 +26,7 @@ Lets any dapp on the Internet Computer notify its users, and lets each user deci
 - **`top_up(amount)` and `top_up_app(id, amount)` pull ICP through ICRC-2** (approve amount + 10,000 e8s ledger fee first). **Balances cannot be withdrawn.** Anyone may fund any app.
 - **Sending a notification is irreversible.** Titles, bodies and links are stored as plain text, read by the delivering relay, and land in the user's Sneed SMS inbox (not encrypted, readable by Sneed SMS admins). Never send secrets. Channel addresses are encrypted in the client to the relay key (`get_relay_keys`).
 - Notifications are deleted after the retention period (`retention_ns`).
+- What is charged (less refunds) is Sneed DAO revenue, forwarded to the RLL ICP splitter once 0.1 ICP has accumulated, never touching balances; public counters in `get_fee_forwarding()`.
 
 ## Asynchronous lifecycle and polling
 - `notify` returns `#ok({ id; deliveries; deduplicated })` and queues jobs; delivery happens afterwards (Sneed SMS by the canister's own timer, other kinds by relays that pull, deliver and ack; failed attempts are retried up to `max_attempts`).
@@ -45,7 +46,7 @@ Lets any dapp on the Internet Computer notify its users, and lets each user deci
 - No echoes: a notification from the Sneed SMS canister itself (`get_config().sneed_sms`, e.g. Sneed Hub's `direct_message` notices) is never delivered to `sneed_sms` channels, not even the always-copy one, so it may have no delivery at all.
 
 ## Start with these methods
-Dapps: `register_app`, `request_permission`, `notify`, `get_receipts`, `get_app_balance`, `top_up_app`. Users: `get_my_requests`, `allow_app`, `get_my_settings`, `add_channel`, `verify_channel`, `set_settings`, `top_up`, `get_my_history`. Public: `get_config`, `list_apps`, `get_app`, `stats`.
+Dapps: `register_app`, `request_permission`, `notify`, `get_receipts`, `get_app_balance`, `top_up_app`. Users: `get_my_requests`, `allow_app`, `get_my_settings`, `add_channel`, `verify_channel`, `set_settings`, `top_up`, `get_my_history`. Public: `get_config`, `list_apps`, `get_app`, `stats`, `get_fee_forwarding`.
 
 ## Full reference
 - https://app.sneeddao.com/api-docs/sneed_notifications.md

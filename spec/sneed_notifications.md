@@ -254,6 +254,31 @@ pays for every member getting a real SMS whenever a canister runs low.
 - Prices are set by the service's governance and shown in the notification centre and the dapp
   docs. As built: by admins or controllers (the Sneed DAO SNS root among them) through
   `admin_set_config`, readable with `get_config`.
+- **Revenue** (added 2026-10-21; before it, spent ICP stayed in the canister with no way out):
+  - Counters: `fees_earned_e8s` grows whenever a price is deducted (user-paid and app-paid
+    deliveries, the per-call price); `fees_refunded_e8s` when a finally failed delivery is
+    refunded; `fees_forwarded_e8s` and the ledger fees paid when ICP leaves.
+  - Liabilities: every user balance, every app balance, every paid delivery not final yet (it may
+    still be refunded) and top-ups the ledger moved but the canister hasn't credited yet.
+  - Books: at the first check (lazily, since it needs the ledger balance) the canister measures
+    free = ledger balance − liabilities (0 if the liabilities are larger, logged), and records
+    the part its counters don't explain as `fees_backlog_e8s` (the ICP spent before forwarding
+    existed; never more than free). From then on, unforwarded = free at that point + fees earned
+    − refunded − forwarded (and fees) − change in the refundable deliveries. ICP sent to the
+    canister by mistake is never counted. If the ledger later shows less free ICP than the books,
+    the books are measured again from the ledger.
+  - Forwarding: a check from the existing delivery timer, at most every 5 minutes. If unforwarded
+    ≥ `fee_sweep_threshold_e8s` (0.1 ICP), one `icrc1_transfer` of unforwarded − ledger fee to
+    `fee_destination` (default the RLL ICP splitter, `6jvpj-sqaaa-aaaaj-azwnq-cai` subaccount
+    `01 00 00 00 00 06` + 26 zeros, where Sneed Premium, Sneedex and Sneed Lock pay), with a memo
+    and `created_at_time`; one at a time. Just before it the ledger balance is read again and the
+    transfer must leave at least the liabilities, else it is skipped and logged. Counters change
+    only once the ledger accepts. A refusal leaves everything for the next check (`last_error`);
+    a call whose outcome is unknown is retried with the same arguments, which the ledger
+    deduplicates.
+  - Admin: `admin_set_fee_destination` (null keeps fees in the canister),
+    `admin_set_fee_sweep_threshold`, `admin_forward_fees_now` (any amount above the ledger fee).
+    Public: `get_fee_forwarding` (revenue is DAO information).
 
 ## 7. Built on it, first
 

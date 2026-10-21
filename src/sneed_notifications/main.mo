@@ -1,10 +1,12 @@
 import Array "mo:base/Array";
+import Blob "mo:base/Blob";
 import Buffer "mo:base/Buffer";
 import Debug "mo:base/Debug";
 import Error "mo:base/Error";
 import Int "mo:base/Int";
 import Iter "mo:base/Iter";
 import Nat "mo:base/Nat";
+import Nat64 "mo:base/Nat64";
 import Nat8 "mo:base/Nat8";
 import Principal "mo:base/Principal";
 import Random "mo:base/Random";
@@ -49,6 +51,8 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   public type Config = T.Config;
   public type Result = T.Result;
   public type ResultNat = T.ResultNat;
+  public type Account = T.Account;
+  public type FeeForwarding = T.FeeForwarding;
 
   type Notification = {
     id : Nat;
@@ -63,7 +67,6 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     jobs : [Nat];
   };
 
-  type Account = { owner : Principal; subaccount : ?Blob };
   type TransferFromError = {
     #BadFee : { expected_fee : Nat }; #BadBurn : { min_burn_amount : Nat }; #InsufficientFunds : { balance : Nat };
     #InsufficientAllowance : { allowance : Nat }; #TooOld; #CreatedInFuture : { ledger_time : Nat64 }; #Duplicate : { duplicate_of : Nat };
@@ -71,6 +74,13 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   };
   type IcpLedger = actor {
     icrc2_transfer_from : shared ({ spender_subaccount : ?Blob; from : Account; to : Account; amount : Nat; fee : ?Nat; memo : ?Blob; created_at_time : ?Nat64 }) -> async { #Ok : Nat; #Err : TransferFromError };
+    icrc1_balance_of : shared query Account -> async Nat;
+    icrc1_transfer : shared ({ from_subaccount : ?Blob; to : Account; amount : Nat; fee : ?Nat; memo : ?Blob; created_at_time : ?Nat64 }) -> async { #Ok : Nat; #Err : TransferError };
+  };
+  type TransferError = {
+    #BadFee : { expected_fee : Nat }; #BadBurn : { min_burn_amount : Nat }; #InsufficientFunds : { balance : Nat };
+    #TooOld; #CreatedInFuture : { ledger_time : Nat64 }; #Duplicate : { duplicate_of : Nat };
+    #TemporarilyUnavailable; #GenericError : { error_code : Nat; message : Text };
   };
   type SmsError = { #Unauthorized : Text; #NotFound : Text; #InvalidInput : Text; #RateLimited : Text; #AlreadyExists : Text };
   type Sms = actor {
@@ -156,6 +166,35 @@ shared (deployer) persistent actor class SneedNotifications() = this {
 
   transient var ticking = false;
   transient var ticks : Nat = 0;
+
+  // Revenue forwarding (added 2026-10-21; spec §"Revenue"). Prices deducted from balances are the
+  // DAO's revenue: they go to `fee_destination` (the RLL ICP splitter, where Sneed Premium, Sneedex
+  // and Sneed Lock pay too) once `fee_sweep_threshold_e8s` has accumulated. Balances are never
+  // touched: every transfer leaves the ledger balance at or above the liabilities.
+  var fee_destination : ?Account = ?{ owner = Principal.fromText("6jvpj-sqaaa-aaaaj-azwnq-cai"); subaccount = ?Blob.fromArray([1, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) };
+  var fee_sweep_threshold_e8s : Nat = 10_000_000; // 0.1 ICP
+  var fee_ledger_fee_e8s : Nat = 10_000; // updated from the ledger's BadFee answer
+  var fees_earned_e8s : Nat = 0;
+  var fees_refunded_e8s : Nat = 0;
+  var fees_forwarded_e8s : Nat = 0;
+  var fees_ledger_fees_e8s : Nat = 0;
+  var fee_forwards : Nat = 0;
+  var fees_backlog_e8s : ?Nat = null;
+  /// The books' starting point: the free ICP (ledger balance − liabilities) measured at the first
+  /// attempt, with the counters as they were then. What may go out later is that plus what the
+  /// counters added since (re-measured whenever the ledger shows less).
+  var fee_base : ?{ free : Nat; earned : Nat; refunded : Nat; reserved : Nat; out : Nat; at : Int } = null;
+  /// A transfer whose outcome is unknown (the call failed in flight): retried with the same arguments,
+  /// which the ledger deduplicates, so it goes out at most once.
+  var fee_pending : ?{ to : Account; amount : Nat; fee : Nat; memo : Blob; created_at_time : Nat64 } = null;
+  var fee_last_forward : ?{ at : Int; amount_e8s : Nat; block : Nat; to : Account } = null;
+  var fee_last_error : ?Text = null;
+  var fee_events : [(Int, Text)] = [];
+  var fee_last_check : Int = 0;
+  transient var fee_forwarding = false;
+  transient var fee_next_check : Int = 0; // 0 after an install or upgrade: the first tick checks
+  transient var pulling_e8s : Nat = 0; // top-ups the ledger may have moved but this canister hasn't credited yet
+  transient let FEE_CHECK_NS : Int = 300_000_000_000; // every 5 minutes at most
 
   // ---------------------------------------------------------------------------------------------
   // Helpers
@@ -437,7 +476,10 @@ shared (deployer) persistent actor class SneedNotifications() = this {
         jobIds.add(newJob(id, user, c, notBefore, price, false));
       };
     };
-    if (input.sponsored) Map.set(app_balances, Map.nhash, a.id, appBalanceOf(a.id) - (appSpent + config.notify_price_e8s));
+    if (input.sponsored) {
+      Map.set(app_balances, Map.nhash, a.id, appBalanceOf(a.id) - (appSpent + config.notify_price_e8s));
+      fees_earned_e8s += appSpent + config.notify_price_e8s;
+    } else fees_earned_e8s += balanceOf(user) - balance;
     Map.set(user_balances, Map.phash, user, balance);
     if (not input.sponsored and (userSpent > spent or Array.find<Nat>(Buffer.toArray(jobIds), func(j) = isSuppressedForBalance(j)) != null)) lowBalanceCheck(user);
     Map.set(usage, Map.thash, k, (uDay, count + 1, userSpent));
@@ -683,7 +725,9 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   func pull(from : Principal, amount : Nat) : async* { #ok; #err : Text } {
     if (amount == 0) return #err("Nothing to top up");
     let ledger : IcpLedger = actor (Principal.toText(config.icp_ledger));
-    try {
+    // counted as a liability while in flight: the ledger may have moved it before the caller credits it
+    pulling_e8s += amount;
+    let r = try {
       switch (await ledger.icrc2_transfer_from({ spender_subaccount = null; from = { owner = from; subaccount = null }; to = { owner = Principal.fromActor(this); subaccount = null }; amount; fee = null; memo = null; created_at_time = null })) {
         case (#Ok _) #ok;
         case (#Err(#InsufficientAllowance(a))) #err("Approve this canister for the amount first (allowance " # Nat.toText(a.allowance) # ")");
@@ -691,6 +735,8 @@ shared (deployer) persistent actor class SneedNotifications() = this {
         case (#Err _) #err("The ledger refused the transfer");
       };
     } catch (e) { #err("The ledger did not answer: " # Error.message(e)) };
+    pulling_e8s -= amount; // the caller credits a success in this same message
+    r;
   };
 
   public query ({ caller }) func get_my_settings() : async { settings : Settings; channels : [Channel]; balance_e8s : Nat } {
@@ -814,10 +860,192 @@ shared (deployer) persistent actor class SneedNotifications() = this {
 
   func refund(j : Job) {
     if (j.price_e8s == 0) return;
+    fees_refunded_e8s += j.price_e8s;
     if (j.paid_by_app) switch (Map.get(notifications, Map.nhash, j.notification)) {
       case (?n) Map.set(app_balances, Map.nhash, n.app, appBalanceOf(n.app) + j.price_e8s);
       case null {};
     } else Map.set(user_balances, Map.phash, j.user, balanceOf(j.user) + j.price_e8s);
+  };
+
+  // ---------------------------------------------------------------------------------------------
+  // Revenue forwarding (a check from the delivery timer, at most every 5 minutes)
+  // ---------------------------------------------------------------------------------------------
+
+  /// Paid deliveries that are not final yet: refunded to their payer if they finally fail.
+  func reservedE8s() : Nat {
+    var r = 0;
+    for (jid in Map.keys(pending)) switch (Map.get(jobs, Map.nhash, jid)) { case (?j) r += j.price_e8s; case null {} };
+    r;
+  };
+
+  /// What this canister owes: every user and app balance, the paid deliveries that may still be
+  /// refunded, and top-ups the ledger may have moved but that are not credited yet.
+  func liabilitiesE8s() : Nat {
+    var l = reservedE8s() + pulling_e8s;
+    for (b in Map.vals(user_balances)) l += b;
+    for (b in Map.vals(app_balances)) l += b;
+    l;
+  };
+
+  func feesOut() : Nat = fees_forwarded_e8s + fees_ledger_fees_e8s;
+
+  /// What the books say may go out: the free ICP measured at the base plus the fees counted since.
+  func unforwardedE8s() : ?Int = switch (fee_base) {
+    case (?b) ?(b.free + fees_earned_e8s - b.earned - (fees_refunded_e8s - b.refunded) - (feesOut() - b.out) - (reservedE8s() - b.reserved));
+    case null null;
+  };
+
+  func feeNote(m : Text) {
+    let e = (now(), m);
+    fee_events := if (fee_events.size() >= 20) Array.append(Array.subArray(fee_events, fee_events.size() - 19, 19), [e]) else Array.append(fee_events, [e]);
+  };
+  func feeError(m : Text) { fee_last_error := ?m; feeNote(m) };
+
+  func feeTick() : async () { ignore await* forwardFees(false) };
+
+  /// Forward the unforwarded fees in one transfer once they reach the threshold (`force`: any
+  /// amount above the ledger fee). Before each transfer the ledger balance is read again and the
+  /// transfer must leave at least the liabilities; counters change only once the ledger accepted.
+  func forwardFees(force : Bool) : async* Result {
+    if (fee_forwarding) return #err("A forward is already running");
+    let to = switch (fee_destination) { case (?a) a; case null return #ok("No fee destination: fees stay in the canister") };
+    // cheap check first: no ledger call while the books are below the threshold
+    switch (unforwardedE8s(), fee_pending) {
+      case (?u, null) if (not force and u < fee_sweep_threshold_e8s) return #ok("Below the threshold");
+      case _ {};
+    };
+    fee_forwarding := true;
+    fee_last_check := now();
+    try { await* forwardLocked(to, force) } catch (e) { feeError("fee forward: " # Error.message(e)); #err(Error.message(e)) } finally { fee_forwarding := false };
+  };
+
+  func forwardLocked(to : Account, force : Bool) : async* Result {
+    let ledger : IcpLedger = actor (Principal.toText(config.icp_ledger));
+    let self : Account = { owner = Principal.fromActor(this); subaccount = null };
+
+    // a transfer whose outcome is unknown goes again with the same arguments: the ledger
+    // deduplicates it (created_at_time + memo), so it cannot go out twice
+    switch (fee_pending) {
+      case (?p) {
+        let res = try {
+          await ledger.icrc1_transfer({ from_subaccount = null; to = p.to; amount = p.amount; fee = ?p.fee; memo = ?p.memo; created_at_time = ?p.created_at_time });
+        } catch (e) { feeError("fee forward retry: " # Error.message(e)); return #err("The ledger did not answer; retrying later") };
+        fee_pending := null;
+        switch res {
+          case (#Ok(block)) { forwarded(p.to, p.amount, p.fee, block); return #ok("Forwarded " # e8sText(p.amount) # " ICP") };
+          case (#Err(#Duplicate(d))) { forwarded(p.to, p.amount, p.fee, d.duplicate_of); return #ok("Forwarded " # e8sText(p.amount) # " ICP (deduplicated)") };
+          // too old to deduplicate: the books are re-measured from the ledger below
+          case (#Err(#TooOld)) feeNote("an unanswered forward is too old to retry; re-measuring from the ledger");
+          case (#Err(e)) { feeError("fee forward retry refused: " # debug_show e); return #err("The ledger refused the transfer") };
+        };
+      };
+      case null {};
+    };
+
+    let balance = try { await ledger.icrc1_balance_of(self) } catch (e) { feeError("fee forward: balance: " # Error.message(e)); return #err("The ledger did not answer") };
+    // everything below runs in this one message: the liabilities can't change before the transfer is sent
+    let liabilities = liabilitiesE8s();
+    let free : Nat = if (balance > liabilities) balance - liabilities else 0;
+    if (balance <= liabilities) feeNote("liabilities " # e8sText(liabilities) # " ≥ balance " # e8sText(balance) # " ICP: nothing forwarded");
+    let base = { free; earned = fees_earned_e8s; refunded = fees_refunded_e8s; reserved = reservedE8s(); out = feesOut(); at = now() };
+    switch (fee_base) {
+      case null {
+        // the first attempt: the ICP spent before forwarding existed, never more than the free balance
+        let counted : Int = fees_earned_e8s - fees_refunded_e8s;
+        let backlog : Nat = if (free > counted) Int.abs(free - Int.max(counted, 0)) else 0;
+        fees_backlog_e8s := ?backlog;
+        fee_base := ?base;
+        feeNote("first measurement: balance " # e8sText(balance) # ", liabilities " # e8sText(liabilities) # ", free " # e8sText(free) # ", backlog " # e8sText(backlog) # " ICP");
+      };
+      case (?_) switch (unforwardedE8s()) {
+        case (?u) if (u > free) {
+          // the ledger shows less than the books (e.g. a forward whose answer was lost): trust the ledger
+          fee_base := ?base;
+          feeNote("the books said " # e8sText(Int.abs(Int.max(u, 0))) # " ICP free, the ledger " # e8sText(free) # ": re-measured");
+        };
+        case null {};
+      };
+    };
+    let u : Nat = switch (unforwardedE8s()) { case (?x) Int.abs(Int.max(Int.min(x, free), 0)); case null 0 };
+    let fee = fee_ledger_fee_e8s;
+    if (not force and u < fee_sweep_threshold_e8s) return #ok("Below the threshold");
+    if (u <= fee) return #ok("Nothing to forward");
+    let amount : Nat = u - fee;
+    // the invariant, checked again just before the transfer
+    if (balance < amount + fee or balance - (amount + fee) < liabilities) {
+      feeError("fee forward skipped: it would leave less than the liabilities");
+      return #err("Skipped: the balance would fall below the liabilities");
+    };
+    let created_at_time = Nat64.fromNat(Int.abs(now()));
+    let memo = Text.encodeUtf8("sneed-fees:" # Nat.toText(fee_forwards + 1));
+    fee_pending := ?{ to; amount; fee; memo; created_at_time };
+    let res = try {
+      await ledger.icrc1_transfer({ from_subaccount = null; to; amount; fee = ?fee; memo = ?memo; created_at_time = ?created_at_time });
+    } catch (e) {
+      // unknown outcome: kept in fee_pending and retried with the same arguments
+      feeError("fee forward: " # Error.message(e) # " (retried with the same arguments)");
+      return #err("The ledger did not answer; retrying later");
+    };
+    fee_pending := null;
+    switch res {
+      case (#Ok(block)) { forwarded(to, amount, fee, block); #ok("Forwarded " # e8sText(amount) # " ICP") };
+      case (#Err(#Duplicate(d))) { forwarded(to, amount, fee, d.duplicate_of); #ok("Forwarded " # e8sText(amount) # " ICP (deduplicated)") };
+      case (#Err(#BadFee(x))) { fee_ledger_fee_e8s := x.expected_fee; feeError("fee forward: the ledger fee is now " # Nat.toText(x.expected_fee) # " e8s; retrying later"); #err("The ledger fee changed") };
+      case (#Err(e)) { feeError("fee forward refused: " # debug_show e); #err("The ledger refused the transfer") };
+    };
+  };
+
+  func forwarded(to : Account, amount : Nat, fee : Nat, block : Nat) {
+    fees_forwarded_e8s += amount;
+    fees_ledger_fees_e8s += fee;
+    fee_forwards += 1;
+    fee_last_forward := ?{ at = now(); amount_e8s = amount; block; to };
+    fee_last_error := null;
+    feeNote("forwarded " # e8sText(amount) # " ICP (block " # Nat.toText(block) # ")");
+  };
+
+  /// Revenue forwarding: counters, destination, threshold and the last events. Public: revenue is DAO information.
+  public query func get_fee_forwarding() : async FeeForwarding {
+    {
+      destination = fee_destination;
+      threshold_e8s = fee_sweep_threshold_e8s;
+      ledger_fee_e8s = fee_ledger_fee_e8s;
+      earned_e8s = fees_earned_e8s;
+      refunded_e8s = fees_refunded_e8s;
+      forwarded_e8s = fees_forwarded_e8s;
+      ledger_fees_paid_e8s = fees_ledger_fees_e8s;
+      forwards = fee_forwards;
+      backlog_e8s = fees_backlog_e8s;
+      unforwarded_e8s = switch (unforwardedE8s()) { case (?u) ?Int.abs(Int.max(u, 0)); case null null };
+      liabilities_e8s = liabilitiesE8s();
+      reserved_e8s = reservedE8s();
+      last_check = fee_last_check;
+      last_forward = fee_last_forward;
+      last_error = fee_last_error;
+      retry_pending = fee_pending != null;
+      events = fee_events;
+    };
+  };
+
+  /// Where the fees go (null: they stay in the canister).
+  public shared ({ caller }) func admin_set_fee_destination(a : ?Account) : async Result {
+    if (not isAdmin(caller)) return #err("Admins only");
+    switch (a) { case (?{ subaccount = ?s }) if (s.size() != 32) return #err("A subaccount is 32 bytes"); case _ {} };
+    fee_destination := a;
+    feeNote(switch a { case (?x) "destination set to " # Principal.toText(x.owner); case null "destination cleared: fees stay in the canister" });
+    #ok("Saved");
+  };
+
+  public shared ({ caller }) func admin_set_fee_sweep_threshold(e8s : Nat) : async Result {
+    if (not isAdmin(caller)) return #err("Admins only");
+    fee_sweep_threshold_e8s := e8s;
+    #ok("Saved");
+  };
+
+  /// Forward now, whatever the threshold (still only what exceeds the liabilities, minus the ledger fee).
+  public shared ({ caller }) func admin_forward_fees_now() : async Result {
+    if (not isAdmin(caller)) return #err("Admins only");
+    await* forwardFees(true);
   };
 
   // ---------------------------------------------------------------------------------------------
@@ -862,6 +1090,10 @@ shared (deployer) persistent actor class SneedNotifications() = this {
       case null finish(j, #failed({ reason = "message removed" }));
     };
     if (ticks % 120 == 0) prune(t);
+    if (t >= fee_next_check) {
+      fee_next_check := t + FEE_CHECK_NS;
+      ignore feeTick(); // its own message: deliveries don't wait for the ledger
+    };
     ticking := false;
   };
 
@@ -976,12 +1208,16 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     #resend_code : Any;
     #set_low_balance_alert : Any;
     #get_low_balance_alert : Any;
+    #get_fee_forwarding : Any;
+    #admin_set_fee_destination : Any;
+    #admin_set_fee_sweep_threshold : Any;
+    #admin_forward_fees_now : Any;
   } }) : Bool {
     switch msg {
-      case (#get_api_doc _ or #get_relay_keys _ or #get_admins _ or #get_app _ or #get_app_balance _ or #get_app_of _ or #get_config _ or #get_my_apps _ or #get_my_history _ or #get_my_requests _ or #get_my_settings _ or #get_low_balance_alert _ or #get_receipts _ or #list_apps _ or #stats _) false;
+      case (#get_api_doc _ or #get_relay_keys _ or #get_admins _ or #get_app _ or #get_app_balance _ or #get_app_of _ or #get_config _ or #get_my_apps _ or #get_my_history _ or #get_my_requests _ or #get_my_settings _ or #get_low_balance_alert _ or #get_receipts _ or #list_apps _ or #stats _ or #get_fee_forwarding _) false;
       // apps call these from their canisters, never by ingress
       case (#notify _ or #notify_batch _ or #request_permission _) false;
-      case (#admin_add_admin _ or #admin_remove_admin _ or #admin_remove_app _ or #admin_set_app_verified _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
+      case (#admin_add_admin _ or #admin_remove_admin _ or #admin_remove_app _ or #admin_set_app_verified _ or #admin_set_fee_destination _ or #admin_set_fee_sweep_threshold _ or #admin_forward_fees_now _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       case (#admin_set_config _ or #admin_register_app _ or #admin_set_relay_key _) isAdmin(caller) and arg.size() <= IngressGuard.MEDIUM_ARG;
       case (#register_app _ or #update_app _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.MEDIUM_ARG;
       case (#relay_ack _) relayKind(caller) != null and arg.size() <= IngressGuard.MEDIUM_ARG;

@@ -150,6 +150,30 @@ module {
     max_attempts : Nat;
   };
 
+  public type Account = { owner : Principal; subaccount : ?Blob };
+
+  /// Revenue forwarding: the spent ICP (prices deducted from balances) goes to `destination`.
+  /// Public: revenue is DAO information.
+  public type FeeForwarding = {
+    destination : ?Account; // null: fees stay in the canister
+    threshold_e8s : Nat; // forward once at least this much is unforwarded
+    ledger_fee_e8s : Nat;
+    earned_e8s : Nat; // prices deducted from user and app balances since forwarding existed
+    refunded_e8s : Nat; // of those, given back (deliveries that finally failed)
+    forwarded_e8s : Nat; // received by the destination(s)
+    ledger_fees_paid_e8s : Nat; // ledger fees of the forwarding transfers
+    forwards : Nat;
+    backlog_e8s : ?Nat; // fees spent before forwarding existed, measured at the first attempt (null: not yet)
+    unforwarded_e8s : ?Nat; // what the books say may go out now (null: not measured yet)
+    liabilities_e8s : Nat; // user balances + app balances + paid deliveries not final + top-ups in flight
+    reserved_e8s : Nat; // paid deliveries not final yet (refunded if they fail)
+    last_check : Int;
+    last_forward : ?{ at : Int; amount_e8s : Nat; block : Nat; to : Account };
+    last_error : ?Text;
+    retry_pending : Bool; // a transfer whose outcome is unknown is retried with the same arguments (deduplicated by the ledger)
+    events : [(Int, Text)]; // newest last, at most 20
+  };
+
   public type Result = { #ok : Text; #err : Text };
   public type ResultNat = { #ok : Nat; #err : Text };
 };

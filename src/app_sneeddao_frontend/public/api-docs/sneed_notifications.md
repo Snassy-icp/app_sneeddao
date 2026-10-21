@@ -61,6 +61,7 @@ Prices are per delivery, in ICP e8s, per channel kind (`get_config().prices_e8s`
 - **App pays** (`sponsored = true`): the whole message (every chosen delivery plus the per-call price) is charged to the app's balance, all or nothing. If the app's balance is short, `notify` fails with `#no_funds`. The user's spending cap does not apply; the daily message cap does.
 - **Refunds:** a delivery that finally fails is refunded to whoever paid. Suppressed deliveries cost nothing.
 - **Balances** are topped up with ICP through ICRC-2: `top_up` for the caller, `top_up_app` for any app (anyone may fund any app). There is no method to withdraw a balance.
+- **Where the money goes:** what is charged (deliveries and the per-call price, less refunds) is Sneed DAO revenue. The canister forwards it in one ICRC-1 transfer to `fee_destination` (by default the RLL ICP splitter, `6jvpj-sqaaa-aaaaj-azwnq-cai` subaccount `01 00 00 00 00 06` + 26 zero bytes, where Sneed Premium, Sneedex and Sneed Lock pay too) once `fee_sweep_threshold_e8s` (0.1 ICP) has accumulated; the ledger fee comes off the amount. A check runs from the delivery timer at most every 5 minutes. Balances are never touched: before every transfer the canister reads its ledger balance, and the transfer must leave at least every user and app balance, every paid delivery that may still be refunded, and top-ups in flight. The ICP spent before forwarding existed (the backlog) was measured once, at the first check after the upgrade, as the ledger balance minus all of that. Read it all with `get_fee_forwarding()` (5.3).
 
 ### 1.5 Caps and repeats
 
@@ -354,6 +355,7 @@ All refuse the anonymous principal (`Please sign in` where the method checks it)
 | `get_relay_keys()` | query | `vec (ChannelKind, text)` | Each relay kind's key document (JSON, see 2.4). |
 | `get_admins()` | query | `vec principal` | Listed admins (controllers are admins too). |
 | `stats()` | query | `{ apps; users; notifications; pending }` | `users` counts principals with a channel. |
+| `get_fee_forwarding()` | query | `FeeForwarding` | Revenue: destination, threshold, fees earned, refunded and forwarded, the backlog, what is unforwarded and owed, the last forward and error, the last 20 events (1.4). |
 
 ### 5.4 Relays
 
@@ -374,6 +376,9 @@ Admins are the canister's controllers and the principals in `get_admins()`. All 
 | `admin_set_app_verified(id, bool)` | The checkmark. |
 | `admin_remove_app(id)` | Removes an abusive app; its canisters can no longer notify. |
 | `admin_add_admin(p)`, `admin_remove_admin(p)` | Edit the admin list. |
+| `admin_set_fee_destination(opt Account)` | Where fees go; `null` keeps them in the canister. A subaccount must be 32 bytes. |
+| `admin_set_fee_sweep_threshold(e8s)` | Forward once this much is unforwarded (default 10,000,000 = 0.1 ICP). |
+| `admin_forward_fees_now()` | Forwards what is unforwarded now, whatever the threshold (still minus the ledger fee, never below the liabilities). |
 
 ---
 
@@ -460,6 +465,27 @@ type Config = record {
   max_title : nat; max_body : nat;
   relays : vec record { principal; ChannelKind };
   relay_lease_ns : nat; max_attempts : nat;
+};
+
+type Account = record { owner : principal; subaccount : opt blob };
+type FeeForwarding = record {
+  destination : opt Account;      // null: fees stay in the canister
+  threshold_e8s : nat;
+  ledger_fee_e8s : nat;
+  earned_e8s : nat;               // prices deducted from balances since forwarding existed
+  refunded_e8s : nat;             // of those, refunded (deliveries that finally failed)
+  forwarded_e8s : nat;            // received by the destination
+  ledger_fees_paid_e8s : nat;
+  forwards : nat;
+  backlog_e8s : opt nat;          // spent before forwarding existed; null until the first check
+  unforwarded_e8s : opt nat;      // may go out now; null until the first check
+  liabilities_e8s : nat;          // balances + refundable paid deliveries + top-ups in flight
+  reserved_e8s : nat;             // paid deliveries not final yet
+  last_check : int;
+  last_forward : opt record { at : int; amount_e8s : nat; block : nat; to : Account };
+  last_error : opt text;
+  retry_pending : bool;           // a transfer with an unknown outcome, retried with the same arguments
+  events : vec record { int; text };
 };
 
 type Result = variant { ok : text; err : text };
