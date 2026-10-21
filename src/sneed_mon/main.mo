@@ -154,7 +154,7 @@ shared (deployer) persistent actor class SneedMon() = this {
     fee_sweep_threshold_e8s = 10_000_000; // 0.1 ICP
   };
   var tier_table : TierTable = {
-    base_daily_price_e8s = 14_400; // 0.000144 ICP a day for a daily watch; per check: 10 min 600, 1 h 1,800, 3 h 3,600, 1 day 14,400 e8s
+    base_daily_price_e8s = 144_000; // 0.00144 ICP a day for a daily watch; per check: 10 min 6,000, 1 h 18,000, 3 h 36,000, 1 day 144,000 e8s
     tiers = [{ every_min = 10; daily_multiplier = 6 }, { every_min = 60; daily_multiplier = 3 }, { every_min = 180; daily_multiplier = 2 }, { every_min = 1440; daily_multiplier = 1 }];
   };
   let accounts = Map.new<Principal, UserAccount>();

@@ -65,7 +65,7 @@ A target is polled as often as its most frequent **active** (paid-up) watcher wa
 |---|---|
 | Deposit | Send ICP to `get_deposit_account()` (your own subaccount of sneed_mon), then `credit_deposit()`: it moves the ICP to sneed_mon's main account, less one ledger fee, and credits your balance. Safe to repeat; nothing is counted twice. |
 | Charges | Per check, at the watch's tier: per check = floor(daily price × every_min / 1440), daily price = `base_daily_price_e8s` × multiplier. Bookkeeping only, no ledger transfer. History: `get_my_charges`. |
-| Default prices | base 14,400 e8s a day: daily ×1 = 14,400 e8s a check; 3-hourly ×2 = 3,600; hourly ×3 = 1,800; 10-minute ×6 = 600 (a day of 10-minute checks: 86,400 e8s). |
+| Default prices | base 144,000 e8s a day: daily ×1 = 144,000 e8s a check; 3-hourly ×2 = 36,000; hourly ×3 = 18,000 (432,000 e8s a day); 10-minute ×6 = 6,000 (a day of 10-minute checks: 864,000 e8s). A deployed canister keeps its stored tiers; `get_tiers` is authoritative. |
 | Pause | A check the balance can't pay is not made: the user's watches pause (kept), one `account` message says so, and `credit_deposit` resumes them once the balance pays one check of each watch. No watches, no charge. |
 | Withdraw | `withdraw_balance(amount_e8s, to)`: `to` receives the amount less the ledger fee (10,000 e8s). |
 | Fees | Forwarded in one transfer (less the ledger fee) to `fee_destination` once they reach `fee_sweep_threshold_e8s` (0.1 ICP), at most once a round. Default destination: the account Sneed Premium pays into, the Neutrinite pylon's ICP splitter `6jvpj-sqaaa-aaaaj-azwnq-cai` with subaccount `0100000000060000000000000000000000000000000000000000000000000000`, which feeds the RLL. |

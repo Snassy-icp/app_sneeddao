@@ -28,7 +28,7 @@ Sneed Hub's watcher, registered with Sneed Notifications as the app \"Sneed Moni
 - Reads: `get_my_watches`, `get_watch(target)`, `get_my_balance`, `get_my_charges(start, len)`, `get_my_nns_neurons`, `get_target_topics(target)`.
 
 ## Fees, transfers and irreversible actions
-- Per check, at the watch's tier (defaults: base 14,400 e8s a day; daily ×1 = 14,400 e8s per check, 3-hourly ×2 = 3,600, hourly ×3 = 1,800, 10-minute ×6 = 600). Charges are bookkeeping on your balance, not ledger transfers; each shows in `get_my_charges` with its outcome.
+- Per check, at the watch's tier (defaults: base 144,000 e8s a day; daily ×1 = 144,000 e8s per check, 3-hourly ×2 = 36,000, hourly ×3 = 18,000, 10-minute ×6 = 6,000; `get_tiers()` is authoritative). Charges are bookkeeping on your balance, not ledger transfers; each shows in `get_my_charges` with its outcome.
 - A check the balance can't pay is not made: your watches pause (kept), you get one message (topic `account`), and `credit_deposit` resumes them once the balance pays one check of each watch. A user with no watches is never charged.
 - `withdraw_balance(amount_e8s, account)` returns unspent balance (you receive amount less the ledger fee).
 - Collected fees are forwarded in one transfer once they reach `fee_sweep_threshold_e8s` (0.1 ICP) to `fee_destination` (default: the RLL's ICP splitter). `get_accounting()` shows what sneed_mon owes; its ledger account holds at least `obligations_e8s`.

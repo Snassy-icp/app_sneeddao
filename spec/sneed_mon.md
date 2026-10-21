@@ -102,9 +102,9 @@ usual (`sponsored = false`).
   ledger accepted, and the call is unbounded-wait, so a reject means nothing moved.
 - **Charges are bookkeeping** (balance decrements, never ledger transfers). Each check costs the
   tier's per-check price: tiers (admin `admin_set_tiers`) are {10 min, 1 h, 3 h, 1 day} with daily
-  multipliers 6, 3, 2, 1 of `base_daily_price_e8s` (14,400 e8s). Per check = floor(daily price ×
-  every_min / 1440), so a day of checks never costs more than the tier's daily price: 600, 1,800,
-  3,600 and 14,400 e8s. Each check goes into the user's charge history (`get_my_charges`, the last
+  multipliers 6, 3, 2, 1 of `base_daily_price_e8s` (144,000 e8s). Per check = floor(daily price ×
+  every_min / 1440), so a day of checks never costs more than the tier's daily price: 6,000, 18,000,
+  36,000 and 144,000 e8s. Each check goes into the user's charge history (`get_my_charges`, the last
   200: time, target, tier, price, outcome such as "nothing new" or "2 proposals, sent").
 - **Pause:** a check the balance can't pay is not made: the user is paused (watches kept, no checks,
   pending proposals dropped, no charges) and told once (topic `account`). `credit_deposit` (or
@@ -139,9 +139,11 @@ byte; 1 T cycles ≈ $1.35):
   (50 messages ≈ 0.3 B).
 - **Per user:** a `list_neurons` per SNS every 6 hours (≈ 0.3 B each: ~1.2 B a day); NNS: one
   `get_neuron_info` per registered neuron per check that has candidates (≈ 0.27 B each).
-- At the default prices an hourly watch brings 43,200 e8s a day (0.000432 ICP, about $0.002 at
-  $5 an ICP), against roughly 1 to 2 B cycles a day of per-user cost (about $0.002), before the
-  shared polling and per-proposal costs: roughly break-even, so the base price likely needs raising.
+- At the default prices an hourly watch brings 432,000 e8s a day (0.00432 ICP, about $0.02 at
+  $5 an ICP; about 0.13 ICP a month), against roughly 1 to 2 B cycles a day of per-user cost
+  (about $0.002), leaving room for the shared polling and per-proposal costs. (The first default,
+  14,400 e8s a day, was roughly break-even; raised tenfold on 2026-10-21. A deployed canister keeps
+  its stored tiers: an upgrade does not change them, `admin_set_tiers` does.)
 
 **Q**: measure on staging with `get_status().economics` and tune `base_daily_price_e8s`; NNS
 watches cost more per check (per-neuron reads) than SNS watches at the same price.
@@ -166,7 +168,7 @@ filter); `get_api_doc`; enhanced orthogonal persistence (upgrade proposals must 
 ## 6. Questions
 
 1. **Watch by default?** Sneed Hub could offer "watch all SNSes where I have neurons" as one click.
-2. **Prices:** the defaults (base 14,400 e8s a day) are a guess; set them from staging's economics.
+2. **Prices:** the defaults (base 144,000 e8s a day, raised tenfold from 14,400) are an estimate; tune them from staging's economics.
 3. **NNS pricing:** NNS checks read each registered neuron, so they cost more cycles; same price
    for now.
 

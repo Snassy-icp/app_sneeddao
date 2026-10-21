@@ -20,7 +20,7 @@ const grace = user('mon-grace'); // votes after the announcement
 const DAY = 86_400n;
 const MIN = 60_000; // ms
 const FEE = 10_000n;
-const PRICE = { 10: 600n, 60: 1_800n, 180: 3_600n, 1440: 14_400n }; // per check, default tier table
+const PRICE = { 10: 6_000n, 60: 18_000n, 180: 36_000n, 1440: 144_000n }; // per check, default tier table
 
 const permission = ({ IDL }) => IDL.Record({ principal: IDL.Opt(IDL.Principal), permission_type: IDL.Vec(IDL.Int32) });
 const snsIdl = ({ IDL }) => IDL.Service({
@@ -139,9 +139,9 @@ describe('sneed_mon', () => {
     expect([cfg.tuning.defaults.new_proposals, cfg.tuning.defaults.reminders]).toEqual([true, true]);
     expect(cfg.tuning.nns_governance.toText()).toBe('rrkah-fqaaa-aaaaa-aaaaq-cai');
     const t = await mon.get_tiers();
-    expect(t.base_daily_price_e8s).toBe(14_400n);
+    expect(t.base_daily_price_e8s).toBe(144_000n);
     expect(t.tiers.map((x) => [x.every_min, x.daily_multiplier, x.per_check_e8s, x.checks_per_day, x.daily_price_e8s])).toEqual([
-      [10n, 6n, 600n, 144n, 86_400n], [60n, 3n, 1_800n, 24n, 43_200n], [180n, 2n, 3_600n, 8n, 28_800n], [1440n, 1n, 14_400n, 1n, 14_400n],
+      [10n, 6n, 6_000n, 144n, 864_000n], [60n, 3n, 18_000n, 24n, 432_000n], [180n, 2n, 36_000n, 8n, 288_000n], [1440n, 1n, 144_000n, 1n, 144_000n],
     ]);
     // the test setup: the mock ledger and NNS, and fees kept until the fee test
     unwrap(await mon.admin_set_config({ ...cfg.core, notifications: [notifId], sns_wasm: snswId }));
@@ -197,7 +197,7 @@ describe('sneed_mon', () => {
     expect(unwrap(await monAs(bob).watch(sns(snsA)))).toBe('Watching; 1 of your neurons can vote here');
     expect(await monAs(bob).watch(sns(snsA))).toEqual({ ok: 'Already watching' });
     const [w] = await monAs(bob).get_my_watches();
-    expect([w.name, w.governance.toText(), w.settings.every_min, w.price_per_check_e8s, w.neurons]).toEqual(['Alpha DAO', snsA.toText(), 60n, 1_800n, [1n]]);
+    expect([w.name, w.governance.toText(), w.settings.every_min, w.price_per_check_e8s, w.neurons]).toEqual(['Alpha DAO', snsA.toText(), 60n, 18_000n, [1n]]);
     expect(w.target).toEqual(sns(snsA));
     // the user is asked (in the notification centre) to allow the app, when they haven't decided yet
     unwrap(await monAs(dave).watch(sns(snsA)));
@@ -235,20 +235,20 @@ describe('sneed_mon', () => {
   });
 
   it('charges each check at its tier, exactly, and keeps a charge history', async () => {
-    // the first round checked bob once (hourly: 1,800 e8s)
-    expect(await balanceOf(bob)).toBe(1_990_000n - 1_800n);
+    // the first round checked bob once (hourly: 18,000 e8s)
+    expect(await balanceOf(bob)).toBe(1_990_000n - 18_000n);
     let [e] = (await monAs(bob).get_my_charges(0n, 10n)).entries;
-    expect([e.price_e8s, e.every_min, e.outcome]).toEqual([1_800n, 60n, '1 proposal, sent']);
+    expect([e.price_e8s, e.every_min, e.outcome]).toEqual([18_000n, 60n, '1 proposal, sent']);
     expect(e.target).toEqual(sns(snsA));
     // not due again within the hour: no charge, no listing
     const c0 = await a.counters();
     await round();
-    expect(await balanceOf(bob)).toBe(1_990_000n - 1_800n);
+    expect(await balanceOf(bob)).toBe(1_990_000n - 18_000n);
     expect((await a.counters()).list_proposals).toBe(c0.list_proposals);
     // an hour later: polled once, nothing new, charged once more
     await later(60);
     await round();
-    expect(await balanceOf(bob)).toBe(1_990_000n - 3_600n);
+    expect(await balanceOf(bob)).toBe(1_990_000n - 36_000n);
     expect((await a.counters()).list_proposals).toBe(c0.list_proposals + 1n);
     expect((await a.counters()).get_proposal).toBe(c0.get_proposal); // nothing new to read
     expect((await propsOf(bob)).length).toBe(1);
@@ -257,7 +257,7 @@ describe('sneed_mon', () => {
     expect(h.entries.map((x) => x.outcome)).toEqual(['nothing new', '1 proposal, sent']); // newest first
     expect((await monAs(bob).get_my_charges(1n, 10n)).entries.map((x) => x.outcome)).toEqual(['1 proposal, sent']);
     const mine = await monAs(bob).get_my_balance();
-    expect([mine.charged_e8s, mine.checks, mine.per_round_of_checks_e8s, mine.per_day_e8s]).toEqual([3_600n, 2n, 1_800n, 43_200n]);
+    expect([mine.charged_e8s, mine.checks, mine.per_round_of_checks_e8s, mine.per_day_e8s]).toEqual([36_000n, 2n, 18_000n, 432_000n]);
     await expectSolvent();
   });
 
@@ -295,7 +295,7 @@ describe('sneed_mon', () => {
   it('pauses a user whose balance cannot pay a check (one notice), and resumes on credit', async () => {
     const pat = user('mon-pat');
     unwrap(await notifAs(pat).allow_app(appId, true));
-    await fund(pat, FEE + 1_800n); // exactly one hourly check
+    await fund(pat, FEE + 18_000n); // exactly one hourly check
     await a.set_neurons([{ id: N.bob, permissions: [perm(bob, [4, 3])] }, { id: N.grace, permissions: [perm(grace, [4])] }, { id: nid(8, 8), permissions: [perm(pat, [4])] }]);
     unwrap(await monAs(pat).watch(sns(snsA)));
     await round(); // the one paid check
@@ -316,11 +316,11 @@ describe('sneed_mon', () => {
     expect((await monAs(pat).get_my_charges(0n, 10n)).total).toBe(1n);
     expect((await mon.get_status()).paused_users).toBe(1n);
     // a credit that pays a check resumes; the watch is kept
-    const r = await fund(pat, FEE + 5_000n);
-    expect([r.credited_e8s, r.paused]).toEqual([5_000n, false]);
+    const r = await fund(pat, FEE + 50_000n);
+    expect([r.credited_e8s, r.paused]).toEqual([50_000n, false]);
     expect((await monAs(pat).get_my_watches()).length).toBe(1);
     await round();
-    expect(await balanceOf(pat)).toBe(5_000n - 1_800n);
+    expect(await balanceOf(pat)).toBe(50_000n - 18_000n);
     await expectSolvent();
   });
 
@@ -409,14 +409,14 @@ describe('sneed_mon', () => {
     await later(360); // a day after the first poll
     await round();
     expect((await c.counters()).list_proposals).toBe(n0 + 2n);
-    expect((await monAs(dan).get_my_charges(0n, 10n)).entries.map((e) => e.price_e8s)).toEqual([14_400n, 14_400n]);
+    expect((await monAs(dan).get_my_charges(0n, 10n)).entries.map((e) => e.price_e8s)).toEqual([144_000n, 144_000n]);
     // a 10-minute watcher: polled every round
     unwrap(await monAs(fay).watch(sns(snsC)));
     unwrap(await monAs(fay).update_watch(sns(snsC), { every_min: [10n], topics: [], new_proposals: [], reminders: [], reminder_window_s: [] }));
     const n1 = (await c.counters()).list_proposals;
     for (let i = 0; i < 3; i++) { await later(10); await round(); }
     expect((await c.counters()).list_proposals).toBe(n1 + 3n);
-    expect((await monAs(fay).get_watch(sns(snsC)))[0].price_per_check_e8s).toBe(600n);
+    expect((await monAs(fay).get_watch(sns(snsC)))[0].price_per_check_e8s).toBe(6_000n);
     // nobody watching: no calls at all
     unwrap(await monAs(fay).unwatch(sns(snsC)));
     unwrap(await monAs(dan).unwatch(sns(snsC)));
@@ -431,7 +431,7 @@ describe('sneed_mon', () => {
     await b.set_neurons(many.map((p, i) => ({ id: ids[i], permissions: [perm(p, [4])] })));
     for (let i = 0; i < many.length; i += 25) {
       await Promise.all(many.slice(i, i + 25).map(async (p) => {
-        await fund(p, 100_000n);
+        await fund(p, 1_000_000n);
         unwrap(await notifAs(p).allow_app(appId, true));
         unwrap(await monAs(p).watch(sns(snsB)));
       }));
@@ -493,7 +493,7 @@ describe('sneed_mon', () => {
     // the defaults are the admins' to tune
     const cfg = await mon.get_config();
     expect(errOf(await mon.admin_set_tuning({ ...cfg.tuning, defaults: { ...cfg.tuning.defaults, every_min: 7n } }))).toMatch(/defaults/);
-    expect(errOf(await mon.admin_set_tiers({ base_daily_price_e8s: 14_400n, tiers: [{ every_min: 10n, daily_multiplier: 6n }] }))).toMatch(/default frequency/);
+    expect(errOf(await mon.admin_set_tiers({ base_daily_price_e8s: 144_000n, tiers: [{ every_min: 10n, daily_multiplier: 6n }] }))).toMatch(/default frequency/);
     expect(errOf(await mon.admin_set_tiers({ base_daily_price_e8s: 1n, tiers: [{ every_min: 7n, daily_multiplier: 1n }] }))).toMatch(/divide 1440/);
   });
 
@@ -571,7 +571,7 @@ describe('sneed_mon', () => {
     unwrap(await mon.admin_set_app_id([appId]));
     await round();
     expect((await propsOf(bob)).filter((h) => h.title.includes('#9')).length).toBe(1);
-    expect(await balanceOf(bob)).toBe(bal - 1_800n);
+    expect(await balanceOf(bob)).toBe(bal - 18_000n);
   });
 
   it('refuses queries sent as updates and non-admin admin calls at ingress', async () => {
