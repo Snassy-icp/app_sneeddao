@@ -110,6 +110,16 @@ export const apiDocs = [
         description: 'The token whitelist and metadata cache, user settings and wallet registry, canister folders, partners and projects, donations and SNS Jailbreak configurations.',
         color: '#64748b',
     },
+    // Not deployed yet: reachable at /api/sneed_proxy (its ICRC-3 block_types_url points there), not listed as a card.
+    {
+        slug: 'sneed_proxy',
+        icon: FaServer,
+        title: 'Sneed proxy',
+        canisterId: '',
+        description: 'Every admin setting of Sneed DAO\'s canisters by SNS proposal: the allowlist of proposable actions, the execute and validator methods per proposal topic, and the ICRC-3 log of every forwarded call.',
+        color: '#8b5cf6',
+        hidden: true,
+    },
     // The naming canisters each have a short page pointing into the Sneed Names doc, so links such as
     // the block_types_url the canisters publish (/api/sneed_pid_names#block-types) resolve. Not listed as cards.
     ...[

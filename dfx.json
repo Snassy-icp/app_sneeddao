@@ -222,6 +222,11 @@
       "main": "src/mr_sneed/main.mo",
       "type": "motoko",
       "args": "--enhanced-orthogonal-persistence"
+    },
+    "sneed_proxy": {
+      "main": "src/sneed_proxy/main.mo",
+      "type": "motoko",
+      "args": "--enhanced-orthogonal-persistence"
     }
   },
   "networks": {

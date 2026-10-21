@@ -16,7 +16,10 @@ SNS root and is an admin on each target canister. It has one execute method per 
 and each execute method is registered as its own generic nervous system function (GNSF). An
 allowlist decides which `(canister, method)` may be called, and through which topic.
 
-Status (2026-10-21): spec only. No code, no proposals.
+Status (2026-10-21): built, not deployed. `src/sneed_proxy` (EOP), tests in
+`test/canisters/tests/sneed-proxy.test.js` (mock governance; pilot on the real sneed_lock wasm),
+frontend groundwork in `src/app_sneeddao_frontend/src/governance/`. No proposals yet. The open
+questions are answered (§11, "Decisions").
 - SNS root: `fp274-iaaaa-aaaaq-aacha-cai`.
 - SNS governance: `fi3zi-fyaaa-aaaaq-aachq-cai`.
 
@@ -1063,6 +1066,32 @@ follows:
 - **Cycles.** The proxy's cycle cost is a few calls per proposal plus the log.
 
 ## 11. Open questions
+
+**Decisions (2026-10-21), the suggested answers throughout:**
+1. Sneed Hub sets `expires_at` 14 days out by default (`DEFAULT_EXPIRY_DAYS` in `governance/registry.js`).
+2. Partners, projects, forum structure and texts stay B (normal, GNSF 6000); 6002 stays unregistered.
+3. No stake minimum beyond what governance requires (the reject cost and the dissolve delay to vote).
+4. (admin prices: handled by the separate special-prices work.)
+5. User-fund repairs stay with admins for now.
+6. `admin_set_feedback_config` is C (critical, GNSF 6003).
+7. Membership grants (`setMembershipAdmin`, `extendMembershipAdmin`) are B.
+8. The proxy's ICRC-3 archives are registered with the SNS manually, by proposal; no SnsRegister.mo.
+9. (Mr Sneed's GNSFs: unchanged.)
+10. (Moderators: later.)
+11. Humans keep stop-only emergency switches, built later.
+12. Pilot: Sneed Lock fees (`sneed_lock.admin_set_lock_fees_icp`, `reply = #result`). The RLL
+    splitter ratios go through the existing GNSF 3000 (pylon `icrc55_command`) and need no proxy.
+
+**Built differently from the text above:**
+- `payload_hash` (§3.5) is not the SHA-256 of the payload bytes, which the proxy cannot see (it
+  receives the decoded record, and re-encoding is not byte-identical across Candid encoders). It is
+  the ICRC-3 representation-independent hash of the map `{ canister : Blob; method : Text;
+  arg : Blob; note? : Text; expires_at? : Nat }`, which Sneed Hub computes from a decoded proposal
+  payload (`payloadHash` in `governance/registry.js`).
+- Reject messages after the forward end with ` · block <index>`, the ICRC-3 block of that call.
+- A trapping target reaches the proxy as `canister_reject` (IC0503, the trap message) on the
+  bounded-wait path, not `canister_error`; both read "target rejected (<code>): …".
+
 
 1. **Stale proposals.** Should Sneed Hub set `expires_at` by default, for example 14 days after
    submission, so that a fee proposal adopted after someone else already changed the fee does

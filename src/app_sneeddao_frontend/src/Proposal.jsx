@@ -25,6 +25,7 @@ import { FaChevronLeft, FaChevronRight, FaSearch, FaExternalLinkAlt, FaCheckCirc
 import { getRelativeTime, getFullDate } from './utils/DateUtils';
 import { getOrFetchNeuron } from './hooks/useNeuronsCache';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
+import ProxyPayloadView from './components/ProxyPayloadView';
 
 // Custom CSS for animations
 const customStyles = `
@@ -1391,6 +1392,9 @@ function Proposal() {
                                             </div>
                                         )}
                                         
+                                        {/* Sneed proxy calls: the payload decoded and checked against the validator text */}
+                                        {selectedSnsRoot === SNEED_SNS_ROOT && <ProxyPayloadView proposal={proposalData} />}
+
                                         {/* Voting Bar */}
                                         {proposalData.latest_tally?.[0] && <VotingBar proposalData={proposalData} />}
                                         

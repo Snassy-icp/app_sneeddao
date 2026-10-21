@@ -29,6 +29,7 @@ const CANISTERS = [
   ['rll', 'rll'],
   ['sneedapp', 'sneedapp'],
   ['mr_sneed', 'mr_sneed'],
+  ['sneed_proxy', 'sneed_proxy'],
 ];
 
 let pic;
