@@ -11,6 +11,7 @@ import { createActor as createSnsGovernanceActor } from 'external/sns_governance
 import { HttpAgent } from '@dfinity/agent';
 import { uint8ArrayToHex, safePrincipalString, formatNeuronDisplayWithContext } from '../utils/NeuronUtils';
 import { useNaming } from '../NamingContext';
+import ProposerPrincipals from '../components/ProposerPrincipals';
 import { calculateVotingPower } from '../utils/VotingPowerUtils';
 import { isProposalAcceptingVotes, getProposalStatus, getVotingTimeRemaining } from '../utils/ProposalUtils';
 import {
@@ -1144,6 +1145,11 @@ function ActiveProposals() {
                                                                 ? formatNeuronDisplayWithContext(proposal.proposer[0].id, snsInfo.rootCanisterId, proposerInfo(snsInfo.rootCanisterId, proposal.proposer[0].id), { isAuthenticated: true })
                                                                 : <span>unknown</span>)}
                                                     </div>
+                                                    {!isNns && proposal.proposer?.[0]?.id && (
+                                                        <div style={{ margin: '-0.4rem 0 0.75rem' }}>
+                                                            <ProposerPrincipals snsRoot={snsInfo.rootCanisterId} neuronId={proposal.proposer[0].id} theme={theme} />
+                                                        </div>
+                                                    )}
 
                                                     <VoteBar tally={proposal.latest_tally} theme={theme} />
                                                     
