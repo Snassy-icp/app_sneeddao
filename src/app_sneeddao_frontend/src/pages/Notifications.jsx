@@ -1,6 +1,6 @@
 // /notifications: the notification centre (sneed_notifications, spec/sneed_notifications.md).
 // Which apps may notify you, how each level reaches you, quiet hours, channels, your balance for
-// paid channels, and what you were sent.
+// paid channels, and what you were sent; and Sneed Monitor (components/SneedMonitorSection.jsx).
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FaBell, FaCheckCircle, FaChevronDown, FaChevronRight, FaMoon, FaWallet, FaHistory, FaPlug, FaInbox } from 'react-icons/fa';
@@ -10,6 +10,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { notificationsEnabled, notificationsActor, LEVELS, CHANNEL_KINDS, kindOf, levelOf, topUp, formatIcp, relayKeys, addDiscordChannel, addPushChannel, pushSupported } from '../utils/NotificationsService';
 import { isStandaloneApp, isIOS } from '../utils/pairing';
 import { createActor as createSmsActor, canisterId as smsCanisterId } from 'declarations/sneed_sms';
+import SneedMonitorSection from '../components/SneedMonitorSection';
 
 const accent = '#f59e0b';
 const opt = (x) => (x && x.length ? x[0] : null);
@@ -128,6 +129,9 @@ export default function Notifications() {
                     ))}
                 </div>
             )}
+
+            {/* Sneed Monitor: proposals to vote on (renders nothing where sneed_mon has no canister id) */}
+            <SneedMonitorSection notifActor={actor} myApps={apps} onNotificationsChanged={() => load().catch(() => {})} setMsg={setMsg} />
 
             <div style={card}>
                 <h2 style={h2}><FaInbox color={accent} /> How you're notified</h2>

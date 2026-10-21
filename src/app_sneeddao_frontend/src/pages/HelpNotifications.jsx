@@ -197,6 +197,7 @@ export default function HelpNotifications() {
             </Section>
 
             <Related links={[
+                { to: '/help/monitor', label: 'Sneed Monitor', text: 'proposals to vote on, while Sneed Hub is closed' },
                 { to: '/help/app', label: 'Install the app', text: 'needed for push on iPhone' },
                 { to: '/help/wallet', label: 'Wallet', text: 'where top-ups come from' },
                 { to: '/sms', label: 'Sneed SMS', text: 'your notification inbox' },

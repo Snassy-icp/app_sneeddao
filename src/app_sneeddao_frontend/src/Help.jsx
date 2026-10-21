@@ -6,7 +6,7 @@ import { FaMobileAlt,
     FaQuestionCircle, FaBook, FaWallet, FaBrain, FaLock, FaServer, 
     FaCubes, FaStore, FaUnlock, FaArrowRight, FaLifeRing, FaChartLine,
     FaIdBadge, FaLandmark, FaVoteYea, FaWater, FaComments, FaEnvelope, FaBell,
-    FaRocket, FaFlask, FaTools, FaRobot, FaCode, FaProjectDiagram
+    FaRocket, FaFlask, FaTools, FaRobot, FaCode, FaProjectDiagram, FaSatelliteDish
 } from 'react-icons/fa';
 
 // Custom CSS for animations
@@ -73,6 +73,7 @@ const helpGroups = [
             { path: '/help/forum', icon: FaComments, title: 'Forum, Feed and Tips', description: 'Discuss with every SNS community: threads, post voting with neurons, polls, tips and @-mentions', color: '#6366f1' },
             { path: '/help/sms', icon: FaEnvelope, title: 'Sneed SMS Messages', description: 'Direct messages between principals: compose, reply, threads, limits and who can read them', color: '#ec4899' },
             { path: '/help/notifications', icon: FaBell, title: 'Notifications', description: 'Choose which apps may notify you and where: Sneed SMS, phone push or Discord; levels, quiet hours, balance and history', color: '#f59e0b' },
+            { path: '/help/monitor', icon: FaSatelliteDish, title: 'Sneed Monitor', description: 'Get told about proposals your neurons can vote on, even with Sneed Hub closed: prices per check, topping up, stopping and withdrawing', color: '#f59e0b' },
         ],
     },
     {

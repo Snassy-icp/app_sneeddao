@@ -68,6 +68,7 @@ import AdminsAdmin from './pages/admin/Admins';
 import AdminSnsJailbreak from './pages/AdminSnsJailbreak';
 import RewardsAdmin from './pages/admin/Rewards';
 import RllAdmin from './pages/admin/Rll';
+import SneedMonAdmin from './pages/admin/SneedMon';
 import Projects from './pages/Projects';
 import PairApp from './pages/PairApp';
 import Notifications from './pages/Notifications';
@@ -109,6 +110,7 @@ import HelpTradingBot from './pages/HelpTradingBot';
 import HelpForum from './pages/HelpForum';
 import HelpSms from './pages/HelpSms';
 import HelpNotifications from './pages/HelpNotifications';
+import HelpMonitor from './pages/HelpMonitor';
 import HelpNames from './pages/HelpNames';
 import HelpDao from './pages/HelpDao';
 import HelpProposals from './pages/HelpProposals';
@@ -225,6 +227,7 @@ function App() {
                     <Route path="/help/forum" element={<HelpForum />} />
                     <Route path="/help/sms" element={<HelpSms />} />
                     <Route path="/help/notifications" element={<HelpNotifications />} />
+                    <Route path="/help/monitor" element={<HelpMonitor />} />
                     <Route path="/help/names" element={<HelpNames />} />
                     <Route path="/help/dao" element={<HelpDao />} />
                     <Route path="/help/proposals" element={<HelpProposals />} />
@@ -373,6 +376,7 @@ function App() {
                     <Route path="/admin/sns_jailbreak" element={<AdminSnsJailbreak />} />
                     <Route path="/admin/rewards" element={<RewardsAdmin />} />
                     <Route path="/admin/rll" element={<RllAdmin />} />
+                    <Route path="/admin/mon" element={<SneedMonAdmin />} />
                   </Routes>
                   </Layout>
                   </FrontendUpdateProvider>

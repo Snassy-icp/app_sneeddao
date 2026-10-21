@@ -545,6 +545,29 @@ function Admin() {
                     </Link>
 
                     <Link 
+                        to="/admin/mon"
+                        style={{
+                            backgroundColor: '#3a2e14',
+                            padding: '20px',
+                            borderRadius: '8px',
+                            textDecoration: 'none',
+                            color: '#ffffff',
+                            textAlign: 'center',
+                            border: '1px solid #f59e0b',
+                            transition: 'transform 0.2s ease',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '10px'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
+                        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                    >
+                        <h2 style={{ margin: 0 }}>Sneed Monitor</h2>
+                        <p style={{ color: '#fbbf24', margin: 0 }}>Proposal watcher: status and economics, prices, fees, settings, notifications app and admins</p>
+                    </Link>
+
+                    <Link 
                         to="/admin/donations"
                         style={{
                             backgroundColor: '#3a1a24',

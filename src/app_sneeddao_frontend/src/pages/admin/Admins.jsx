@@ -11,7 +11,7 @@ import {
     FaUserShield, FaSpinner, FaSync, FaPlus, FaTrash, 
     FaChevronDown, FaChevronUp, FaCheck, FaTimes, FaDatabase,
     FaLock, FaComments, FaEnvelope, FaCrown, FaExchangeAlt, FaCopy,
-    FaMinus, FaGift, FaIdBadge, FaTag, FaImage, FaAddressBook, FaStore
+    FaMinus, FaGift, FaIdBadge, FaTag, FaImage, FaAddressBook, FaStore, FaSatelliteDish
 } from 'react-icons/fa';
 
 // Import actors
@@ -24,6 +24,7 @@ import { createActor as createSneedexActorDecl, canisterId as sneedexCanisterId 
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
 import * as NS from '../../utils/NamingService';
+import { monEnabled, monId, monActor } from '../../utils/SneedMonService';
 
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
 
@@ -171,6 +172,26 @@ const CANISTERS = {
         },
         formatAdmins: (admins) => admins.map(p => ({ principal: p })),
     },
+    // Sneed Monitor (spec/sneed_mon.md): only on a network where it has a canister id
+    ...(monEnabled ? { sneed_mon: {
+        id: monId,
+        name: 'Sneed Monitor',
+        icon: FaSatelliteDish,
+        color: '#f59e0b',
+        getActor: (identity) => monActor(identity),
+        getAdmins: async (actor) => await actor.get_admins(),
+        addAdmin: async (actor, principal) => {
+            const result = await actor.admin_add_admin(principal);
+            if ('err' in result) throw new Error(result.err);
+            return result;
+        },
+        removeAdmin: async (actor, principal) => {
+            const result = await actor.admin_remove_admin(principal);
+            if ('err' in result) throw new Error(result.err);
+            return result;
+        },
+        formatAdmins: (admins) => admins.map(p => ({ principal: p })),
+    } } : {}),
     // the naming service (spec/sneed_names.md): the same admin methods on all six
     ...Object.fromEntries([
         ['sneed_pid_names', 'Names', FaIdBadge, '#14b8a6', 'pidNames', NS.pidNamesActor],
