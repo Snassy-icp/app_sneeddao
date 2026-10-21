@@ -2,6 +2,10 @@
 /// (Error.reject, reject code CANISTER_REJECT) instead of a reply: before
 /// moving the tokens (the transfer did not happen) or after (it did, and the
 /// caller cannot tell). Used to drive the reward loop's claim incident path.
+/// With set_dedupe(true) it deduplicates like an ICRC-1 ledger: a transfer with
+/// created_at_time that repeats an earlier one exactly answers #Duplicate, and
+/// one older than the 24 h window answers #TooOld (used by Sneed Lock's
+/// reconciliation of lock transfers with an unknown outcome).
 import Array "mo:base/Array";
 import Blob "mo:base/Blob";
 import Buffer "mo:base/Buffer";
@@ -9,6 +13,9 @@ import Error "mo:base/Error";
 import HashMap "mo:base/HashMap";
 import Principal "mo:base/Principal";
 import Text "mo:base/Text";
+import Time "mo:base/Time";
+import Nat64 "mo:base/Nat64";
+import Int "mo:base/Int";
 
 persistent actor class MockRejectLedger(init : { fee : Nat; symbol : Text; decimals : Nat8 }) {
   public type Account = { owner : Principal; subaccount : ?Blob };
@@ -24,6 +31,9 @@ persistent actor class MockRejectLedger(init : { fee : Nat; symbol : Text; decim
   transient let balances = HashMap.HashMap<Text, Nat>(16, Text.equal, Text.hash);
   transient let txs = Buffer.Buffer<Tx>(16);
   transient var mode : Mode = #normal;
+  transient var dedupe : Bool = false;
+  transient let seen = HashMap.HashMap<Text, Nat>(16, Text.equal, Text.hash);
+  transient let WINDOW_NS : Nat64 = 86_400_000_000_000;
 
   func key(a : Account) : Text {
     let zero = Blob.fromArray(Array.freeze(Array.init<Nat8>(32, 0)));
@@ -41,11 +51,23 @@ persistent actor class MockRejectLedger(init : { fee : Nat; symbol : Text; decim
   public shared ({ caller }) func icrc1_transfer(args : TransferArgs) : async { #Ok : Nat; #Err : TransferError } {
     if (mode == #reject_before) { throw Error.reject("ledger rejected the call") };
     let from : Account = { owner = caller; subaccount = args.from_subaccount };
+    let txKey = debug_show ((caller, args));
+    if (dedupe) {
+      switch (args.created_at_time) {
+        case (?t) {
+          let now = Nat64.fromNat(Int.abs(Time.now()));
+          if (t + WINDOW_NS < now) { return #Err(#TooOld) };
+          switch (seen.get(txKey)) { case (?i) { return #Err(#Duplicate({ duplicate_of = i })) }; case null {} };
+        };
+        case null {};
+      };
+    };
     let b = balance(from);
     if (b < args.amount + init.fee) { return #Err(#InsufficientFunds({ balance = b })) };
     balances.put(key(from), b - args.amount - init.fee);
     balances.put(key(args.to), balance(args.to) + args.amount);
     txs.add({ from; to = args.to; amount = args.amount; memo = args.memo });
+    if (dedupe and args.created_at_time != null) { seen.put(txKey, txs.size() - 1) };
     if (mode == #reject_after) { throw Error.reject("ledger rejected the reply") };
     #Ok(txs.size() - 1);
   };
@@ -53,5 +75,6 @@ persistent actor class MockRejectLedger(init : { fee : Nat; symbol : Text; decim
   // ---- test helpers ----
   public shared func mint(to : Account, amount : Nat) : async () { balances.put(key(to), balance(to) + amount) };
   public shared func set_mode(m : Mode) : async () { mode := m };
+  public shared func set_dedupe(d : Bool) : async () { dedupe := d };
   public query func get_transactions() : async [Tx] { Buffer.toArray(txs) };
 };

@@ -31,7 +31,8 @@ Sneedapp is Sneed DAO's app factory: a catalogue of apps (canister programs such
 ## Asynchronous lifecycle and polling
 
 - Mint flow: `getAppMintPrice` (update) -> fund the payment subaccount (ICP ledger transfer) -> `mintCanister`. A deposit larger than the fee stays for the next mint or withdrawal.
-- If a mint step fails, the new canister is deleted and the moved ICP is returned to the payment subaccount, less ledger fees; the error text says so.
+- If a mint step fails, the new canister is deleted and the moved ICP is returned to the payment subaccount, less ledger fees; the error text says so. ICP whose return failed becomes a refund credit: `get_refund_credits_for(user)`, `claim_refund_credit(id)`.
+- If only the hand-over failed, the canister waits for you: `get_orphans_for(user)`, then `retry_handover(canisterId)` (to the minter only). A failed cycles purchase after a mint is the factory's own (`get_pending_top_ups`, `retry_top_up`); the mint still succeeds.
 - Verify a minted canister with `lookupMintedCanister` / `wasMintedByUs`, and compare its IC module hash with the version's `wasmHash`. Poll only after user actions; nothing here needs fast polling.
 
 ## Errors, retries and Busy

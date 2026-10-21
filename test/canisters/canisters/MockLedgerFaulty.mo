@@ -4,6 +4,11 @@
 ///   set_fail_to(owners)        transfers TO any of these owners fail
 ///   set_fail_from_main(owners) transfers FROM the default (main) account of
 ///                              any of these owners fail
+///   set_reject_to(accounts)    transfers TO exactly these accounts are
+///                              rejected (Error.reject: the call throws at the
+///                              caller) and move nothing
+///   set_hold_to(owners)        transfers TO any of these owners wait (a
+///                              self-call per round) until the rule is lifted
 /// Failed transfers answer GenericError and move nothing. Used by the
 /// sneedapp tests at the real ICP ledger id.
 import Array "mo:base/Array";
@@ -14,6 +19,7 @@ import Nat "mo:base/Nat";
 import Nat8 "mo:base/Nat8";
 import Principal "mo:base/Principal";
 import Text "mo:base/Text";
+import Error "mo:base/Error";
 
 shared ({ caller = deployer }) persistent actor class MockLedgerFaulty(init : { fee : Nat; symbol : Text; decimals : Nat8 }) = this {
 
@@ -45,6 +51,8 @@ shared ({ caller = deployer }) persistent actor class MockLedgerFaulty(init : { 
   transient var paused : Bool = false;
   transient var failTo : [Principal] = [];
   transient var failFromMain : [Principal] = [];
+  transient var rejectTo : [Account] = [];
+  transient var holdTo : [Principal] = [];
 
   func zeroSub() : Blob { Blob.fromArray(Array.freeze(Array.init<Nat8>(32, 0))) };
 
@@ -76,7 +84,11 @@ shared ({ caller = deployer }) persistent actor class MockLedgerFaulty(init : { 
     [("icrc1:symbol", #Text(init.symbol)), ("icrc1:name", #Text(init.symbol # " mock")), ("icrc1:decimals", #Nat(Nat8.toNat(init.decimals))), ("icrc1:fee", #Nat(fee))];
   };
 
+  public shared func wait_round() : async () {};
+
   public shared ({ caller }) func icrc1_transfer(args : TransferArgs) : async TransferResult {
+    while (Array.find<Principal>(holdTo, func(p) { p == args.to.owner }) != null) { await wait_round() };
+    if (Array.find<Account>(rejectTo, func(a) { key(a) == key(args.to) }) != null) { throw Error.reject("mock: transfer rejected by rule") };
     if (paused) { return #Err(#TemporarilyUnavailable) };
     switch (args.fee) {
       case (?f) { if (f != fee) { return #Err(#BadFee({ expected_fee = fee })) } };
@@ -144,5 +156,7 @@ shared ({ caller = deployer }) persistent actor class MockLedgerFaulty(init : { 
   public shared func set_paused(p : Bool) : async () { paused := p };
   public shared func set_fail_to(owners : [Principal]) : async () { failTo := owners };
   public shared func set_fail_from_main(owners : [Principal]) : async () { failFromMain := owners };
+  public shared func set_reject_to(accounts : [Account]) : async () { rejectTo := accounts };
+  public shared func set_hold_to(owners : [Principal]) : async () { holdTo := owners };
   public query func get_transactions() : async [Tx] { Buffer.toArray(txs) };
 };

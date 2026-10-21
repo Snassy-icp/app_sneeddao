@@ -39,6 +39,7 @@ Calls are authorised by the signing principal only; there is nothing else to reg
 - `GenericError` with `error_code = 2`: another token operation of the caller is running - retry after it completes.
 - `Busy: ...` on fee claims or add-liquidity (per-pool mutex, or a fee delivery in transit): retry after a few seconds.
 - `InProgress` on lock operations: a transfer of the lock is waiting on the ledger; retry shortly.
+- A lock transfer whose ledger outcome is unknown leaves the lock with both parties (`InProgress`, `get_uncertain_token_locks()`): either holder calls `reconcile_token_lock(lock_id, null)`, which checks the ledger and keeps the lock with exactly one side.
 - After a timeout, re-read state (`get_token_locks`, `get_lock_state`) before retrying a non-idempotent call.
 
 ## Common pitfalls

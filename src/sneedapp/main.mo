@@ -376,6 +376,75 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     };
     var orphanCanisters: [OrphanCanister] = [];
 
+    // Recovery (spec/support_audit.md, sneedapp). New stable fields (additive).
+    //
+    // A mint whose hand-over failed: everything needed to record the mint once the canister
+    // reaches its minter (retry_handover, adminSettleOrphan). Keyed by canister id; removed
+    // when the hand-over succeeds. Only the recorded minter ever receives the canister.
+    type PendingMint = {
+        canisterId: Principal;
+        minter: Principal;
+        appId: Text;
+        numericAppId: Nat;
+        publisherId: Nat;
+        legacy: Bool; // createNeuronManager (no publisher revenue stats; its block names the method)
+        verMajor: Nat;
+        verMinor: Nat;
+        verPatch: Nat;
+        wasmSha256: Text;
+        wasmSize: Nat;
+        paid: Bool;
+        icpPaidE8s: Nat64;
+        icpForCyclesE8s: Nat64; // in the factory's main account until the cycles are bought
+        icpProfitE8s: Nat64;
+        icpTransferFeesE8s: Nat64;
+        daoCutE8s: Nat64;
+        publisherRevenueE8s: Nat64;
+        premium: Bool;
+        priceTier: Text;
+        payFields: [(Text, T3.Value)]; // the sneedapp_mint block's payment fields
+        cyclesBalanceBefore: Nat;
+        recordedAt: Int;
+    };
+    var pendingMints: Map.Map<Principal, PendingMint> = Map.new<Principal, PendingMint>();
+
+    // A paid mint's cycles purchase that did not complete: the ICP for cycles is either still
+    // in the factory's main account (block = null) or at the CMC unnotified (block = the ICP
+    // ledger block of the transfer; notify_top_up with it is idempotent at the CMC). Retried
+    // by retry_top_up (the payer or an admin). It buys cycles for the factory only.
+    type PendingTopUp = {
+        id: Nat;
+        canisterId: Principal; // the mint it belongs to
+        payer: Principal;
+        icpE8s: Nat64;
+        block: ?Nat;
+        recordedAt: Int;
+        reason: Text;
+    };
+    var pendingTopUps: Map.Map<Nat, PendingTopUp> = Map.new<Nat, PendingTopUp>();
+    var nextPendingTopUpId: Nat = 0;
+
+    // ICP of an aborted mint that could not be returned to the payer's payment subaccount at
+    // the time (the return transfer failed). It is still inside this canister's own accounts;
+    // the payer (or an admin, for the payer) claims it back to the payer's payment
+    // subaccount with claim_refund_credit. Only ever paid to that payer.
+    type RefundLeg = { fromSubaccount: ?Blob; amountE8s: Nat64 }; // null = the main account
+    type RefundCredit = {
+        id: Nat;
+        payer: Principal;
+        appId: Text;
+        legs: [RefundLeg];
+        canisterId: ?Principal;
+        recordedAt: Int;
+        reason: Text;
+    };
+    var refundCredits: Map.Map<Nat, RefundCredit> = Map.new<Nat, RefundCredit>();
+    var nextRefundCreditId: Nat = 0;
+
+    // In-flight guards for the recovery methods (transient: reset on upgrade)
+    transient var settlingCanisters = Map.new<Principal, ()>();
+    transient var topUpsInFlight = Map.new<Nat, ()>();
+
     // ICRC-3 activity log: a hash-chained, certified block per catalogue, version and Wasm
     // change (the supply chain), mint and ICP movement, privileged wallet write and config
     // change, with archive canisters for old blocks. Library src/icrc3; design and block
@@ -1796,19 +1865,22 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Undo internal payment transfers after a later payment step failed, so a
     // failed payment never leaves the caller partially charged. Each entry is
     // (source account inside this canister: null = main, ?blob = subaccount;
-    // amount moved there). Returns the total e8s that could NOT be returned —
-    // that ICP then still sits inside this canister's own accounts (never
-    // externally), so it can be returned manually.
+    // amount moved there). Returns the total e8s that could NOT be returned and
+    // those legs — that ICP then still sits inside this canister's own accounts
+    // (never externally); refundPayment records it as a refund credit the payer
+    // claims with claim_refund_credit.
     // Also returns what arrived back in the subaccount and the ledger blocks of the returns.
-    func undoPaymentTransfers(userSubaccount: Blob, moved: [(?Blob, Nat64)]): async* { stuck: Nat64; returned: Nat64; txs: [Nat] } {
+    func undoPaymentTransfers(userSubaccount: Blob, moved: [(?Blob, Nat64)]): async* { stuck: Nat64; returned: Nat64; txs: [Nat]; stuckLegs: [RefundLeg] } {
         let fee = T.ICP_FEE;
         var stuck: Nat64 = 0;
         var returnedE8s: Nat64 = 0;
         let txs = Buffer.Buffer<Nat>(moved.size());
+        let stuckLegs = Buffer.Buffer<RefundLeg>(0);
         for ((fromSubaccount, amountE8s) in moved.vals()) {
             // Dust at or below one ledger fee cannot be returned and was never
             // material; skip it.
             if (amountE8s > fee) {
+                // A thrown call (a reject of this guaranteed-response call) never executed on the ledger
                 let returned = try {
                     switch (await ledger.icrc1_transfer({
                         to = { owner = Principal.fromActor(this); subaccount = ?userSubaccount };
@@ -1822,34 +1894,58 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                         case (#Err(_)) { false };
                     };
                 } catch (_) { false };
-                if (returned) { returnedE8s += amountE8s - fee } else { stuck += amountE8s };
+                if (returned) { returnedE8s += amountE8s - fee } else {
+                    stuck += amountE8s;
+                    stuckLegs.add({ fromSubaccount = fromSubaccount; amountE8s = amountE8s });
+                };
             };
         };
-        { stuck = stuck; returned = returnedE8s; txs = Buffer.toArray(txs) };
+        { stuck = stuck; returned = returnedE8s; txs = Buffer.toArray(txs); stuckLegs = Buffer.toArray(stuckLegs) };
     };
+
+    type RefundOutcome = { stuck: Nat64; credit: ?Nat };
 
     // Returns the ICP an aborted paid mint had moved to the caller's payment subaccount and
     // logs it (sneedapp_mint_refund): what the mint was for (`mint`), the ledger blocks of the
-    // legs that had moved, what came back and what is stuck. Returns the stuck e8s.
-    func refundPayment(caller: Principal, appId: Text, userSubaccount: Blob, moved: [(?Blob, Nat64)], mint: [(Text, T3.Value)], paymentTxs: [Nat], reason: Text, canisterId: ?Principal): async* Nat64 {
+    // legs that had moved, what came back and what is stuck. What is stuck becomes a refund
+    // credit of the caller (claim_refund_credit), named in the block as credit_id.
+    func refundPayment(caller: Principal, appId: Text, userSubaccount: Blob, moved: [(?Blob, Nat64)], mint: [(Text, T3.Value)], paymentTxs: [Nat], reason: Text, canisterId: ?Principal): async* RefundOutcome {
         let r = await* undoPaymentTransfers(userSubaccount, moved);
         var movedE8s: Nat64 = 0;
         for ((_, amountE8s) in moved.vals()) { movedE8s += amountE8s };
+        let credit: ?Nat = if (r.stuckLegs.size() == 0) { null } else {
+            let id = nextRefundCreditId;
+            nextRefundCreditId += 1;
+            Map.set(refundCredits, Map.nhash, id, {
+                id = id; payer = caller; appId = appId; legs = r.stuckLegs; canisterId = canisterId; recordedAt = Time.now(); reason = reason;
+            });
+            ?id;
+        };
         icrc3_add("sneedapp_mint_refund", Array.flatten<(Text, T3.Value)>([
             [("caller", pv(caller)), ("app_id", #Text(appId))],
             mint,
             [("reason", #Text(reason)), ("payment_txs", nats(paymentTxs)), ("moved_e8s", n64(movedE8s)),
              ("returned_e8s", n64(r.returned)), ("stuck_e8s", n64(r.stuck)), ("refund_txs", nats(r.txs))],
             opt("canister_id", switch (canisterId) { case (?c) ?pv(c); case null null }),
+            opt("credit_id", switch (credit) { case (?c) ?#Nat(c); case null null }),
         ]));
-        r.stuck;
+        { stuck = r.stuck; credit = credit };
     };
 
-    func paymentAbortMessage(step: Text, stuckE8s: Nat64): Text {
-        if (stuckE8s == 0) {
+    func paymentAbortMessage(step: Text, r: RefundOutcome): Text {
+        if (r.stuck == 0) {
             step # "; your deposit (less ledger fees) remains in your payment subaccount";
         } else {
-            step # "; returning " # Nat64.toText(stuckE8s) # " e8s to your payment subaccount also failed - that ICP is held inside the factory canister pending manual return";
+            step # "; returning " # Nat64.toText(r.stuck) # " e8s to your payment subaccount also failed - that ICP is held inside the factory canister pending manual return"
+            # (switch (r.credit) { case (?id) "; claim it back with claim_refund_credit(" # Nat.toText(id) # ")"; case null "" });
+        };
+    };
+
+    // A ledger transfer whose throw (a reject of this guaranteed-response call: the ledger
+    // never executed it) is answered as an error instead of propagating
+    func transferOrErr(args: T.TransferArg): async* T.TransferResult {
+        try { await ledger.icrc1_transfer(args) } catch (e) {
+            #Err(#GenericError({ message = "the ledger call failed: " # Error.message(e); error_code = 0 }));
         };
     };
 
@@ -1883,6 +1979,138 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 });
             };
         };
+    };
+
+    type TopUpOutcome = {
+        #Ok: { cycles: Nat; block: Nat };
+        #Refunded: { block: Nat; reason: Text }; // the CMC sent the ICP back to the main account
+        #Failed: { block: ?Nat; reason: Text };  // block = null: the ICP is still in the main account
+    };
+
+    func notifyErrorText(e: T.NotifyError): Text {
+        switch (e) {
+            case (#Refunded(r)) { "refunded: " # r.reason };
+            case (#InvalidTransaction(t)) { "invalid transaction: " # t };
+            case (#Other(o)) { "CMC error " # Nat64.toText(o.error_code) # ": " # o.error_message };
+            case (#Processing) { "the CMC is still processing the block" };
+            case (#TransactionTooOld(b)) { "the block is too old for the CMC (oldest it accepts: " # Nat64.toText(b) # ")" };
+        };
+    };
+
+    // Buys cycles for this canister with `icpE8s` from its main account, or (block = ?b) only
+    // notifies the CMC of an earlier transfer. Never throws: every outcome is an answer.
+    func buyCycles(icpE8s: Nat64, block: ?Nat): async* TopUpOutcome {
+        let selfPrincipal = Principal.fromActor(this);
+        let b: Nat = switch (block) {
+            case (?b) { b };
+            case null {
+                let r = await* transferOrErr({
+                    to = { owner = Principal.fromText(T.CMC_CANISTER_ID); subaccount = ?principalToSubaccount(selfPrincipal) };
+                    fee = ?Nat64.toNat(T.ICP_FEE);
+                    memo = ?TOP_UP_MEMO;
+                    from_subaccount = null;
+                    created_at_time = null;
+                    amount = Nat64.toNat(icpE8s);
+                });
+                switch (r) {
+                    case (#Ok(b)) { b };
+                    case (#Err(e)) { return #Failed({ block = null; reason = "the transfer to the CMC failed: " # debug_show(e) }) };
+                };
+            };
+        };
+        try {
+            switch (await cmc.notify_top_up({ block_index = Nat64.fromNat(b); canister_id = selfPrincipal })) {
+                case (#Ok(cycles)) { #Ok({ cycles = cycles; block = b }) };
+                case (#Err(#Refunded(r))) { #Refunded({ block = b; reason = r.reason }) };
+                case (#Err(e)) { #Failed({ block = ?b; reason = notifyErrorText(e) }) };
+            };
+        } catch (e) {
+            #Failed({ block = ?b; reason = "notify_top_up failed: " # Error.message(e) });
+        };
+    };
+
+    // The cycles purchase of a paid mint, after the hand-over. Never throws. A failure is kept
+    // as a pending top-up (retry_top_up). Answers the cycles received (if any) and the fields
+    // the sneedapp_mint block adds about it.
+    func topUpForMint(pm: PendingMint): async* (?Nat, [(Text, T3.Value)]) {
+        switch (await* buyCycles(pm.icpForCyclesE8s, null)) {
+            case (#Ok(r)) { (?r.cycles, []) };
+            case (#Refunded(r)) {
+                (null, [("top_up_tx", #Nat(r.block)), ("top_up_error", #Text("refunded by the CMC: " # r.reason))]);
+            };
+            case (#Failed(f)) {
+                let id = nextPendingTopUpId;
+                nextPendingTopUpId += 1;
+                Map.set(pendingTopUps, Map.nhash, id, {
+                    id = id; canisterId = pm.canisterId; payer = pm.minter; icpE8s = pm.icpForCyclesE8s;
+                    block = f.block; recordedAt = Time.now(); reason = f.reason;
+                });
+                (null, Array.flatten<(Text, T3.Value)>([
+                    opt("top_up_tx", switch (f.block) { case (?b) ?#Nat(b); case null null }),
+                    [("top_up_error", #Text(f.reason)), ("top_up_pending_id", #Nat(id))],
+                ]));
+            };
+        };
+    };
+
+    // Records a mint whose canister its minter now controls: wallet, mint log, creation and
+    // financial logs, totals, revenue stats and the sneedapp_mint block (plus `extra`).
+    func recordMint(pm: PendingMint, cyclesReceived: ?Nat, extra: [(Text, T3.Value)]) {
+        let cyclesBalanceAfter = Cycles.balance();
+        walletAdd(pm.minter, pm.canisterId, pm.appId);
+        addMintLogEntry(pm.canisterId, pm.minter, pm.appId, pm.numericAppId, pm.publisherId, pm.verMajor, pm.verMinor, pm.verPatch, pm.icpPaidE8s, pm.premium, pm.daoCutE8s, pm.publisherRevenueE8s);
+        let createdAt = Time.now();
+        creationLog := Array.append(creationLog, [{
+            canisterId = pm.canisterId;
+            caller = pm.minter;
+            createdAt = createdAt;
+            index = creationLogNextIndex;
+        }]);
+        creationLogNextIndex += 1;
+        let cyclesFromCmc: Nat = switch (cyclesReceived) { case (?c) c; case null 0 };
+        financialLog := Array.append(financialLog, [{
+            canisterId = pm.canisterId;
+            index = financialLogNextIndex;
+            createdAt = createdAt;
+            icpPaidE8s = pm.icpPaidE8s;
+            icpForCyclesE8s = pm.icpForCyclesE8s;
+            icpProfitE8s = pm.icpProfitE8s;
+            icpTransferFeesE8s = pm.icpTransferFeesE8s;
+            cyclesReceivedFromCmc = cyclesFromCmc;
+            cyclesSpentOnCreation = canisterCreationCycles;
+            cyclesBalanceBefore = pm.cyclesBalanceBefore;
+            cyclesBalanceAfter = cyclesBalanceAfter;
+        }]);
+        financialLogNextIndex += 1;
+        totalIcpPaidE8s += Nat64.toNat(pm.icpPaidE8s);
+        totalIcpForCyclesE8s += Nat64.toNat(pm.icpForCyclesE8s);
+        totalIcpProfitE8s += Nat64.toNat(pm.icpProfitE8s);
+        totalIcpTransferFeesE8s += Nat64.toNat(pm.icpTransferFeesE8s);
+        totalCyclesReceivedFromCmc += cyclesFromCmc;
+        totalCyclesSpentOnCreation += canisterCreationCycles;
+        if (not pm.legacy) {
+            if (pm.publisherId == 0) {
+                totalDirectRevenueE8s += Nat64.toNat(pm.daoCutE8s);
+            } else {
+                totalDaoCutReceivedE8s += Nat64.toNat(pm.daoCutE8s);
+            };
+            updateStatsOnMint(pm.publisherId, pm.numericAppId, Nat64.toNat(pm.publisherRevenueE8s), Nat64.toNat(pm.daoCutE8s));
+        };
+        icrc3_add("sneedapp_mint", Array.flatten<(Text, T3.Value)>([
+            [("caller", pv(pm.minter)), ("canister_id", pv(pm.canisterId)), ("app_id", #Text(pm.appId)), ("numeric_app_id", #Nat(pm.numericAppId)),
+             ("publisher_id", #Nat(pm.publisherId)), ("ver", verValue(pm.verMajor, pm.verMinor, pm.verPatch)), ("wasm_sha256", #Text(pm.wasmSha256)), ("wasm_size", #Nat(pm.wasmSize)),
+             ("price_e8s", n64(pm.icpPaidE8s)), ("premium", flag(pm.premium)), ("price_tier", #Text(pm.priceTier))],
+            if (pm.paid) pm.payFields else [],
+            opt("cycles_received", switch (cyclesReceived) { case (?c) ?#Nat(c); case null null }),
+            if (pm.legacy) [("method", #Text("createNeuronManager"))] else [],
+            extra,
+        ]));
+    };
+
+    // After the hand-over: the cycles purchase (paid mints) and the records. Never throws.
+    func finishMint(pm: PendingMint, extra: [(Text, T3.Value)]): async* () {
+        let (cycles, topUpFields) = if (pm.paid) { await* topUpForMint(pm) } else { (null, []) };
+        recordMint(pm, cycles, Array.append(topUpFields, extra));
     };
 
     // -- Cycles pricing --
@@ -1992,8 +2220,10 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     };
 
     // Makes `owner` the canister's only controller (the factory steps down).
-    // On failure the canister is recorded for the admins, who can hand it over.
-    func handOver(canisterId: Principal, owner: Principal, appId: Text, payment: [(Text, T3.Value)]): async* { #Ok; #Err: Text } {
+    // On failure the canister is recorded as an orphan, with the mint `pm` kept
+    // pending: retry_handover (the minter or an admin) or adminSettleOrphan
+    // hands it to that minter later and records the mint.
+    func handOver(canisterId: Principal, owner: Principal, appId: Text, payment: [(Text, T3.Value)], pm: PendingMint): async* { #Ok; #Err: Text } {
         try {
             await ic.update_settings({
                 canister_id = canisterId;
@@ -2006,8 +2236,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             });
             #Ok;
         } catch (e) {
-            let msg = "Canister " # Principal.toText(canisterId) # " was created and installed but handing control to you failed (" # Error.message(e) # "); it is recorded for the admins to hand over";
+            let msg = "Canister " # Principal.toText(canisterId) # " was created and installed but handing control to you failed (" # Error.message(e) # "); it is recorded and nothing is lost: call retry_handover(" # Principal.toText(canisterId) # ") to receive it, or ask an admin";
             recordOrphan(canisterId, owner, appId, msg, payment);
+            Map.set(pendingMints, Map.phash, canisterId, pm);
             #Err(msg);
         };
     };
@@ -2016,6 +2247,246 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     public query ({ caller }) func getOrphanCanisters(): async [OrphanCanister] {
         assert(isAdmin(caller));
         orphanCanisters;
+    };
+
+    type OrphanInfo = {
+        canisterId: Principal;
+        minter: Principal;
+        appId: Text;
+        recordedAt: Int;
+        reason: Text;
+        // a mint whose hand-over failed: the minter receives the canister with retry_handover
+        handOverPending: Bool;
+    };
+
+    func orphanInfo(o: OrphanCanister): OrphanInfo {
+        { canisterId = o.canisterId; minter = o.minter; appId = o.appId; recordedAt = o.recordedAt; reason = o.reason;
+          handOverPending = Map.has(pendingMints, Map.phash, o.canisterId) };
+    };
+
+    // Public: the orphaned canisters recorded for `minter` (canisters of their failed mints
+    // that the factory still controls), for support and for the minter's own recovery.
+    public query func get_orphans_for(minter: Principal): async [OrphanInfo] {
+        Array.map<OrphanCanister, OrphanInfo>(Array.filter<OrphanCanister>(orphanCanisters, func(o) { o.minter == minter }), orphanInfo);
+    };
+
+    func findOrphan(canisterId: Principal): ?OrphanCanister {
+        Array.find<OrphanCanister>(orphanCanisters, func(o) { o.canisterId == canisterId });
+    };
+
+    func removeOrphan(canisterId: Principal) {
+        orphanCanisters := Array.filter<OrphanCanister>(orphanCanisters, func(o) { o.canisterId != canisterId });
+    };
+
+    // Hands an orphan to exactly its recorded minter and, for a failed hand-over of a mint,
+    // records that mint (and buys its cycles). Idempotent: a canister already settled answers
+    // #Ok when its mint log entry names the minter; nothing happens twice. Logged as
+    // sneedapp_orphan_settled with `reason`.
+    func settleHandOver(caller: Principal, canisterId: Principal, reason: Text): async* { #Ok; #Err: Text } {
+        if (Map.has(settlingCanisters, Map.phash, canisterId)) {
+            return #Err("A settlement of this canister is already in progress; please retry");
+        };
+        let o = switch (findOrphan(canisterId)) {
+            case null {
+                return switch (mintLogIndexMap.get(canisterId)) {
+                    case (?_) { #Ok }; // settled before (the mint is recorded)
+                    case null { #Err("No orphaned canister " # Principal.toText(canisterId) # " is recorded") };
+                };
+            };
+            case (?o) { o };
+        };
+        Map.set(settlingCanisters, Map.phash, canisterId, ());
+        try {
+            try {
+                await ic.update_settings({
+                    canister_id = canisterId;
+                    settings = { controllers = ?[o.minter]; compute_allocation = null; memory_allocation = null; freezing_threshold = null };
+                });
+            } catch (e) {
+                return #Err("Handing control to " # Principal.toText(o.minter) # " failed again (" # Error.message(e) # "); nothing changed, please retry later");
+            };
+            // The minter alone controls it now
+            removeOrphan(canisterId);
+            let pm = Map.remove(pendingMints, Map.phash, canisterId);
+            icrc3_add("sneedapp_orphan_settled", [
+                ("caller", pv(caller)), ("canister_id", pv(canisterId)), ("minter", pv(o.minter)), ("app_id", #Text(o.appId)),
+                ("action", #Text("hand_over")), ("reason", #Text(reason)), ("mint_recorded", flag(pm != null)),
+            ]);
+            switch (pm) {
+                case (?p) { await* finishMint(p, [("settled_by", pv(caller))]) };
+                case null {};
+            };
+            #Ok;
+        } finally {
+            Map.delete(settlingCanisters, Map.phash, canisterId);
+        };
+    };
+
+    // The minter of a mint whose hand-over failed (or an admin) retries the hand-over: the
+    // canister goes to the recorded minter only, and the mint is then recorded as usual.
+    public shared ({ caller }) func retry_handover(canisterId: Principal): async { #Ok; #Err: Text } {
+        let allowed = switch (findOrphan(canisterId)) {
+            case (?o) { o.minter == caller or isAdmin(caller) };
+            case null {
+                switch (mintLogIndexMap.get(canisterId)) {
+                    case (?i) { isAdmin(caller) or (i < mintLog.size() and mintLog[i].minter == caller) };
+                    case null { false };
+                };
+            };
+        };
+        if (not allowed) {
+            return #Err("Only the minter of an orphaned canister (or an admin) can retry its hand-over");
+        };
+        if (findOrphan(canisterId) != null and not Map.has(pendingMints, Map.phash, canisterId) and not isAdmin(caller)) {
+            return #Err("This canister is not a failed hand-over of a mint (its mint was refunded); only an admin can settle it");
+        };
+        await* settleHandOver(caller, canisterId, "retried by " # (if (isAdmin(caller)) "an admin" else "the minter"));
+    };
+
+    // Admins settle an orphan: #HandOver gives it to its recorded minter (as retry_handover);
+    // #Delete stops and deletes it, refused while its minter is owed it (a failed hand-over
+    // of a mint). Logged with `reason`.
+    public shared ({ caller }) func adminSettleOrphan(canisterId: Principal, action: { #HandOver; #Delete }, reason: Text): async { #Ok; #Err: Text } {
+        assert(isAdmin(caller));
+        switch (action) {
+            case (#HandOver) { await* settleHandOver(caller, canisterId, reason) };
+            case (#Delete) {
+                let o = switch (findOrphan(canisterId)) {
+                    case null { return #Err("No orphaned canister " # Principal.toText(canisterId) # " is recorded") };
+                    case (?o) { o };
+                };
+                if (Map.has(pendingMints, Map.phash, canisterId)) {
+                    return #Err("Its minter paid for this canister and is owed it: hand it over instead");
+                };
+                if (Map.has(settlingCanisters, Map.phash, canisterId)) {
+                    return #Err("A settlement of this canister is already in progress; please retry");
+                };
+                Map.set(settlingCanisters, Map.phash, canisterId, ());
+                try {
+                    try {
+                        await icLifecycle.stop_canister({ canister_id = canisterId });
+                        await icLifecycle.delete_canister({ canister_id = canisterId });
+                    } catch (e) {
+                        return #Err("Deleting it failed (" # Error.message(e) # "); it stays recorded");
+                    };
+                    removeOrphan(canisterId);
+                    icrc3_add("sneedapp_orphan_settled", [
+                        ("caller", pv(caller)), ("canister_id", pv(canisterId)), ("minter", pv(o.minter)), ("app_id", #Text(o.appId)),
+                        ("action", #Text("delete")), ("reason", #Text(reason)), ("mint_recorded", flag(false)),
+                    ]);
+                    #Ok;
+                } finally {
+                    Map.delete(settlingCanisters, Map.phash, canisterId);
+                };
+            };
+        };
+    };
+
+    // Public: cycles purchases of paid mints that did not complete (the factory's own cycles)
+    public query func get_pending_top_ups(): async [PendingTopUp] {
+        Iter.toArray(Map.vals(pendingTopUps));
+    };
+
+    // The payer of the mint (or an admin) retries a pending cycles purchase: notify_top_up
+    // with the recorded block (idempotent at the CMC), or the transfer to the CMC first when
+    // it never happened. Only ever buys cycles for this canister.
+    public shared ({ caller }) func retry_top_up(id: Nat): async { #Ok: Nat; #Err: Text } {
+        let p = switch (Map.get(pendingTopUps, Map.nhash, id)) {
+            case null { return #Err("No pending top-up " # Nat.toText(id)) };
+            case (?p) { p };
+        };
+        if (caller != p.payer and not isAdmin(caller)) {
+            return #Err("Only the payer of the mint (or an admin) can retry its top-up");
+        };
+        if (Map.has(topUpsInFlight, Map.nhash, id)) {
+            return #Err("A retry of this top-up is already in progress; please retry");
+        };
+        Map.set(topUpsInFlight, Map.nhash, id, ());
+        try {
+            let common: [(Text, T3.Value)] = [("caller", pv(caller)), ("pending_id", #Nat(id)), ("canister_id", pv(p.canisterId)), ("amount_e8s", n64(p.icpE8s))];
+            switch (await* buyCycles(p.icpE8s, p.block)) {
+                case (#Ok(r)) {
+                    Map.delete(pendingTopUps, Map.nhash, id);
+                    totalCyclesReceivedFromCmc += r.cycles;
+                    icrc3_add("sneedapp_top_up_retry", Array.append(common, [("top_up_tx", #Nat(r.block)), ("outcome", #Text("ok")), ("cycles", #Nat(r.cycles))]));
+                    #Ok(r.cycles);
+                };
+                case (#Refunded(r)) {
+                    // the CMC returned the ICP to the main account (less its fee): nothing is pending any more
+                    Map.delete(pendingTopUps, Map.nhash, id);
+                    icrc3_add("sneedapp_top_up_retry", Array.append(common, [("top_up_tx", #Nat(r.block)), ("outcome", #Text("refunded")), ("reason", #Text(r.reason))]));
+                    #Err("The CMC refunded the ICP to the factory's main account: " # r.reason);
+                };
+                case (#Failed(f)) {
+                    // keep it pending, with the block if the transfer happened now
+                    Map.set(pendingTopUps, Map.nhash, id, { p with block = f.block; reason = f.reason });
+                    #Err(f.reason);
+                };
+            };
+        } finally {
+            Map.delete(topUpsInFlight, Map.nhash, id);
+        };
+    };
+
+    // Public: the refund credits of `payer` (ICP of their aborted mints still inside the factory)
+    public query func get_refund_credits_for(payer: Principal): async [RefundCredit] {
+        Array.filter<RefundCredit>(Iter.toArray(Map.vals(refundCredits)), func(c) { c.payer == payer });
+    };
+
+    // The payer (or an admin, for the payer) moves a refund credit back to the payer's payment
+    // subaccount, from where withdrawUserPayment or a mint uses it. Legs that fail again stay
+    // in the credit. Serialised with the payer's other payment operations.
+    public shared ({ caller }) func claim_refund_credit(id: Nat): async { #Ok: { returnedE8s: Nat64; remainingE8s: Nat64 }; #Err: Text } {
+        let c = switch (Map.get(refundCredits, Map.nhash, id)) {
+            case null { return #Err("No refund credit " # Nat.toText(id)) };
+            case (?c) { c };
+        };
+        if (caller != c.payer and not isAdmin(caller)) {
+            return #Err("Only the payer (or an admin, for the payer) can claim this credit");
+        };
+        if (isPaymentLocked(c.payer)) {
+            return #Err("A payment operation is already in progress for this account; please retry");
+        };
+        lockPayment(c.payer);
+        try {
+            let r = await* undoPaymentTransfers(principalToSubaccount(c.payer),
+                Array.map<RefundLeg, (?Blob, Nat64)>(c.legs, func(l) { (l.fromSubaccount, l.amountE8s) }));
+            if (r.stuckLegs.size() == 0) {
+                Map.delete(refundCredits, Map.nhash, id);
+            } else {
+                Map.set(refundCredits, Map.nhash, id, { c with legs = r.stuckLegs });
+            };
+            if (r.txs.size() > 0) {
+                icrc3_add("sneedapp_refund_credit_claim", [
+                    ("caller", pv(caller)), ("payer", pv(c.payer)), ("credit_id", #Nat(id)), ("returned_e8s", n64(r.returned)),
+                    ("refund_txs", nats(r.txs)), ("remaining_e8s", n64(r.stuck)),
+                    ("to", av({ owner = Principal.fromActor(this); subaccount = ?principalToSubaccount(c.payer) })),
+                ]);
+            };
+            if (r.txs.size() == 0 and r.stuck > 0) {
+                return #Err("Returning the credit failed again; it is kept, please retry later");
+            };
+            #Ok({ returnedE8s = r.returned; remainingE8s = r.stuck });
+        } finally {
+            unlockPayment(c.payer);
+        };
+    };
+
+    // Admins close a refund credit that was settled another way (e.g. returned by hand with
+    // adminWithdrawIcp), so it cannot be paid twice. Logged with `reason`.
+    public shared ({ caller }) func adminCloseRefundCredit(id: Nat, reason: Text): async { #Ok; #Err: Text } {
+        assert(isAdmin(caller));
+        switch (Map.remove(refundCredits, Map.nhash, id)) {
+            case null { #Err("No refund credit " # Nat.toText(id)) };
+            case (?c) {
+                var total: Nat64 = 0;
+                for (l in c.legs.vals()) { total += l.amountE8s };
+                icrc3_add("sneedapp_refund_credit_closed", [
+                    ("caller", pv(caller)), ("payer", pv(c.payer)), ("credit_id", #Nat(id)), ("amount_e8s", n64(total)), ("reason", #Text(reason)),
+                ]);
+                #Ok;
+            };
+        };
     };
 
     // Create a new neuron manager canister for the caller
@@ -2053,14 +2524,12 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         var trackedIcpForCyclesE8s: Nat64 = 0;
         var trackedIcpProfitE8s: Nat64 = 0;
         var trackedIcpTransferFeesE8s: Nat64 = 0;
-        var trackedCyclesReceivedFromCmc: Nat = 0;
         var wasPremium = false;
         var priceTier: SpecialPrices.Tier = #regular;
         let cyclesBalanceBefore = Cycles.balance();
-        // ledger blocks of the payment's transfers, and the CMC's answer, for the log
+        // ledger blocks of the payment's transfers, for the log
         var cyclesTx: Nat = 0;
         var feeTx: ?(Nat, T.Account) = null;
-        var cyclesReceivedLogged: ?Nat = null;
         let what = func(price: Nat64): [(Text, T3.Value)] {
             [("ver", mintVer), ("price_e8s", n64(price)), ("price_tier", #Text(SpecialPrices.tierText(priceTier))), ("method", #Text("createNeuronManager"))];
         };
@@ -2074,6 +2543,17 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         };
 
         let paid = paymentRequired;
+        // the mint as recorded once its canister is handed over (kept pending if that fails)
+        let pending = func(canisterId: Principal): PendingMint {
+            {
+                canisterId = canisterId; minter = caller; appId = STAKING_BOT_APP_ID; numericAppId = 0; publisherId = 0; legacy = true;
+                verMajor = version.major; verMinor = version.minor; verPatch = version.patch; wasmSha256 = wasmSha; wasmSize = wasm.size();
+                paid = paid; icpPaidE8s = trackedIcpPaidE8s; icpForCyclesE8s = trackedIcpForCyclesE8s; icpProfitE8s = trackedIcpProfitE8s;
+                icpTransferFeesE8s = trackedIcpTransferFeesE8s; daoCutE8s = trackedIcpProfitE8s; publisherRevenueE8s = 0;
+                premium = wasPremium; priceTier = SpecialPrices.tierText(priceTier); payFields = if (paid) payFields() else [];
+                cyclesBalanceBefore = cyclesBalanceBefore; recordedAt = Time.now();
+            };
+        };
         let canisterId: Principal = if (paid) {
             let userSubaccount = principalToSubaccount(caller);
 
@@ -2137,7 +2617,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             // Step 1: ICP for cycles, plus the fee of its later transfer to the
             // CMC, to the factory's main account
             let cyclesLeg: Nat64 = actualIcpForCycles + T.ICP_FEE;
-            let cyclesTransfer = await ledger.icrc1_transfer({
+            let cyclesTransfer = await* transferOrErr({
                 to = { owner = Principal.fromActor(this); subaccount = null };
                 fee = ?Nat64.toNat(T.ICP_FEE);
                 memo = null;
@@ -2148,7 +2628,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             switch (cyclesTransfer) {
                 case (#Err(_)) {
                     // Nothing has moved yet.
-                    return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer ICP for cycles", 0)));
+                    return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer ICP for cycles", { stuck = 0; credit = null })));
                 };
                 case (#Ok(b)) { cyclesTx := b };
             };
@@ -2165,7 +2645,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             // Step 3: Transfer the creation fee to the fee destination (external, last)
             if (feeAmount > 0) {
                 let feeTo = feeDestination; // as configured now: the log names this account
-                let feeTransfer = await ledger.icrc1_transfer({
+                let feeTransfer = await* transferOrErr({
                     to = feeTo;
                     fee = ?Nat64.toNat(T.ICP_FEE);
                     memo = null;
@@ -2186,23 +2666,12 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             };
 
             // Step 4: the caller becomes the only controller
-            switch (await* handOver(newId, caller, STAKING_BOT_APP_ID, Array.append(what(applicableFeeE8s), payFields()))) {
+            switch (await* handOver(newId, caller, STAKING_BOT_APP_ID, Array.append(what(applicableFeeE8s), payFields()), pending(newId))) {
                 case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
                 case (#Ok) {};
             };
             
-            // Step 5: Top up factory with cycles from the ICP
-            let topUpResult = await* topUpSelfWithCycles(actualIcpForCycles);
-            switch (topUpResult) {
-                case (#Err(_)) {
-                    // The ICP stays in the main account (adminTopUpCycles can convert it)
-                };
-                case (#Ok(cyclesReceived)) {
-                    // Track: Cycles received from CMC
-                    trackedCyclesReceivedFromCmc := cyclesReceived;
-                    cyclesReceivedLogged := ?cyclesReceived;
-                };
-            };
+            // Step 5 (after the lock): the cycles purchase, in finishMint
             newId;
             } finally {
                 unlockPayment(caller);
@@ -2213,75 +2682,19 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
                 case (#Ok(id)) { id };
             };
-            switch (await* handOver(newId, caller, STAKING_BOT_APP_ID, what(0))) {
+            switch (await* handOver(newId, caller, STAKING_BOT_APP_ID, what(0), pending(newId))) {
                 case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
                 case (#Ok) {};
             };
             newId;
         };
 
-        // Track cycles spent on creation
-        let trackedCyclesSpentOnCreation = canisterCreationCycles;
-
-        // Track cycles balance after creation
-        let cyclesBalanceAfter = Cycles.balance();
-
-        // Compute the account ID for the new canister
-        let accountId = computeAccountId(canisterId, null);
-
-        // Register the manager to the caller's wallet
-        let createdAt = Time.now();
-        walletAdd(caller, canisterId, STAKING_BOT_APP_ID);
-        
-        // Add to creation log
-        let logEntry: T.CreationLogEntry = {
-            canisterId = canisterId;
-            caller = caller;
-            createdAt = createdAt;
-            index = creationLogNextIndex;
-        };
-        creationLog := Array.append(creationLog, [logEntry]);
-        creationLogNextIndex += 1;
-        
-        // Add to financial log
-        let financialEntry: T.FinancialLogEntry = {
-            canisterId = canisterId;
-            index = financialLogNextIndex;
-            createdAt = createdAt;
-            icpPaidE8s = trackedIcpPaidE8s;
-            icpForCyclesE8s = trackedIcpForCyclesE8s;
-            icpProfitE8s = trackedIcpProfitE8s;
-            icpTransferFeesE8s = trackedIcpTransferFeesE8s;
-            cyclesReceivedFromCmc = trackedCyclesReceivedFromCmc;
-            cyclesSpentOnCreation = trackedCyclesSpentOnCreation;
-            cyclesBalanceBefore = cyclesBalanceBefore;
-            cyclesBalanceAfter = cyclesBalanceAfter;
-        };
-        financialLog := Array.append(financialLog, [financialEntry]);
-        financialLogNextIndex += 1;
-        
-        // Update aggregate statistics
-        totalIcpPaidE8s += Nat64.toNat(trackedIcpPaidE8s);
-        totalIcpForCyclesE8s += Nat64.toNat(trackedIcpForCyclesE8s);
-        totalIcpProfitE8s += Nat64.toNat(trackedIcpProfitE8s);
-        totalIcpTransferFeesE8s += Nat64.toNat(trackedIcpTransferFeesE8s);
-        totalCyclesReceivedFromCmc += trackedCyclesReceivedFromCmc;
-        totalCyclesSpentOnCreation += trackedCyclesSpentOnCreation;
-
-        // Bridge: Record in immutable mint log
-        addMintLogEntry(canisterId, caller, STAKING_BOT_APP_ID, 0, 0, version.major, version.minor, version.patch, trackedIcpPaidE8s, wasPremium, trackedIcpProfitE8s, 0);
-
-        icrc3_add("sneedapp_mint", Array.flatten<(Text, T3.Value)>([
-            [("caller", pv(caller)), ("canister_id", pv(canisterId)), ("app_id", #Text(STAKING_BOT_APP_ID)), ("numeric_app_id", #Nat(0)), ("publisher_id", #Nat(0)),
-             ("ver", mintVer), ("wasm_sha256", #Text(wasmSha)), ("wasm_size", #Nat(wasm.size())), ("price_e8s", n64(trackedIcpPaidE8s)), ("premium", flag(wasPremium)), ("price_tier", #Text(SpecialPrices.tierText(priceTier)))],
-            if (paid) payFields() else [],
-            opt("cycles_received", switch (cyclesReceivedLogged) { case (?c) ?#Nat(c); case null null }),
-            [("method", #Text("createNeuronManager"))],
-        ]));
+        // Record the mint (after buying its cycles; a failed purchase is kept pending, never an error)
+        await* finishMint(pending(canisterId), []);
 
         #Ok({
             canisterId = canisterId;
-            accountId = accountId;
+            accountId = computeAccountId(canisterId, null);
         });
     };
     
@@ -3121,17 +3534,15 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         var trackedIcpForCyclesE8s: Nat64 = 0;
         var trackedIcpProfitE8s: Nat64 = 0;
         var trackedIcpTransferFeesE8s: Nat64 = 0;
-        var trackedCyclesReceivedFromCmc: Nat = 0;
         var trackedDaoCutE8s: Nat64 = 0;
         var trackedPublisherRevenueE8s: Nat64 = 0;
         let cyclesBalanceBefore = Cycles.balance();
         var wasPremium = false;
         var priceTier: SpecialPrices.Tier = #regular;
-        // ledger blocks of the payment's transfers (with the accounts paid), and the CMC's answer, for the log
+        // ledger blocks of the payment's transfers (with the accounts paid), for the log
         var cyclesTx: Nat = 0;
         var pubTx: ?(Nat, T.Account) = null;
         var daoTx: ?(Nat, T.Account) = null;
-        var cyclesReceivedLogged: ?Nat = null;
         let what = func(price: Nat64): [(Text, T3.Value)] {
             [("ver", mintVer), ("price_e8s", n64(price)), ("price_tier", #Text(SpecialPrices.tierText(priceTier)))];
         };
@@ -3147,6 +3558,17 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
         // 5. Process payment and create the canister
         let paid = paymentRequired;
+        // the mint as recorded once its canister is handed over (kept pending if that fails)
+        let pending = func(canisterId: Principal): PendingMint {
+            {
+                canisterId = canisterId; minter = caller; appId = appId; numericAppId = app.numericAppId; publisherId = app.publisherId; legacy = false;
+                verMajor = version.major; verMinor = version.minor; verPatch = version.patch; wasmSha256 = wasmSha; wasmSize = wasm.size();
+                paid = paid; icpPaidE8s = trackedIcpPaidE8s; icpForCyclesE8s = trackedIcpForCyclesE8s; icpProfitE8s = trackedIcpProfitE8s;
+                icpTransferFeesE8s = trackedIcpTransferFeesE8s; daoCutE8s = trackedDaoCutE8s; publisherRevenueE8s = trackedPublisherRevenueE8s;
+                premium = wasPremium; priceTier = SpecialPrices.tierText(priceTier); payFields = if (paid) payFields() else [];
+                cyclesBalanceBefore = cyclesBalanceBefore; recordedAt = Time.now();
+            };
+        };
         let newCanisterId: Principal = if (paid) {
             let userSubaccount = principalToSubaccount(caller);
 
@@ -3222,7 +3644,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             // Step 1: ICP for cycles, plus the fee of its later transfer to the
             // CMC, to the factory's main account
             let cyclesLeg: Nat64 = actualIcpForCycles + T.ICP_FEE;
-            let cyclesTransfer = await ledger.icrc1_transfer({
+            let cyclesTransfer = await* transferOrErr({
                 to = { owner = Principal.fromActor(this); subaccount = null };
                 fee = ?Nat64.toNat(T.ICP_FEE);
                 memo = null;
@@ -3233,7 +3655,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             switch (cyclesTransfer) {
                 case (#Err(_)) {
                     // Nothing has moved yet.
-                    return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer ICP for cycles", 0)));
+                    return #Err(#TransferFailed(paymentAbortMessage("Failed to transfer ICP for cycles", { stuck = 0; credit = null })));
                 };
                 case (#Ok(b)) { cyclesTx := b };
             };
@@ -3241,7 +3663,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             // Step 2: Transfer publisher share to revenue subaccount (internal)
             if (publisherShare > 0) {
                 let pubTo: T.Account = { owner = Principal.fromActor(this); subaccount = ?revSubaccount };
-                let pubTransfer = await ledger.icrc1_transfer({
+                let pubTransfer = await* transferOrErr({
                     to = pubTo;
                     fee = ?Nat64.toNat(T.ICP_FEE);
                     memo = null;
@@ -3274,7 +3696,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             // Step 4: Transfer DAO profit / DAO cut to the fee destination (external, last)
             if (daoCut > 0) {
                 let daoTo = feeDestination; // as configured now: the log names this account
-                let daoCutTransfer = await ledger.icrc1_transfer({
+                let daoCutTransfer = await* transferOrErr({
                     to = daoTo;
                     fee = ?Nat64.toNat(T.ICP_FEE);
                     memo = null;
@@ -3295,20 +3717,12 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             };
 
             // Step 5: the caller becomes the only controller
-            switch (await* handOver(newId, caller, appId, Array.append(what(applicableFeeE8s), payFields()))) {
+            switch (await* handOver(newId, caller, appId, Array.append(what(applicableFeeE8s), payFields()), pending(newId))) {
                 case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
                 case (#Ok) {};
             };
             
-            // Step 6: Top up factory with cycles
-            let topUpResult = await* topUpSelfWithCycles(actualIcpForCycles);
-            switch (topUpResult) {
-                case (#Err(_)) {};
-                case (#Ok(cyclesReceived)) {
-                    trackedCyclesReceivedFromCmc := cyclesReceived;
-                    cyclesReceivedLogged := ?cyclesReceived;
-                };
-            };
+            // Step 6 (after the lock): the cycles purchase, in finishMint
             newId;
             } finally {
                 unlockPayment(caller);
@@ -3319,77 +3733,19 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
                 case (#Ok(id)) { id };
             };
-            switch (await* handOver(newId, caller, appId, what(0))) {
+            switch (await* handOver(newId, caller, appId, what(0), pending(newId))) {
                 case (#Err(msg)) { return #Err(#CanisterCreationFailed(msg)) };
                 case (#Ok) {};
             };
             newId;
         };
 
-        // 6. Record the mint
-        let cyclesBalanceAfter = Cycles.balance();
-        let accountId = computeAccountId(newCanisterId, null);
-
-        // Record in wallet
-        walletAdd(caller, newCanisterId, appId);
-
-        // Record in immutable mint log
-        addMintLogEntry(newCanisterId, caller, appId, app.numericAppId, app.publisherId, version.major, version.minor, version.patch, trackedIcpPaidE8s, wasPremium, trackedDaoCutE8s, trackedPublisherRevenueE8s);
-
-        // Record in old creation log (backward compat)
-        let createdAt = Time.now();
-        let logEntry: T.CreationLogEntry = {
-            canisterId = newCanisterId;
-            caller = caller;
-            createdAt = createdAt;
-            index = creationLogNextIndex;
-        };
-        creationLog := Array.append(creationLog, [logEntry]);
-        creationLogNextIndex += 1;
-        
-        let financialEntry: T.FinancialLogEntry = {
-            canisterId = newCanisterId;
-            index = financialLogNextIndex;
-            createdAt = createdAt;
-            icpPaidE8s = trackedIcpPaidE8s;
-            icpForCyclesE8s = trackedIcpForCyclesE8s;
-            icpProfitE8s = trackedIcpProfitE8s;
-            icpTransferFeesE8s = trackedIcpTransferFeesE8s;
-            cyclesReceivedFromCmc = trackedCyclesReceivedFromCmc;
-            cyclesSpentOnCreation = canisterCreationCycles;
-            cyclesBalanceBefore = cyclesBalanceBefore;
-            cyclesBalanceAfter = cyclesBalanceAfter;
-        };
-        financialLog := Array.append(financialLog, [financialEntry]);
-        financialLogNextIndex += 1;
-        
-        // Update aggregate statistics
-        totalIcpPaidE8s += Nat64.toNat(trackedIcpPaidE8s);
-        totalIcpForCyclesE8s += Nat64.toNat(trackedIcpForCyclesE8s);
-        totalIcpProfitE8s += Nat64.toNat(trackedIcpProfitE8s);
-        totalIcpTransferFeesE8s += Nat64.toNat(trackedIcpTransferFeesE8s);
-        totalCyclesReceivedFromCmc += trackedCyclesReceivedFromCmc;
-        totalCyclesSpentOnCreation += canisterCreationCycles;
-
-        // Update publisher/app revenue stats
-        if (app.publisherId == 0) {
-            totalDirectRevenueE8s += Nat64.toNat(trackedDaoCutE8s);
-        } else {
-            totalDaoCutReceivedE8s += Nat64.toNat(trackedDaoCutE8s);
-        };
-        updateStatsOnMint(app.publisherId, app.numericAppId, Nat64.toNat(trackedPublisherRevenueE8s), Nat64.toNat(trackedDaoCutE8s));
-
-        icrc3_add("sneedapp_mint", Array.flatten<(Text, T3.Value)>([
-            [("caller", pv(caller)), ("canister_id", pv(newCanisterId)), ("app_id", #Text(appId)), ("numeric_app_id", #Nat(app.numericAppId)),
-             ("publisher_id", #Nat(app.publisherId)), ("ver", mintVer), ("wasm_sha256", #Text(wasmSha)), ("wasm_size", #Nat(wasm.size())),
-             ("price_e8s", n64(trackedIcpPaidE8s)), ("premium", flag(wasPremium)), ("price_tier", #Text(SpecialPrices.tierText(priceTier)))],
-            if (paid) payFields() else [],
-            opt("cycles_received", switch (cyclesReceivedLogged) { case (?c) ?#Nat(c); case null null }),
-        ]));
+        // 6. Record the mint (after buying its cycles; a failed purchase is kept pending, never an error)
+        await* finishMint(pending(newCanisterId), []);
 
         #Ok({
             canisterId = newCanisterId;
-            accountId = accountId;
+            accountId = computeAccountId(newCanisterId, null);
         });
     };
 
@@ -4168,6 +4524,10 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             "sneedapp_mint",
             "sneedapp_mint_refund",
             "sneedapp_orphan_canister",
+            "sneedapp_orphan_settled",
+            "sneedapp_top_up_retry",
+            "sneedapp_refund_credit_claim",
+            "sneedapp_refund_credit_closed",
             "sneedapp_deposit_withdraw",
             "sneedapp_publisher_withdraw",
             "sneedapp_admin_withdraw",
@@ -4475,6 +4835,14 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         #withdrawAppFunds : Any;
         #withdrawPublisherFunds : Any;
         #withdrawUserPayment : Any;
+        #retry_handover : Any;
+        #adminSettleOrphan : Any;
+        #get_orphans_for : Any;
+        #get_pending_top_ups : Any;
+        #retry_top_up : Any;
+        #get_refund_credits_for : Any;
+        #claim_refund_credit : Any;
+        #adminCloseRefundCredit : Any;
     } }) : Bool {
         switch (msg) {
             case (
@@ -4523,6 +4891,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 or #getOfficialVersionByHash _
                 or #getOfficialVersions _
                 or #getOrphanCanisters _
+                or #get_orphans_for _
+                or #get_pending_top_ups _
+                or #get_refund_credits_for _
                 or #getPaymentConfig _
                 or #getPaymentSubaccount _
                 or #getPremiumCreationFee _
@@ -4564,6 +4935,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             case (#removeAppVersion f) versionAuthOk(caller, f().0);
             // admin tools with free-form content
             case (#addOfficialVersion _ or #updateOfficialVersion _ or #removeOfficialVersion _ or #setOfficialVersions _ or #adminBulkRegisterCanisters _ or #adminRegisterCanister _) isAdmin(caller);
+            case (#adminSettleOrphan _ or #adminCloseRefundCredit _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
             case (#setManagerWasm _) isAdminOrGovernance(caller);
             // special prices (spec/special_prices.md)
             case (#set_admin_prices _ or #set_partner_prices _ or #remove_partner_prices _) isAdminOrGovernance(caller) and arg.size() <= IngressGuard.SMALL_ARG;

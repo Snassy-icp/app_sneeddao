@@ -179,6 +179,26 @@ shared (deployer) persistent actor class SneedLock() = this {
   // recipient and is put back from a copy if the transfer fails, so nothing may change
   // them meanwhile.
   transient var lock_ids_in_flight = Map.new<Nat, ()>();
+  // Token lock ownership transfers whose ledger outcome is unknown (the ledger call threw with
+  // a reject code that does not rule out execution). The lock is held by both sides until
+  // reconcile_token_lock resolves it to exactly one. The transfer carried created_at_time and
+  // a memo, so resubmitting it exactly is deduplicated by an ICRC-1 ledger (#Duplicate proves
+  // it landed). Keyed by lock id. New stable field (additive).
+  type UncertainMove = {
+    lock_id : Nat;
+    ledger : Principal;
+    from : Principal;
+    to : Principal;
+    amount : Nat;
+    created_at_time : Nat64;
+    memo : Blob;
+    from_label : ?Blob; // the NFT's account labels before and after the move
+    to_label : ?Blob;
+    correlation_id : Nat;
+    recorded_at : Nat64;
+    error : Text;
+  };
+  stable var uncertain_moves = Map.new<Nat, UncertainMove>();
   // Positions whose withdrawal is awaiting the pool. Their claim must not change hands
   // meanwhile: the withdrawal clears the withdrawer's claim afterwards, so a recipient would
   // be left holding a claim on a position that has left.
@@ -1097,7 +1117,7 @@ shared (deployer) persistent actor class SneedLock() = this {
     let correlation_id = get_next_correlation_id();
     log_info(caller, correlation_id, "Transferring token lock " # debug_show(lock_id) # " from " # debug_show(caller) # " to " # debug_show(to_principal) # " for token " # debug_show(token_type));
     let from_label = nft_label(lock_id);
-    switch (await* token_lock_move(caller, caller, to_principal, token_type, lock_id, correlation_id, true)) {
+    switch (await* token_lock_move(caller, caller, to_principal, token_type, lock_id, correlation_id, true, (from_label, null))) {
       case (#err(e)) { #Err({ message = e.message; transfer_error = e.transfer_error }) };
       case (#ok(_)) {
         // The NFT goes along, to the recipient's default account (this call names no subaccount).
@@ -1116,7 +1136,18 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// owner's free balance or (with `use_tank`) the lock's gas tank. `caller` is who asked (the
   /// owner, or an approved spender), for the logs. Error codes: 3 busy, 7 no gas, 8 expired,
   /// 9 other. Shared by transfer_token_lock_ownership and the NFT transfers.
-  private func token_lock_move(caller : Principal, owner : Principal, to_principal : Principal, token_type : T.TokenType, lock_id : T.LockId, correlation_id : Nat, use_tank : Bool) : async* Result.Result<Text, MoveError> {
+  private func token_lock_move(caller : Principal, owner : Principal, to_principal : Principal, token_type : T.TokenType, lock_id : T.LockId, correlation_id : Nat, use_tank : Bool, labels : (?Blob, ?Blob)) : async* Result.Result<Text, MoveError> {
+    // A lock held by two parties (an earlier transfer's outcome is unknown) moves only once
+    // reconciled: moving it again could leave a third copy.
+    if (token_lock_records(lock_id).size() > 1) {
+      let error = #err({
+        code = 3;
+        message = "Lock " # Nat.toText(lock_id) # " awaits reconciliation of an earlier transfer with an unknown outcome; call reconcile_token_lock(" # Nat.toText(lock_id) # ") first";
+        transfer_error = null;
+      });
+      log_error(caller, correlation_id, debug_show(error));
+      return error;
+    };
     // Serialize with any other token operation on this caller's subaccount so a
     // concurrent transfer_tokens / ownership transfer can't race this one and
     // double-spend the tokens or duplicate the lock across the ledger awaits below.
@@ -1240,13 +1271,15 @@ shared (deployer) persistent actor class SneedLock() = this {
         let recipient_subaccount = PrincipalToSubaccount(to_principal);
         let recipient_account : T.Account = { owner = this_canister_id(); subaccount = ?Blob.fromArray(recipient_subaccount); };
 
+        // created_at_time and a memo make the transfer deduplicable: resubmitting exactly these
+        // arguments (reconcile_token_lock) answers #Duplicate if it landed
         let transfer_args : TransferArgs = {
           from_subaccount = ?Blob.fromArray(caller_subaccount);
           to = recipient_account;
           amount = found_lock.amount;
           fee = null;
-          memo = null;
-          created_at_time = null;
+          memo = ?move_memo(lock_id, correlation_id);
+          created_at_time = ?NowAsNat64();
         };
 
         // A thrown call (as opposed to a returned #Err) is handled by its error
@@ -1269,7 +1302,13 @@ shared (deployer) persistent actor class SneedLock() = this {
           };
           if (not not_executed) {
             // The transfer may have landed: the lock is now held for both
-            // parties until reconciled, and the log says so.
+            // parties until reconciled (reconcile_token_lock), and the log says so.
+            Map.set(uncertain_moves, nhash, lock_id, {
+              lock_id; ledger = token_type; from = owner; to = to_principal; amount = found_lock.amount;
+              created_at_time = switch (transfer_args.created_at_time) { case (?t) t; case null 0 };
+              memo = switch (transfer_args.memo) { case (?m) m; case null "" };
+              from_label = labels.0; to_label = labels.1; correlation_id; recorded_at = NowAsNat64(); error = Error.message(e);
+            } : UncertainMove);
             icrc3_add("sneedlock_token_lock_transfer", [
               ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("from", Icrc3Log.principal(owner)), ("to", Icrc3Log.principal(to_principal)),
               ("ledger", Icrc3Log.principal(token_type)), ("lock_id", #Nat(lock_id)), ("amount", #Nat(found_lock.amount)),
@@ -1324,6 +1363,172 @@ shared (deployer) persistent actor class SneedLock() = this {
       unlock_token_op(owner);
       Map.delete(lock_ids_in_flight, nhash, lock_id);
     };
+  };
+
+  /// The memo of a token lock transfer: "SLMV", then the lock id and the correlation id
+  /// (8 bytes each, big-endian).
+  private func move_memo(lock_id : Nat, cid : Nat) : Blob {
+    let a = Array.init<Nat8>(20, 0);
+    a[0] := 0x53; a[1] := 0x4C; a[2] := 0x4D; a[3] := 0x56;
+    var n = lock_id;
+    var i = 11;
+    while (i >= 4) { a[i] := Nat8.fromNat(n % 256); n := n / 256; i -= 1 };
+    n := cid;
+    i := 19;
+    while (i >= 12) { a[i] := Nat8.fromNat(n % 256); n := n / 256; i -= 1 };
+    Blob.fromArray(Array.freeze(a));
+  };
+
+  type ReconcileResult = { #Ok : { owner : Principal; evidence : Text }; #Err : Text };
+
+  /// A token lock held by two parties after a transfer with an unknown ledger outcome is
+  /// resolved to exactly one of them. Callable by either holder or an admin; idempotent (a
+  /// lock held once answers #Ok with its owner). Evidence, in order:
+  ///  1. balances: a lock stays with the holder whose Sneed wallet covers all its locks
+  ///     (this one included) when the other's does not; the tokens are there.
+  ///  2. both cover it: the original transfer is resubmitted exactly (same created_at_time
+  ///     and memo). #Duplicate proves it landed; #Ok means it had not and now has: either way
+  ///     the recipient keeps the lock. Only when the sender's wallet would still cover all its
+  ///     other locks afterwards, so even a ledger that does not deduplicate cannot leave a lock
+  ///     unbacked. Past the ledger's deduplication window the original owner keeps it.
+  ///  3. a transfer from before reconciliation was recorded (direction unknown) with both
+  ///     covered: an admin names the side to keep (`keep`, admins only, and only then).
+  /// Whichever side is kept is covered by its wallet, so no lock is ever left unbacked;
+  /// nothing is paid out to anyone. Logged as sneedlock_token_lock_reconcile.
+  public shared ({ caller }) func reconcile_token_lock(lock_id : T.LockId, keep : ?Principal) : async ReconcileResult {
+    let recs = token_lock_records(lock_id);
+    if (recs.size() == 0) {
+      Map.delete(uncertain_moves, nhash, lock_id);
+      return #Err("No live token lock " # Nat.toText(lock_id));
+    };
+    if (recs.size() == 1) {
+      return #Ok({ owner = recs[0].0; evidence = "held by one party: nothing to reconcile" });
+    };
+    if (recs.size() > 2) {
+      return #Err("Lock " # Nat.toText(lock_id) # " is held by " # Nat.toText(recs.size()) # " parties; reconcile it with the admins");
+    };
+    let (p1, ledger, lock) = recs[0];
+    let (p2, ledger2, _) = recs[1];
+    if (ledger != ledger2 or p1 == p2) {
+      return #Err("Lock " # Nat.toText(lock_id) # " has inconsistent records; reconcile it with the admins");
+    };
+    let mv : ?UncertainMove = switch (Map.get(uncertain_moves, nhash, lock_id)) {
+      case (?m) { if ((m.from == p1 and m.to == p2) or (m.from == p2 and m.to == p1)) ?m else null };
+      case null null;
+    };
+    if (caller != p1 and caller != p2 and not isAdmin(caller)) {
+      return #Err("Only the lock's holders or an admin can reconcile it");
+    };
+    if (keep != null and not isAdmin(caller)) {
+      return #Err("Only an admin can name the side to keep");
+    };
+    if (Map.has(lock_ids_in_flight, nhash, lock_id) or is_token_op_locked(p1) or is_token_op_locked(p2)) {
+      return #Err("A token operation of a holder is in progress; try again shortly");
+    };
+    lock_token_op(p1);
+    lock_token_op(p2);
+    Map.set(lock_ids_in_flight, nhash, lock_id, ());
+    let correlation_id = get_next_correlation_id();
+    try {
+      let l = actor (Principal.toText(ledger)) : Icrc1Ledger;
+      let wallet = func(p : Principal) : T.Account { { owner = this_canister_id(); subaccount = ?Blob.fromArray(PrincipalToSubaccount(p)) } };
+      let (bal1, bal2, fee) = try {
+        let b1 = await l.icrc1_balance_of(wallet(p1));
+        let b2 = await l.icrc1_balance_of(wallet(p2));
+        let f = await l.icrc1_fee();
+        (b1, b2, f);
+      } catch (e) {
+        return #Err("The ledger did not answer (" # Error.message(e) # "); nothing changed, please retry");
+      };
+      let sum1 = get_summed_locks_from_principal_and_token(p1, ledger);
+      let sum2 = get_summed_locks_from_principal_and_token(p2, ledger);
+      let cov1 = bal1 >= sum1;
+      let cov2 = bal2 >= sum2;
+      var ledger_tx : ?Nat = null;
+      let (kept, evidence) : (Principal, Text) = if (cov1 and not cov2) {
+        (p1, "balances: only this holder's wallet covers its locks")
+      } else if (cov2 and not cov1) {
+        (p2, "balances: only this holder's wallet covers its locks")
+      } else if (not cov1 and not cov2) {
+        return #Err("Neither holder's wallet covers its locks (balances " # Nat.toText(bal1) # " / " # Nat.toText(sum1) # " and " # Nat.toText(bal2) # " / " # Nat.toText(sum2) # "); nothing changed, reconcile it with the admins");
+      } else {
+        switch (keep, mv) {
+          case (?k, _) {
+            if (k != p1 and k != p2) { return #Err("The side to keep must be one of the lock's holders") };
+            (k, "both wallets cover the lock: kept by admin choice")
+          };
+          case (null, ?m) {
+            let (from_bal, from_sum) = if (m.from == p1) (bal1, sum1) else (bal2, sum2);
+            if (from_bal < from_sum + fee) {
+              (m.from, "both wallets cover the lock; the sender cannot pay a resubmission: kept by the original owner")
+            } else {
+              let r = try {
+                await l.icrc1_transfer({ from_subaccount = wallet(m.from).subaccount; to = wallet(m.to); amount = m.amount; fee = null; memo = ?m.memo; created_at_time = ?m.created_at_time });
+              } catch (e) {
+                return #Err("Resubmitting the transfer failed (" # Error.message(e) # "); nothing changed here, please retry (the ledger deduplicates it)");
+              };
+              switch (r) {
+                case (#Ok(tx)) { ledger_tx := ?tx; (m.to, "ledger: the transfer had not landed; resubmitted, it has now") };
+                case (#Err(#Duplicate({ duplicate_of }))) { ledger_tx := ?duplicate_of; (m.to, "ledger: the transfer had landed (duplicate of block " # Nat.toText(duplicate_of) # ")") };
+                case (#Err(#TooOld) or #Err(#CreatedInFuture(_))) { (m.from, "both wallets cover the lock; past the ledger's deduplication window: kept by the original owner") };
+                case (#Err(e)) { return #Err("The ledger refused the resubmission (" # debug_show(e) # "); nothing changed, please retry later") };
+              };
+            };
+          };
+          case (null, null) {
+            return #Err("Both holders' wallets cover the lock and the transfer's direction was not recorded (it predates reconciliation): an admin names the side to keep");
+          };
+        };
+      };
+      let released = if (kept == p1) p2 else p1;
+      remove_token_lock(released, ledger, lock_id);
+      Map.delete(uncertain_moves, nhash, lock_id);
+      // The NFT follows when the recipient keeps the lock
+      switch (mv) {
+        case (?m) {
+          if (token_nfts_activated and kept == m.to) {
+            ignore nft_after_move(lock_id, { owner = m.from; subaccount = m.from_label }, { owner = m.to; subaccount = m.to_label }, null, null, null);
+          };
+        };
+        case null {};
+      };
+      icrc3_add("sneedlock_token_lock_reconcile", Array.flatten<(Text, T3.Value)>([
+        [("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("lock_id", #Nat(lock_id)), ("ledger", Icrc3Log.principal(ledger)),
+         ("amount", #Nat(lock.amount)), ("owner", Icrc3Log.principal(kept)), ("released", Icrc3Log.principal(released)), ("evidence", #Text(evidence)),
+         ("balances", #Array([#Nat(bal1), #Nat(sum1), #Nat(bal2), #Nat(sum2)]))],
+        switch (mv) { case (?m) [("from", Icrc3Log.principal(m.from)), ("to", Icrc3Log.principal(m.to)), ("move_cid", #Nat(m.correlation_id))]; case null [] },
+        switch (ledger_tx) { case (?t) [("ledger_tx", #Nat(t))]; case null [] },
+      ]));
+      log_info(caller, correlation_id, "Reconciled token lock " # Nat.toText(lock_id) # ": kept by " # Principal.toText(kept) # ", released from " # Principal.toText(released) # " (" # evidence # ")");
+      #Ok({ owner = kept; evidence });
+    } finally {
+      unlock_token_op(p1);
+      unlock_token_op(p2);
+      Map.delete(lock_ids_in_flight, nhash, lock_id);
+    };
+  };
+
+  type UncertainTokenLock = { lock_id : Nat; holders : [Principal]; move : ?UncertainMove };
+
+  /// Public: token locks held by more than one party (a transfer with an unknown ledger
+  /// outcome), with the recorded transfer when there is one. reconcile_token_lock resolves them.
+  public query func get_uncertain_token_locks() : async [UncertainTokenLock] {
+    let holders = Map.new<Nat, [Principal]>();
+    for ((owner, token_locks_map) in state.principal_token_locks.entries()) {
+      for ((_, locks_list) in token_locks_map.entries()) {
+        for (lock in List.toIter(locks_list)) {
+          let prev = switch (Map.get(holders, nhash, lock.lock_id)) { case (?h) h; case null [] };
+          Map.set(holders, nhash, lock.lock_id, Array.append(prev, [owner]));
+        };
+      };
+    };
+    let out = Buffer.Buffer<UncertainTokenLock>(0);
+    for ((id, hs) in Map.entries(holders)) {
+      if (hs.size() > 1 or Map.has(uncertain_moves, nhash, id)) {
+        out.add({ lock_id = id; holders = hs; move = Map.get(uncertain_moves, nhash, id) });
+      };
+    };
+    Buffer.toArray(out);
   };
 
   private func verify_position_ownership(caller : Principal, swap_canister_id : Principal, position_id : T.PositionId) : async Bool {
@@ -2658,7 +2863,7 @@ shared (deployer) persistent actor class SneedLock() = this {
         };
         // Between two accounts of one principal only the label changes: no ledger call, no gas.
         if (owner.owner == to.owner) { return #Ok(nft_after_move(tid, owner, to, spender, memo, ts)) };
-        switch (await* token_lock_move(caller, owner.owner, to.owner, ledger, tid, get_next_correlation_id(), true)) {
+        switch (await* token_lock_move(caller, owner.owner, to.owner, ledger, tid, get_next_correlation_id(), true, (owner.subaccount, to.subaccount))) {
           case (#ok(_)) { #Ok(nft_after_move(tid, owner, to, spender, memo, ts)) };
           case (#err(e)) { #Err(#GenericError({ error_code = e.code; message = e.message })) };
         };
@@ -2928,6 +3133,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       "sneedlock_import_position_claim",
       "sneedlock_token_lock_create",
       "sneedlock_token_lock_transfer",
+      "sneedlock_token_lock_reconcile",
       "sneedlock_token_withdraw",
       "sneedlock_position_claim",
       "sneedlock_position_lock_create",
@@ -4696,6 +4902,8 @@ shared (deployer) persistent actor class SneedLock() = this {
   // would go through consensus at our cost, and arguments are capped in size.
   system func inspect({ arg : Blob; msg : {
     #get_api_doc : Any;
+    #reconcile_token_lock : Any;
+    #get_uncertain_token_locks : Any;
     #add_liquidity_to_locked_position : Any;
     #admin_add_admin : Any;
     #admin_clear_completed_claim_requests : Any;
@@ -4845,6 +5053,7 @@ shared (deployer) persistent actor class SneedLock() = this {
         or #get_summed_locks _
         or #get_token_lock_by_id _
         or #get_token_locks _
+        or #get_uncertain_token_locks _
         or #has_expired_locks _
         or #has_expired_position_locks _
         or #icrc10_supported_standards _

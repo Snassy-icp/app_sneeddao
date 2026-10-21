@@ -31,7 +31,8 @@ const CATALOGUE = [
   'sneedapp_version_add', 'sneedapp_version_update', 'sneedapp_version_remove', 'sneedapp_wasm_upload', 'sneedapp_wasm_clear',
   'sneedapp_official_version_set', 'sneedapp_official_version_remove', 'sneedapp_manager_wasm_set', 'sneedapp_manager_wasm_clear',
   'sneedapp_publisher_create', 'sneedapp_publisher_update', 'sneedapp_publisher_verify', 'sneedapp_publisher_unverify',
-  'sneedapp_mint', 'sneedapp_mint_refund', 'sneedapp_orphan_canister', 'sneedapp_deposit_withdraw', 'sneedapp_publisher_withdraw',
+  'sneedapp_mint', 'sneedapp_mint_refund', 'sneedapp_orphan_canister', 'sneedapp_orphan_settled', 'sneedapp_top_up_retry',
+  'sneedapp_refund_credit_claim', 'sneedapp_refund_credit_closed', 'sneedapp_deposit_withdraw', 'sneedapp_publisher_withdraw',
   'sneedapp_admin_withdraw', 'sneedapp_admin_top_up', 'sneedapp_wallet_transfer', 'sneedapp_wallet_register', 'sneedapp_wallet_deregister',
   'sneedapp_config_update',
 ];
