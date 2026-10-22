@@ -268,7 +268,7 @@ export default function Premium() {
     useEffect(() => {
         const fetchPremiumPricing = async () => {
             try {
-                const pricing = { sneedex: null, neuronManager: null, forum: null, sms: null };
+                const pricing = { sneedex: null, neuronManager: null, forum: null, sms: null, jailbreak: null };
                 
                 // Fetch sneedex fees
                 if (SNEEDEX_CANISTER_ID) {
@@ -382,6 +382,10 @@ export default function Premium() {
                 if (BACKEND_CANISTER_ID) {
                     try {
                         const backendActor = createBackendActor(BACKEND_CANISTER_ID, {});
+                        // SNS Jailbreak script fee (regular and premium), read live like the other prices
+                        const jb = await backendActor.get_jailbreak_fee_settings().catch(() => null);
+                        if (jb) pricing.jailbreak = { regularFeeE8s: BigInt(jb.fee_regular_e8s), premiumFeeE8s: BigInt(jb.fee_premium_e8s) };
+
                         const nicknameConfig = await backendActor.get_nickname_limits_config();
                         
                         const regularNeuronLimit = Number(nicknameConfig.max_neuron_nicknames);
@@ -1518,11 +1522,17 @@ export default function Premium() {
                                                 <FaCoins style={{ color: '#f39c12', fontSize: '10px' }} /> Script Price
                                             </span>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.75rem' }}>
-                                                    0.5 ICP
-                                                </span>
+                                                {premiumPricing?.jailbreak && (
+                                                    <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.75rem' }}>
+                                                        {formatIcp(premiumPricing.jailbreak.regularFeeE8s)} ICP
+                                                    </span>
+                                                )}
                                                 <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.85rem' }}>
-                                                    ✨ FREE
+                                                    {!premiumPricing?.jailbreak
+                                                        ? 'Discounted'
+                                                        : Number(premiumPricing.jailbreak.premiumFeeE8s) > 0
+                                                            ? `${formatIcp(premiumPricing.jailbreak.premiumFeeE8s)} ICP`
+                                                            : '✨ FREE'}
                                                 </span>
                                             </div>
                                         </div>
