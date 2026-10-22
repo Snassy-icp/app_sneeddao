@@ -67,7 +67,7 @@ Canisters on the canister's `authorized_senders` list may call `send_system_noti
 
 ### 1.6 Notifications for new messages
 
-When admins have set a Sneed Notifications canister (`get_notifications_canister()`), each message sent with `send_message` also gives every recipient a heads-up through [Sneed Notifications](/api/sneed_notifications): app Sneed Hub (it must be allowed by the recipient), topic `direct_message` (level normal), title `New message from abcde…xyz` (the sender's principal, shortened), body the message **subject** (up to 200 characters) and, on the next line, the **first 100 characters of the text**, link `https://app.sneeddao.com/msg/<id>`, dedupe key `sms-<id>`, not sponsored (the recipient pays their own paid channels, as for forum notifications). **A recipient can turn the preview off** with `set_notification_preview(false)` (read it with the query `get_notification_preview()`, default on); then only the subject is sent. The preview passes through the relays: Discord can read DMs, and phone notifications show on the lock screen (web push itself is end-to-end encrypted to the device). Each recipient once (duplicates folded, never the sender, at most 100). The call is fire-and-forget with a bounded wait: sending never waits on it and never fails because of it. Unset, nothing is sent.
+When admins have set a Sneed Notifications canister (`get_notifications_canister()`), each message sent with `send_message` also gives every recipient a heads-up through [Sneed Notifications](/api/sneed_notifications): app Sneed Hub (it must be allowed by the recipient), topic `direct_message` (level normal), title `New message from abcde…xyz` (the sender's principal, shortened), body the message **subject** (up to 200 characters) and, on the next line, the **start of the text, at most 100 characters**: cut at the last space before the limit (a single word longer than that is cut at 100), never inside a link (a word with `http://` or `https://` in it that the limit would cut is left out whole), with `…` when anything was cut; link `https://app.sneeddao.com/msg/<id>`, dedupe key `sms-<id>`, not sponsored (the recipient pays their own paid channels, as for forum notifications). **A recipient can turn the preview off** with `set_notification_preview(false)` (read it with the query `get_notification_preview()`, default on); then only the subject is sent. The preview passes through the relays: Discord can read DMs, and phone notifications show on the lock screen (web push itself is end-to-end encrypted to the device). Each recipient once (duplicates folded, never the sender, at most 100). The call is fire-and-forget with a bounded wait: sending never waits on it and never fails because of it. Unset, nothing is sent.
 
 No loop: only `send_message` notifies, never `send_system_notification` (which is how Sneed Notifications copies every notification into the user's inbox), and Sneed Notifications never delivers anything this canister sends to Sneed SMS channels. The heads-up therefore goes to the recipient's other channels (push, Discord…) only.
 
@@ -82,6 +82,7 @@ Before it accepts an update call from outside the IC the canister checks it (`in
 - **Query methods only answer query calls.** Calling one as an update is refused.
 - **`send_message`** is refused when `reply_to` names more than 100 ids, when there are more recipients than the larger of the plain and premium recipient limits, or when the subject or body is longer than the larger of the two limits. The method itself then applies the caller's own limits.
 - **`send_system_notification`** is held to the premium limits.
+- **The activity log's admin methods** (`admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`) are refused unless the caller is an admin.
 - **Every other update** takes at most 4 KiB of arguments; `import_admins` and `import_messages` are accepted only from controllers.
 
 ---
@@ -262,6 +263,7 @@ Restricted to admins (governance, controllers, listed admins) unless noted. Inte
 | `admin_set_notifications(opt p) → Result<(), SMSError>` | The Sneed Notifications canister told of new messages (§1.6); `[]` turns it off. `get_notifications_canister() → opt principal` is a public query. |
 | `get_all_messages_admin()` | Every message (empty for non-admins). |
 | `import_admins(vec AdminInfo)`, `import_messages(vec MessageResponse)` | Controllers only: restore data after a migration. |
+| `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`, `get_log(start, length)` | The activity log's settings, archiving and operational messages ([7](#7-activity-log-icrc-3)). |
 
 ---
 
@@ -298,7 +300,58 @@ type SMSError = variant {
 
 ---
 
-## 7. Integration checklist
+## 7. Activity log (ICRC-3)
+
+Admin and configuration acts are recorded as blocks in a hash-chained, certified log, readable through the standard [ICRC-3](https://github.com/dfinity/ICRC-1/tree/main/standards/ICRC-3) interface: who was made an admin or removed, which canisters may send system messages, the system sender, the notifications canister, the limits and premium settings, data imports and the log's own settings. Each block carries the hash of the previous block (`phash`), and the canister certifies the index and hash of the latest block, so anyone can download the history and prove it complete and untampered. Old blocks move to archive canisters that Sneed SMS creates.
+
+**Messages are never logged.** No block holds a subject, a text, a sender or a recipient of a message, nor anything a user does with their own messages or settings (sending, reading, leaving a message, read marks, the preview switch). The log is about who holds power over the canister and how they use it; the messages themselves stay where they are (§1.2).
+
+The log uses the same library as [Sneed Lock's log](/api/sneed_lock#8-activity-log-icrc-3) ([src/icrc3](https://github.com/Snassy-icp/app_sneeddao/tree/main/src/icrc3)); the design, including what is deliberately not logged, is in [spec/sms_icrc3.md](https://github.com/Snassy-icp/app_sneeddao/blob/main/spec/sms_icrc3.md). It starts empty with the release that introduced it; nothing from before is imported.
+
+### 7.1 Endpoints
+
+| Method | Type | Returns |
+|---|---|---|
+| `icrc3_get_blocks(vec record { start : nat; length : nat })` | query | `{ log_length; blocks : vec { id; block }; archived_blocks : vec { args; callback } }`. Live blocks come back directly; for archived ranges call `callback` (that archive's own `icrc3_get_blocks`) with `args`. |
+| `icrc3_get_archives(record { from : opt principal })` | query | Every archive canister with the first and last block index it holds. |
+| `icrc3_get_tip_certificate()` | query | `opt { certificate; hash_tree }` with `last_block_index` and `last_block_hash`. Null until the first block exists. |
+| `icrc3_supported_block_types()` | query | Every `btype` below, each with the url of [7.3](#73-block-types). |
+| `icrc10_supported_standards()` | query | ICRC-3 and ICRC-10. |
+| `icrc3_log_status()` | query | Log length, live blocks, hash of the last block, archives, spill settings. `history_imported` is always false. |
+
+Admin only: `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers` (as on Sneed Lock) and `get_log(start, length)`, the log's operational messages (spills, archives created, failures). Archives are controlled by Sneed SMS and the Sneed SNS root (`fp274-iaaaa-aaaaq-aacha-cai`) until a `RegisterDappCanisters` proposal hands them to SNS root alone.
+
+### 7.2 Block format
+
+A block is a `Map` with `btype` (Text), `ts` (Nat, ns since epoch: when the action happened), `phash` (Blob, absent on block 0) and `tx` (Map). Inside `tx`: principals are `Blob` (raw principal bytes), numbers `Nat`; `caller` is the principal that made the call; optional fields are omitted when absent. A principal setting that is not set is the Text `none` in `config_update` values.
+
+### 7.3 Block types
+
+All types carry the `sneedsms_` prefix. A block is appended in the message that made the change; a refused call, and a call that changes nothing (setting a value it already has, adding what is there), appends nothing.
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `sneedsms_admin_add` | `add_admin`, or `import_admins` adding an admin (then `source` = `import_admins`). | `caller`, `principal`, `source` |
+| `sneedsms_admin_remove` | `remove_admin` | `caller`, `principal` |
+| `sneedsms_authorized_sender_add` / `sneedsms_authorized_sender_remove` | `add_authorized_sender` / `remove_authorized_sender`: the canisters that may call `send_system_notification`. | `caller`, `principal` |
+| `sneedsms_config_update` | A setting changed. | `caller`, `key`, `old_value`, `value` |
+| `sneedsms_messages_import` | `import_messages` stored at least one message (controllers, restoring data). Only how many: never the messages. | `caller`, `count`, `next_id` (the id counter afterwards) |
+
+`sneedsms_config_update` keys: the limits `rate_limit_minutes`, `max_subject_length`, `max_body_length`, `max_recipients` (`update_config`); the premium settings `sneed_premium_canister_id`, `premium_max_subject_length`, `premium_max_body_length`, `premium_rate_limit_minutes`, `premium_max_recipients` (`update_premium_config`); `system_sender_principal` (`set_system_sender_principal`); `notifications_canister` (`admin_set_notifications`); and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
+
+There is no moderation in Sneed SMS: admins can read every message (`get_all_messages_admin`) but cannot delete, edit or block anything, so there are no moderation blocks. Reading is not logged (queries cannot write).
+
+Not logged: messages sent (`send_message`, `send_system_notification`), messages left (`remove_self_from_message`, also when that deletes the message), read marks (`mark_messages_seen_up_to`), each user's preview switch (`set_notification_preview`; the default, on, is fixed in the code), the premium membership cache, and the one-off data repairs an upgrade runs.
+
+### 7.4 Verifying and using the log
+
+- **Verify it:** the procedure and the Node.js script of [Sneed Lock's 8.4](/api/sneed_lock#84-verifying-the-log) work unchanged with the canister id `zelpl-7yaaa-aaaad-abtcq-cai` (or staging `v33jy-4qaaa-aaaad-absna-cai`).
+- **Browse it:** [app.sneeddao.com/tools/icrc3?canister=zelpl-7yaaa-aaaad-abtcq-cai](https://app.sneeddao.com/tools/icrc3?canister=zelpl-7yaaa-aaaad-abtcq-cai), the generic ICRC-3 browser.
+- **Audit power:** `sneedsms_admin_*` blocks show who may read every message; `sneedsms_authorized_sender_*` who may write to anyone without limits, and under which sender (`system_sender_principal`).
+
+---
+
+## 8. Integration checklist
 
 - Tell users that messages are readable by the canister's admins and stored unencrypted; do not let them send secrets.
 - Read `get_config()` and `get_premium_config()` at run time to show limits; do not hard-code them.

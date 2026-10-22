@@ -28,7 +28,7 @@ Direct messages (\"SMS\") from one principal to one or more others: a subject, a
 - Limits (read at run time from `get_config()` and, for Sneed Premium members, `get_premium_config()`): minutes between messages, subject and body length, recipients per message. Admins are exempt from the rate limit.
 
 ## Notifications for new messages
-- When admins set a Sneed Notifications canister (`get_notifications_canister()`), each `send_message` also notifies every recipient once (never the sender) through it: app Sneed Hub (the recipient must allow it), topic `direct_message`, title `New message from <short principal>`, body the subject plus the first 100 characters of the text (only the subject for a recipient who called `set_notification_preview(false)`; `get_notification_preview()` reads it, default on), link `https://app.sneeddao.com/msg/<id>`, paid by the recipient. Fire-and-forget: sending never waits on it or fails because of it.
+- When admins set a Sneed Notifications canister (`get_notifications_canister()`), each `send_message` also notifies every recipient once (never the sender) through it: app Sneed Hub (the recipient must allow it), topic `direct_message`, title `New message from <short principal>`, body the subject plus the start of the text, at most 100 characters, cut at a space and never inside a link, `…` when cut (only the subject for a recipient who called `set_notification_preview(false)`; `get_notification_preview()` reads it, default on), link `https://app.sneeddao.com/msg/<id>`, paid by the recipient. Fire-and-forget: sending never waits on it or fails because of it.
 - `send_system_notification` never notifies, and Sneed Notifications never copies these notices back into Sneed SMS: no loop.
 
 ## Asynchronous lifecycle and polling
@@ -47,6 +47,10 @@ Direct messages (\"SMS\") from one principal to one or more others: a subject, a
 - List each recipient once (duplicates are not removed).
 - `get_message(id)` returns null both for a missing message and for one the caller may not read.
 - For notifications from your own canister, use Sneed Notifications instead of asking to become an authorised sender.
+
+## Activity log (ICRC-3)
+- Admin and configuration acts are blocks of a certified, hash-chained ICRC-3 log: admins added or removed, authorised system senders, the system sender, the notifications canister, limits and premium settings, data imports (a count only). `icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`, `icrc3_log_status` (queries). Block types (`sneedsms_*`): https://app.sneeddao.com/api/sneed_sms#block-types
+- Messages are never logged: no subject, text, sender or recipient in any block, nothing users do with their own messages or settings. Old blocks move to archive canisters co-controlled by the Sneed SNS root.
 
 ## Start with these methods
 `get_config`, `get_premium_config`, `send_message`, `get_received_messages`, `get_sent_messages`, `get_message`, `get_recent_messages_count`, `mark_messages_seen_up_to`, `remove_self_from_message`.

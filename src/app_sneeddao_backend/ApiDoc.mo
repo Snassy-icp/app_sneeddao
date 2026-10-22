@@ -43,6 +43,9 @@ General-purpose backend of Sneed Hub (https://app.sneeddao.com): the shared toke
 - Read and write names in the naming service, not here.
 - `get_canister_info`, `get_user_neurons`, `get_my_canister_groups_usage` and `get_my_jailbreak_fee` are update calls.
 
+## Activity log (ICRC-3)
+- Jailbreak payments (payer, amount, price tier, recipient, ICP ledger block), deposit withdrawals, admin token and position transfers, verified donations, bans and unbans (reason as SHA-256), avatars removed by admins, the admin list, partners and projects, and every configuration change (old and new value) are blocks of a certified, hash-chained ICRC-3 log: `icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`, `icrc3_log_status`, `get_log` (queries). No private data: settings, nicknames, jailbreak targets and donation messages are never logged. Block types (`sneedbackend_*`): https://app.sneeddao.com/api/app_sneeddao_backend#block-types
+
 ## Start with these methods
 `get_whitelisted_tokens`, `is_token_whitelisted`, `get_my_settings` / `set_my_settings`, `register_user_token`, `get_user_tokens`, `get_tracked_canisters`, `get_donation_account`, `register_donation`, `get_donations`, `get_jailbreak_fee_settings`, `get_names_canisters`.
 

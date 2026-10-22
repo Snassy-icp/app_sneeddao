@@ -233,3 +233,77 @@ the upgrade nobody has auto top-up on. Test: `sneed-mon-auto-top-up.test.js` upg
 
 The watch carries `MonTopic` (`#proposals` today): `#cycles` (low cycles of watched canisters, as
 `useLowCyclesNotification.js`) and `#rewards` (unclaimed RLL rewards, as `useRewardsCache.js`).
+
+## 9. Activity log (ICRC-3)
+
+Added 2026-10-22, not deployed. A hash-chained, certified log through the ICRC-3 interface, with
+archive canisters, built on the shared library `src/icrc3` exactly as the forum and Sneed
+Notifications ([spec/notifications_icrc3.md](notifications_icrc3.md)). Tests:
+`test/canisters/tests/sneed-mon-icrc3.test.js`.
+
+**What is logged: money and governance.** Deposits credited, withdrawals, auto top-up pulls, the
+charges of each round, user pauses and resumes, fee forwards and fee withdrawals, admins, and every
+configuration, tuning, billing, tier and special-price value that changed.
+
+**What is not logged: what anyone watches.** No block names a target (SNS root, NNS), a proposal,
+a topic filter, a neuron or a watch setting; `watch`, `unwatch`, `update_watch`,
+`set_nns_neurons`, `refresh_my_neurons`, `list_target_topics` and `set_auto_top_up` append
+nothing. Neither do messages sent through Sneed Notifications, refused calls, calls that change
+nothing, or the ledger fee learnt from a `BadFee` answer.
+
+**Charges are aggregated per round.** One check per watch per due interval would be one block per
+check (with 1,000 users and 10 hourly watches each, 240,000 blocks a day). Instead the round
+adds up its kept charges (checks refunded because Sneed Notifications could not take them are not
+counted) and appends one `sneedmon_round_charges` block when the round ends, and only if it
+charged anything. Rounds start at most every `interval_s` (≥ 60 s; 600 s by default), so the log
+grows by at most one charge block per round: 144 a day at the default interval, 1,440 at the
+minimum, however many users there are. The block names each user's total only while the round
+charged at most 20 users (a few KB at most); above that it carries the totals only, and a user's
+own history stays in `get_my_charges`. The running totals are stable variables, so a round cut
+short by an upgrade is still logged, before the next round starts.
+
+Block format as in the other Sneed logs (`Map { btype; ts; phash; tx }`; principals as Blob,
+accounts as `Array [owner, subaccount?]`, amounts in ICP e8s and ledger blocks as Nat, flags as
+Nat 0/1). First field `caller`, or `via` = `"timer"` for what a round did. Prefix `sneedmon_`;
+url `https://app.sneeddao.com/api/sneed_mon#block-types` (public API doc §6.3).
+
+| btype | appended by | tx fields |
+|---|---|---|
+| `sneedmon_deposit` | `credit_deposit` moved ICP from the caller's deposit subaccount into their balance | `caller`, `amount_e8s` (credited), `fee_e8s`, `ledger_block` |
+| `sneedmon_withdraw` | `withdraw_balance`, after the ledger accepted | `caller`, `amount_e8s` (debited), `fee_e8s`, `to`, `ledger_block` |
+| `sneedmon_auto_top_up` | a round pulled a top-up with `icrc2_transfer_from` | `via`, `user`, `amount_e8s` (credited), `fee_e8s` (paid by the wallet), `from` (the user's account), `ledger_block` |
+| `sneedmon_round_charges` | a round that charged at least one check ended (or the next round started after it was cut short) | `via`, `round`, `checks`, `charged_e8s`, `users`; `per_user` (Array of `[user, charged_e8s, checks]`) when `users` ≤ 20 |
+| `sneedmon_user_pause` | a check could not be paid: the user's watches pause | `via`, `user`, `balance_e8s`, `price_e8s` (the check it could not pay) |
+| `sneedmon_user_resume` | a paused user's balance pays a check of each watch again (after a deposit, an auto top-up, a price change, an unwatch) | `caller` or `via`, `user`, `balance_e8s` |
+| `sneedmon_fee_forward` | a round forwarded the collected fees | `via`, `amount_e8s` (taken off the fees; the destination receives it less `fee_e8s`), `fee_e8s`, `to`, `ledger_block`, `forwards` |
+| `sneedmon_fee_withdraw` | `admin_withdraw_fees` | `caller`, `amount_e8s`, `fee_e8s`, `to`, `ledger_block` |
+| `sneedmon_admin_add`, `sneedmon_admin_remove` | `admin_add_admin`, `admin_remove_admin`, when the list changed | `caller`, `principal` |
+| `sneedmon_config_update` | one block per value that changed | `caller`, `key`, `old_value`, `value` (partner prices: also `partner`; `old_value` absent for a new partner, `value` Text `removed` for a removal) |
+
+`sneedmon_config_update` keys: the core `Config` fields (`notifications` Blob or `none`,
+`sns_wasm`, `interval_s`, `paused`, `sponsored`, `max_users`, `max_watches_per_user`,
+`max_snses`, `max_calls_per_tick`, `max_continuations`, `reminder_window_s`, `batch_size`,
+`neuron_pages`, `proposal_pages`, `neuron_cache_s`) from `admin_set_config`, `admin_pause`,
+`admin_resume`, `admin_set_interval`, `admin_set_notifications_canister`; `app_id` (Nat or
+`none`); the `Tuning` fields (`nns_governance`, `defaults` as `Map { every_min; topics; new_proposals;
+reminders; reminder_window_s }`, `neuron_refresh_s`, `max_refresh_per_round`, `parallel_calls`,
+`max_nns_neurons`, `user_refresh_min_s`, `max_pending_per_user`, `topic_cache_s`); the billing
+fields (`icp_ledger`, `ledger_fee_e8s`, `fee_destination` account or `none`,
+`fee_sweep_threshold_e8s`); the tier table (`base_daily_price_e8s`, `tiers` Array of
+`Map { every_min; daily_multiplier }`); special prices (`admin_prices` Map of the set overrides,
+`partner_prices` with `partner`, value `Map { label; prices; expires_at? }`); the log settings
+`icrc3_*`.
+
+Endpoints, archives and cycles as on Sneed Notifications: `icrc3_get_blocks`,
+`icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`,
+`icrc10_supported_standards`, `icrc3_log_status` (queries, refused as updates by the ingress
+guard); `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`
+and the admin query `get_log` (the log's operational messages). Archives are co-controlled by
+sneed_mon and SNS root `fp274-iaaaa-aaaaq-aacha-cai`; cycle reserve 2 T (3.5 T to create one).
+
+Upgrade: new stable variables only (`icrc3`, `icrc3_textlog`, the round totals), so the log
+starts empty; `moc --stable-compatible` against the 5f62b7d5 build passes; Candid only adds
+methods. Upgrade with `wasm_memory_persistence = keep`. Staging (`v53u4-…`, no production yet)
+runs module hash `ab310a51…` = `dfx +0.28.0 build --network staging sneed_mon` of 5f62b7d5
+(unchanged since 3f668176); the tests build it as `sneed_mon_preicrc3.wasm`, run the log tests
+against it (they fail) and upgrade from it with keep.

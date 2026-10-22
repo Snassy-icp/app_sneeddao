@@ -27,6 +27,7 @@ Canisters: production `vuy7a-iaaaa-aaaay-aaduq-cai` (live; early: one app regist
 7. **Limits**: title 1-200 chars, body ≤ 2000, link `https://` ≤ 512, `dedupe` key folds repeats within 1 hour (`deduplicated = true`), at most 20 channels per user. Notifications are kept 30 days.
 8. **Only registered app canisters may call `notify` / `notify_batch` / `request_permission`.** `register_app` requires the caller to control every listed canister (or be the governance of an SNS whose root controls it); a canister belongs to one app.
 9. **Never act for a user without their signature.** User methods are caller-scoped; the user signs in Sneed Hub. Do not ask for keys or seed phrases.
+10. **Activity log (ICRC-3, once deployed).** Top-ups (with their ledger block), refunds of failed deliveries (amount only), fee forwards to the RLL splitter, apps registered, changed, verified or removed, admin and config changes are blocks of a certified, hash-chained log: `icrc3_get_blocks`, `icrc3_get_tip_certificate`, `icrc3_get_archives`, `icrc3_supported_block_types` (`sneednotif_*`, documented at https://app.sneeddao.com/api/sneed_notifications#block-types). What was sent to whom is never logged.
 
 ## Procedures (user)
 

@@ -4,7 +4,9 @@
 // (send_system_notification, which is how Sneed Notifications copies notifications into inboxes)
 // never notify, and Sneed Notifications never delivers what the SMS canister sends to #sneed_sms
 // channels. Forum notifications still reach Sneed SMS as before; with the setting unset SMS
-// sends nothing.
+// sends nothing. The preview stops at the last space before 100 characters and never leaves half
+// a link. SMS_WASM=sneed_sms_prod npx vitest run tests/sms-notifications.test.js runs it against
+// the production code (src/sneed_sms at e832eeac), where the preview test fails.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Principal } from '@icp-sdk/core/principal';
 import { createPic, install, actorAs, admin, alice, bob, carol, user, SNEED_SNS_ROOT, SNEED_GOVERNANCE, unwrap, errOf, refusedAtIngress, asUpdates } from '../lib/pic.js';
@@ -31,6 +33,7 @@ async function relayed() {
   if (jobs.length) await nas(relay).relay_ack(jobs.map((j) => [j.id, { ok: null }]));
   return jobs;
 }
+const SMS_WASM = process.env.SMS_WASM || 'sneed_sms';
 const send = (from, to, subject, body) => smsAs(from).send_message({ recipients: to, subject, body, reply_to: [] });
 
 describe('sneed_sms: notifications for direct messages', () => {
@@ -38,7 +41,7 @@ describe('sneed_sms: notifications for direct messages', () => {
     ({ pic } = await createPic());
     await install(pic, { name: 'MockForumSnsW', targetCanisterId: SNS_W });
     const govId = await install(pic, { name: 'MockForumGovernance' });
-    smsId = await install(pic, { name: 'sneed_sms' });
+    smsId = await install(pic, { name: SMS_WASM });
     notifId = await install(pic, { name: 'sneed_notifications' });
     forumId = await install(pic, { name: 'sneed_sns_forum' });
     await actorAs(pic, directoryIdl, SNS_W, admin).set_instances([[SNEED_SNS_ROOT, govId]]);
@@ -181,6 +184,44 @@ describe('sneed_sms: notifications for direct messages', () => {
     expect((await history(alice))[0].body).toBe('Quiet');
     expect((await relayed()).map((j) => j.body).join()).not.toMatch(/secret words/);
     unwrap(await smsAs(alice).set_notification_preview(true));
+  });
+
+  // Seen live: "…https://app.sneeddao.com/post?…", a link cut in half that opened a broken page.
+  it('cuts the preview at the last space before 100 characters and never leaves half a link', async () => {
+    const preview = async (subject, text) => {
+      unwrap(await send(bob, [alice], subject, text));
+      await settle();
+      await relayed();
+      const [h] = await history(alice);
+      expect(h.title).toBe(`New message from ${short(bob)}`);
+      return h.body.slice(subject.length + 1); // after "subject\n"; '' when there is no preview
+    };
+    // a link that the 100-character limit cuts: dropped whole, the words before it kept
+    const intro = 'Hi Alice, the release notes for this week are posted, have a look when you have a moment:';
+    const link = 'https://app.sneeddao.com/post?postid=4242&threadid=899';
+    expect(intro.length).toBeLessThan(100);
+    expect(intro.length + 1 + link.length).toBeGreaterThan(100);
+    const p1 = await preview('Notes', `${intro} ${link} thanks!`);
+    expect(p1).toBe(`${intro}…`);
+    expect(p1).not.toMatch(/https?:/);
+    // the same inside a Markdown mention, and a link only starting at the limit ("http")
+    const mention = `[@Alice](https://app.sneeddao.com/principal?id=${alice.toText()})`;
+    const lead = 'x '.repeat(30);
+    const p2 = await preview('Mention', `${lead}cc ${mention} more`);
+    expect(p2).toBe(`${lead}cc…`);
+    const p3 = await preview('Edge', `${'w '.repeat(48)}https://a.b/c`); // 96 chars, then the link
+    expect(p3).toBe(`${'w '.repeat(48).trimEnd()}…`);
+    // a whole text that is one long link: no preview at all, only the subject
+    expect(await preview('Only a link', `https://app.sneeddao.com/${'a'.repeat(120)}`)).toBe('');
+    expect((await history(alice))[0].body).toBe('Only a link');
+    // words: cut between words, not inside one
+    expect(await preview('Words', 'word '.repeat(30))).toBe(`${'word '.repeat(20).trimEnd()}…`);
+    expect(await preview('Words2', `${'abcdefg '.repeat(12)}abcdefghij`)).toBe(`${'abcdefg '.repeat(12).trimEnd()}…`);
+    // one long word without spaces: still cut at 100 characters
+    expect(await preview('Long word', 'y'.repeat(130))).toBe(`${'y'.repeat(100)}…`);
+    // a short message, links and all, is unchanged and gets no "…"
+    expect(await preview('Short', 'see https://app.sneeddao.com/post?postid=1 ok')).toBe('see https://app.sneeddao.com/post?postid=1 ok');
+    expect(await preview('Exactly', 'z'.repeat(100))).toBe('z'.repeat(100));
   });
 
 });

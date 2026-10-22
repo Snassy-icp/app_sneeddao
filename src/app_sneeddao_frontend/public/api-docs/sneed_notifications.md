@@ -86,7 +86,7 @@ Before it accepts an update call from outside the IC the canister checks it (`in
 
 - **Query methods only answer query calls.**
 - **`notify`, `notify_batch` and `request_permission` are never accepted from outside the IC.** Only a canister listed in a registered app can call them, by an inter-canister call. Testing from dfx means calling through a canister of your app.
-- **Admin methods** are accepted only from admins; **`relay_pull` and `relay_ack`** only from registered relays.
+- **Admin methods** (including the activity log's `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`) are accepted only from admins; **`relay_pull` and `relay_ack`** only from registered relays.
 - **Every other update** is refused from the anonymous principal. Argument size caps: 4 KiB by default, 64 KiB for `register_app`, `update_app`, `relay_ack` and admin config calls, about 13 KiB for `add_channel`, `set_settings` and `set_permission`.
 
 ---
@@ -356,6 +356,7 @@ All refuse the anonymous principal (`Please sign in` where the method checks it)
 | `get_admins()` | query | `vec principal` | Listed admins (controllers are admins too). |
 | `stats()` | query | `{ apps; users; notifications; pending }` | `users` counts principals with a channel. |
 | `get_fee_forwarding()` | query | `FeeForwarding` | Revenue: destination, threshold, fees earned, refunded and forwarded, the backlog, what is unforwarded and owed, the last forward and error, the last 20 events (1.4). |
+| `icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`, `icrc10_supported_standards`, `icrc3_log_status` | query | | The activity log ([8](#8-activity-log-icrc-3)); not deployed yet. |
 
 ### 5.4 Relays
 
@@ -379,6 +380,7 @@ Admins are the canister's controllers and the principals in `get_admins()`. All 
 | `admin_set_fee_destination(opt Account)` | Where fees go; `null` keeps them in the canister. A subaccount must be 32 bytes. |
 | `admin_set_fee_sweep_threshold(e8s)` | Forward once this much is unforwarded (default 10,000,000 = 0.1 ICP). |
 | `admin_forward_fees_now()` | Forwards what is unforwarded now, whatever the threshold (still minus the ledger fee, never below the liabilities). |
+| `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`, `get_log(start, length)` | The activity log's settings, archiving and operational messages ([8](#8-activity-log-icrc-3)). |
 
 ---
 
@@ -512,3 +514,61 @@ Default permission (from `allow_app`): allowed, no demote, not copy-only, not mu
 - Encrypt every address to the relay key in the client; never send it in clear.
 - Show the balance and the prices from `get_config()`; tell users balances cannot be withdrawn.
 - Make sure the user's Sneed SMS channel exists (any update call creates it) before saving its id in settings.
+
+---
+
+## 8. Activity log (ICRC-3)
+
+**Status: in the source on `main`, not deployed yet.** Until the upgrade, the methods below do not exist on production or staging.
+
+What concerns money and governance is recorded as a block in a hash-chained, certified log, readable through the standard [ICRC-3](https://github.com/dfinity/ICRC-1/tree/main/standards/ICRC-3) interface: top-ups of user and app balances (with the ICP ledger block), refunds of failed paid deliveries, the forwarding of the earned fees to the RLL splitter (with the ledger block), the measurement of the fee books, apps registered, changed, verified and removed, the admin list and every configuration value. Each block carries the hash of the previous block (`phash`), and the canister certifies the index and hash of the latest block, so anyone can download the history and prove it complete and untampered. Old blocks move to archive canisters that the canister creates.
+
+**What was sent to whom is never logged.** No block carries a notification's title, body or link, a channel's name, kind or address, a verification code, a delivery or the user a message was for. A refund block says how much went back and whether a user or an app had paid, not who.
+
+The log uses the same library as [Sneed Lock's log](/api/sneed_lock#8-activity-log-icrc-3) ([src/icrc3](https://github.com/Snassy-icp/app_sneeddao/tree/main/src/icrc3)); the design is in [spec/notifications_icrc3.md](https://github.com/Snassy-icp/app_sneeddao/blob/main/spec/notifications_icrc3.md). It starts empty with the release that introduces it; nothing from before is imported.
+
+### 8.1 Endpoints
+
+| Method | Type | Returns |
+|---|---|---|
+| `icrc3_get_blocks(vec record { start : nat; length : nat })` | query | `{ log_length; blocks : vec { id; block }; archived_blocks : vec { args; callback } }`. For archived ranges call `callback` (the archive's own `icrc3_get_blocks`) with `args`. |
+| `icrc3_get_archives(record { from : opt principal })` | query | Every archive canister with the first and last block index it holds. |
+| `icrc3_get_tip_certificate()` | query | `opt { certificate; hash_tree }` with `last_block_index` and `last_block_hash`. Null until the first block exists. |
+| `icrc3_supported_block_types()` | query | Every `btype` below, each with the url of [8.3](#83-block-types). |
+| `icrc10_supported_standards()` | query | ICRC-3 and ICRC-10. |
+| `icrc3_log_status()` | query | Log length, live blocks, hash of the last block, archives, spill settings. `history_imported` is always false. |
+
+Admin only: `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers` (as on Sneed Lock) and the query `get_log(start, length)`, the log's operational messages (spills, archives created, failures). The ingress guard refuses the queries as update calls and the admin methods from others. Archives are controlled by this canister and the Sneed SNS root (`fp274-iaaaa-aaaaq-aacha-cai`) until a `RegisterDappCanisters` proposal hands them to SNS root alone.
+
+### 8.2 Block format
+
+A block is a `Map` with `btype` (Text), `ts` (Nat, ns since epoch), `phash` (Blob, absent on block 0) and `tx` (Map). Inside `tx`: principals are `Blob`; accounts are `Array [owner, subaccount?]`; amounts (ICP e8s), ids and ledger block indexes are `Nat`; flags are `Nat` 0 / 1. The first field is `caller` (the principal that made the call), or `via` = `"timer"` for what the canister's own timer did (fee checks, Sneed SMS delivery, lapsed relay leases) and `via` = `"upgrade"` for what an upgrade did. A value that is not set is the Text `none`.
+
+### 8.3 Block types
+
+All types carry the `sneednotif_` prefix. A block is appended once its action is final; a refused call, and a call that changes nothing, appends nothing.
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `sneednotif_top_up` | `top_up` credited a user balance. | `caller` (the user), `amount_e8s`, `ledger_block` |
+| `sneednotif_app_top_up` | `top_up_app` credited an app balance. | `caller` (the funder), `app_id`, `amount_e8s`, `ledger_block`, `app_balance_e8s` (after) |
+| `sneednotif_refund` | A paid delivery failed finally and its price went back to whoever paid. | `caller` (the relay) or `via`, `amount_e8s`, `paid_by` (`user` or `app`), `refunded_e8s` (all refunds so far) |
+| `sneednotif_fee_forward` | Earned fees went to the fee destination. | `caller` (`admin_forward_fees_now`) or `via`, `amount_e8s` (received), `fee_e8s` (ledger fee), `to`, `ledger_block`, `forwards`, `forwarded_e8s` (totals after) |
+| `sneednotif_fee_backlog` | The first fee check measured the books (1.4). | `caller` or `via`, `balance_e8s`, `liabilities_e8s`, `free_e8s`, `backlog_e8s` |
+| `sneednotif_fee_remeasure` | The ledger showed less free ICP than the books; measured again. | `caller` or `via`, `books_e8s`, `balance_e8s`, `liabilities_e8s`, `free_e8s` |
+| `sneednotif_app_register` | `register_app`, `admin_register_app` | `caller`, `app_id`, `name`, `owner`, `canisters`, `topics` (Array of `Map { id; title; level }`), `verified` |
+| `sneednotif_app_update` | `update_app` changed something. | `caller`, `app_id`, `name`, `owner`, `canisters`, `topics` (after), `changed` (Array of `name`, `logo`, `description`, `canisters`, `topics`), and `old_name`, `old_canisters`, `old_topics` for those that changed (logo and description texts are not logged) |
+| `sneednotif_app_verify` | `admin_set_app_verified` changed the checkmark. | `caller`, `app_id`, `name`, `verified` |
+| `sneednotif_app_remove` | `admin_remove_app` | `caller`, `app_id`, `name`, `owner`, `canisters` |
+| `sneednotif_admin_add` / `sneednotif_admin_remove` | The admin list changed. | `caller` (or `via` = `"upgrade"`), `principal` |
+| `sneednotif_config_update` | A setting changed: one block per value. | `caller`, `key`, `old_value`, `value` |
+
+`sneednotif_config_update` keys: from `admin_set_config` `icp_ledger`, `sneed_sms`, `sns_wasm`, `prices_e8s` (Map kind -> e8s), `notify_price_e8s`, `dedupe_window_ns`, `retention_ns`, `default_daily_cap`, `default_daily_spend_cap_e8s`, `max_title`, `max_body`, `relays` (Array of `[relay, kind]`), `relay_lease_ns`, `max_attempts`; `relay_key` with `kind` (the public key document, Text; `none` when removed); `fee_destination`, `fee_sweep_threshold_e8s`; the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
+
+Not logged: notifications and their deliveries, receipts, channels, verification codes, user settings, permissions and requests, low-balance alerts, and the ledger fee learnt from a `BadFee` answer.
+
+### 8.4 Verifying and using the log
+
+- **Verify it:** the procedure and the Node.js script of [Sneed Lock's 8.4](/api/sneed_lock#84-verifying-the-log) work unchanged with the canister id `vuy7a-iaaaa-aaaay-aaduq-cai` (or staging `uqvqs-raaaa-aaaay-aadsq-cai`).
+- **Browse it:** [app.sneeddao.com/tools/icrc3?canister=vuy7a-iaaaa-aaaay-aaduq-cai](https://app.sneeddao.com/tools/icrc3?canister=vuy7a-iaaaa-aaaay-aaduq-cai), the generic ICRC-3 browser.
+- **Check the revenue:** the `sneednotif_fee_forward` blocks add up to `get_fee_forwarding().forwarded_e8s` since the log started; each `ledger_block` is a block on the ICP ledger sending `amount_e8s` to `to`.

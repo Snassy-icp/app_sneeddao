@@ -145,6 +145,18 @@ git archive "$FORUM_PROD_COMMIT" src | tar -x -C "$PREV_SRC"
 "$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_sns_forum/main.mo" -o "$OUT/sneed_sns_forum_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
 rm -rf "$PREV_SRC"
 test -s "$OUT/sneed_sns_forum_prod.wasm"
+# sneed_sms as production runs it (preview clipped at 100 characters, no ICRC-3 log;
+# `dfx build --network ic sneed_sms` of this code gives the production module hash de51e8a5…), for
+# the fail-before run of the preview fix (SMS_WASM=sneed_sms_prod) and the test that upgrades from
+# it with keep and starts an empty log (enhanced orthogonal persistence, as dfx.json builds it)
+SMS_PROD_COMMIT=e832eeac
+echo "== sneed_sms at $SMS_PROD_COMMIT (moc, EOP, for the ICRC-3 upgrade test)"
+PREV_SRC="$(mktemp -d)"
+git archive "$SMS_PROD_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_sms/main.mo" -o "$OUT/sneed_sms_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneed_sms_prod.wasm"
 # sneed_mon as staging runs it (step 1, app "Sneed Hub", SNS watches only), for the test that
 # upgrades from it (enhanced orthogonal persistence, as dfx.json builds it)
 MON_STAGING_COMMIT=1bbee49a
@@ -243,6 +255,18 @@ for c in sneedex sneedapp sneed_lock sneed_premium sneed_pad sneed_guardian app_
   test -s "$OUT/${c}_presp.wasm"
 done
 rm -rf "$PREV_SRC"
+# app_sneeddao_backend as production runs it since proposal #453 (special prices, no ICRC-3 log;
+# `dfx +0.28.0 build --network ic app_sneeddao_backend` of this code gives the production module
+# hash 91d76948…), for the fail-before run of the log tests (BACKEND_WASM=app_sneeddao_backend_prod)
+# and the test that upgrades from it with keep and starts an empty log (EOP, as dfx.json builds it)
+BACKEND_PROD_COMMIT=cd8d6d3e
+echo "== app_sneeddao_backend at $BACKEND_PROD_COMMIT (moc, EOP, for the ICRC-3 upgrade test)"
+PREV_SRC="$(mktemp -d)"
+git archive "$BACKEND_PROD_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/app_sneeddao_backend/main.mo" -o "$OUT/app_sneeddao_backend_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/app_sneeddao_backend_prod.wasm"
 # sneed_mon before auto top-up (ICRC-2 pulls from the user's wallet), for the test that upgrades
 # from it (and that runs the auto top-up tests against it to see them fail)
 MON_PRE_ATU_COMMIT=6cfabb63
@@ -253,6 +277,21 @@ git archive "$MON_PRE_ATU_COMMIT" src | tar -x -C "$PREV_SRC"
 "$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_mon/main.mo" -o "$OUT/sneed_mon_preatu.wasm" 2>&1 | grep -i "error" | head -5 || true
 rm -rf "$PREV_SRC"
 test -s "$OUT/sneed_mon_preatu.wasm"
+# sneed_notifications and sneed_mon before their ICRC-3 logs: sneed_notifications as production and
+# staging run it (#448, fee forwarding; `dfx +0.28.0 build --network ic sneed_notifications` of this code
+# at /home/snassy/app_sneeddao gives their module hash 7dae6ac1…), sneed_mon as staging runs it (`dfx
+# +0.28.0 build --network staging sneed_mon` gives ab310a51…). For the fail-before runs of the log tests
+# (NOTIF_WASM=sneed_notifications_preicrc3, MON_WASM=sneed_mon_preicrc3) and the upgrades with keep
+PREICRC3_COMMIT=5f62b7d5
+echo "== sneed_notifications, sneed_mon at $PREICRC3_COMMIT (moc, EOP, for the ICRC-3 upgrade tests)"
+PREV_SRC="$(mktemp -d)"
+git archive "$PREICRC3_COMMIT" src | tar -x -C "$PREV_SRC"
+for c in sneed_notifications sneed_mon; do
+  # shellcheck disable=SC2086
+  "$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/$c/main.mo" -o "$OUT/${c}_preicrc3.wasm" 2>&1 | grep -i "error" | head -5 || true
+  test -s "$OUT/${c}_preicrc3.wasm"
+done
+rm -rf "$PREV_SRC"
 for c in MockLedger MockLedgerV2 MockLedgerFaulty MockRejectLedger MockSwapPool MockDexPool MockIcpswapFactory MockKongSwap \
          MockSnsGovernance MockSnsNeurons MockHubSns MockForumGovernance MockForumSnsW MockRllGovernance MockNnsGovernance \
          MockCmc MockSnsWasm MockPremium MockSneedApp MockIcpSwapList MockIcpSwapTokenList MockNamesModerator MockIcpLedger MockMrSneedGov MockNotifySender MockExt MockMonSns MockMonNns MockProxyGov MockProxyTarget MockCkBtcMinter MockCkEthMinter Icrc3Demo; do

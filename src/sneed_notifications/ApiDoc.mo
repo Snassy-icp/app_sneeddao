@@ -48,6 +48,10 @@ Lets any dapp on the Internet Computer notify its users, and lets each user deci
 ## Start with these methods
 Dapps: `register_app`, `request_permission`, `notify`, `get_receipts`, `get_app_balance`, `top_up_app`. Users: `get_my_requests`, `allow_app`, `get_my_settings`, `add_channel`, `verify_channel`, `set_settings`, `top_up`, `get_my_history`. Public: `get_config`, `list_apps`, `get_app`, `stats`, `get_fee_forwarding`.
 
+## Activity log (ICRC-3)
+- Money and governance are blocks of a certified, hash-chained ICRC-3 log: top-ups (with the ledger block), refunds of failed deliveries (amount only), fee forwards to the RLL splitter, the fee books' measurements, apps registered, changed, verified or removed, admins and configuration changes. Read it with `icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`, `icrc3_log_status` (queries). Block types (`sneednotif_*`): https://app.sneeddao.com/api/sneed_notifications#block-types
+- Never logged: what was sent to whom (no titles, bodies, channels, addresses or deliveries).
+
 ## Full reference
 - https://app.sneeddao.com/api-docs/sneed_notifications.md
 - Candid: https://app.sneeddao.com/api-docs/sneed_notifications.did

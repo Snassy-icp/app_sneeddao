@@ -10,9 +10,15 @@ import Time "mo:base/Time";
 import Result "mo:base/Result";
 import Buffer "mo:base/Buffer";
 import Array "mo:base/Array";
+import Char "mo:base/Char";
+import Debug "mo:base/Debug";
 import PremiumClient "../PremiumClient";
 import IngressGuard "../IngressGuard";
 import ApiDoc "ApiDoc";
+import Icrc3Log "../icrc3/Log";
+import T3 "../icrc3/Types";
+import TextLog "../sneed_names/TextLog";
+import NT "../sneed_names/Types";
 
 persistent actor SneedSMS {
     // Types
@@ -134,6 +140,60 @@ persistent actor SneedSMS {
     var stable_notifications : ?Principal = null;
     let no_previews = Map.new<Principal, ()>(); // recipients who don't want the start of messages in notifications
 
+    // ICRC-3 activity log (spec/sms_icrc3.md; library src/icrc3): admin and configuration acts only
+    // (the admin list, the authorised system senders, the system sender, the notifications canister,
+    // limits, premium settings, data imports, the log's own settings). Never a message's subject,
+    // text, sender or recipients, and nothing a user does with their own messages or settings.
+    // Enhanced orthogonal persistence: these are new stable variables, so an upgrade starts an empty log.
+    var icrc3 : Icrc3Log.State = Icrc3Log.init();
+    transient let icrc3_rt : Icrc3Log.Runtime = Icrc3Log.runtime();
+    // operational messages of the log (spills, archive creation, failures), admins read them with get_log
+    let icrc3_textlog : TextLog.State = TextLog.init();
+
+    transient let SNEED_SNS_ROOT : Principal = Principal.fromText("fp274-iaaaa-aaaaq-aacha-cai");
+
+    transient let icrc3_catalogue : Icrc3Log.Config = {
+        block_types_url = "https://app.sneeddao.com/api/sneed_sms#block-types";
+        block_types = [
+            "sneedsms_admin_add",
+            "sneedsms_admin_remove",
+            "sneedsms_authorized_sender_add",
+            "sneedsms_authorized_sender_remove",
+            "sneedsms_config_update",
+            "sneedsms_messages_import",
+        ];
+    };
+
+    func icrc3_self() : Principal = Principal.fromActor(SneedSMS);
+
+    func icrc3_env() : Icrc3Log.Environment {
+        {
+            self = icrc3_self();
+            archive_controllers = [SNEED_SNS_ROOT]; // added next to this canister on every archive
+            cycle_reserve = 2_000_000_000_000; // never spend the balance below 2 T
+            new_correlation_id = func() : Nat = TextLog.correlationId(icrc3_textlog);
+            log_info = func(cid : Nat, m : Text) = TextLog.add(icrc3_textlog, #info, cid, icrc3_self(), m);
+            log_error = func(cid : Nat, m : Text) = TextLog.add(icrc3_textlog, #error, cid, icrc3_self(), m);
+        };
+    };
+
+    /// Appends one block: `sneedsms_<btype>`, with the calling principal first.
+    func block(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) {
+        ignore Icrc3Log.append(icrc3, "sneedsms_" # btype, Int.abs(Time.now()), Array.append<(Text, T3.Value)>([("caller", Icrc3Log.principal(caller))], tx));
+    };
+
+    /// A setting changed: its key, the old and the new value.
+    func configBlock(caller : Principal, key : Text, old : T3.Value, value : T3.Value) {
+        block("config_update", caller, [("key", #Text(key)), ("old_value", old), ("value", value)]);
+    };
+    func natChange(caller : Principal, key : Text, old : Nat, value : Nat) {
+        if (old != value) configBlock(caller, key, #Nat(old), #Nat(value));
+    };
+    func optPrincipal(p : ?Principal) : T3.Value = switch p { case (?x) Icrc3Log.principal(x); case null #Text("none") };
+    func principalChange(caller : Principal, key : Text, old : ?Principal, value : ?Principal) {
+        if (old != value) configBlock(caller, key, optPrincipal(old), optPrincipal(value));
+    };
+
     // Runtime config (mutable wrapper around stable values)
     transient var runtime_config : SMSConfig = {
         var rate_limit_minutes = stable_rate_limit_minutes;
@@ -172,6 +232,8 @@ persistent actor SneedSMS {
         state.config.max_recipients := stable_max_recipients;
         state.next_id := stable_next_id;
         ignore mark_legacy_removed_senders();
+        Icrc3Log.certify(icrc3);
+        ensure_icrc3_timer<system>();
     };
 
     // Builds before stable_sender_removed (ab70f949) marked a sender who left a message by setting
@@ -415,6 +477,7 @@ persistent actor SneedSMS {
         };
 
         Vector.add(state.admins, admin_info);
+        block("admin_add", caller, [("principal", Icrc3Log.principal(new_admin))]);
         #ok()
     };
 
@@ -450,6 +513,7 @@ persistent actor SneedSMS {
         for (admin in Vector.vals(new_admins)) {
             Vector.add(state.admins, admin);
         };
+        block("admin_remove", caller, [("principal", Icrc3Log.principal(admin_to_remove))]);
 
         #ok()
     };
@@ -472,6 +536,8 @@ persistent actor SneedSMS {
         if (not is_admin(caller)) {
             return #err(#Unauthorized("Only admins can update configuration"));
         };
+        let o = { rate = state.config.rate_limit_minutes; subject = state.config.max_subject_length;
+                  body = state.config.max_body_length; recipients = state.config.max_recipients };
 
         switch (rate_limit_minutes) {
             case (?minutes) state.config.rate_limit_minutes := minutes;
@@ -489,6 +555,10 @@ persistent actor SneedSMS {
             case (?count) state.config.max_recipients := count;
             case null {};
         };
+        natChange(caller, "rate_limit_minutes", o.rate, state.config.rate_limit_minutes);
+        natChange(caller, "max_subject_length", o.subject, state.config.max_subject_length);
+        natChange(caller, "max_body_length", o.body, state.config.max_body_length);
+        natChange(caller, "max_recipients", o.recipients, state.config.max_recipients);
 
         #ok()
     };
@@ -534,6 +604,8 @@ persistent actor SneedSMS {
         if (not is_admin(caller)) {
             return #err(#Unauthorized("Only admins can update premium configuration"));
         };
+        let o = { id = stable_sneed_premium_canister_id; subject = stable_premium_max_subject_length; body = stable_premium_max_body_length;
+                  rate = stable_premium_rate_limit_minutes; recipients = stable_premium_max_recipients };
 
         switch (sneed_premium_canister_id) {
             case (?opt_id) stable_sneed_premium_canister_id := opt_id;
@@ -555,6 +627,11 @@ persistent actor SneedSMS {
             case (?count) stable_premium_max_recipients := count;
             case null {};
         };
+        principalChange(caller, "sneed_premium_canister_id", o.id, stable_sneed_premium_canister_id);
+        natChange(caller, "premium_max_subject_length", o.subject, stable_premium_max_subject_length);
+        natChange(caller, "premium_max_body_length", o.body, stable_premium_max_body_length);
+        natChange(caller, "premium_rate_limit_minutes", o.rate, stable_premium_rate_limit_minutes);
+        natChange(caller, "premium_max_recipients", o.recipients, stable_premium_max_recipients);
 
         #ok()
     };
@@ -596,6 +673,7 @@ persistent actor SneedSMS {
         };
         buffer.add(sender);
         stable_authorized_senders := Buffer.toArray(buffer);
+        block("authorized_sender_add", caller, [("principal", Icrc3Log.principal(sender))]);
         
         #ok()
     };
@@ -611,6 +689,7 @@ persistent actor SneedSMS {
         };
         
         stable_authorized_senders := Array.filter<Principal>(stable_authorized_senders, func(p) = not Principal.equal(p, sender));
+        block("authorized_sender_remove", caller, [("principal", Icrc3Log.principal(sender))]);
         #ok()
     };
     
@@ -623,7 +702,9 @@ persistent actor SneedSMS {
         if (not is_admin(caller)) {
             return #err(#Unauthorized("Only admins can set system sender principal"));
         };
+        let old = stable_system_sender_principal;
         stable_system_sender_principal := principal;
+        principalChange(caller, "system_sender_principal", old, principal);
         #ok()
     };
     
@@ -804,13 +885,38 @@ persistent actor SneedSMS {
         Text.fromIter(Array.subArray(cs, 0, 5).vals()) # "…" # Text.fromIter(Array.subArray(cs, cs.size() - 3, 3).vals())
     };
 
+    /// Whether a (lowercase) token the preview limit cuts holds a link: it has http:// or https://
+    /// in it (also inside Markdown, "[@Name](https://…"), or it is the start of one ("http",
+    /// "https:/").
+    private func isLinkPart(token : Text) : Bool {
+        Text.contains(token, #text "http://") or Text.contains(token, #text "https://")
+        or (token.size() >= 4 and (Text.startsWith("http://", #text token) or Text.startsWith("https://", #text token)))
+    };
+
+    /// At most `max` characters of `t`, "…" appended only when something was cut. The cut falls on
+    /// the last whitespace before the limit, so no word is split; a token cut by the limit that
+    /// holds a link (http:// or https://) is dropped whole, never left as a broken link. Only
+    /// when there is no whitespace in the second half of the room (one long word) is the word cut
+    /// at the limit, unless it is a link. Trailing whitespace goes; a preview that would hold only
+    /// a partial link is empty.
     private func clip(t : Text, max : Nat) : Text {
         let cs = Text.toArray(t);
-        if (cs.size() <= max) t else Text.fromIter(Array.subArray(cs, 0, max).vals()) # "…"
+        if (cs.size() <= max) return t;
+        var cut = max;
+        if (not Char.isWhitespace(cs[max])) {
+            // the token the limit cuts: from after the last whitespace before the limit
+            var start = max;
+            while (start > 0 and not Char.isWhitespace(cs[start - 1])) start -= 1;
+            let token = Text.toLowercase(Text.fromIter(Array.subArray(cs, start, max - start).vals()));
+            if (isLinkPart(token) or (start > 0 and start * 2 >= max)) cut := start;
+        };
+        while (cut > 0 and Char.isWhitespace(cs[cut - 1])) cut -= 1;
+        if (cut == 0) return "";
+        Text.fromIter(Array.subArray(cs, 0, cut).vals()) # "…"
     };
 
     /// A heads-up per recipient (each once, never the sender) through Sneed Notifications: who it
-    /// is from, the subject, the first 100 characters of the text (unless the recipient turned
+    /// is from, the subject, the start of the text (clip: at most 100 characters, no half links) (unless the recipient turned
     /// previews off with set_notification_preview(false)) and a link. Fire and forget, bounded: an
     /// unanswered call never holds up sending or upgrades. Called from send_message only, never
     /// for system messages.
@@ -837,7 +943,7 @@ persistent actor SneedSMS {
         ignore (with timeout = 60) n.notify_batch(Buffer.toArray(items));
     };
 
-    /// Whether your new-message notifications show the first 100 characters of the text (default on).
+    /// Whether your new-message notifications show the start of the text (at most 100 characters) (default on).
     public shared ({ caller }) func set_notification_preview(on : Bool) : async Result<(), SMSError> {
         if (Principal.isAnonymous(caller)) return #err(#Unauthorized("Sign in first"));
         if (on) Map.delete(no_previews, Map.phash, caller) else Map.set(no_previews, Map.phash, caller, ());
@@ -851,7 +957,9 @@ persistent actor SneedSMS {
     /// Admins: the Sneed Notifications canister to tell recipients of new messages (null: off).
     public shared ({ caller }) func admin_set_notifications(canister : ?Principal) : async Result<(), SMSError> {
         if (not is_admin(caller)) return #err(#Unauthorized("Admins only"));
+        let old = stable_notifications;
         stable_notifications := canister;
+        principalChange(caller, "notifications_canister", old, canister);
         #ok()
     };
 
@@ -1080,6 +1188,7 @@ persistent actor SneedSMS {
             // Skip if already admin
             if (not is_admin(admin_info.principal)) {
                 Vector.add(state.admins, admin_info);
+                block("admin_add", caller, [("principal", Icrc3Log.principal(admin_info.principal)), ("source", #Text("import_admins"))]);
                 imported += 1;
             };
         };
@@ -1138,6 +1247,8 @@ persistent actor SneedSMS {
                 };
             };
         };
+        // how many, never what: the messages' contents and parties stay out of the log
+        if (imported > 0) block("messages_import", caller, [("count", #Nat(imported)), ("next_id", #Nat(state.next_id))]);
         
         #ok(imported)
     };
@@ -1197,6 +1308,46 @@ persistent actor SneedSMS {
         Map.get(state.user_last_seen_messages_timestamp, Map.n32hash, user_index)
     };
 
+    // ---- ICRC-3 interface (spec/sms_icrc3.md) ----
+
+    public query func icrc3_get_blocks(args : T3.GetBlocksArgs) : async T3.GetBlocksResult { Icrc3Log.getBlocks(icrc3, args) };
+    public query func icrc3_get_archives(args : T3.GetArchivesArgs) : async T3.GetArchivesResult { Icrc3Log.getArchives(icrc3, args) };
+    public query func icrc3_get_tip_certificate() : async ?T3.DataCertificate { Icrc3Log.tipCertificate(icrc3) };
+    public query func icrc3_supported_block_types() : async [T3.BlockType] { Icrc3Log.supportedBlockTypes(icrc3_catalogue) };
+    public query func icrc10_supported_standards() : async [T3.SupportedStandard] { Icrc3Log.supportedStandards() };
+    public query func icrc3_log_status() : async T3.LogStatus { Icrc3Log.status(icrc3, icrc3_rt) };
+
+    public shared ({ caller }) func admin_set_icrc3_settings(u : T3.SettingsUpdate) : async { #Ok : T3.Settings; #Err : Text } {
+        if (not is_admin(caller)) return #Err("Admins only");
+        switch (Icrc3Log.applySettings(icrc3, u)) {
+            case (#Err(e)) #Err(e);
+            case (#Ok(changes)) {
+                for ((key, old, new) in changes.vals()) configBlock(caller, key, #Nat(old), #Nat(new));
+                #Ok(icrc3.settings);
+            };
+        };
+    };
+
+    public shared ({ caller }) func admin_icrc3_spill_now() : async { #Ok : Nat; #Err : Text } {
+        if (not is_admin(caller)) return #Err("Admins only");
+        if (icrc3_rt.spilling) return #Err("A spill is already in progress");
+        #Ok(await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), true));
+    };
+
+    public shared ({ caller }) func admin_icrc3_repair_archive_controllers() : async [(Principal, { #Ok; #Err : Text })] {
+        if (not is_admin(caller)) Debug.trap("Admins only");
+        await* Icrc3Log.repairArchiveControllers(icrc3, icrc3_env());
+    };
+
+    /// Admins: the log's operational messages (spills, archives created, failures), oldest first.
+    public query ({ caller }) func get_log(start : Nat, length : Nat) : async [NT.LogEntry] {
+        if (not is_admin(caller)) Debug.trap("Admins only");
+        TextLog.get(icrc3_textlog, start, length);
+    };
+
+    func icrc3_timer_job() : async () { ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false) };
+    func ensure_icrc3_timer<system>() { Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job) };
+
     // Limit of the ingress guard below: a reply names the message(s) it answers
     transient let MAX_REPLY_TO : Nat = 100;
 
@@ -1209,6 +1360,16 @@ persistent actor SneedSMS {
     system func inspect({ caller : Principal; arg : Blob; msg : {
         #get_api_doc : Any;
         #add_admin : Any;
+        #admin_icrc3_repair_archive_controllers : Any;
+        #admin_icrc3_spill_now : Any;
+        #admin_set_icrc3_settings : Any;
+        #get_log : Any;
+        #icrc10_supported_standards : Any;
+        #icrc3_get_archives : Any;
+        #icrc3_get_blocks : Any;
+        #icrc3_get_tip_certificate : Any;
+        #icrc3_log_status : Any;
+        #icrc3_supported_block_types : Any;
         #add_authorized_sender : Any;
         #admin_set_notifications : Any;
         #set_notification_preview : Any;
@@ -1259,7 +1420,16 @@ persistent actor SneedSMS {
                 or #get_stats _
                 or #get_system_sender_principal _
                 or #is_admin_query _
+                or #get_log _
+                or #icrc10_supported_standards _
+                or #icrc3_get_archives _
+                or #icrc3_get_blocks _
+                or #icrc3_get_tip_certificate _
+                or #icrc3_log_status _
+                or #icrc3_supported_block_types _
             ) false;
+            // the log's admin methods: admins only, small arguments
+            case (#admin_icrc3_repair_archive_controllers _ or #admin_icrc3_spill_now _ or #admin_set_icrc3_settings _) is_admin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
             // against the configured limits; a member may use the premium ones (the method decides)
             case (#send_message f) {
                 let i = f();
@@ -1284,4 +1454,5 @@ persistent actor SneedSMS {
         };
     };
 
+    ensure_icrc3_timer<system>();
 }

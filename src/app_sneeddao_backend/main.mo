@@ -23,6 +23,11 @@ import IngressGuard "../IngressGuard";
 import ApiDoc "ApiDoc";
 import Donations "Donations";
 import SpecialPrices "../SpecialPrices";
+import Icrc3Log "../icrc3/Log";
+import T3 "../icrc3/Types";
+import TextLog "../sneed_names/TextLog";
+import NT "../sneed_names/Types";
+import Sha256 "mo:sha2/Sha256";
 
 shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
@@ -416,15 +421,179 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     ?Principal.fromText(t);
   };
 
+  // ---- ICRC-3 activity log (spec/backend_icrc3.md; library src/icrc3) ----
+  // Money (jailbreak payments, deposit withdrawals, admin token and position transfers, verified
+  // donations), moderation (bans, unbans, avatars cleared by admins) and every admin change of the
+  // admin list, the directories and the configuration. Users' private data (settings, nicknames,
+  // jailbreak targets, feedback), ordinary reads and refused calls are not logged. Enhanced
+  // orthogonal persistence: these are new stable variables, so an upgrade starts an empty log.
+  var icrc3 : Icrc3Log.State = Icrc3Log.init();
+  transient let icrc3_rt : Icrc3Log.Runtime = Icrc3Log.runtime();
+  // operational messages of the log (spills, archive creation, failures): public, get_log
+  let icrc3_textlog : TextLog.State = TextLog.init();
+
+  transient let SNEED_SNS_ROOT : Principal = Principal.fromText("fp274-iaaaa-aaaaq-aacha-cai");
+
+  transient let icrc3_catalogue : Icrc3Log.Config = {
+    block_types_url = "https://app.sneeddao.com/api/app_sneeddao_backend#block-types";
+    block_types = [
+      "sneedbackend_jailbreak_payment",
+      "sneedbackend_deposit_withdraw",
+      "sneedbackend_send_tokens",
+      "sneedbackend_transfer_position",
+      "sneedbackend_donation",
+      "sneedbackend_donation_hidden",
+      "sneedbackend_ban",
+      "sneedbackend_unban",
+      "sneedbackend_avatar_clear",
+      "sneedbackend_admin_add",
+      "sneedbackend_admin_remove",
+      "sneedbackend_partner_add",
+      "sneedbackend_partner_update",
+      "sneedbackend_partner_remove",
+      "sneedbackend_project_add",
+      "sneedbackend_project_update",
+      "sneedbackend_project_remove",
+      "sneedbackend_config_update",
+    ];
+  };
+
+  func icrc3_env() : Icrc3Log.Environment {
+    {
+      self = this_canister_id();
+      archive_controllers = [SNEED_SNS_ROOT]; // added next to the backend on every archive
+      cycle_reserve = 2_000_000_000_000; // never spend the backend's balance below 2 T
+      new_correlation_id = func() : Nat = TextLog.correlationId(icrc3_textlog);
+      log_info = func(cid : Nat, m : Text) = TextLog.add(icrc3_textlog, #info, cid, this_canister_id(), m);
+      log_error = func(cid : Nat, m : Text) = TextLog.add(icrc3_textlog, #error, cid, this_canister_id(), m);
+    };
+  };
+
+  /// Appends one block: `sneedbackend_<btype>`, with the calling principal first.
+  func block(btype : Text, caller : Principal, tx : [(Text, T3.Value)]) {
+    ignore Icrc3Log.append(icrc3, "sneedbackend_" # btype, Int.abs(Time.now()), Array.append<(Text, T3.Value)>([("caller", Icrc3Log.principal(caller))], tx));
+  };
+
+  /// A setting changed: its key, the old and the new value.
+  func configBlock(caller : Principal, key : Text, old : T3.Value, value : T3.Value) {
+    block("config_update", caller, [("key", #Text(key)), ("old_value", old), ("value", value)]);
+  };
+
+  func natConfig(caller : Principal, key : Text, old : Nat, value : Nat) {
+    if (old != value) configBlock(caller, key, #Nat(old), #Nat(value));
+  };
+
+  func pv(p : Principal) : T3.Value = Icrc3Log.principal(p);
+  func sha(t : Text) : T3.Value = #Blob(Sha256.fromBlob(#sha256, Text.encodeUtf8(t)));
+  func optPrincipalValue(p : ?Principal) : T3.Value = switch p { case (?x) pv(x); case null #Text("none") };
+  func optNatValue(n : ?Nat) : T3.Value = switch n { case (?x) #Nat(x); case null #Text("none") };
+  func accountValue(owner : Principal, sub : ?Blob) : T3.Value = Icrc3Log.account(owner, sub);
+  func principalsValue(ps : [Principal]) : T3.Value = #Array(Array.map<Principal, T3.Value>(ps, pv));
+  func flag(b : Bool) : T3.Value = #Nat(if b 1 else 0);
+
+  func linksValue(links : [{ title : Text; url : Text }]) : T3.Value {
+    #Array(Array.map<{ title : Text; url : Text }, T3.Value>(links, func(l) = #Map([("title", #Text(l.title)), ("url", #Text(l.url))])));
+  };
+  func optIndex(index : ?Nat) : [(Text, T3.Value)] = switch index { case (?i) [("index", #Nat(i))]; case null [] };
+
+  /// A partner as logged: name and links as text (short and public), logo and description as SHA-256.
+  func partnerValue(p : Partner) : T3.Value {
+    #Map(Array.append<(Text, T3.Value)>([
+      ("name", #Text(p.name)), ("logo_url_sha256", sha(p.logo_url)), ("description_sha256", sha(p.description)), ("links", linksValue(p.links)),
+    ], optIndex(p.index)));
+  };
+
+  func projectTypeText(t : ProjectType) : Text = switch t { case (#product) "product"; case (#project) "project"; case (#fork) "fork" };
+
+  func projectValue(p : Project) : T3.Value {
+    let logo : [(Text, T3.Value)] = switch (p.logo_url) { case (?u) [("logo_url_sha256", sha(u))]; case null [] };
+    #Map(Array.flatten<(Text, T3.Value)>([
+      [("name", #Text(p.name)), ("project_type", #Text(projectTypeText(p.project_type))), ("description_sha256", sha(p.description)), ("links", linksValue(p.links))],
+      logo,
+      optIndex(p.index),
+    ]));
+  };
+
+  func sameLinks(a : [{ title : Text; url : Text }], b : [{ title : Text; url : Text }]) : Bool {
+    Array.equal<{ title : Text; url : Text }>(a, b, func(x, y) = x.title == y.title and x.url == y.url);
+  };
+
+  func whitelistedTokenValue(t : WhitelistedToken) : T3.Value {
+    #Map([("symbol", #Text(t.symbol)), ("name", #Text(t.name)), ("decimals", #Nat(Nat8.toNat(t.decimals))), ("fee", #Nat(t.fee)), ("standard", #Text(t.standard))]);
+  };
+
+  /// Where jailbreak fees go: the configured account, or `none` (the backend's own default account).
+  func jailbreakFeeRecipientValue() : T3.Value {
+    switch (stable_jailbreak_fee_account_owner) {
+      case (?o) accountValue(o, stable_jailbreak_fee_account_subaccount);
+      case null #Text("none");
+    };
+  };
+  func jailbreakFeeRecipientKey() : (?Principal, ?Blob) {
+    switch (stable_jailbreak_fee_account_owner) {
+      case (?o) (?o, stable_jailbreak_fee_account_subaccount);
+      case null (null, null);
+    };
+  };
+
+  func donationAccountValue(a : ?Donations.Account) : T3.Value {
+    switch a { case (?x) accountValue(x.owner, x.subaccount); case null #Text("none") };
+  };
+
+  // ICRC-3 interface (spec/backend_icrc3.md)
+  public query func icrc3_get_blocks(args : T3.GetBlocksArgs) : async T3.GetBlocksResult { Icrc3Log.getBlocks(icrc3, args) };
+  public query func icrc3_get_archives(args : T3.GetArchivesArgs) : async T3.GetArchivesResult { Icrc3Log.getArchives(icrc3, args) };
+  public query func icrc3_get_tip_certificate() : async ?T3.DataCertificate { Icrc3Log.tipCertificate(icrc3) };
+  public query func icrc3_supported_block_types() : async [T3.BlockType] { Icrc3Log.supportedBlockTypes(icrc3_catalogue) };
+  public query func icrc10_supported_standards() : async [T3.SupportedStandard] { Icrc3Log.supportedStandards() };
+  public query func icrc3_log_status() : async T3.LogStatus { Icrc3Log.status(icrc3, icrc3_rt) };
+
+  public shared ({ caller }) func admin_set_icrc3_settings(u : T3.SettingsUpdate) : async { #Ok : T3.Settings; #Err : Text } {
+    if (not is_admin(caller)) return #Err("Admins only");
+    switch (Icrc3Log.applySettings(icrc3, u)) {
+      case (#Err(e)) #Err(e);
+      case (#Ok(changes)) {
+        for ((key, old, new) in changes.vals()) configBlock(caller, key, #Nat(old), #Nat(new));
+        #Ok(icrc3.settings);
+      };
+    };
+  };
+
+  public shared ({ caller }) func admin_icrc3_spill_now() : async { #Ok : Nat; #Err : Text } {
+    if (not is_admin(caller)) return #Err("Admins only");
+    if (icrc3_rt.spilling) return #Err("A spill is already in progress");
+    #Ok(await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), true));
+  };
+
+  public shared ({ caller }) func admin_icrc3_repair_archive_controllers() : async [(Principal, { #Ok; #Err : Text })] {
+    if (not is_admin(caller)) Debug.trap("Admins only");
+    await* Icrc3Log.repairArchiveControllers(icrc3, icrc3_env());
+  };
+
+  /// The log's operational messages (spills, archives created, failures), oldest first. Public:
+  /// they hold no user data.
+  public query func get_log(start : Nat, length : Nat) : async [NT.LogEntry] {
+    TextLog.get(icrc3_textlog, start, length);
+  };
+
+  func icrc3_timer_job() : async () { ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false) };
+  func ensure_icrc3_timer<system>() { Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job) };
+
   // Admin management functions
   public shared ({ caller }) func add_admin(principal: Principal) : async () {
     assert(is_admin(caller));
-    admins.put(principal, true);
+    if (admins.get(principal) == null) {
+      admins.put(principal, true);
+      block("admin_add", caller, [("principal", pv(principal))]);
+    };
   };
 
   public shared ({ caller }) func remove_admin(principal: Principal) : async () {
     assert(is_admin(caller) and principal != deployer.caller);
-    admins.delete(principal);
+    switch (admins.remove(principal)) {
+      case (?_) block("admin_remove", caller, [("principal", pv(principal))]);
+      case null {};
+    };
   };
 
   public query func get_admins() : async [Principal] {
@@ -855,12 +1024,26 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   public shared ({ caller }) func add_whitelisted_token(token: WhitelistedToken) : async () {
     // Only allow the deployer to add whitelisted tokens
     assert(is_admin(caller));
+    let old = whitelisted_tokens.get(token.ledger_id);
     whitelisted_tokens.put(token.ledger_id, token);
+    switch (old) {
+      case (?o) if (o != token) tokenBlock(caller, token.ledger_id, ?whitelistedTokenValue(o), whitelistedTokenValue(token));
+      case null tokenBlock(caller, token.ledger_id, null, whitelistedTokenValue(token));
+    };
+  };
+
+  /// A whitelist entry added, changed (`old_value`) or removed (value `removed`) by an admin.
+  func tokenBlock(caller : Principal, ledger : Principal, old : ?T3.Value, value : T3.Value) {
+    let base : [(Text, T3.Value)] = [("key", #Text("whitelisted_token")), ("ledger", pv(ledger)), ("value", value)];
+    block("config_update", caller, switch old { case (?o) Array.append(base, [("old_value", o)]); case null base });
   };
 
   public shared ({ caller }) func remove_whitelisted_token(ledger_id: Principal) : async () {
     assert(is_admin(caller));
-    whitelisted_tokens.delete(ledger_id);
+    switch (whitelisted_tokens.remove(ledger_id)) {
+      case (?o) tokenBlock(caller, ledger_id, ?whitelistedTokenValue(o), #Text("removed"));
+      case null {};
+    };
   };
 
   public query func get_whitelisted_tokens() : async [WhitelistedToken] {
@@ -1072,12 +1255,18 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   
   public shared ({ caller }) func add_authorized_for_caller(canister_id : Principal) : async () {
     assert(is_admin(caller));
-    authorized_for_callers.put(canister_id, true);
+    if (authorized_for_callers.get(canister_id) == null) {
+      authorized_for_callers.put(canister_id, true);
+      block("config_update", caller, [("key", #Text("authorized_for_caller_added")), ("value", pv(canister_id))]);
+    };
   };
   
   public shared ({ caller }) func remove_authorized_for_caller(canister_id : Principal) : async () {
     assert(is_admin(caller));
-    authorized_for_callers.delete(canister_id);
+    switch (authorized_for_callers.remove(canister_id)) {
+      case (?_) block("config_update", caller, [("key", #Text("authorized_for_caller_removed")), ("value", pv(canister_id))]);
+      case null {};
+    };
   };
   
   public query func get_authorized_for_callers() : async [Principal] {
@@ -1518,7 +1707,15 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
         icrc1_transfer(args : T.TransferArgs) : async T.TransferResult;
     };  
 
-    await icrc1_ledger_canister.icrc1_transfer(transfer_args);
+    let result = await icrc1_ledger_canister.icrc1_transfer(transfer_args);
+    switch (result) {
+      case (#Ok(index)) block("send_tokens", caller, [
+        ("ledger", pv(icrc1_ledger_canister_id)), ("from_subaccount", #Blob(Blob.fromArray(from_subaccount))),
+        ("to", accountValue(to, null)), ("amount", #Nat(amount)), ("ledger_tx", #Nat(index)),
+      ]);
+      case (#Err(_)) {};
+    };
+    result;
   };
 
   public shared ({ caller }) func transfer_position(swap_canister_id: Principal, to: Principal, position_id: Nat) : async T.TransferPositionResult {
@@ -1528,7 +1725,12 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
         transferPosition(from : Principal, to : Principal, positionId : Nat) : async T.TransferPositionResult;
     };
 
-    await swap_canister.transferPosition(this_canister_id(), to, position_id);
+    let result = await swap_canister.transferPosition(this_canister_id(), to, position_id);
+    switch (result) {
+      case (#ok(_)) block("transfer_position", caller, [("swap_canister", pv(swap_canister_id)), ("to", pv(to)), ("position_id", #Nat(position_id))]);
+      case (#err(_)) {};
+    };
+    result;
   };
 
 
@@ -1782,6 +1984,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
       reason;
     };
     ban_log.add(entry);
+    // the reason is admin-written (or holds the attempted name of an automatic ban): only its hash
+    let effective = switch (banned_users.get(user)) { case (?e) e; case null expiry };
+    block("ban", caller, [("user", pv(user)), ("duration_hours", #Nat(duration_hours)), ("expires_at", #Int(effective)), ("reason_sha256", sha(reason))]);
 
     #ok()
   };
@@ -1906,6 +2111,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
           reason = "Manual unban by administrator";
         };
         ban_log.add(entry);
+        block("unban", caller, [("user", pv(user))]);
         #ok()
       };
       case null {
@@ -2390,7 +2596,10 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   public shared ({ caller }) func admin_clear_avatar(principal : Principal) : async Result.Result<Text, Text> {
     if (stable_names_frozen) { return #err(NAMES_MOVING) };
     if (not is_admin(caller)) return #err("Not authorized");
-    avatars.delete(principal);
+    switch (avatars.remove(principal)) {
+      case (?url) block("avatar_clear", caller, [("principal", pv(principal)), ("avatar_sha256", sha(url))]);
+      case null {};
+    };
     #ok("Avatar cleared")
   };
 
@@ -2539,7 +2748,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   public shared ({ caller }) func admin_set_names_canisters(canisters : [Principal]) : async Result.Result<Text, Text> {
     if (not is_admin(caller)) { return #err("Not authorized") };
     if (canisters.size() > 20) { return #err("At most 20 canisters") };
+    let old = stable_names_canisters;
     stable_names_canisters := canisters;
+    if (old != canisters) configBlock(caller, "names_canisters", principalsValue(old), principalsValue(canisters));
     #ok("Naming canisters set");
   };
 
@@ -2548,7 +2759,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   /// Refuse (true) or allow (false) every naming write here while names move to the naming service.
   public shared ({ caller }) func admin_set_names_frozen(frozen : Bool) : async Result.Result<Text, Text> {
     if (not is_admin(caller)) { return #err("Not authorized") };
+    let old = stable_names_frozen;
     stable_names_frozen := frozen;
+    if (old != frozen) configBlock(caller, "names_frozen", flag(old), flag(frozen));
     #ok(if (frozen) "Naming writes frozen" else "Naming writes allowed");
   };
 
@@ -2728,7 +2941,10 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     switch (blacklisted_words.get(lowercaseWord)) {
       case (?_) { return #err("Word already blacklisted") };
       case null {
+        let old = blacklisted_words.size();
         blacklisted_words.put(lowercaseWord, true);
+        // the list is admin-only and a hash of a single word is guessed in seconds: only the count
+        configBlock(caller, "blacklisted_words", #Nat(old), #Nat(blacklisted_words.size()));
         #ok()
       };
     };
@@ -2741,7 +2957,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     let lowercaseWord = Text.toLowercase(word);
     switch (blacklisted_words.get(lowercaseWord)) {
       case (?_) {
+        let old = blacklisted_words.size();
         blacklisted_words.delete(lowercaseWord);
+        configBlock(caller, "blacklisted_words", #Nat(old), #Nat(blacklisted_words.size()));
         #ok()
       };
       case null { return #err("Word not found in blacklist") };
@@ -2764,7 +2982,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     if (not is_admin(caller)) {
       return #err("Not authorized");
     };
+    let old = stable_sneed_premium_canister_id;
     stable_sneed_premium_canister_id := canister_id;
+    if (old != canister_id) configBlock(caller, "sneed_premium_canister_id", optPrincipalValue(old), optPrincipalValue(canister_id));
     #ok()
   };
 
@@ -2778,6 +2998,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     if (not is_admin(caller)) {
       return #err("Not authorized");
     };
+    let (o1, o2, o3, o4) = (stable_max_neuron_nicknames, stable_max_principal_nicknames, stable_premium_max_neuron_nicknames, stable_premium_max_principal_nicknames);
     switch (max_neuron_nicknames) {
       case (?limit) { stable_max_neuron_nicknames := limit };
       case null {};
@@ -2794,6 +3015,10 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
       case (?limit) { stable_premium_max_principal_nicknames := limit };
       case null {};
     };
+    natConfig(caller, "max_neuron_nicknames", o1, stable_max_neuron_nicknames);
+    natConfig(caller, "max_principal_nicknames", o2, stable_max_principal_nicknames);
+    natConfig(caller, "premium_max_neuron_nicknames", o3, stable_premium_max_neuron_nicknames);
+    natConfig(caller, "premium_max_principal_nicknames", o4, stable_premium_max_principal_nicknames);
     #ok()
   };
 
@@ -2872,7 +3097,8 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     if (not is_admin(caller)) {
       return #err("Not authorized: admin access required");
     };
-    
+    let (o1, o2, o3) = (stable_max_canister_groups, stable_max_canisters_per_group, stable_max_total_grouped_canisters);
+    let (o4, o5, o6) = (stable_premium_max_canister_groups, stable_premium_max_canisters_per_group, stable_premium_max_total_grouped_canisters);
     switch (max_groups) {
       case (?val) { stable_max_canister_groups := val };
       case null {};
@@ -2897,7 +3123,12 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
       case (?val) { stable_premium_max_total_grouped_canisters := val };
       case null {};
     };
-    
+    natConfig(caller, "max_canister_groups", o1, stable_max_canister_groups);
+    natConfig(caller, "max_canisters_per_group", o2, stable_max_canisters_per_group);
+    natConfig(caller, "max_total_grouped_canisters", o3, stable_max_total_grouped_canisters);
+    natConfig(caller, "premium_max_canister_groups", o4, stable_premium_max_canister_groups);
+    natConfig(caller, "premium_max_canisters_per_group", o5, stable_premium_max_canisters_per_group);
+    natConfig(caller, "premium_max_total_grouped_canisters", o6, stable_premium_max_total_grouped_canisters);
     #ok()
   };
 
@@ -2971,6 +3202,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     partners.add(partner);
     next_partner_id += 1;
     stable_next_partner_id := next_partner_id;
+    block("partner_add", caller, [("id", #Nat(partner.id)), ("value", partnerValue(partner))]);
     #ok(partner.id)
   };
 
@@ -2993,6 +3225,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
     let partnersArray = Buffer.toArray(partners);
     var found = false;
+    var changed : ?(Partner, Partner) = null;
     let updatedPartners = Buffer.Buffer<Partner>(partners.size());
 
     for (partner in partnersArray.vals()) {
@@ -3009,6 +3242,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
         };
         updatedPartners.add(updatedPartner);
         found := true;
+        if (partner.name != name or partner.logo_url != logo_url or partner.description != description or partner.index != index or not sameLinks(partner.links, links)) {
+          changed := ?(partner, updatedPartner);
+        };
       } else {
         updatedPartners.add(partner);
       };
@@ -3019,6 +3255,10 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     };
 
     partners := updatedPartners;
+    switch (changed) {
+      case (?(o, n)) block("partner_update", caller, [("id", #Nat(id)), ("value", partnerValue(n)), ("old_value", partnerValue(o))]);
+      case null {};
+    };
     #ok()
   };
 
@@ -3029,6 +3269,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
     let partnersArray = Buffer.toArray(partners);
     var found = false;
+    var removed : ?Partner = null;
     let filteredPartners = Buffer.Buffer<Partner>(partners.size());
 
     for (partner in partnersArray.vals()) {
@@ -3036,6 +3277,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
         filteredPartners.add(partner);
       } else {
         found := true;
+        removed := ?partner;
       };
     };
 
@@ -3044,6 +3286,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     };
 
     partners := filteredPartners;
+    switch (removed) { case (?o) block("partner_remove", caller, [("id", #Nat(id)), ("old_value", partnerValue(o))]); case null {} };
     #ok()
   };
 
@@ -3152,6 +3395,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     projects.add(project);
     next_project_id += 1;
     stable_next_project_id := next_project_id;
+    block("project_add", caller, [("id", #Nat(project.id)), ("value", projectValue(project))]);
     #ok(project.id)
   };
 
@@ -3170,6 +3414,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
     let projectsArray = Buffer.toArray(projects);
     var found = false;
+    var changed : ?(Project, Project) = null;
     let updatedProjects = Buffer.Buffer<Project>(projects.size());
 
     for (project in projectsArray.vals()) {
@@ -3187,6 +3432,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
         };
         updatedProjects.add(updatedProject);
         found := true;
+        if (project.name != name or project.logo_url != logo_url or project.description != description or project.project_type != project_type or project.index != index or not sameLinks(project.links, links)) {
+          changed := ?(project, updatedProject);
+        };
       } else {
         updatedProjects.add(project);
       };
@@ -3197,6 +3445,10 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     };
 
     projects := updatedProjects;
+    switch (changed) {
+      case (?(o, n)) block("project_update", caller, [("id", #Nat(id)), ("value", projectValue(n)), ("old_value", projectValue(o))]);
+      case null {};
+    };
     #ok()
   };
 
@@ -3207,6 +3459,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
     let projectsArray = Buffer.toArray(projects);
     var found = false;
+    var removed : ?Project = null;
     let filteredProjects = Buffer.Buffer<Project>(projects.size());
 
     for (project in projectsArray.vals()) {
@@ -3214,6 +3467,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
         filteredProjects.add(project);
       } else {
         found := true;
+        removed := ?project;
       };
     };
 
@@ -3222,6 +3476,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     };
 
     projects := filteredProjects;
+    switch (removed) { case (?o) block("project_remove", caller, [("id", #Nat(id)), ("old_value", projectValue(o))]); case null {} };
     #ok()
   };
 
@@ -3318,7 +3573,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
         case (#Err(err)) {
           return #err("Payment failed: " # debug_show(err));
         };
-        case (#Ok(_)) {
+        case (#Ok(icpTx)) {
           // Log the successful payment
           let paymentLog : JailbreakPaymentLog = {
             id = next_jailbreak_payment_log_id;
@@ -3334,6 +3589,12 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
           jailbreak_payment_logs.add(paymentLog);
           Map.set(jailbreak_payment_tiers, nhash, paymentLog.id, priceTier);
           next_jailbreak_payment_log_id += 1;
+          // the neuron, its SNS and the target principal are the payer's own data: not logged
+          block("jailbreak_payment", caller, [
+            ("payment_id", #Nat(paymentLog.id)), ("config_id", #Nat(paymentLog.config_id)),
+            ("amount_e8s", #Nat(fee)), ("fee_e8s", #Nat(ICP_LEDGER_FEE)), ("price_tier", #Text(SpecialPrices.tierText(priceTier))),
+            ("to", accountValue(feeRecipient.owner, feeRecipient.subaccount)), ("icp_tx", #Nat(icpTx)),
+          ]);
         };
       };
     };
@@ -3428,6 +3689,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     if (not is_admin(caller)) {
       return #err("Not authorized: admin access required");
     };
+    let (oldPremium, oldRegular, oldRecipient, oldRecipientValue) = (stable_jailbreak_fee_premium, stable_jailbreak_fee_regular, jailbreakFeeRecipientKey(), jailbreakFeeRecipientValue());
     
     switch (fee_premium_e8s) {
       case (?fee) { stable_jailbreak_fee_premium := fee };
@@ -3448,6 +3710,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
       case (?sub) { stable_jailbreak_fee_account_subaccount := sub };
       case null {};
     };
+    natConfig(caller, "jailbreak_fee_premium_e8s", oldPremium, stable_jailbreak_fee_premium);
+    natConfig(caller, "jailbreak_fee_regular_e8s", oldRegular, stable_jailbreak_fee_regular);
+    if (oldRecipient != jailbreakFeeRecipientKey()) configBlock(caller, "jailbreak_fee_recipient", oldRecipientValue, jailbreakFeeRecipientValue());
     
     #ok()
   };
@@ -3482,6 +3747,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     SpecialPrices.lowest(stable_jailbreak_fee_regular, if (isPremium) { ?stable_jailbreak_fee_premium } else { null }, admin, partner);
   };
 
+  func specialPricesValue(p : SpecialPriceSet) : T3.Value = SpecialPrices.overridesValue([("jailbreak_fee_e8s", p.jailbreak_fee_e8s)]);
+  func partnerPricesValue(e : PartnerPrices) : T3.Value = SpecialPrices.partnerValue(e.label_, [("jailbreak_fee_e8s", e.prices.jailbreak_fee_e8s)], e.expires_at);
+
   func payment_tier(log : JailbreakPaymentLog) : SpecialPrices.Tier {
     switch (Map.get(jailbreak_payment_tiers, nhash, log.id)) {
       case (?t) { t };
@@ -3491,7 +3759,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
   public shared ({ caller }) func set_admin_prices(prices : SpecialPriceSet) : async { #ok; #err : Text } {
     if (not is_admin(caller)) { return #err("Not authorized: admin access required") };
+    let old = special_admin_prices;
     special_admin_prices := prices;
+    if (old != prices) configBlock(caller, "admin_prices", specialPricesValue(old), specialPricesValue(prices));
     #ok;
   };
 
@@ -3501,14 +3771,23 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
       case (?e) { return #err(e) };
       case null {};
     };
+    let old = Map.get(special_partner_prices, phash, partner);
     Map.set(special_partner_prices, phash, partner, entry);
+    let base : [(Text, T3.Value)] = [("key", #Text("partner_prices")), ("partner", pv(partner)), ("value", partnerPricesValue(entry))];
+    switch (old) {
+      case (?o) if (o != entry) block("config_update", caller, Array.append(base, [("old_value", partnerPricesValue(o))]));
+      case null block("config_update", caller, base);
+    };
     #ok;
   };
 
   public shared ({ caller }) func remove_partner_prices(partner : Principal) : async { #ok; #err : Text } {
     if (not is_admin(caller)) { return #err("Not authorized: admin access required") };
     switch (Map.remove(special_partner_prices, phash, partner)) {
-      case (?_) { #ok };
+      case (?o) {
+        block("config_update", caller, [("key", #Text("partner_prices")), ("partner", pv(partner)), ("value", #Text("removed")), ("old_value", partnerPricesValue(o))]);
+        #ok;
+      };
       case null { #err("no partner prices for this principal") };
     };
   };
@@ -3721,7 +4000,10 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     });
     
     switch (transferResult) {
-      case (#Ok(blockIndex)) { #ok(blockIndex) };
+      case (#Ok(blockIndex)) {
+        block("deposit_withdraw", caller, [("amount_e8s", #Nat(amount)), ("fee_e8s", #Nat(ICP_LEDGER_FEE)), ("to", accountValue(caller, null)), ("icp_tx", #Nat(blockIndex))]);
+        #ok(blockIndex)
+      };
       case (#Err(err)) { #err("Transfer failed: " # debug_show(err)) };
     }
   };
@@ -4210,10 +4492,14 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
 
       // Timers do not survive an upgrade: start the daily token list job again.
       ensure_token_refresh_timer<system>();
+      // the ICRC-3 log: republish the certified tip, restart the spill check
+      Icrc3Log.certify(icrc3);
+      ensure_icrc3_timer<system>();
   };
 
-  // On a fresh install, start the daily token list job.
+  // On a fresh install, start the daily token list job and the ICRC-3 spill check.
   ensure_token_refresh_timer<system>();
+  ensure_icrc3_timer<system>();
 
   // ---- Donations (Donations.mo) ----
   // The account donations go to (set by an admin) and the verified donations, oldest first.
@@ -4234,7 +4520,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
       };
       case null {};
     };
+    let old = donation_account;
     donation_account := account;
+    if (old != account) configBlock(caller, "donation_account", donationAccountValue(old), donationAccountValue(account));
     #ok();
   };
 
@@ -4251,7 +4539,11 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     if (not is_admin(caller)) return #err("Only admins can set the feedback settings");
     if (c.recipients.size() > MAX_FEEDBACK_RECIPIENTS) return #err("At most " # Nat.toText(MAX_FEEDBACK_RECIPIENTS) # " recipients: a Sneed SMS message reaches no more");
     for (p in c.recipients.vals()) if (Principal.isAnonymous(p)) return #err("The anonymous principal cannot receive reports");
+    let o = feedback_config;
     feedback_config := c;
+    if (o.recipients != c.recipients) configBlock(caller, "feedback_recipients", principalsValue(o.recipients), principalsValue(c.recipients));
+    if (o.bug_topic != c.bug_topic) configBlock(caller, "feedback_bug_topic", optNatValue(o.bug_topic), optNatValue(c.bug_topic));
+    if (o.idea_topic != c.idea_topic) configBlock(caller, "feedback_idea_topic", optNatValue(o.idea_topic), optNatValue(c.idea_topic));
     #ok();
   };
 
@@ -4285,6 +4577,11 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
         };
         donation_next_id += 1;
         donations := Array.append(donations, [d]);
+        // public on the wall already; the message is not logged (an admin may hide it)
+        block("donation", caller, [
+          ("donation_id", #Nat(d.id)), ("ledger", pv(d.ledger)), ("amount", #Nat(d.amount)), ("ledger_block", #Nat(d.block_index)),
+          ("from", accountValue(caller, d.from_subaccount)), ("to", accountValue(to.owner, to.subaccount)),
+        ]);
         #ok(d);
       };
     };
@@ -4322,7 +4619,8 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   /// Hides a donation from the wall (its message, say) or shows it again; it still counts in the totals.
   public shared ({ caller }) func admin_set_donation_hidden(id : Nat, hidden : Bool) : async Result.Result<(), Text> {
     if (not is_admin(caller)) return #err("Only admins can hide donations");
-    if (Array.find<Donations.Donation>(donations, func(d) = d.id == id) == null) return #err("No donation " # Nat.toText(id));
+    let ?current = Array.find<Donations.Donation>(donations, func(d) = d.id == id) else return #err("No donation " # Nat.toText(id));
+    if (current.hidden != hidden) block("donation_hidden", caller, [("donation_id", #Nat(id)), ("hidden", flag(hidden))]);
     donations := Array.map<Donations.Donation, Donations.Donation>(donations, func(d) = if (d.id == id) ({ d with hidden = hidden }) else d);
     #ok();
   };
@@ -4344,6 +4642,16 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   // would go through consensus at our cost, and arguments are capped in size.
   system func inspect({ caller : Principal; arg : Blob; msg : {
     #get_api_doc : Any;
+    #icrc3_get_blocks : Any;
+    #icrc3_get_archives : Any;
+    #icrc3_get_tip_certificate : Any;
+    #icrc3_supported_block_types : Any;
+    #icrc10_supported_standards : Any;
+    #icrc3_log_status : Any;
+    #get_log : Any;
+    #admin_set_icrc3_settings : Any;
+    #admin_icrc3_spill_now : Any;
+    #admin_icrc3_repair_archive_controllers : Any;
     #add_admin : Any;
     #add_authorized_for_caller : Any;
     #add_blacklisted_word : Any;
@@ -4544,7 +4852,16 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
         or #get_donation_totals _
         or #get_donations _
         or #admin_get_donations _
+        or #icrc3_get_blocks _
+        or #icrc3_get_archives _
+        or #icrc3_get_tip_certificate _
+        or #icrc3_supported_block_types _
+        or #icrc10_supported_standards _
+        or #icrc3_log_status _
+        or #get_log _
       ) false;
+      // the log's admin methods: admins only, small arguments
+      case (#admin_set_icrc3_settings _ or #admin_icrc3_spill_now _ or #admin_icrc3_repair_archive_controllers _) is_admin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       // a message of at most 200 characters (Donations.MAX_MESSAGE)
       case (#register_donation f) arg.size() <= IngressGuard.textArg(Donations.MAX_MESSAGE) and IngressGuard.optText(f().message, Donations.MAX_MESSAGE) and IngressGuard.optBlob(f().from_subaccount, 32);
       // the naming service's canisters call it, never by ingress

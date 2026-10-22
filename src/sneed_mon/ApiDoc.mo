@@ -46,6 +46,9 @@ Sneed Hub's watcher, registered with Sneed Notifications as the app \"Sneed Moni
 - NNS: a private neuron hides its ballots, so it counts for new proposals but not reminders; register only neurons with six months' dissolve delay.
 - Every query is free as a query; the ingress guard refuses queries sent as update calls.
 
+## Activity log (ICRC-3)
+- Deposits, withdrawals, auto top-ups (with ledger blocks), one block per round of charges (never per check), pauses and resumes, fee forwards, admins and configuration and price changes are blocks of a certified ICRC-3 log (`icrc3_get_blocks`, `icrc3_log_status`, ...). Block types (`sneedmon_*`): https://app.sneeddao.com/api/sneed_mon#block-types. What anyone watches is never logged.
+
 Full reference: https://app.sneeddao.com/api-docs/sneed_mon.md
 All Sneed APIs for agents: https://app.sneeddao.com/llms.txt
 ";

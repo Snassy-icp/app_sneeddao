@@ -2,7 +2,7 @@
 
 `app_sneeddao_backend` is the general-purpose backend of Sneed Hub (app.sneeddao.com). It keeps the shared token whitelist and token metadata cache, each user's app settings and wallet registry (tokens, swap pools, tracked canisters, canister folders, wallet layout), the partner and project directories, the donation thank-you wall, and the SNS Jailbreak configurations. It also holds the legacy name and nickname tables, which are now frozen while names live in the [naming service](/api/sneed_names).
 
-This document covers what integrators can use. Administrative methods are listed briefly at the end.
+This document covers what integrators can use. Administrative methods are listed briefly near the end; payments, donations, moderation and every admin change are recorded in a public, certified ICRC-3 activity log (section 7).
 
 | | |
 |---|---|
@@ -40,7 +40,7 @@ Amounts are base units of their ledger (`e8s` for ICP) as `nat`. Timestamps are 
 
 ### 1.4 Calls the canister refuses at ingress
 
-The canister's `inspect` refuses, before anybody pays for them: query methods sent as update calls; `names_moderate` from outside the IC; oversized arguments (names at most 32 characters, `denomination_token` 256, neuron id hex 128, donation messages 200, an inline avatar 32,768, a wallet layout 2,000 entries, canister folders as many as the largest limits allow; most other methods take a small argument); admin methods with free-form content from non-admins; `set_cached_token_meta` from the anonymous principal.
+The canister's `inspect` refuses, before anybody pays for them: query methods sent as update calls; `names_moderate` from outside the IC; oversized arguments (names at most 32 characters, `denomination_token` 256, neuron id hex 128, donation messages 200, an inline avatar 32,768, a wallet layout 2,000 entries, canister folders as many as the largest limits allow; most other methods take a small argument); admin methods with free-form content, and the activity log's admin methods, from non-admins; `set_cached_token_meta` from the anonymous principal.
 
 ---
 
@@ -221,6 +221,7 @@ Result shapes vary: most methods return `variant { ok; err : text }`; some regis
 | `get_nickname_limits_config()`, `get_canister_groups_limits_config()` | limit records |
 | `check_ban_status(user)` | `variant { ok; err : text }` |
 | `get_admins()`, `get_authorized_for_callers()`, `get_names_canisters()`, `get_names_frozen()` | configuration |
+| `icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`, `icrc10_supported_standards`, `icrc3_log_status`, `get_log` | the activity log (7) |
 | Legacy name reads | see 3.8 |
 
 ### 5.2 Caller-scoped queries
@@ -264,6 +265,7 @@ Restricted to admins (`get_admins()`), the canister's controllers and the deploy
 | `admin_set_donation_account`, `admin_set_donation_hidden`, `admin_get_donations` | Donations. |
 | `admin_set_feedback_config` | Feedback topics and recipients. |
 | `send_tokens`, `transfer_position` | Recovery of tokens or ICPSwap positions held by the backend. |
+| `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers` | The activity log's archives (7). |
 
 ---
 
@@ -299,7 +301,67 @@ type Neuron = record { id : opt NeuronId; permissions : vec record { principal; 
 
 ---
 
-## 7. Integration checklist
+## 7. Activity log (ICRC-3)
+
+What matters for money, moderation and power is recorded as a block in a hash-chained, certified log, readable through the standard [ICRC-3](https://github.com/dfinity/ICRC-1/tree/main/standards/ICRC-3) interface: jailbreak payments with their ICP ledger block, deposit withdrawals, the admins' token and position transfers, verified donations, bans, unbans and avatars removed by admins, the admin list, the partner and project directories, and every configuration change (fees and their recipient, special prices, feedback settings, the donation account, limits, the whitelist by hand) with its old and new value. Each block carries the hash of the previous block (`phash`), and the canister certifies the index and hash of the latest block, so anyone can download the history and prove it complete and untampered without trusting Sneed DAO or this app. Old blocks move to archive canisters that the backend creates.
+
+The log uses the same library as [Sneed Lock's log](/api/sneed_lock#8-activity-log-icrc-3) ([src/icrc3](https://github.com/Snassy-icp/app_sneeddao/tree/main/src/icrc3)); the design, including what is deliberately not logged, is in [spec/backend_icrc3.md](https://github.com/Snassy-icp/app_sneeddao/blob/main/spec/backend_icrc3.md). It starts empty with the release that introduced it; nothing from before is imported (the older jailbreak payments stay in the admin-only `get_jailbreak_payment_logs`).
+
+### 7.1 Endpoints
+
+| Method | Type | Returns |
+|---|---|---|
+| `icrc3_get_blocks(vec record { start : nat; length : nat })` | query | `{ log_length; blocks : vec { id; block }; archived_blocks : vec { args; callback } }`. Live blocks come back directly; for archived ranges call `callback` (that archive's own `icrc3_get_blocks`) with `args`. |
+| `icrc3_get_archives(record { from : opt principal })` | query | Every archive canister with the first and last block index it holds. |
+| `icrc3_get_tip_certificate()` | query | `opt { certificate; hash_tree }` with `last_block_index` and `last_block_hash`. Null until the first block exists. |
+| `icrc3_supported_block_types()` | query | Every `btype` below, each with the url of [7.3](#73-block-types). |
+| `icrc10_supported_standards()` | query | ICRC-3 and ICRC-10. |
+| `icrc3_log_status()` | query | Log length, live blocks, hash of the last block, archives, spill settings. `history_imported` is always false. |
+| `get_log(start, length)` | query | The log's operational messages (spills, archives created, top-ups, failures), oldest first, at most 500 per call. Public: they hold no user data. |
+
+Admin only: `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers` (as on Sneed Lock). Archives are controlled by the backend and the Sneed SNS root (`fp274-iaaaa-aaaaq-aacha-cai`) until a `RegisterDappCanisters` proposal hands them to SNS root alone.
+
+### 7.2 Block format
+
+A block is a `Map` with `btype` (Text), `ts` (Nat, ns since epoch: when the action happened), `phash` (Blob, absent on block 0) and `tx` (Map). Inside `tx`:
+
+- Principals are `Blob` (raw principal bytes); ICRC-1 accounts are `Array [owner, subaccount?]`; ids, amounts and ledger block indexes are `Nat`, amounts in the token's base units (`_e8s`: ICP); times are `Int` ns; flags are `Nat` 0 / 1.
+- `caller` is the principal that made the call; for an automatic ban it is the backend itself. Optional fields are omitted when absent; a value that is not set is the Text `none`.
+- **No private data and no long texts.** Users' settings, nicknames, jailbreak targets and donation messages are never logged. Partner and project descriptions and logos, ban reasons and cleared avatars appear only as the SHA-256 of their UTF-8 bytes (`description_sha256`, `logo_url_sha256`, `reason_sha256`, `avatar_sha256`), so anyone holding the text can prove it is the one the block names. Blacklisted words are not logged at all, only how many there are.
+
+### 7.3 Block types
+
+All types carry the `sneedbackend_` prefix. A block is appended only once its action is final, in the message that records it: a refused call, a transfer the ledger refused, and a call that changes nothing (adding an admin who is one, a setting to the value it has, an update that changes no field) append nothing.
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `sneedbackend_jailbreak_payment` | `save_jailbreak_config` charged the fee (the ICP transfer returned `Ok`). | `caller` (the payer), `payment_id`, `config_id`, `amount_e8s`, `fee_e8s` (ledger fee), `price_tier` (`regular`, `premium`, `admin` or `partner`), `to` (recipient account), `icp_tx` (ICP ledger block) |
+| `sneedbackend_deposit_withdraw` | `withdraw_jailbreak_payment` returned unused deposit. | `caller`, `amount_e8s`, `fee_e8s`, `to`, `icp_tx` |
+| `sneedbackend_send_tokens` | An admin's `send_tokens` the ledger accepted. | `caller`, `ledger`, `from_subaccount`, `to`, `amount`, `ledger_tx` |
+| `sneedbackend_transfer_position` | An admin's `transfer_position` the pool accepted. | `caller`, `swap_canister`, `to`, `position_id` |
+| `sneedbackend_donation` | `register_donation` verified the ledger block and listed the donation. | `caller` (the donor), `donation_id`, `ledger`, `amount`, `ledger_block`, `from`, `to` |
+| `sneedbackend_donation_hidden` | `admin_set_donation_hidden` hid or showed a donation. | `caller`, `donation_id`, `hidden` |
+| `sneedbackend_ban` | `ban_user`, or an automatic ban (a blacklisted word in a name). | `caller`, `user`, `duration_hours`, `expires_at`, `reason_sha256` |
+| `sneedbackend_unban` | `unban_user` of a banned user. | `caller`, `user` |
+| `sneedbackend_avatar_clear` | `admin_clear_avatar` removed an avatar. | `caller`, `principal`, `avatar_sha256` |
+| `sneedbackend_admin_add` / `sneedbackend_admin_remove` | `add_admin` / `remove_admin` changed the list. | `caller`, `principal` |
+| `sneedbackend_partner_add` / `_update` / `_remove` | The partner directory changed. | `caller`, `id`, `value` and / or `old_value`: `{ name; logo_url_sha256; description_sha256; links : [{ title; url }]; index? }` |
+| `sneedbackend_project_add` / `_update` / `_remove` | The project directory changed. | `caller`, `id`, `value` and / or `old_value`: `{ name; project_type; description_sha256; links; logo_url_sha256?; index? }` |
+| `sneedbackend_config_update` | A setting changed. | `caller`, `key`, `value`; `old_value` when there was one; `partner` (for `partner_prices`), `ledger` (for `whitelisted_token`) |
+
+`sneedbackend_config_update` keys: `jailbreak_fee_premium_e8s`, `jailbreak_fee_regular_e8s`, `jailbreak_fee_recipient` (account, or `none`: the backend's default account); `admin_prices` (a Map of the set overrides) and `partner_prices` (`{ label; prices; expires_at? }` or `removed`); `feedback_recipients`, `feedback_bug_topic`, `feedback_idea_topic`; `donation_account`; `names_canisters`, `names_frozen`, `sneed_premium_canister_id`; the nickname limits `max_neuron_nicknames`, `max_principal_nicknames`, `premium_max_neuron_nicknames`, `premium_max_principal_nicknames`; the folder limits `max_canister_groups`, `max_canisters_per_group`, `max_total_grouped_canisters` and their `premium_` versions; `whitelisted_token` (`{ symbol; name; decimals; fee; standard }` or `removed`); `authorized_for_caller_added`, `authorized_for_caller_removed`; `blacklisted_words` (the count); and the log settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`.
+
+Not logged: users' settings, nicknames, names and own avatars, wallet registrations, folders and layouts, jailbreak configurations and their deletion, the shared token metadata cache, the daily ICPSwap whitelist import and metadata refreshes, the frozen legacy name verification, and reads.
+
+### 7.4 Verifying and using the log
+
+- **Verify it:** the procedure and the Node.js script of [Sneed Lock's 8.4](/api/sneed_lock#84-verifying-the-log) work unchanged with the canister id `g7s5u-tqaaa-aaaad-qhktq-cai` (or staging `7tsda-tiaaa-aaaad-aajxa-cai`).
+- **Browse it:** [app.sneeddao.com/tools/icrc3?canister=g7s5u-tqaaa-aaaad-qhktq-cai](https://app.sneeddao.com/tools/icrc3?canister=g7s5u-tqaaa-aaaad-qhktq-cai), the generic ICRC-3 browser.
+- **Check a payment or donation:** `icp_tx` / `ledger_block` is the block index on the ICP ledger / `ledger`; `to` is where the money went.
+
+---
+
+## 8. Integration checklist
 
 - Use query calls for every `get_*` marked query; the canister refuses them as updates.
 - Sign the calls that should act on a user's records; the anonymous principal gets defaults and empty lists.

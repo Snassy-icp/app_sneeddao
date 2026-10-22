@@ -198,6 +198,7 @@ dfx canister --network ic call sneed_mon get_status --query
 | `get_special_prices_for(principal)` | query | `record { admin_prices : opt MonPrices; partner : opt MonPartner }` | What applies to that principal now. |
 | `get_topics()` | query | `vec NTopic` | What is registered with Sneed Notifications. |
 | `get_admins()` / `get_api_doc()` | query | | |
+| `icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`, `icrc10_supported_standards`, `icrc3_log_status` | query | | The activity log ([6](#6-activity-log-icrc-3)); not deployed yet. |
 
 ### 3.3 Admin methods (controllers and listed admins)
 
@@ -218,6 +219,7 @@ dfx canister --network ic call sneed_mon get_status --query
 | `set_admin_prices(MonPrices)` | The admin price (`null` field: none). Returns `variant { ok; err : text }`. |
 | `set_partner_prices(principal, MonPartner)` | Add or replace a partner: label 1–100 characters, expiry in the future or none, at most 200 partners, not the anonymous principal. |
 | `remove_partner_prices(principal)` | Refuses a principal without an entry. |
+| `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`, `get_log(start, length)` | The activity log's settings, archiving and operational messages ([6](#6-activity-log-icrc-3)). |
 
 ## 4. Types
 
@@ -251,3 +253,40 @@ type TierTable = record { base_daily_price_e8s : nat; tiers : vec record { every
 - Proposals only; low cycles and rewards are planned.
 - A daily watch's reminder arrives within a day of the window opening; choose a 48-hour window for a daily watch to be safe.
 - The SNS name comes from its governance metadata when the first user watched it.
+
+## 6. Activity log (ICRC-3)
+
+**Status: in the source on `main`, not deployed yet** (staging runs the build before it).
+
+Money and governance are recorded as blocks in a hash-chained, certified log, readable through the standard [ICRC-3](https://github.com/dfinity/ICRC-1/tree/main/standards/ICRC-3) interface: deposits credited, withdrawals and auto top-ups (with the ICP ledger block), the charges of each round, pauses and resumes of users' monitoring, fee forwards and withdrawals, the admin list and every configuration, tuning, billing, tier and special-price value that changed. Each block carries the hash of the previous one (`phash`) and the canister certifies the latest, so anyone can prove the history complete and untampered. Old blocks move to archive canisters co-controlled by sneed_mon and the Sneed SNS root (`fp274-iaaaa-aaaaq-aacha-cai`).
+
+**What anyone watches is never logged**: no block names a target, proposal, topic filter, neuron or watch setting, and watching, unwatching and changing a watch append nothing. Design: [spec/sneed_mon.md §9](https://github.com/Snassy-icp/app_sneeddao/blob/main/spec/sneed_mon.md#9-activity-log-icrc-3); library: [src/icrc3](https://github.com/Snassy-icp/app_sneeddao/tree/main/src/icrc3), as [Sneed Lock's log](/api/sneed_lock#8-activity-log-icrc-3). The log starts empty with the release that introduces it.
+
+### 6.1 Endpoints
+
+`icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types` (every `btype` below, with the url of [6.3](#63-block-types)), `icrc10_supported_standards`, `icrc3_log_status` (queries; refused as update calls). Admin only: `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers` and the query `get_log(start, length)` (the log's operational messages: spills, archives created, failures). They behave as on [Sneed Notifications](/api/sneed_notifications#8-activity-log-icrc-3).
+
+### 6.2 Block format
+
+`Map { btype; ts; phash; tx }`. Inside `tx`: principals are `Blob`, accounts `Array [owner, subaccount?]`, amounts (ICP e8s), counts and ledger block indexes `Nat`, flags `Nat` 0 / 1, an unset value the Text `none`. The first field is `caller`, or `via` = `"timer"` for what a round did.
+
+**Charges are aggregated: one block per round, never one per check.** A round adds up the checks it charged and kept (a check refunded because Sneed Notifications could not take its messages does not count) and appends one `sneedmon_round_charges` block when it ends, only if it charged anything. With rounds at most every `interval_s` (600 s by default, at least 60 s) the log grows by at most one charge block per round whatever the number of users. The block lists each user's total only while the round charged at most 20 users; each user's own checks stay in `get_my_charges`.
+
+### 6.3 Block types
+
+| `btype` | When | `tx` fields |
+|---|---|---|
+| `sneedmon_deposit` | `credit_deposit` credited ICP from the caller's deposit subaccount. | `caller`, `amount_e8s` (credited), `fee_e8s`, `ledger_block` |
+| `sneedmon_withdraw` | `withdraw_balance` | `caller`, `amount_e8s` (debited; `to` receives it less `fee_e8s`), `fee_e8s`, `to`, `ledger_block` |
+| `sneedmon_auto_top_up` | A round pulled a top-up from a user's wallet. | `via`, `user`, `amount_e8s` (credited), `fee_e8s` (paid by the wallet), `from` (the user's account), `ledger_block` |
+| `sneedmon_round_charges` | A round that charged checks ended (a round cut short by an upgrade: when the next one starts). | `via`, `round`, `checks`, `charged_e8s`, `users`; `per_user` (Array of `[user, charged_e8s, checks]`) when `users` ≤ 20 |
+| `sneedmon_user_pause` | A check could not be paid: the user's watches pause. | `via`, `user`, `balance_e8s`, `price_e8s` |
+| `sneedmon_user_resume` | A paused user's balance pays one check of each watch again. | `caller` or `via`, `user`, `balance_e8s` |
+| `sneedmon_fee_forward` | A round forwarded the collected fees to `fee_destination`. | `via`, `amount_e8s` (taken off the fees; received less `fee_e8s`), `fee_e8s`, `to`, `ledger_block`, `forwards` |
+| `sneedmon_fee_withdraw` | `admin_withdraw_fees` | `caller`, `amount_e8s`, `fee_e8s`, `to`, `ledger_block` |
+| `sneedmon_admin_add` / `sneedmon_admin_remove` | The admin list changed. | `caller`, `principal` |
+| `sneedmon_config_update` | A value changed (one block each). | `caller`, `key`, `old_value`, `value`; partner prices also `partner` (no `old_value` for a new partner; `value` `removed` for a removal) |
+
+`sneedmon_config_update` keys: the core config (`notifications`, `sns_wasm`, `interval_s`, `paused`, `sponsored`, `max_users`, `max_watches_per_user`, `max_snses`, `max_calls_per_tick`, `max_continuations`, `reminder_window_s`, `batch_size`, `neuron_pages`, `proposal_pages`, `neuron_cache_s`), `app_id`, the tuning (`nns_governance`, `defaults`, `neuron_refresh_s`, `max_refresh_per_round`, `parallel_calls`, `max_nns_neurons`, `user_refresh_min_s`, `max_pending_per_user`, `topic_cache_s`), the billing (`icp_ledger`, `ledger_fee_e8s`, `fee_destination`, `fee_sweep_threshold_e8s`), the tier table (`base_daily_price_e8s`, `tiers`), the special prices (`admin_prices`, `partner_prices`) and the log settings `icrc3_*`.
+
+Verify and browse it as [Sneed Lock's 8.4](/api/sneed_lock#84-verifying-the-log) describes, with the canister id `v53u4-6iaaa-aaaay-aadva-cai` (staging).

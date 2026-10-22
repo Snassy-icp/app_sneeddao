@@ -19,6 +19,10 @@ import IngressGuard "../IngressGuard";
 import ApiDoc "ApiDoc";
 import Control "../sneed_names/Control";
 import SnsDirectory "../sneed_names/SnsDirectory";
+import TextLog "../sneed_names/TextLog";
+import NT "../sneed_names/Types";
+import Icrc3Log "../icrc3/Log";
+import T3 "../icrc3/Types";
 import T "Types";
 
 /// sneed_notifications (spec/sneed_notifications.md), step 1: apps declare topics, users allow
@@ -132,7 +136,12 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   // maintainer on the list; a later upgrade removes this hook, and the list keeps the entry.
   transient let BOOTSTRAP_ADMIN = Principal.fromText("d7zib-qo5mr-qzmpb-dtyof-l7yiu-pu52k-wk7ng-cbm3n-ffmys-crbkz-nae");
   system func postupgrade() {
-    if (Array.find<Principal>(admins, func(a) = a == BOOTSTRAP_ADMIN) == null) admins := Array.append(admins, [BOOTSTRAP_ADMIN]);
+    if (Array.find<Principal>(admins, func(a) = a == BOOTSTRAP_ADMIN) == null) {
+      admins := Array.append(admins, [BOOTSTRAP_ADMIN]);
+      block("admin_add", #upgrade, [("principal", pv(BOOTSTRAP_ADMIN))]);
+    };
+    Icrc3Log.certify(icrc3);
+    ensure_icrc3_timer<system>();
   };
   /// Each relay kind's public key (base64 SPKI, RSA-OAEP-256): clients encrypt addresses to it.
   var relay_keys : [(ChannelKind, Text)] = [];
@@ -195,6 +204,104 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   transient var fee_next_check : Int = 0; // 0 after an install or upgrade: the first tick checks
   transient var pulling_e8s : Nat = 0; // top-ups the ledger may have moved but this canister hasn't credited yet
   transient let FEE_CHECK_NS : Int = 300_000_000_000; // every 5 minutes at most
+
+  // ---------------------------------------------------------------------------------------------
+  // ICRC-3 activity log (spec/notifications_icrc3.md; library src/icrc3): money (top-ups, refunds,
+  // fee forwarding, the backlog measurement) and governance (apps, admins, configuration). Never
+  // what was sent to whom: no notification contents, titles, channels, addresses or deliveries.
+  // Enhanced orthogonal persistence: new stable variables, so the upgrade starts an empty log.
+  // ---------------------------------------------------------------------------------------------
+
+  var icrc3 : Icrc3Log.State = Icrc3Log.init();
+  transient let icrc3_rt : Icrc3Log.Runtime = Icrc3Log.runtime();
+  // operational messages of the log (spills, archive creation, failures); admins read them with get_log
+  let icrc3_textlog : TextLog.State = TextLog.init();
+  transient let SNEED_SNS_ROOT : Principal = Principal.fromText("fp274-iaaaa-aaaaq-aacha-cai");
+
+  transient let icrc3_catalogue : Icrc3Log.Config = {
+    block_types_url = "https://app.sneeddao.com/api/sneed_notifications#block-types";
+    block_types = [
+      "sneednotif_top_up",
+      "sneednotif_app_top_up",
+      "sneednotif_refund",
+      "sneednotif_fee_forward",
+      "sneednotif_fee_backlog",
+      "sneednotif_fee_remeasure",
+      "sneednotif_app_register",
+      "sneednotif_app_update",
+      "sneednotif_app_remove",
+      "sneednotif_app_verify",
+      "sneednotif_admin_add",
+      "sneednotif_admin_remove",
+      "sneednotif_config_update",
+    ];
+  };
+
+  func icrc3_self() : Principal = Principal.fromActor(this);
+
+  func icrc3_env() : Icrc3Log.Environment {
+    {
+      self = icrc3_self();
+      archive_controllers = [SNEED_SNS_ROOT]; // added next to this canister on every archive
+      cycle_reserve = 2_000_000_000_000; // never spend the balance below 2 T
+      new_correlation_id = func() : Nat = TextLog.correlationId(icrc3_textlog);
+      log_info = func(cid : Nat, m : Text) = TextLog.add(icrc3_textlog, #info, cid, icrc3_self(), m);
+      log_error = func(cid : Nat, m : Text) = TextLog.add(icrc3_textlog, #error, cid, icrc3_self(), m);
+    };
+  };
+
+  /// Who made a logged change: a call (its caller), the canister's timer, or the upgrade itself.
+  type By = { #caller : Principal; #timer; #upgrade };
+
+  /// Appends one block `sneednotif_<btype>`: `caller` first, or `via` = "timer" / "upgrade".
+  func block(btype : Text, by : By, tx : [(Text, T3.Value)]) {
+    let who : (Text, T3.Value) = switch by {
+      case (#caller(p)) ("caller", Icrc3Log.principal(p));
+      case (#timer) ("via", #Text("timer"));
+      case (#upgrade) ("via", #Text("upgrade"));
+    };
+    ignore Icrc3Log.append(icrc3, "sneednotif_" # btype, Int.abs(Time.now()), Array.append<(Text, T3.Value)>([who], tx));
+  };
+
+  /// One `config_update` block, only when the value changed.
+  func configBlock(by : By, key : Text, old : T3.Value, new : T3.Value) {
+    if (old != new) block("config_update", by, [("key", #Text(key)), ("old_value", old), ("value", new)]);
+  };
+  func configBlocks(by : By, old : [(Text, T3.Value)], new : [(Text, T3.Value)]) {
+    var i = 0;
+    while (i < old.size() and i < new.size()) { configBlock(by, old[i].0, old[i].1, new[i].1); i += 1 };
+  };
+
+  func pv(p : Principal) : T3.Value = Icrc3Log.principal(p);
+  func accountV(a : Account) : T3.Value = Icrc3Log.account(a.owner, a.subaccount);
+  func optAccountV(a : ?Account) : T3.Value = switch a { case (?x) accountV(x); case null #Text("none") };
+  func principalsV(ps : [Principal]) : T3.Value = #Array(Array.map<Principal, T3.Value>(ps, pv));
+  func kindText(k : ChannelKind) : Text = switch k {
+    case (#sneed_sms) "sneed_sms"; case (#push) "push"; case (#discord) "discord";
+    case (#telegram) "telegram"; case (#email) "email"; case (#sms) "sms";
+  };
+  func levelText(l : Level) : Text = switch l { case (#urgent) "urgent"; case (#normal) "normal"; case (#info) "info" };
+  /// Topic ids, titles and levels (descriptions are left out: long, and in get_app).
+  func topicsV(ts : [Topic]) : T3.Value = #Array(Array.map<Topic, T3.Value>(ts, func(t) = #Map([("id", #Text(t.id)), ("title", #Text(t.title)), ("level", #Text(levelText(t.level)))])));
+  func appTx(a : App) : [(Text, T3.Value)] = [("app_id", #Nat(a.id)), ("name", #Text(a.name)), ("owner", pv(a.owner)), ("canisters", principalsV(a.canisters)), ("topics", topicsV(a.topics))];
+
+  /// The configuration as logged: one entry per field, in a fixed order (configBlocks pairs them up).
+  func configValues(c : Config) : [(Text, T3.Value)] = [
+    ("icp_ledger", pv(c.icp_ledger)),
+    ("sneed_sms", pv(c.sneed_sms)),
+    ("sns_wasm", pv(c.sns_wasm)),
+    ("prices_e8s", #Map(Array.map<(ChannelKind, Nat), (Text, T3.Value)>(c.prices_e8s, func((k, p)) = (kindText(k), #Nat(p))))),
+    ("notify_price_e8s", #Nat(c.notify_price_e8s)),
+    ("dedupe_window_ns", #Nat(c.dedupe_window_ns)),
+    ("retention_ns", #Nat(c.retention_ns)),
+    ("default_daily_cap", #Nat(c.default_daily_cap)),
+    ("default_daily_spend_cap_e8s", #Nat(c.default_daily_spend_cap_e8s)),
+    ("max_title", #Nat(c.max_title)),
+    ("max_body", #Nat(c.max_body)),
+    ("relays", #Array(Array.map<(Principal, ChannelKind), T3.Value>(c.relays, func((p, k)) = #Array([pv(p), #Text(kindText(k))])))),
+    ("relay_lease_ns", #Nat(c.relay_lease_ns)),
+    ("max_attempts", #Nat(c.max_attempts)),
+  ];
 
   // ---------------------------------------------------------------------------------------------
   // Helpers
@@ -299,8 +406,10 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     for (c in input.canisters.vals()) if (Map.has(app_of_canister, Map.phash, c)) return #err(Principal.toText(c) # " already belongs to an app");
     let id = next_app_id;
     next_app_id += 1;
-    Map.set(apps, Map.nhash, id, { id; name = input.name; logo = input.logo; description = input.description; owner = caller; canisters = input.canisters; topics = input.topics; verified = false; created_at = now() });
+    let app : App = { id; name = input.name; logo = input.logo; description = input.description; owner = caller; canisters = input.canisters; topics = input.topics; verified = false; created_at = now() };
+    Map.set(apps, Map.nhash, id, app);
     for (c in input.canisters.vals()) Map.set(app_of_canister, Map.phash, c, id);
+    block("app_register", #caller(caller), Array.append(appTx(app), [("verified", #Nat(0))]));
     #ok(id);
   };
 
@@ -312,8 +421,10 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     for (c in input.canisters.vals()) if (Map.has(app_of_canister, Map.phash, c)) return #err(Principal.toText(c) # " already belongs to an app");
     let id = next_app_id;
     next_app_id += 1;
-    Map.set(apps, Map.nhash, id, { id; name = input.name; logo = input.logo; description = input.description; owner; canisters = input.canisters; topics = input.topics; verified = true; created_at = now() });
+    let app : App = { id; name = input.name; logo = input.logo; description = input.description; owner; canisters = input.canisters; topics = input.topics; verified = true; created_at = now() };
+    Map.set(apps, Map.nhash, id, app);
     for (c in input.canisters.vals()) Map.set(app_of_canister, Map.phash, c, id);
+    block("app_register", #caller(caller), Array.append(appTx(app), [("verified", #Nat(1))]));
     #ok(id);
   };
 
@@ -332,16 +443,27 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     for (c in input.canisters.vals()) switch (Map.get(app_of_canister, Map.phash, c)) { case (?other) if (other != id) return #err(Principal.toText(c) # " belongs to another app"); case null {} };
     for (c in cur.canisters.vals()) Map.delete(app_of_canister, Map.phash, c);
     for (c in input.canisters.vals()) Map.set(app_of_canister, Map.phash, c, id);
-    Map.set(apps, Map.nhash, id, { cur with name = input.name; logo = input.logo; description = input.description; canisters = input.canisters; topics = input.topics });
+    let next : App = { cur with name = input.name; logo = input.logo; description = input.description; canisters = input.canisters; topics = input.topics };
+    Map.set(apps, Map.nhash, id, next);
+    // logged only when something changed: the new name, canisters and topics, the old ones that changed
+    let changed = Buffer.Buffer<T3.Value>(5);
+    let old = Buffer.Buffer<(Text, T3.Value)>(3);
+    if (cur.name != next.name) { changed.add(#Text("name")); old.add(("old_name", #Text(cur.name))) };
+    if (cur.logo != next.logo) changed.add(#Text("logo"));
+    if (cur.description != next.description) changed.add(#Text("description"));
+    if (cur.canisters != next.canisters) { changed.add(#Text("canisters")); old.add(("old_canisters", principalsV(cur.canisters))) };
+    if (cur.topics != next.topics) { changed.add(#Text("topics")); old.add(("old_topics", topicsV(cur.topics))) };
+    if (changed.size() > 0) block("app_update", #caller(caller), Array.flatten<(Text, T3.Value)>([appTx(next), [("changed", #Array(Buffer.toArray(changed)))], Buffer.toArray(old)]));
     #ok("Updated");
   };
 
   /// Fund an app's balance (for sponsored messages). Anyone may: ICP by ICRC-2 approval.
   public shared ({ caller }) func top_up_app(id : Nat, amount_e8s : Nat) : async ResultNat {
     if (not Map.has(apps, Map.nhash, id)) return #err("No such app");
-    switch (await* pull(caller, amount_e8s)) { case (#err(e)) return #err(e); case (#ok) {} };
+    let ledger_block = switch (await* pull(caller, amount_e8s)) { case (#err(e)) return #err(e); case (#ok(b)) b };
     let b = appBalanceOf(id) + amount_e8s;
     Map.set(app_balances, Map.nhash, id, b);
+    block("app_top_up", #caller(caller), [("app_id", #Nat(id)), ("amount_e8s", #Nat(amount_e8s)), ("ledger_block", #Nat(ledger_block)), ("app_balance_e8s", #Nat(b))]);
     #ok(b);
   };
 
@@ -715,21 +837,23 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   /// Top up your notification balance with ICP (approve this canister for amount + fee first).
   public shared ({ caller }) func top_up(amount_e8s : Nat) : async ResultNat {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
-    switch (await* pull(caller, amount_e8s)) { case (#err(e)) return #err(e); case (#ok) {} };
+    let ledger_block = switch (await* pull(caller, amount_e8s)) { case (#err(e)) return #err(e); case (#ok(b)) b };
     let b = balanceOf(caller) + amount_e8s;
     Map.set(user_balances, Map.phash, caller, b);
     rearmLowBalance(caller);
+    block("top_up", #caller(caller), [("amount_e8s", #Nat(amount_e8s)), ("ledger_block", #Nat(ledger_block))]);
     #ok(b);
   };
 
-  func pull(from : Principal, amount : Nat) : async* { #ok; #err : Text } {
+  /// The ledger block of the transfer on success.
+  func pull(from : Principal, amount : Nat) : async* { #ok : Nat; #err : Text } {
     if (amount == 0) return #err("Nothing to top up");
     let ledger : IcpLedger = actor (Principal.toText(config.icp_ledger));
     // counted as a liability while in flight: the ledger may have moved it before the caller credits it
     pulling_e8s += amount;
     let r = try {
       switch (await ledger.icrc2_transfer_from({ spender_subaccount = null; from = { owner = from; subaccount = null }; to = { owner = Principal.fromActor(this); subaccount = null }; amount; fee = null; memo = null; created_at_time = null })) {
-        case (#Ok _) #ok;
+        case (#Ok(b)) #ok(b);
         case (#Err(#InsufficientAllowance(a))) #err("Approve this canister for the amount first (allowance " # Nat.toText(a.allowance) # ")");
         case (#Err(#InsufficientFunds(b))) #err("Not enough ICP (balance " # Nat.toText(b.balance) # ")");
         case (#Err _) #err("The ledger refused the transfer");
@@ -826,7 +950,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
         case null missing.add(jid);
       };
     };
-    for (j in gone.vals()) finish(j, #failed({ reason = "channel removed" }));
+    for (j in gone.vals()) finish(j, #failed({ reason = "channel removed" }), #caller(caller));
     for (jid in missing.vals()) Map.delete(pending, Map.nhash, jid);
     Buffer.toArray(out);
   };
@@ -836,8 +960,8 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     for ((jid, r) in results.vals()) switch (Map.get(jobs, Map.nhash, jid)) {
       case (?j) switch (j.state) {
         case (#sending(s)) if (s.relay == caller) switch r {
-          case (#ok) finish(j, #delivered({ at = now() }));
-          case (#err(e)) retry(j, e);
+          case (#ok) finish(j, #delivered({ at = now() }), #caller(caller));
+          case (#err(e)) retry(j, e, #caller(caller));
         };
         case _ {};
       };
@@ -845,26 +969,28 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     };
   };
 
-  func finish(j : Job, state : JobState) {
+  func finish(j : Job, state : JobState, by : By) {
     Map.set(jobs, Map.nhash, j.id, { j with state });
     Map.delete(pending, Map.nhash, j.id);
     switch (state) {
-      case (#failed _) refund(j);
+      case (#failed _) refund(j, by);
       case _ {};
     };
   };
 
-  func retry(j : Job, e : Text) {
-    if (j.attempts + 1 >= config.max_attempts) finish({ j with attempts = j.attempts + 1 }, #failed({ reason = e })) else Map.set(jobs, Map.nhash, j.id, { j with attempts = j.attempts + 1; state = #queued; not_before = now() + 60_000_000_000 * (j.attempts + 1) });
+  func retry(j : Job, e : Text, by : By) {
+    if (j.attempts + 1 >= config.max_attempts) finish({ j with attempts = j.attempts + 1 }, #failed({ reason = e }), by) else Map.set(jobs, Map.nhash, j.id, { j with attempts = j.attempts + 1; state = #queued; not_before = now() + 60_000_000_000 * (j.attempts + 1) });
   };
 
-  func refund(j : Job) {
+  /// Logged as an amount only (and who paid: a user or an app), never which user, app or delivery.
+  func refund(j : Job, by : By) {
     if (j.price_e8s == 0) return;
     fees_refunded_e8s += j.price_e8s;
     if (j.paid_by_app) switch (Map.get(notifications, Map.nhash, j.notification)) {
       case (?n) Map.set(app_balances, Map.nhash, n.app, appBalanceOf(n.app) + j.price_e8s);
       case null {};
     } else Map.set(user_balances, Map.phash, j.user, balanceOf(j.user) + j.price_e8s);
+    block("refund", by, [("amount_e8s", #Nat(j.price_e8s)), ("paid_by", #Text(if (j.paid_by_app) "app" else "user")), ("refunded_e8s", #Nat(fees_refunded_e8s))]);
   };
 
   // ---------------------------------------------------------------------------------------------
@@ -901,12 +1027,12 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   };
   func feeError(m : Text) { fee_last_error := ?m; feeNote(m) };
 
-  func feeTick() : async () { ignore await* forwardFees(false) };
+  func feeTick() : async () { ignore await* forwardFees(false, #timer) };
 
   /// Forward the unforwarded fees in one transfer once they reach the threshold (`force`: any
   /// amount above the ledger fee). Before each transfer the ledger balance is read again and the
   /// transfer must leave at least the liabilities; counters change only once the ledger accepted.
-  func forwardFees(force : Bool) : async* Result {
+  func forwardFees(force : Bool, by : By) : async* Result {
     if (fee_forwarding) return #err("A forward is already running");
     let to = switch (fee_destination) { case (?a) a; case null return #ok("No fee destination: fees stay in the canister") };
     // cheap check first: no ledger call while the books are below the threshold
@@ -916,10 +1042,10 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     };
     fee_forwarding := true;
     fee_last_check := now();
-    try { await* forwardLocked(to, force) } catch (e) { feeError("fee forward: " # Error.message(e)); #err(Error.message(e)) } finally { fee_forwarding := false };
+    try { await* forwardLocked(to, force, by) } catch (e) { feeError("fee forward: " # Error.message(e)); #err(Error.message(e)) } finally { fee_forwarding := false };
   };
 
-  func forwardLocked(to : Account, force : Bool) : async* Result {
+  func forwardLocked(to : Account, force : Bool, by : By) : async* Result {
     let ledger : IcpLedger = actor (Principal.toText(config.icp_ledger));
     let self : Account = { owner = Principal.fromActor(this); subaccount = null };
 
@@ -932,8 +1058,8 @@ shared (deployer) persistent actor class SneedNotifications() = this {
         } catch (e) { feeError("fee forward retry: " # Error.message(e)); return #err("The ledger did not answer; retrying later") };
         fee_pending := null;
         switch res {
-          case (#Ok(block)) { forwarded(p.to, p.amount, p.fee, block); return #ok("Forwarded " # e8sText(p.amount) # " ICP") };
-          case (#Err(#Duplicate(d))) { forwarded(p.to, p.amount, p.fee, d.duplicate_of); return #ok("Forwarded " # e8sText(p.amount) # " ICP (deduplicated)") };
+          case (#Ok(block)) { forwarded(p.to, p.amount, p.fee, block, by); return #ok("Forwarded " # e8sText(p.amount) # " ICP") };
+          case (#Err(#Duplicate(d))) { forwarded(p.to, p.amount, p.fee, d.duplicate_of, by); return #ok("Forwarded " # e8sText(p.amount) # " ICP (deduplicated)") };
           // too old to deduplicate: the books are re-measured from the ledger below
           case (#Err(#TooOld)) feeNote("an unanswered forward is too old to retry; re-measuring from the ledger");
           case (#Err(e)) { feeError("fee forward retry refused: " # debug_show e); return #err("The ledger refused the transfer") };
@@ -956,12 +1082,14 @@ shared (deployer) persistent actor class SneedNotifications() = this {
         fees_backlog_e8s := ?backlog;
         fee_base := ?base;
         feeNote("first measurement: balance " # e8sText(balance) # ", liabilities " # e8sText(liabilities) # ", free " # e8sText(free) # ", backlog " # e8sText(backlog) # " ICP");
+        block("fee_backlog", by, [("balance_e8s", #Nat(balance)), ("liabilities_e8s", #Nat(liabilities)), ("free_e8s", #Nat(free)), ("backlog_e8s", #Nat(backlog))]);
       };
       case (?_) switch (unforwardedE8s()) {
         case (?u) if (u > free) {
           // the ledger shows less than the books (e.g. a forward whose answer was lost): trust the ledger
           fee_base := ?base;
           feeNote("the books said " # e8sText(Int.abs(Int.max(u, 0))) # " ICP free, the ledger " # e8sText(free) # ": re-measured");
+          block("fee_remeasure", by, [("books_e8s", #Nat(Int.abs(Int.max(u, 0)))), ("balance_e8s", #Nat(balance)), ("liabilities_e8s", #Nat(liabilities)), ("free_e8s", #Nat(free))]);
         };
         case null {};
       };
@@ -988,20 +1116,21 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     };
     fee_pending := null;
     switch res {
-      case (#Ok(block)) { forwarded(to, amount, fee, block); #ok("Forwarded " # e8sText(amount) # " ICP") };
-      case (#Err(#Duplicate(d))) { forwarded(to, amount, fee, d.duplicate_of); #ok("Forwarded " # e8sText(amount) # " ICP (deduplicated)") };
+      case (#Ok(block)) { forwarded(to, amount, fee, block, by); #ok("Forwarded " # e8sText(amount) # " ICP") };
+      case (#Err(#Duplicate(d))) { forwarded(to, amount, fee, d.duplicate_of, by); #ok("Forwarded " # e8sText(amount) # " ICP (deduplicated)") };
       case (#Err(#BadFee(x))) { fee_ledger_fee_e8s := x.expected_fee; feeError("fee forward: the ledger fee is now " # Nat.toText(x.expected_fee) # " e8s; retrying later"); #err("The ledger fee changed") };
       case (#Err(e)) { feeError("fee forward refused: " # debug_show e); #err("The ledger refused the transfer") };
     };
   };
 
-  func forwarded(to : Account, amount : Nat, fee : Nat, block : Nat) {
+  func forwarded(to : Account, amount : Nat, fee : Nat, ledger_block : Nat, by : By) {
     fees_forwarded_e8s += amount;
     fees_ledger_fees_e8s += fee;
     fee_forwards += 1;
-    fee_last_forward := ?{ at = now(); amount_e8s = amount; block; to };
+    fee_last_forward := ?{ at = now(); amount_e8s = amount; block = ledger_block; to };
     fee_last_error := null;
-    feeNote("forwarded " # e8sText(amount) # " ICP (block " # Nat.toText(block) # ")");
+    feeNote("forwarded " # e8sText(amount) # " ICP (block " # Nat.toText(ledger_block) # ")");
+    block("fee_forward", by, [("amount_e8s", #Nat(amount)), ("fee_e8s", #Nat(fee)), ("to", accountV(to)), ("ledger_block", #Nat(ledger_block)), ("forwards", #Nat(fee_forwards)), ("forwarded_e8s", #Nat(fees_forwarded_e8s))]);
   };
 
   /// Revenue forwarding: counters, destination, threshold and the last events. Public: revenue is DAO information.
@@ -1031,6 +1160,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   public shared ({ caller }) func admin_set_fee_destination(a : ?Account) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     switch (a) { case (?{ subaccount = ?s }) if (s.size() != 32) return #err("A subaccount is 32 bytes"); case _ {} };
+    configBlock(#caller(caller), "fee_destination", optAccountV(fee_destination), optAccountV(a));
     fee_destination := a;
     feeNote(switch a { case (?x) "destination set to " # Principal.toText(x.owner); case null "destination cleared: fees stay in the canister" });
     #ok("Saved");
@@ -1038,6 +1168,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
 
   public shared ({ caller }) func admin_set_fee_sweep_threshold(e8s : Nat) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
+    configBlock(#caller(caller), "fee_sweep_threshold_e8s", #Nat(fee_sweep_threshold_e8s), #Nat(e8s));
     fee_sweep_threshold_e8s := e8s;
     #ok("Saved");
   };
@@ -1045,7 +1176,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   /// Forward now, whatever the threshold (still only what exceeds the liabilities, minus the ledger fee).
   public shared ({ caller }) func admin_forward_fees_now() : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
-    await* forwardFees(true);
+    await* forwardFees(true, #caller(caller));
   };
 
   // ---------------------------------------------------------------------------------------------
@@ -1075,19 +1206,19 @@ shared (deployer) persistent actor class SneedNotifications() = this {
       };
       case null {};
     };
-    for (j in lapsed.vals()) retry(j, "relay did not answer");
+    for (j in lapsed.vals()) retry(j, "relay did not answer", #timer);
     let sms : Sms = actor (Principal.toText(config.sneed_sms));
     for (j in due.vals()) switch (Map.get(notifications, Map.nhash, j.notification)) {
       case (?n) {
         let (subject, body) = smsText(n);
         try {
           switch (await sms.send_system_notification({ recipients = [j.user]; subject; body })) {
-            case (#ok _) finish(j, #delivered({ at = now() }));
-            case (#err(e)) retry(j, debug_show e);
+            case (#ok _) finish(j, #delivered({ at = now() }), #timer);
+            case (#err(e)) retry(j, debug_show e, #timer);
           };
-        } catch (e) { retry(j, Error.message(e)) };
+        } catch (e) { retry(j, Error.message(e), #timer) };
       };
-      case null finish(j, #failed({ reason = "message removed" }));
+      case null finish(j, #failed({ reason = "message removed" }), #timer);
     };
     if (ticks % 120 == 0) prune(t);
     if (t >= fee_next_check) {
@@ -1127,38 +1258,104 @@ shared (deployer) persistent actor class SneedNotifications() = this {
 
   public shared ({ caller }) func admin_set_config(c : Config) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
+    configBlocks(#caller(caller), configValues(config), configValues(c));
     config := c;
     #ok("Saved");
   };
   public shared ({ caller }) func admin_set_relay_key(kind : ChannelKind, key : Text) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     if (key.size() > 4_096) return #err("Key too long");
+    let old : T3.Value = switch (Array.find<(ChannelKind, Text)>(relay_keys, func((k, _)) = k == kind)) { case (?(_, x)) #Text(x); case null #Text("none") };
+    let new : T3.Value = if (key == "") #Text("none") else #Text(key);
+    // the public key only (clients encrypt addresses to it); relays keep their private keys
+    if (old != new) block("config_update", #caller(caller), [("key", #Text("relay_key")), ("kind", #Text(kindText(kind))), ("old_value", old), ("value", new)]);
     relay_keys := Array.append(Array.filter<(ChannelKind, Text)>(relay_keys, func((k, _)) = k != kind), if (key == "") [] else [(kind, key)]);
     #ok("Saved");
   };
 
   public shared ({ caller }) func admin_add_admin(p : Principal) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
-    if (Array.find<Principal>(admins, func(a) = a == p) == null) admins := Array.append(admins, [p]);
+    if (Array.find<Principal>(admins, func(a) = a == p) == null) {
+      admins := Array.append(admins, [p]);
+      block("admin_add", #caller(caller), [("principal", pv(p))]);
+    };
     #ok("Added");
   };
   public shared ({ caller }) func admin_remove_admin(p : Principal) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
-    admins := Array.filter<Principal>(admins, func(a) = a != p);
+    if (Array.find<Principal>(admins, func(a) = a == p) != null) {
+      admins := Array.filter<Principal>(admins, func(a) = a != p);
+      block("admin_remove", #caller(caller), [("principal", pv(p))]);
+    };
     #ok("Removed");
   };
   public shared ({ caller }) func admin_set_app_verified(id : Nat, verified : Bool) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
-    switch (Map.get(apps, Map.nhash, id)) { case (?a) { Map.set(apps, Map.nhash, id, { a with verified }); #ok("Saved") }; case null #err("No such app") };
+    switch (Map.get(apps, Map.nhash, id)) {
+      case (?a) {
+        Map.set(apps, Map.nhash, id, { a with verified });
+        if (a.verified != verified) block("app_verify", #caller(caller), [("app_id", #Nat(id)), ("name", #Text(a.name)), ("verified", #Nat(if verified 1 else 0))]);
+        #ok("Saved");
+      };
+      case null #err("No such app");
+    };
   };
   /// Remove an abusive app: it can no longer notify anyone.
   public shared ({ caller }) func admin_remove_app(id : Nat) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     switch (Map.get(apps, Map.nhash, id)) {
-      case (?a) { for (c in a.canisters.vals()) Map.delete(app_of_canister, Map.phash, c); Map.delete(apps, Map.nhash, id); #ok("Removed") };
+      case (?a) {
+        for (c in a.canisters.vals()) Map.delete(app_of_canister, Map.phash, c);
+        Map.delete(apps, Map.nhash, id);
+        block("app_remove", #caller(caller), [("app_id", #Nat(a.id)), ("name", #Text(a.name)), ("owner", pv(a.owner)), ("canisters", principalsV(a.canisters))]);
+        #ok("Removed");
+      };
       case null #err("No such app");
     };
   };
+
+  // ---------------------------------------------------------------------------------------------
+  // ICRC-3 interface (spec/notifications_icrc3.md)
+  // ---------------------------------------------------------------------------------------------
+
+  public query func icrc3_get_blocks(args : T3.GetBlocksArgs) : async T3.GetBlocksResult { Icrc3Log.getBlocks(icrc3, args) };
+  public query func icrc3_get_archives(args : T3.GetArchivesArgs) : async T3.GetArchivesResult { Icrc3Log.getArchives(icrc3, args) };
+  public query func icrc3_get_tip_certificate() : async ?T3.DataCertificate { Icrc3Log.tipCertificate(icrc3) };
+  public query func icrc3_supported_block_types() : async [T3.BlockType] { Icrc3Log.supportedBlockTypes(icrc3_catalogue) };
+  public query func icrc10_supported_standards() : async [T3.SupportedStandard] { Icrc3Log.supportedStandards() };
+  public query func icrc3_log_status() : async T3.LogStatus { Icrc3Log.status(icrc3, icrc3_rt) };
+
+  public shared ({ caller }) func admin_set_icrc3_settings(u : T3.SettingsUpdate) : async { #Ok : T3.Settings; #Err : Text } {
+    if (not isAdmin(caller)) return #Err("Admins only");
+    switch (Icrc3Log.applySettings(icrc3, u)) {
+      case (#Err(e)) #Err(e);
+      case (#Ok(changes)) {
+        for ((key, old, new) in changes.vals()) configBlock(#caller(caller), key, #Nat(old), #Nat(new));
+        #Ok(icrc3.settings);
+      };
+    };
+  };
+
+  public shared ({ caller }) func admin_icrc3_spill_now() : async { #Ok : Nat; #Err : Text } {
+    if (not isAdmin(caller)) return #Err("Admins only");
+    if (icrc3_rt.spilling) return #Err("A spill is already in progress");
+    #Ok(await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), true));
+  };
+
+  public shared ({ caller }) func admin_icrc3_repair_archive_controllers() : async [(Principal, { #Ok; #Err : Text })] {
+    if (not isAdmin(caller)) trap("Admins only");
+    await* Icrc3Log.repairArchiveControllers(icrc3, icrc3_env());
+  };
+
+  /// Admins: the log's operational messages (spills, archives created, failures), oldest first.
+  public query ({ caller }) func get_log(start : Nat, length : Nat) : async [NT.LogEntry] {
+    if (not isAdmin(caller)) trap("Admins only");
+    TextLog.get(icrc3_textlog, start, length);
+  };
+
+  func icrc3_timer_job() : async () { ignore await* Icrc3Log.spill(icrc3, icrc3_rt, icrc3_env(), false) };
+  func ensure_icrc3_timer<system>() { Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job) };
+  ensure_icrc3_timer<system>();
 
   // get_api_doc (ICP service discoverability): a short Markdown guide for agents and integrators,
   // with the full reference at https://app.sneeddao.com/api-docs/. A static text: no state read.
@@ -1212,12 +1409,23 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     #admin_set_fee_destination : Any;
     #admin_set_fee_sweep_threshold : Any;
     #admin_forward_fees_now : Any;
+    #icrc3_get_blocks : Any;
+    #icrc3_get_archives : Any;
+    #icrc3_get_tip_certificate : Any;
+    #icrc3_supported_block_types : Any;
+    #icrc10_supported_standards : Any;
+    #icrc3_log_status : Any;
+    #get_log : Any;
+    #admin_set_icrc3_settings : Any;
+    #admin_icrc3_spill_now : Any;
+    #admin_icrc3_repair_archive_controllers : Any;
   } }) : Bool {
     switch msg {
       case (#get_api_doc _ or #get_relay_keys _ or #get_admins _ or #get_app _ or #get_app_balance _ or #get_app_of _ or #get_config _ or #get_my_apps _ or #get_my_history _ or #get_my_requests _ or #get_my_settings _ or #get_low_balance_alert _ or #get_receipts _ or #list_apps _ or #stats _ or #get_fee_forwarding _) false;
+      case (#icrc3_get_blocks _ or #icrc3_get_archives _ or #icrc3_get_tip_certificate _ or #icrc3_supported_block_types _ or #icrc10_supported_standards _ or #icrc3_log_status _ or #get_log _) false;
       // apps call these from their canisters, never by ingress
       case (#notify _ or #notify_batch _ or #request_permission _) false;
-      case (#admin_add_admin _ or #admin_remove_admin _ or #admin_remove_app _ or #admin_set_app_verified _ or #admin_set_fee_destination _ or #admin_set_fee_sweep_threshold _ or #admin_forward_fees_now _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
+      case (#admin_add_admin _ or #admin_remove_admin _ or #admin_remove_app _ or #admin_set_app_verified _ or #admin_set_fee_destination _ or #admin_set_fee_sweep_threshold _ or #admin_forward_fees_now _ or #admin_set_icrc3_settings _ or #admin_icrc3_spill_now _ or #admin_icrc3_repair_archive_controllers _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       case (#admin_set_config _ or #admin_register_app _ or #admin_set_relay_key _) isAdmin(caller) and arg.size() <= IngressGuard.MEDIUM_ARG;
       case (#register_app _ or #update_app _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.MEDIUM_ARG;
       case (#relay_ack _) relayKind(caller) != null and arg.size() <= IngressGuard.MEDIUM_ARG;
