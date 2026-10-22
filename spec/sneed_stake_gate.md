@@ -41,7 +41,7 @@ refresh   : (vec principal, opt principal) -> (vec StakeInfo);        // update:
   recently (e.g. within 7 days), oldest first, within a cycles budget.
 - **Which SNSes:** any SNS listed by SNS-W (root → governance resolved and cached).
 
-## NNS (ICP) neurons
+## NNS (ICP) neurons (later: not needed yet, decided 2026-10-22)
 NNS governance shows a neuron's details only to its controller and hotkeys. A user who wants ICP stake
 counted adds the gate canister as a hotkey on the neuron (once, from Sneed Hub's neuron page); the gate
 then sees it through `list_neurons` with neurons readable by the caller, and maps it to the neuron's
