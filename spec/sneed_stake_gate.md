@@ -4,6 +4,13 @@ A DAO-owned canister that tells any dapp how much a principal has staked in an S
 the dapp can gate things on stake: content, rooms, items, memberships, roles. The gate only reports
 stake; the rules ("at least N staked with at least 6 months dissolve delay") stay with each dapp.
 
+## Who needs it (and who doesn't)
+An off-chain service (a game server, a bot) is better off calling SNS governance directly: one
+`list_neurons({ of_principal; limit })` query per user per SNS returns the full neurons (stake,
+dissolve state, age), and voting power follows from the SNS's `get_nervous_system_parameters`
+(cached). Going through the gate would only add a hop. For NNS neurons such a service can simply be
+the hotkey itself. The gate is for **on-chain** callers, which can't make cross-subnet queries.
+
 ## Why a canister
 - Premium and the forum already read SNS stake by hotkey (`list_neurons` with `of_principal`), each in
   its own code. One shared canister gives every dapp the same, cached, without each one paying for and
