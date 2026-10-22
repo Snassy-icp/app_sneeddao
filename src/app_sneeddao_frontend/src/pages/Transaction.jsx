@@ -78,7 +78,7 @@ function Transaction() {
     const { theme } = useTheme();
     const { identity, isAuthenticated } = useAuth();
     const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames } = useNaming();
     const [searchParams, setSearchParams] = useSearchParams();
     const [currentId, setCurrentId] = useState(searchParams.get('id') || '');
     const [archiveCanisterId, setArchiveCanisterId] = useState(null);
@@ -279,7 +279,7 @@ function Transaction() {
 
             const displayInfoMap = new Map();
             Array.from(principals).forEach(principal => {
-                const displayInfo = getPrincipalDisplayInfoFromContext(Principal.fromText(principal), principalNames, principalNicknames);
+                const displayInfo = getPrincipalDisplayInfoFromContext(Principal.fromText(principal), principalNames, principalNicknames, verifiedNames);
                 displayInfoMap.set(principal, displayInfo);
             });
 
@@ -287,7 +287,7 @@ function Transaction() {
         };
 
         fetchPrincipalInfo();
-    }, [transaction, principalNames, principalNicknames]);
+    }, [transaction, principalNames, principalNicknames, verifiedNames]);
 
     const handleSearch = () => {
         // Validate input before updating URL

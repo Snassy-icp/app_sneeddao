@@ -904,7 +904,7 @@ function Neuron() {
             const displayInfoMap = new Map();
             Array.from(uniquePrincipals).forEach(principal => {
                 try {
-                    const displayInfo = getPrincipalDisplayInfoFromContext(Principal.fromText(principal), principalNames, principalNicknames);
+                    const displayInfo = getPrincipalDisplayInfoFromContext(Principal.fromText(principal), principalNames, principalNicknames, verifiedNames);
                     displayInfoMap.set(principal, displayInfo);
                 } catch (e) {
                     console.warn('Failed to parse principal:', principal, e);
@@ -913,7 +913,7 @@ function Neuron() {
             setPrincipalDisplayInfo(displayInfoMap);
         };
         fetchPrincipalInfo();
-    }, [neuronData, principalNames, principalNicknames]);
+    }, [neuronData, principalNames, principalNicknames, verifiedNames]);
 
     useEffect(() => {
         if (!neuronData) return;
@@ -1202,7 +1202,7 @@ function Neuron() {
                                                     {name && (
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                                                             <span style={{ color: neuronColor, fontSize: '1.5rem', fontWeight: '700' }}>{name}</span>
-                                                            {isVerified && <span title="Verified" style={{ color: '#10b981' }}>✓</span>}
+                                                            {isVerified && <span title="Verified neuron name" style={{ color: '#2ecc71', cursor: 'help' }}>✓</span>}
                                                         </div>
                                                     )}
                                                     {nickname && (

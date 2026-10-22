@@ -12458,7 +12458,7 @@ export default function TradingBot() {
     const { canisterId } = useParams();
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
-    const { principalNames, principalNicknames, fetchAllNames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames, fetchAllNames } = useNaming();
     const { whitelistedTokens } = useWhitelistTokens();
     const [cbEvents, setCbEvents] = useState(null);
     const [controllers, setControllers] = useState([]);
@@ -12561,7 +12561,7 @@ export default function TradingBot() {
     const [namingError, setNamingError] = useState('');
     const [namingSuccess, setNamingSuccess] = useState('');
 
-    const displayInfo = canisterId ? getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames) : null;
+    const displayInfo = canisterId ? getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames, verifiedNames) : null;
 
     const isController = identity && controllers.length > 0 &&
         controllers.some(c => c.toString() === identity.getPrincipal().toString());

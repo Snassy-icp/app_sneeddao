@@ -97,7 +97,7 @@ const Posts = () => {
     const navigate = useNavigate();
     const { isAuthenticated, identity } = useAuth();
     const { createForumActor } = useForum();
-    const { principalNames, principalNicknames, fetchAllNames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames, fetchAllNames } = useNaming();
     
     const [myPosts, setMyPosts] = useState([]);
     const [repliesToMe, setRepliesToMe] = useState([]);
@@ -141,7 +141,7 @@ const Posts = () => {
     const renderMentionCard = (m) => {
         const isNew = mentionsSeenBefore !== null && m.created_at > mentionsSeenBefore;
         const href = m.post_id.length ? `/post?postid=${m.post_id[0]}` : `/thread?threadid=${m.thread_id}`;
-        const info = getPrincipalDisplayInfoFromContext(m.by, principalNames, principalNicknames);
+        const info = getPrincipalDisplayInfoFromContext(m.by, principalNames, principalNicknames, verifiedNames);
         const plain = m.excerpt.replace(/\[@([^\]\n]{1,64})\]\([^)\s]+\)/g, '@$1');
         return (
             <div key={`m-${m.index}`} onClick={() => navigate(href)} role="link" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') navigate(href); }}
@@ -318,13 +318,14 @@ const Posts = () => {
             const info = getPrincipalDisplayInfoFromContext(
                 principalStr, 
                 principalNames, 
-                principalNicknames
+                principalNicknames, 
+                verifiedNames
             );
             displayInfo.set(principalStr, info);
         });
         
         setPrincipalDisplayInfo(displayInfo);
-    }, [myPosts, repliesToMe, principalNames, principalNicknames]);
+    }, [myPosts, repliesToMe, principalNames, principalNicknames, verifiedNames]);
 
     const formatDate = (timestamp) => {
         try {

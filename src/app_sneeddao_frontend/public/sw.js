@@ -31,8 +31,12 @@ self.addEventListener('notificationclick', (event) => {
             try { const w = await same.navigate(url.href); if (w) { try { await w.focus(); } catch { /* already in front */ } return w; } } catch { /* not controlled, or iOS */ }
         }
         // 2. open the page (on iOS this brings the installed app forward at that page, even when a
-        //    suspended window is around that would ignore focus/navigate)
-        try { const w = await self.clients.openWindow(url.href); if (w) return w; } catch { /* refused */ }
+        //    suspended window is around that would ignore focus/navigate); when that is a window that was
+        //    already open, it may come forward without loading the page, so tell it to (sneed-open)
+        try {
+            const w = await self.clients.openWindow(url.href);
+            if (w) { if (url.origin === self.location.origin && wins.some((x) => x.id === w.id)) w.postMessage({ type: 'sneed-open', url: url.pathname + url.search }); return w; }
+        } catch { /* refused */ }
         // 3. last resort: bring the window forward and ask the page to go there itself
         if (same) { try { await same.focus(); } catch { /* ignore */ } same.postMessage({ type: 'sneed-open', url: url.pathname + url.search }); return same; }
         return null;

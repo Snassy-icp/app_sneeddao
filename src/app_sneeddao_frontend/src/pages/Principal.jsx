@@ -909,7 +909,7 @@ export default function PrincipalPage() {
 
             const displayInfoMap = new Map();
             Array.from(uniquePrincipals).forEach(principal => {
-                const displayInfo = getPrincipalDisplayInfoFromContext(Principal.fromText(principal), principalNames, principalNicknames);
+                const displayInfo = getPrincipalDisplayInfoFromContext(Principal.fromText(principal), principalNames, principalNicknames, verifiedNames);
                 displayInfoMap.set(principal, displayInfo);
             });
 
@@ -917,7 +917,7 @@ export default function PrincipalPage() {
         };
 
         fetchPrincipalInfo();
-    }, [neurons, principalNames, principalNicknames]);
+    }, [neurons, principalNames, principalNicknames, verifiedNames]);
 
     const handleNameSubmit = async () => {
         const error = validateNameInput(nameInput);
@@ -1984,8 +1984,12 @@ export default function PrincipalPage() {
                                                         gap: '0.5rem'
                                                     }}>
                                                         {principalInfo?.name || principalNames?.get(stablePrincipalId.current?.toString() || '') || (isCanisterPrincipal(stablePrincipalId.current?.toString() || '') ? 'Canister' : 'Anonymous')}
-                                                        {principalInfo?.isVerified && (
-                                                            <FaCheckCircle size={16} color={principalPrimary} title="Verified name" />
+                                                        {(principalInfo?.name
+                                                            ? principalInfo.isVerified
+                                                            : (principalNames?.get(stablePrincipalId.current?.toString() || '') && verifiedNames?.get(stablePrincipalId.current?.toString() || ''))) && (
+                                                            <span title="Verified name" style={{ display: 'inline-flex', cursor: 'help' }}>
+                                                                <FaCheckCircle size={18} color="#2ecc71" title="Verified name" />
+                                                            </span>
                                                         )}
                                                     </h2>
                                                     {isCanisterPrincipal(stablePrincipalId.current?.toString() || '') && (
@@ -3413,7 +3417,7 @@ export default function PrincipalPage() {
                                                                                 gap: '0.35rem'
                                                                             }}>
                                                                                 {name}
-                                                                                {isVerified && <FaCheckCircle size={14} color={principalAccent} title="Verified name" />}
+                                                                                {isVerified && <FaCheckCircle size={14} color="#2ecc71" title="Verified name" />}
                                                                             </div>
                                                                         )}
                                                                         {nickname && (

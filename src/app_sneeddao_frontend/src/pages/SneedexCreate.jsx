@@ -141,7 +141,7 @@ function SneedexCreate() {
     const formatUsd = (v) => denomFormatValue(v || 0);
     const walletContext = useWalletOptional();
     const neuronsContext = useNeuronsOptional();
-    const { principalNames, principalNicknames, getNeuronDisplayName: getNeuronNameInfo } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames, getNeuronDisplayName: getNeuronNameInfo } = useNaming();
     const navigate = useNavigate();
     
     // Offer settings
@@ -3290,7 +3290,7 @@ function SneedexCreate() {
                                                 >
                                                     <PrincipalDisplay
                                                         principal={bidderStr}
-                                                        displayInfo={getPrincipalDisplayInfoFromContext(bidderStr, principalNames, principalNicknames)}
+                                                        displayInfo={getPrincipalDisplayInfoFromContext(bidderStr, principalNames, principalNicknames, verifiedNames)}
                                                         short={false}
                                                         showCopyButton={true}
                                                         isAuthenticated={isAuthenticated}
@@ -3530,7 +3530,7 @@ function SneedexCreate() {
                                                                 )}
                                                                 <PrincipalDisplay 
                                                                     principal={asset.canister_id}
-                                                                    displayInfo={getPrincipalDisplayInfoFromContext(asset.canister_id, principalNames, principalNicknames)}
+                                                                    displayInfo={getPrincipalDisplayInfoFromContext(asset.canister_id, principalNames, principalNicknames, verifiedNames)}
                                                                     short={true}
                                                                     showCopyButton={false}
                                                                     style={{ fontSize: 'inherit', color: 'inherit' }}
@@ -3546,7 +3546,7 @@ function SneedexCreate() {
                                                         {asset.type === 'token' && (
                                                             <PrincipalDisplay 
                                                                 principal={asset.ledger_id}
-                                                                displayInfo={getPrincipalDisplayInfoFromContext(asset.ledger_id, principalNames, principalNicknames)}
+                                                                displayInfo={getPrincipalDisplayInfoFromContext(asset.ledger_id, principalNames, principalNicknames, verifiedNames)}
                                                                 short={true}
                                                                 showCopyButton={false}
                                                                 style={{ fontSize: 'inherit', color: 'inherit' }}
@@ -5273,7 +5273,7 @@ function SneedexCreate() {
                                                                 <span style={{ color: theme.colors.mutedText, minWidth: '100px' }}>App canister id:</span>
                                                                 <PrincipalDisplay 
                                                                     principal={asset.canister_id}
-                                                                    displayInfo={getPrincipalDisplayInfoFromContext(asset.canister_id, principalNames, principalNicknames)}
+                                                                    displayInfo={getPrincipalDisplayInfoFromContext(asset.canister_id, principalNames, principalNicknames, verifiedNames)}
                                                                     short={false}
                                                                     showCopyButton={true}
                                                                 />
@@ -5375,7 +5375,7 @@ function SneedexCreate() {
                                                                     <span style={{ color: theme.colors.mutedText, minWidth: '100px' }}>Governance:</span>
                                                                     <PrincipalDisplay 
                                                                         principal={asset.governance_id}
-                                                                        displayInfo={getPrincipalDisplayInfoFromContext(asset.governance_id, principalNames, principalNicknames)}
+                                                                        displayInfo={getPrincipalDisplayInfoFromContext(asset.governance_id, principalNames, principalNicknames, verifiedNames)}
                                                                         short={false}
                                                                         showCopyButton={true}
                                                                     />
@@ -5428,7 +5428,7 @@ function SneedexCreate() {
                                                                 <span style={{ color: theme.colors.mutedText, minWidth: '100px' }}>Ledger:</span>
                                                                 <PrincipalDisplay 
                                                                     principal={asset.ledger_id}
-                                                                    displayInfo={getPrincipalDisplayInfoFromContext(asset.ledger_id, principalNames, principalNicknames)}
+                                                                    displayInfo={getPrincipalDisplayInfoFromContext(asset.ledger_id, principalNames, principalNicknames, verifiedNames)}
                                                                     short={false}
                                                                     showCopyButton={true}
                                                                 />

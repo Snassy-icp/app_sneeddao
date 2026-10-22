@@ -56,7 +56,7 @@ const lockSecondary = '#818cf8';
 
 function TokenLock() {
     const { theme } = useTheme();
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames } = useNaming();
     const [token, setToken] = useState(null);
     const [locks, setLocks] = useState({});
     const [lockDetailsLoading, setLockDetailsLoading] = useState({});
@@ -94,7 +94,8 @@ function TokenLock() {
                     const displayInfo = getPrincipalDisplayInfoFromContext(
                         principal, 
                         principalNames, 
-                        principalNicknames
+                        principalNicknames, 
+                        verifiedNames
                     );
                     displayInfoMap.set(principalStr, displayInfo);
                 } catch (error) {
@@ -106,7 +107,7 @@ function TokenLock() {
         };
 
         fetchPrincipalInfo();
-    }, [locks, principalNames, principalNicknames]);
+    }, [locks, principalNames, principalNicknames, verifiedNames]);
 
     const fetchTokenDetails = async (ledgerCanisterId, lockIds) => {
         try {

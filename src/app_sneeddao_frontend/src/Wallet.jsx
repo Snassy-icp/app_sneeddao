@@ -7145,7 +7145,7 @@ function Wallet() {
                                     const neuronCount = neuronManagerCounts[canisterId];
                                     const isExpanded = expandedManagerCards[canisterId];
                                     const neuronsData = managerNeurons[canisterId];
-                                    const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
+                                    const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames, verifiedNames);
                                     
                                     // WASM hash check against all known app versions
                                     const managerModuleHash = neuronManagerModuleHash[canisterId];
@@ -7622,7 +7622,7 @@ function Wallet() {
                                                                     <div><span style={{ color: theme.colors.mutedText }}>Decimals</span> {tokenInfo.decimals}</div>
                                                                     <div><span style={{ color: theme.colors.mutedText }}>Transfer fee</span> {tokenInfo.fee !== null ? (Number(tokenInfo.fee) / 10 ** tokenInfo.decimals).toLocaleString('en-US', { maximumFractionDigits: tokenInfo.decimals }) : '?'} {tokenInfo.symbol}</div>
                                                                     <div><span style={{ color: theme.colors.mutedText }}>Supply</span> {tokenInfo.supply !== null ? (Number(tokenInfo.supply) / 10 ** tokenInfo.decimals).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '?'} {tokenInfo.symbol}</div>
-                                                                    <div style={{ gridColumn: '1 / -1' }}><span style={{ color: theme.colors.mutedText }}>Minting account</span> {tokenInfo.minting ? <PrincipalDisplay principal={tokenInfo.minting} displayInfo={getPrincipalDisplayInfoFromContext(tokenInfo.minting, principalNames, principalNicknames)} showCopyButton={false} isAuthenticated={isAuthenticated} /> : 'none'}</div>
+                                                                    <div style={{ gridColumn: '1 / -1' }}><span style={{ color: theme.colors.mutedText }}>Minting account</span> {tokenInfo.minting ? <PrincipalDisplay principal={tokenInfo.minting} displayInfo={getPrincipalDisplayInfoFromContext(tokenInfo.minting, principalNames, principalNicknames, verifiedNames)} showCopyButton={false} isAuthenticated={isAuthenticated} /> : 'none'}</div>
                                                                     {tokenInfo.kind === 'index' && <div style={{ gridColumn: '1 / -1' }}><span style={{ color: theme.colors.mutedText }}>Ledger</span> <Link to={`/studio/${tokenInfo.ledgerId}`} style={{ color: theme.colors.accent, fontFamily: 'monospace' }}>{tokenInfo.ledgerId}</Link></div>}
                                                                     {tokenInfo.kind === 'ledger' && <div style={{ gridColumn: '1 / -1' }}><span style={{ color: theme.colors.mutedText }}>Archives</span> {tokenInfo.archives.length === 0 ? 'none yet (the ledger spawns one once the log is large enough)' : tokenInfo.archives.map(a => <span key={a.id} style={{ marginRight: 10 }}><Link to={`/canister?id=${a.id}`} style={{ color: theme.colors.accent, fontFamily: 'monospace' }}>{a.id}</Link> blocks {String(a.start)}–{String(a.end)}</span>)}</div>}
                                                                     <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 4 }}>

@@ -1361,7 +1361,7 @@ export default function Me() {
 
             const displayInfoMap = new Map();
             Array.from(uniquePrincipals).forEach(principal => {
-                const displayInfo = getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames);
+                const displayInfo = getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames, verifiedNames);
                 displayInfoMap.set(principal.toString(), displayInfo);
             });
 
@@ -1369,7 +1369,7 @@ export default function Me() {
         };
 
         fetchPrincipalInfo();
-    }, [neurons, principalNames, principalNicknames]);
+    }, [neurons, principalNames, principalNicknames, verifiedNames]);
 
     // Fetch nervous system parameters for voting power calculation
     useEffect(() => {
@@ -1775,7 +1775,9 @@ export default function Me() {
                                                 }}>
                                                     {principalName}
                                                     {isVerified && (
-                                                        <FaCheckCircle size={16} color={mePrimary} title="Verified name" />
+                                                        <span title="Verified name" style={{ display: 'inline-flex', cursor: 'help' }}>
+                                                            <FaCheckCircle size={18} color="#2ecc71" title="Verified name" />
+                                                        </span>
                                                     )}
                                                 </h1>
                                             ) : (
@@ -4357,7 +4359,7 @@ function NeuronCard({
                         gap: '0.35rem'
                     }}>
                         {name}
-                        {isVerified && <FaCheckCircle size={14} color={mePrimary} title="Verified name" />}
+                        {isVerified && <FaCheckCircle size={14} color="#2ecc71" title="Verified name" />}
                     </div>
                 )}
                 {nickname && (

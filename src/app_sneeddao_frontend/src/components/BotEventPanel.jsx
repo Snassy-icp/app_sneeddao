@@ -150,7 +150,7 @@ function shortPrincipal(p) {
 }
 
 export default function BotEventPanel({ canisterId, identity, theme, accentColor, hasPermission, choreStatuses, tokenRegistryEntries }) {
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames } = useNaming();
     const walletCtx = useWalletOptional();
     const knownBots = React.useMemo(() => {
         if (!walletCtx) return [];
@@ -697,7 +697,7 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
         return (
             <PrincipalDisplay
                 principal={text}
-                displayInfo={getPrincipalDisplayInfoFromContext(text, principalNames, principalNicknames)}
+                displayInfo={getPrincipalDisplayInfoFromContext(text, principalNames, principalNicknames, verifiedNames)}
                 showCopyButton={false} isAuthenticated={!!identity} />
         );
     };
@@ -1117,7 +1117,7 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                             onClick={() => { setNewSubBotId(bot.canisterId); fetchSourceEventTypes(bot.canisterId); }}>
                                             <PrincipalDisplay
                                                 principal={bot.canisterId}
-                                                displayInfo={getPrincipalDisplayInfoFromContext(bot.canisterId, principalNames, principalNicknames)}
+                                                displayInfo={getPrincipalDisplayInfoFromContext(bot.canisterId, principalNames, principalNicknames, verifiedNames)}
                                                 showCopyButton={false}
                                                 isAuthenticated={!!identity}
                                                 noLink={true}
@@ -1153,7 +1153,7 @@ export default function BotEventPanel({ canisterId, identity, theme, accentColor
                                         <span style={{ color: theme.colors.secondaryText }}>Selected:</span>
                                         <PrincipalDisplay
                                             principal={newSubBotId}
-                                            displayInfo={getPrincipalDisplayInfoFromContext(newSubBotId, principalNames, principalNicknames)}
+                                            displayInfo={getPrincipalDisplayInfoFromContext(newSubBotId, principalNames, principalNicknames, verifiedNames)}
                                             showCopyButton={false}
                                             isAuthenticated={!!identity}
                                         />

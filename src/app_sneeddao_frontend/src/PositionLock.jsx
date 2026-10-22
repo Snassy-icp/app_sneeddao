@@ -59,7 +59,7 @@ const lockSecondary = '#818cf8';
 
 function PositionLock() {
     const { theme } = useTheme();
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames } = useNaming();
     const [positions, setPositions] = useState([]);
     const [showSpinner, setShowSpinner] = useState(true);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
@@ -102,7 +102,8 @@ function PositionLock() {
                     const displayInfo = getPrincipalDisplayInfoFromContext(
                         principal, 
                         principalNames, 
-                        principalNicknames
+                        principalNicknames, 
+                        verifiedNames
                     );
                     displayInfoMap.set(principalStr, displayInfo);
                 } catch (error) {
@@ -114,7 +115,7 @@ function PositionLock() {
         };
 
         fetchPrincipalInfo();
-    }, [positions, principalNames, principalNicknames]);
+    }, [positions, principalNames, principalNicknames, verifiedNames]);
 
     const fetchPositionDetails = async (swap_canister_id, positionIds) => {
         try {

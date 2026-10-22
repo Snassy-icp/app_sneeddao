@@ -92,7 +92,7 @@ const validateName = (input) => {
 export default function Names() {
   const { identity, isAuthenticated } = useAuth();
   const { theme } = useTheme();
-  const { principalNames, principalNicknames, neuronNames, neuronNicknames, fetchAllNames } = useNaming();
+  const { principalNames, principalNicknames, verifiedNames, neuronNames, neuronNicknames, fetchAllNames } = useNaming();
   const { selectedSnsRoot } = useSns();
 
   // Nicknames
@@ -117,7 +117,7 @@ export default function Names() {
     const q = search.trim().toLowerCase();
     const rows = Array.from((principalNicknames || new Map()).entries()).map(([principalId, nickname]) => {
       const publicName = principalNames?.get?.(principalId) || '';
-      const displayInfo = getPrincipalDisplayInfoFromContext(principalId, principalNames, principalNicknames);
+      const displayInfo = getPrincipalDisplayInfoFromContext(principalId, principalNames, principalNicknames, verifiedNames);
       return { principalId, nickname, publicName, displayInfo };
     });
     const filtered = q
@@ -133,7 +133,7 @@ export default function Names() {
       : rows;
     filtered.sort((a, b) => (a.displayInfo?.nickname || a.nickname || '').localeCompare(b.displayInfo?.nickname || b.nickname || ''));
     return filtered;
-  }, [principalNicknames, principalNames, search]);
+  }, [principalNicknames, verifiedNames, principalNames, search]);
 
   const neuronNicknameEntries = useMemo(() => {
     const q = neuronSearch.trim().toLowerCase();
@@ -544,7 +544,7 @@ export default function Names() {
                       <div style={{ flex: 1, minWidth: 220 }}>
                         <PrincipalDisplay
                           principal={Principal.fromText(row.principalId)}
-                          displayInfo={getPrincipalDisplayInfoFromContext(row.principalId, principalNames, principalNicknames)}
+                          displayInfo={getPrincipalDisplayInfoFromContext(row.principalId, principalNames, principalNicknames, verifiedNames)}
                           showCopyButton={true}
                         />
                         {row.publicName && (

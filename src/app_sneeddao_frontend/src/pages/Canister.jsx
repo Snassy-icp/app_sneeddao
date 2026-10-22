@@ -398,7 +398,7 @@ export default function CanisterPage() {
                     const principal = typeof controller === 'string' 
                         ? Principal.fromText(controller) 
                         : controller;
-                    const displayInfo = getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames);
+                    const displayInfo = getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames, verifiedNames);
                     displayInfoMap.set(principal.toString(), displayInfo);
                 } catch (e) {
                     console.error('Error getting principal display info:', e);

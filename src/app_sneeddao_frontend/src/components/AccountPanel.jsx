@@ -75,7 +75,7 @@ export default function AccountPanel({ identity, accent }) {
                 <div>
                     <div style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, marginBottom: '0.25rem' }}>
                         Principals showing {opt(account.name) ? <b style={{ color: theme.colors.primaryText }}>{opt(account.name)}</b> : 'your account'}
-                        {account.verified && <FaCheckCircle size={11} color={accent} style={{ marginLeft: 4 }} title="Verified name" />}
+                        {account.verified && <FaCheckCircle size={11} color="#2ecc71" style={{ marginLeft: 4 }} title="Verified name" />}
                     </div>
                     {account.members.map((m) => {
                         const p = m.principal.toText();

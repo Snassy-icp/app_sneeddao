@@ -441,7 +441,7 @@ function ThreadViewer({
     title = null, // Optional title override
     hideProposalLink = false // Whether to hide the proposal link (when already on proposal page)
 }) {
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames } = useNaming();
     const { identity } = useAuth();
     const { theme } = useTheme();
     
@@ -2777,7 +2777,8 @@ function ThreadViewer({
                     const displayInfo = getPrincipalDisplayInfoFromContext(
                         Principal.fromText(principal), 
                         principalNames, 
-                        principalNicknames
+                        principalNicknames, 
+                        verifiedNames
                     );
                     displayInfoMap.set(principal, displayInfo);
                 } catch (error) {
@@ -2789,7 +2790,7 @@ function ThreadViewer({
         };
 
         fetchPrincipalInfo();
-    }, [discussionPosts, postTips, principalNames, principalNicknames, threadDetails]);
+    }, [discussionPosts, postTips, principalNames, principalNicknames, verifiedNames, threadDetails]);
 
     // Check for proposal link when thread details are loaded
     useEffect(() => {

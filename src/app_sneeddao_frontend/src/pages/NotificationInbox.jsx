@@ -10,6 +10,7 @@ import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { notificationsEnabled } from '../utils/NotificationsService';
 import { fetchHistory, fetchApps, loadSeen, markSeen, HISTORY_MAX } from '../utils/notificationInbox';
+import { useAppRefresh } from '../hooks/useAppRefresh';
 
 const accent = '#f59e0b';
 const PAGE = 25;
@@ -39,6 +40,8 @@ export default function NotificationInbox() {
         try { setItems(await fetchHistory(identity, limit)); } catch (e) { setError(e.message || String(e)); } finally { setLoading(false); }
     }, [identity, limit]);
     useEffect(() => { load(); }, [load]);
+    // a tapped notification for this page, or the app coming back to the screen: show new ones
+    useAppRefresh(load, { onVisible: true });
 
     const hasMore = items !== null && items.length >= limit && limit < HISTORY_MAX;
     // infinite scroll: the sentinel under the list asks for the next page when it comes into view

@@ -195,7 +195,7 @@ export const NeuronDisplay = React.memo(({
                     isVerified && React.createElement('span', {
                         key: 'verified',
                         style: { 
-                            color: theme.colors.mutedText,
+                            color: '#2ecc71',
                             cursor: 'help',
                             fontSize: '14px'
                         },

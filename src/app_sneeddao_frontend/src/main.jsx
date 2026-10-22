@@ -21,8 +21,5 @@ if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch((e) => console.warn('service worker not registered', e));
   });
-  // a tapped notification asks an already open window to go to its link (when the worker can't navigate it)
-  navigator.serviceWorker.addEventListener('message', (e) => {
-    if (e.data?.type === 'sneed-open' && typeof e.data.url === 'string' && e.data.url.startsWith('/')) window.location.assign(e.data.url);
-  });
+  // a tapped notification's 'sneed-open' message is handled in the app (components/PushOpenHandler.jsx)
 }

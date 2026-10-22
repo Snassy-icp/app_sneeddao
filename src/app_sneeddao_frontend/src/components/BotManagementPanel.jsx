@@ -224,7 +224,7 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
     hideLogTab = false,
 }, ref) {
     const { theme } = useTheme();
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames } = useNaming();
     const accent = accentColor;
     const accentSec = accentColorSecondary || accent;
     const cycleSettings = getNeuronManagerSettings();
@@ -1512,7 +1512,7 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                     <div>
                                         <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Canister ID</div>
                                         <div style={{ color: theme.colors.primaryText, fontSize: '14px', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <PrincipalDisplay principal={canisterId} displayInfo={getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames)}
+                                            <PrincipalDisplay principal={canisterId} displayInfo={getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames, verifiedNames)}
                                                 showCopyButton={true} isAuthenticated={isAuthenticated} noLink={true} />
                                         </div>
                                     </div>
@@ -1773,7 +1773,7 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                             return (
                                                 <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: index < controllers.length - 1 ? `1px solid ${theme.colors.border}` : 'none' }}>
                                                     <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
-                                                        <PrincipalDisplay principal={cStr} displayInfo={getPrincipalDisplayInfoFromContext(cStr, principalNames, principalNicknames)} showCopyButton={true} isAuthenticated={isAuthenticated} />
+                                                        <PrincipalDisplay principal={cStr} displayInfo={getPrincipalDisplayInfoFromContext(cStr, principalNames, principalNicknames, verifiedNames)} showCopyButton={true} isAuthenticated={isAuthenticated} />
                                                     </div>
                                                     {isMe && <span style={{ backgroundColor: `${accent}30`, color: accent, padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: '500' }}>YOU</span>}
                                                     {isController && (
@@ -2028,7 +2028,7 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                                         <div key={idx} style={{ background: theme.colors.tertiaryBg || theme.colors.secondaryBg, borderRadius: '8px', padding: '12px', border: `1px solid ${theme.colors.border}` }}>
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isEditing ? '12px' : '6px', flexWrap: 'wrap', gap: '8px' }}>
                                                                 <div style={{ flex: 1, minWidth: '150px', overflow: 'hidden' }}>
-                                                                    <PrincipalDisplay principal={pStr} displayInfo={getPrincipalDisplayInfoFromContext(pStr, principalNames, principalNicknames)} showCopyButton={true} isAuthenticated={isAuthenticated} />
+                                                                    <PrincipalDisplay principal={pStr} displayInfo={getPrincipalDisplayInfoFromContext(pStr, principalNames, principalNicknames, verifiedNames)} showCopyButton={true} isAuthenticated={isAuthenticated} />
                                                                 </div>
                                                                 {hasPermission('ManagePermissions') && (
                                                                     <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
@@ -2826,7 +2826,7 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                                             )}
                                                             {entry.caller.length > 0 && (
                                                                 <div style={{ marginLeft: '56px', fontSize: '0.7rem', color: theme.colors.mutedText }}>
-                                                                    caller: <PrincipalDisplay principal={entry.caller[0].toString()} displayInfo={getPrincipalDisplayInfoFromContext(entry.caller[0].toString(), principalNames, principalNicknames)} showCopyButton={false} isAuthenticated={isAuthenticated} />
+                                                                    caller: <PrincipalDisplay principal={entry.caller[0].toString()} displayInfo={getPrincipalDisplayInfoFromContext(entry.caller[0].toString(), principalNames, principalNicknames, verifiedNames)} showCopyButton={false} isAuthenticated={isAuthenticated} />
                                                                 </div>
                                                             )}
                                                         </div>

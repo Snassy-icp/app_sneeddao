@@ -23,7 +23,7 @@ const symbolOf = (perm, theme) => {
 
 export default function ProposerPrincipals({ snsRoot, neuronId, theme }) {
     const { identity, isAuthenticated } = useAuth();
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames } = useNaming();
     const [permissions, setPermissions] = useState(null);
     const [expanded, setExpanded] = useState(false);
     const neuronIdHex = uint8ArrayToHex(neuronId);
@@ -38,7 +38,7 @@ export default function ProposerPrincipals({ snsRoot, neuronId, theme }) {
     }, [snsRoot, neuronIdHex, identity]);
 
     if (!permissions || permissions.length === 0) return null;
-    const infoOf = (p) => { try { return getPrincipalDisplayInfoFromContext(Principal.fromText(p), principalNames, principalNicknames); } catch { return null; } };
+    const infoOf = (p) => { try { return getPrincipalDisplayInfoFromContext(Principal.fromText(p), principalNames, principalNicknames, verifiedNames); } catch { return null; } };
     const named = (perm) => { const i = infoOf(extractPrincipalString(perm.principal)); return Boolean(i && (i.name || i.nickname)); };
     const withPrincipal = permissions.filter((perm) => extractPrincipalString(perm.principal));
     let visible = withPrincipal.filter(named);

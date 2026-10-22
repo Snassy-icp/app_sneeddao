@@ -327,7 +327,7 @@ const Post = () => {
     const { isAuthenticated, identity } = useAuth();
     const { theme } = useTheme();
     const { selectedSnsRoot } = useSns();
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames } = useNaming();
     const navigate = useNavigate();
     const styles = getStyles(theme);
     
@@ -732,7 +732,8 @@ const Post = () => {
                                         const principalDisplayInfo = getPrincipalDisplayInfoFromContext(
                                             vote.voter_principal, 
                                             principalNames, 
-                                            principalNicknames
+                                            principalNicknames, 
+                                            verifiedNames
                                         );
                                         
                                         const neuronLink = formatNeuronIdLink(neuronId, currentSnsRoot);

@@ -80,7 +80,7 @@ function Topic() {
     const { identity } = useAuth();
     const { theme } = useTheme();
     const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames } = useNaming();
     const navigate = useNavigate();
 
     // Get SNS from URL params if provided, otherwise use selected SNS
@@ -1478,7 +1478,8 @@ function Topic() {
                                                                     displayInfo={getPrincipalDisplayInfoFromContext(
                                                                         thread.created_by,
                                                                         principalNames,
-                                                                        principalNicknames
+                                                                        principalNicknames,
+                                                                        verifiedNames
                                                                     )}
                                                                     showCopyButton={false}
                                                                     style={{ 

@@ -118,7 +118,7 @@ const managementCanisterIdlFactory = ({ IDL }) => {
 function CreateIcpNeuron() {
     const { theme } = useTheme();
     const { identity, isAuthenticated, login } = useAuth();
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames } = useNaming();
     const navigate = useNavigate();
     const [copiedDeposit, setCopiedDeposit] = useState(false);
     const [copiedAccountId, setCopiedAccountId] = useState(false);
@@ -1050,7 +1050,7 @@ function CreateIcpNeuron() {
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                         {managers.map((manager, index) => {
                                             const canisterIdText = manager.canisterId.toText();
-                                            const displayInfo = getPrincipalDisplayInfoFromContext(canisterIdText, principalNames, principalNicknames);
+                                            const displayInfo = getPrincipalDisplayInfoFromContext(canisterIdText, principalNames, principalNicknames, verifiedNames);
                                             return (
                                                 <div 
                                                     key={canisterIdText} 

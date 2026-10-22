@@ -8,6 +8,7 @@ import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
 import MarkdownBody from '../components/MarkdownBody';
+import { useAppRefresh } from '../hooks/useAppRefresh';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { FaEnvelope, FaArrowLeft, FaExpandAlt, FaCompressAlt, FaReply, FaChevronDown, FaChevronRight, FaUser, FaUsers, FaClock, FaLock, FaBookOpen } from 'react-icons/fa';
 
@@ -473,6 +474,9 @@ const Message = () => {
             fetchFocusMessage();
         }
     }, [isAuthenticated, id]);
+
+    // a tapped notification for the message already shown: load it again (new replies)
+    useAppRefresh(() => { if (isAuthenticated) fetchFocusMessage(); });
 
     // Build principal display info map when messages change
     useEffect(() => {

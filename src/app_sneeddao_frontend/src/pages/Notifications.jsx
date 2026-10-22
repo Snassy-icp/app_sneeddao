@@ -11,6 +11,7 @@ import { notificationsEnabled, notificationsActor, LEVELS, CHANNEL_KINDS, kindOf
 import { isStandaloneApp, isIOS } from '../utils/pairing';
 import { createActor as createSmsActor, canisterId as smsCanisterId } from 'declarations/sneed_sms';
 import SneedMonitorSection from '../components/SneedMonitorSection';
+import { useAppRefresh } from '../hooks/useAppRefresh';
 
 const accent = '#f59e0b';
 const opt = (x) => (x && x.length ? x[0] : null);
@@ -52,6 +53,8 @@ export default function Notifications() {
         if (smsActor) setSmsPreview(await smsActor.get_notification_preview().catch(() => null)); // an older SMS canister has no setting
     }, [actor, identity, smsActor]);
     useEffect(() => { load().catch((e) => setMsg({ err: e.message || String(e) })); }, [load]);
+    // a tapped notification for this page: load it again (not on visibility, it would reset unsaved settings)
+    useAppRefresh(() => load().catch((e) => setMsg({ err: e.message || String(e) })));
     // a link to a section (/notifications#message-balance, from the low-balance alert) scrolls there once it is drawn
     const loaded = !!data;
     useEffect(() => {

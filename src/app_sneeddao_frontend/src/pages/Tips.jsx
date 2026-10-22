@@ -233,7 +233,7 @@ const Tips = () => {
     const { isAuthenticated, identity } = useAuth();
     const { createForumActor } = useForum();
     const { getTokenMetadata, fetchTokenMetadata } = useTokenMetadata();
-    const { principalNames, principalNicknames, fetchAllNames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames, fetchAllNames } = useNaming();
     const { refreshNotifications } = useTipNotifications();
     const { formatValue: denomFormatValue } = useDenomination();
     
@@ -360,7 +360,8 @@ const Tips = () => {
                         const displayInfo = getPrincipalDisplayInfoFromContext(
                             principal, 
                             principalNames, 
-                            principalNicknames
+                            principalNicknames, 
+                            verifiedNames
                         );
                         displayInfoMap.set(principalStr, displayInfo);
                     } catch (error) {
@@ -391,7 +392,7 @@ const Tips = () => {
         } finally {
             setLoading(false);
         }
-    }, [isAuthenticated, identity, createForumActor, principalNames, principalNicknames, getTokenMetadata, fetchTokenMetadata]);
+    }, [isAuthenticated, identity, createForumActor, principalNames, principalNicknames, verifiedNames, getTokenMetadata, fetchTokenMetadata]);
 
     // ONE-TIME timestamp processing - executes ONCE per page load
     useEffect(() => {

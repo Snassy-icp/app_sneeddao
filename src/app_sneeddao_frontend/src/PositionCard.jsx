@@ -78,7 +78,7 @@ const PositionLockCountdown = ({ expiryNanos }) => {
 const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleClaimLockedPositionFees, openAddLiquidityModal, handleClaimUnlockedDepositedPositionFees, handleWithdrawPosition, handleWithdrawSwapBalance, handleTransferPositionOwnership, handleRefreshPosition, isRefreshing = false, swapCanisterBalance0, swapCanisterBalance1, token0Fee, token1Fee, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false, onOpenDetailModal }) => {
 
     const { theme } = useTheme();
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames } = useNaming();
     const { isAuthenticated } = useAuth();
     const { formatValue: denomFormatValue } = useDenomination();
     
@@ -1035,7 +1035,8 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                                                     ? Principal.fromText(positionDetails.owner) 
                                                     : positionDetails.owner, 
                                                 principalNames, 
-                                                principalNicknames
+                                                principalNicknames, 
+                                                verifiedNames
                                             )}
                                         />
                                     </span>

@@ -158,7 +158,7 @@ function Proposals() {
     const getPrincipalDisplayInfo = (principalStr) => {
         if (!principalStr || !principalNames || !principalNicknames) return null;
         try {
-            return getPrincipalDisplayInfoFromContext(Principal.fromText(principalStr), principalNames, principalNicknames);
+            return getPrincipalDisplayInfoFromContext(Principal.fromText(principalStr), principalNames, principalNicknames, verifiedNames);
         } catch {
             return null;
         }
@@ -1964,7 +1964,8 @@ function Proposals() {
                                                                     displayInfo={getPrincipalDisplayInfoFromContext(
                                                                         treasuryDetails.targetPrincipal,
                                                                         principalNames,
-                                                                        principalNicknames
+                                                                        principalNicknames,
+                                                                        verifiedNames
                                                                     )}
                                                                     showCopyButton={true}
                                                                     short={false}

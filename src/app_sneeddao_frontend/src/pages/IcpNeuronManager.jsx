@@ -216,11 +216,11 @@ function IcpNeuronManager() {
     const { identity, isAuthenticated, login } = useAuth();
     const { formatValue: denomFormatValue } = useDenomination();
     const formatUsd = (v) => denomFormatValue(v || 0);
-    const { principalNames, principalNicknames, fetchAllNames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames, fetchAllNames } = useNaming();
     const { whitelistedTokens } = useWhitelistTokens();
     
     // Get display info for the canister
-    const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
+    const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames, verifiedNames);
     
     // Naming state
     const [showNamingSection, setShowNamingSection] = useState(false);
@@ -4062,7 +4062,7 @@ function IcpNeuronManager() {
                                                     <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
                                                         <PrincipalDisplay
                                                             principal={controllerStr}
-                                                            displayInfo={getPrincipalDisplayInfoFromContext(controllerStr, principalNames, principalNicknames)}
+                                                            displayInfo={getPrincipalDisplayInfoFromContext(controllerStr, principalNames, principalNicknames, verifiedNames)}
                                                             showCopyButton={true}
                                                             isAuthenticated={isAuthenticated}
                                                             short={false}
@@ -4714,7 +4714,7 @@ function IcpNeuronManager() {
                                                         <div style={{ flex: 1, minWidth: '150px', overflow: 'hidden' }}>
                                                             <PrincipalDisplay
                                                                 principal={principalStr}
-                                                                displayInfo={getPrincipalDisplayInfoFromContext(principalStr, principalNames, principalNicknames)}
+                                                                displayInfo={getPrincipalDisplayInfoFromContext(principalStr, principalNames, principalNicknames, verifiedNames)}
                                                                 showCopyButton={true}
                                                                 isAuthenticated={isAuthenticated}
                                                                 short={false}
@@ -6370,7 +6370,7 @@ function IcpNeuronManager() {
                                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                                                     <PrincipalDisplay
                                                                                         principal={ownerStr}
-                                                                                        displayInfo={getPrincipalDisplayInfoFromContext(ownerStr, principalNames, principalNicknames)}
+                                                                                        displayInfo={getPrincipalDisplayInfoFromContext(ownerStr, principalNames, principalNicknames, verifiedNames)}
                                                                                         showCopyButton={true}
                                                                                         isAuthenticated={isAuthenticated}
                                                                                         short={true}
@@ -7191,7 +7191,7 @@ function IcpNeuronManager() {
                                             {/* Caller */}
                                             {entry.caller.length > 0 && (
                                                 <div style={{ marginLeft: '56px', fontSize: '0.7rem', color: theme.colors.mutedText }}>
-                                                    caller: <PrincipalDisplay principal={entry.caller[0].toString()} displayInfo={getPrincipalDisplayInfoFromContext(entry.caller[0].toString(), principalNames, principalNicknames)} showCopyButton={false} isAuthenticated={isAuthenticated} />
+                                                    caller: <PrincipalDisplay principal={entry.caller[0].toString()} displayInfo={getPrincipalDisplayInfoFromContext(entry.caller[0].toString(), principalNames, principalNicknames, verifiedNames)} showCopyButton={false} isAuthenticated={isAuthenticated} />
                                                 </div>
                                             )}
                                         </div>

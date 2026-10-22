@@ -101,7 +101,7 @@ function TransactionList({
 }) {
     const { theme } = useTheme();
     const { identity, isAuthenticated } = useAuth();
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames } = useNaming();
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
     const [rawTransactions, setRawTransactions] = useState([]);
@@ -896,7 +896,7 @@ function TransactionList({
             const displayInfoMap = new Map();
             Array.from(uniquePrincipals).forEach(principal => {
                 try {
-                    const displayInfo = getPrincipalDisplayInfoFromContext(Principal.fromText(principal), principalNames, principalNicknames);
+                    const displayInfo = getPrincipalDisplayInfoFromContext(Principal.fromText(principal), principalNames, principalNicknames, verifiedNames);
                     displayInfoMap.set(principal, displayInfo);
                 } catch {}
             });
@@ -917,7 +917,7 @@ function TransactionList({
         };
 
         updatePrincipalInfo();
-    }, [displayedTransactions, identity, principalNames, principalNicknames]);
+    }, [displayedTransactions, identity, principalNames, principalNicknames, verifiedNames]);
 
     const handlePageSizeChange = (event) => {
         setPageSize(Number(event.target.value));

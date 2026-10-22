@@ -279,7 +279,7 @@ function Discussion({
     onThreadCreated 
 }) {
     const { theme } = useTheme();
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames } = useNaming();
     const { identity } = useAuth();
     
     // Get user neurons from WalletContext's global cache
@@ -1262,7 +1262,8 @@ function Discussion({
                     const displayInfo = getPrincipalDisplayInfoFromContext(
                         Principal.fromText(principal), 
                         principalNames, 
-                        principalNicknames
+                        principalNicknames, 
+                        verifiedNames
                     );
                     displayInfoMap.set(principal, displayInfo);
                 } catch (error) {
@@ -1274,7 +1275,7 @@ function Discussion({
         };
 
         fetchPrincipalInfo();
-    }, [discussionPosts, postTips, principalNames, principalNicknames]);
+    }, [discussionPosts, postTips, principalNames, principalNicknames, verifiedNames]);
 
     const voteOnPost = async (postId, voteType) => {
         if (!identity || !forumActor) {

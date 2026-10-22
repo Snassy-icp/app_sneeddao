@@ -56,7 +56,7 @@ const TipModal = ({
     targetPillSelector = null, // CSS selector for target tip pill for flying animation
     onAnimationComplete = null // Callback when flying animation completes
 }) => {
-    const { principalNames, principalNicknames } = useContext(NamingContext);
+    const { principalNames, principalNicknames, verifiedNames } = useContext(NamingContext);
     const { formatValue: denomFormatValue } = useDenomination();
     const [selectedToken, setSelectedToken] = useState(defaultToken || '');
     const [amount, setAmount] = useState('');
@@ -553,11 +553,12 @@ const TipModal = ({
             const displayInfo = getPrincipalDisplayInfoFromContext(
                 post.created_by,
                 principalNames,
-                principalNicknames
+                principalNicknames,
+                verifiedNames
             );
             setRecipientDisplayInfo(displayInfo);
         }
-    }, [post?.created_by, principalNames, principalNicknames]);
+    }, [post?.created_by, principalNames, principalNicknames, verifiedNames]);
 
     if (!isOpen) return null;
 

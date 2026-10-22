@@ -77,7 +77,7 @@ function Neurons() {
 
     // Stakers tab: get principal display info
     const getStakersPrincipalDisplayInfo = (principal) => {
-        return getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames);
+        return getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames, verifiedNames);
     };
 
     // Stakers tab: filter and sort users
@@ -193,7 +193,7 @@ function Neurons() {
     const getPrincipalDisplayInfo = (principalStr) => {
         if (!principalStr || !principalNames || !principalNicknames) return null;
         try {
-            return getPrincipalDisplayInfoFromContext(Principal.fromText(principalStr), principalNames, principalNicknames);
+            return getPrincipalDisplayInfoFromContext(Principal.fromText(principalStr), principalNames, principalNicknames, verifiedNames);
         } catch {
             return null;
         }

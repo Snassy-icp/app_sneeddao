@@ -147,7 +147,7 @@ function Proposal() {
     const getPrincipalDisplayInfoLocal = (principalStr) => {
         if (!principalStr || !principalNames || !principalNicknames) return null;
         try {
-            return getPrincipalDisplayInfoFromContext(Principal.fromText(principalStr), principalNames, principalNicknames);
+            return getPrincipalDisplayInfoFromContext(Principal.fromText(principalStr), principalNames, principalNicknames, verifiedNames);
         } catch {
             return null;
         }

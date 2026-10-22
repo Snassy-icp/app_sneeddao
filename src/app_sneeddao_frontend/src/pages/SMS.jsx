@@ -18,6 +18,7 @@ import EmojiPicker from '../components/EmojiPicker';
 import MarkdownButtons from '../components/MarkdownButtons';
 import MarkdownBody from '../components/MarkdownBody';
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
+import { useAppRefresh } from '../hooks/useAppRefresh';
 import { FaEnvelope, FaInbox, FaPaperPlane, FaFolderOpen, FaPen, FaSync, FaLock, FaReply, FaReplyAll, FaTrash, FaExternalLinkAlt, FaTimes, FaPlus, FaStar, FaChevronDown, FaChevronRight, FaUser, FaUsers } from 'react-icons/fa';
 
 const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
@@ -172,10 +173,11 @@ const SMS = () => {
     };
 
     // Fetch messages
-    const fetchMessages = async () => {
+    // quiet: refresh in place (no spinner over the list), for a refresh the user didn't ask for
+    const fetchMessages = async ({ quiet = false } = {}) => {
         if (!identity) return;
         
-        setLoading(true);
+        if (!quiet) setLoading(true);
         setError(null);
         
         try {
@@ -222,6 +224,9 @@ const SMS = () => {
             fetchConfig();
         }
     }, [isAuthenticated, selectedTab]);
+
+    // a tapped notification for this page, or the app coming back to the screen: show new messages
+    useAppRefresh(() => { if (isAuthenticated) fetchMessages({ quiet: true }); }, { onVisible: true });
 
     // Fetch SMS config (regular and premium)
     const fetchConfig = async () => {

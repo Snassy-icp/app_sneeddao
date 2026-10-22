@@ -20,7 +20,7 @@ import LockNftPanel from './components/LockNftPanel';
 
 function Lock() {
     const { theme } = useTheme();
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames } = useNaming();
     const { identity } = useAuth();
     const { id } = useParams(); // Get lock ID from URL parameter
     const [lockType, setLockType] = useState(null); // 'token' or 'position'
@@ -76,7 +76,8 @@ function Lock() {
                     const displayInfo = getPrincipalDisplayInfoFromContext(
                         principal, 
                         principalNames, 
-                        principalNicknames
+                        principalNicknames, 
+                        verifiedNames
                     );
                     displayInfoMap.set(principalStr, displayInfo);
                 } catch (error) {
@@ -88,7 +89,7 @@ function Lock() {
         };
 
         fetchPrincipalInfo();
-    }, [lockType, locks, positionDetails, principalNames, principalNicknames]);
+    }, [lockType, locks, positionDetails, principalNames, principalNicknames, verifiedNames]);
 
     const fetchLockById = async (lockId) => {
         try {
