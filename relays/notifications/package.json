@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "description": "Delivers Sneed Notifications jobs for Discord and web push (spec/sneed_notifications.md §4).",
-  "scripts": { "start": "node relay.mjs" },
+  "scripts": { "start": "node relay.mjs", "test": "node --test links.test.mjs" },
   "dependencies": {
     "@dfinity/agent": "2.4.1",
     "@dfinity/candid": "2.4.1",

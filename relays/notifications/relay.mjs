@@ -18,6 +18,7 @@ import crypto from 'node:crypto';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { Ed25519KeyIdentity } from '@dfinity/identity';
 import webpush from 'web-push';
+import { notificationPage as pageOf, pushLink, shownLink } from './links.mjs';
 
 const DIR = process.env.RELAY_DIR || `${process.env.HOME}/.config/mr-sneed/relay`;
 const CANISTER = process.argv[2];
@@ -70,23 +71,16 @@ async function discord(job, addr) {
     if (!ch.ok) throw new Error(`Discord: can't open a DM (${ch.status}); share a server with Mr Sneed and allow DMs from its members`);
     const { id } = await ch.json();
     const code = verificationCode(job);
-    const content = code ? `**Your Sneed Notifications code: ${code}**\nEnter it in Sneed Hub → Notifications: <${HUB}/notifications?code=${code}>` : `**[${job.app}] ${job.title}**${job.body ? `\n${tidyBody(job.body).slice(0, 1500)}` : ''}${job.link[0] ? `\n<${job.link[0]}>` : ''}\n-# via Sneed Notifications · full message: <${notificationPage(job)}> · manage: <${HUB}/notifications>`;
+    const content = code ? `**Your Sneed Notifications code: ${code}**\nEnter it in Sneed Hub → Notifications: <${HUB}/notifications?code=${code}>` : `**[${job.app}] ${job.title}**${job.body ? `\n${tidyBody(job.body).slice(0, 1500)}` : ''}${shownLink(job, HUB) ? `\n<${shownLink(job, HUB)}>` : ''}\n-# via Sneed Notifications · full message: <${notificationPage(job)}> · manage: <${HUB}/notifications>`;
     const r = await fetch(`https://discord.com/api/v10/channels/${id}/messages`, { method: 'POST', headers: H, body: JSON.stringify({ content: content.slice(0, 2000), allowed_mentions: { parse: [] } }) });
     if (!r.ok) throw new Error(`Discord: send failed (${r.status})`);
 }
 
-// The notification's own page in Sneed Hub (the full message, its link as a button, where it was
-// delivered). A relay job carries no notification id, so the page finds it in the user's history by
-// its time and a hash of its title (src/app_sneeddao_frontend/src/utils/notificationInbox.js, titleHash).
-function titleHash(text) {
-    let h = 0x811c9dc5;
-    for (const b of Buffer.from(String(text || ''), 'utf8')) { h ^= b; h = Math.imul(h, 0x01000193) >>> 0; }
-    return h.toString(36);
-}
 // Previews are clipped by the sending canister (Sneed SMS: 100 characters + "…"); a link cut in the
 // middle is a broken link, so drop it (the full message, with the whole link, is one tap away).
 const tidyBody = (body) => (body || '').replace(/(^|\s)https?:\/\/\S*…\s*$/u, '$1…').replace(/\s+…$/u, '…');
-const notificationPage = (job) => (NOTIFICATION_PAGES ? `${HUB}/notifications/push?t=${String(job.created_at)}&h=${titleHash(job.title)}` : `${HUB}/notifications`);
+// The notification's own page in Sneed Hub (links.mjs).
+const notificationPage = (job) => pageOf(job, HUB, NOTIFICATION_PAGES);
 
 // A channel's verification code, if this job carries one (the canister's "Your Sneed Notifications code: 123456").
 const verificationCode = (job) => (job.app === 'Sneed Notifications' && /code: (\d{6})$/.exec(job.title)?.[1]) || null;
@@ -96,7 +90,7 @@ async function push(job, sub) {
     const code = verificationCode(job);
     const payload = JSON.stringify(code
         ? { title: `Your code: ${code}`, body: 'Enter it in Sneed Hub → Notifications to turn on notifications for this device.', link: `${HUB}/notifications?code=${code}`, tag: `sneed-${job.id}` }
-        : { title: `${job.app}: ${job.title}`, body: tidyBody(job.body).slice(0, 300), link: notificationPage(job), tag: `sneed-${job.id}` });
+        : { title: `${job.app}: ${job.title}`, body: tidyBody(job.body).slice(0, 300), link: pushLink(job, HUB, NOTIFICATION_PAGES), tag: `sneed-${job.id}` });
     try {
         await webpush.sendNotification(sub, payload, { TTL: 86_400, vapidDetails: { subject: HUB, publicKey: vapid.publicKey, privateKey: vapid.privateKey } });
     } catch (e) {
