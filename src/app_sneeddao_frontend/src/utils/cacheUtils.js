@@ -30,6 +30,7 @@ const CACHE_DB_NAMES = [
     'NeuronsDB',           // Shared neurons cache from useNeuronsCache.js
     'sneed_rewards_cache', // Rewards cache from useRewardsCache.js
     'sneed_locks_cache',   // Locks cache from useLocksCache.js
+    'sneed_sms_cache',     // Sneed SMS inbox cache from utils/smsCache.js
 ];
 
 /** Internet Identity auth databases — skipped by clearAllCaches, wiped by nuclear */

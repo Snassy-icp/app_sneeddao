@@ -198,6 +198,17 @@ git archive "$SMS_PROD_COMMIT" src | tar -x -C "$PREV_SRC"
 "$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_sms/main.mo" -o "$OUT/sneed_sms_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
 rm -rf "$PREV_SRC"
 test -s "$OUT/sneed_sms_prod.wasm"
+# sneed_sms as production runs it since the ICRC-3 log (`dfx +0.28.0 build --network ic sneed_sms` of
+# this code at /home/snassy/app_sneeddao gives the production module hash b1356256…), for the test
+# that upgrades from it with keep to the build with the incremental reads (sms-incremental.test.js)
+SMS_LIVE_COMMIT=11416b2e
+echo "== sneed_sms at $SMS_LIVE_COMMIT (moc, EOP, for the incremental-reads upgrade test)"
+PREV_SRC="$(mktemp -d)"
+git archive "$SMS_LIVE_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_sms/main.mo" -o "$OUT/sneed_sms_live.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneed_sms_live.wasm"
 # sneed_mon as staging runs it (step 1, app "Sneed Hub", SNS watches only), for the test that
 # upgrades from it (enhanced orthogonal persistence, as dfx.json builds it)
 MON_STAGING_COMMIT=1bbee49a

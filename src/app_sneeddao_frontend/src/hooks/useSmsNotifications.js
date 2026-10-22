@@ -1,138 +1,33 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../AuthContext';
-import { createActor as createSmsActor } from '../../../declarations/sneed_sms';
-import { 
-    getRecentMessagesCount,
-    markMessagesSeenUpTo
-} from '../utils/BackendUtils';
+import { useCallback } from 'react';
+import { useSmsInbox } from '../contexts/SmsContext';
 
 /**
- * Custom hook for managing SMS notifications
- * 
+ * Unread Sneed SMS messages for the header, from the shared inbox (contexts/SmsContext.jsx): the
+ * same cached, incrementally polled data the Messages page shows, so no calls of its own.
+ *
  * Provides:
- * - newMessageCount: Number of new messages since last seen
- * - markAsViewed: Function to mark messages as seen
- * - refreshNotifications: Function to manually refresh
- * - loading: Loading state
+ * - newMessageCount: received messages newer than the last-seen mark
+ * - markAsViewed: marks everything received so far as seen
+ * - refreshNotifications: syncs the inbox now
+ * - loading, error, lastChecked
  */
 export function useSmsNotifications() {
-    const { isAuthenticated, identity } = useAuth();
-    
-    const [newMessageCount, setNewMessageCount] = useState(0);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [lastChecked, setLastChecked] = useState(null);
-
-    // Separate actor creation for notifications - doesn't interfere with main SMS components
-    const createNotificationSmsActor = useCallback((identity) => {
-        try {
-            const canisterId = process.env.CANISTER_ID_SNEED_SMS || 'v33jy-4qaaa-aaaad-absna-cai';
-            const actor = createSmsActor(canisterId, {
-                agentOptions: {
-                    host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943',
-                    identity: identity || undefined,
-                },
-            });
-
-            return actor;
-        } catch (err) {
-            console.error('Error creating notification SMS actor:', err);
-            return null;
-        }
-    }, []);
-
-    const checkForNewMessages = useCallback(async () => {
-        if (!isAuthenticated || !identity) {
-            setNewMessageCount(0);
-            return;
-        }
-
-        try {
-            setLoading(true);
-            setError(null);
-
-            const smsActor = createNotificationSmsActor(identity);
-            if (!smsActor) {
-                throw new Error('Failed to create SMS actor');
-            }
-            
-            // Use optimized count method for ticker (much faster)
-            const messageCount = await getRecentMessagesCount(smsActor, identity.getPrincipal());
-            
-            console.log('SMS notifications debug:', {
-                userPrincipal: identity.getPrincipal().toString(),
-                newMessagesCount: messageCount
-            });
-            
-            setNewMessageCount(Number(messageCount));
-            setLastChecked(Date.now());
-            
-            console.log(`SMS notifications: Found ${messageCount} new messages`);
-            
-        } catch (err) {
-            console.error('Error checking for new messages:', err);
-            setError(err.message);
-            setNewMessageCount(0);
-        } finally {
-            setLoading(false);
-        }
-    }, [isAuthenticated, identity, createNotificationSmsActor]);
+    const sms = useSmsInbox();
+    const markSeen = sms?.markSeen;
+    const newest = sms?.received?.items?.[0]?.created_at ?? null;
 
     const markAsViewed = useCallback(async () => {
-        if (!isAuthenticated || !identity || newMessageCount === 0) {
-            return;
-        }
+        if (markSeen && newest !== null) await markSeen(newest);
+    }, [markSeen, newest]);
 
-        try {
-            const smsActor = createNotificationSmsActor(identity);
-            if (!smsActor) {
-                throw new Error('Failed to create SMS actor');
-            }
-
-            const currentTimestamp = Date.now() * 1_000_000; // Convert to nanoseconds
-            
-            await markMessagesSeenUpTo(smsActor, currentTimestamp);
-            
-            // Reset notification state
-            setNewMessageCount(0);
-            setLastChecked(Date.now());
-            
-            console.log('SMS notifications: Marked messages as viewed up to', new Date());
-            
-        } catch (err) {
-            console.error('Error marking messages as viewed:', err);
-            setError(err.message);
-        }
-    }, [isAuthenticated, identity, createNotificationSmsActor, newMessageCount]);
-
-    const refreshNotifications = useCallback(() => {
-        checkForNewMessages();
-    }, [checkForNewMessages]);
-
-    // Check for new messages when component mounts or identity changes
-    useEffect(() => {
-        checkForNewMessages();
-    }, [checkForNewMessages]);
-
-    // Periodically check for new messages (every 2 minutes)
-    useEffect(() => {
-        if (!isAuthenticated || !identity) {
-            return;
-        }
-
-        const interval = setInterval(() => {
-            checkForNewMessages();
-        }, 2 * 60 * 1000); // 2 minutes
-
-        return () => clearInterval(interval);
-    }, [isAuthenticated, identity, checkForNewMessages]);
+    const refreshNotifications = useCallback(() => { sms?.sync?.(); }, [sms]);
 
     return {
-        newMessageCount,
+        newMessageCount: sms?.unreadCount ?? 0,
         markAsViewed,
         refreshNotifications,
-        loading,
-        error,
-        lastChecked
+        loading: sms?.syncing ?? false,
+        error: sms?.error ?? null,
+        lastChecked: sms?.lastSynced ?? null,
     };
 }

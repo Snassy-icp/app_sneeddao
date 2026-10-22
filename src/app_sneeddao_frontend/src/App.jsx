@@ -149,6 +149,7 @@ import SnsJailbreakList from './pages/SnsJailbreakList';
 import ToolsAccount from './pages/ToolsAccount';
 import Pockets from './pages/Pockets';
 import { PocketsProvider } from './contexts/PocketsContext';
+import { SmsProvider } from './contexts/SmsContext';
 import ToolsRecoverTopUp from './pages/ToolsRecoverTopUp';
 import ToolsIcrc3 from './pages/ToolsIcrc3';
 import TokenSafety from './pages/TokenSafety';
@@ -212,6 +213,7 @@ function App() {
                 <WalletLayoutProvider>
                 <NamingProvider>
                 <PocketsProvider>
+                <SmsProvider>
                   <FrontendUpdateProvider>
                     <GlobalNamingSetup />
                     <CacheRefreshDialogWrapper />
@@ -398,6 +400,7 @@ function App() {
                   </Routes>
                   </Layout>
                   </FrontendUpdateProvider>
+                </SmsProvider>
                 </PocketsProvider>
                 </NamingProvider>
                 </WalletLayoutProvider>

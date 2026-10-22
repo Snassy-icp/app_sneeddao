@@ -34,7 +34,8 @@ Direct messages (\"SMS\") from one principal to one or more others: a subject, a
 ## Asynchronous lifecycle and polling
 - `send_message` is a single update that returns the new id; nothing to poll afterwards.
 - For unread counts poll `get_recent_messages_count(me)` (a cheap query); after showing the inbox call `mark_messages_seen_up_to(newest created_at seen)`.
-- Lists are unpaged and oldest first; don't refetch them in tight loops.
+- Inboxes: `get_received_messages_page` / `get_sent_messages_page` with `record { before : opt nat; after : opt nat; limit : nat }`. No `after`: newest first (descending), older pages with `before` = lowest id held. With `after` = highest id held: what is new, ascending. At most 100 (and ~1 MB) per reply, `has_more` for the rest; `limit = 0` gives only the markers. Each reply carries the caller's whole-list `total` and `last_updated`: a `total` below old total + new messages means a removal, a newer `last_updated` a changed message; then reload the newest page.
+- `get_received_messages`, `get_sent_messages`, `get_all_messages` return everything, unpaged and oldest first (kept for compatibility); don't refetch them in tight loops.
 
 ## Errors, retries and Busy
 - `send_message` is NOT idempotent: two successful calls send two messages. Its only await (the premium lookup) comes before any state change, so a rejected call stored nothing. After a timeout, look in `get_sent_messages()` before sending again.
@@ -53,7 +54,7 @@ Direct messages (\"SMS\") from one principal to one or more others: a subject, a
 - Messages are never logged: no subject, text, sender or recipient in any block, nothing users do with their own messages or settings. Old blocks move to archive canisters co-controlled by the Sneed SNS root.
 
 ## Start with these methods
-`get_config`, `get_premium_config`, `send_message`, `get_received_messages`, `get_sent_messages`, `get_message`, `get_recent_messages_count`, `mark_messages_seen_up_to`, `remove_self_from_message`.
+`get_config`, `get_premium_config`, `send_message`, `get_received_messages_page`, `get_sent_messages_page`, `get_message`, `get_recent_messages_count`, `mark_messages_seen_up_to`, `remove_self_from_message`.
 
 ## Full reference
 - https://app.sneeddao.com/api-docs/sneed_sms.md

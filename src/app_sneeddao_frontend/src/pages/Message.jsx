@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
@@ -9,6 +9,7 @@ import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/P
 import { useNaming } from '../NamingContext';
 import MarkdownBody from '../components/MarkdownBody';
 import { useAppRefresh } from '../hooks/useAppRefresh';
+import { useSmsInbox } from '../contexts/SmsContext';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { FaEnvelope, FaArrowLeft, FaExpandAlt, FaCompressAlt, FaReply, FaChevronDown, FaChevronRight, FaUser, FaUsers, FaClock, FaLock, FaBookOpen } from 'react-icons/fa';
 
@@ -89,6 +90,27 @@ const Message = () => {
         });
     };
 
+    // The shared inbox cache: the focused message shows at once when it is among the cached ones
+    const sms = useSmsInbox();
+    const findCached = (messageId) => {
+        const key = String(messageId);
+        for (const list of [sms?.received?.items, sms?.sent?.items]) {
+            const hit = (list || []).find((m) => m.id.toString() === key);
+            if (hit) return hit;
+        }
+        return null;
+    };
+
+    // get_all_messages once per load of the thread (replies and parents are looked up in it),
+    // not once per expanded message
+    const allMessagesRef = useRef(null);
+    const getAllMessages = (actor) => {
+        if (!allMessagesRef.current) {
+            allMessagesRef.current = actor.get_all_messages().catch((e) => { allMessagesRef.current = null; throw e; });
+        }
+        return allMessagesRef.current;
+    };
+
     // Format timestamp
     const formatTimestamp = (timestamp) => {
         const date = new Date(Number(timestamp) / 1000000);
@@ -103,7 +125,21 @@ const Message = () => {
             return;
         }
         
-        setLoading(true);
+        // a refresh reads the thread again
+        allMessagesRef.current = null;
+        const cached = findCached(id);
+        if (cached) {
+            const cachedId = Number(cached.id);
+            if (!messageTree.has(cachedId)) {
+                setMessageTree(new Map([[cachedId, cached]]));
+                setFocusMessageId(cachedId);
+                setExpandedMessages(new Set([cachedId]));
+                setCollapsedHeaders(new Set([cachedId]));
+            }
+            setLoading(false);
+        } else {
+            setLoading(true);
+        }
         setError(null);
         
         try {
@@ -290,7 +326,7 @@ const Message = () => {
             console.log('Loading all parents starting from message:', startMessageId);
             
             // Get all messages once to avoid multiple API calls
-            const allMessages = await actor.get_all_messages();
+            const allMessages = await getAllMessages(actor);
             console.log('All messages loaded for parent chain:', allMessages.length);
             
             // Create lookup maps for efficiency
@@ -414,7 +450,7 @@ const Message = () => {
             if (!actor) return;
 
             console.log('Loading replies for message:', messageId);
-            const allMessages = await actor.get_all_messages();
+            const allMessages = await getAllMessages(actor);
             console.log('All messages result:', allMessages);
             
             // Find messages that reply to this message

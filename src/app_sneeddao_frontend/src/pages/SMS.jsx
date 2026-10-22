@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
@@ -7,18 +7,13 @@ import { createActor as createSmsActor } from '../../../declarations/sneed_sms';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
-import { 
-    getRecentMessagesCount,
-    markMessagesSeenUpTo,
-    getLastSeenMessagesTimestamp
-} from '../utils/BackendUtils';
+import { useSmsInbox } from '../contexts/SmsContext';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import PrincipalInput from '../components/PrincipalInput';
 import EmojiPicker from '../components/EmojiPicker';
 import MarkdownButtons from '../components/MarkdownButtons';
 import MarkdownBody from '../components/MarkdownBody';
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
-import { useAppRefresh } from '../hooks/useAppRefresh';
 import { FaEnvelope, FaInbox, FaPaperPlane, FaFolderOpen, FaPen, FaSync, FaLock, FaReply, FaReplyAll, FaTrash, FaExternalLinkAlt, FaTimes, FaPlus, FaStar, FaChevronDown, FaChevronRight, FaUser, FaUsers } from 'react-icons/fa';
 
 const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
@@ -81,6 +76,21 @@ const customStyles = `
     animation: fadeInUp 0.5s ease-out forwards, newMessageGlow 2s ease-in-out 3;
 }
 
+@keyframes smsSlideIn {
+    from { opacity: 0; transform: translateY(-14px) scale(0.98); max-height: 0; }
+    60% { opacity: 1; }
+    to { opacity: 1; transform: translateY(0) scale(1); max-height: 600px; }
+}
+
+.sms-slide-in {
+    animation: smsSlideIn 0.45s ease-out forwards, newMessageGlow 2s ease-in-out 0.45s 2;
+    overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sms-slide-in, .sms-card-animate, .sms-new-glow { animation: none !important; opacity: 1 !important; }
+}
+
 .sms-tab {
     transition: all 0.2s ease;
 }
@@ -103,12 +113,12 @@ const SMS = () => {
     const { principalNames, principalNicknames } = useNaming();
     
 
-    const [messages, setMessages] = useState([]);
-    const [loading, setLoading] = useState(true);
+    // the shared, cached inbox (contexts/SmsContext.jsx): shown at once, then only new messages fetched
+    const sms = useSmsInbox({ active: true });
     const [error, setError] = useState(null);
     const [selectedTab, setSelectedTab] = useState('received'); // 'received', 'sent', 'all'
-    const [receivedCount, setReceivedCount] = useState(0);
-    const [sentCount, setSentCount] = useState(0);
+    const [loadingOlder, setLoadingOlder] = useState(false);
+    const [mountedAt] = useState(() => Date.now());
     const [showComposeModal, setShowComposeModal] = useState(false);
     const [composeForm, setComposeForm] = useState({
         recipients: [''], // Array of principal strings
@@ -130,9 +140,9 @@ const SMS = () => {
     // Premium status
     const { isPremium } = usePremiumStatus(identity);
     
-    // Message highlighting state (using single-execution pattern like Posts)
-    const [capturedOldMessagesTimestamp, setCapturedOldMessagesTimestamp] = useState(0);
-    const [messagesTimestampProcessed, setMessagesTimestampProcessed] = useState(false);
+    // Message highlighting: the last-seen mark as it was when the page opened (messages newer than it
+    // stay marked New while the page is open, also those that come in while it is open)
+    const [capturedOldMessagesTimestamp, setCapturedOldMessagesTimestamp] = useState(null);
     
     // Effective limits based on premium status
     const effectiveSubjectLimit = (isPremium && premiumConfig?.premium_max_subject_length) 
@@ -159,7 +169,9 @@ const SMS = () => {
 
     // Helper function to check if a message is new (for highlighting)
     const isMessageNew = (messageTimestamp) => {
-        return Number(messageTimestamp) > capturedOldMessagesTimestamp;
+        const mark = capturedOldMessagesTimestamp ?? sms?.lastSeen;
+        if (mark === null || mark === undefined) return false;
+        return BigInt(messageTimestamp) > BigInt(mark);
     };
 
     // Create SMS actor
@@ -172,61 +184,49 @@ const SMS = () => {
         });
     };
 
-    // Fetch messages
-    // quiet: refresh in place (no spinner over the list), for a refresh the user didn't ask for
-    const fetchMessages = async ({ quiet = false } = {}) => {
-        if (!identity) return;
-        
-        if (!quiet) setLoading(true);
-        setError(null);
-        
-        try {
-            const actor = getSmsActor();
-            if (!actor) return;
+    // The lists of the current tab, newest first: received, sent, or both (once each)
+    const receivedList = sms?.received;
+    const sentList = sms?.sent;
+    const messages = useMemo(() => {
+        const r = receivedList?.items || [];
+        const t = sentList?.items || [];
+        if (selectedTab === 'received') return r;
+        if (selectedTab === 'sent') return t;
+        const seen = new Set();
+        return [...r, ...t]
+            .filter((m) => { const k = m.id.toString(); if (seen.has(k)) return false; seen.add(k); return true; })
+            .sort((a, b) => (a.created_at === b.created_at ? (a.id < b.id ? 1 : -1) : (a.created_at < b.created_at ? 1 : -1)));
+    }, [selectedTab, receivedList, sentList]);
+    const tabLoaded = selectedTab === 'received' ? receivedList?.loaded
+        : selectedTab === 'sent' ? sentList?.loaded
+        : (receivedList?.loaded && sentList?.loaded);
+    const loading = !tabLoaded;
+    const hasOlder = sms?.mode === 'paged' && (selectedTab === 'received' ? receivedList?.hasOlder
+        : selectedTab === 'sent' ? sentList?.hasOlder
+        : (receivedList?.hasOlder || sentList?.hasOlder));
+    const receivedCount = receivedList?.total ?? 0;
+    const sentCount = sentList?.total ?? 0;
+    const refreshing = !!sms?.syncing;
 
-            // Fetch both counts for the header stats (in parallel with current tab data)
-            const [receivedData, sentData] = await Promise.all([
-                actor.get_received_messages(),
-                actor.get_sent_messages()
-            ]);
-            
-            setReceivedCount(receivedData.length);
-            setSentCount(sentData.length);
+    // Refresh (the button): reread the newest messages of both lists
+    const fetchMessages = async () => { setError(null); await sms?.sync({ manual: true }); };
 
-            // Get the data for the current tab view
-            let messageData = [];
-            switch (selectedTab) {
-                case 'sent':
-                    messageData = sentData;
-                    break;
-                case 'received':
-                    messageData = receivedData;
-                    break;
-                default:
-                    messageData = await actor.get_all_messages();
-                    break;
-            }
-            
-            // Sort messages by created_at (newest first)
-            messageData.sort((a, b) => Number(b.created_at) - Number(a.created_at));
-            setMessages(messageData);
-        } catch (err) {
-            console.error('Error fetching messages:', err);
-            setError('Failed to load messages');
-        } finally {
-            setLoading(false);
-        }
+    const loadOlder = async () => {
+        setLoadingOlder(true);
+        try { await sms?.loadOlder(selectedTab); } catch (e) { setError('Failed to load older messages'); } finally { setLoadingOlder(false); }
     };
 
     useEffect(() => {
-        if (isAuthenticated) {
-            fetchMessages();
-            fetchConfig();
-        }
-    }, [isAuthenticated, selectedTab]);
+        if (isAuthenticated) fetchConfig();
+    }, [isAuthenticated]);
 
-    // a tapped notification for this page, or the app coming back to the screen: show new messages
-    useAppRefresh(() => { if (isAuthenticated) fetchMessages({ quiet: true }); }, { onVisible: true });
+    // opening the page: check for new messages now (and the sent list)
+    useEffect(() => {
+        if (isAuthenticated) sms?.sync({ includeSent: true });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isAuthenticated]);
+
+    const shownError = error || (sms?.error && !tabLoaded ? 'Failed to load messages' : null);
 
     // Fetch SMS config (regular and premium)
     const fetchConfig = async () => {
@@ -261,54 +261,20 @@ const SMS = () => {
         }
     };
 
-    // ONE-TIME messages timestamp processing - executes ONCE per page load
+    // Last-seen mark: capture it once (as the canister has it) when the page opens, then mark
+    // everything shown as seen, also messages that come in while the page is open and visible
     useEffect(() => {
-        const processMessagesTimestamp = async () => {
-            if (!isAuthenticated || !identity || messagesTimestampProcessed) {
-                return;
-            }
+        if (!sms?.lastSeenFresh || capturedOldMessagesTimestamp !== null) return;
+        setCapturedOldMessagesTimestamp(sms.lastSeen ?? 0n);
+        if (sms.unreadCount > 0) setSelectedTab('received');
+    }, [sms?.lastSeenFresh, sms?.lastSeen, sms?.unreadCount, capturedOldMessagesTimestamp]);
 
-            try {
-                const actor = getSmsActor();
-                if (!actor) return;
-
-                const userPrincipal = identity.getPrincipal();
-
-                // Step 1: Get old timestamp ONCE
-                const oldTimestampResult = await getLastSeenMessagesTimestamp(actor, userPrincipal);
-                const currentOldTimestamp = oldTimestampResult || 0;
-                setCapturedOldMessagesTimestamp(currentOldTimestamp);
-                
-                console.log(`🔥 SMS: CAPTURED OLD TIMESTAMP: ${currentOldTimestamp}`);
-
-                // Step 2: Check if we have new messages
-                const newMessagesCount = await getRecentMessagesCount(actor, userPrincipal);
-                console.log(`🔥 SMS: NEW MESSAGES COUNT: ${newMessagesCount}`);
-
-                // Step 3: Update backend timestamp ONCE if we have new messages
-                if (Number(newMessagesCount) > 0) {
-                    const currentTimestamp = Date.now() * 1_000_000;
-                    await markMessagesSeenUpTo(actor, currentTimestamp);
-                    console.log(`🔥 SMS: UPDATED BACKEND TIMESTAMP ONCE: ${currentTimestamp}`);
-                    
-                    // Step 4: Default to received tab if new messages > 0
-                    setSelectedTab('received');
-                    console.log(`🔥 SMS: DEFAULTED TO RECEIVED TAB (${newMessagesCount} new messages)`);
-                } else {
-                    console.log('🔥 SMS: NO NEW MESSAGES - NO BACKEND UPDATE');
-                }
-
-                // Mark as processed to prevent re-execution
-                setMessagesTimestampProcessed(true);
-
-            } catch (err) {
-                console.error('Error processing messages timestamp:', err);
-                setMessagesTimestampProcessed(true); // Still mark as processed to avoid loops
-            }
-        };
-
-        processMessagesTimestamp();
-    }, [isAuthenticated, identity, messagesTimestampProcessed]);
+    const newestReceived = receivedList?.items?.[0]?.created_at ?? null;
+    useEffect(() => {
+        if (capturedOldMessagesTimestamp === null || newestReceived === null) return;
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+        sms?.markSeen(newestReceived);
+    }, [capturedOldMessagesTimestamp, newestReceived]);
 
     // Handle reply parameter from URL
     useEffect(() => {
@@ -428,7 +394,7 @@ const SMS = () => {
                 setShowComposeModal(false);
                 setComposeForm({ recipients: [''], subject: '', body: '', replyTo: null });
                 setRecipientValidation('');
-                await fetchMessages();
+                await sms?.sync({ includeSent: true });
             } else {
                 // Extract the specific error message from the backend response
                 let errorMsg = 'Failed to send message';
@@ -465,9 +431,10 @@ const SMS = () => {
             const result = await actor.remove_self_from_message(BigInt(messageId));
             
             if ('ok' in result) {
-                await fetchMessages();
+                sms?.removeLocal(messageId);
                 setShowMessageModal(false);
                 setSelectedMessage(null);
+                sms?.sync({ includeSent: true });
             } else {
                 const errorMsg = result.err.InvalidInput || result.err.Unauthorized || result.err.NotFound || result.err.AlreadyExists || result.err.RateLimited || 'Failed to remove message';
                 setError(errorMsg);
@@ -754,7 +721,7 @@ const SMS = () => {
                 {/* Main Content */}
                 <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1.5rem' }}>
                     {/* Error Display */}
-                    {error && (
+                    {shownError && (
                         <div style={{ 
                             background: `linear-gradient(135deg, ${theme.colors.error}15, ${theme.colors.error}08)`,
                             border: `1px solid ${theme.colors.error}30`,
@@ -767,7 +734,7 @@ const SMS = () => {
                             gap: '0.75rem'
                         }}>
                             <FaTimes size={16} />
-                            {error}
+                            {shownError}
                         </div>
                     )}
 
@@ -849,25 +816,26 @@ const SMS = () => {
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
                         <button 
                             onClick={fetchMessages}
-                            disabled={loading}
+                            disabled={refreshing}
+                            title="Check for new messages and reload the newest ones"
                             style={{
                                 background: theme.colors.tertiaryBg,
                                 color: theme.colors.primaryText,
                                 border: `1px solid ${theme.colors.border}`,
                                 borderRadius: '10px',
                                 padding: '0.6rem 1rem',
-                                cursor: loading ? 'not-allowed' : 'pointer',
+                                cursor: refreshing ? 'not-allowed' : 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '0.5rem',
                                 fontSize: '0.85rem',
                                 fontWeight: '500',
                                 fontFamily: SYSTEM_FONT,
-                                opacity: loading ? 0.6 : 1,
+                                opacity: refreshing ? 0.6 : 1,
                                 transition: 'all 0.2s ease'
                             }}
                         >
-                            <FaSync size={12} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+                            <FaSync size={12} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
                             Refresh
                         </button>
                     </div>
@@ -958,11 +926,14 @@ const SMS = () => {
                                 
                                 // Check if this received message is new (only highlight received messages)
                                 const isNew = isReceivedMessage && isMessageNew(message.created_at);
+                                // came in by polling while the page was open: slides in at the top
+                                const arrivedAt = sms?.arrivals?.get(message.id.toString());
+                                const slidIn = arrivedAt !== undefined && arrivedAt >= mountedAt;
                                 
                                 return (
                                     <div
                                         key={Number(message.id)}
-                                        className={`sms-card sms-card-animate ${isNew ? 'sms-new-glow' : ''}`}
+                                        className={`sms-card ${slidIn ? 'sms-slide-in' : `sms-card-animate ${isNew ? 'sms-new-glow' : ''}`}`}
                                         onClick={() => {
                                             setSelectedMessage(message);
                                             setShowMessageModal(true);
@@ -974,7 +945,7 @@ const SMS = () => {
                                             border: isNew ? `2px solid ${smsPrimary}` : `1px solid ${theme.colors.border}`,
                                             cursor: 'pointer',
                                             opacity: 0,
-                                            animationDelay: `${index * 0.05}s`
+                                            animationDelay: slidIn ? '0s' : `${Math.min(index, 10) * 0.05}s`
                                         }}
                                     >
                                         {/* Header */}
@@ -1147,6 +1118,34 @@ const SMS = () => {
                                     </div>
                                 );
                             })}
+                            {hasOlder && (
+                                <button
+                                    onClick={loadOlder}
+                                    disabled={loadingOlder}
+                                    style={{
+                                        alignSelf: 'center',
+                                        background: theme.colors.tertiaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '10px',
+                                        padding: '0.65rem 1.25rem',
+                                        cursor: loadingOlder ? 'not-allowed' : 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '500',
+                                        fontFamily: SYSTEM_FONT,
+                                        opacity: loadingOlder ? 0.6 : 1,
+                                        marginTop: '0.25rem'
+                                    }}
+                                >
+                                    {loadingOlder
+                                        ? <FaSync size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                                        : <FaChevronDown size={12} />}
+                                    {loadingOlder ? 'Loading…' : 'Load older messages'}
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>

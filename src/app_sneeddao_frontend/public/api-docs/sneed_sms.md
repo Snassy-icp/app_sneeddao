@@ -137,12 +137,11 @@ async function inbox(identity) {
   const sms = smsActor(identity);
   const me = identity.getPrincipal();
   const [received, lastSeen, unread] = await Promise.all([
-    sms.get_received_messages(),                 // oldest first
+    sms.get_received_messages_page({ before: [], after: [], limit: 50n }), // newest first
     sms.get_last_seen_messages_timestamp(me),    // [] or [ns]
     sms.get_recent_messages_count(me),
   ]);
-  received.sort((a, b) => Number(b.created_at - a.created_at));   // newest first
-  return { received, lastSeen: lastSeen[0] ?? 0n, unread };
+  return { received: received.messages, more: received.has_more, lastSeen: lastSeen[0] ?? 0n, unread };
 }
 
 // When the user has looked at the inbox:
@@ -178,7 +177,29 @@ On success the message is stored, indexed for the sender and each recipient, the
 
 ### 3.2 Reading
 
-`get_sent_messages`, `get_received_messages` and `get_all_messages` return every matching message in one reply, oldest first (`get_all_messages`: sent first, then received ones not sent by the caller). There is no paging. `get_message(id)` returns `null` both for a message that does not exist and for one the caller cannot read.
+`get_sent_messages`, `get_received_messages` and `get_all_messages` return every matching message in one reply, oldest first (`get_all_messages`: sent first, then received ones not sent by the caller). They are kept for compatibility; for an inbox prefer the paged reads below. `get_message(id)` returns `null` both for a message that does not exist and for one the caller cannot read.
+
+**Paged reads.** `get_received_messages_page(args)` and `get_sent_messages_page(args)` take `record { before : opt nat; after : opt nat; limit : nat }` and return a `MessagePage` (§6) of the caller's own list:
+
+| `after` | `before` | Messages | Order |
+|---|---|---|---|
+| null | null | the newest | **descending** (newest first) |
+| null | `b` | ids below `b` (older pages: pass the lowest id you hold) | **descending** |
+| `a` | null | ids above `a` (what is new since `a`: pass the highest id you hold) | **ascending** |
+| `a` | `b` | ids between them | **ascending** |
+
+- At most `min(limit, 100)` messages and about 1 MB of subject and text per reply (always at least one). `has_more` says more messages lie further in the page's direction; continue from the last id of the page.
+- `limit = 0` returns no messages, only the markers: a cheap "did anything change?" check.
+- `total` (how many distinct messages the caller's list holds now) and `last_updated` (the greatest `updated_at` in it, `0` when empty) describe the whole list, whatever the page. A client that caches the newest messages keeps both: after reading what is new, `total` lower than the old `total` plus the new messages means something was removed, and `last_updated` above the newest `updated_at` it has seen means a message changed (someone left it; the sender shows as `2vxsx-fae` once they leave). Then reload the newest page.
+- A message whose recipient list names the caller twice appears once.
+- Canisters older than these methods reject the call with "method not found": fall back to the full lists.
+
+```js
+// Newest 50, then older on demand, then poll for new ones
+const first = await sms.get_received_messages_page({ before: [], after: [], limit: 50n });
+const older = await sms.get_received_messages_page({ before: [first.messages.at(-1).id], after: [], limit: 50n });
+const fresh = await sms.get_received_messages_page({ before: [], after: [first.messages[0].id], limit: 100n });
+```
 
 Each `MessageResponse` carries `can_remove_self`, true when the caller is a current recipient or the sender who has not left.
 
@@ -223,6 +244,8 @@ The text is meant for people; branch on the variant tag.
 | `get_sent_messages()` | query | `vec MessageResponse` | Messages the caller sent and has not left. |
 | `get_received_messages()` | query | `vec MessageResponse` | Messages the caller receives and has not left. |
 | `get_all_messages()` | query | `vec MessageResponse` | Both, without duplicates. |
+| `get_received_messages_page(PageArgs)` | query | `MessagePage` | Received, paged: newest first, or ascending after an id (3.2). |
+| `get_sent_messages_page(PageArgs)` | query | `MessagePage` | Sent, paged the same way (3.2). |
 | `remove_self_from_message(id : nat)` | update | `Result<(), SMSError>` | 1.4, 3.4. |
 
 ### 5.2 Unread counts
@@ -287,6 +310,19 @@ type MessageResponse = record {
   created_at : int;                // ns since the Unix epoch
   updated_at : int;                // changes when someone leaves
   can_remove_self : bool;          // the caller is still on the message
+};
+
+type PageArgs = record {
+  before : opt nat;                // only ids below this
+  after : opt nat;                 // only ids above this; set: ascending, null: descending
+  limit : nat;                     // at most 100 per reply; 0 = markers only
+};
+
+type MessagePage = record {
+  messages : vec MessageResponse;  // ascending with `after`, otherwise descending
+  total : nat;                     // distinct messages in the caller's list now
+  last_updated : int;              // greatest updated_at in the caller's list (0 if empty)
+  has_more : bool;                 // more messages further in the page's direction
 };
 
 type AdminInfo = record { principal : principal; added_by : nat32; added_at : int };
@@ -357,7 +393,7 @@ Not logged: messages sent (`send_message`, `send_system_notification`), messages
 - Read `get_config()` and `get_premium_config()` at run time to show limits; do not hard-code them.
 - Handle `RateLimited` by showing the wait; do not retry in a loop.
 - List each recipient once.
-- Sort replies yourself; lists come oldest first and unpaged.
+- Read inboxes with the paged reads (newest page first, `after` for new ones, `before` for older ones); the full lists come oldest first and unpaged.
 - Use `reply_to` with ids the sender can read, or the call fails.
 - Call `mark_messages_seen_up_to` with the newest `created_at` the user has seen, not with the local clock.
 - For notifications from your own canister to users, use [Sneed Notifications](/api/sneed_notifications) rather than asking to become an authorised sender: users then choose channels and caps.

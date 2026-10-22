@@ -1026,6 +1026,91 @@ persistent actor SneedSMS {
         Buffer.toArray(results)
     };
 
+    // Paged reads (for clients that keep the newest messages and load older ones on demand), for
+    // the caller's received or sent list. With `after`: ids above it (and below `before`, if given),
+    // ASCENDING: the incremental "what is new since" read. Without `after`: ids below `before` (all
+    // for null), DESCENDING: the newest page first, then older pages with `before` = the lowest id
+    // seen. At most MAX_PAGE messages per reply (`limit` 0 gives only the markers) and about
+    // PAGE_BYTE_BUDGET bytes of subject and text (always at least one message). `total` and
+    // `last_updated` describe the caller's whole list, whatever the page: a client that tracked them
+    // sees a removal as a `total` lower than the old one plus what is new, and a change to an older
+    // message (someone left it) as a `last_updated` above the newest it has seen.
+    public type PageArgs = {
+        before : ?Nat;
+        after : ?Nat;
+        limit : Nat;
+    };
+    public type MessagePage = {
+        messages : [MessageResponse]; // ascending with `after`, otherwise descending
+        total : Nat;                  // distinct messages in the caller's list now
+        last_updated : Int;           // greatest updated_at in the caller's list (0 when empty)
+        has_more : Bool;              // more messages further in the direction of the page
+    };
+
+    transient let MAX_PAGE : Nat = 100;
+    transient let PAGE_BYTE_BUDGET : Nat = 1_000_000;
+
+    // Whether convert_message_to_response gives a message (the full lists skip the others)
+    private func listable(message : Message) : Bool {
+        is_sender_removed(message.id) or Dedup.getPrincipalForIndex(state.principal_dedup_state, message.sender) != null
+    };
+
+    private func messages_page(caller : Principal, index : Map.Map<Nat32, Vector.Vector<Nat>>, args : PageArgs) : MessagePage {
+        let empty : MessagePage = { messages = []; total = 0; last_updated = 0; has_more = false };
+        // never create an index in a query; someone the canister has never seen has no messages
+        let caller_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, caller)) { case (?i) i; case null return empty };
+        let ids = switch (Map.get(index, Map.n32hash, caller_index)) { case (?v) v; case null return empty };
+        let listed = Buffer.Buffer<Nat>(Vector.size(ids));
+        var last_updated : Int = 0;
+        for (id in Vector.vals(ids)) {
+            switch (Map.get(state.messages, Map.nhash, id)) {
+                case (?m) if (listable(m)) {
+                    listed.add(id);
+                    if (m.updated_at > last_updated) last_updated := m.updated_at;
+                };
+                case null {};
+            };
+        };
+        // ascending and distinct (imports may append out of order; a recipient listed twice is indexed twice)
+        let sorted = Array.sort<Nat>(Buffer.toArray(listed), Nat.compare);
+        let distinct = Buffer.Buffer<Nat>(sorted.size());
+        for (id in sorted.vals()) {
+            if (distinct.size() == 0 or distinct.get(distinct.size() - 1) != id) distinct.add(id);
+        };
+        let below = func(id : Nat) : Bool = switch (args.before) { case (?b) id < b; case null true };
+        let candidates : [Nat] = switch (args.after) {
+            case (?a) Array.filter<Nat>(Buffer.toArray(distinct), func(id) = id > a and below(id));
+            case null Array.reverse(Array.filter<Nat>(Buffer.toArray(distinct), below));
+        };
+        let cap = Nat.min(args.limit, MAX_PAGE);
+        let page = Buffer.Buffer<MessageResponse>(cap);
+        var bytes = 0;
+        var has_more = false;
+        label fill for (id in candidates.vals()) {
+            if (page.size() >= cap) { has_more := true; break fill };
+            switch (Map.get(state.messages, Map.nhash, id)) {
+                case (?m) {
+                    let size = Text.encodeUtf8(m.subject).size() + Text.encodeUtf8(m.body).size() + 64 * (m.recipients.size() + 2);
+                    if (page.size() > 0 and bytes + size > PAGE_BYTE_BUDGET) { has_more := true; break fill };
+                    switch (convert_message_to_response(caller, m)) {
+                        case (?r) { page.add(r); bytes += size };
+                        case null {};
+                    };
+                };
+                case null {};
+            };
+        };
+        { messages = Buffer.toArray(page); total = distinct.size(); last_updated; has_more }
+    };
+
+    public query ({ caller }) func get_received_messages_page(args : PageArgs) : async MessagePage {
+        messages_page(caller, state.recipient_messages, args)
+    };
+
+    public query ({ caller }) func get_sent_messages_page(args : PageArgs) : async MessagePage {
+        messages_page(caller, state.sender_messages, args)
+    };
+
     public query ({ caller }) func get_all_messages() : async [MessageResponse] {
         let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
         let results = Buffer.Buffer<MessageResponse>(0);
@@ -1384,8 +1469,10 @@ persistent actor SneedSMS {
         #get_notifications_canister : Any;
         #get_premium_config : Any;
         #get_received_messages : Any;
+        #get_received_messages_page : Any;
         #get_recent_messages_count : Any;
         #get_sent_messages : Any;
+        #get_sent_messages_page : Any;
         #get_stats : Any;
         #get_system_sender_principal : Any;
         #import_admins : Any;
@@ -1415,8 +1502,10 @@ persistent actor SneedSMS {
                 or #get_notification_preview _
                 or #get_premium_config _
                 or #get_received_messages _
+                or #get_received_messages_page _
                 or #get_recent_messages_count _
                 or #get_sent_messages _
+                or #get_sent_messages_page _
                 or #get_stats _
                 or #get_system_sender_principal _
                 or #is_admin_query _
