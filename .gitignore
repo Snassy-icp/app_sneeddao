@@ -26,6 +26,9 @@ dist/
 
 # ignore package-lock.json in any folder
 **/package-lock.json
+# ...except the root one: the frontend is released by SNS proposal and voters must rebuild
+# byte-identical assets (spec/frontend_dao_handoff.md), which needs the exact dependency versions
+!/package-lock.json
 
 ref/
 
