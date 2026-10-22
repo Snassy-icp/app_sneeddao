@@ -9,6 +9,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import PrincipalInput from './PrincipalInput';
+import { icrc1Transfer } from '../utils/icrcTx';
 
 const minters = new Map(); // ledger -> Promise<{ owner: string, sub: Uint8Array|null } | null>
 const isZero = (b) => !b || Array.from(b).every((x) => x === 0);
@@ -72,7 +73,7 @@ export default function MintTokenDialog({ isOpen, onClose, token, onMinted }) {
     const mint = async () => {
         setBusy(true); setError('');
         try {
-            const r = await createLedgerActor(ledger, { agentOptions: { identity } }).icrc1_transfer({ to, amount: units, fee: [], memo: [], from_subaccount: [], created_at_time: [] });
+            const r = await icrc1Transfer(createLedgerActor(ledger, { agentOptions: { identity } }), { to, amount: units, fee: [], memo: [], from_subaccount: [], created_at_time: [] });
             if ('Err' in r) {
                 const k = Object.keys(r.Err)[0];
                 const v = r.Err[k];

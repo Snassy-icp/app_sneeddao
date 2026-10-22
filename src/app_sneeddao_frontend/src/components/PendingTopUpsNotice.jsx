@@ -63,13 +63,12 @@ export default function PendingTopUpsNotice({ style }) {
         }
     }, [identity]);
 
+    // Dismiss asks inline (no browser popup): the first click shows the warning, the second forgets.
+    const [confirming, setConfirming] = useState(null);
     const dismiss = (rec) => {
-        const ok = window.confirm(
-            rec.blockIndex != null
-                ? `Forget this pending top-up? Only do this if the cycles already arrived. You can still finish it later at /tools/recover-topup with canister ${rec.canisterId} and block ${rec.blockIndex}.`
-                : 'Forget this pending top-up? Its transfer may or may not have gone through; check your ICP history first.'
-        );
-        if (ok) removePendingTopUp(rec.canisterId);
+        if (confirming !== rec.canisterId) { setConfirming(rec.canisterId); return; }
+        setConfirming(null);
+        removePendingTopUp(rec.canisterId);
     };
 
     const shownMessages = Object.entries(messages).filter(([cid]) => !pending.some((p) => p.canisterId === cid));
@@ -107,6 +106,13 @@ export default function PendingTopUpsNotice({ style }) {
                                     {rec.createdMs ? ` · ${new Date(rec.createdMs).toLocaleString()}` : ''}
                                     {rec.lastError ? ` · last answer: ${rec.lastError}` : ''}
                                 </div>
+                                {confirming === rec.canisterId && (
+                                    <div style={{ marginTop: 4, color: '#f59e0b' }}>
+                                        {rec.blockIndex != null
+                                            ? `Forget this pending top-up? Only do this if the cycles already arrived. You can still finish it later at /tools/recover-topup with canister ${rec.canisterId} and block ${rec.blockIndex}. Click "Yes, forget it" to confirm.`
+                                            : 'Forget this pending top-up? Its transfer may or may not have gone through; check your ICP history first. Click "Yes, forget it" to confirm.'}
+                                    </div>
+                                )}
                                 {messages[rec.canisterId] && (
                                     <div style={{ marginTop: 4, color: messages[rec.canisterId].ok ? '#10b981' : '#f59e0b' }}>{messages[rec.canisterId].text}</div>
                                 )}
@@ -114,7 +120,10 @@ export default function PendingTopUpsNotice({ style }) {
                             <button style={btn} disabled={!!busy[rec.canisterId]} onClick={() => finish(rec.canisterId)}>
                                 {busy[rec.canisterId] && <FaSpinner className="spin" />} Finish top-up
                             </button>
-                            <button style={ghost} disabled={!!busy[rec.canisterId]} onClick={() => dismiss(rec)}>Dismiss</button>
+                            <button style={ghost} disabled={!!busy[rec.canisterId]} onClick={() => dismiss(rec)}>{confirming === rec.canisterId ? 'Yes, forget it' : 'Dismiss'}</button>
+                            {confirming === rec.canisterId && (
+                                <button style={ghost} onClick={() => setConfirming(null)}>Keep</button>
+                            )}
                         </div>
                     ))}
                 </>

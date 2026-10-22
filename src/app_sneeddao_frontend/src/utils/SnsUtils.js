@@ -5,6 +5,7 @@ import { Principal } from '@dfinity/principal';
 import { HttpAgent } from '@dfinity/agent';
 import { getLogo, setLogo, getLogoSync, hasLogo, clearLogoCache as clearUnifiedLogoCache } from '../hooks/useLogoCache';
 import { normalizeId } from './IdUtils';
+import { setDedupingLedgerResolver } from './icrcTx';
 
 const SNS_CACHE_KEY = 'sns_data_cache';
 export const SNS_CACHE_UPDATED_EVENT = 'sns-cache-updated';
@@ -271,6 +272,12 @@ export function getSnsByLedgerId(ledgerCanisterId) {
     }
     return sns;
 }
+
+// SNS ledgers are DFINITY ledger-suite ledgers (deployed by SNS-W), which deduplicate by
+// created_at_time, so utils/icrcTx.js may safely resend an unknown-outcome transfer to them.
+setDedupingLedgerResolver((ledgerId) => {
+    try { return !!getSnsByLedgerId(ledgerId); } catch (_) { return false; }
+});
 
 export function getAllSnses() {
     const cachedData = getCachedSnsData() || [];

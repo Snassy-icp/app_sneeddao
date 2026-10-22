@@ -14,6 +14,7 @@ import { useNaming } from '../NamingContext';
 import { FaEdit, FaSave, FaTimes, FaExternalLinkAlt, FaGasPump, FaUpload, FaExclamationTriangle, FaCube, FaChevronDown, FaChevronRight, FaArrowLeft, FaCheckCircle, FaMemory, FaUsers, FaLock, FaUnlock, FaCode, FaSpinner, FaCoins, FaUser } from 'react-icons/fa';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
+import PendingTopUpsNotice from '../components/PendingTopUpsNotice';
 import { topUpCanisterWithIcp, cyclesOrThrow } from '../utils/cyclesTopUp';
 import { getCyclesColor, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
 
@@ -812,9 +813,6 @@ export default function CanisterPage() {
         return subaccount;
     };
 
-    // CMC memo for top-up operation: "TPUP" = 0x50555054 in big-endian
-    // As bytes: [0x54, 0x50, 0x55, 0x50, 0x00, 0x00, 0x00, 0x00] for little-endian Nat64
-    const TOP_UP_MEMO = new Uint8Array([0x54, 0x50, 0x55, 0x50, 0x00, 0x00, 0x00, 0x00]);
 
     // Format ICP amount
     const formatIcp = (e8s) => {
@@ -883,7 +881,7 @@ export default function CanisterPage() {
             const cyclesAdded = cyclesOrThrow(topUp, formatCycles);
             console.log('Cycles added:', cyclesAdded);
             
-            setSuccessMessage(`✅ Successfully topped up ${formatCycles(cyclesAdded)} cycles to the canister!`);
+            setSuccessMessage(`✅ Successfully topped up ${formatCycles(cyclesAdded)} cycles to the canister (ICP ledger block ${topUp.blockIndex}).`);
             setTopUpAmount('');
             setShowTopUpSection(false);
             
@@ -1959,6 +1957,7 @@ export default function CanisterPage() {
                                 
                                 {showTopUpSection && (
                                     <div>
+                                        <PendingTopUpsNotice style={{ marginBottom: 12 }} />
                                         {/* User ICP Balance */}
                                         <div style={{ 
                                             display: 'flex', 

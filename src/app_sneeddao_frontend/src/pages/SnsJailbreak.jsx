@@ -16,6 +16,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
 import PriceTierBadge from '../components/PriceTierBadge';
 import { fetchSpecialPricesFor, effectivePrice } from '../utils/specialPrices';
+import { icrc1Transfer } from '../utils/icrcTx';
 
 // Custom CSS for animations
 const customStyles = `
@@ -575,7 +576,7 @@ function SnsJailbreak() {
                     agentOptions: { identity, host }
                 });
                 
-                const transferResult = await icpLedger.icrc1_transfer({
+                const transferResult = await icrc1Transfer(icpLedger, {
                     to: {
                         owner: Principal.fromText(backendCanisterId),
                         subaccount: [paymentSubaccount],

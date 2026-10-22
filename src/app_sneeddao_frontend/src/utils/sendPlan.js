@@ -76,3 +76,33 @@ export function planFeeCount(plan) {
     if (!plan) return 0;
     return (plan.send_from_backend > 0n ? 1 : 0) + (plan.send_from_frontend > 0n ? 1 : 0);
 }
+
+// ---- pockets (spec/programmable_accounts.md §4.2) ----
+// In "All pockets" mode a send keeps the Main + Sneed Lock split above, reading both through the
+// pockets model when it has them (Main = the 'w:0' pocket, Sneed Lock = 'h:sneed_lock:wallet');
+// with one pocket selected a send uses that pocket only (planFromPocket).
+
+const MAIN_POCKET = 'w:0';
+const LOCK_POCKET = 'h:sneed_lock:wallet';
+
+/// The token with `balance`, `balance_backend` and `locked` taken from the pockets model where it
+/// knows them for this ledger (else the token's own fields).
+export function tokenWithPockets(token, pockets, ledgerId) {
+    if (!token || !pockets?.length || !ledgerId) return token;
+    const l = String(ledgerId);
+    const main = pockets.find((p) => p.id === MAIN_POCKET)?.balances?.get(l);
+    const lock = pockets.find((p) => p.id === LOCK_POCKET)?.balances?.get(l);
+    if (!main && !lock) return token;
+    const out = { ...token };
+    if (main) out.balance = main.total;
+    if (lock) { out.balance_backend = lock.total; out.locked = lock.locked ?? 0n; }
+    return out;
+}
+
+/// A send from one pocket: `withdrawable` is what that pocket can deliver (its adapter's rules).
+/// Returns { amount, fees: 1 } or null when it can't.
+export function planFromPocket(withdrawable, amount) {
+    const a = toBig(amount);
+    if (a <= 0n || a > toBig(withdrawable)) return null;
+    return { amount: a, fees: 1 };
+}

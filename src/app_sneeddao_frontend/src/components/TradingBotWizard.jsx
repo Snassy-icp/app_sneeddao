@@ -6,6 +6,7 @@ import TokenSelector from './TokenSelector';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getTokenMetadataSync, setTokenMetadataManual } from '../hooks/useTokenCache';
 import { useDSLEngine, DSLScriptEditor, DSLOperationReview, DSLContextBar, DSLCopyGuideButton, DSLExportButton } from './TradingBotDSLPanel';
+import { icrc1Transfer } from '../utils/icrcTx';
 
 const ACCENT = '#10b981';
 const ACCENT_SECONDARY = '#34d399';
@@ -491,7 +492,7 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
                 if (fundSource === 'wallet') {
                     setDeployStep('Funding bot from wallet...');
                     const ledger = createLedgerActor(inputToken, { agentOptions: { identity } });
-                    await ledger.icrc1_transfer({
+                    await icrc1Transfer(ledger, {
                         to: { owner: Principal.fromText(canisterId), subaccount: [] },
                         amount: rawFund,
                         fee: [], memo: [], from_subaccount: [], created_at_time: [],
@@ -922,7 +923,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                 if (fundSource === 'wallet') {
                     setDeployStep('Funding bot from wallet...');
                     const ledger = createLedgerActor(fundToken, { agentOptions: { identity } });
-                    await ledger.icrc1_transfer({
+                    await icrc1Transfer(ledger, {
                         to: { owner: Principal.fromText(canisterId), subaccount: [] },
                         amount: rawFund, fee: [], memo: [], from_subaccount: [], created_at_time: [],
                     });
@@ -1307,7 +1308,7 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
                 if (fundSource === 'wallet') {
                     setDeployStep('Funding bot from wallet...');
                     const ledger = createLedgerActor(fundToken, { agentOptions: { identity } });
-                    await ledger.icrc1_transfer({
+                    await icrc1Transfer(ledger, {
                         to: { owner: Principal.fromText(canisterId), subaccount: [] },
                         amount: rawFund, fee: [], memo: [], from_subaccount: [], created_at_time: [],
                     });
@@ -1558,7 +1559,7 @@ function AIScriptWizard({ theme, onComplete, onBack, getReadyBotActor, canisterI
             const dec = fundDecimals;
             const rawAmt = BigInt(Math.floor(Number(fundAmount) * Math.pow(10, dec)));
             const ledger = createLedgerActor(fundToken, { agentOptions: { identity } });
-            await ledger.icrc1_transfer({
+            await icrc1Transfer(ledger, {
                 to: { owner: Principal.fromText(canisterId), subaccount: [] },
                 amount: rawAmt, fee: [], memo: [], from_subaccount: [], created_at_time: [],
             });

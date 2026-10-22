@@ -7,6 +7,7 @@ import { Principal } from '@dfinity/principal';
 import { canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createSmsActor, canisterId as smsCanisterId } from 'declarations/sneed_sms';
+import { icrc1Transfer } from './icrcTx';
 
 const isLocal = !(process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging');
 const host = isLocal ? 'http://localhost:4943' : 'https://icp0.io';
@@ -94,7 +95,7 @@ export async function registerDonation(identity, { ledger, block, message }) {
 export async function donate(identity, { ledger, amount, to, message }) {
     const agent = await agentFor(identity);
     const tok = createLedgerActor(ledger, { agent });
-    const r = await tok.icrc1_transfer({
+    const r = await icrc1Transfer(tok, {
         from_subaccount: [], to: { owner: to.owner, subaccount: to.subaccount ? [to.subaccount] : [] },
         amount, fee: [], memo: [new TextEncoder().encode('Sneed Hub donation')], created_at_time: [],
     });

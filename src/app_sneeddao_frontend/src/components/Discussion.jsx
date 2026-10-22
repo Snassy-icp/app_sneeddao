@@ -22,6 +22,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import { FaCommentAlt, FaReply, FaEdit, FaTrash, FaCoins, FaArrowUp, FaArrowDown, FaUndo, FaSpinner, FaCheck, FaTimes, FaPlus, FaMinus, FaEye, FaSitemap, FaCheckCircle, FaKey } from 'react-icons/fa';
 import MentionTextarea from './MentionTextarea';
 import { smsMentioned } from '../utils/mentions';
+import { icrc1Transfer } from '../utils/icrcTx';
+import { appConfirm } from '../utils/appDialog';
 
 // Accent colors
 const accentPrimary = '#06b6d4'; // Cyan to match discussion section in Proposal
@@ -1420,7 +1422,7 @@ function Discussion({
     const deletePost = async (postId) => {
         if (!forumActor) return;
         
-        if (!confirm('Are you sure you want to delete this post?')) return;
+        if (!await appConfirm('Are you sure you want to delete this post?')) return;
         
         try {
             const result = await forumActor.delete_post(Number(postId));
@@ -1460,7 +1462,7 @@ function Discussion({
 
             const tokenFee = await ledgerActor.icrc1_fee();
 
-            const transferResult = await ledgerActor.icrc1_transfer({
+            const transferResult = await icrc1Transfer(ledgerActor, {
                 to: { 
                     owner: recipientPrincipal, 
                     subaccount: [] 

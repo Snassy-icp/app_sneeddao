@@ -24,6 +24,7 @@ import { SnsProvider } from './contexts/SnsContext';
 import { ForumProvider } from './contexts/ForumContext';
 import { NeuronsProvider } from './contexts/NeuronsContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import AppDialogHost from './components/AppDialogHost';
 import { WalletProvider } from './contexts/WalletContext';
 import { WalletLayoutProvider } from './contexts/WalletLayoutContext';
 import { FrontendUpdateProvider, useFrontendUpdate } from './contexts/FrontendUpdateContext';
@@ -146,6 +147,8 @@ import NftItem from './pages/NftItem';
 import SnsJailbreak from './pages/SnsJailbreak';
 import SnsJailbreakList from './pages/SnsJailbreakList';
 import ToolsAccount from './pages/ToolsAccount';
+import Pockets from './pages/Pockets';
+import { PocketsProvider } from './contexts/PocketsContext';
 import ToolsRecoverTopUp from './pages/ToolsRecoverTopUp';
 import ToolsIcrc3 from './pages/ToolsIcrc3';
 import TokenSafety from './pages/TokenSafety';
@@ -208,16 +211,19 @@ function App() {
                 <DenominationProvider>
                 <WalletLayoutProvider>
                 <NamingProvider>
+                <PocketsProvider>
                   <FrontendUpdateProvider>
                     <GlobalNamingSetup />
                     <CacheRefreshDialogWrapper />
                     <PushOpenHandler />
+                    <AppDialogHost />
                     <StagingBanner />
                     <Layout>
                   <Routes>
                     <Route path="/" element={<Hub />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/wallet" element={<Wallet />} />
+                    <Route path="/wallet/pockets" element={<Pockets />} />
                     <Route path="/nft" element={<Nft />} />
                     <Route path="/doc" element={<Doc />} />
                     <Route path="/help" element={<Help />} />
@@ -392,6 +398,7 @@ function App() {
                   </Routes>
                   </Layout>
                   </FrontendUpdateProvider>
+                </PocketsProvider>
                 </NamingProvider>
                 </WalletLayoutProvider>
                 </DenominationProvider>

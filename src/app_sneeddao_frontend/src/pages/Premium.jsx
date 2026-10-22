@@ -33,6 +33,7 @@ import {
 import { Link } from 'react-router-dom';
 import { useDenomination } from '../contexts/DenominationContext';
 import priceService from '../services/PriceService';
+import { icrc1Transfer } from '../utils/icrcTx';
 
 // Custom CSS for animations
 const customStyles = `
@@ -515,7 +516,7 @@ export default function Premium() {
                 amount: BigInt(tier.amountE8s),
             };
             
-            const transferResult = await icpLedger.icrc1_transfer(transferArgs);
+            const transferResult = await icrc1Transfer(icpLedger, transferArgs);
             
             if ('Err' in transferResult) {
                 const err = transferResult.Err;

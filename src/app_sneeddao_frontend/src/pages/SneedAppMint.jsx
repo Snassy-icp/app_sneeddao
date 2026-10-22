@@ -13,6 +13,8 @@ import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { FaRocket, FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaArrowLeft, FaSpinner, FaCopy, FaTag, FaFileAlt, FaEye, FaGasPump, FaCrown } from 'react-icons/fa';
+import { icrc1Transfer } from '../utils/icrcTx';
+import PendingTopUpsNotice from '../components/PendingTopUpsNotice';
 
 const customStyles = `
 @keyframes fadeInUp {
@@ -30,7 +32,6 @@ const appSecondary = '#22d3ee';
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const E8S = 100_000_000;
 const ICP_FEE = 10_000;
-const TOP_UP_MEMO = new Uint8Array([0x54, 0x50, 0x55, 0x50, 0x00, 0x00, 0x00, 0x00]);
 
 export default function SneedAppMint() {
     const { appId } = useParams();
@@ -50,6 +51,7 @@ export default function SneedAppMint() {
     const [createdCanisterId, setCreatedCanisterId] = useState(null);
     const [progressMessage, setProgressMessage] = useState('');
     const [gasTopUpWarning, setGasTopUpWarning] = useState('');
+    const [gasTopUpBlock, setGasTopUpBlock] = useState(null);
 
     // Payment
     const [paymentSubaccount, setPaymentSubaccount] = useState(null);
@@ -215,6 +217,7 @@ export default function SneedAppMint() {
         if (!selectedVersion || !identity || !paymentSubaccount) return;
         setCreating(true);
         setGasTopUpWarning('');
+        setGasTopUpBlock(null);
         setError('');
         setProgressMessage('');
         try {
@@ -224,7 +227,7 @@ export default function SneedAppMint() {
             // Step 1: If deposit subaccount doesn't have enough, top it up from wallet
             if (shortfall > 0) {
                 setProgressMessage('Sending payment...');
-                const transferResult = await ledger.icrc1_transfer({
+                const transferResult = await icrc1Transfer(ledger, {
                     to: { owner: Principal.fromText(factoryCanisterId), subaccount: [paymentSubaccount] },
                     fee: [BigInt(ICP_FEE)],
                     memo: [],
@@ -265,6 +268,7 @@ export default function SneedAppMint() {
                         // ICP -> CMC subaccount, then notify_top_up, result checked; an unfinished top-up
                         // stays pending (wallet "Pending top-ups") instead of being lost
                         const topUp = await topUpCanisterWithIcp({ ledger, cmc, canisterId: newCanisterIdText, amountE8s: BigInt(extraGasE8s), owner: identity.getPrincipal().toText() });
+                        if (topUp.blockIndex != null) setGasTopUpBlock(String(topUp.blockIndex));
                         if (!(topUp.status === 'ok' && !topUp.resumed)) {
                             console.error('Gas top-up not completed (canister was still created):', topUp);
                             setGasTopUpWarning(describeTopUpResult(topUp));
@@ -783,6 +787,12 @@ export default function SneedAppMint() {
                             }}>
                                 <FaExclamationTriangle style={{ color: '#f59e0b', flexShrink: 0, marginTop: 2 }} />
                                 <span>Gas top-up not completed (the canister was still created): {gasTopUpWarning}</span>
+                            </div>
+                        )}
+                        {gasTopUpWarning && <PendingTopUpsNotice style={{ marginBottom: 20, textAlign: 'left' }} />}
+                        {!gasTopUpWarning && gasTopUpBlock && (
+                            <div style={{ marginBottom: 20, color: theme.colors.mutedText || theme.colors.secondaryText, fontSize: 12 }}>
+                                Gas top-up: ICP ledger block #{gasTopUpBlock}
                             </div>
                         )}
 

@@ -15,6 +15,9 @@ import { useAuth } from '../AuthContext';
 import { fetchAndCacheSnsData, getSnsById, fetchSnsLogo } from '../utils/SnsUtils';
 import { formatAmount } from '../utils/SneedexUtils';
 import { formatAmountRaw, parseAmountToBigInt } from '../utils/StringUtils';
+import { icrc1Transfer } from '../utils/icrcTx';
+import { journalStake, updateStake, removeStake } from '../utils/stakeJournal';
+import PendingStakesNotice from '../components/PendingStakesNotice';
 
 // Amount text to base units by string parsing (no float math, extra decimals cut off); null when not a number.
 const toBaseUnits = (text, decimals) => {
@@ -427,19 +430,28 @@ export default function SnsNeuronWizard() {
                 return Array.from(new Uint8Array(buffer));
             })();
             
-            const transferResult = await ledgerActor.icrc1_transfer({
-                to: {
-                    owner: Principal.fromText(selectedGovernanceId),
-                    subaccount: [Array.from(subaccount32)]
-                },
-                amount: amountE8s,
-                fee: [],
-                memo: [memoBytes],
-                from_subaccount: [],
-                created_at_time: []
-            });
+            // Journal before the transfer: if the claim below never runs, "Finish staking" can redo it
+            const stakeId = journalStake({ kind: 'sns', ledger: selectedLedgerId, governance: selectedGovernanceId, memo: nonce, subaccount: subaccount32, amount: amountE8s, owner: principal.toText() });
+            let transferResult;
+            try {
+                transferResult = await icrc1Transfer(ledgerActor, {
+                    to: {
+                        owner: Principal.fromText(selectedGovernanceId),
+                        subaccount: [Array.from(subaccount32)]
+                    },
+                    amount: amountE8s,
+                    fee: [],
+                    memo: [memoBytes],
+                    from_subaccount: [],
+                    created_at_time: []
+                });
+            } catch (e) {
+                updateStake(stakeId, { lastError: e?.message || String(e) }); // outcome unknown: keep the entry
+                throw e;
+            }
             
             if ('Err' in transferResult) {
+                removeStake(stakeId); // nothing was sent
                 const error = transferResult.Err;
                 let errorMsg = 'Transfer failed';
                 if (error.InsufficientFunds) {
@@ -451,6 +463,8 @@ export default function SnsNeuronWizard() {
                 }
                 throw new Error(errorMsg);
             }
+            
+            updateStake(stakeId, { block: transferResult.Ok });
             
             // Step 4: Wait for transfer
             setStakingStepIndex(4);
@@ -476,8 +490,10 @@ export default function SnsNeuronWizard() {
             });
             
             if (claimResult?.command?.[0]?.Error) {
-                throw new Error(`Failed to create neuron: ${claimResult.command[0].Error.error_message}`);
+                updateStake(stakeId, { lastError: claimResult.command[0].Error.error_message });
+                throw new Error(`Failed to create neuron: ${claimResult.command[0].Error.error_message}. Your tokens are in the neuron account (block ${transferResult.Ok}); use "Finish staking" to retry the claim.`);
             }
+            removeStake(stakeId);
             
             // Step 6: Set dissolve delay if specified
             if (dissolveDelaySeconds > 0) {
@@ -1500,6 +1516,7 @@ export default function SnsNeuronWizard() {
                             {stakingError}
           </div>
         )}
+                    {stakingError && <PendingStakesNotice style={{ marginTop: '1rem' }} />}
                 </div>
 
                 <div style={styles.buttonRow}>

@@ -67,6 +67,7 @@ import { createActor as createTradingBotActor } from 'external/sneed_trading_bot
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import { topUpCanisterWithIcp, cyclesOrThrow } from './utils/cyclesTopUp';
 import PendingTopUpsNotice from './components/PendingTopUpsNotice';
+import PendingStakesNotice from './components/PendingStakesNotice';
 import { useNaming } from './NamingContext';
 import { useWhitelistTokens } from './contexts/WhitelistTokensContext';
 import { useWallet } from './contexts/WalletContext';
@@ -89,6 +90,12 @@ import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDow
 import BotIcon from './components/BotIcon';
 import { sendLockNft, positionNftId, isMissingMethod } from './utils/lockNft';
 import { fetchBotCyclesBalance } from './utils/botCycles';
+import { icrc1Transfer, icpLegacyTransfer, expiresInMs } from './utils/icrcTx';
+import { appAlert } from './utils/appDialog';
+import { usePockets } from './hooks/usePockets';
+import PocketSwitcher from './components/PocketSwitcher';
+import { PocketTokenList } from './components/PocketRows';
+import { ALL as ALL_POCKETS, MAIN_ID, otherPocketsTotal } from './utils/pockets/model';
 
 // Custom CSS for Wallet page animations
 const walletCustomStyles = `
@@ -209,8 +216,6 @@ const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const E8S_ICP = 100_000_000;
 const ICP_FEE = 10_000;
-// CMC memo for top-up operation: "TPUP" = 0x50555054
-const TOP_UP_MEMO = new Uint8Array([0x54, 0x50, 0x55, 0x50, 0x00, 0x00, 0x00, 0x00]);
 
 // Management canister IDL factory for canister_status
 const managementCanisterIdlFactory = ({ IDL }) => {
@@ -762,6 +767,9 @@ function Wallet() {
     const [showWithdrawModal, setShowWithdrawModal] = useState(false);
     const [showDepositModal, setShowDepositModal] = useState(false);
     const [selectedToken, setSelectedToken] = useState(null);
+    // pockets (spec/programmable_accounts.md §4.3): the send dialog's from / to, and the switcher
+    const [sendPocketOptions, setSendPocketOptions] = useState({});
+    const walletPockets = usePockets();
     const [showLockModal, setShowLockModal] = useState(false);
     const [showLockPositionModal, setShowLockPositionModal] = useState(false);
     const [showAddLiquidityModal, setShowAddLiquidityModal] = useState(false);
@@ -2669,7 +2677,7 @@ function Wallet() {
             const cmc = createCmcActor(CMC_CANISTER_ID, { agent });
             const topUp = await topUpCanisterWithIcp({ ledger, cmc, canisterId: managerCanisterId, amountE8s, owner: identity.getPrincipal().toText() });
             const cyclesAdded = cyclesOrThrow(topUp, formatCyclesCompact);
-            setTopUpSuccess(`✅ Added ${formatCyclesCompact(cyclesAdded)} cycles!`);
+            setTopUpSuccess(`✅ Added ${formatCyclesCompact(cyclesAdded)} cycles (ICP ledger block ${topUp.blockIndex}).`);
             setTopUpAmount('');
             setTopUpManagerId(null);
             
@@ -2730,7 +2738,7 @@ function Wallet() {
             const cmc = createCmcActor(CMC_CANISTER_ID, { agent });
             const topUp = await topUpCanisterWithIcp({ ledger, cmc, canisterId: canisterId, amountE8s, owner: identity.getPrincipal().toText() });
             const cyclesAdded = cyclesOrThrow(topUp, formatCyclesCompact);
-            setCanisterTopUpSuccess(`✅ Added ${formatCyclesCompact(cyclesAdded)} cycles!`);
+            setCanisterTopUpSuccess(`✅ Added ${formatCyclesCompact(cyclesAdded)} cycles (ICP ledger block ${topUp.blockIndex}).`);
             setCanisterTopUpAmount('');
             setTopUpCanisterId(null);
             
@@ -3336,6 +3344,16 @@ function Wallet() {
             total += managerNeuronsTotal * icpPrice;
         }
 
+        // tokens in pockets besides Main and the Sneed Lock wallet (the token list doesn't read them)
+        for (const t of tokens) {
+            const extra = otherPocketsTotal(walletPockets.pockets, normalizeId(t.ledger_canister_id));
+            if (extra > 0n && t.conversion_rate) {
+                const usd = Number(extra) / (10 ** (t.decimals || 8)) * t.conversion_rate;
+                total += usd;
+                liquidTotal += usd;
+            }
+        }
+
         setTotalDollarValue(total);
         
         // Console log subtotals to verify they add up
@@ -3361,7 +3379,7 @@ function Wallet() {
         // Calculate LP positions total (liquidity + fees)
         const lpUsdTotal = liquidityTotal + feesTotal;
         setLpPositionsTotal(lpUsdTotal);
-    }, [tokens, liquidityPositions, rewardDetailsLoading, neuronTotals, managerNeuronsTotal, icpPrice]);
+    }, [tokens, liquidityPositions, rewardDetailsLoading, neuronTotals, managerNeuronsTotal, icpPrice, walletPockets.pockets]);
 
     const statsChartData = useMemo(() => {
         const tokenMap = {};
@@ -3558,7 +3576,7 @@ function Wallet() {
                     canisterId: ledgerCanisterId
                 });
 
-                const result = await icpLedgerActor.transfer({
+                const result = await icpLegacyTransfer(icpLedgerActor, {
                     to: Array.from(accountIdBytes),
                     fee: { e8s: BigInt(token.fee) },
                     memo: BigInt(0),
@@ -3635,7 +3653,7 @@ function Wallet() {
                 console.log('Frontend transfer - recipient principal:', recipientPrincipal.toText());
                 console.log('Frontend transfer - subaccount:', subaccount.length > 0 ? 'provided' : 'none');
                 
-                const result = await actor.icrc1_transfer({
+                const result = await icrc1Transfer(actor, {
                     to: { owner: recipientPrincipal, subaccount: subaccount },
                     fee: [],
                     memo: [],
@@ -3672,9 +3690,21 @@ function Wallet() {
         }
     };
 
-    const openSendModal = (token) => {
+    /// `opts` = { fromPocketId, toPocketId, mode: 'send' | 'move' } for a pocket's Send / Move /
+    /// Withdraw / Top up; with one pocket picked in the switcher, sends default to it.
+    const openSendModal = (token, opts = {}) => {
         setSelectedToken(token);
+        const sel = walletPockets.selected;
+        setSendPocketOptions({ fromPocketId: opts.fromPocketId ?? (sel && sel !== ALL_POCKETS ? sel : null), toPocketId: opts.toPocketId ?? null, mode: opts.mode || 'send' });
         setShowSendModal(true);
+    };
+
+    /// A pocket row's action, as the send dialog.
+    const handlePocketAction = (kind, pocket, token) => {
+        if (kind === 'send') openSendModal(token, { fromPocketId: pocket.id });
+        else if (kind === 'move') openSendModal(token, { fromPocketId: pocket.id, mode: 'move' });
+        else if (kind === 'withdraw') openSendModal(token, { fromPocketId: pocket.id, toPocketId: MAIN_ID, mode: 'move' });
+        else if (kind === 'topup') openSendModal(token, { fromPocketId: MAIN_ID, toPocketId: pocket.id, mode: 'move' });
     };
 
     const openTokenDetailModal = (token) => {
@@ -3839,7 +3869,7 @@ function Wallet() {
                 memo: [],
                 from_subaccount: [],
                 created_at_time: [],
-                expires_at: [],
+                expires_at: expiresInMs(), // the deposit below pulls it right away
                 expected_allowance: [currentAllowance.allowance] // Set current allowance as expected
             });
 
@@ -4028,7 +4058,7 @@ function Wallet() {
             const recipientPrincipal = Principal.fromText(sneedLockCanisterId);
             
             // Transfer to the user's subaccount on the backend
-            const result = await ledgerActor.icrc1_transfer({
+            const result = await icrc1Transfer(ledgerActor, {
                 to: { owner: recipientPrincipal, subaccount: [principal_subaccount] },
                 fee: [],
                 memo: [],
@@ -4192,7 +4222,7 @@ function Wallet() {
             
             const principal_subaccount = principalToSubAccount(identity.getPrincipal());
             const recipientPrincipal = Principal.fromText(sneedLockCanisterId);
-            const resultSend = await ledgerActor.icrc1_transfer({
+            const resultSend = await icrc1Transfer(ledgerActor, {
                 to: { owner: recipientPrincipal, subaccount: [principal_subaccount] },
                 fee: [],
                 memo: [],
@@ -4265,7 +4295,7 @@ function Wallet() {
                 const principal_subaccount = principalToSubAccount(identity.getPrincipal());
                 const recipientPrincipal = Principal.fromText(sneedLockCanisterId);
                 
-                const sendResult = await ledgerActor.icrc1_transfer({
+                const sendResult = await icrc1Transfer(ledgerActor, {
                     to: { owner: recipientPrincipal, subaccount: [principal_subaccount] },
                     fee: [],
                     memo: [],
@@ -4452,7 +4482,7 @@ function Wallet() {
             if (!ledgerId) throw new Error('Cannot top up: token ledger unknown');
             const ledgerPrincipal = typeof ledgerId === 'string' ? Principal.fromText(ledgerId) : ledgerId;
             const ledgerActor = createLedgerActor(ledgerPrincipal, { agentOptions: { identity } });
-            const result = await ledgerActor.icrc1_transfer({
+            const result = await icrc1Transfer(ledgerActor, {
                 to: { owner: Principal.fromText(sneedLockCanisterId), subaccount: [principalToSubAccount(identity.getPrincipal())] },
                 fee: [],
                 memo: [],
@@ -5716,7 +5746,7 @@ function Wallet() {
             if (contextRefreshTrackedCanisters) contextRefreshTrackedCanisters();
         } catch (err) {
             console.error('[WalletMove] Error moving to sneedapp:', err);
-            alert('Failed to move app: ' + (err.message || 'Unknown error'));
+            appAlert('Failed to move app: ' + (err.message || 'Unknown error'));
         } finally {
             setDropInProgress(null);
         }
@@ -5752,7 +5782,7 @@ function Wallet() {
             if (contextRefreshNeuronManagers) contextRefreshNeuronManagers();
         } catch (err) {
             console.error('[WalletMove] Error moving to other apps:', err);
-            alert('Failed to move app: ' + (err.message || 'Unknown error'));
+            appAlert('Failed to move app: ' + (err.message || 'Unknown error'));
         } finally {
             setDropInProgress(null);
         }
@@ -5790,6 +5820,7 @@ function Wallet() {
             <style>{walletCustomStyles}</style>
             <Header />
             <PendingTopUpsNotice style={{ maxWidth: 1200, width: 'calc(100% - 32px)', margin: '12px auto', boxSizing: 'border-box' }} />
+            <PendingStakesNotice style={{ maxWidth: 1200, width: 'calc(100% - 32px)', margin: '12px auto', boxSizing: 'border-box' }} />
             
             {/* Hero Section - Streamlined */}
             <div style={{
@@ -6536,7 +6567,11 @@ function Wallet() {
                             </button>
                         </div>
                     </div>
-                    <div className="card-grid">
+                    <PocketSwitcher />
+                    {walletPockets.selected !== ALL_POCKETS && (
+                        <PocketTokenList tokens={tokens} onAction={handlePocketAction} />
+                    )}
+                    <div className="card-grid" style={walletPockets.selected !== ALL_POCKETS ? { display: 'none' } : undefined}>
                     {(walletLayoutCtx?.sortByLayout
                         ? walletLayoutCtx.sortByLayout('tokens', tokens, t => normalizeId(t.ledger_canister_id))
                         : tokens
@@ -6579,6 +6614,8 @@ function Wallet() {
                                     lockDetailsLoading={lockDetailsLoading}
                                     showDebug={showDebug}
                                     openSendModal={openSendModal}
+                                    showPockets
+                                    onPocketAction={handlePocketAction}
                                     openLockModal={openLockModal}
                                     openWrapModal={openWrapModal}
                                     openUnwrapModal={openUnwrapModal}
@@ -10836,6 +10873,10 @@ function Wallet() {
                     onClose={() => setShowSendModal(false)}
                     onSend={handleSendToken}
                     token={selectedToken}
+                    fromPocketId={sendPocketOptions.fromPocketId}
+                    toPocketId={sendPocketOptions.toPocketId}
+                    mode={sendPocketOptions.mode}
+                    onPocketTransferDone={(t) => handleRefreshToken(t)}
                 />
                 <WithdrawTokenModal
                     show={showWithdrawModal}

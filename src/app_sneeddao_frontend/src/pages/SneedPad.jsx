@@ -11,6 +11,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { approveAndRecord } from '../utils/approvals';
+import { expiresInMs } from '../utils/icrcTx';
 import { createActor as createSneedAppActor, canisterId as sneedAppCanisterId } from 'declarations/sneedapp';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
@@ -197,7 +198,7 @@ export function LaunchPanel({ onLaunched }) {
         try {
             setLaunching('Approving the launchpad on the ICP ledger…');
             const ledger = createLedgerActor(ICP_LEDGER, { agentOptions: { identity, host: HOST } });
-            const approve = await approveAndRecord(ledger, ICP_LEDGER, { from_subaccount: [], spender: { owner: Principal.fromText(PAD_CANISTER_ID), subaccount: [] }, amount: quote.total_e8s + ICP_FEE, expected_allowance: [], expires_at: [], fee: [], memo: [], created_at_time: [] });
+            const approve = await approveAndRecord(ledger, ICP_LEDGER, { from_subaccount: [], spender: { owner: Principal.fromText(PAD_CANISTER_ID), subaccount: [] }, amount: quote.total_e8s + ICP_FEE, expected_allowance: [], expires_at: expiresInMs(), fee: [], memo: [], created_at_time: [] });
             if ('Err' in approve) throw new Error(`approval failed: ${JSON.stringify(approve.Err, (k, v) => (typeof v === 'bigint' ? v.toString() : v))}`);
             setLaunching('Launching: the pad pulls the payment, buys cycles, creates and installs the ledger…');
             const r = await padActor(true).create_token(built.config);

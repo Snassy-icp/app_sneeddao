@@ -1,7 +1,7 @@
 // AccountParser.js - Utility for parsing ICRC-1 account addresses
 import { Principal } from '@dfinity/principal';
 import { decodeIcrcAccount, encodeIcrcAccount } from '@dfinity/ledger-icrc';
-import { principalToSubAccount } from '@dfinity/utils';
+import { hexToSubaccount, byteListToSubaccount, principalToSubaccount } from './pockets/subaccount';
 
 /**
  * Parsed account interface:
@@ -148,12 +148,10 @@ export const resolveSubaccount = (subaccountInput) => {
 
         case 'principal':
             try {
-                const principal = Principal.fromText(trimmedValue);
-                const subaccountBytes = principalToSubAccount(principal);
                 return {
                     type: 'principal',
                     value: trimmedValue,
-                    resolved: new Uint8Array(subaccountBytes)
+                    resolved: principalToSubaccount(Principal.fromText(trimmedValue))
                 };
             } catch (e) {
                 return null;
@@ -173,38 +171,9 @@ export const hexToBytes = (hex) => {
     if (!hex || typeof hex !== 'string') {
         return null;
     }
-
-    // Remove 0x prefix if present
-    let cleanHex = hex.trim();
-    if (cleanHex.toLowerCase().startsWith('0x')) {
-        cleanHex = cleanHex.slice(2);
-    }
-
-    // Remove any whitespace or dashes
-    cleanHex = cleanHex.replace(/[\s-]/g, '');
-
-    // Validate hex characters
-    if (!/^[0-9a-fA-F]*$/.test(cleanHex)) {
-        return null;
-    }
-
-    // Pad with zeros if shorter than 64 characters (32 bytes)
-    // Note: we pad on the LEFT for proper subaccount interpretation
-    if (cleanHex.length < 64) {
-        cleanHex = cleanHex.padStart(64, '0');
-    }
-
-    // Truncate if longer than 64 characters
-    if (cleanHex.length > 64) {
-        cleanHex = cleanHex.slice(0, 64);
-    }
-
-    const bytes = new Uint8Array(32);
-    for (let i = 0; i < 32; i++) {
-        bytes[i] = parseInt(cleanHex.slice(i * 2, i * 2 + 2), 16);
-    }
-
-    return bytes;
+    // the shared codec (utils/pockets/subaccount.js); this parser keeps its leniency: over 64 digits
+    // are cut to the first 64, and "0x" alone is the zero subaccount
+    return hexToSubaccount(hex, { overlong: 'truncate', allowEmpty: true });
 };
 
 /**
@@ -216,29 +185,8 @@ export const parseByteString = (input) => {
     if (!input || typeof input !== 'string') {
         return null;
     }
-
-    const trimmed = input.trim();
-    if (!trimmed) {
-        return null;
-    }
-
-    // Split by comma and parse each value
-    const parts = trimmed.split(',').map(s => s.trim()).filter(s => s !== '');
-    
-    if (parts.length === 0 || parts.length > 32) {
-        return null;
-    }
-
-    const bytes = new Uint8Array(32);
-    for (let i = 0; i < parts.length; i++) {
-        const num = parseInt(parts[i], 10);
-        if (isNaN(num) || num < 0 || num > 255) {
-            return null;
-        }
-        bytes[i] = num;
-    }
-
-    return bytes;
+    // left-aligned, as this parser always read byte lists (the shared codec does the parsing)
+    return byteListToSubaccount(input, 'left');
 };
 
 /**

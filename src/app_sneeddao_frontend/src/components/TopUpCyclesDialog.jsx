@@ -17,7 +17,6 @@ import { topUpCanisterWithIcp, cyclesOrThrow } from '../utils/cyclesTopUp';
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const E8S_ICP = 100_000_000;
 const ICP_FEE = 10_000;
-const TOP_UP_MEMO = new Uint8Array([0x54, 0x50, 0x55, 0x50, 0x00, 0x00, 0x00, 0x00]);
 
 const MANAGEMENT_CANISTER_ID_TEXT = 'aaaaa-aa';
 const managementCanisterIdlFactory = ({ IDL }) => IDL.Service({});
@@ -50,6 +49,7 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
     const [topUpStatus, setTopUpStatus] = useState({}); // canisterId -> 'pending' | 'topping_up' | 'success' | 'error'
     const [topUpErrors, setTopUpErrors] = useState({}); // canisterId -> error message
     const [topUpResults, setTopUpResults] = useState({}); // canisterId -> cycles added
+    const [topUpBlocks, setTopUpBlocks] = useState({}); // canisterId -> ICP ledger block of the top-up
     const [isProcessing, setIsProcessing] = useState(false);
     const [rateLoading, setRateLoading] = useState(false);
     const [localRate, setLocalRate] = useState(null);
@@ -385,6 +385,7 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                     const cyclesAdded = cyclesOrThrow(topUp, formatCyclesCompact);
                     setTopUpStatus(prev => ({ ...prev, [c.canisterId]: 'success' }));
                     setTopUpResults(prev => ({ ...prev, [c.canisterId]: cyclesAdded }));
+                    setTopUpBlocks(prev => ({ ...prev, [c.canisterId]: topUp.blockIndex != null ? String(topUp.blockIndex) : null }));
                 } catch (err) {
                     console.error(`Top-up error for ${c.canisterId}:`, err);
                     setTopUpStatus(prev => ({ ...prev, [c.canisterId]: 'error' }));
@@ -879,7 +880,7 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
                                             <FaCheckCircle size={14} style={{ color: '#22c55e' }} />
                                             {cyclesAdded > 0 && (
-                                                <span style={{ fontSize: '10px', color: '#22c55e' }}>+{formatCyclesCompact(cyclesAdded)}</span>
+                                                <span style={{ fontSize: '10px', color: '#22c55e' }}>+{formatCyclesCompact(cyclesAdded)}{topUpBlocks[c.canisterId] ? ` · block ${topUpBlocks[c.canisterId]}` : ''}</span>
                                             )}
                                         </div>
                                     )}

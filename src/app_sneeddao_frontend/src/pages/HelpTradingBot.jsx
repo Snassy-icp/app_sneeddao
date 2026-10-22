@@ -309,7 +309,7 @@ function HelpTradingBot() {
                         </div>
                         <div style={styles.diagramItem}>
                             <div style={{ color: tradingPrimary, fontWeight: 'bold' }}>DEX Aggregators</div>
-                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>(ICPSwap, KongSwap)</div>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>(ICPSwap)</div>
                         </div>
                     </div>
 
@@ -824,7 +824,7 @@ function HelpTradingBot() {
                         Configure how the bot executes swaps on decentralized exchanges:
                     </p>
                     <ul style={styles.list}>
-                        <li style={styles.listItem}><strong style={styles.strong}>Enabled DEXes:</strong> Choose which DEXes the bot can route trades through (ICPSwap, KongSwap)</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Enabled DEXes:</strong> Choose which DEXes the bot can route trades through. KongSwap has shut down: turn it off on older bots so every trade goes through ICPSwap.</li>
                         <li style={styles.listItem}><strong style={styles.strong}>Default slippage:</strong> Global default slippage tolerance for all trades (default: 1%). Individual actions can override this.</li>
                         <li style={styles.listItem}><strong style={styles.strong}>Default max price impact:</strong> Global default price impact limit (default: 3%). Individual actions can override this.</li>
                         <li style={styles.listItem}><strong style={styles.strong}>Best-quote selection:</strong> The bot fetches quotes from all enabled DEXes and automatically picks the best price</li>
@@ -1379,7 +1379,7 @@ function HelpTradingBot() {
 
                     <h4 style={styles.subsubheading}>What DEXes does the bot trade on?</h4>
                     <p style={styles.paragraph}>
-                        The bot routes trades through ICPSwap (V3 concentrated liquidity AMM) and KongSwap (hybrid orderbook/AMM).
+                        The bot routes trades through ICPSwap (V3 concentrated liquidity AMM). KongSwap support remains in the bot but KongSwap has shut down; disable it under DEX Configuration.
                         It queries all enabled DEXes for quotes and picks the best price automatically.
                     </p>
 

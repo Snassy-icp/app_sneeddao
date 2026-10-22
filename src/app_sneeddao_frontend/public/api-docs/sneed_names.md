@@ -499,6 +499,20 @@ The two canisters have the same methods; the target is a `principal` in `sneed_p
 
 `Nickname = { target; nickname : text; avatar : opt AvatarRef; updated_at : nat64 }`.
 
+**Account names and pockets (`sneed_pid_nicknames` only).** Each user's private names for ICRC-1 accounts, and Sneed Hub's pocket registry: which accounts are the user's pockets (spec/programmable_accounts.md §4.6). Kept apart from the principal nicknames, with their own limits (100 per user, 1,000 with Sneed Premium; `get_account_limits`). A subaccount is exactly 32 bytes; `null` and 32 zero bytes are the same account, returned as `null`. An entry lives while it has a name or pocket meta. Banned users cannot write (they can still clear their own entries); names follow the naming rules and the word blacklist. No log.
+
+| Method | Kind | Returns | Notes |
+|---|---|---|---|
+| `get_my_account_nicknames(page : record { start_after : opt Account; limit : nat })` | query | `{ items : vec AccountNickname; next : opt Account }` | 500 a page. Signed query. |
+| `get_my_account_nicknames_for(accounts : vec Account)` | query | `vec opt AccountNickname` | Up to 100 (traps above), in order. |
+| `set_account_nickname(account, nickname : text)` | update | `Result` | `""` clears the name and keeps the pocket meta (`Name removed`). |
+| `set_pocket(account, pocket : opt PocketMeta)` | update | `Result` | Remember or update (`Pocket remembered`, `Pocket updated`; `created_at` of the first record is kept, 0 = now) or, with `null`, forget (`Pocket forgotten`; the name stays). |
+| `set_pockets(vec record { Account; opt PocketMeta })` | update | `vec Result` | Up to 50 (traps above), one result each; a batch that would pass the limit is refused whole. |
+| `my_account_nickname_count()` | query | `{ count; max_free; max_premium }` | |
+| `get_account_limits()`, `account_stats()` | query | `{ account_max_free; account_max_premium }`, `{ entries; owners; accounts }` | |
+
+`AccountNickname = { account : Account; nickname : text; pocket : opt PocketMeta; updated_at : nat64 }`, `PocketMeta = { host : opt text; ledgers : vec principal; hidden : bool; created_at : nat64 }`: `host` is the Sneed Hub adapter id of a hosted pocket (`sneed_lock`, `sneedex`, `icpswap`, ...; 1-32 of `a-z 0-9 _ -`), null for a subaccount of the caller's own principal; at most 20 ledgers (repeats dropped).
+
 ### 5.7 `sneed_profiles`
 
 | Method | Kind | Returns | Notes |
@@ -540,6 +554,7 @@ Admins are the canister's controllers (the Sneed SNS root on production) plus th
 |---|---|---|
 | `admin_add_admin`, `admin_remove_admin` | all six | Manage the admin list. |
 | `admin_set_config` | all six | Limits, moderator, premium canister, DAO governance, SNS-W, archive controllers. |
+| `admin_set_account_limits` | pid_nicknames | Limits of account names and pockets (`account_max_free <= account_max_premium <= 10,000`). |
 | `admin_set_name` | pid_names, neuron_names | Set or clear a name without moderation (account created if needed). |
 | `admin_clear_avatar` | pid_names, neuron_names | Remove an abusive avatar (and an NFT avatar). |
 | `admin_import_names`, `admin_import_nicknames`, `admin_finish_import` | pid_names, neuron_names, both nickname canisters | One-time import from the backend; closed for good on production. |

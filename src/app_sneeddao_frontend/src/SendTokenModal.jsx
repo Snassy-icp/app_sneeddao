@@ -4,7 +4,12 @@ import './SendTokenModal.css';
 import { Principal } from "@dfinity/principal";
 import { HttpAgent } from "@dfinity/agent";
 import { formatAmount, formatAmountRaw, parseAmountToBigInt } from './utils/StringUtils';
-import { maxSendable, planSend, planFeeCount } from './utils/sendPlan';
+import { maxSendable, planSend, planFeeCount, tokenWithPockets } from './utils/sendPlan';
+import { usePockets } from './hooks/usePockets';
+import PocketPicker from './components/PocketPicker';
+import { ALL, MAIN_ID, LOCK_POCKET_ID, KIND, totalIn, displayName, hasExtraPockets } from './utils/pockets/model';
+import { planTransfer, transferProblem } from './utils/pockets/move';
+import { normalizeId } from './utils/IdUtils';
 import { useTheme } from './contexts/ThemeContext';
 import PrincipalInput from './components/PrincipalInput';
 import { PrincipalDisplay } from './utils/PrincipalUtils';
@@ -28,8 +33,18 @@ const walletPrimary = '#10b981';
 const walletSecondary = '#059669';
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
 
-function SendTokenModal({ show, onClose, onSend, token }) {
+// Pockets (spec/programmable_accounts.md §4.3): `fromPocketId` sends from one pocket (the
+// switcher's selection, or a pocket row's Send); `toPocketId` / mode 'move' moves to one of my
+// pockets (Move, Withdraw, Top up). Without other pockets the dialog is as it always was: Main +
+// Sneed Lock, split by utils/sendPlan.js. `onPocketTransferDone(token)` refreshes after a pocket send.
+function SendTokenModal({ show, onClose, onSend, token, fromPocketId = null, toPocketId = null, mode = 'send', onPocketTransferDone }) {
   const { theme } = useTheme();
+  const pk = usePockets();
+  const ledgerId = normalizeId(token?.ledger_canister_id || token?.principal);
+  const [fromId, setFromId] = useState(ALL);
+  const [moveMode, setMoveMode] = useState(false);
+  const [toId, setToId] = useState(null);
+  const [fromRules, setFromRules] = useState(null);
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -54,8 +69,35 @@ function SendTokenModal({ show, onClose, onSend, token }) {
   useEffect(() => {
     if (show) {
       setErrorText('');
+      const move = mode === 'move' || Boolean(toPocketId);
+      setMoveMode(move);
+      setFromId(fromPocketId || (move ? MAIN_ID : ALL));
+      setToId(toPocketId || null);
     }
-  }, [show]);
+  }, [show, fromPocketId, toPocketId, mode]);
+
+  // pockets: the source when one is chosen, what it can give now, and whether to show the pickers
+  const fromPocket = fromId && fromId !== ALL ? pk.pocketById(fromId) : null;
+  const toPocket = moveMode && toId ? pk.pocketById(toId) : null;
+  const fromChoices = useMemo(() => pk.pockets.filter((p) => !p.hidden && p.status !== 'error' && (p.kind === KIND.wallet || p.caps?.withdraw) && totalIn(p, ledgerId) > 0n), [pk.pockets, ledgerId]);
+  const showFromPicker = fromId !== ALL || fromChoices.some((p) => p.id !== MAIN_ID && p.id !== LOCK_POCKET_ID);
+  const showMoveToggle = moveMode || hasExtraPockets(pk.pockets);
+  const planToken = useMemo(() => tokenWithPockets(token, pk.pockets, ledgerId), [token, pk.pockets, ledgerId]);
+  const pocketPlan = fromPocket ? planTransfer(fromPocket, moveMode ? toPocket : { owner: null }, { me: pk.ctx?.me }) : null;
+  useEffect(() => {
+    let live = true;
+    setFromRules(null);
+    if (show && fromPocket && ledgerId) pk.rules(fromPocket, ledgerId).then((r) => { if (live) setFromRules(r); }).catch((e) => { if (live) setFromRules({ withdrawable: 0n, why: e?.message || String(e) }); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [show, fromPocket?.id, ledgerId]);
+  /// The most a pocket send can deliver: what the pocket gives, less the fees of later steps.
+  const pocketMax = () => {
+    if (!fromRules) return 0n;
+    const extra = BigInt(Math.max(0, (pocketPlan?.fees || 1) - 1)) * BigInt(token?.fee ?? 0);
+    const w = BigInt(fromRules.withdrawable ?? 0n);
+    return w > extra ? w - extra : 0n;
+  };
 
   useEffect(() => {
     if (!show) return;
@@ -202,8 +244,48 @@ function SendTokenModal({ show, onClose, onSend, token }) {
   // own transfer fee; the same plan decides the split when sending.
   // ICP sends to an account id are legacy transfers from the wallet only.
   const handleSetMax = () => {
+    if (fromPocket) { setAmount(formatAmountRaw(pocketMax(), token.decimals)); return; }
     const frontendOnly = !!(isICP && detectedAccountId);
-    setAmount(formatAmountRaw(maxSendable(token, { frontendOnly }), token.decimals));
+    setAmount(formatAmountRaw(maxSendable(planToken, { frontendOnly }), token.decimals));
+  };
+
+  /// Review of a send from one pocket, or a move between pockets (the pockets path).
+  const reviewPocketTransfer = (bigIntAmount) => {
+    const me = pk.ctx?.me;
+    let to;
+    if (moveMode) {
+      if (!toPocket) { setErrorText('Pick the pocket to move to'); return; }
+      to = toPocket;
+    } else {
+      if (isICP && detectedAccountId) { setErrorText('Sends to an ICP account ID come from Main: pick "All pockets" or Main.'); return; }
+      if (!parsedAccount?.principal) { setErrorText('Invalid recipient address!'); return; }
+      to = { owner: parsedAccount.principal, subaccount: parsedAccount.subaccount?.resolved || null };
+    }
+    const problem = transferProblem(fromPocket, to, { me });
+    if (problem) { setErrorText(problem); return; }
+    const plan = planTransfer(fromPocket, to, { me });
+    const max = pocketMax();
+    if (!fromRules) { setErrorText('Still reading what this pocket can send…'); return; }
+    if (bigIntAmount > max) {
+      setErrorText(`The most ${displayName(fromPocket)} can send now is ${formatAmountRaw(max, token.decimals)} ${token.symbol}${fromRules.why ? ` (${fromRules.why})` : ''}.`);
+      return;
+    }
+    if (fromRules.allOnly && bigIntAmount !== max) { setErrorText(`${displayName(fromPocket)} pays out whole: send ${formatAmountRaw(max, token.decimals)} ${token.symbol} (MAX).`); return; }
+    const toLabel = moveMode ? displayName(toPocket) : null;
+    setReviewData({
+      principal: to.owner && !moveMode ? to.owner.toText() : (moveMode && toPocket.account ? toPocket.account.owner.toText() : null),
+      subaccount: !moveMode && parsedAccount?.subaccount && !isDefaultSubaccount(parsedAccount.subaccount.resolved) ? bytesToHex(parsedAccount.subaccount.resolved) : null,
+      extendedAddress: moveMode ? null : encodeExtendedAddress(parsedAccount),
+      accountId: null,
+      amount,
+      amountBigInt: bigIntAmount,
+      fee: BigInt(token.fee) * BigInt(plan.fees),
+      feeCount: plan.fees,
+      feeNote: plan.fees > 1 ? `fees (${plan.fees} steps: ${plan.steps.map((st) => st.kind).join(', then ')})` : 'fee',
+      subaccountForTransfer: [],
+      pocketPath: { from: fromPocket, to, toLabel, steps: plan.steps.length },
+    });
+    setShowReviewScreen(true);
   };
 
   const handleConvertToExtendedAddress = () => {
@@ -245,6 +327,15 @@ function SendTokenModal({ show, onClose, onSend, token }) {
   const handleReview = async () => {
     setErrorText('');
 
+    if (fromPocket || moveMode) {
+      if (!fromPocket) { setErrorText('Pick the pocket to move from'); return; }
+      let a;
+      try { a = parseAmountToBigInt(amount, token.decimals); } catch { setErrorText('Invalid amount! Please enter a valid number.'); return; }
+      if (!amount || a <= 0n) { setErrorText('Invalid amount! Please enter a positive amount.'); return; }
+      reviewPocketTransfer(a);
+      return;
+    }
+
     if (recipient == "") {
       setErrorText("Please enter a recipient address first!");
       return;
@@ -280,9 +371,9 @@ function SendTokenModal({ show, onClose, onSend, token }) {
       return;
     }
 
-    const plan = planSend(token, bigIntAmount, { frontendOnly: !!isAccountIdSend });
+    const plan = planSend(planToken, bigIntAmount, { frontendOnly: !!isAccountIdSend });
     if (!plan) {
-      const maxAllowed = maxSendable(token, { frontendOnly: !!isAccountIdSend });
+      const maxAllowed = maxSendable(planToken, { frontendOnly: !!isAccountIdSend });
       const feeMsg = isAccountIdSend
         ? "Sends to an ICP account ID come from your wallet only and pay 1 transaction fee."
         : "Each transfer pays a fee: 1 when sending from one source, 2 when the send is split between your wallet and your Sneed Lock balance.";
@@ -334,6 +425,12 @@ function SendTokenModal({ show, onClose, onSend, token }) {
     try {
       setIsLoading(true);
       setErrorText('');
+      if (reviewData.pocketPath) {
+        await pk.transfer(reviewData.pocketPath.from, reviewData.pocketPath.to, ledgerId, reviewData.amountBigInt);
+        onPocketTransferDone?.(token);
+        onClose();
+        return;
+      }
       // Pass accountId as 5th param for ICP account ID transfers
       await onSend(token, reviewData.principal, reviewData.amount, reviewData.subaccountForTransfer, reviewData.accountId && !reviewData.principal ? reviewData.accountId : undefined);
       onClose();
@@ -544,9 +641,17 @@ function SendTokenModal({ show, onClose, onSend, token }) {
               color: theme.colors.mutedText,
               fontSize: '0.75rem'
             }}>
-              + {formatAmount(reviewData.fee, token.decimals)} {token.symbol} {reviewData.feeCount > 1 ? `fees (${reviewData.feeCount} transfers: Sneed Lock balance and wallet)` : 'fee'}
+              + {formatAmount(reviewData.fee, token.decimals)} {token.symbol} {reviewData.feeNote || (reviewData.feeCount > 1 ? `fees (${reviewData.feeCount} transfers: Sneed Lock balance and wallet)` : 'fee')}
             </div>
           </div>
+
+          {reviewData.pocketPath && (
+            <div style={{ background: theme.colors.secondaryBg, borderRadius: '8px', padding: '10px 12px', marginBottom: '12px', fontSize: '0.85rem', color: theme.colors.secondaryText }}>
+              <div>From: <strong style={{ color: theme.colors.primaryText }}>{displayName(reviewData.pocketPath.from)}</strong></div>
+              {reviewData.pocketPath.toLabel && <div>To your pocket: <strong style={{ color: theme.colors.primaryText }}>{reviewData.pocketPath.toLabel}</strong></div>}
+              {reviewData.pocketPath.steps > 1 && <div style={{ color: theme.colors.mutedText, fontSize: '0.78rem', marginTop: 4 }}>This takes {reviewData.pocketPath.steps} steps through Main, each paying the ledger fee.</div>}
+            </div>
+          )}
 
           {/* Recipient Summary */}
           <div style={{
@@ -896,7 +1001,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
               fontSize: '1.2rem',
               fontWeight: '600'
             }}>
-              Send {token.symbol}
+              {moveMode ? 'Move' : 'Send'} {token.symbol}
             </h2>
           </div>
           <button
@@ -935,12 +1040,41 @@ function SendTokenModal({ show, onClose, onSend, token }) {
             justifyContent: 'space-between',
             alignItems: 'center'
           }}>
-            <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>Available balance</span>
+            <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>{fromPocket ? `Can send from ${displayName(fromPocket)}` : 'Available balance'}</span>
             <span style={{ color: walletPrimary, fontWeight: '700', fontSize: '1rem' }}>
-              {formatAmount(token.available ?? token.balance ?? 0n, token.decimals)} {token.symbol}
+              {fromPocket ? (fromRules ? formatAmount(pocketMax(), token.decimals) : '…') : formatAmount(planToken.available ?? planToken.balance ?? 0n, token.decimals)} {token.symbol}
             </span>
           </div>
+          {fromPocket && fromRules?.why && <div style={{ marginTop: '-12px', marginBottom: '16px', fontSize: '0.78rem', color: theme.colors.mutedText }}>{fromRules.why}</div>}
 
+          {(showFromPicker || moveMode) && (
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', color: theme.colors.primaryText, marginBottom: '8px', fontWeight: '500' }}>From:</label>
+              <PocketPicker ledger={ledgerId} value={fromId} onChange={(v) => { setFromId(v); setAmount(''); }} filter="from" decimals={token.decimals} symbol={token.symbol}
+                pockets={fromChoices.length ? fromChoices : undefined} allLabel={moveMode ? null : 'All pockets (Main + Sneed Lock)'} />
+            </div>
+          )}
+
+          {showMoveToggle && (
+            <div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => { const m = !moveMode; setMoveMode(m); setErrorText(''); if (m && fromId === ALL) setFromId(MAIN_ID); if (!m) setToId(null); }}
+                style={{ background: 'none', border: 'none', color: theme.colors.accent, cursor: 'pointer', fontSize: '0.82rem', padding: 0 }}>
+                {moveMode ? 'Send to someone else instead' : 'Move to one of my pockets'}
+              </button>
+            </div>
+          )}
+
+          {moveMode && (
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', color: theme.colors.primaryText, marginBottom: '8px', fontWeight: '500' }}>To:</label>
+              <PocketPicker ledger={ledgerId} value={toId} onChange={setToId} filter="to" allowNew decimals={token.decimals} symbol={token.symbol} exclude={fromId ? [fromId] : []} />
+              {fromPocket && toPocket && pocketPlan && pocketPlan.fees > 1 && (
+                <div style={{ marginTop: 6, fontSize: '0.78rem', color: theme.colors.mutedText }}>Two steps through Main: {pocketPlan.fees} ledger fees.</div>
+              )}
+            </div>
+          )}
+
+        {!moveMode && (<>
         <div style={{ marginBottom: '20px' }}>
           <label style={{
             display: 'block',
@@ -1495,6 +1629,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
             ⚠️ This token uses the DIP20 standard which does not support subaccounts.
           </div>
         )}
+        </>)}
 
         <div style={{ marginBottom: '20px' }}>
           <label style={{
@@ -1551,7 +1686,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
             color: theme.colors.secondaryText,
             fontSize: '0.9rem'
           }}>
-            Fee: {formatAmount(token.fee, token.decimals)} {token.symbol} per transfer · Max you can send: {formatAmountRaw(maxSendable(token, { frontendOnly: !!(isICP && detectedAccountId) }), token.decimals)} {token.symbol}
+            Fee: {formatAmount(token.fee, token.decimals)} {token.symbol} per transfer · Max you can send: {formatAmountRaw(fromPocket ? pocketMax() : maxSendable(planToken, { frontendOnly: !!(isICP && detectedAccountId) }), token.decimals)} {token.symbol}
           </label>
         </div>
 

@@ -24,11 +24,13 @@
  *   isAuthenticated    – Boolean
  */
 import React, { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
+import { appConfirm } from '../utils/appDialog';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
+import PendingTopUpsNotice from './PendingTopUpsNotice';
 import { topUpCanisterWithIcp, cyclesOrThrow } from '../utils/cyclesTopUp';
 import { useTheme } from '../contexts/ThemeContext';
 import { formatAmountRaw } from '../utils/StringUtils';
@@ -112,7 +114,6 @@ function formatCycles(cycles) {
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const E8S = 100_000_000;
 const ICP_FEE = 10_000; // 0.0001 ICP
-const TOP_UP_MEMO = new Uint8Array([0x54, 0x50, 0x55, 0x50, 0x00, 0x00, 0x00, 0x00]);
 
 function formatIcp(e8s) {
     if (e8s === null || e8s === undefined) return '...';
@@ -1305,7 +1306,7 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
             const cmc = createCmcActor(CMC_CANISTER_ID, { agent });
             const topUp = await topUpCanisterWithIcp({ ledger, cmc, canisterId: canisterId, amountE8s, owner: identity.getPrincipal().toText() });
             const cyclesAdded = cyclesOrThrow(topUp);
-            setTopUpSuccessDialog({ cyclesAdded, icpSpent: icpAmount });
+            setTopUpSuccessDialog({ cyclesAdded, icpSpent: icpAmount, blockIndex: topUp.blockIndex != null ? String(topUp.blockIndex) : null });
             setTopUpAmount('');
             setShowTopUpSection(false);
             loadCanisterStatus();
@@ -1395,6 +1396,12 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                 <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>ICP spent: </span>
                                 <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.95rem' }}>{topUpSuccessDialog.icpSpent.toFixed(4)} ICP</span>
                             </div>
+                            {topUpSuccessDialog.blockIndex && (
+                                <div style={{ marginTop: '8px' }}>
+                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>ICP ledger block: </span>
+                                    <span style={{ color: theme.colors.primaryText, fontFamily: 'monospace', fontSize: '0.85rem' }}>#{topUpSuccessDialog.blockIndex}</span>
+                                </div>
+                            )}
                         </div>
                         <button onClick={() => setTopUpSuccessDialog(null)} style={{ ...buttonStyle, width: '100%' }}>Close</button>
                     </div>
@@ -1612,7 +1619,7 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                                             }}>
                                                             {upgrading && upgradeMode === 'upgrade' ? <><span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span> Upgrading...</> : '⬆️ Upgrade'}
                                                         </button>
-                                                        <button onClick={() => { if (window.confirm('⚠️ Reinstall will WIPE ALL CANISTER STATE including creation time. This cannot be undone. Are you sure?')) handleUpgrade(nextAvailableVersion, 'reinstall'); }}
+                                                        <button onClick={async () => { if (await appConfirm('⚠️ Reinstall will WIPE ALL CANISTER STATE including creation time. This cannot be undone. Are you sure?')) handleUpgrade(nextAvailableVersion, 'reinstall'); }}
                                                             disabled={upgrading}
                                                             style={{
                                                                 background: 'transparent', color: theme.colors.mutedText,
@@ -1674,9 +1681,9 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                                     )}
                                                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                                                         <button
-                                                            onClick={() => {
+                                                            onClick={async () => {
                                                                 if (isUnverifiedWasm) {
-                                                                    if (window.confirm(`⚠️ This canister has an unknown WASM and may not be a ${botName}. Upgrading it with the ${botName} WASM could break or destroy this canister. Are you sure you want to proceed?`)) {
+                                                                    if (await appConfirm(`⚠️ This canister has an unknown WASM and may not be a ${botName}. Upgrading it with the ${botName} WASM could break or destroy this canister. Are you sure you want to proceed?`)) {
                                                                         handleUpgrade(latestOfficialVersion, 'upgrade');
                                                                     }
                                                                 } else {
@@ -1694,8 +1701,8 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                                             {upgrading && upgradeMode === 'upgrade' ? '⏳ Upgrading...' : '⬆️ Upgrade'}
                                                         </button>
                                                         <button
-                                                            onClick={() => {
-                                                                if (window.confirm('⚠️ Reinstall will WIPE ALL CANISTER STATE. This cannot be undone. Are you sure?')) {
+                                                            onClick={async () => {
+                                                                if (await appConfirm('⚠️ Reinstall will WIPE ALL CANISTER STATE. This cannot be undone. Are you sure?')) {
                                                                     handleUpgrade(latestOfficialVersion, 'reinstall');
                                                                 }
                                                             }}
@@ -1842,6 +1849,7 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                 </div>
                                 {showTopUpSection && (
                                     <div>
+                                        <PendingTopUpsNotice style={{ marginBottom: 12 }} />
                                         {/* User ICP Balance */}
                                         <div style={{
                                             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -2656,7 +2664,7 @@ const BotManagementPanel = forwardRef(function BotManagementPanel({
                                                             {['Off', 'Error', 'Warning', 'Info', 'Debug', 'Trace'].map(l => <option key={l} value={l}>{l}</option>)}
                                                         </select>
                                                         <button onClick={async () => {
-                                                            if (!window.confirm('Clear all log entries?')) return;
+                                                            if (!await appConfirm('Clear all log entries?')) return;
                                                             setSavingLogConfig(true);
                                                             try { const bot = await getReadyBotActor(); await bot.clearLogs(); setLogSuccess('Logs cleared'); setTimeout(() => setLogSuccess(''), 3000); loadLogData(); }
                                                             catch (err) { setLogError('Failed: ' + err.message); }

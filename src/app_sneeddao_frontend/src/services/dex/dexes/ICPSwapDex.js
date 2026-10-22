@@ -16,6 +16,7 @@ import { Principal } from '@dfinity/principal';
 import { idlFactory as poolIdlFactory } from 'external/icp_swap/icp_swap.did.js';
 import { idlFactory as factoryIdlFactory } from 'external/icp_swap_factory/icp_swap_factory.did.js';
 import { BaseDex } from './BaseDex.js';
+import { rememberPool } from '../../../utils/pockets/adapters/icpswap.js';
 import {
   ICPSWAP_FACTORY_CANISTER,
   ICPSWAP_DEFAULT_FEE_TIER,
@@ -450,6 +451,8 @@ export class ICPSwapDex extends BaseDex {
   async executeSwap({ quote, slippage = 0.01, onProgress }) {
     const { inputToken, outputToken } = quote;
     const poolCid = quote.route[0].poolId;
+    // a swap can leave an unused balance in the pool: remember it, so it shows as a pocket
+    rememberPool(poolCid);
 
     // Use ICPSwap's view of the standard, falling back to the quote's standard
     const icpswapStandard = await this._getICPSwapStandard(inputToken, poolCid);

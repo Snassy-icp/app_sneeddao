@@ -1104,7 +1104,7 @@ function Hub() {
         {
             title: 'Sneedex Swap',
             icon: <FaExchangeAlt size={28} />,
-            desc: 'Swap tokens instantly with the best rates across multiple DEXes. Aggregates quotes from ICPSwap, Kong, and more to find you the optimal price.',
+            desc: 'Swap tokens at the best rate: quotes from ICPSwap pools, including multi-hop routes, and Sneedex auction buyouts.',
             path: '/swap',
             cta: 'Swap Tokens',
             color: '#3498db',

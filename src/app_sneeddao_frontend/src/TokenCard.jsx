@@ -33,6 +33,12 @@ import LockGas from './components/LockGas';
 import MintTokenDialog, { useIsMinter } from './components/MintTokenDialog';
 import ConvertButton from './components/convert/ConvertButton';
 import { TokenApprovalsBadge, TokenApprovalsRow } from './components/ApprovalsList';
+import { icrc1Transfer } from './utils/icrcTx';
+import { appAlert, appConfirm } from './utils/appDialog';
+import { usePockets } from './hooks/usePockets';
+import PocketRows from './components/PocketRows';
+import { otherPocketsTotal, holders as pocketHolders } from './utils/pockets/model';
+import { journalStake, updateStake, removeStake } from './utils/stakeJournal';
 
 // Amount text to base units by string parsing (commas ignored, no float math, extra
 // decimals cut off); null when it is not a positive number.
@@ -113,7 +119,14 @@ const LockCountdown = ({ expiry }) => {
     );
 };
 
-const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, alwaysShowRemoveToken = false, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleDepositToBackend, handleRefreshToken, refreshPhase = null, isRefreshing: isRefreshingLegacy = false, isSnsToken = false, onNeuronTotalsChange, onNeuronsLoaded, openTransferTokenLockModal, onOpenDetailModal }) => {
+const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, alwaysShowRemoveToken = false, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleDepositToBackend, handleRefreshToken, refreshPhase = null, isRefreshing: isRefreshingLegacy = false, isSnsToken = false, onNeuronTotalsChange, onNeuronsLoaded, openTransferTokenLockModal, onOpenDetailModal, showPockets = false, onPocketAction }) => {
+    // Pockets (spec/programmable_accounts.md §4.3): the card's total counts every pocket; Main and
+    // the Sneed Lock wallet are the Wallet / Deposited rows below, other pockets are rows of their
+    // own, and "in N pockets" shows only when more than one pocket holds the token.
+    const pockets = usePockets({ enabled: showPockets });
+    const pocketLedger = normalizeId(token.ledger_canister_id);
+    const pocketsExtra = showPockets ? otherPocketsTotal(pockets.pockets, pocketLedger) : 0n;
+    const pocketCount = showPockets ? pocketHolders(pockets.pockets, pocketLedger).length : 0;
     // Support both new refreshPhase prop and legacy isRefreshing boolean
     const isRefreshing = refreshPhase !== null || isRefreshingLegacy;
     const refreshClass = refreshPhase === 'balance' ? 'refreshing-balance' : (refreshPhase === 'full' || isRefreshingLegacy) ? 'refreshing-full' : '';
@@ -207,6 +220,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [createNeuronDissolveDelay, setCreateNeuronDissolveDelay] = useState('');
     const [createNeuronSetDissolveDelay, setCreateNeuronSetDissolveDelay] = useState(true); // Whether to set dissolve delay
     const [createNeuronProgress, setCreateNeuronProgress] = useState('');
+    const [createNeuronMessage, setCreateNeuronMessage] = useState(null); // { ok, text } shown in the dialog
     const [createNeuronNonce, setCreateNeuronNonce] = useState('');
     const [createNeuronNonceChecking, setCreateNeuronNonceChecking] = useState(false);
     const [createNeuronNonceFree, setCreateNeuronNonceFree] = useState(null); // null = not checked, true = free, false = taken
@@ -394,10 +408,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
 
     // Auto-expand Liquid section when deposited balance comes in (if currently collapsed)
     useEffect(() => {
-        if ((token.available_backend || 0n) > 0n && !showBalanceBreakdown) {
+        if (((token.available_backend || 0n) > 0n || pocketsExtra > 0n) && !showBalanceBreakdown) {
             setShowBalanceBreakdown(true);
         }
-    }, [token.available_backend]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [token.available_backend, pocketsExtra > 0n]);
 
     const getDissolveDelaySeconds = (neuron) => {
         const dissolveState = neuron.dissolve_state?.[0];
@@ -500,7 +515,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             // Refetch neurons to update UI
             await refetchNeurons();
         } else {
-            alert(`Error starting dissolve: ${result.err}`);
+            appAlert(`Error starting dissolve: ${result.err}`);
         }
         setNeuronActionBusy(false);
         setManagingNeuronId(null);
@@ -515,7 +530,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         if (result.ok) {
             await refetchNeurons();
         } else {
-            alert(`Error stopping dissolve: ${result.err}`);
+            appAlert(`Error stopping dissolve: ${result.err}`);
         }
         setNeuronActionBusy(false);
         setManagingNeuronId(null);
@@ -534,7 +549,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         if (result.ok) {
             await refetchNeurons();
         } else {
-            alert(`Error increasing dissolve delay: ${result.err}`);
+            appAlert(`Error increasing dissolve delay: ${result.err}`);
         }
         setNeuronActionBusy(false);
         setManagingNeuronId(null);
@@ -555,14 +570,14 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         });
         
         if (result.ok) {
-            alert('Neuron disbursed successfully! The tokens will appear in your wallet shortly.');
+            appAlert('Neuron disbursed successfully! The tokens will appear in your wallet shortly.');
             await refetchNeurons();
             // Refresh token balance to show the disbursed tokens
             if (handleRefreshToken) {
                 await handleRefreshToken(token);
             }
         } else {
-            alert(`Error disbursing neuron: ${result.err}`);
+            appAlert(`Error disbursing neuron: ${result.err}`);
         }
         setNeuronActionBusy(false);
         setManagingNeuronId(null);
@@ -581,14 +596,14 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         });
         
         if (result.ok) {
-            alert('Maturity disbursed successfully! The tokens will appear in your wallet shortly.');
+            appAlert('Maturity disbursed successfully! The tokens will appear in your wallet shortly.');
             await refetchNeurons();
             // Refresh token balance to show the disbursed tokens
             if (handleRefreshToken) {
                 await handleRefreshToken(token);
             }
         } else {
-            alert(`Error disbursing maturity: ${result.err}`);
+            appAlert(`Error disbursing maturity: ${result.err}`);
         }
         setNeuronActionBusy(false);
         setManagingNeuronId(null);
@@ -612,7 +627,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         if (result.ok) {
             await refetchNeurons();
         } else {
-            alert(`Error changing auto-stake maturity setting: ${result.err}`);
+            appAlert(`Error changing auto-stake maturity setting: ${result.err}`);
         }
         setNeuronActionBusy(false);
         setManagingNeuronId(null);
@@ -621,7 +636,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const splitNeuron = async (neuronIdHex) => {
         const amountE8s = amountTextToBaseUnits(splitNeuronAmount, token.decimals);
         if (amountE8s === null) {
-            alert('Please enter a valid amount to split');
+            appAlert('Please enter a valid amount to split');
             return;
         }
         
@@ -639,12 +654,12 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         });
         
         if (result.ok) {
-            alert('Neuron split successfully! A new neuron has been created.');
+            appAlert('Neuron split successfully! A new neuron has been created.');
             await refetchNeurons();
             setShowSplitNeuronDialog(false);
             setSplitNeuronAmount('');
         } else {
-            alert(`Error splitting neuron: ${result.err}`);
+            appAlert(`Error splitting neuron: ${result.err}`);
         }
         setNeuronActionBusy(false);
         setManagingNeuronId(null);
@@ -809,6 +824,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
 
     const createNeuron = async (amountE8s, dissolveDelaySeconds, nonce, shouldSetDissolveDelay = true) => {
         setNeuronActionBusy(true);
+        setCreateNeuronMessage(null);
         
         try {
             // Step 1: Use the provided nonce and compute subaccount
@@ -854,9 +870,18 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 created_at_time: []
             };
             
-            const transferResult = await ledgerActor.icrc1_transfer(transferArgs);
+            // Journal before the transfer: if the claim below never runs, "Finish staking" can redo it
+            const stakeId = journalStake({ kind: 'sns', ledger: ledgerIdString, governance: governanceCanisterId, memo: nonce, subaccount: subaccount32, amount: amountE8s, owner: principal.toText() });
+            let transferResult;
+            try {
+                transferResult = await icrc1Transfer(ledgerActor, transferArgs);
+            } catch (e) {
+                updateStake(stakeId, { lastError: e?.message || String(e) }); // outcome unknown: keep the entry
+                throw e;
+            }
             
             if ('Err' in transferResult) {
+                removeStake(stakeId); // nothing was sent
                 const error = transferResult.Err;
                 let errorMsg = 'Transfer failed';
                 if (error.InsufficientFunds) {
@@ -866,11 +891,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 } else if (error.GenericError) {
                     errorMsg = error.GenericError.message;
                 }
-                alert(`Error transferring tokens: ${errorMsg}`);
+                setCreateNeuronMessage({ ok: false, text: `Error transferring tokens: ${errorMsg}` });
                 setNeuronActionBusy(false);
                 setCreateNeuronProgress('');
                 return;
             }
+            
+            updateStake(stakeId, { block: transferResult.Ok });
             
             // Step 3: Wait a moment for the transfer to be processed
             setCreateNeuronProgress('Waiting for transfer to be processed...');
@@ -906,11 +933,14 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             });
             
             if (claimResult?.command?.[0]?.Error) {
-                alert(`Tokens transferred but failed to create neuron: ${claimResult.command[0].Error.error_message}`);
+                updateStake(stakeId, { lastError: claimResult.command[0].Error.error_message });
+                setCreateNeuronMessage({ ok: false, text: `Tokens transferred (block ${transferResult.Ok}) but the neuron was not created: ${claimResult.command[0].Error.error_message}. Use "Finish staking" in your wallet to retry the claim; it does not send tokens again.` });
                 setNeuronActionBusy(false);
                 setCreateNeuronProgress('');
                 return;
             }
+            
+            removeStake(stakeId);
             
             // Step 5: Set dissolve delay (if requested)
             if (shouldSetDissolveDelay && dissolveDelaySeconds > 0) {
@@ -928,10 +958,14 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             setCreateNeuronProgress('Refreshing neuron list...');
             await refetchNeurons();
             
-            alert(`Successfully created neuron with ${formatAmount(amountE8s, token.decimals)} ${token.symbol}!`);
+            appAlert(`Created a neuron with ${formatAmount(amountE8s, token.decimals)} ${token.symbol}.`, { type: 'success' });
         } catch (error) {
             console.error('[TokenCard] Error creating neuron:', error);
-            alert(`Error: ${error.message || String(error)}`);
+            // Keep the dialog open with the reason (an unknown transfer outcome says to check the balance first)
+            setCreateNeuronMessage({ ok: false, text: error.message || String(error) });
+            setNeuronActionBusy(false);
+            setCreateNeuronProgress('');
+            return;
         }
         
         setNeuronActionBusy(false);
@@ -976,7 +1010,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 created_at_time: []
             };
             
-            const transferResult = await ledgerActor.icrc1_transfer(transferArgs);
+            const transferResult = await icrc1Transfer(ledgerActor, transferArgs);
             
             if ('Err' in transferResult) {
                 const error = transferResult.Err;
@@ -988,7 +1022,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 } else if (error.GenericError) {
                     errorMsg = error.GenericError.message;
                 }
-                alert(`Error transferring tokens: ${errorMsg}`);
+                appAlert(`Error transferring tokens: ${errorMsg}`);
                 setNeuronActionBusy(false);
                 setManagingNeuronId(null);
                 return;
@@ -1003,14 +1037,14 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             });
             
             if (result.ok) {
-                alert(`Successfully increased stake by ${formatAmount(amountE8s, token.decimals)} ${token.symbol}!`);
+                appAlert(`Successfully increased stake by ${formatAmount(amountE8s, token.decimals)} ${token.symbol}!`);
                 await refetchNeurons();
             } else {
-                alert(`Tokens transferred but failed to refresh neuron: ${result.err}. The tokens are in the neuron but voting power may not be updated yet.`);
+                appAlert(`Tokens transferred but failed to refresh neuron: ${result.err}. The tokens are in the neuron but voting power may not be updated yet.`);
             }
         } catch (error) {
             console.error('[TokenCard] Error increasing neuron stake:', error);
-            alert(`Error: ${error.message || String(error)}`);
+            appAlert(`Error: ${error.message || String(error)}`);
         }
         
         setNeuronActionBusy(false);
@@ -1029,7 +1063,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             try {
                 recipientPrincipal = Principal.fromText(recipientPrincipalText);
             } catch (error) {
-                alert('Invalid principal format. Please enter a valid Internet Computer principal.');
+                appAlert('Invalid principal format. Please enter a valid Internet Computer principal.');
                 setNeuronActionBusy(false);
                 setSendNeuronProgress('');
                 return;
@@ -1038,7 +1072,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             // Check if trying to send to self
             const userPrincipal = identity.getPrincipal();
             if (normalizeId(recipientPrincipal) === normalizeId(userPrincipal)) {
-                alert('You cannot send a neuron to yourself.');
+                appAlert('You cannot send a neuron to yourself.');
                 setNeuronActionBusy(false);
                 setSendNeuronProgress('');
                 return;
@@ -1057,7 +1091,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             });
             
             if (!currentNeuronResult.result || currentNeuronResult.result.length === 0) {
-                alert('Failed to fetch neuron data');
+                appAlert('Failed to fetch neuron data');
                 setNeuronActionBusy(false);
                 setSendNeuronProgress('');
                 return;
@@ -1086,7 +1120,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 });
                 
                 if (!addResult.ok) {
-                    alert(`Failed to add recipient: ${addResult.err}`);
+                    appAlert(`Failed to add recipient: ${addResult.err}`);
                     setNeuronActionBusy(false);
                     setSendNeuronProgress('');
                     return;
@@ -1100,7 +1134,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 });
                 
                 if (!verifyResult.result || verifyResult.result.length === 0) {
-                    alert('Failed to verify neuron after adding recipient');
+                    appAlert('Failed to verify neuron after adding recipient');
                     setNeuronActionBusy(false);
                     setSendNeuronProgress('');
                     return;
@@ -1112,7 +1146,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 );
                 
                 if (!verifiedRecipientPerms || verifiedRecipientPerms.permission_type.length !== 11) {
-                    alert('Failed to verify recipient has full permissions');
+                    appAlert('Failed to verify recipient has full permissions');
                     setNeuronActionBusy(false);
                     setSendNeuronProgress('');
                     return;
@@ -1130,7 +1164,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             });
             
             if (!finalNeuronResult.result || finalNeuronResult.result.length === 0) {
-                alert('Failed to fetch neuron for cleanup');
+                appAlert('Failed to fetch neuron for cleanup');
                 setNeuronActionBusy(false);
                 setSendNeuronProgress('');
                 return;
@@ -1159,7 +1193,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     });
                     
                     if (!removeResult.ok) {
-                        alert(`Warning: Recipient was added but failed to remove principal ${principal.toString()}: ${removeResult.err}. The neuron may have multiple owners.`);
+                        appAlert(`Warning: Recipient was added but failed to remove principal ${principal.toString()}: ${removeResult.err}. The neuron may have multiple owners.`);
                         break; // Stop on first error
                     }
                 }
@@ -1168,10 +1202,10 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             setSendNeuronProgress('Refreshing neuron list...');
             await refetchNeurons();
             
-            alert(`Successfully sent neuron to ${recipientPrincipalText}!`);
+            appAlert(`Successfully sent neuron to ${recipientPrincipalText}!`);
         } catch (error) {
             console.error('[TokenCard] Error sending neuron:', error);
-            alert(`Error: ${error.message || String(error)}`);
+            appAlert(`Error: ${error.message || String(error)}`);
         }
         
         setNeuronActionBusy(false);
@@ -1313,14 +1347,14 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const nnsStartDissolving = async (neuronId) => {
         setNeuronActionBusy(true);
         const result = await manageNnsNeuron(neuronId, { Configure: { operation: [{ StartDissolving: {} }] } });
-        if (result.ok) { await refetchNeurons(); } else { alert(`Error: ${result.err}`); }
+        if (result.ok) { await refetchNeurons(); } else { appAlert(`Error: ${result.err}`); }
         setNeuronActionBusy(false);
     };
 
     const nnsStopDissolving = async (neuronId) => {
         setNeuronActionBusy(true);
         const result = await manageNnsNeuron(neuronId, { Configure: { operation: [{ StopDissolving: {} }] } });
-        if (result.ok) { await refetchNeurons(); } else { alert(`Error: ${result.err}`); }
+        if (result.ok) { await refetchNeurons(); } else { appAlert(`Error: ${result.err}`); }
         setNeuronActionBusy(false);
     };
 
@@ -1328,11 +1362,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         setNeuronActionBusy(true);
         const result = await manageNnsNeuron(neuronId, { Disburse: { to_account: [], amount: [] } });
         if (result.ok) {
-            alert('Neuron disbursed! Tokens will appear in your wallet shortly.');
+            appAlert('Neuron disbursed! Tokens will appear in your wallet shortly.');
             await refetchNeurons();
             if (handleRefreshToken) await handleRefreshToken(token);
         } else {
-            alert(`Error disbursing: ${result.err}`);
+            appAlert(`Error disbursing: ${result.err}`);
         }
         setNeuronActionBusy(false);
     };
@@ -1343,7 +1377,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             SpawnOrMergeMaturity: { percentage_to_spawn: [100] }
         });
         if (result.ok) {
-            alert('Maturity spawn initiated! A new neuron will be created with the maturity.');
+            appAlert('Maturity spawn initiated! A new neuron will be created with the maturity.');
             await refetchNeurons();
         } else {
             // Try older Spawn command as fallback
@@ -1351,10 +1385,10 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 Spawn: { percentage_to_spawn: [100], new_controller: [], nonce: [] }
             });
             if (result2.ok) {
-                alert('Maturity spawn initiated!');
+                appAlert('Maturity spawn initiated!');
                 await refetchNeurons();
             } else {
-                alert(`Error spawning maturity: ${result2.err}`);
+                appAlert(`Error spawning maturity: ${result2.err}`);
             }
         }
         setNeuronActionBusy(false);
@@ -1377,7 +1411,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     };
 
     const handleRemoveNnsHotkey = async (neuronId, hotkeyPrincipal) => {
-        if (!confirm(`Remove hotkey ${hotkeyPrincipal}?`)) return;
+        if (!await appConfirm(`Remove hotkey ${hotkeyPrincipal}?`)) return;
         setNnsHotkeyBusy(true);
         setNnsHotkeyError('');
         setNnsHotkeySuccess('');
@@ -1459,8 +1493,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     <div className="header-row-1" style={{ minWidth: 0 }}>
                         <span className="token-name">{token.name || token.symbol}</span>
                         <span className="token-usd-value">
-                            {((token.available || 0n) + (token.locked || 0n) + ((isSnsToken || isICP) ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable)) > 0n && token.conversion_rate > 0 && 
-                                denomFormatValue(computeUsdValue((token.available || 0n) + (token.locked || 0n) + ((isSnsToken || isICP) ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate))
+                            {((token.available || 0n) + (token.locked || 0n) + pocketsExtra + ((isSnsToken || isICP) ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable)) > 0n && token.conversion_rate > 0 && 
+                                denomFormatValue(computeUsdValue((token.available || 0n) + (token.locked || 0n) + pocketsExtra + ((isSnsToken || isICP) ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate))
                             }
                         </span>
                     </div>
@@ -1468,7 +1502,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     <div className="header-row-2">
                         <div className="amount-symbol">
                             {!hideAvailable && (
-                                <span className="token-amount">{formatAmount((token.available || 0n) + (token.locked || 0n) + ((isSnsToken || isICP) ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)} {token.symbol}</span>
+                                <span className="token-amount">{formatAmount((token.available || 0n) + (token.locked || 0n) + pocketsExtra + ((isSnsToken || isICP) ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)} {token.symbol}</span>
                             )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -2055,7 +2089,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         {balanceSectionExpanded ? <FaChevronDown size={10} /> : <FaChevronRight size={10} />}
                                     </span>
                                 </div>
-                                <div className="balance-value">{formatAmount(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)}{getUSD(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate, denomFormatValue)}</div>
+                                <div className="balance-value">{formatAmount(availableOrZero(token.available) + token.locked + pocketsExtra + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)}{getUSD(availableOrZero(token.available) + token.locked + pocketsExtra + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate, denomFormatValue)}</div>
                             </div>
                             {balanceSectionExpanded && (
                                 <>
@@ -2064,6 +2098,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                 <FaTint size={14} style={{ color: theme.colors.mutedText }} />
                                                 Liquid
+                                                {pocketCount > 1 && <span style={{ fontWeight: 400, color: theme.colors.mutedText }}>· in {pocketCount} pockets</span>}
                                                 {showBalanceBreakdown ? (
                                                     <FaChevronDown size={10} style={{ color: theme.colors.mutedText }} />
                                                 ) : (
@@ -2071,7 +2106,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                 )}
                                             </div>
                                         </div>
-                                        <div className="balance-value">{formatAmount(token.available || 0n, token.decimals)}{getUSD(token.available || 0n, token.decimals, token.conversion_rate, denomFormatValue)}</div>
+                                        <div className="balance-value">{formatAmount((token.available || 0n) + pocketsExtra, token.decimals)}{getUSD((token.available || 0n) + pocketsExtra, token.decimals, token.conversion_rate, denomFormatValue)}</div>
                                     </div>
                                     
                                     {showBalanceBreakdown && (
@@ -2203,6 +2238,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                     </button>
                                                 )}
                                             </div>
+                                            {showPockets && <PocketRows token={token} hideButtons={hideButtons} onAction={onPocketAction} />}
                                         </div>
                                     )}
                                     {(token.locked || 0n) > 0n && (
@@ -3186,8 +3222,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                 {/* Disburse button */}
                                                                 {state === 'Dissolved' && userHasPermission(neuron, PERM.DISBURSE) && (
                                                                     <button
-                                                                        onClick={() => {
-                                                                            if (window.confirm('Are you sure you want to disburse this neuron? The tokens will be transferred to your wallet.')) {
+                                                                        onClick={async () => {
+                                                                            if (await appConfirm('Are you sure you want to disburse this neuron? The tokens will be transferred to your wallet.')) {
                                                                                 disburseNeuron(neuronIdHex);
                                                                             }
                                                                         }}
@@ -3211,8 +3247,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                 {/* Disburse Maturity button - when neuron has maturity */}
                                                                 {(neuron.maturity_e8s_equivalent || 0n) > 0n && userHasPermission(neuron, PERM.DISBURSE_MATURITY) && (
                                                                     <button
-                                                                        onClick={() => {
-                                                                            if (window.confirm(`Disburse ${formatAmount(neuron.maturity_e8s_equivalent, token.decimals)} ${token.symbol} maturity to your wallet?`)) {
+                                                                        onClick={async () => {
+                                                                            if (await appConfirm(`Disburse ${formatAmount(neuron.maturity_e8s_equivalent, token.decimals)} ${token.symbol} maturity to your wallet?`)) {
                                                                                 disburseMaturity(neuronIdHex);
                                                                             }
                                                                         }}
@@ -4262,11 +4298,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     onClick={() => {
                                         const days = parseInt(dissolveDelayInput);
                                         if (isNaN(days) || days < 0) {
-                                            alert('Please enter a valid number of days');
+                                            appAlert('Please enter a valid number of days');
                                             return;
                                         }
                                         if (maxAdditionalDays > 0 && days > maxAdditionalDays) {
-                                            alert(`Maximum ${isIncreasing ? 'additional' : ''} dissolve delay is ${maxAdditionalDays} days`);
+                                            appAlert(`Maximum ${isIncreasing ? 'additional' : ''} dissolve delay is ${maxAdditionalDays} days`);
                                             return;
                                         }
                                         const seconds = days * 24 * 60 * 60;
@@ -4454,17 +4490,17 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         try {
                                             const stakeE8s = amountTextToBaseUnits(increaseStakeAmount, token.decimals);
                                             if (stakeE8s === null) {
-                                                alert('Please enter a valid amount');
+                                                appAlert('Please enter a valid amount');
                                                 return;
                                             }
                                             const total = stakeE8s + tokenFee;
                                             if (total > maxAvailable) {
-                                                alert(`Insufficient balance. You need ${formatAmount(total, token.decimals)} ${token.symbol} (including fee) but only have ${formatAmount(maxAvailable, token.decimals)} ${token.symbol}`);
+                                                appAlert(`Insufficient balance. You need ${formatAmount(total, token.decimals)} ${token.symbol} (including fee) but only have ${formatAmount(maxAvailable, token.decimals)} ${token.symbol}`);
                                                 return;
                                             }
                                             increaseNeuronStake(managingNeuronId, stakeE8s);
                                         } catch (error) {
-                                            alert('Invalid amount entered');
+                                            appAlert('Invalid amount entered');
                                         }
                                     }}
                                     disabled={neuronActionBusy || !increaseStakeAmount}
@@ -4684,24 +4720,24 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         try {
                                             const splitE8s = amountTextToBaseUnits(splitNeuronAmount, token.decimals);
                                             if (splitE8s === null) {
-                                                alert('Please enter a valid amount');
+                                                appAlert('Please enter a valid amount');
                                                 return;
                                             }
                                             if (splitE8s < minSplitAmount) {
-                                                alert(`The split amount must be at least ${formatAmount(minSplitAmount, token.decimals)} ${token.symbol} (minimum stake + transaction fee)`);
+                                                appAlert(`The split amount must be at least ${formatAmount(minSplitAmount, token.decimals)} ${token.symbol} (minimum stake + transaction fee)`);
                                                 return;
                                             }
                                             if (splitE8s > maxSplitAmount) {
-                                                alert(`The split amount cannot exceed ${formatAmount(maxSplitAmount, token.decimals)} ${token.symbol}`);
+                                                appAlert(`The split amount cannot exceed ${formatAmount(maxSplitAmount, token.decimals)} ${token.symbol}`);
                                                 return;
                                             }
                                             if (stake - splitE8s < minStakeE8s) {
-                                                alert(`The remaining stake must be at least ${formatAmount(minStakeE8s, token.decimals)} ${token.symbol}`);
+                                                appAlert(`The remaining stake must be at least ${formatAmount(minStakeE8s, token.decimals)} ${token.symbol}`);
                                                 return;
                                             }
                                             splitNeuron(managingNeuronId);
                                         } catch (error) {
-                                            alert('Invalid amount entered');
+                                            appAlert('Invalid amount entered');
                                         }
                                     }}
                                     disabled={neuronActionBusy || !splitNeuronAmount || maxSplitAmount === 0n}
@@ -4785,6 +4821,16 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 <FaPlus size={14} /> Create New Neuron
                             </h3>
                             
+                            {createNeuronMessage && (
+                                <div style={{
+                                    background: (createNeuronMessage.ok ? '#10b981' : '#ef4444') + '15',
+                                    border: `1px solid ${createNeuronMessage.ok ? '#10b981' : '#ef4444'}66`,
+                                    color: createNeuronMessage.ok ? '#10b981' : (theme.colors.error || '#ef4444'),
+                                    borderRadius: '8px', padding: '10px 12px', marginBottom: '16px', fontSize: '0.85rem',
+                                }}>
+                                    {createNeuronMessage.text}
+                                </div>
+                            )}
                             {/* Progress Indicator */}
                             {createNeuronProgress && (
                                 <div style={{
@@ -5148,6 +5194,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         setCreateNeuronNonceFree(null);
                                         setCreateNeuronSubaccountBalance(null);
                                         setCreateNeuronAdvancedExpanded(false);
+                                        setCreateNeuronMessage(null);
                                     }}
                                     disabled={neuronActionBusy || createNeuronProgress}
                                     style={{
@@ -5170,20 +5217,20 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             // Validate stake amount
                                             const stakeE8s = amountTextToBaseUnits(createNeuronAmount, token.decimals);
                                             if (stakeE8s === null) {
-                                                alert('Please enter a valid stake amount');
+                                                setCreateNeuronMessage({ ok: false, text: 'Please enter a valid stake amount' });
                                                 return;
                                             }
                                             
                                             // Check minimum stake
                                             if (stakeE8s < minStakeE8s) {
-                                                alert(`Stake amount must be at least ${formatAmount(minStakeE8s, token.decimals)} ${token.symbol}`);
+                                                setCreateNeuronMessage({ ok: false, text: `Stake amount must be at least ${formatAmount(minStakeE8s, token.decimals)} ${token.symbol}` });
                                                 return;
                                             }
                                             
                                             // Check available balance
                                             const total = stakeE8s + tokenFee;
                                             if (total > maxAvailable) {
-                                                alert(`Insufficient balance. You need ${formatAmount(total, token.decimals)} ${token.symbol} (including fee) but only have ${formatAmount(maxAvailable, token.decimals)} ${token.symbol}`);
+                                                setCreateNeuronMessage({ ok: false, text: `Insufficient balance. You need ${formatAmount(total, token.decimals)} ${token.symbol} (including fee) but only have ${formatAmount(maxAvailable, token.decimals)} ${token.symbol}` });
                                                 return;
                                             }
                                             
@@ -5192,40 +5239,40 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             if (createNeuronSetDissolveDelay) {
                                                 const delayDays = parseFloat(createNeuronDissolveDelay);
                                                 if (isNaN(delayDays) || delayDays < 0) {
-                                                    alert('Please enter a valid dissolve delay in days');
+                                                    setCreateNeuronMessage({ ok: false, text: 'Please enter a valid dissolve delay in days' });
                                                     return;
                                                 }
                                                 delaySeconds = Math.floor(delayDays * 24 * 60 * 60);
                                                 
                                                 // Check min/max dissolve delay
                                                 if (delaySeconds < minDissolveDelaySeconds) {
-                                                    alert(`Dissolve delay must be at least ${format_duration(minDissolveDelaySeconds * 1000)}`);
+                                                    setCreateNeuronMessage({ ok: false, text: `Dissolve delay must be at least ${format_duration(minDissolveDelaySeconds * 1000)}` });
                                                     return;
                                                 }
                                                 if (delaySeconds > maxDissolveDelaySeconds) {
-                                                    alert(`Dissolve delay cannot exceed ${format_duration(maxDissolveDelaySeconds * 1000)}`);
+                                                    setCreateNeuronMessage({ ok: false, text: `Dissolve delay cannot exceed ${format_duration(maxDissolveDelaySeconds * 1000)}` });
                                                     return;
                                                 }
                                             }
                                             
                                             // Validate nonce
                                             if (!createNeuronNonce) {
-                                                alert('Please enter a nonce');
+                                                setCreateNeuronMessage({ ok: false, text: 'Please enter a nonce' });
                                                 return;
                                             }
                                             if (createNeuronNonceFree !== true) {
-                                                alert('Please verify that the nonce is free by clicking "Check Free"');
+                                                setCreateNeuronMessage({ ok: false, text: 'Please verify that the nonce is free by clicking "Check Free"' });
                                                 return;
                                             }
                                             const nonce = parseInt(createNeuronNonce);
                                             if (isNaN(nonce) || nonce < 0) {
-                                                alert('Please enter a valid nonce (non-negative integer)');
+                                                setCreateNeuronMessage({ ok: false, text: 'Please enter a valid nonce (non-negative integer)' });
                                                 return;
                                             }
                                             
                                             createNeuron(stakeE8s, delaySeconds, nonce, createNeuronSetDissolveDelay);
                                         } catch (error) {
-                                            alert('Invalid input values');
+                                            setCreateNeuronMessage({ ok: false, text: 'Invalid input values' });
                                         }
                                     }}
                                     disabled={(() => {
@@ -5447,12 +5494,12 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 Cancel
                             </button>
                             <button
-                                onClick={() => {
+                                onClick={async () => {
                                     if (!sendNeuronRecipient.trim()) {
-                                        alert('Please enter a recipient principal');
+                                        appAlert('Please enter a recipient principal');
                                         return;
                                     }
-                                    if (!confirm('Are you sure you want to send this neuron? You will lose all access to it.')) {
+                                    if (!await appConfirm('Are you sure you want to send this neuron? You will lose all access to it.')) {
                                         return;
                                     }
                                     sendNeuron(managingNeuronId, sendNeuronRecipient.trim());

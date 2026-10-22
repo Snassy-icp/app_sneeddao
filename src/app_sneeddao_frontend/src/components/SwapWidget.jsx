@@ -7,7 +7,6 @@ import TokenSelector from './TokenSelector';
 import {
   DexAggregator,
   ICPSwapDex,
-  KongDex,
   SwapStep,
   DEFAULT_SLIPPAGE,
   getHost,
@@ -24,6 +23,7 @@ import {
 import { Principal } from '@dfinity/principal';
 import { setMySettings } from '../utils/BackendUtils';
 import { useDenomination } from '../contexts/DenominationContext';
+import { icrc1Transfer } from '../utils/icrcTx';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -1013,7 +1013,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
     const config = { identity, agent, host };
     const agg = new DexAggregator(config);
     agg.registerDex(new ICPSwapDex(config));
-    agg.registerDex(new KongDex(config));
+    // KongSwap has shut down: no Kong quotes. KongDex stays in services/dex for reference only.
     aggregatorRef.current = agg;
     setAggregatorReady(true);
 
@@ -1501,7 +1501,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
     const ledgerActor = createLedgerActor(offer.price_token_ledger.toString(), { agentOptions: { identity, host: getHost() } });
 
     const fee = await ledgerActor.icrc1_fee();
-    const transferResult = await ledgerActor.icrc1_transfer({
+    const transferResult = await icrc1Transfer(ledgerActor, {
       to: {
         owner: Principal.fromText(SNEEDEX_CANISTER_ID),
         subaccount: [Array.from(subaccount)],

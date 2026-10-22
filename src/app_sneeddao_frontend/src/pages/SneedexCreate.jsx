@@ -58,6 +58,7 @@ import { escrowExtAsset } from '../utils/SneedexExt';
 import { useExtEscrowConfirm } from '../components/ExtEscrowConfirm';
 import PriceTierBadge from '../components/PriceTierBadge';
 import { fetchSpecialPricesFor, effectivePrice } from '../utils/specialPrices';
+import { icrc1Transfer } from '../utils/icrcTx';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
@@ -1853,7 +1854,7 @@ function SneedexCreate() {
                     agentOptions: { identity, host: getHost() }
                 });
                 
-                const result = await icpLedger.icrc1_transfer({
+                const result = await icrc1Transfer(icpLedger, {
                     to: {
                         owner: Principal.fromText(SNEEDEX_CANISTER_ID),
                         subaccount: [paymentSubaccount],
@@ -2121,7 +2122,7 @@ function SneedexCreate() {
                 const myBal = BigInt(await ledger.icrc1_balance_of({ owner: sneedLock, subaccount: [lockSub(me)] }));
                 const myFree = myBal - lockedOf(myLocks, asset.ledger_id);
                 if (myFree < fee) {
-                    const r = await ledger.icrc1_transfer({ to: { owner: sneedLock, subaccount: [lockSub(me)] }, amount: fee - myFree + fee, fee: [], memo: [], from_subaccount: [], created_at_time: [] });
+                    const r = await icrc1Transfer(ledger, { to: { owner: sneedLock, subaccount: [lockSub(me)] }, amount: fee - myFree + fee, fee: [], memo: [], from_subaccount: [], created_at_time: [] });
                     if ('Err' in r) throw new Error(`Could not fund the transfer fee in your Sneed Lock wallet: ${toJsonString(r.Err)}`);
                 }
                 // 2. Sneedex's free balance there must cover a fee too, for the delivery (and one spare for a reclaim)
@@ -2130,7 +2131,7 @@ function SneedexCreate() {
                 const dexBal = BigInt(await ledger.icrc1_balance_of({ owner: sneedLock, subaccount: [lockSub(sneedex)] }));
                 const dexFree = dexBal - dexLocked;
                 if (dexFree < 2n * fee) {
-                    const r = await ledger.icrc1_transfer({ to: { owner: sneedLock, subaccount: [lockSub(sneedex)] }, amount: 2n * fee - dexFree, fee: [], memo: [], from_subaccount: [], created_at_time: [] });
+                    const r = await icrc1Transfer(ledger, { to: { owner: sneedLock, subaccount: [lockSub(sneedex)] }, amount: 2n * fee - dexFree, fee: [], memo: [], from_subaccount: [], created_at_time: [] });
                     if ('Err' in r) throw new Error(`Could not fund Sneedex's delivery fee in Sneed Lock: ${toJsonString(r.Err)}`);
                 }
                 const t = await sl.transfer_token_lock_ownership(sneedex, ledgerId, lockId);
@@ -2221,7 +2222,7 @@ function SneedexCreate() {
         
         // Transfer tokens to escrow
         const amountBigInt = parseAmountToBigInt(amount.toString(), decimals);
-        const transferResult = await ledgerActor.icrc1_transfer({
+        const transferResult = await icrc1Transfer(ledgerActor, {
             to: {
                 owner: sneedexPrincipal,
                 subaccount: [escrowSubaccount],

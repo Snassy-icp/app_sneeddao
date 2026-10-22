@@ -357,3 +357,154 @@ export async function listDapps(identity) {
     const actor = profilesActor(identity);
     return pages((p) => actor.list_dapps(p));
 }
+
+// ---- account nicknames and pockets (sneed_pid_nicknames, spec/programmable_accounts.md §4.6) ----
+//
+// The caller's private names for ICRC-1 accounts, and the pocket registry of the wallet, in one row
+// per account. Unpublished, not secret. Plain form used by the app (and utils/pockets/registry.js):
+//   { account: { owner: Principal, subaccount: Uint8Array | null }, nickname: string,
+//     pocket: { host: string | null, ledgers: string[], hidden: boolean, createdAt: bigint } | null,
+//     updatedAt: bigint }
+// `subaccount` is canonical: null for the default account (32 zero bytes are the same account).
+// A localStorage mirror per principal lets names and pockets show before the call returns.
+
+const ACCOUNT_MIRROR_KEY = 'sneed_account_nicknames_v1:';
+const ACCOUNT_FOR_MAX = 100;
+const POCKETS_BATCH_MAX = 50;
+
+const subOrNull = (s) => {
+    const b = s == null ? null : Array.isArray(s) ? (s.length ? s[0] : null) : s;
+    if (!b) return null;
+    const u = b instanceof Uint8Array ? b : Uint8Array.from(b);
+    return u.every((x) => x === 0) ? null : u;
+};
+/// Candid Account from { owner, subaccount }.
+export const toCandidAccount = (a) => { const s = subOrNull(a.subaccount); return { owner: toPrincipal(a.owner), subaccount: s ? [s] : [] }; };
+/// Candid PocketMeta from the plain form (null = forget).
+export const toCandidPocket = (m) => (m ? [{
+    host: m.host ? [m.host] : [],
+    ledgers: (m.ledgers || []).map(toPrincipal),
+    hidden: Boolean(m.hidden),
+    created_at: BigInt(m.createdAt ?? 0),
+}] : []);
+const fromCandidEntry = (e) => {
+    const p = opt(e.pocket);
+    return {
+        account: { owner: e.account.owner, subaccount: subOrNull(e.account.subaccount) },
+        nickname: e.nickname,
+        pocket: p ? { host: opt(p.host), ledgers: p.ledgers.map((l) => l.toText()), hidden: p.hidden, createdAt: p.created_at } : null,
+        updatedAt: e.updated_at,
+    };
+};
+/// "<owner>:<hex>" ("<owner>:0" for the default account): the mirror's key of an account.
+export const accountMirrorKey = (a) => { const s = subOrNull(a.subaccount); return `${toPrincipal(a.owner).toText()}:${s ? bytesToHex(s) : '0'}`; };
+
+const serializeEntry = (e) => ({ k: accountMirrorKey(e.account), n: e.nickname, p: e.pocket ? { h: e.pocket.host, l: e.pocket.ledgers, x: e.pocket.hidden, c: String(e.pocket.createdAt ?? 0) } : null, u: String(e.updatedAt ?? 0) });
+const deserializeEntry = (s) => {
+    const [owner, hex] = s.k.split(':');
+    return {
+        account: { owner: Principal.fromText(owner), subaccount: hex === '0' ? null : hexToBytes(hex) },
+        nickname: s.n || '',
+        pocket: s.p ? { host: s.p.h ?? null, ledgers: s.p.l || [], hidden: Boolean(s.p.x), createdAt: BigInt(s.p.c || 0) } : null,
+        updatedAt: BigInt(s.u || 0),
+    };
+};
+const mirrorKeyFor = (identity) => ACCOUNT_MIRROR_KEY + identity.getPrincipal().toText();
+
+/// The mirrored entries of the signed-in user ([] when none or storage is unavailable).
+export function loadAccountNicknamesMirror(identity) {
+    if (!identity) return [];
+    const m = load(mirrorKeyFor(identity));
+    if (!m || !Array.isArray(m.entries)) return [];
+    try { return m.entries.map(deserializeEntry); } catch { return []; }
+}
+function saveAccountNicknamesMirror(identity, entries) {
+    save(mirrorKeyFor(identity), { entries: entries.map(serializeEntry) });
+}
+/// Change the mirror in place: `fn(map)` gets a Map<accountMirrorKey, entry> to edit.
+function editMirror(identity, fn) {
+    const map = new Map(loadAccountNicknamesMirror(identity).map((e) => [accountMirrorKey(e.account), e]));
+    fn(map);
+    const entries = [...map.values()].filter((e) => e.nickname || e.pocket);
+    saveAccountNicknamesMirror(identity, entries);
+    return entries;
+}
+
+/// Every account name and pocket of the caller (all pages); refreshes the mirror.
+export async function getMyAccountNicknames(identity) {
+    if (!identity) return [];
+    const actor = pidNicknamesActor(identity);
+    const entries = (await pages((p) => actor.get_my_account_nicknames(p))).map(fromCandidEntry);
+    saveAccountNicknamesMirror(identity, entries);
+    return entries;
+}
+
+/// The caller's entries for these accounts, in order (null where none); 100 per call.
+export async function getMyAccountNicknamesFor(identity, accounts) {
+    const actor = pidNicknamesActor(identity);
+    const out = [];
+    for (let i = 0; i < accounts.length; i += ACCOUNT_FOR_MAX) {
+        const r = await actor.get_my_account_nicknames_for(accounts.slice(i, i + ACCOUNT_FOR_MAX).map(toCandidAccount));
+        out.push(...r.map((x) => (opt(x) ? fromCandidEntry(opt(x)) : null)));
+    }
+    return out;
+}
+
+const okOrThrow = (r) => { if ('err' in r) throw new Error(r.err); return r.ok; };
+
+/// Name an account ("" clears the name and keeps the pocket). The mirror changes first and is put
+/// back when the canister refuses.
+export async function setAccountNickname(identity, account, nickname) {
+    const key = accountMirrorKey(account);
+    const before = loadAccountNicknamesMirror(identity);
+    editMirror(identity, (m) => {
+        const e = m.get(key) || { account: { owner: toPrincipal(account.owner), subaccount: subOrNull(account.subaccount) }, nickname: '', pocket: null, updatedAt: 0n };
+        m.set(key, { ...e, nickname });
+    });
+    try {
+        return okOrThrow(await pidNicknamesActor(identity).set_account_nickname(toCandidAccount(account), nickname));
+    } catch (e) {
+        saveAccountNicknamesMirror(identity, before);
+        throw e;
+    }
+}
+
+/// Remember, update or (meta null) forget pockets: items = [{ account, pocket }]. Batched by 50.
+/// Returns one { ok } | { err } per item; the mirror keeps only what the canister accepted.
+export async function setPockets(identity, items) {
+    const before = loadAccountNicknamesMirror(identity);
+    editMirror(identity, (m) => {
+        for (const { account, pocket } of items) {
+            const key = accountMirrorKey(account);
+            const e = m.get(key) || { account: { owner: toPrincipal(account.owner), subaccount: subOrNull(account.subaccount) }, nickname: '', pocket: null, updatedAt: 0n };
+            m.set(key, { ...e, pocket: pocket ? { host: pocket.host ?? null, ledgers: (pocket.ledgers || []).map((l) => toPrincipal(l).toText()), hidden: Boolean(pocket.hidden), createdAt: BigInt(pocket.createdAt ?? 0) } : null });
+        }
+    });
+    const actor = pidNicknamesActor(identity);
+    const results = [];
+    try {
+        for (let i = 0; i < items.length; i += POCKETS_BATCH_MAX) {
+            const chunk = items.slice(i, i + POCKETS_BATCH_MAX);
+            results.push(...(await actor.set_pockets(chunk.map(({ account, pocket }) => [toCandidAccount(account), toCandidPocket(pocket)]))));
+        }
+    } catch (e) {
+        saveAccountNicknamesMirror(identity, before);
+        throw e;
+    }
+    // undo the refused items in the mirror
+    const refused = items.filter((_, i) => 'err' in results[i]);
+    if (refused.length) {
+        const old = new Map(before.map((e) => [accountMirrorKey(e.account), e]));
+        editMirror(identity, (m) => { for (const { account } of refused) { const k = accountMirrorKey(account); if (old.has(k)) m.set(k, old.get(k)); else m.delete(k); } });
+    }
+    return results;
+}
+
+/// One pocket: remember / update (meta) or forget (null). Throws when refused.
+export async function setPocket(identity, account, pocket) {
+    const [r] = await setPockets(identity, [{ account, pocket }]);
+    return okOrThrow(r);
+}
+
+/// { count, max_free, max_premium } of the caller's account names and pockets.
+export const myAccountNicknameCount = (identity) => pidNicknamesActor(identity).my_account_nickname_count();

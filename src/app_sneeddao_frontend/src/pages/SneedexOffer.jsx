@@ -58,6 +58,8 @@ import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { VotingPowerCalculator } from '../utils/VotingPowerUtils';
 import InfoModal from '../components/InfoModal';
 import ConfirmationModal from '../ConfirmationModal';
+import { icrc1Transfer } from '../utils/icrcTx';
+import { appPrompt } from '../utils/appDialog';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 
@@ -1508,7 +1510,7 @@ function SneedexOffer() {
                 amount: amountE8s,
             };
             
-            const transferResult = await ledgerActor.icrc1_transfer(transferArg);
+            const transferResult = await icrc1Transfer(ledgerActor, transferArg);
             
             if ('Err' in transferResult) {
                 const err = transferResult.Err;
@@ -1634,7 +1636,7 @@ function SneedexOffer() {
                 amount: pendingBid.amount,
             };
             
-            const result = await ledgerActor.icrc1_transfer(transferArg);
+            const result = await icrc1Transfer(ledgerActor, transferArg);
             
             if ('Err' in result) {
                 const err = result.Err;
@@ -1685,7 +1687,7 @@ function SneedexOffer() {
         
         // Ask user how much to withdraw (exact digits, so the default never rounds up)
         const maxText = formatAmountRaw(maxWithdrawable, tokenInfo.decimals);
-        const amountStr = window.prompt(
+        const amountStr = await appPrompt(
             `How much ${tokenInfo.symbol} to withdraw?\nAvailable after the transfer fee: ${maxText} ${tokenInfo.symbol}`,
             maxText
         );
@@ -1786,7 +1788,7 @@ function SneedexOffer() {
                 amount: buyoutAmountE8s,
             };
             
-            const transferResult = await ledgerActor.icrc1_transfer(transferArg);
+            const transferResult = await icrc1Transfer(ledgerActor, transferArg);
             
             if ('Err' in transferResult) {
                 const err = transferResult.Err;
@@ -2167,7 +2169,7 @@ function SneedexOffer() {
             );
             
             // Transfer tokens to the escrow subaccount
-            const transferResult = await ledgerActor.icrc1_transfer({
+            const transferResult = await icrc1Transfer(ledgerActor, {
                 to: {
                     owner: Principal.fromText(SNEEDEX_CANISTER_ID),
                     subaccount: [escrowSubaccount],

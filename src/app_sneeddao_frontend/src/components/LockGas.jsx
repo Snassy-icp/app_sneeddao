@@ -10,6 +10,7 @@ import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId 
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
+import { icrc1Transfer } from '../utils/icrcTx';
 
 const fmt = (amount, decimals) => {
     const d = Number(decimals ?? 8);
@@ -70,7 +71,7 @@ export function AddGasDialog({ lockId, gas, onClose, onDone }) {
         setBusy(true); setMsg(null);
         try {
             const ledger = createLedgerActor(gas.ledger.toText(), { agentOptions: { identity } });
-            const r = await ledger.icrc1_transfer({ to: gas.account, amount, fee: [], memo: [], from_subaccount: [], created_at_time: [] });
+            const r = await icrc1Transfer(ledger, { to: gas.account, amount, fee: [], memo: [], from_subaccount: [], created_at_time: [] });
             if ('Err' in r) throw new Error(JSON.stringify(r.Err, (_, v) => (typeof v === 'bigint' ? v.toString() : v)));
             setMsg({ ok: true, text: `Added ${fmt(amount, gas.decimals)} ${gas.symbol} of gas.` });
             onDone?.();

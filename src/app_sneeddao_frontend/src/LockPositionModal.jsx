@@ -9,6 +9,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { FaSpinner, FaWallet, FaCheck, FaCrown, FaLock, FaCreditCard, FaCheckCircle } from 'react-icons/fa';
 import PriceTierBadge from './components/PriceTierBadge';
 import { fetchSpecialPricesFor, effectivePrice } from './utils/specialPrices';
+import { icrc1Transfer } from './utils/icrcTx';
 
 const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 
@@ -302,7 +303,7 @@ function LockPositionModal({ show, onClose, liquidityPosition, onAddLockPosition
             }
             
             // Transfer ICP to payment subaccount
-            const result = await icpLedgerActor.icrc1_transfer({
+            const result = await icrc1Transfer(icpLedgerActor, {
                 to: { owner: Principal.fromText(sneedLockCanisterId), subaccount: [paymentSubaccount] },
                 fee: [],
                 memo: [],

@@ -20,6 +20,8 @@ import { customStyles } from '../health/TreeView.jsx';
 import SpecialPricesCard from '../components/SpecialPricesCard';
 import PriceTierBadge from '../components/PriceTierBadge';
 import { fetchSpecialPricesFor, effectivePrice } from '../utils/specialPrices';
+import { icrc1Transfer } from '../utils/icrcTx';
+import { appPrompt } from '../utils/appDialog';
 
 const HOST = 'https://icp-api.io';
 const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
@@ -89,7 +91,7 @@ function Guardian() {
             const ledger = createLedgerActor(ICP_LEDGER, { agentOptions: { identity, host: HOST } });
             const due = payment.amount_to_send_e8s - payment.paid_e8s;
             if (due <= 0n) return null;
-            const r = await ledger.icrc1_transfer({ from_subaccount: [], to: { owner: payment.account.owner, subaccount: payment.account.subaccount }, amount: due, fee: [], memo: [], created_at_time: [] });
+            const r = await icrc1Transfer(ledger, { from_subaccount: [], to: { owner: payment.account.owner, subaccount: payment.account.subaccount }, amount: due, fee: [], memo: [], created_at_time: [] });
             if ('Err' in r) throw new Error(`transfer failed: ${JSON.stringify(r.Err, (k, v) => (typeof v === 'bigint' ? v.toString() : v))}`);
             return null;
         });
@@ -148,7 +150,7 @@ function Guardian() {
                 const due = pay.Ok.amount_to_send_e8s - pay.Ok.paid_e8s;
                 if (due > 0n) {
                     const ledger = createLedgerActor(ICP_LEDGER, { agentOptions: { identity, host: HOST } });
-                    const r = await ledger.icrc1_transfer({ from_subaccount: [], to: { owner: pay.Ok.account.owner, subaccount: pay.Ok.account.subaccount }, amount: due, fee: [], memo: [], created_at_time: [] });
+                    const r = await icrc1Transfer(ledger, { from_subaccount: [], to: { owner: pay.Ok.account.owner, subaccount: pay.Ok.account.subaccount }, amount: due, fee: [], memo: [], created_at_time: [] });
                     if ('Err' in r) throw new Error(`fee transfer failed: ${JSON.stringify(r.Err, (k, v) => (typeof v === 'bigint' ? v.toString() : v))}`);
                     for (let i = 0; i < 10; i++) { pay = await a.get_op_payment(op.id); if ('Ok' in pay && pay.Ok.paid_e8s >= pay.Ok.amount_to_send_e8s) break; await new Promise((res) => setTimeout(res, 1500)); }
                 }
@@ -325,7 +327,7 @@ function Guardian() {
                     </div>
                     {isApprover && <div style={{ fontSize: '0.8rem', color: amber, marginTop: 6 }}>You are an {isAdmin ? 'admin' : 'approver'} of this deployment{isAdmin ? ': your approval alone counts as the whole threshold' : ''}.</div>}
                     {cfg && cfg.admins.length > 0 && <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>Admins (trial period): {cfg.admins.map((p) => <PrincipalDisplay key={p.toText()} principal={p} short={true} showCopyButton={false} isAuthenticated={isAuthenticated} />)}{isAdmin && <button type="button" style={btn()} disabled={!!busy} onClick={() => call('Remove me as admin', () => actor(true).admin_remove_admin(Principal.fromText(me)))}>remove me</button>}</div>}
-                    {cfg && <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: 4 }}>approve_op generic function id: {functionId !== null ? String(functionId) : 'not registered yet'}{isAdmin && <button type="button" style={{ ...btn(), marginLeft: 8 }} disabled={!!busy} onClick={() => { const v = window.prompt('The id of the DAO generic function that calls approve_op (empty to clear)', functionId !== null ? String(functionId) : ''); if (v === null) return; call('Set function id', () => actor(true).admin_set_approve_function_id(v.trim() ? [BigInt(v.trim())] : [])); }}>set</button>}</div>}
+                    {cfg && <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: 4 }}>approve_op generic function id: {functionId !== null ? String(functionId) : 'not registered yet'}{isAdmin && <button type="button" style={{ ...btn(), marginLeft: 8 }} disabled={!!busy} onClick={async () => { const v = await appPrompt('The id of the DAO generic function that calls approve_op (empty to clear)', functionId !== null ? String(functionId) : ''); if (v === null) return; call('Set function id', () => actor(true).admin_set_approve_function_id(v.trim() ? [BigInt(v.trim())] : [])); }}>set</button>}</div>}
                     {isAdmin && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}><button type="button" style={btn()} disabled={!!busy} onClick={() => call('Status run', () => actor(true).admin_run_status())}><FaSync size={10} /> Run status now</button><button type="button" style={btn()} disabled={!!busy} onClick={() => call('Auto-upgrade run', () => actor(true).admin_run_auto_upgrade())}><FaPlay size={10} /> Run auto-upgrade now</button><button type="button" style={btn()} disabled={!!busy} onClick={() => call('Blessed list', () => actor(true).refresh_blessed())}><FaSync size={10} /> Re-read blessed versions</button></div>}
                     {shownOps.length === 0 && <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginTop: 8 }}>No {showAllOps ? '' : 'open '}ops.</div>}
                     <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>

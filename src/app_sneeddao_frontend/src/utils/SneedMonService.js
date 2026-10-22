@@ -11,6 +11,7 @@ import { encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { createActor, canisterId as monEnv } from 'declarations/sneed_mon';
 import { createActor as createLedger } from 'external/icrc1_ledger';
 import { approveAndRecord } from './approvals';
+import { icrc1Transfer } from './icrcTx';
 
 const realCanisterId = (text) => {
     try { const b = Principal.fromText(text).toUint8Array(); return b.length === 10 && b[9] === 1 ? text : null; } catch { return null; }
@@ -51,7 +52,7 @@ export const encodeAccount = (a) => encodeIcrcAccount({ owner: a.owner, subaccou
 /// `to` ({ owner, subaccount: [] | [bytes] }), the sender paying the ledger fee. Returns the block.
 export async function sendIcp(identity, ledgerId, to, amountE8s) {
     const ledger = createLedger(typeof ledgerId === 'string' ? ledgerId : ledgerId.toText(), { agentOptions: { host, identity } });
-    const r = await ledger.icrc1_transfer({ from_subaccount: [], to, amount: amountE8s, fee: [], memo: [], created_at_time: [] });
+    const r = await icrc1Transfer(ledger, { from_subaccount: [], to, amount: amountE8s, fee: [], memo: [], created_at_time: [] });
     if ('Err' in r) {
         const [k, v] = Object.entries(r.Err)[0];
         const detail = k === 'InsufficientFunds' ? `not enough ICP in your wallet (balance ${fmtIcp(v.balance)})` : k === 'BadFee' ? `the fee is now ${fmtIcp(v.expected_fee)}` : k === 'GenericError' ? v.message : k;
@@ -67,19 +68,8 @@ export const unwrap = (r) => { if (r && 'err' in r) throw new Error(r.err); retu
 
 /// A subaccount typed by the user: an index number (big-endian in the last bytes, as the app's
 /// hex subaccounts are read) or hex (0x… or up to 64 hex digits). '' = the main account (null).
-/// Throws on anything else.
-export function parseSubaccountInput(text) {
-    const t = (text || '').trim();
-    if (!t) return null;
-    let hex;
-    if (/^\d+$/.test(t) && t.length < 64) hex = BigInt(t).toString(16);
-    else hex = t.replace(/^0x/i, '').replace(/[\s-]/g, '');
-    if (!/^[0-9a-fA-F]*$/.test(hex) || hex.length > 64) throw new Error('A subaccount is an index number or up to 64 hex digits');
-    const padded = hex.padStart(64, '0');
-    const bytes = Uint8Array.from(padded.match(/../g).map((b) => parseInt(b, 16)));
-    return bytes.every((b) => b === 0) ? null : bytes;
-}
-export const subaccountHex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+/// Throws on anything else. The shared codec (utils/pockets/subaccount.js) does it.
+export { parseSubaccountInput, bytesToHex as subaccountHex } from './pockets/subaccount';
 
 const ledgerFor = (identity, ledgerId) => createLedger(typeof ledgerId === 'string' ? ledgerId : ledgerId.toText(), { agentOptions: { host, identity } });
 

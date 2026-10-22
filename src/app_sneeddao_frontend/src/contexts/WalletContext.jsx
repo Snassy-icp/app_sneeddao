@@ -28,6 +28,7 @@ import { getCachedRewards, setCachedRewards } from '../hooks/useRewardsCache';
 import priceService from '../services/PriceService';
 import { fetchLedgerSuiteVersions, ledgerSuiteVersion, TOKEN_APP_IDS } from '../utils/ledgerSuite';
 import { fetchBotCyclesBalance } from '../utils/botCycles';
+import { icrc1Transfer, icpLegacyTransfer } from '../utils/icrcTx';
 
 const WalletContext = createContext(null);
 
@@ -3087,7 +3088,7 @@ export const WalletProvider = ({ children }) => {
                 canisterId: ledgerCanisterId
             });
 
-            const result = await icpLedgerActor.transfer({
+            const result = await icpLegacyTransfer(icpLedgerActor, {
                 to: Array.from(accountIdBytes),
                 fee: { e8s: BigInt(token.fee) },
                 memo: BigInt(0),
@@ -3136,7 +3137,7 @@ export const WalletProvider = ({ children }) => {
 
             const recipientPrincipal = Principal.fromText(recipient);
             
-            const frontendResult = await ledgerActor.icrc1_transfer({
+            const frontendResult = await icrc1Transfer(ledgerActor, {
                 to: { owner: recipientPrincipal, subaccount: subaccount },
                 fee: [],
                 memo: [],

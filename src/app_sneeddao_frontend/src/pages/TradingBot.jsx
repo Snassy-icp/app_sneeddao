@@ -379,6 +379,8 @@ import {
     fetchAndCacheTokenMetadata,
     setTokenMetadataManual,
 } from '../hooks/useTokenCache';
+import { icrc1Transfer } from '../utils/icrcTx';
+import { appAlert, appConfirm } from '../utils/appDialog';
 
 /** Convert shared cache shape → local shape used by getSymbol/getDecimals helpers. */
 function _toLocalMeta(cached) {
@@ -3165,7 +3167,7 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
     };
 
     const handleDeleteEntry = async (entryId) => {
-        if (!window.confirm(`Delete entry #${entryId} and reverse its capital impact?`)) return;
+        if (!await appConfirm(`Delete entry #${entryId} and reverse its capital impact?`)) return;
         setDeletingEntryId(entryId);
         try {
             const bot = await getReadyBotActor();
@@ -3174,7 +3176,7 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
             setSnapMap({});
             loadData(page);
         } catch (err) {
-            alert('Failed to delete: ' + (err?.message || String(err)));
+            appAlert('Failed to delete: ' + (err?.message || String(err)));
         } finally {
             setDeletingEntryId(null);
         }
@@ -4635,7 +4637,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                 const subEntry = currentSubaccountNum != null ? subaccounts.find(s => Number(s.number) === currentSubaccountNum) : null;
                 const toSub = subEntry?.subaccount ? [new Uint8Array(subEntry.subaccount)] : [];
                 const ledgerActor = createLedgerActor(opToken, { agentOptions: { identity } });
-                const result = await ledgerActor.icrc1_transfer({
+                const result = await icrc1Transfer(ledgerActor, {
                     to: { owner: botPrincipal, subaccount: toSub },
                     amount,
                     fee: [],
@@ -5339,7 +5341,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                                 <button onClick={() => { setRenamingId(selectedAccount); setRenameValue(subaccounts.find(s => String(Number(s.number)) === selectedAccount)?.name || ''); }} style={btnStyle}>
                                     <FaEdit style={{ fontSize: '0.6rem', marginRight: '3px' }} />Rename
                                 </button>
-                                <button onClick={() => { if (confirm(`Delete subaccount #${selectedAccount}?`)) handleDelete(Number(selectedAccount)); }} style={dangerBtn}>
+                                <button onClick={async () => { if (await appConfirm(`Delete subaccount #${selectedAccount}?`)) handleDelete(Number(selectedAccount)); }} style={dangerBtn}>
                                     <FaTrash style={{ fontSize: '0.6rem', marginRight: '3px' }} />Delete
                                 </button>
                             </>
@@ -5459,6 +5461,11 @@ function DexSettingsPanel({ canisterId, createBotActor, identity }) {
                                 <div style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, marginTop: '2px' }}>
                                     {dex.description}
                                 </div>
+                                {Number(dex.id) === 1 && dex.enabled && (
+                                    <div style={{ fontSize: '0.7rem', color: '#f59e0b', marginTop: '4px' }}>
+                                        KongSwap has shut down. Turn it off so every trade goes through ICPSwap.
+                                    </div>
+                                )}
                             </div>
                             <div style={{
                                 fontSize: '0.7rem', fontWeight: '500', padding: '2px 8px', borderRadius: '4px',
@@ -6863,12 +6870,12 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
         catch (e) { setError('Failed to toggle rule: ' + e.message); }
     };
     const handleDeleteRule = async (id) => {
-        if (!window.confirm('Delete this circuit breaker rule?')) return;
+        if (!await appConfirm('Delete this circuit breaker rule?')) return;
         try { const bot = await getReadyBotActor(); await bot.removeCircuitBreakerRule(id); setRules(prev => prev.filter(r => r.id !== id)); }
         catch (e) { setError('Failed to delete rule: ' + e.message); }
     };
     const handleClearLog = async () => {
-        if (!window.confirm('Clear the entire circuit breaker event log?')) return;
+        if (!await appConfirm('Clear the entire circuit breaker event log?')) return;
         try { const bot = await getReadyBotActor(); await bot.clearCircuitBreakerLog(); setEvents([]); setEventCount(0); }
         catch (e) { setError('Failed to clear log: ' + e.message); }
     };
@@ -7888,7 +7895,7 @@ function BotLogPanel({ getReadyBotActor, theme, accentColor }) {
                                         {['Off', 'Error', 'Warning', 'Info', 'Debug', 'Trace'].map(l => <option key={l} value={l}>{l}</option>)}
                                     </select>
                                     <button onClick={async () => {
-                                        if (!window.confirm('Clear all log entries?')) return;
+                                        if (!await appConfirm('Clear all log entries?')) return;
                                         setSavingConfig(true); setConfigMsg({ text: '', isError: false });
                                         try {
                                             const bot = await getReadyBotActor();
@@ -9050,7 +9057,7 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                 await ensureTokenRegistered(opToken);
                 const botPrincipal = Principal.fromText(canisterId);
                 const ledgerActor = createLedgerActor(opToken, { agentOptions: { identity } });
-                const result = await ledgerActor.icrc1_transfer({
+                const result = await icrc1Transfer(ledgerActor, {
                     to: { owner: botPrincipal, subaccount: [] },
                     amount,
                     fee: [],
@@ -9118,7 +9125,7 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
                 await ensureTokenRegistered(tokId);
                 const botPrincipal = Principal.fromText(canisterId);
                 const ledgerActor = createLedgerActor(tokId, { agentOptions: { identity } });
-                const xferResult = await ledgerActor.icrc1_transfer({
+                const xferResult = await icrc1Transfer(ledgerActor, {
                     to: { owner: botPrincipal, subaccount: [] },
                     amount: raw, fee: [], memo: [], from_subaccount: [], created_at_time: [],
                 });
@@ -9242,7 +9249,7 @@ function WalletPanel({ getReadyBotActor, theme, accentColor, canisterId, choreSt
     const handleReclaimAll = async () => {
         const total = enabledPurses.reduce((sum, c) => sum + c.balances.filter(b => Number(b.balance) > 0).length, 0);
         if (total === 0) return;
-        if (!window.confirm(`Reclaim all balances from ${enabledPurses.length} purse(s) (${total} token balance(s)) back to main purse?`)) return;
+        if (!await appConfirm(`Reclaim all balances from ${enabledPurses.length} purse(s) (${total} token balance(s)) back to main purse?`)) return;
         setReclaimingAll(true); setError(''); setSuccess('');
         try {
             const bot = await getReadyBotActor();
@@ -10214,7 +10221,7 @@ function PursePanel({ instanceId, getReadyBotActor, theme, accentColor, canister
                 }
                 const botPrincipal = Principal.fromText(canisterId);
                 const ledgerActor = createLedgerActor(tokId, { agentOptions: { identity } });
-                const xferResult = await ledgerActor.icrc1_transfer({
+                const xferResult = await icrc1Transfer(ledgerActor, {
                     to: { owner: botPrincipal, subaccount: [] },
                     amount: raw, fee: [], memo: [], from_subaccount: [], created_at_time: [],
                 });
@@ -11656,7 +11663,7 @@ function ControlTabPanel({ chore, controlTabContent: ct, getReadyBotActor, theme
                             const val = parseFloat(valInput?.value); const unit = unitSelect?.value || 'days'; const multiplier = unitMultipliers[unit] || 86400; const totalSeconds = Math.round(val * multiplier);
                             if (!val || val <= 0 || totalSeconds < 60) { setChoreError('Interval must be at least 1 minute.'); return; }
                             if (totalSeconds > 365 * 86400) { setChoreError('Interval cannot exceed 365 days.'); return; }
-                            if (totalSeconds < 300 && !window.confirm('Intervals < 5 min may not give chores enough time. Continue?')) return;
+                            if (totalSeconds < 300 && !await appConfirm('Intervals < 5 min may not give chores enough time. Continue?')) return;
                             const maxInput = document.getElementById(`chore-max-interval-${chore.choreId}`); const maxUnitSelect = document.getElementById(`chore-max-interval-unit-${chore.choreId}`);
                             let maxSeconds = null;
                             if (maxInput && maxUnitSelect) { const maxVal = parseFloat(maxInput.value?.trim()); if (maxVal && maxVal > 0) { const maxMult = unitMultipliers[maxUnitSelect.value] || 86400; maxSeconds = Math.round(maxVal * maxMult); if (maxSeconds <= totalSeconds) { setChoreError('Max must be > base interval.'); return; } if (maxSeconds > 365 * 86400) { setChoreError('Max cannot exceed 365 days.'); return; } } }
@@ -12096,7 +12103,6 @@ function QuickTradePanel({ canisterId, createBotActor: createBotActorFn, identit
                             <select value={preferredDex} onChange={e => setPreferredDex(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }} disabled={submitting}>
                                 <option value="auto">Auto (best quote)</option>
                                 <option value="0">ICPSwap</option>
-                                <option value="1">KongSwap</option>
                             </select>
                         </div>
                         <div>

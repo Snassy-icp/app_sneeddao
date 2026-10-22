@@ -88,7 +88,7 @@ export default function HelpTools() {
                     <L to="/swap">Sneedex Swap</L> (Sneedex menu) compares quotes for a token pair and swaps at the best rate. It starts with ICP to SNEED; pick any other tokens with the selectors.
                 </P>
                 <List>
-                    <Li><B>Where quotes come from</B>: ICPSwap and KongSwap. When it gives a better result, the amount is split between the two (shown as a <B>Split Swap</B> with its ratio), and some routes go through more than one pool (<B>Multi-hop</B>).</Li>
+                    <Li><B>Where quotes come from</B>: ICPSwap pools; some routes go through more than one pool (<B>Multi-hop</B>). KongSwap has shut down and is no longer quoted.</Li>
                     <Li><B>Sneedex auctions</B>: if an open Sneedex auction sells the token you want with a buyout price you can pay and a better rate than the swap, it is offered as an <B>Auction Buyout</B>, alone or combined with a swap for the rest.</Li>
                     <Li><B>Slippage</B>: choose 0.5%, 1%, 2% or 5%, or type your own. The default is 1%, and your choice is remembered in your settings. If the price moves more than this before the swap runs, the swap does not go through at the worse price.</Li>
                     <Li><B>Before you swap</B> the quote shows the rate, <B>Price impact</B>, <B>Slippage tolerance</B>, how many <B>Network fees</B> (ledger fees) are paid going in and out, and the token standard used. Quotes refresh every 15 seconds.</Li>

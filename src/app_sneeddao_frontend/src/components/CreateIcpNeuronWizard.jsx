@@ -15,6 +15,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { computeAccountId } from '../utils/PrincipalUtils';
 import { formatCyclesCompact } from '../utils/NeuronManagerSettings';
+import { icrc1Transfer } from '../utils/icrcTx';
+import { journalStake, updateStake, removeStake } from '../utils/stakeJournal';
 
 
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
@@ -22,8 +24,6 @@ const E8S = 100_000_000;
 const ICP_FEE = 10_000;
 const CANISTER_CREATION_OVERHEAD = 500_000_000_000; // ~500B cycles used for canister creation
 
-// CMC memo for top-up operation: "TPUP" = 0x50555054
-const TOP_UP_MEMO = new Uint8Array([0x54, 0x50, 0x55, 0x50, 0x00, 0x00, 0x00, 0x00]);
 
 function CreateIcpNeuronWizard({ onComplete, onCancel }) {
     const { theme } = useTheme();
@@ -237,7 +237,7 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
             // Step 1: Send payment
             addProgress('Sending payment to factory...', 'active');
             
-            const transferResult = await ledger.icrc1_transfer({
+            const transferResult = await icrc1Transfer(ledger, {
                 to: {
                     owner: Principal.fromText(factoryCanisterId),
                     subaccount: [new Uint8Array(paymentSubaccount)],
@@ -293,6 +293,7 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                     const topUp = await topUpCanisterWithIcp({ ledger, cmc, canisterId: newCanisterIdText, amountE8s: BigInt(extraGasE8s), owner: identity.getPrincipal().toText() });
                     if (topUp.status === 'ok' && !topUp.resumed) {
                         updateLastProgress('complete');
+                        addProgress(`Gas top-up done (ICP ledger block ${topUp.blockIndex}).`, 'complete');
                     } else {
                         console.error('Gas top-up not completed:', topUp);
                         updateLastProgress('warning');
@@ -318,42 +319,55 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                     const memo = await manager.generateMemo();
                     const stakeInfo = await manager.getStakeAccount(memo);
                     
+                    const dissolveDelaySeconds = BigInt(parseInt(dissolveDelayDays) * 24 * 60 * 60);
+                    // Journal before the transfer: if the claim below never runs, "Finish staking" can redo it
+                    const stakeId = journalStake({ kind: 'icp_bot', ledger: ICP_LEDGER_CANISTER_ID, bot: newCanisterIdText, memo, subaccount: stakeInfo.account.subaccount?.[0] || [], amount: BigInt(stakeE8s), owner: identity.getPrincipal().toText(), dissolveDelaySeconds });
                     // Transfer ICP to governance canister's neuron subaccount
-                    const stakeTransfer = await ledger.icrc1_transfer({
-                        to: {
-                            owner: stakeInfo.account.owner,
-                            subaccount: stakeInfo.account.subaccount,
-                        },
-                        amount: BigInt(stakeE8s),
-                        fee: [BigInt(ICP_FEE)],
-                        memo: [],
-                        from_subaccount: [],
-                        created_at_time: [],
-                    });
+                    let stakeTransfer;
+                    try {
+                        stakeTransfer = await icrc1Transfer(ledger, {
+                            to: {
+                                owner: stakeInfo.account.owner,
+                                subaccount: stakeInfo.account.subaccount,
+                            },
+                            amount: BigInt(stakeE8s),
+                            fee: [BigInt(ICP_FEE)],
+                            memo: [],
+                            from_subaccount: [],
+                            created_at_time: [],
+                        });
+                    } catch (e) {
+                        updateStake(stakeId, { lastError: e?.message || String(e) }); // outcome unknown: keep the entry
+                        throw e;
+                    }
                     
                     if ('Err' in stakeTransfer) {
-                        throw new Error(`Stake transfer failed: ${JSON.stringify(stakeTransfer.Err)}`);
+                        removeStake(stakeId); // nothing was sent
+                        throw new Error(`Stake transfer failed: ${JSON.stringify(stakeTransfer.Err, (k, v) => (typeof v === 'bigint' ? v.toString() : v))}`);
                     }
+                    updateStake(stakeId, { block: stakeTransfer.Ok });
                     
                     // Wait a moment for the transfer to settle
                     updateLastProgress('complete');
                     addProgress('Claiming neuron from deposit...', 'active');
                     await new Promise(resolve => setTimeout(resolve, 2000));
                     
-                    const dissolveDelaySeconds = BigInt(parseInt(dissolveDelayDays) * 24 * 60 * 60);
                     const claimResult = await manager.claimNeuronFromDeposit(memo, dissolveDelaySeconds);
                     
                     if ('Ok' in claimResult) {
+                        removeStake(stakeId);
                         setCreatedNeuronId(claimResult.Ok.id.toString());
                         updateLastProgress('complete');
                     } else {
-                        throw new Error(`Claim failed: ${JSON.stringify(claimResult.Err)}`);
+                        const why = JSON.stringify(claimResult.Err, (k, v) => (typeof v === 'bigint' ? v.toString() : v));
+                        updateStake(stakeId, { lastError: why });
+                        throw new Error(`Claim failed: ${why}. The ICP is in the neuron account (block ${stakeTransfer.Ok}); use "Finish staking" in your wallet to retry.`);
                     }
                 } catch (stakeErr) {
                     console.error('Staking error:', stakeErr);
                     updateLastProgress('error');
                     addProgress(`⚠️ Staking failed: ${stakeErr.message}`, 'warning');
-                    addProgress('You can stake ICP later from your ICP staking bot.', 'info');
+                    addProgress('If ICP was sent, "Finish staking" in your wallet completes the neuron; otherwise you can stake later from your ICP staking bot.', 'info');
                 }
             }
             

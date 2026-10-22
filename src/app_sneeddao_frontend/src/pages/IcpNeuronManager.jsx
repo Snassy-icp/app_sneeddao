@@ -7,6 +7,7 @@ import { createActor as createManagerActor } from 'declarations/sneed_icp_stakin
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
+import PendingTopUpsNotice from '../components/PendingTopUpsNotice';
 import { topUpCanisterWithIcp, cyclesOrThrow } from '../utils/cyclesTopUp';
 import Header from '../components/Header';
 import TokenSelector from '../components/TokenSelector';
@@ -35,6 +36,10 @@ import StatusLamp, {
     summarizeLampStates, getChoreSummaryLamp, getAllChoresSummaryLamp, getSummaryLabel
 } from '../components/ChoreStatusLamp';
 import BotEventPanel from '../components/BotEventPanel';
+import { icrc1Transfer } from '../utils/icrcTx';
+import { appConfirm } from '../utils/appDialog';
+import { journalStake, updateStake, removeStake } from '../utils/stakeJournal';
+import PendingStakesNotice from '../components/PendingStakesNotice';
 
 // Custom CSS for animations
 const customStyles = `
@@ -95,8 +100,6 @@ const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
 const E8S = 100_000_000;
 const ICP_FEE = 10_000; // 0.0001 ICP
 
-// CMC memo for top-up operation: "TPUP" = 0x50555054
-const TOP_UP_MEMO = new Uint8Array([0x54, 0x50, 0x55, 0x50, 0x00, 0x00, 0x00, 0x00]);
 
 // Management canister IDL factory
 const managementCanisterIdlFactory = ({ IDL }) => {
@@ -1165,7 +1168,8 @@ function IcpNeuronManager() {
             // Show success dialog
             setTopUpSuccessDialog({
                 cyclesAdded,
-                icpSpent: icpAmount
+                icpSpent: icpAmount,
+                blockIndex: topUp.blockIndex != null ? String(topUp.blockIndex) : null,
             });
             
             setTopUpAmount('');
@@ -1764,21 +1768,32 @@ function IcpNeuronManager() {
             const memo = await manager.generateMemo();
             const stakeInfo = await manager.getStakeAccount(memo);
             
+            const dissolveDelaySeconds = BigInt(delayDays * 24 * 60 * 60);
+            // Journal before the transfer: if the claim below never runs, "Finish staking" can redo it
+            const stakeId = journalStake({ kind: 'icp_bot', ledger: ICP_LEDGER_CANISTER_ID, bot: canisterId, memo, subaccount: stakeInfo.account.subaccount?.[0] || [], amount: amountE8s, owner: identity.getPrincipal().toText(), dissolveDelaySeconds });
+
             // Step 2: Transfer ICP directly to governance canister's neuron subaccount
             setSuccess('📤 Sending ICP to NNS Governance...');
-            const transferResult = await ledger.icrc1_transfer({
-                to: {
-                    owner: stakeInfo.account.owner,
-                    subaccount: stakeInfo.account.subaccount,
-                },
-                amount: amountE8s,
-                fee: [fee],
-                memo: [],
-                from_subaccount: [],
-                created_at_time: [],
-            });
+            let transferResult;
+            try {
+                transferResult = await icrc1Transfer(ledger, {
+                    to: {
+                        owner: stakeInfo.account.owner,
+                        subaccount: stakeInfo.account.subaccount,
+                    },
+                    amount: amountE8s,
+                    fee: [fee],
+                    memo: [],
+                    from_subaccount: [],
+                    created_at_time: [],
+                });
+            } catch (e) {
+                updateStake(stakeId, { lastError: e?.message || String(e) }); // outcome unknown: keep the entry
+                throw e;
+            }
             
             if ('Err' in transferResult) {
+                removeStake(stakeId); // nothing was sent
                 const err = transferResult.Err;
                 if ('InsufficientFunds' in err) {
                     throw new Error(`Insufficient funds: ${formatIcp(Number(err.InsufficientFunds.balance))} ICP available`);
@@ -1786,12 +1801,14 @@ function IcpNeuronManager() {
                 throw new Error(`Transfer failed: ${JSON.stringify(err)}`);
             }
             
+            updateStake(stakeId, { block: transferResult.Ok });
+
             // Step 3: Claim the neuron from the deposit
             setSuccess('🧠 Claiming neuron from deposit...');
-            const dissolveDelaySeconds = BigInt(delayDays * 24 * 60 * 60);
             const result = await manager.claimNeuronFromDeposit(memo, dissolveDelaySeconds);
             
             if ('Ok' in result) {
+                removeStake(stakeId);
                 setSuccess(`🎉 Neuron created! ID: ${result.Ok.id.toString()}`);
                 setSelectedNeuronId(result.Ok);
                 fetchManagerData();
@@ -1806,6 +1823,7 @@ function IcpNeuronManager() {
                 } else {
                     setError('Failed to claim neuron');
                 }
+                updateStake(stakeId, { lastError: JSON.stringify(err, (k, v) => (typeof v === 'bigint' ? v.toString() : v)) });
             }
         } catch (err) {
             console.error('Error staking neuron:', err);
@@ -2182,7 +2200,7 @@ function IcpNeuronManager() {
             
             // Step 2: Transfer ICP directly to the neuron's account
             setSuccess('📤 Sending ICP to neuron...');
-            const transferResult = await ledger.icrc1_transfer({
+            const transferResult = await icrc1Transfer(ledger, {
                 to: {
                     owner: account.owner,
                     subaccount: account.subaccount,
@@ -2977,6 +2995,12 @@ function IcpNeuronManager() {
                                     {topUpSuccessDialog.icpSpent.toFixed(4)} ICP
                                 </span>
                             </div>
+                            {topUpSuccessDialog.blockIndex && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
+                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>ICP ledger block</span>
+                                    <span style={{ color: theme.colors.primaryText, fontFamily: 'monospace', fontSize: '0.85rem' }}>#{topUpSuccessDialog.blockIndex}</span>
+                                </div>
+                            )}
                         </div>
                         
                         <button
@@ -3769,8 +3793,8 @@ function IcpNeuronManager() {
                                                         )}
                                                     </button>
                                                     <button
-                                                        onClick={() => {
-                                                            if (window.confirm('⚠️ Reinstall will WIPE ALL CANISTER STATE including creation time. This cannot be undone. Are you sure?')) {
+                                                        onClick={async () => {
+                                                            if (await appConfirm('⚠️ Reinstall will WIPE ALL CANISTER STATE including creation time. This cannot be undone. Are you sure?')) {
                                                                 handleUpgrade(nextAvailableVersion, 'reinstall');
                                                             }
                                                         }}
@@ -3885,9 +3909,9 @@ function IcpNeuronManager() {
                                             )}
                                             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                                                 <button
-                                                    onClick={() => {
+                                                    onClick={async () => {
                                                         if (isUnverifiedWasm) {
-                                                            if (window.confirm('⚠️ This canister has an unknown WASM and may not be an ICP Staking Bot. Upgrading it with the staking bot WASM could break or destroy this canister. Are you sure you want to proceed?')) {
+                                                            if (await appConfirm('⚠️ This canister has an unknown WASM and may not be an ICP Staking Bot. Upgrading it with the staking bot WASM could break or destroy this canister. Are you sure you want to proceed?')) {
                                                                 handleUpgrade(latestOfficialVersion, 'upgrade');
                                                             }
                                                         } else {
@@ -3911,8 +3935,8 @@ function IcpNeuronManager() {
                                                     {upgrading && upgradeMode === 'upgrade' ? '⏳ Upgrading...' : '⬆️ Upgrade'}
                                                 </button>
                                                 <button
-                                                    onClick={() => {
-                                                        if (window.confirm('⚠️ Reinstall will WIPE ALL CANISTER STATE. This cannot be undone. Are you sure?')) {
+                                                    onClick={async () => {
+                                                        if (await appConfirm('⚠️ Reinstall will WIPE ALL CANISTER STATE. This cannot be undone. Are you sure?')) {
                                                             handleUpgrade(latestOfficialVersion, 'reinstall');
                                                         }
                                                     }}
@@ -4263,6 +4287,7 @@ function IcpNeuronManager() {
                             
                             {showTopUpSection && (
                                 <div>
+                                    <PendingTopUpsNotice style={{ marginBottom: 12 }} />
                                     {/* User ICP Balance */}
                                     <div style={{ 
                                         display: 'flex', 
@@ -6286,7 +6311,7 @@ function IcpNeuronManager() {
                                                                         style={{ ...buttonStyle, fontSize: '0.7rem', padding: '4px 10px', background: `${theme.colors.error}10`, color: theme.colors.error, border: `1px solid ${theme.colors.error}25` }}
                                                                         disabled={savingChore}
                                                                         onClick={async () => {
-                                                                            if (!window.confirm(`Remove distribution list "${list.name || 'List #' + Number(list.id)}"?`)) return;
+                                                                            if (!await appConfirm(`Remove distribution list "${list.name || 'List #' + Number(list.id)}"?`)) return;
                                                                             setSavingChore(true);
                                                                             try {
                                                                                 const agent = getAgent();
@@ -6797,7 +6822,7 @@ function IcpNeuronManager() {
                                                     style={{ ...buttonStyle, fontSize: '0.75rem', background: `${theme.colors.error || '#ef4444'}10`, color: theme.colors.error || '#ef4444', border: `1px solid ${theme.colors.error || '#ef4444'}25` }}
                                                     disabled={savingChore}
                                                     onClick={async () => {
-                                                        if (!window.confirm(`Delete instance "${chore.instanceLabel || chore.choreName}"?`)) return;
+                                                        if (!await appConfirm(`Delete instance "${chore.instanceLabel || chore.choreName}"?`)) return;
                                                         setSavingChore(true);
                                                         try {
                                                             const agent = getAgent();
@@ -7067,7 +7092,7 @@ function IcpNeuronManager() {
                                             value={Number(logConfig.maxEntries)}
                                             onChange={async (e) => {
                                                 const n = parseInt(e.target.value);
-                                                if (!window.confirm(`Set max log entries to ${n.toLocaleString()}? ${Number(logConfig.entryCount) > n ? `This will immediately trim ${Number(logConfig.entryCount) - n} oldest entries.` : ''}`)) return;
+                                                if (!await appConfirm(`Set max log entries to ${n.toLocaleString()}? ${Number(logConfig.entryCount) > n ? `This will immediately trim ${Number(logConfig.entryCount) - n} oldest entries.` : ''}`)) return;
                                                 setSavingLogConfig(true);
                                                 try {
                                                     const agent = getAgent();
@@ -7097,7 +7122,7 @@ function IcpNeuronManager() {
 
                                         <button
                                             onClick={async () => {
-                                                if (!window.confirm('Clear all log entries? This cannot be undone.')) return;
+                                                if (!await appConfirm('Clear all log entries? This cannot be undone.')) return;
                                                 setSavingLogConfig(true);
                                                 try {
                                                     const agent = getAgent();
@@ -7407,6 +7432,7 @@ function IcpNeuronManager() {
                                 {error}
                             </div>
                         )}
+                        <PendingStakesNotice style={{ marginBottom: '20px' }} />
 
                         {/* Neuron Selector - when there are multiple neurons */}
                         {neuronIds.length > 0 && (

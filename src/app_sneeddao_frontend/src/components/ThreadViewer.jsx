@@ -41,6 +41,8 @@ import MarkdownBody from './MarkdownBody';
 import './ThreadViewer.css';
 import MentionTextarea from './MentionTextarea';
 import { smsMentioned } from '../utils/mentions';
+import { icrc1Transfer } from '../utils/icrcTx';
+import { appAlert, appConfirm } from '../utils/appDialog';
 
 // Separate EditForm component to prevent PostComponent re-renders
 const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdit, textLimits, regularLimits, isPremium }) => {
@@ -1959,7 +1961,7 @@ function ThreadViewer({
             });
 
             // Perform the icrc1_transfer
-            const transferResult = await ledgerActor.icrc1_transfer({
+            const transferResult = await icrc1Transfer(ledgerActor, {
                 to: {
                     owner: recipientPrincipal,
                     subaccount: []
@@ -2140,7 +2142,7 @@ function ThreadViewer({
                     newState.delete(postIdStr);
                     return newState;
                 });
-                alert('Failed to update post: ' + (result.err?.InvalidInput || result.err?.Unauthorized || 'Unknown error'));
+                appAlert('Failed to update post: ' + (result.err?.InvalidInput || result.err?.Unauthorized || 'Unknown error'));
             }
         } catch (error) {
             console.error('Error updating post:', error);
@@ -2150,7 +2152,7 @@ function ThreadViewer({
                 newState.delete(postIdStr);
                 return newState;
             });
-            alert('Error updating post: ' + error.message);
+            appAlert('Error updating post: ' + error.message);
         } finally {
             setUpdatingPost(false);
         }
@@ -2200,11 +2202,11 @@ function ThreadViewer({
                 await fetchThreadData();
             } else {
                 console.error('Failed to update thread:', result.err);
-                alert('Failed to update thread: ' + (result.err?.InvalidInput || result.err?.Unauthorized || JSON.stringify(result.err) || 'Unknown error'));
+                appAlert('Failed to update thread: ' + (result.err?.InvalidInput || result.err?.Unauthorized || JSON.stringify(result.err) || 'Unknown error'));
             }
         } catch (error) {
             console.error('Error updating thread:', error);
-            alert('Error updating thread: ' + error.message);
+            appAlert('Error updating thread: ' + error.message);
         } finally {
             setUpdatingThread(false);
         }
@@ -2214,7 +2216,7 @@ function ThreadViewer({
     const handleDeletePost = useCallback(async (postId) => {
         if (!forumActor) return;
 
-        const confirmed = window.confirm('Are you sure you want to delete this post? This action cannot be undone.');
+        const confirmed = await appConfirm('Are you sure you want to delete this post? This action cannot be undone.');
         if (!confirmed) return;
 
         setDeletingPost(Number(postId));
@@ -2227,11 +2229,11 @@ function ThreadViewer({
                 await fetchThreadData();
             } else {
                 console.error('Failed to delete post:', result.err);
-                alert('Failed to delete post: ' + (result.err?.InvalidInput || result.err?.Unauthorized || 'Unknown error'));
+                appAlert('Failed to delete post: ' + (result.err?.InvalidInput || result.err?.Unauthorized || 'Unknown error'));
             }
         } catch (error) {
             console.error('Error deleting post:', error);
-            alert('Error deleting post: ' + error.message);
+            appAlert('Error deleting post: ' + error.message);
         } finally {
             setDeletingPost(null);
         }

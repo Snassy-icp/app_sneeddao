@@ -109,7 +109,7 @@ export function generateLLMGuide({ whitelistTokens, snsData } = {}) {
 #   max_amount: 1.0 ICP
 #   amount_mode: range       (range | percent)
 #   balance_percent: none    (when amount_mode=percent: 0-10000 bps)
-#   preferred_dex: auto      (auto | ICPSwap | KongSwap)
+#   preferred_dex: auto      (auto | ICPSwap; KongSwap has shut down)
 #   source_purse: none       (for reclaim/send)
 #   target_purse: "trade-1"  (for fund_purse)
 #   destination: "principal"  (for send — external account)

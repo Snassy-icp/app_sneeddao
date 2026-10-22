@@ -58,6 +58,7 @@ import TransferCanisterModal from './components/TransferCanisterModal';
 import LockModal from './LockModal';
 import { usePremiumStatus } from './hooks/usePremiumStatus';
 import './PrincipalBox.css';
+import { icrc1Transfer } from './utils/icrcTx';
 
 function PrincipalBox({ principalText, onLogout, compact = false }) {
     const [showPopup, setShowPopup] = useState(false);
@@ -811,7 +812,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                 
                 const principal_subaccount = principalToSubAccount(identity.getPrincipal());
                 const recipientPrincipal = Principal.fromText(sneedLockCanisterId);
-                await ledgerActor.icrc1_transfer({
+                await icrc1Transfer(ledgerActor, {
                     to: { owner: recipientPrincipal, subaccount: [principal_subaccount] },
                     fee: [],
                     memo: [],

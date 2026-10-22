@@ -17,6 +17,7 @@ import { Actor } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { bigEndianCrc32 } from '@dfinity/utils';
 import { sha224 } from '@noble/hashes/sha256';
+import { icrc2Approve } from './icrcTx.js';
 
 export const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 export const ICP_INDEX_ID = 'qhbym-qaaaa-aaaaa-aaafq-cai';
@@ -492,7 +493,7 @@ export function getRecordedSpenders(ledgerId) {
 
 /// Drop-in for `ledger.icrc2_approve(args)` that also records the spender. Returns the ledger's answer.
 export async function approveAndRecord(ledger, ledgerId, args) {
-    const r = await ledger.icrc2_approve(args);
+    const r = await icrc2Approve(ledger, args);
     recordApprovalSpender(String(ledgerId), args.spender, optOne(args.from_subaccount));
     return r;
 }

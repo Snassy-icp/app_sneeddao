@@ -21,6 +21,7 @@ import ConfirmationModal from '../ConfirmationModal';
 import { usePremiumStatus, PremiumBadge } from '../hooks/usePremiumStatus';
 import PriceTierBadge from '../components/PriceTierBadge';
 import { fetchSpecialPricesFor, effectivePrice } from '../utils/specialPrices';
+import { icrc1Transfer } from '../utils/icrcTx';
 
 // Custom CSS for animations
 const customStyles = `
@@ -373,7 +374,7 @@ function LockWizard() {
         }
         if (plan.fromFrontend > 0n) {
             const icpLedgerActor = createLedgerActor(ICP_LEDGER_ID, { agentOptions: { identity } });
-            const result = await icpLedgerActor.icrc1_transfer({
+            const result = await icrc1Transfer(icpLedgerActor, {
                 to: paymentAccount,
                 fee: [],
                 memo: [],
@@ -886,7 +887,7 @@ function LockWizard() {
         // Transfer to backend if needed
         if (amountToSendToBackend > 0n) {
             const subaccount = principalToSubAccount(identity.getPrincipal());
-            const result = await ledgerActor.icrc1_transfer({
+            const result = await icrc1Transfer(ledgerActor, {
                 to: { owner: Principal.fromText(sneedLockCanisterId), subaccount: [subaccount] },
                 fee: [],
                 memo: [],
