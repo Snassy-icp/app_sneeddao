@@ -533,6 +533,69 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         };
     };
 
+    // Callers with a withdrawDepositToken of a ledger other than ICP running (transient, one at a
+    // time per caller). Separate from `busy`: a slow or hostile token ledger can then never hold
+    // up the caller's purchases.
+    transient var busyTokens : [Principal] = [];
+    // Bounded wait (seconds) for calls to a token ledger named by the caller: an unknown canister
+    // that never answers cannot keep a call context open (which would block stopping for upgrades)
+    transient let TOKEN_LEDGER_TIMEOUT : Nat32 = 60;
+
+    /// Take back any ICRC-1 token sent by mistake to your own deposit subaccount
+    /// (getDepositAccount(you)) on `ledger`: the whole balance minus that ledger's fee goes to
+    /// your default account, never anywhere else. For the ICP ledger this is withdrawDeposit.
+    /// Logged as premium_deposit_token_withdraw (ICRC-3). `amountE8s` in the result is in the
+    /// token's smallest unit.
+    public shared ({ caller }) func withdrawDepositToken(ledger : Principal) : async T.WithdrawResult {
+        if (Principal.isAnonymous(caller)) {
+            return #err(#NotAuthorized);
+        };
+        if (Principal.equal(ledger, config.icpLedgerId)) {
+            if (not acquire(caller)) return #err(#InProgress);
+            return try { await* withdraw(caller) } finally { release(caller) };
+        };
+        if (Utils.principalInList(caller, busyTokens)) return #err(#InProgress);
+        busyTokens := Array.append(busyTokens, [caller]);
+        try { await* withdrawToken(caller, ledger) } finally { busyTokens := Utils.removePrincipal(caller, busyTokens) };
+    };
+
+    func withdrawToken(caller : Principal, ledgerId : Principal) : async* T.WithdrawResult {
+        let token : T.ICRC1Actor = actor (Principal.toText(ledgerId));
+        let userSubaccount = Utils.principalToSubaccount(caller);
+        let to : T.Account = { owner = caller; subaccount = null };
+        let (balance, fee) = try {
+            let b = await (with timeout = TOKEN_LEDGER_TIMEOUT) token.icrc1_balance_of({ owner = Principal.fromActor(this); subaccount = ?userSubaccount });
+            (b, await (with timeout = TOKEN_LEDGER_TIMEOUT) token.icrc1_fee());
+        } catch (e) {
+            return #err(#TransferFailed("Could not reach the ledger: " # Error.message(e)));
+        };
+        if (balance <= fee) {
+            return #err(#NothingToWithdraw({ balance; fee }));
+        };
+        let result = try {
+            await (with timeout = TOKEN_LEDGER_TIMEOUT) token.icrc1_transfer({
+                to;
+                fee = ?fee;
+                memo = null;
+                from_subaccount = ?userSubaccount;
+                // the ledger deduplicates a retry after an unknown outcome
+                created_at_time = ?Nat64.fromNat(Int.abs(Time.now()));
+                amount = balance - fee;
+            });
+        } catch (e) {
+            return #err(#TransferFailed("The ledger call failed (the outcome may be unknown; check your balance before retrying): " # Error.message(e)));
+        };
+        switch (result) {
+            case (#Ok(blockIndex)) {
+                icrc3_add("premium_deposit_token_withdraw", [
+                    ("caller", pv(caller)), ("ledger", pv(ledgerId)), ("amount", #Nat(balance - fee)), ("fee", #Nat(fee)), ("to", av(to)), ("ledger_tx", #Nat(blockIndex)),
+                ]);
+                #ok({ amountE8s = balance - fee; blockIndex; to });
+            };
+            case (#Err(e)) #err(#TransferFailed(debug_show (e)));
+        };
+    };
+
     func purchase(caller : Principal) : async* T.PurchaseResult {
         let now = Time.now();
         let icpLedger = getIcpLedger();
@@ -1497,6 +1560,48 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         icpPaymentLog.size();
     };
 
+    /// The claim log entries of one principal (every membership grant it received: ICP,
+    /// voting power, promo code), newest first, paged like getClaimLog. Only for that principal
+    /// itself or an admin; traps for anyone else.
+    public shared query ({ caller }) func getClaimLogFor(principal : Principal, offset : Nat, limit : Nat) : async {
+        claims : [T.ClaimLogEntry];
+        total_count : Nat;
+        has_more : Bool;
+    } {
+        if (not ((Principal.equal(caller, principal) and not Principal.isAnonymous(caller)) or isAdmin(caller))) {
+            Debug.trap("Only the principal itself or an admin can read its claim log");
+        };
+        let mine = Array.filter<T.ClaimLogEntry>(claimLog, func(e) { Principal.equal(e.claimant, principal) });
+        let (page, total, more) = newestFirst<T.ClaimLogEntry>(mine, offset, limit);
+        { claims = page; total_count = total; has_more = more };
+    };
+
+    /// The ICP payments of one principal (gross and net amounts, the ledger block of the
+    /// forwarding transfer), newest first, paged like getIcpPaymentLog. Only for that
+    /// principal itself or an admin; traps for anyone else.
+    public shared query ({ caller }) func getIcpPaymentLogFor(principal : Principal, offset : Nat, limit : Nat) : async {
+        payments : [T.IcpPaymentLogEntry];
+        total_count : Nat;
+        has_more : Bool;
+    } {
+        if (not ((Principal.equal(caller, principal) and not Principal.isAnonymous(caller)) or isAdmin(caller))) {
+            Debug.trap("Only the principal itself or an admin can read its payment log");
+        };
+        let mine = Array.filter<T.IcpPaymentLogEntry>(icpPaymentLog, func(e) { Principal.equal(e.payer, principal) });
+        let (page, total, more) = newestFirst<T.IcpPaymentLogEntry>(mine, offset, limit);
+        { payments = page; total_count = total; has_more = more };
+    };
+
+    /// `limit` (at most 1000) entries of `xs` from `offset` counted from the newest, newest first;
+    /// the total and whether older entries remain
+    func newestFirst<X>(xs : [X], offset : Nat, limit : Nat) : ([X], Nat, Bool) {
+        let total = xs.size();
+        if (offset >= total) return ([], total, false);
+        let startIdx : Nat = total - offset;
+        let n = Nat.min(Nat.min(limit, 1000), startIdx);
+        (Array.tabulate<X>(n, func(i) { xs[startIdx - 1 - i] }), total, startIdx > n);
+    };
+
     /// Every promo code with the id the activity log names it by (admin only).
     public query ({ caller }) func getPromoCodeIds() : async T.AdminResult<[(Text, Nat)]> {
         if (not isAdmin(caller)) {
@@ -1515,6 +1620,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             "premium_icp_purchase",
             "premium_vp_claim",
             "premium_deposit_withdraw",
+            "premium_deposit_token_withdraw",
             "premium_promo_create",
             "premium_promo_claim",
             "premium_promo_deactivate",
@@ -1696,6 +1802,9 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         #admin_set_icrc3_proposal_neuron : Any;
         #admin_set_icrc3_settings : Any;
         #getPromoCodeIds : Any;
+        #getClaimLogFor : Any;
+        #getIcpPaymentLogFor : Any;
+        #withdrawDepositToken : Any;
         #icrc10_supported_standards : Any;
         #icrc3_get_archives : Any;
         #icrc3_get_blocks : Any;
@@ -1774,6 +1883,8 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
                 or #getVotingPowerTiers _
                 or #isCallerAdmin _
                 or #getPromoCodeIds _
+                or #getClaimLogFor _
+                or #getIcpPaymentLogFor _
                 or #icrc10_supported_standards _
                 or #icrc3_get_archives _
                 or #icrc3_get_blocks _
@@ -1788,6 +1899,8 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             // special prices (labels are at most 100 characters: a small argument)
             case (#set_admin_prices _ or #set_partner_prices _ or #remove_partner_prices _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
             case (#addIcpTier _ or #addVpTier _ or #updateIcpTier _ or #updateVpTier _ or #createPromoCode _ or #deactivatePromoCode _ or #reactivatePromoCode _ or #deletePromoCode _ or #updateConfig _) isAdmin(caller);
+            // a principal only: signed-in callers
+            case (#withdrawDepositToken _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG;
             case _ arg.size() <= IngressGuard.SMALL_ARG;
         };
     };

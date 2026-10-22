@@ -156,6 +156,10 @@ if ('ok' in r) console.log('returned', r.ok.amountE8s, 'e8s in block', r.ok.bloc
 else console.log(Object.keys(r.err)[0]);   // NothingToWithdraw, InProgress, TransferFailed, NotAuthorized
 ```
 
+Any other ICRC-1 token sent to the deposit account by mistake comes back the same way: `withdrawDepositToken(ledger)` sends the caller's whole balance of that token in their own deposit account, minus that ledger's fee, to the caller's default account (for the ICP ledger it is `withdrawDeposit`).
+
+A user (or support, as an admin) reads one principal's own history with `getIcpPaymentLogFor(principal, offset, limit)` and `getClaimLogFor(principal, offset, limit)` (5.3).
+
 ---
 
 ## 3. Flows in detail
@@ -244,7 +248,7 @@ type PriceTier = variant { regular; premium; admin; partner };
 
 **Voting power claims.** The claim interval is checked before and again after the governance calls, so concurrent claims by one principal grant at most once per interval.
 
-**Thrown errors.** Admin-only log queries (`getClaimLog`, `getIcpPaymentLog` and their counts) trap for non-admins rather than returning an error. Other methods return their error variants.
+**Thrown errors.** Admin-only log queries (`getClaimLog`, `getIcpPaymentLog` and their counts) trap for non-admins rather than returning an error, and `getClaimLogFor` / `getIcpPaymentLogFor` for anyone but the principal itself or an admin. Other methods return their error variants.
 
 ---
 
@@ -285,6 +289,12 @@ See 3.1. Errors: `NotAuthorized` (anonymous caller), `InvalidTier` (deposit bala
 
 **`withdrawDeposit() → WithdrawResult`**
 See 2.6. Sends the caller's own deposit balance (`getDepositAccount(caller)`) minus the ledger fee to the caller's default account (`{ owner = caller; subaccount = null }`). `ok`: `{ amountE8s; blockIndex; to }`. Errors: `NotAuthorized` (anonymous caller), `NothingToWithdraw { balance; fee }` (balance not above the fee), `InProgress` (a purchase or withdrawal of the caller is running), `TransferFailed(text)`. Nobody can withdraw from another principal's deposit account.
+
+**`withdrawDepositToken(ledger : principal) → WithdrawResult`**
+Any ICRC-1 token sent by mistake to the caller's own deposit account: sends the caller's whole balance on `ledger` minus that ledger's `icrc1_fee` to the caller's default account, never anywhere else. For the ICP ledger (`getConfig().icpLedgerId`) it is `withdrawDeposit` (same lock, same block). `ok.amountE8s` is in the token's smallest unit. Errors as `withdrawDeposit`; `TransferFailed` also when `ledger` is not reachable or not a ledger (calls to it wait at most 60 seconds; after a timeout the outcome may be unknown, so check the balance before retrying; the transfer carries `created_at_time`, so the ledger deduplicates a retry). Logged as `premium_deposit_token_withdraw`.
+
+**`getClaimLogFor(principal, offset : nat, limit : nat)`** (query), **`getIcpPaymentLogFor(principal, offset : nat, limit : nat)`** (query)
+One principal's entries of the claim log and of the ICP payment log (same records and paging as `getClaimLog` / `getIcpPaymentLog` in 5.4, newest first, `limit` at most 1,000, `total_count` counts that principal's entries). Only for that principal itself or an admin; trap for anyone else (and for the anonymous principal).
 
 **`claimWithVotingPower() → ClaimResult`**
 See 3.2. Errors: `NotAuthorized`, `AlreadyClaimedRecently { lastClaimTime; intervalNs; nextClaimTime }`, `NoActiveTiers`, `NoEligibleNeurons`, `InsufficientVotingPower { required; found }`. `InternalError` is in the Candid but not returned today.
@@ -415,6 +425,7 @@ All types carry the `premium_` prefix. A block is appended only once its action 
 | `premium_icp_purchase` | `purchaseWithIcp` swept the deposit to the payment recipient and extended the membership. | `caller`, `tier` (name), `duration_ns`, `amount_e8s` (the deposit charged), `fee_e8s` (ledger fee), `to` (payment recipient account), `icp_tx` (ICP ledger block of the sweep), `price_tier` (`regular`, `admin` or `partner`, section 3.5), `previous_expiration`, `new_expiration` |
 | `premium_vp_claim` | `claimWithVotingPower` granted a tier. | `caller`, `voting_power`, `tier`, `duration_ns`, `previous_expiration`, `new_expiration` (not additive: may equal the previous one) |
 | `premium_deposit_withdraw` | `withdrawDeposit` sent the caller's deposit back. | `caller`, `amount_e8s` (transferred), `fee_e8s`, `to` (account), `icp_tx` |
+| `premium_deposit_token_withdraw` | `withdrawDepositToken` sent a token other than ICP from the caller's deposit account back to the caller. | `caller`, `ledger`, `amount` (transferred, the token's smallest unit), `fee`, `to` (account), `ledger_tx` (block on that ledger) |
 | `premium_promo_create` | `createPromoCode` | `caller`, `code_id`, `duration_ns`, `max_claims`; `code_expiration` when set |
 | `premium_promo_claim` | `claimPromoCode` granted the code's duration. | `caller`, `code_id`, `duration_ns`, `claim_count` (after this claim), `previous_expiration`, `new_expiration` |
 | `premium_promo_deactivate` | `deactivatePromoCode` | `caller`, `code_id` |

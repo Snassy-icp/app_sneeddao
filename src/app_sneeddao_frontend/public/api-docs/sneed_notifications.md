@@ -60,7 +60,9 @@ Prices are per delivery, in ICP e8s, per channel kind (`get_config().prices_e8s`
 - **User pays** (`sponsored = false`): each delivery is charged to the user's balance, channel by channel. A delivery the balance cannot cover is **suppressed** with reason `not enough balance`; one that would exceed the permission's `daily_spend_cap_e8s` for this app today is suppressed with `daily spending cap for this app`. Free channels (Sneed SMS) always go out. The per-call price is taken only if the balance and cap allow it.
 - **App pays** (`sponsored = true`): the whole message (every chosen delivery plus the per-call price) is charged to the app's balance, all or nothing. If the app's balance is short, `notify` fails with `#no_funds`. The user's spending cap does not apply; the daily message cap does.
 - **Refunds:** a delivery that finally fails is refunded to whoever paid. Suppressed deliveries cost nothing.
-- **Balances** are topped up with ICP through ICRC-2: `top_up` for the caller, `top_up_app` for any app (anyone may fund any app). There is no method to withdraw a balance.
+- **Balances** are topped up with ICP through ICRC-2: `top_up` for the caller, `top_up_app` for any app (anyone may fund any app). The transfer carries the memo `sneednotif:top_up` or `sneednotif:app_top_up` and a `created_at_time`; each top-up is recorded per payer with its ledger block. There is no method to withdraw a balance.
+- **A removed app's balance** stays where it is when an admin removes the app: its recorded owner (or an admin for the owner) moves it to the owner's own notification balance with `claim_removed_app_balance(id)`.
+- **Old notifications** are deleted after `retention_ns`; a paid delivery that never became final by then is refunded to whoever paid for it.
 - **Where the money goes:** what is charged (deliveries and the per-call price, less refunds) is Sneed DAO revenue. The canister forwards it in one ICRC-1 transfer to `fee_destination` (by default the RLL ICP splitter, `6jvpj-sqaaa-aaaaj-azwnq-cai` subaccount `01 00 00 00 00 06` + 26 zero bytes, where Sneed Premium, Sneedex and Sneed Lock pay too) once `fee_sweep_threshold_e8s` (0.1 ICP) has accumulated; the ledger fee comes off the amount. A check runs from the delivery timer at most every 5 minutes. Balances are never touched: before every transfer the canister reads its ledger balance, and the transfer must leave at least every user and app balance, every paid delivery that may still be refunded, and top-ups in flight. The ICP spent before forwarding existed (the backlog) was measured once, at the first check after the upgrade, as the ledger balance minus all of that. Read it all with `get_fee_forwarding()` (5.3).
 
 ### 1.5 Caps and repeats
@@ -302,6 +304,8 @@ A job not acknowledged within `relay_lease_ns` (10 minutes) goes back to the que
 
 **Retries.** `notify` has no awaits; a rejected call recorded nothing. It is not idempotent: give important messages a `dedupe` key so a retry after a timeout is folded instead of sent twice. `register_app` and `update_app` await the management canister; a canister claimed by a concurrent call is caught again after the awaits. `top_up` and `top_up_app` credit the balance in the same message that receives the ledger's confirmation, so a transfer that went through is always credited. If your client timed out, read `get_my_settings().balance_e8s` (or `get_app_balance`) and the remaining ICRC-2 allowance before calling again; a second call pulls again.
 
+**A top-up whose outcome the canister never learned** (`The ledger did not answer: ...`) may still have moved the ICP. Support finds the block on the ledger (memo `sneednotif:top_up`, from the user's default account to this canister) and an admin credits it with `admin_credit(principal, amount_e8s, ledger_block)`: the canister reads the block and credits only a transfer of exactly that amount from that principal's default account to its own, at most once per block (blocks already credited by a top-up included). A block older than the canister's top-up records (they begin with the first block of the activity log) is refused, since it may have been credited without a record.
+
 **ICP top-up errors:** `Nothing to top up`, `Approve this canister for the amount first (allowance N)`, `Not enough ICP (balance N)`, `The ledger refused the transfer`, `The ledger did not answer: ...`. The approval must cover the amount plus the ICP ledger fee (10,000 e8s), both taken from the caller's default account.
 
 ---
@@ -338,6 +342,7 @@ All refuse the anonymous principal (`Please sign in` where the method checks it)
 | `get_low_balance_alert()` | query | `record { threshold_e8s : nat; default_e8s : nat }` | 3.4. |
 | `remove_channel(id)` | update | `Result` | 3.4. |
 | `top_up(amount_e8s)` | update | `ResultNat` | The caller's new balance. |
+| `claim_removed_app_balance(id)` | update | `ResultNat` | The owner of an app an admin removed (or an admin for them) moves its balance to the owner's notification balance; returns the owner's new balance. Errors `No removed app N`, `Only the app's owner`, `Nothing to claim`. |
 | `get_my_settings()` | query | `{ settings; channels; balance_e8s }` | A user who never made an update call gets default settings whose `always_copy` id is not stored yet; call `add_channel({ sneed_sms: null }, '', [])` or `set_settings` once to fix it. |
 | `get_my_apps()` | query | `vec (App, Permission)` | Apps the caller allowed or blocked. |
 | `get_my_requests()` | query | `vec App` | Open requests. |
@@ -354,7 +359,7 @@ All refuse the anonymous principal (`Please sign in` where the method checks it)
 | `get_config()` | query | `Config` | Prices, caps, limits, relays, retention. |
 | `get_relay_keys()` | query | `vec (ChannelKind, text)` | Each relay kind's key document (JSON, see 2.4). |
 | `get_admins()` | query | `vec principal` | Listed admins (controllers are admins too). |
-| `stats()` | query | `{ apps; users; notifications; pending }` | `users` counts principals with a channel. |
+| `stats()` | query | `{ apps; users; notifications; pending; last_tick_at : int; ticking : bool }` | `users` counts principals with a channel. `last_tick_at`: when the delivery timer (every 30 s) last ran; `ticking`: a run in progress. |
 | `get_fee_forwarding()` | query | `FeeForwarding` | Revenue: destination, threshold, fees earned, refunded and forwarded, the backlog, what is unforwarded and owed, the last forward and error, the last 20 events (1.4). |
 | `icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`, `icrc10_supported_standards`, `icrc3_log_status` | query | | The activity log ([8](#8-activity-log-icrc-3)); not deployed yet. |
 
@@ -375,7 +380,10 @@ Admins are the canister's controllers and the principals in `get_admins()`. All 
 | `admin_set_config(Config)` | Replaces the whole config (prices, caps, relays, ...). |
 | `admin_set_relay_key(kind, key)` | Publishes (or with `""` removes) a relay kind's key document. |
 | `admin_set_app_verified(id, bool)` | The checkmark. |
-| `admin_remove_app(id)` | Removes an abusive app; its canisters can no longer notify. |
+| `admin_remove_app(id)` | Removes an abusive app; its canisters can no longer notify. Its balance stays for the owner (`claim_removed_app_balance`). |
+| `admin_get_removed_app(id)` (query) | A removed app's record (owner, canisters); its balance: `get_app_balance(id)`. |
+| `admin_credit(principal, amount_e8s, ledger_block)` | Credits a top-up the canister never confirmed, after reading the block on the ledger (4). Returns the user's new balance. Errors: `... is already credited`, `... is being credited`, `... moved N e8s, not M`, `... was not sent from that principal's account`, `... was not sent to this canister`, `... is older than the top-up records ...`, `The ledger has no block N`, `Could not read the ledger: ...`. |
+| `admin_get_user(principal, history_limit)` (query) | `variant { ok : AdminUserView; err : text }`: the user's balance, low-balance alert, settings, channels (addresses as stored: encrypted), apps and permissions, open requests, top-ups (newest first, at most 100, each with `ledger_block`, `amount_e8s`, `at`, `app`, `via` = `top_up`, `app_top_up` or `admin_credit`), recent history (at most `history_limit`, 200 at most; verification codes hidden as in `get_my_history`), and the deliveries not final yet with their prices. |
 | `admin_add_admin(p)`, `admin_remove_admin(p)` | Edit the admin list. |
 | `admin_set_fee_destination(opt Account)` | Where fees go; `null` keeps them in the canister. A subaccount must be 32 bytes. |
 | `admin_set_fee_sweep_threshold(e8s)` | Forward once this much is unforwarded (default 10,000,000 = 0.1 ICP). |
@@ -490,6 +498,28 @@ type FeeForwarding = record {
   events : vec record { int; text };
 };
 
+// one ICP payment credited to a balance (admin_get_user)
+type TopUp = record {
+  ledger_block : nat;
+  amount_e8s : nat;
+  at : int;
+  app : opt nat;                  // an app top-up: the app it funded
+  via : variant { top_up; app_top_up; admin_credit };
+};
+
+type AdminUserView = record {
+  balance_e8s : nat;
+  low_balance_alert : record { threshold_e8s : nat; alerted : bool };
+  settings : Settings;
+  channels : vec Channel;
+  apps : vec record { App; Permission };
+  requests : vec App;
+  top_ups : vec TopUp;            // newest first, at most 100
+  history : vec HistoryItem;      // newest first
+  pending_jobs : nat;             // deliveries to this user not final yet
+  reserved_e8s : nat;             // their prices
+};
+
 type Result = variant { ok : text; err : text };
 type ResultNat = variant { ok : nat; err : text };
 ```
@@ -552,14 +582,16 @@ All types carry the `sneednotif_` prefix. A block is appended once its action is
 |---|---|---|
 | `sneednotif_top_up` | `top_up` credited a user balance. | `caller` (the user), `amount_e8s`, `ledger_block` |
 | `sneednotif_app_top_up` | `top_up_app` credited an app balance. | `caller` (the funder), `app_id`, `amount_e8s`, `ledger_block`, `app_balance_e8s` (after) |
-| `sneednotif_refund` | A paid delivery failed finally and its price went back to whoever paid. | `caller` (the relay) or `via`, `amount_e8s`, `paid_by` (`user` or `app`), `refunded_e8s` (all refunds so far) |
+| `sneednotif_refund` | A paid delivery failed finally, or was pruned before it became final, and its price went back to whoever paid. | `caller` (the relay) or `via`, `amount_e8s`, `paid_by` (`user` or `app`), `refunded_e8s` (all refunds so far) |
 | `sneednotif_fee_forward` | Earned fees went to the fee destination. | `caller` (`admin_forward_fees_now`) or `via`, `amount_e8s` (received), `fee_e8s` (ledger fee), `to`, `ledger_block`, `forwards`, `forwarded_e8s` (totals after) |
 | `sneednotif_fee_backlog` | The first fee check measured the books (1.4). | `caller` or `via`, `balance_e8s`, `liabilities_e8s`, `free_e8s`, `backlog_e8s` |
 | `sneednotif_fee_remeasure` | The ledger showed less free ICP than the books; measured again. | `caller` or `via`, `books_e8s`, `balance_e8s`, `liabilities_e8s`, `free_e8s` |
 | `sneednotif_app_register` | `register_app`, `admin_register_app` | `caller`, `app_id`, `name`, `owner`, `canisters`, `topics` (Array of `Map { id; title; level }`), `verified` |
 | `sneednotif_app_update` | `update_app` changed something. | `caller`, `app_id`, `name`, `owner`, `canisters`, `topics` (after), `changed` (Array of `name`, `logo`, `description`, `canisters`, `topics`), and `old_name`, `old_canisters`, `old_topics` for those that changed (logo and description texts are not logged) |
 | `sneednotif_app_verify` | `admin_set_app_verified` changed the checkmark. | `caller`, `app_id`, `name`, `verified` |
-| `sneednotif_app_remove` | `admin_remove_app` | `caller`, `app_id`, `name`, `owner`, `canisters` |
+| `sneednotif_app_remove` | `admin_remove_app` | `caller`, `app_id`, `name`, `owner`, `canisters`, `app_balance_e8s` (left for the owner) |
+| `sneednotif_app_balance_claim` | `claim_removed_app_balance` moved a removed app's balance to its owner. | `caller`, `app_id`, `owner`, `amount_e8s`, `balance_e8s` (the owner's, after) |
+| `sneednotif_admin_credit` | `admin_credit` credited a checked ledger block. | `caller` (the admin), `principal` (credited), `amount_e8s`, `ledger_block`, `balance_e8s` (after) |
 | `sneednotif_admin_add` / `sneednotif_admin_remove` | The admin list changed. | `caller` (or `via` = `"upgrade"`), `principal` |
 | `sneednotif_config_update` | A setting changed: one block per value. | `caller`, `key`, `old_value`, `value` |
 

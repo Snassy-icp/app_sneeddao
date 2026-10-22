@@ -45,6 +45,7 @@ persistent actor MockSnsNeurons {
   stable var neurons : [(Blob, Neuron)] = [];
   stable var fail : Bool = false;
   stable var calls : [(Principal, Text)] = [];
+  transient var failRemoveOf : ?Principal = null; // removing this principal's permissions fails
   transient var holdGet : Bool = false;
   transient var holdManage : Bool = false;
   transient var waiting : Nat = 0;
@@ -106,6 +107,7 @@ persistent actor MockSnsNeurons {
       };
       case (?#RemoveNeuronPermissions(r)) {
         let target = switch (r.principal_id) { case (?p) p; case null { return err("No principal given") } };
+        if (failRemoveOf == ?target) { return err("governance refuses to remove this principal (test mode)") };
         if (target != caller and not has(permsOf(neuron, caller), MANAGE_PRINCIPALS)) { return err("Caller is not authorized to manage principals of this neuron") };
         let toRemove = switch (r.permissions_to_remove) { case (?l) l.permissions; case null [] };
         calls := Array.append(calls, [(caller, "remove " # Principal.toText(target) # " " # debug_show(toRemove))]);
@@ -135,6 +137,8 @@ persistent actor MockSnsNeurons {
     neurons := Array.append(Array.filter<(Blob, Neuron)>(neurons, func((k, _)) { k != id }), [(id, n)]);
   };
   public shared func set_fail(f : Bool) : async () { fail := f };
+  /// make the removal of one principal's permissions fail (null: none)
+  public shared func set_fail_remove_of(p : ?Principal) : async () { failRemoveOf := p };
   public shared func set_hold(get : Bool, manage : Bool) : async () { holdGet := get; holdManage := manage };
   /// how many get_neuron / manage_neuron calls are waiting now
   public query func waiting_calls() : async Nat { waiting };

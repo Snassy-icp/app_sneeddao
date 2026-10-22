@@ -14,7 +14,7 @@ import Nat32 "mo:base/Nat32";
 import Error "mo:base/Error";
 
 import Map "mo:map/Map";
-import { phash; nhash } "mo:map/Map";
+import { phash; nhash; thash } "mo:map/Map";
 
 import T "Types";
 import Utils "Utils";
@@ -312,7 +312,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 switch (neuronManagerFactoryCanisterId) {
                     case (?id) {
                         let factory : T.SneedappFactoryActor = actor(Principal.toText(id));
-                        try { ignore await factory.deregisterCanisterFor(user, canisterId); } catch (_) {};
+                        try {
+                            switch (await factory.deregisterCanisterFor(user, canisterId)) {
+                                case (#Ok) {};
+                                case (#Err(t)) { noteSupport("error", "deregisterCanisterFromWallet", ?user, null, null, Principal.toText(canisterId) # ": " # t) };
+                            };
+                        } catch (e) { noteCatch("deregisterCanisterFromWallet", ?user, null, Principal.toText(canisterId), e) };
                     };
                     case null {};
                 };
@@ -322,7 +327,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 switch (backendCanisterId) {
                     case (?id) {
                         let backend : T.BackendActor = actor(Principal.toText(id));
-                        try { await backend.unregister_tracked_canister_for(user, canisterId); } catch (_) {};
+                        try { await backend.unregister_tracked_canister_for(user, canisterId); } catch (e) { noteCatch("deregisterCanisterFromWallet", ?user, null, Principal.toText(canisterId), e) };
                     };
                     case null {};
                 };
@@ -344,7 +349,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 switch (neuronManagerFactoryCanisterId) {
                     case (?id) {
                         let factory : T.SneedappFactoryActor = actor(Principal.toText(id));
-                        try { ignore await factory.registerCanisterFor(user, canisterId, aid); } catch (_) {};
+                        try {
+                            switch (await factory.registerCanisterFor(user, canisterId, aid)) {
+                                case (#Ok) {};
+                                case (#Err(t)) { noteSupport("error", "registerCanisterToWallet", ?user, null, null, Principal.toText(canisterId) # ": " # t) };
+                            };
+                        } catch (e) { noteCatch("registerCanisterToWallet", ?user, null, Principal.toText(canisterId), e) };
                     };
                     case null {};
                 };
@@ -354,7 +364,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 switch (backendCanisterId) {
                     case (?id) {
                         let backend : T.BackendActor = actor(Principal.toText(id));
-                        try { await backend.register_tracked_canister_for(user, canisterId); } catch (_) {};
+                        try { await backend.register_tracked_canister_for(user, canisterId); } catch (e) { noteCatch("registerCanisterToWallet", ?user, null, Principal.toText(canisterId), e) };
                     };
                     case null {};
                 };
@@ -413,7 +423,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         switch (backendCanisterId) {
             case (?id) {
                 let backend : T.BackendActor = actor(Principal.toText(id));
-                try { await backend.register_user_token_for(user, ledgerId); } catch (_) {};
+                try { await backend.register_user_token_for(user, ledgerId); } catch (e) { noteCatch("registerTokenToWallet", ?user, null, Principal.toText(ledgerId), e) };
             };
             case null {};
         };
@@ -439,14 +449,17 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             case (?id) {
                 let sms : T.SneedSMSActor = actor(Principal.toText(id));
                 try {
-                    ignore await sms.send_system_notification({
+                    switch (await sms.send_system_notification({
                         recipients = recipients;
                         subject = subject;
                         body = body;
-                    });
-                } catch (_) {
+                    })) {
+                        case (#ok(_)) {};
+                        case (#err(e)) { noteSupport("error", "sendNotification", if (recipients.size() == 1) { ?recipients[0] } else { null }, null, null, subject # ": " # debug_show (e)) };
+                    };
+                } catch (e) {
                     // Notification failed - log but don't fail the main operation
-                    Debug.print("Failed to send notification: " # subject);
+                    noteCatch("sendNotification", if (recipients.size() == 1) { ?recipients[0] } else { null }, null, subject, e);
                 };
             };
             case null {
@@ -672,7 +685,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     
     /// Snapshot neuron hotkeys and botkeys, then clear them during escrow.
     /// This is called asynchronously via Timer after the canister is escrowed.
+    /// Every step is best effort; a failed one is written to the support log (op "botEscrowSnapshot").
     func snapshotAndCleanNeuronManager(canisterId : Principal) : async () {
+        let cid = Principal.toText(canisterId);
+        func failed(what : Text, e : Error.Error) { noteCatch("botEscrowSnapshot", null, null, cid # " " # what, e) };
         try {
             let manager : T.ICPNeuronManagerActor = actor(Principal.toText(canisterId));
             
@@ -694,15 +710,15 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             };
                             case null {};
                         };
-                    } catch (_) {};
+                    } catch (e) { failed("getFullNeuron", e) };
                 };
-            } catch (_) {};
+            } catch (e) { failed("getAllNeuronsInfo", e) };
             
             // Step 2: Snapshot botkeys (raw numeric IDs)
             var botkeys : [(Principal, [Nat])] = [];
             try {
                 botkeys := await manager.getBotkeySnapshot();
-            } catch (_) {}; // Older bots (< v0.9.1) may not have this method
+            } catch (e) { failed("getBotkeySnapshot (bots before v0.9.1 lack it)", e) };
             
             // Step 3: Store the combined snapshot
             putEscrowSnapshot(canisterId, {
@@ -714,28 +730,33 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             for (entry in Buffer.toArray(neuronHotkeys).vals()) {
                 for (hotkey in entry.hotkeys.vals()) {
                     try {
-                        ignore await manager.removeHotKey(entry.neuron_id, hotkey);
-                    } catch (_) {};
+                        switch (await manager.removeHotKey(entry.neuron_id, hotkey)) {
+                            case (#Ok) {};
+                            case (#Err(t)) { noteSupport("error", "botEscrowSnapshot", null, null, null, cid # " removeHotKey " # Principal.toText(hotkey) # ": " # t) };
+                        };
+                    } catch (e) { failed("removeHotKey " # Principal.toText(hotkey), e) };
                 };
             };
             
             // Step 5: Clear botkeys
             try {
                 await manager.clearBotkeys();
-            } catch (_) {}; // Older bots may not have this method
-        } catch (_) {};
+            } catch (e) { failed("clearBotkeys (bots before v0.9.1 lack it)", e) };
+        } catch (e) { failed("snapshot", e) };
     };
     
     /// Snapshot botkeys and clear them during escrow for a Trading Bot.
     /// Similar to neuron manager flow but without neuron hotkeys.
     func snapshotAndCleanTradingBot(canisterId : Principal) : async () {
+        let cid = Principal.toText(canisterId);
+        func failed(what : Text, e : Error.Error) { noteCatch("botEscrowSnapshot", null, null, cid # " " # what, e) };
         try {
             let bot : T.TradingBotActor = actor(Principal.toText(canisterId));
             
             var botkeys : [(Principal, [Nat])] = [];
             try {
                 botkeys := await bot.getBotkeySnapshot();
-            } catch (_) {};
+            } catch (e) { failed("getBotkeySnapshot", e) };
             
             putEscrowSnapshot(canisterId, {
                 neuron_hotkeys = [];
@@ -744,8 +765,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             
             try {
                 await bot.clearBotkeys();
-            } catch (_) {};
-        } catch (_) {};
+            } catch (e) { failed("clearBotkeys", e) };
+        } catch (e) { failed("snapshot", e) };
     };
     
     /// Restore botkeys from escrow snapshot for a Trading Bot.
@@ -758,9 +779,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     if (snapshot.botkeys.size() > 0) {
                         try {
                             await bot.restoreBotkeySnapshot(snapshot.botkeys);
-                        } catch (_) {};
+                        } catch (e) { noteCatch("botEscrowRestore", null, null, Principal.toText(canisterId) # " restoreBotkeySnapshot " # debug_show (snapshot.botkeys), e) };
                     };
-                } catch (_) {};
+                } catch (e) { noteCatch("botEscrowRestore", null, null, Principal.toText(canisterId), e) };
                 removeEscrowSnapshot(canisterId);
             };
         };
@@ -769,7 +790,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     /// Restore neuron hotkeys and botkeys from escrow snapshot.
     /// Called during reclaim BEFORE the canister controllers are released,
     /// since Sneedex needs to still be a controller to call these methods.
+    /// What could not be restored goes to the support log (op "botEscrowRestore") with the
+    /// hotkey or botkeys, since the snapshot is dropped afterwards.
     func restoreNeuronManagerState(canisterId : Principal) : async () {
+        let cid = Principal.toText(canisterId);
         switch (getEscrowSnapshot(canisterId)) {
             case null {}; // No snapshot, nothing to restore
             case (?snapshot) {
@@ -779,9 +803,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     // Restore neuron hotkeys
                     for (entry in snapshot.neuron_hotkeys.vals()) {
                         for (hotkey in entry.hotkeys.vals()) {
+                            let what = cid # " addHotKey " # Principal.toText(hotkey) # " to neuron " # debug_show (entry.neuron_id);
                             try {
-                                ignore await manager.addHotKey(entry.neuron_id, hotkey);
-                            } catch (_) {};
+                                switch (await manager.addHotKey(entry.neuron_id, hotkey)) {
+                                    case (#Ok) {};
+                                    case (#Err(t)) { noteSupport("error", "botEscrowRestore", null, null, null, what # ": " # t) };
+                                };
+                            } catch (e) { noteCatch("botEscrowRestore", null, null, what, e) };
                         };
                     };
                     
@@ -789,16 +817,16 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     if (snapshot.botkeys.size() > 0) {
                         try {
                             await manager.restoreBotkeySnapshot(snapshot.botkeys);
-                        } catch (_) {}; // Older bots may not have this method
+                        } catch (e) { noteCatch("botEscrowRestore", null, null, cid # " restoreBotkeySnapshot " # debug_show (snapshot.botkeys), e) }; // Older bots may not have this method
                     };
-                } catch (_) {};
+                } catch (e) { noteCatch("botEscrowRestore", null, null, cid, e) };
                 
                 // Remove the snapshot after restoration
                 removeEscrowSnapshot(canisterId);
             };
         };
     };
-    
+
     func recordSnsNeuronEscrowPermissions(offerId : T.OfferId, assetIndex : Nat, perms : [T.NeuronPermission]) {
         let others = Array.filter<(T.OfferId, Nat, [T.NeuronPermission])>(
             snsNeuronEscrowPermissions,
@@ -872,6 +900,27 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         supportLog := Array.append(kept, [entry]);
     };
 
+    // The last text noted per (op, offer, bid) by background work that retries the same thing
+    // (the hourly settlement sweep): a failure that repeats unchanged is logged once, not every
+    // hour, so it cannot push everything else out of the ring. Transient: after an upgrade a
+    // failure that persists is logged once more.
+    transient var supportLastNoted = Map.new<Text, Text>();
+    func noteSupportOnce(op : Text, principal : ?Principal, offerId : ?T.OfferId, bidId : ?T.BidId, text : Text) {
+        let key = op # ":" # debug_show (offerId) # ":" # debug_show (bidId);
+        if (Map.get(supportLastNoted, thash, key) == ?text) { return };
+        Map.set(supportLastNoted, thash, key, text);
+        noteSupport("error", op, principal, offerId, bidId, text);
+    };
+    /// What AssetHandlers' neuron escrow / hand-over could not do (a partial strip, a failed
+    /// put-back, Sneedex unable to remove itself), for the support log.
+    func neuronNote(principal : ?Principal, offerId : T.OfferId) : Text -> () {
+        func(t : Text) { noteSupport("error", "snsNeuron", principal, ?offerId, null, t) };
+    };
+    /// A swallowed error of a best-effort call (wallet registration, notification, bot botkeys).
+    func noteCatch(op : Text, principal : ?Principal, offerId : ?T.OfferId, what : Text, e : Error.Error) {
+        noteSupport("error", op, principal, offerId, null, what # ": " # Error.message(e));
+    };
+
     // ---- special prices ----
     func specialOverridesFields(o : T.SpecialPriceOverrides) : [(Text, ?Nat)] {
         [("offer_creation_fee_e8s", o.offer_creation_fee_e8s), ("auction_cut_bps", o.auction_cut_bps)];
@@ -943,74 +992,60 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         });
     };
     
+    /// Refund a Lost bid's escrow to its bidder, the one recipient the bid records: the bid amount
+    /// less one ledger fee, from the bid's escrow subaccount. Serialized with every other payout of
+    /// the bid (auto refund, refundBid, retryRefund, withdrawBidEscrow); once paid the bid is
+    /// Refunded, so a repeat finds nothing to do. `caller`: who asked (null for a timer), for the
+    /// activity log. Answers the ledger block of the refund.
+    func refundLostBid(bidId : T.BidId, caller : ?Principal) : async* T.Result<Nat> {
+        let bid = switch (getBid(bidId)) { case (?b) { b }; case null { return #err(#BidNotFound) } };
+        if (bid.state != #Lost) { return #err(#InvalidState("Can only refund lost bids")) };
+        if (not bid.tokens_escrowed) { return #err(#InvalidState("No tokens escrowed")) };
+        let offer = switch (getOffer(bid.offer_id)) { case (?o) { o }; case null { return #err(#OfferNotFound) } };
+        // the state checks above hold atomically with taking the lock
+        if (isBidEscrowLocked(bid.id)) {
+            return #err(#InvalidState("An escrow operation is already in progress for this bid"));
+        };
+        lockBidEscrow(bid.id);
+        try {
+            let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
+            let refundAmount = if (bid.amount > fee) { bid.amount - fee } else { 0 };
+            if (refundAmount == 0) {
+                return #err(#InsufficientFunds({ available = bid.amount; required = fee }));
+            };
+            let to : T.Account = { owner = bid.bidder; subaccount = null };
+            switch (await* AssetHandlers.transferTokens(offer.price_token_ledger, ?Utils.bidEscrowSubaccount(bid.bidder, bid.id), to, refundAmount)) {
+                case (#err(e)) { #err(e) };
+                case (#ok(txId)) {
+                    switch (getBid(bid.id)) {
+                        case (?current) { updateBid(bid.id, { current with state = #Refunded }) };
+                        case null {};
+                    };
+                    icrc3_add("sneedex_bid_refund", [
+                        ("bid_id", #Nat(bid.id)), ("offer_id", #Nat(bid.offer_id)), ("bidder", pv(bid.bidder)),
+                        ("ledger", pv(offer.price_token_ledger)), ("amount", #Nat(refundAmount)),
+                        ("to", acctV(to)), ("ledger_tx", #Nat(txId)), whoV(caller),
+                    ]);
+                    #ok(txId);
+                };
+            };
+        } finally {
+            unlockBidEscrow(bid.id);
+        };
+    };
+
     /// Auto-refund a lost bid (called via Timer)
-    /// This is a best-effort operation - if it fails, user can manually refund from GUI
+    /// This is a best-effort operation - if it fails, the bidder (refundBid), anyone (retryRefund)
+    /// or the hourly settlement sweep retries; the failure goes to the support log.
     func autoRefundBid(bidId : T.BidId) : async () {
         switch (getBid(bidId)) {
-            case null { /* Bid not found, ignore */ };
+            case null {};
             case (?bid) {
-                // Only refund if bid is Lost and has escrowed tokens
-                if (bid.state != #Lost or not bid.tokens_escrowed) {
-                    return;
-                };
-
-                // Serialize with any other payout on this bid (a duplicate
-                // auto-refund, a manual refundBid, or a withdrawal). Skip if one
-                // is already running — the state check above holds atomically with
-                // this lock acquisition, so a concurrent payout can't slip through.
-                if (isBidEscrowLocked(bid.id)) {
-                    return;
-                };
-                lockBidEscrow(bid.id);
-
-                try {
-                    switch (getOffer(bid.offer_id)) {
-                        case null { /* Offer not found, ignore */ };
-                        case (?offer) {
-                            // Get fee and calculate refund amount
-                            let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
-                            let refundAmount = if (bid.amount > fee) { bid.amount - fee } else { 0 };
-
-                            if (refundAmount == 0) {
-                                return; // Amount too small to refund
-                            };
-
-                            let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
-                            let transferResult = await* AssetHandlers.transferTokens(
-                                offer.price_token_ledger,
-                                ?subaccount,
-                                { owner = bid.bidder; subaccount = null },
-                                refundAmount
-                            );
-
-                            switch (transferResult) {
-                                case (#err(e)) {
-                                    // Transfer failed - user can manually refund later
-                                    noteSupport("error", "autoRefundBid", ?bid.bidder, ?bid.offer_id, ?bid.id, errorText(e));
-                                };
-                                case (#ok(txId)) {
-                                    // Update bid state to Refunded
-                                    let updatedBid : T.Bid = {
-                                        id = bid.id;
-                                        offer_id = bid.offer_id;
-                                        bidder = bid.bidder;
-                                        amount = bid.amount;
-                                        state = #Refunded;
-                                        created_at = bid.created_at;
-                                        tokens_escrowed = bid.tokens_escrowed;
-                                    };
-                                    updateBid(bid.id, updatedBid);
-                                    icrc3_add("sneedex_bid_refund", [
-                                        ("bid_id", #Nat(bid.id)), ("offer_id", #Nat(bid.offer_id)), ("bidder", pv(bid.bidder)),
-                                        ("ledger", pv(offer.price_token_ledger)), ("amount", #Nat(refundAmount)),
-                                        ("to", acctV({ owner = bid.bidder; subaccount = null })), ("ledger_tx", #Nat(txId)), whoV(null),
-                                    ]);
-                                };
-                            };
-                        };
-                    };
-                } finally {
-                    unlockBidEscrow(bid.id);
+                // nothing to do, or another payout of this bid is running
+                if (bid.state != #Lost or not bid.tokens_escrowed or isBidEscrowLocked(bid.id)) { return };
+                switch (await* refundLostBid(bidId, null)) {
+                    case (#ok(_)) {};
+                    case (#err(e)) { noteSupport("error", "autoRefundBid", ?bid.bidder, ?bid.offer_id, ?bid.id, errorText(e)) };
                 };
             };
         };
@@ -1120,14 +1155,14 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             };
             case (#SNSNeuron(asset)) {
                 if (toBuyer) {
-                    plain(await* AssetHandlers.transferNeuron(asset.governance_canister_id, asset.neuron_id, self(), [recipient]));
+                    plain(await* AssetHandlers.transferNeuron(asset.governance_canister_id, asset.neuron_id, self(), [recipient], neuronNote(?recipient, offer.id)));
                 } else {
                     switch (asset.hotkeys_snapshot) {
                         case (?snapshot) {
-                            plain(await* AssetHandlers.releaseNeuron(asset.governance_canister_id, asset.neuron_id, self(), neuronRestorePermissions(offer, assetIndex, snapshot)));
+                            plain(await* AssetHandlers.releaseNeuron(asset.governance_canister_id, asset.neuron_id, self(), neuronRestorePermissions(offer, assetIndex, snapshot), neuronNote(?offer.creator, offer.id)));
                         };
                         case null {
-                            plain(await* AssetHandlers.transferNeuron(asset.governance_canister_id, asset.neuron_id, self(), [recipient]));
+                            plain(await* AssetHandlers.transferNeuron(asset.governance_canister_id, asset.neuron_id, self(), [recipient], neuronNote(?recipient, offer.id)));
                         };
                     };
                 };
@@ -1279,23 +1314,50 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             };
             for (assetIndex in offer.assets.keys()) {
                 let entry = offer.assets[assetIndex];
-                // An EXT asset the seller sent to the escrow account but never got marked escrowed
-                // (escrowEXTNFTs not called before the offer was cancelled or expired) goes back
-                // too, best effort: a card that is not there, or a collection that cannot answer,
-                // is no failure of the hand-back (adminReturnMisplacedExtNft remains for that).
-                let unescrowedExt = (not toBuyer) and (not recover) and (not entry.escrowed) and (switch (entry.asset) { case (#EXTNFT(_)) { true }; case (_) { false } });
-                if (unescrowedExt and not isAssetDelivered(offerId, assetIndex)) {
-                    switch (entry.asset) {
+                // Tokens or NFTs the seller sent to the offer's escrow account but that never got
+                // marked escrowed (too little sent, escrow* not called, or the offer cancelled
+                // first) go back to the seller too: only what is in this offer's escrow account,
+                // which only the seller funds. Best effort: nothing there is no failure, and a
+                // ledger or collection that cannot answer is written to the support log (the
+                // seller's reclaimAssets, settleOffer or the hourly sweep retry it while the offer
+                // is Expired/Cancelled, and reclaimAssets once it is Reclaimed).
+                let unescrowedReturn = (not toBuyer) and (not entry.escrowed) and (recover or not isAssetDelivered(offerId, assetIndex));
+                if (unescrowedReturn) {
+                    let escrowSub = Utils.offerEscrowSubaccount(offer.creator, offerId);
+                    let moved : ?T.Result<?[(Text, T3.Value)]> = switch (entry.asset) {
                         case (#EXTNFT(a)) {
-                            switch (await* AssetHandlers.deliverEscrowedExt(a.collection_canister_id, self(), Utils.offerEscrowSubaccount(offer.creator, offerId), recipient, a.token_indices)) {
-                                case (#ok(n)) {
-                                    markAssetDelivered(offerId, assetIndex);
-                                    if (n > 0) { handedOver += 1; logDelivered(assetIndex, false, [("moved", #Nat(n)), ("escrowed", #Nat(0))]) };
-                                };
-                                case (#err(_)) {};
+                            switch (await* AssetHandlers.deliverEscrowedExt(a.collection_canister_id, self(), escrowSub, recipient, a.token_indices)) {
+                                case (#ok(n)) { ?#ok(if (n > 0) { ?[("moved", #Nat(n))] } else { null }) };
+                                case (#err(e)) { ?#err(e) };
                             };
                         };
-                        case (_) {};
+                        case (#ICRC7NFT(a)) {
+                            switch (await* AssetHandlers.deliverEscrowedNfts(a.collection_canister_id, self(), escrowSub, { owner = recipient; subaccount = null }, a.token_ids)) {
+                                case (#ok(n)) { ?#ok(if (n > 0) { ?[("moved", #Nat(n))] } else { null }) };
+                                case (#err(e)) { ?#err(e) };
+                            };
+                        };
+                        case (#ICRC1Token(a)) {
+                            switch (await* AssetHandlers.sweepTokens(a.ledger_canister_id, self(), escrowSub, { owner = recipient; subaccount = null })) {
+                                case (#ok(?(amount, blockIndex))) { ?#ok(?[("amount", #Nat(amount)), ("ledger_tx", #Nat(blockIndex))]) };
+                                case (#ok(null)) { ?#ok(null) };
+                                case (#err(e)) { ?#err(e) };
+                            };
+                        };
+                        case (_) { null };
+                    };
+                    switch (moved) {
+                        case (?#ok(details)) {
+                            if (not recover) { markAssetDelivered(offerId, assetIndex) };
+                            switch (details) {
+                                case (?d) { handedOver += 1; logDelivered(assetIndex, recover, Array.append(d, [("escrowed", #Nat(0))])) };
+                                case null {};
+                            };
+                        };
+                        case (?#err(e)) {
+                            noteSupport("error", "returnUnescrowedAsset", ?offer.creator, ?offerId, null, "asset " # Nat.toText(assetIndex) # ": " # errorText(e));
+                        };
+                        case null {};
                     };
                 };
                 let pending = (toBuyer or entry.escrowed) and (recover or not isAssetDelivered(offerId, assetIndex));
@@ -1528,6 +1590,65 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
     
+    /// Finish whatever settlement of an offer is still undone, paying only the recipients it
+    /// records: a Completed offer's assets to the winning bidder and the winning bid to the seller;
+    /// a Claimed offer's unpaid winning bid to the seller; an Expired or Cancelled offer's assets
+    /// (and anything left in its escrow account) back to the seller. Each part only redoes what has
+    /// not happened (per-asset tracking, bid states), so a repeat is harmless. Used by settleOffer
+    /// (anyone) and the expiration worker's sweep (caller null). Answers what was done.
+    func settleOfferInternal<system>(offerId : T.OfferId, caller : ?Principal) : async* T.Result<Text> {
+        let offer = switch (getOffer(offerId)) { case (?o) { o }; case null { return #err(#OfferNotFound) } };
+        let notes = Buffer.Buffer<Text>(2);
+        var failed = false;
+        // the seller's payment out of the winning bid's escrow, while that bid is still Won
+        func paySeller() : async* () {
+            let current = switch (getOffer(offerId)) { case (?o) { o }; case null { return } };
+            switch (findWinningBid(current)) {
+                case (?bid) {
+                    if (bid.state == #Won) {
+                        switch (await* payWinningBidToSeller(current, bid, caller)) {
+                            case (#ok) { notes.add("seller paid") };
+                            case (#err(e)) { failed := true; notes.add("seller payment: " # errorText(e)) };
+                        };
+                    } else { notes.add("seller already paid") };
+                };
+                case null { failed := true; notes.add("no winning bid found") };
+            };
+        };
+        switch (offer.state) {
+            case (#Completed(completion)) {
+                let bid = switch (getBid(completion.winning_bid_id)) { case (?b) { b }; case null { return #err(#BidNotFound) } };
+                switch (await* settleAssets(offerId, true, false, bid.bidder, ?bid, caller)) {
+                    case (#ok(n)) {
+                        notes.add("assets handed to the buyer (" # Nat.toText(n) # " in this call)");
+                        scheduleWalletRegistration<system>(offer, bid.bidder, true);
+                    };
+                    case (#err(e)) { failed := true; notes.add("assets: " # errorText(e)) };
+                };
+                await* paySeller();
+            };
+            case (#Claimed) {
+                let unpaid = switch (findWinningBid(offer)) { case (?b) { b.state == #Won }; case null { false } };
+                if (not unpaid) { return #err(#InvalidState("Nothing to settle: the assets are claimed and the seller is paid")) };
+                await* paySeller();
+            };
+            case (#Expired or #Cancelled) {
+                switch (await* settleAssets(offerId, false, false, offer.creator, null, caller)) {
+                    case (#ok(n)) {
+                        notes.add("assets handed back to the seller (" # Nat.toText(n) # " in this call)");
+                        scheduleWalletRegistration<system>(offer, offer.creator, false);
+                    };
+                    case (#err(e)) { failed := true; notes.add("assets: " # errorText(e)) };
+                };
+            };
+            case (_) {
+                return #err(#InvalidState("Nothing to settle: the offer is " # offerStateText(offer.state)));
+            };
+        };
+        let summary = "Offer #" # Nat.toText(offerId) # ": " # Text.join("; ", notes.vals());
+        if (failed) { #err(#TransferFailed(summary)) } else { #ok(summary) };
+    };
+
     /// Schedule auto-delivery of assets to buyer (2 second delay)
     func scheduleAutoDeliverAssets<system>(offerId : T.OfferId) {
         ignore Timer.setTimer<system>(#seconds 2, func() : async () {
@@ -1640,11 +1761,30 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // EXPIRATION AUTO-PROCESSING TIMER
     // ============================================
     
-    /// Find the first Active offer that has passed its expiration time
+    // One run of the expiration worker: first every Active offer past its expiration (each tried
+    // once per run), then a sweep of what settlement left undone (one-shot settlement timers are
+    // lost on an upgrade, and a failed hand-over or refund is only retried when someone asks):
+    // offers Completed / Expired / Cancelled, Claimed offers whose seller is still unpaid, and Lost
+    // bids still holding their escrow. Each item is one worker step on its own 0-second timer and
+    // pays only the recipients the offer and bid record. At most SWEEP_MAX_* per run, rotating, so
+    // an item that keeps failing cannot starve the others; its failure is logged once (support log).
+    transient var workerAttempted = Map.new<T.OfferId, ()>(); // expired offers tried in this run
+    transient var sweepOfferQueue : [T.OfferId] = [];
+    transient var sweepBidQueue : [T.BidId] = [];
+    transient var sweepOfferCursor : Nat = 0; // the last offer id swept: the next run starts after it
+    transient var sweepBidCursor : Nat = 0;
+    transient let SWEEP_MAX_OFFERS : Nat = 20;
+    transient let SWEEP_MAX_BIDS : Nat = 50;
+    // A worker that made no step for this long is gone (a trap rolls its message back before it
+    // could clear expirationWorkerRunning): the next timer tick starts a new run.
+    transient var workerLastStep : Int = 0;
+    transient let WORKER_STALE_NS : Int = 30 * 60 * 1_000_000_000;
+
+    /// Find the first Active offer that has passed its expiration time (not tried yet in this run)
     func findFirstExpiredOffer() : ?T.Offer {
         let now = Time.now();
         for (offer in offers.vals()) {
-            if (offer.state == #Active) {
+            if (offer.state == #Active and not Map.has(workerAttempted, nhash, offer.id)) {
                 switch (offer.expiration) {
                     case (?exp) {
                         if (exp < now) {
@@ -1657,70 +1797,129 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
         return null;
     };
-    
-    /// Worker function that processes expired offers one by one
-    /// Uses 0-second timers to chain calls and avoid instruction limits
-    func expirationWorker() : async () {
-        // Find next expired offer
-        switch (findFirstExpiredOffer()) {
-            case null {
-                // No more expired offers, worker is done
-                expirationWorkerRunning := false;
-                Debug.print("Expiration worker: No more expired offers to process");
+
+    /// The first `max` of `ids` (ascending) after `cursor`, then wrapping around to the start.
+    func rotateFrom(ids : [Nat], cursor : Nat, max : Nat) : [Nat] {
+        let all = Array.append(Array.filter<Nat>(ids, func(i) { i > cursor }), Array.filter<Nat>(ids, func(i) { i <= cursor }));
+        if (all.size() <= max) { all } else { Array.subArray<Nat>(all, 0, max) };
+    };
+
+    /// The offers and bids whose settlement is unfinished (see above), minus any being handed over now.
+    func buildSweepQueues() {
+        let wonOffers = Map.new<T.OfferId, ()>();
+        for (b in bids.vals()) { if (b.state == #Won) { Map.set(wonOffers, nhash, b.offer_id, ()) } };
+        let offerIds = Buffer.Buffer<T.OfferId>(0);
+        for (o in offers.vals()) {
+            let unsettled = switch (o.state) {
+                case (#Completed(_) or #Expired or #Cancelled) { true };
+                case (#Claimed) { Map.has(wonOffers, nhash, o.id) };
+                case (_) { false };
             };
-            case (?offer) {
-                Debug.print("Expiration worker: Processing offer #" # Nat.toText(offer.id));
-                
-                // Process this expired offer
-                switch (offer.expiration) {
-                    case (?_exp) {
-                        // Check for highest bid
-                        switch (getHighestBid(offer.id)) {
-                            case (?highest) {
-                                // Complete with highest bid
-                                Debug.print("Expiration worker: Completing offer #" # Nat.toText(offer.id) # " with winning bid #" # Nat.toText(highest.id));
-                                ignore await completeOfferInternal(offer.id, highest.id, "expiry", null);
+            if (unsettled and not Map.has(settlementLocks, nhash, o.id)) { offerIds.add(o.id) };
+        };
+        let bidIds = Buffer.Buffer<T.BidId>(0);
+        for (b in bids.vals()) {
+            if (b.state == #Lost and b.tokens_escrowed and not isBidEscrowLocked(b.id)) { bidIds.add(b.id) };
+        };
+        sweepOfferQueue := rotateFrom(Buffer.toArray(offerIds), sweepOfferCursor, SWEEP_MAX_OFFERS);
+        sweepBidQueue := rotateFrom(Buffer.toArray(bidIds), sweepBidCursor, SWEEP_MAX_BIDS);
+    };
+
+    /// Start a worker run if there is anything to do. False when there is nothing.
+    func startWorkerRun<system>() : Bool {
+        workerAttempted := Map.new<T.OfferId, ()>();
+        buildSweepQueues();
+        if (findFirstExpiredOffer() == null and sweepOfferQueue.size() == 0 and sweepBidQueue.size() == 0) {
+            return false;
+        };
+        expirationWorkerRunning := true;
+        workerLastStep := Time.now();
+        scheduleExpirationWorker<system>();
+        true;
+    };
+
+    /// An Active offer past its expiration: completed with its highest bid, or Expired (and its
+    /// assets handed back) when it has none. No await.
+    func expireOfferNow<system>(offer : T.Offer) {
+        switch (getHighestBid(offer.id)) {
+            case (?highest) {
+                switch (completeOfferNow<system>(offer.id, highest.id, "expiry", null)) {
+                    case (#ok) {};
+                    case (#err(e)) { noteSupport("error", "expirationWorker", ?offer.creator, ?offer.id, ?highest.id, errorText(e)) };
+                };
+            };
+            case null {
+                switch (getOffer(offer.id)) {
+                    case (?current) {
+                        if (current.state != #Active) { return };
+                        updateOffer(offer.id, { current with state = #Expired });
+                        notifyExpiration<system>(current);
+                        icrc3_add("sneedex_offer_expire", [("offer_id", #Nat(offer.id)), whoV(null)]);
+                        scheduleAutoReclaimAssets<system>(offer.id);
+                    };
+                    case null {};
+                };
+            };
+        };
+    };
+    
+    /// Worker function that processes expired offers one by one, then the settlement sweep.
+    /// Uses 0-second timers to chain calls and avoid instruction limits. Whatever happens in a
+    /// step (an error, a rejected call), the next step is scheduled or the running flag cleared.
+    func expirationWorker() : async () {
+        workerLastStep := Time.now();
+        var again = false;
+        var scheduled = false;
+        try {
+          try {
+            switch (findFirstExpiredOffer()) {
+                case (?offer) {
+                    Map.set(workerAttempted, nhash, offer.id, ());
+                    again := true;
+                    expireOfferNow<system>(offer);
+                };
+                case null {
+                    if (sweepOfferQueue.size() > 0) {
+                        let offerId = sweepOfferQueue[0];
+                        sweepOfferQueue := Array.subArray<T.OfferId>(sweepOfferQueue, 1, sweepOfferQueue.size() - 1);
+                        sweepOfferCursor := offerId;
+                        again := true;
+                        switch (await* settleOfferInternal<system>(offerId, null)) {
+                            case (#ok(_)) {};
+                            case (#err(e)) {
+                                let who = switch (getOffer(offerId)) { case (?o) { ?o.creator }; case null { null } };
+                                noteSupportOnce("settlementSweep", who, ?offerId, null, errorText(e));
                             };
-                            case null {
-                                // No bids - mark as expired
-                                Debug.print("Expiration worker: No bids, marking offer #" # Nat.toText(offer.id) # " as expired");
-                                let updatedOffer : T.Offer = {
-                                    id = offer.id;
-                                    creator = offer.creator;
-                                    min_bid_price = offer.min_bid_price;
-                                    buyout_price = offer.buyout_price;
-                                    expiration = offer.expiration;
-                                    price_token_ledger = offer.price_token_ledger;
-                                    assets = offer.assets;
-                                    state = #Expired;
-                                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
-                                    approved_bidders = offer.approved_bidders;
-                                    fee_rate_bps = offer.fee_rate_bps;
-                                    public_note = offer.public_note;
-                                    note_to_buyer = offer.note_to_buyer;
-                                    created_at = offer.created_at;
-                                    activated_at = offer.activated_at;
+                        };
+                    } else if (sweepBidQueue.size() > 0) {
+                        let bidId = sweepBidQueue[0];
+                        sweepBidQueue := Array.subArray<T.BidId>(sweepBidQueue, 1, sweepBidQueue.size() - 1);
+                        sweepBidCursor := bidId;
+                        again := true;
+                        // skipped when nothing is due (no longer Lost) or another payout of it runs
+                        let due = switch (getBid(bidId)) {
+                            case (?b) { b.state == #Lost and b.tokens_escrowed and not isBidEscrowLocked(bidId) };
+                            case null { false };
+                        };
+                        if (due) {
+                            switch (await* refundLostBid(bidId, null)) {
+                                case (#ok(_)) {};
+                                case (#err(e)) {
+                                    let (who, offerId) = switch (getBid(bidId)) { case (?b) { (?b.bidder, ?b.offer_id) }; case null { (null, null) } };
+                                    noteSupportOnce("refundSweep", who, offerId, ?bidId, errorText(e));
                                 };
-                                updateOffer(offer.id, updatedOffer);
-                                
-                                // Notify seller of expiration (fire-and-forget)
-                                notifyExpiration<system>(offer);
-                                
-                                // Schedule auto-reclaim of assets
-                                icrc3_add("sneedex_offer_expire", [("offer_id", #Nat(offer.id)), whoV(null)]);
-                                scheduleAutoReclaimAssets<system>(offer.id);
                             };
                         };
                     };
-                    case null {
-                        // Should not happen - we only found offers with expiration
-                        Debug.print("Expiration worker: Offer #" # Nat.toText(offer.id) # " has no expiration (unexpected)");
-                    };
                 };
-                
-                // Schedule next worker iteration (0-second delay to yield)
-                scheduleExpirationWorker<system>();
             };
+          } catch (e) {
+            noteSupport("error", "expirationWorker", null, null, null, Error.message(e));
+          };
+          if (again) { scheduleExpirationWorker<system>(); scheduled := true } else { expirationWorkerRunning := false };
+        } finally {
+            // a trap after an await (the catch cannot see it) still ends the run cleanly
+            if (not scheduled) { expirationWorkerRunning := false };
         };
     };
     
@@ -1731,26 +1930,14 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         });
     };
     
-    /// Main timer callback - starts a worker if not already running
+    /// Main timer callback - starts a worker if not already running (or if the running one is gone)
     func expirationTimerCallback<system>() : async () {
-        Debug.print("Expiration timer: Checking for expired offers...");
-        
         if (expirationWorkerRunning) {
-            Debug.print("Expiration timer: Worker already running, skipping this cycle");
-            return;
+            if (Time.now() - workerLastStep < WORKER_STALE_NS) { return };
+            noteSupport("error", "expirationWorker", null, null, null, "the worker stopped without clearing its running flag; a new run starts");
+            expirationWorkerRunning := false;
         };
-        
-        // Check if there are any expired offers to process
-        switch (findFirstExpiredOffer()) {
-            case null {
-                Debug.print("Expiration timer: No expired offers found");
-            };
-            case (?_offer) {
-                Debug.print("Expiration timer: Found expired offers, starting worker");
-                expirationWorkerRunning := true;
-                scheduleExpirationWorker<system>();
-            };
-        };
+        ignore startWorkerRun<system>();
     };
     
     /// Start the periodic expiration timer with the configured interval
@@ -2702,7 +2889,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     neuronAsset.governance_canister_id,
                                     neuronAsset.neuron_id,
                                     self(),
-                                    allPermissions
+                                    allPermissions,
+                                    neuronNote(?caller, offerId)
                                 );
                                 
                                 switch (escrowResult) {
@@ -3070,6 +3258,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         Utils.bidEscrowSubaccount(bidder, bidId);
     };
     
+    transient let MAX_OPEN_RESERVATIONS_PER_OFFER : Nat = 10;
+    transient let MAX_OPEN_RESERVATIONS : Nat = 50;
+
     /// Reserve a bid ID (so user knows which subaccount to send tokens to)
     public shared ({ caller }) func reserveBid(offerId : T.OfferId) : async T.Result<T.BidId> {
         switch (getOffer(offerId)) {
@@ -3100,6 +3291,23 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     case null {};
                 };
                 
+                // Reservations are free, so each principal may hold only a few unconfirmed ones
+                // (per offer and in all); confirming, or the offer closing, frees them.
+                var openHere = 0;
+                var openAll = 0;
+                for (b in bids.vals()) {
+                    if (b.state == #Pending and not b.tokens_escrowed and Principal.equal(b.bidder, caller)) {
+                        let open = switch (getOffer(b.offer_id)) { case (?o) { o.state == #Active }; case null { false } };
+                        if (open) {
+                            openAll += 1;
+                            if (b.offer_id == offerId) { openHere += 1 };
+                        };
+                    };
+                };
+                if (openHere >= MAX_OPEN_RESERVATIONS_PER_OFFER or openAll >= MAX_OPEN_RESERVATIONS) {
+                    return #err(#InvalidState("Too many unconfirmed bid reservations (at most " # Nat.toText(MAX_OPEN_RESERVATIONS_PER_OFFER) # " per offer and " # Nat.toText(MAX_OPEN_RESERVATIONS) # " in all): confirm one, or reuse a reservation you already have (getBidsByBidderAll)"));
+                };
+
                 let bidId = nextBidId;
                 nextBidId += 1;
                 
@@ -3250,7 +3458,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                                     ("amount", #Nat(refundAmount)), ("to", acctV({ owner = caller; subaccount = null })), ("ledger_tx", #Nat(txId)),
                                                 ]);
                                             };
-                                            case (#Err(_)) {};
+                                            // the excess stays in the bid escrow; withdrawBidEscrow takes it back
+                                            case (#Err(e)) { noteSupport("error", "confirmBidExcessRefund", ?caller, ?bid.offer_id, ?bidId, debug_show (e)) };
                                         };
                                     };
                                 };
@@ -3394,6 +3603,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     /// Internal function to complete an offer with a winning bid
     /// `reason` (buyout, accept, expiry) and `caller` (null for the expiration worker) are for the activity log.
     func completeOfferInternal(offerId : T.OfferId, winningBidId : T.BidId, reason : Text, caller : ?Principal) : async T.Result<()> {
+        completeOfferNow<system>(offerId, winningBidId, reason, caller);
+    };
+
+    /// completeOfferInternal without the self-call: no await, so the expiration worker completes an
+    /// offer within its own message and has no call of its own that could fail.
+    func completeOfferNow<system>(offerId : T.OfferId, winningBidId : T.BidId, reason : Text, caller : ?Principal) : T.Result<()> {
         switch (getOffer(offerId)) {
             case null { return #err(#OfferNotFound) };
             case (?offer) {
@@ -3458,26 +3673,23 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     };
                 };
                 
-                // Mark all other bids as lost and schedule auto-refunds
-                for (bid in getBidsForOffer(offerId).vals()) {
-                    if (bid.id != winningBidId and bid.state == #Pending) {
-                        let updatedBid : T.Bid = {
-                            id = bid.id;
-                            offer_id = bid.offer_id;
-                            bidder = bid.bidder;
-                            amount = bid.amount;
-                            state = #Lost;
-                            created_at = bid.created_at;
-                            tokens_escrowed = bid.tokens_escrowed;
-                        };
-                        updateBid(bid.id, updatedBid);
-                        
-                        icrc3_bid_lost(updatedBid, "offer_completed");
-                        // Schedule auto-refund for lost bid (best effort)
-                        if (bid.tokens_escrowed) {
-                            scheduleAutoRefund<system>(bid.id);
-                        };
-                    };
+                // Mark all other bids as lost and schedule auto-refunds, in one pass over the bids
+                // (it was one full copy of the bid list per bid, so thousands of free reservations
+                // could push completion past the instruction limit). Unconfirmed reservations hold
+                // no escrow: they become Lost too but get no block of their own (the offer's
+                // completion block covers them), and nothing is refunded for them.
+                let lostConfirmed = Buffer.Buffer<T.Bid>(0);
+                bids := Array.map<T.Bid, T.Bid>(bids, func(b : T.Bid) : T.Bid {
+                    if (b.offer_id == offerId and b.id != winningBidId and b.state == #Pending) {
+                        let lost = { b with state = #Lost };
+                        if (b.tokens_escrowed) { lostConfirmed.add(lost) };
+                        lost;
+                    } else { b };
+                });
+                for (lost in lostConfirmed.vals()) {
+                    icrc3_bid_lost(lost, "offer_completed");
+                    // Schedule auto-refund for lost bid (best effort)
+                    scheduleAutoRefund<system>(lost.id);
                 };
                 
                 // Schedule auto-delivery to buyer and seller (best effort)
@@ -3650,6 +3862,16 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // CLAIMING ASSETS AND REFUNDS
     // ============================================
     
+    /// Finish an offer's settlement, whoever calls: assets and payments go only to the recipients
+    /// the offer records (the winning bidder, the seller), never to the caller as such. For a
+    /// Completed offer: the assets to the winner and the payment to the seller; Claimed with the
+    /// seller unpaid: the payment; Expired / Cancelled: the assets (and anything left in the offer's
+    /// escrow account) back to the seller. Safe to repeat: only what has not happened is done.
+    /// Lost bids are refunded with retryRefund. Answers what was done.
+    public shared ({ caller }) func settleOffer(offerId : T.OfferId) : async T.Result<Text> {
+        await* settleOfferInternal<system>(offerId, ?caller);
+    };
+
     /// Buyer claims assets from a completed offer. Only the assets not yet handed over are moved;
     /// the offer becomes Claimed once all of them are, and stays Completed (error returned) if a
     /// hand-over fails, so calling again retries the rest.
@@ -3788,7 +4010,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
     
-    /// Refund lost bid tokens
+    /// Refund lost bid tokens (the bidder; anyone may call retryRefund, which pays the same bidder)
     public shared ({ caller }) func refundBid(bidId : T.BidId) : async T.Result<()> {
         switch (getBid(bidId)) {
             case null { return #err(#BidNotFound) };
@@ -3796,78 +4018,31 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 if (not Principal.equal(caller, bid.bidder)) {
                     return #err(#NotAuthorized);
                 };
-                
-                if (bid.state != #Lost) {
-                    return #err(#InvalidState("Can only refund lost bids"));
-                };
-                
-                if (not bid.tokens_escrowed) {
-                    return #err(#InvalidState("No tokens escrowed"));
-                };
-                
-                switch (getOffer(bid.offer_id)) {
-                    case null { return #err(#OfferNotFound) };
-                    case (?offer) {
-                        // Serialize with any other payout on this bid (auto-refund
-                        // or withdrawal) so the escrow can't be paid out twice
-                        // across the transfer await.
-                        if (isBidEscrowLocked(bid.id)) {
-                            return #err(#InvalidState("An escrow operation is already in progress for this bid"));
-                        };
-                        lockBidEscrow(bid.id);
-
-                        try {
-                            // Get fee and calculate refund amount (bid amount - fee)
-                            let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
-                            let refundAmount = if (bid.amount > fee) { bid.amount - fee } else { 0 };
-
-                            if (refundAmount == 0) {
-                                return #err(#InsufficientFunds({ available = bid.amount; required = fee }));
-                            };
-
-                            let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
-                            let transferResult = await* AssetHandlers.transferTokens(
-                                offer.price_token_ledger,
-                                ?subaccount,
-                                { owner = caller; subaccount = null },
-                                refundAmount
-                            );
-
-                            switch (transferResult) {
-                                case (#err(e)) { return #err(e) };
-                                case (#ok(txId)) {
-                                    let updatedBid : T.Bid = {
-                                        id = bid.id;
-                                        offer_id = bid.offer_id;
-                                        bidder = bid.bidder;
-                                        amount = bid.amount;
-                                        state = #Refunded;
-                                        created_at = bid.created_at;
-                                        tokens_escrowed = bid.tokens_escrowed;
-                                    };
-
-                                    updateBid(bid.id, updatedBid);
-                                    icrc3_add("sneedex_bid_refund", [
-                                        ("bid_id", #Nat(bid.id)), ("offer_id", #Nat(bid.offer_id)), ("bidder", pv(bid.bidder)),
-                                        ("ledger", pv(offer.price_token_ledger)), ("amount", #Nat(refundAmount)),
-                                        ("to", acctV({ owner = caller; subaccount = null })), ("ledger_tx", #Nat(txId)), whoV(?caller),
-                                    ]);
-                                    #ok();
-                                };
-                            };
-                        } finally {
-                            unlockBidEscrow(bid.id);
-                        };
-                    };
+                switch (await* refundLostBid(bidId, ?caller)) {
+                    case (#ok(_)) { #ok() };
+                    case (#err(e)) { #err(e) };
                 };
             };
         };
     };
+
+    /// Refund a Lost bid's escrow to its bidder, whoever calls: the money goes only to the bidder
+    /// the bid records (the bid amount less one ledger fee), once. For support, or a bidder whose
+    /// automatic refund failed. Answers the ledger block of the refund.
+    public shared ({ caller }) func retryRefund(bidId : T.BidId) : async T.Result<Nat> {
+        await* refundLostBid(bidId, ?caller);
+    };
     
     /// Withdraw funds from bid escrow subaccount
     /// - Before confirmation: can withdraw all funds
-    /// - After confirmation: can withdraw excess (balance - bid amount - 1 fee)
-    ///   We reserve 1 fee so there's enough for the eventual refund/claim transfer
+    /// - After confirmation: can withdraw the excess above the bid amount. Every payout of a bid
+    ///   escrow costs exactly bid.amount in all, its ledger fees included (a refund sends
+    ///   amount - fee; the seller payout sends cut - fee and bid - cut - fee), so bid.amount is the
+    ///   whole reserve (it used to be bid.amount + fee, one fee too many: a late deposit came back
+    ///   less two fees)
+    /// - Once the bid is paid out (Refunded, or ClaimedBySeller: the seller has been paid), nothing
+    ///   is reserved: whatever is left or arrives later is the bidder's
+    /// - Never from a Won bid (its escrow pays the seller)
     public shared ({ caller }) func withdrawBidEscrow(bidId : T.BidId, amount : Nat) : async T.Result<Nat> {
         switch (getBid(bidId)) {
             case null { return #err(#BidNotFound) };
@@ -3876,9 +4051,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     return #err(#NotAuthorized);
                 };
                 
-                // Can't withdraw from winning or refunded bids
-                if (bid.state == #Won or bid.state == #Refunded) {
-                    return #err(#InvalidState("Cannot withdraw from won or refunded bids"));
+                // Can't withdraw from a winning bid until the seller is paid
+                if (bid.state == #Won) {
+                    return #err(#InvalidState("Cannot withdraw from a won bid"));
                 };
                 
                 switch (getOffer(bid.offer_id)) {
@@ -3908,10 +4083,15 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
 
                             // Calculate minimum that must remain
                             // After confirmation: bid amount + 1 fee (for eventual refund/claim transfer)
-                            let minimumReserved : Nat = if (bid.tokens_escrowed) {
-                                bid.amount + fee // Must keep bid amount + 1 fee for later transfer
+                            // read again after the awaits: a payout that finished meanwhile shows here
+                            let paidOut = switch (getBid(bid.id)) {
+                                case (?b) { b.state == #Refunded or b.state == #ClaimedBySeller };
+                                case null { false };
+                            };
+                            let minimumReserved : Nat = if (bid.tokens_escrowed and not paidOut) {
+                                bid.amount // what the refund or the seller payout takes, fees included
                             } else {
-                                0 // Nothing reserved yet
+                                0 // Nothing reserved yet, or the bid is paid out
                             };
 
                             // The withdrawal itself pays one ledger fee out of the escrow too, so
@@ -4415,6 +4595,37 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             i -= 1;
             let e = supportLog[i];
             if (e.principal == ?p) { out.add(e) };
+        };
+        Buffer.toArray(out);
+    };
+
+    /// The creation fees a principal paid, newest first (the same facts as the ICP ledger and the
+    /// `sneedex_creation_fee_pay` blocks; older than the activity log too). `before` pages back
+    /// (entries with id < before); at most 100 per call.
+    public query func getCreationFeePaymentsFor(p : Principal, before : ?Nat, limit : Nat) : async [T.CreationFeePaymentLogEntry] {
+        let lim = Nat.min(limit, 100);
+        let out = Buffer.Buffer<T.CreationFeePaymentLogEntry>(0);
+        var i = creationFeePaymentLog.size();
+        while (i > 0 and out.size() < lim) {
+            i -= 1;
+            let e = creationFeePaymentLog[i];
+            let inPage = switch (before) { case (?b) { e.id < b }; case null { true } };
+            if (inPage and Principal.equal(e.payer, p)) { out.add(e) };
+        };
+        Buffer.toArray(out);
+    };
+
+    /// The marketplace cuts of the sales a principal took part in (as seller or buyer), newest first.
+    /// `before` pages back (entries with id < before); at most 100 per call.
+    public query func getCutPaymentsFor(p : Principal, before : ?Nat, limit : Nat) : async [T.CutPaymentLogEntry] {
+        let lim = Nat.min(limit, 100);
+        let out = Buffer.Buffer<T.CutPaymentLogEntry>(0);
+        var i = cutPaymentLog.size();
+        while (i > 0 and out.size() < lim) {
+            i -= 1;
+            let e = cutPaymentLog[i];
+            let inPage = switch (before) { case (?b) { e.id < b }; case null { true } };
+            if (inPage and (Principal.equal(e.seller, p) or Principal.equal(e.buyer, p))) { out.add(e) };
         };
         Buffer.toArray(out);
     };
@@ -5046,27 +5257,20 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     };
     
     /// Manually trigger expiration check (admin only)
-    /// Useful for testing or when you want to process expired offers immediately
+    /// Useful for testing or when you want to process expired offers immediately; also runs the
+    /// settlement sweep (unsettled offers, unrefunded Lost bids)
     public shared ({ caller }) func triggerExpirationCheck() : async T.Result<()> {
         if (not isAdmin(caller)) {
             return #err(#NotAuthorized);
         };
         
-        if (expirationWorkerRunning) {
+        if (expirationWorkerRunning and Time.now() - workerLastStep < WORKER_STALE_NS) {
             return #err(#InvalidState("Worker is already running"));
         };
         
-        // Check if there are any expired offers to process
-        switch (findFirstExpiredOffer()) {
-            case null {
-                #ok(); // No expired offers, nothing to do
-            };
-            case (?_offer) {
-                expirationWorkerRunning := true;
-                scheduleExpirationWorker<system>();
-                #ok();
-            };
-        };
+        // Expired offers and the settlement sweep (nothing to do is fine)
+        ignore startWorkerRun<system>();
+        #ok();
     };
     
     /// Admin rescue for an NFT that a non-compliant collection put in Sneedex's default account
@@ -5345,7 +5549,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             asset.governance_canister_id,
                                             asset.neuron_id,
                                             self(),
-                                            neuronRestorePermissions(offer, assetIndex, snapshot)
+                                            neuronRestorePermissions(offer, assetIndex, snapshot),
+                                            neuronNote(?offer.creator, offerId)
                                         );
                                         switch (result) {
                                             case (#ok(_)) { message := message # "Neuron released successfully\n"; returned(assetIndex, entry.asset, []) };
@@ -5363,7 +5568,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             asset.governance_canister_id,
                                             asset.neuron_id,
                                             self(),
-                                            [offer.creator]
+                                            [offer.creator],
+                                            neuronNote(?offer.creator, offerId)
                                         );
                                         switch (result) {
                                             case (#ok(_)) { message := message # "Neuron transferred successfully\n"; returned(assetIndex, entry.asset, []) };
@@ -5752,6 +5958,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         startExpirationTimerInternal<system>();
     };
     if (expirationWorkerRunning) {
+        workerLastStep := Time.now();
         scheduleExpirationWorker<system>();
     };
     // the ICRC-3 spill check (every 15 minutes; started once, also on upgrades)
@@ -5783,6 +5990,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         #getSettlement : Any;
         #getSupportLog : Any;
         #getSupportLogFor : Any;
+        #getCreationFeePaymentsFor : Any;
+        #getCutPaymentsFor : Any;
+        #settleOffer : Any;
+        #retryRefund : Any;
         #adminReturnMisplacedNft : Any;
         #adminReturnMisplacedExtNft : Any;
         #admin_icrc3_register_archives_now : Any;
@@ -5913,6 +6124,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 or #getSettlement _
                 or #getSupportLog _
                 or #getSupportLogFor _
+                or #getCreationFeePaymentsFor _
+                or #getCutPaymentsFor _
                 or #getCachedNeuronManagerInfoQuery _
                 or #getCanisterKinds _
                 or #getConfig _

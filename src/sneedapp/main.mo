@@ -669,7 +669,75 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
     /// Append one block for a change that has just been committed to local state.
     func icrc3_add(btype: Text, tx: [(Text, T3.Value)]) {
-        ignore Icrc3Log.append(icrc3, btype, Int.abs(Time.now()), tx);
+        let id = Icrc3Log.append(icrc3, btype, Int.abs(Time.now()), tx);
+        if (icpTxIndexedTo == id) {
+            indexIcpTxs(id, btype, tx);
+            icpTxIndexedTo := id + 1;
+        };
+    };
+
+    // ICP ledger block -> the ICRC-3 blocks that name it (lookupLedgerTx). Every field of a
+    // block's tx that holds an ICP ledger block (ICP_TX_FIELDS) is indexed when the block is
+    // appended; blocks from before this index were indexed once on the upgrade that added it,
+    // as far as they were still in this canister (icpTxIndexFrom). New stable fields (additive).
+    type LedgerTxRef = { block_id: Nat; btype: Text; field: Text };
+    var icpTxIndex: Map.Map<Nat, [LedgerTxRef]> = Map.new<Nat, [LedgerTxRef]>();
+    var icpTxIndexedTo: Nat = 0;  // ICRC-3 blocks below this index are indexed
+    var icpTxIndexFrom: ?Nat = null; // the lowest ICRC-3 block index the index covers
+    transient let ICP_TX_FIELDS: [Text] = ["icp_tx", "cycles_tx", "publisher_share_tx", "dao_cut_tx", "top_up_tx", "payment_txs", "refund_txs"];
+
+    func indexIcpTxs(id: Nat, btype: Text, tx: [(Text, T3.Value)]) {
+        for ((key, v) in tx.vals()) {
+            if (Array.find<Text>(ICP_TX_FIELDS, func(f) { f == key }) != null) {
+                let blocks: [T3.Value] = switch (v) { case (#Nat(_)) [v]; case (#Array(xs)) xs; case _ [] };
+                for (b in blocks.vals()) {
+                    switch (b) {
+                        case (#Nat(n)) {
+                            let prev = switch (Map.get(icpTxIndex, Map.nhash, n)) { case (?xs) xs; case null [] };
+                            Map.set(icpTxIndex, Map.nhash, n, Array.append(prev, [{ block_id = id; btype = btype; field = key }]));
+                        };
+                        case _ {};
+                    };
+                };
+            };
+        };
+    };
+
+    // Index the ICRC-3 blocks still held here that the index does not cover yet (once, on the
+    // upgrade that adds the index; a no-op afterwards and on a fresh install)
+    func backfillIcpTxIndex() {
+        let len = icrc3.log_length;
+        if (icpTxIndexedTo >= len) {
+            if (icpTxIndexFrom == null) { icpTxIndexFrom := ?icpTxIndexedTo };
+            return;
+        };
+        let first = Nat.max(icpTxIndexedTo, icrc3.live.first_index);
+        if (icpTxIndexFrom == null) { icpTxIndexFrom := ?first };
+        var i = first;
+        while (i < len) {
+            let blocks = Icrc3Log.getBlocks(icrc3, [{ start = i; length = Nat.min(len - i, 500) }]).blocks;
+            if (blocks.size() == 0) { i := len } else {
+                for (b in blocks.vals()) {
+                    switch (b.block) {
+                        case (#Map(fields)) {
+                            var bt = "";
+                            var tx: [(Text, T3.Value)] = [];
+                            for ((k, v) in fields.vals()) {
+                                switch (k, v) {
+                                    case ("btype", #Text(t)) { bt := t };
+                                    case ("tx", #Map(m)) { tx := m };
+                                    case _ {};
+                                };
+                            };
+                            indexIcpTxs(b.id, bt, tx);
+                        };
+                        case _ {};
+                    };
+                    i := b.id + 1;
+                };
+            };
+        };
+        icpTxIndexedTo := len;
     };
     func pv(p: Principal): T3.Value { Icrc3Log.principal(p) };
     func av(a: T.Account): T3.Value { Icrc3Log.account(a.owner, a.subaccount) };
@@ -1812,6 +1880,10 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
     // Allow user to withdraw their deposited payment
     public shared ({ caller }) func withdrawUserPayment(): async T.TransferResult {
+        await* withdrawPaymentOf(caller);
+    };
+
+    func withdrawPaymentOf(caller: Principal): async* T.TransferResult {
         let subaccount = principalToSubaccount(caller);
         let fee = Nat64.toNat(T.ICP_FEE);
 
@@ -1859,6 +1931,69 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             result;
         } finally {
             unlockPayment(caller);
+        };
+    };
+
+    // Callers with a withdrawUserToken of a ledger other than ICP running (transient). Separate
+    // from the payment locks, so a slow or hostile token ledger never holds up the caller's mints.
+    transient var tokenWithdrawLocks = Map.new<Principal, ()>();
+    // Bounded wait (seconds) for calls to a token ledger named by the caller: an unknown canister
+    // that never answers cannot keep a call context open (which would block stopping for upgrades)
+    transient let TOKEN_LEDGER_TIMEOUT: Nat32 = 60;
+
+    // Take back any ICRC-1 token sent by mistake to your own payment subaccount
+    // (getPaymentSubaccount(you)) on `ledgerId`: the whole balance minus that ledger's fee goes to
+    // your default account, never anywhere else. For the ICP ledger this is withdrawUserPayment
+    // (same lock, same block). Logged as sneedapp_deposit_token_withdraw (ICRC-3).
+    public shared ({ caller }) func withdrawUserToken(ledgerId: Principal): async T.TransferResult {
+        if (Principal.isAnonymous(caller)) {
+            return #Err(#GenericError({ message = "Sign in to withdraw"; error_code = 0 }));
+        };
+        if (ledgerId == Principal.fromText(T.LEDGER_CANISTER_ID)) {
+            return await* withdrawPaymentOf(caller);
+        };
+        if (Map.has(tokenWithdrawLocks, Map.phash, caller)) {
+            return #Err(#TemporarilyUnavailable);
+        };
+        Map.set(tokenWithdrawLocks, Map.phash, caller, ());
+        try {
+            let token: T.LedgerActor = actor (Principal.toText(ledgerId));
+            let subaccount = principalToSubaccount(caller);
+            let to: T.Account = { owner = caller; subaccount = null };
+            let (balance, fee) = try {
+                let b = await (with timeout = TOKEN_LEDGER_TIMEOUT) token.icrc1_balance_of({ owner = Principal.fromActor(this); subaccount = ?subaccount });
+                (b, await (with timeout = TOKEN_LEDGER_TIMEOUT) token.icrc1_fee());
+            } catch (e) {
+                return #Err(#GenericError({ message = "Could not reach the ledger: " # Error.message(e); error_code = 0 }));
+            };
+            if (balance <= fee) {
+                return #Err(#InsufficientFunds({ balance = balance }));
+            };
+            let result = try {
+                await (with timeout = TOKEN_LEDGER_TIMEOUT) token.icrc1_transfer({
+                    to = to;
+                    fee = ?fee;
+                    memo = null;
+                    from_subaccount = ?subaccount;
+                    // the ledger deduplicates a retry after an unknown outcome
+                    created_at_time = ?Nat64.fromNat(Int.abs(Time.now()));
+                    amount = balance - fee;
+                });
+            } catch (e) {
+                return #Err(#GenericError({ message = "The ledger call failed (the outcome may be unknown; check your balance before retrying): " # Error.message(e); error_code = 0 }));
+            };
+            switch (result) {
+                case (#Ok(blockIndex)) {
+                    icrc3_add("sneedapp_deposit_token_withdraw", [
+                        ("caller", pv(caller)), ("ledger", pv(ledgerId)), ("amount", #Nat(balance - fee)), ("fee", #Nat(fee)),
+                        ("to", av(to)), ("ledger_tx", #Nat(blockIndex)),
+                    ]);
+                };
+                case (#Err(_)) {};
+            };
+            result;
+        } finally {
+            Map.delete(tokenWithdrawLocks, Map.phash, caller);
         };
     };
 
@@ -2486,6 +2621,95 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 ]);
                 #Ok;
             };
+        };
+    };
+
+    // The ICP still owed to `payer` from aborted mints: the sum of their open refund credits
+    // (each the stuck_e8s of a sneedapp_mint_refund block, less what was claimed since)
+    func refundCreditsOf(payer: Principal): [RefundCredit] {
+        let mine = Array.filter<RefundCredit>(Iter.toArray(Map.vals(refundCredits)), func(c) { c.payer == payer });
+        Array.sort<RefundCredit>(mine, func(a, b) { Nat.compare(a.id, b.id) });
+    };
+    func creditTotal(c: RefundCredit): Nat64 {
+        var t: Nat64 = 0;
+        for (l in c.legs.vals()) { t += l.amountE8s };
+        t;
+    };
+
+    // Admins return ICP a user is owed from aborted mints by hand, when claim_refund_credit
+    // cannot (the leg's source account no longer holds it): `amountE8s` from the factory's main
+    // account, and only to `user`'s own payment subaccount (getPaymentSubaccount(user)), at most
+    // the user's open refund credits (get_refund_credits_for(user)), which shrink by it, oldest
+    // first (a credit that reaches 0 is closed). The user receives amountE8s minus the ledger fee,
+    // as with claim_refund_credit. Logged with `reason` (sneedapp_admin_stuck_return). The
+    // restricted form of adminWithdrawIcp for this case; serialised with the user's payments.
+    public shared ({ caller }) func adminReturnStuckIcp(user: Principal, amountE8s: Nat64, reason: Text): async { #Ok: { blockIndex: Nat; returnedE8s: Nat64; remainingE8s: Nat64; creditsClosed: [Nat] }; #Err: Text } {
+        assert(isAdmin(caller));
+        if (Text.size(reason) == 0) { return #Err("A reason is required") };
+        let fee = T.ICP_FEE;
+        if (amountE8s <= fee) { return #Err("The amount must be more than the ledger fee (" # Nat64.toText(fee) # " e8s)") };
+        var owed: Nat64 = 0;
+        for (c in refundCreditsOf(user).vals()) { owed += creditTotal(c) };
+        if (amountE8s > owed) {
+            return #Err("At most the user's open refund credits: " # Nat64.toText(owed) # " e8s");
+        };
+        if (isPaymentLocked(user)) {
+            return #Err("A payment operation is already in progress for this account; please retry");
+        };
+        lockPayment(user);
+        try {
+            let to: T.Account = { owner = Principal.fromActor(this); subaccount = ?principalToSubaccount(user) };
+            switch (await* transferOrErr({ to = to; fee = ?Nat64.toNat(fee); memo = null; from_subaccount = null; created_at_time = null; amount = Nat64.toNat(amountE8s - fee) })) {
+                case (#Err(e)) { #Err("The transfer failed: " # debug_show (e)) };
+                case (#Ok(blockIndex)) {
+                    // shrink the credits by what was returned (re-read: one may have been closed meanwhile)
+                    var left = amountE8s;
+                    let closed = Buffer.Buffer<Nat>(1);
+                    let touched = Buffer.Buffer<Nat>(1);
+                    for (c in refundCreditsOf(user).vals()) {
+                        if (left > 0) {
+                            touched.add(c.id);
+                            let legs = Buffer.Buffer<RefundLeg>(c.legs.size());
+                            for (l in c.legs.vals()) {
+                                let take = if (l.amountE8s < left) l.amountE8s else left;
+                                left -= take;
+                                if (l.amountE8s > take) { legs.add({ l with amountE8s = l.amountE8s - take }) };
+                            };
+                            if (legs.size() == 0) {
+                                Map.delete(refundCredits, Map.nhash, c.id);
+                                closed.add(c.id);
+                            } else {
+                                Map.set(refundCredits, Map.nhash, c.id, { c with legs = Buffer.toArray(legs) });
+                            };
+                        };
+                    };
+                    var remaining: Nat64 = 0;
+                    for (c in refundCreditsOf(user).vals()) { remaining += creditTotal(c) };
+                    icrc3_add("sneedapp_admin_stuck_return", [
+                        ("caller", pv(caller)), ("user", pv(user)), ("amount_e8s", n64(amountE8s - fee)), ("fee_e8s", n64(fee)),
+                        ("to", av(to)), ("icp_tx", #Nat(blockIndex)), ("reason", #Text(reason)),
+                        ("credit_ids", nats(Buffer.toArray(touched))), ("credits_closed", nats(Buffer.toArray(closed))), ("remaining_e8s", n64(remaining)),
+                    ]);
+                    #Ok({ blockIndex = blockIndex; returnedE8s = amountE8s - fee; remainingE8s = remaining; creditsClosed = Buffer.toArray(closed) });
+                };
+            };
+        } finally {
+            unlockPayment(user);
+        };
+    };
+
+    // Public: the activity-log blocks that name ICP ledger block `icpTx` (a mint's payment legs,
+    // refunds, withdrawals, top-ups), with the block itself while it is still in this canister
+    // (otherwise read it from the archive with icrc3_get_blocks). `indexedFrom`: blocks below
+    // this ICRC-3 index were archived before the index existed and are not covered.
+    public query func lookupLedgerTx(icpTx: Nat): async { hits: [{ block_id: Nat; btype: Text; field: Text; block: ?T3.Value }]; indexedFrom: Nat } {
+        let refs = switch (Map.get(icpTxIndex, Map.nhash, icpTx)) { case (?xs) xs; case null [] };
+        {
+            hits = Array.map<LedgerTxRef, { block_id: Nat; btype: Text; field: Text; block: ?T3.Value }>(refs, func(r) {
+                let got = Icrc3Log.getBlocks(icrc3, [{ start = r.block_id; length = 1 }]).blocks;
+                { block_id = r.block_id; btype = r.btype; field = r.field; block = if (got.size() == 1) ?got[0].block else null };
+            });
+            indexedFrom = switch (icpTxIndexFrom) { case (?f) f; case null 0 };
         };
     };
 
@@ -4529,6 +4753,8 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             "sneedapp_refund_credit_claim",
             "sneedapp_refund_credit_closed",
             "sneedapp_deposit_withdraw",
+            "sneedapp_deposit_token_withdraw",
+            "sneedapp_admin_stuck_return",
             "sneedapp_publisher_withdraw",
             "sneedapp_admin_withdraw",
             "sneedapp_admin_top_up",
@@ -4667,6 +4893,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // the ICRC-3 spill check (every 15 minutes; started on install and on every upgrade, as the
     // actor body runs then too)
     Icrc3Log.ensureTimer<system>(icrc3_rt, 15 * 60, icrc3_timer_job);
+
+    // lookupLedgerTx's index: covers the blocks still held here on the upgrade that adds it
+    backfillIcpTxIndex();
 
     // Checks of the ingress guard below
     transient let MAX_APP_ID : Nat = 256;
@@ -4843,6 +5072,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         #get_refund_credits_for : Any;
         #claim_refund_credit : Any;
         #adminCloseRefundCredit : Any;
+        #adminReturnStuckIcp : Any;
+        #lookupLedgerTx : Any;
+        #withdrawUserToken : Any;
     } }) : Bool {
         switch (msg) {
             case (
@@ -4894,6 +5126,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 or #get_orphans_for _
                 or #get_pending_top_ups _
                 or #get_refund_credits_for _
+                or #lookupLedgerTx _
                 or #getPaymentConfig _
                 or #getPaymentSubaccount _
                 or #getPremiumCreationFee _
@@ -4935,7 +5168,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             case (#removeAppVersion f) versionAuthOk(caller, f().0);
             // admin tools with free-form content
             case (#addOfficialVersion _ or #updateOfficialVersion _ or #removeOfficialVersion _ or #setOfficialVersions _ or #adminBulkRegisterCanisters _ or #adminRegisterCanister _) isAdmin(caller);
-            case (#adminSettleOrphan _ or #adminCloseRefundCredit _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
+            case (#adminSettleOrphan _ or #adminCloseRefundCredit _ or #adminReturnStuckIcp _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
+            // a ledger id: signed-in callers only
+            case (#withdrawUserToken _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.SMALL_ARG;
             case (#setManagerWasm _) isAdminOrGovernance(caller);
             // special prices (spec/special_prices.md)
             case (#set_admin_prices _ or #set_partner_prices _ or #remove_partner_prices _) isAdminOrGovernance(caller) and arg.size() <= IngressGuard.SMALL_ARG;

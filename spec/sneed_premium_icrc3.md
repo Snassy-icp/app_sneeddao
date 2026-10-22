@@ -60,6 +60,7 @@ Memberships and money:
 | `premium_icp_purchase` | `purchaseWithIcp`: the deposit was swept to the payment recipient and the membership extended | `caller`, `tier` (name), `duration_ns`, `amount_e8s` (the deposit charged, = the tier amount), `fee_e8s` (ledger fee), `to` (payment recipient account), `icp_tx` (ICP ledger block of the sweep), `price_tier` (`regular`, `admin` or `partner`: which price the deposit matched, spec/special_prices.md; since special prices), `previous_expiration`, `new_expiration` |
 | `premium_vp_claim` | `claimWithVotingPower` granted a tier | `caller`, `voting_power` (e8s, as computed from the caller's neurons), `tier` (name), `duration_ns`, `previous_expiration`, `new_expiration` (max(current, now + duration): may equal the previous one) |
 | `premium_deposit_withdraw` | `withdrawDeposit` returned the caller's deposit | `caller`, `amount_e8s` (transferred), `fee_e8s`, `to` (account), `icp_tx` |
+| `premium_deposit_token_withdraw` | `withdrawDepositToken` returned a token other than ICP from the caller's deposit account to the caller | `caller`, `ledger`, `amount` (transferred, the token's smallest unit), `fee`, `to` (account), `ledger_tx` (block on that ledger) |
 
 Promo codes:
 

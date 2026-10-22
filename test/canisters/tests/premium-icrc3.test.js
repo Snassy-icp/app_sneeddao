@@ -24,7 +24,7 @@ import { idlFactory as premiumIdl, init as premiumInit } from '../build/sneed_pr
 const PREMIUM_WASM = process.env.PREMIUM_WASM || 'sneed_premium';
 const BLOCK_TYPES_URL = 'https://app.sneeddao.com/api/sneed_premium#block-types';
 const CATALOGUE = [
-  'premium_icp_purchase', 'premium_vp_claim', 'premium_deposit_withdraw',
+  'premium_icp_purchase', 'premium_vp_claim', 'premium_deposit_withdraw', 'premium_deposit_token_withdraw',
   'premium_promo_create', 'premium_promo_claim', 'premium_promo_deactivate', 'premium_promo_reactivate', 'premium_promo_delete',
   'premium_admin_set', 'premium_admin_extend', 'premium_admin_revoke',
   'premium_tier_add', 'premium_tier_update', 'premium_tier_remove', 'premium_config_update',
@@ -235,6 +235,16 @@ describe('deposit withdrawals', () => {
     const w = unwrap(await as(eve).withdrawDeposit());
     expect(await since(mark)).toEqual([
       { i: mark, t: 'premium_deposit_withdraw', caller: P(eve), amount_e8s: ICP / 3n - ICP_FEE, fee_e8s: ICP_FEE, to: A(eve), icp_tx: w.blockIndex },
+    ]);
+  });
+
+  it('log a token sent there by mistake going back (withdrawDepositToken) with the ledger and its block', async () => {
+    const tokId = await install(pic, { name: 'MockLedger', initTypes: ledgerInit, initArgs: [{ fee: 1_000n, symbol: 'TOK', decimals: 8 }], targetSubnetId: appSubnet });
+    await actorAs(pic, ledgerIdl, tokId, admin).mint(depositAccount(eve), ICP);
+    const mark = await logLength();
+    const w = unwrap(await as(eve).withdrawDepositToken(tokId));
+    expect(await since(mark)).toEqual([
+      { i: mark, t: 'premium_deposit_token_withdraw', caller: P(eve), ledger: P(tokId), amount: ICP - 1_000n, fee: 1_000n, to: A(eve), ledger_tx: w.blockIndex },
     ]);
   });
 });

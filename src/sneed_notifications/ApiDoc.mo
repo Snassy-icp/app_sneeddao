@@ -23,7 +23,8 @@ Lets any dapp on the Internet Computer notify its users, and lets each user deci
 ## Fees, transfers and irreversible actions
 - **Per-delivery prices in ICP e8s per channel kind**, plus a per-call price (`get_config().prices_e8s`, `notify_price_e8s`; read at run time). Sneed SMS deliveries are free.
 - User pays (`sponsored = false`): charged per delivery to the user's balance; deliveries the balance or the per-app daily spending cap cannot cover are suppressed. App pays (`sponsored = true`): the whole message is charged to the app balance, all or nothing (`#no_funds` otherwise). Finally failed deliveries are refunded; suppressed ones cost nothing.
-- **`top_up(amount)` and `top_up_app(id, amount)` pull ICP through ICRC-2** (approve amount + 10,000 e8s ledger fee first). **Balances cannot be withdrawn.** Anyone may fund any app.
+- **`top_up(amount)` and `top_up_app(id, amount)` pull ICP through ICRC-2** (approve amount + 10,000 e8s ledger fee first), with memo `sneednotif:top_up` / `sneednotif:app_top_up` and a `created_at_time`. **Balances cannot be withdrawn.** Anyone may fund any app.
+- If an admin removes an app, its balance stays: the app's owner moves it to their own notification balance with `claim_removed_app_balance(id)`.
 - **Sending a notification is irreversible.** Titles, bodies and links are stored as plain text, read by the delivering relay, and land in the user's Sneed SMS inbox (not encrypted, readable by Sneed SMS admins). Never send secrets. Channel addresses are encrypted in the client to the relay key (`get_relay_keys`).
 - Notifications are deleted after the retention period (`retention_ns`).
 - What is charged (less refunds) is Sneed DAO revenue, forwarded to the RLL ICP splitter once 0.1 ICP has accumulated, never touching balances; public counters in `get_fee_forwarding()`.
@@ -38,6 +39,7 @@ Lets any dapp on the Internet Computer notify its users, and lets each user deci
 - `notify` has no awaits: a rejected call recorded nothing. It is not idempotent: give messages a `dedupe` key so a retry inside the window is folded (`deduplicated = true`). The dedupe key is recorded before the balance check, so after `#no_funds` top up and retry with a different key or after the window.
 - `#rate_limited`: the user's daily message cap for the app is reached; don't retry in a loop. `#not_allowed` is normal, not an error to retry.
 - Top-ups credit the balance in the same message that gets the ledger's confirmation. After a timeout read `get_my_settings().balance_e8s` (or `get_app_balance`) and the remaining allowance before calling again: a second call pulls again.
+- A top-up whose ICP left your account but was never credited (`The ledger did not answer`): ask support with the ledger block. Admins check the block on the ledger and credit it with `admin_credit(principal, amount, block)`, at most once per block.
 
 ## Common pitfalls
 - Query methods sent as update calls are refused by the ingress guard (`inspect`).
@@ -46,10 +48,10 @@ Lets any dapp on the Internet Computer notify its users, and lets each user deci
 - No echoes: a notification from the Sneed SMS canister itself (`get_config().sneed_sms`, e.g. Sneed Hub's `direct_message` notices) is never delivered to `sneed_sms` channels, not even the always-copy one, so it may have no delivery at all.
 
 ## Start with these methods
-Dapps: `register_app`, `request_permission`, `notify`, `get_receipts`, `get_app_balance`, `top_up_app`. Users: `get_my_requests`, `allow_app`, `get_my_settings`, `add_channel`, `verify_channel`, `set_settings`, `top_up`, `get_my_history`. Public: `get_config`, `list_apps`, `get_app`, `stats`, `get_fee_forwarding`.
+Dapps: `register_app`, `request_permission`, `notify`, `get_receipts`, `get_app_balance`, `top_up_app`. Users: `get_my_requests`, `allow_app`, `get_my_settings`, `add_channel`, `verify_channel`, `set_settings`, `top_up`, `get_my_history`. Public: `get_config`, `list_apps`, `get_app`, `stats` (incl. `last_tick_at`, when the delivery timer last ran), `get_fee_forwarding`. Support (admins): `admin_get_user`, `admin_credit`, `admin_get_removed_app`.
 
 ## Activity log (ICRC-3)
-- Money and governance are blocks of a certified, hash-chained ICRC-3 log: top-ups (with the ledger block), refunds of failed deliveries (amount only), fee forwards to the RLL splitter, the fee books' measurements, apps registered, changed, verified or removed, admins and configuration changes. Read it with `icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`, `icrc3_log_status` (queries). Block types (`sneednotif_*`): https://app.sneeddao.com/api/sneed_notifications#block-types
+- Money and governance are blocks of a certified, hash-chained ICRC-3 log: top-ups (with the ledger block), refunds of failed deliveries (amount only), fee forwards to the RLL splitter, the fee books' measurements, apps registered, changed, verified or removed (with the balance left), removed apps' balances claimed by their owners, admin credits of unconfirmed top-ups, admins and configuration changes. Read it with `icrc3_get_blocks`, `icrc3_get_archives`, `icrc3_get_tip_certificate`, `icrc3_supported_block_types`, `icrc3_log_status` (queries). Block types (`sneednotif_*`): https://app.sneeddao.com/api/sneed_notifications#block-types
 - Never logged: what was sent to whom (no titles, bodies, channels, addresses or deliveries).
 
 ## Full reference

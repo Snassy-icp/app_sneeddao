@@ -109,6 +109,9 @@ module CircularBufferLogic {
         }
         else {
           if (startId < oldestID) {
+            // ids [startId, startId + length) below the oldest one are gone; a range that ends
+            // before the oldest id holds nothing (this subtraction used to underflow and trap)
+            if (length <= oldestID - startId) { return [] };
             _startId := oldestID;
             _length := length - (oldestID - startId);
           };
@@ -116,6 +119,7 @@ module CircularBufferLogic {
           // How many entries are available from startId to newestID?
           let available = (newestID - _startId) + 1; 
           let toTake = if (_length < available) { _length } else { available };
+          if (toTake == 0) { return [] }; // Iter.range(0, toTake - 1) would underflow
           let arr = Array.init<?BufferEntry>(toTake, null);
           let offset = _startId - oldestID;
           let startIndex = (cb.start + offset) % cb.capacity;

@@ -24,6 +24,7 @@ import NT "../sneed_names/Types";
 import Icrc3Log "../icrc3/Log";
 import T3 "../icrc3/Types";
 import T "Types";
+import LedgerBlock "LedgerBlock";
 
 /// sneed_notifications (spec/sneed_notifications.md), step 1: apps declare topics, users allow
 /// apps and choose channels and rules, apps call `notify`, and messages wait here until they are
@@ -57,6 +58,8 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   public type ResultNat = T.ResultNat;
   public type Account = T.Account;
   public type FeeForwarding = T.FeeForwarding;
+  public type TopUp = T.TopUp;
+  public type AdminUserView = T.AdminUserView;
 
   type Notification = {
     id : Nat;
@@ -142,6 +145,7 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     };
     Icrc3Log.certify(icrc3);
     ensure_icrc3_timer<system>();
+    seedTopUpRecords();
   };
   /// Each relay kind's public key (base64 SPKI, RSA-OAEP-256): clients encrypt addresses to it.
   var relay_keys : [(ChannelKind, Text)] = [];
@@ -205,6 +209,22 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   transient var pulling_e8s : Nat = 0; // top-ups the ledger may have moved but this canister hasn't credited yet
   transient let FEE_CHECK_NS : Int = 300_000_000_000; // every 5 minutes at most
 
+  // Support (spec/support_audit.md P0-8, P1-9, P2-19). Every ICP payment credited here, per payer
+  // (newest last, at most MAX_TOP_UPS kept) and by ledger block ("ledger/block" -> who was
+  // credited), so admin_credit can never credit a block twice. Top-ups since the ICRC-3 log are
+  // filled in from its blocks on upgrade; `topup_records_since` is when the records begin: a block
+  // older than that may have been credited without a record, so admin_credit refuses it.
+  let top_ups = Map.new<Principal, [TopUp]>();
+  let credited_blocks = Map.new<Text, Principal>();
+  var topup_records_since : Int = Time.now();
+  var topup_records_seeded : Bool = false;
+  transient let crediting = Map.new<Text, ()>(); // admin_credit calls in flight, by block
+  transient let MAX_TOP_UPS : Nat = 100;
+  // apps admins removed, kept so their owners can still claim the app balance
+  let removed_apps = Map.new<Nat, App>();
+  // when the delivery timer last ran (shown by stats)
+  var last_tick_at : Int = 0;
+
   // ---------------------------------------------------------------------------------------------
   // ICRC-3 activity log (spec/notifications_icrc3.md; library src/icrc3): money (top-ups, refunds,
   // fee forwarding, the backlog measurement) and governance (apps, admins, configuration). Never
@@ -234,6 +254,8 @@ shared (deployer) persistent actor class SneedNotifications() = this {
       "sneednotif_admin_add",
       "sneednotif_admin_remove",
       "sneednotif_config_update",
+      "sneednotif_admin_credit",
+      "sneednotif_app_balance_claim",
     ];
   };
 
@@ -460,9 +482,12 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   /// Fund an app's balance (for sponsored messages). Anyone may: ICP by ICRC-2 approval.
   public shared ({ caller }) func top_up_app(id : Nat, amount_e8s : Nat) : async ResultNat {
     if (not Map.has(apps, Map.nhash, id)) return #err("No such app");
-    let ledger_block = switch (await* pull(caller, amount_e8s)) { case (#err(e)) return #err(e); case (#ok(b)) b };
+    let ledger_block = switch (await* pull(caller, amount_e8s, APP_TOP_UP_MEMO)) { case (#err(e)) return #err(e); case (#ok(b)) b };
+    // an admin may have credited this very block while the ledger call was in flight
+    if (Map.has(credited_blocks, Map.thash, blockKey(ledger_block))) return #ok(appBalanceOf(id));
     let b = appBalanceOf(id) + amount_e8s;
     Map.set(app_balances, Map.nhash, id, b);
+    recordTopUp(caller, { ledger_block; amount_e8s; at = now(); app = ?id; via = #app_top_up });
     block("app_top_up", #caller(caller), [("app_id", #Nat(id)), ("amount_e8s", #Nat(amount_e8s)), ("ledger_block", #Nat(ledger_block)), ("app_balance_e8s", #Nat(b))]);
     #ok(b);
   };
@@ -837,22 +862,28 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   /// Top up your notification balance with ICP (approve this canister for amount + fee first).
   public shared ({ caller }) func top_up(amount_e8s : Nat) : async ResultNat {
     switch (signedIn(caller)) { case (?e) return #err(e); case null {} };
-    let ledger_block = switch (await* pull(caller, amount_e8s)) { case (#err(e)) return #err(e); case (#ok(b)) b };
+    let ledger_block = switch (await* pull(caller, amount_e8s, TOP_UP_MEMO)) { case (#err(e)) return #err(e); case (#ok(b)) b };
+    if (Map.has(credited_blocks, Map.thash, blockKey(ledger_block))) return #ok(balanceOf(caller)); // an admin credited it meanwhile
     let b = balanceOf(caller) + amount_e8s;
     Map.set(user_balances, Map.phash, caller, b);
+    recordTopUp(caller, { ledger_block; amount_e8s; at = now(); app = null; via = #top_up });
     rearmLowBalance(caller);
     block("top_up", #caller(caller), [("amount_e8s", #Nat(amount_e8s)), ("ledger_block", #Nat(ledger_block))]);
     #ok(b);
   };
 
-  /// The ledger block of the transfer on success.
-  func pull(from : Principal, amount : Nat) : async* { #ok : Nat; #err : Text } {
+  transient let TOP_UP_MEMO : Blob = "sneednotif:top_up";
+  transient let APP_TOP_UP_MEMO : Blob = "sneednotif:app_top_up";
+
+  /// The ledger block of the transfer on success. With a memo and a creation time, so the transfer
+  /// can be found on the ledger and a resend would be deduplicated.
+  func pull(from : Principal, amount : Nat, memo : Blob) : async* { #ok : Nat; #err : Text } {
     if (amount == 0) return #err("Nothing to top up");
     let ledger : IcpLedger = actor (Principal.toText(config.icp_ledger));
     // counted as a liability while in flight: the ledger may have moved it before the caller credits it
     pulling_e8s += amount;
     let r = try {
-      switch (await ledger.icrc2_transfer_from({ spender_subaccount = null; from = { owner = from; subaccount = null }; to = { owner = Principal.fromActor(this); subaccount = null }; amount; fee = null; memo = null; created_at_time = null })) {
+      switch (await ledger.icrc2_transfer_from({ spender_subaccount = null; from = { owner = from; subaccount = null }; to = { owner = Principal.fromActor(this); subaccount = null }; amount; fee = null; memo = ?memo; created_at_time = ?Nat64.fromNat(Int.abs(now())) })) {
         case (#Ok(b)) #ok(b);
         case (#Err(#InsufficientAllowance(a))) #err("Approve this canister for the amount first (allowance " # Nat.toText(a.allowance) # ")");
         case (#Err(#InsufficientFunds(b))) #err("Not enough ICP (balance " # Nat.toText(b.balance) # ")");
@@ -879,8 +910,10 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   };
 
   /// Your notifications, newest first, with what happened on each channel.
-  public query ({ caller }) func get_my_history(limit : Nat) : async [HistoryItem] {
-    let ids = switch (Map.get(user_notifications, Map.phash, caller)) { case (?l) l; case null [] };
+  public query ({ caller }) func get_my_history(limit : Nat) : async [HistoryItem] { historyOf(caller, limit) };
+
+  func historyOf(user : Principal, limit : Nat) : [HistoryItem] {
+    let ids = switch (Map.get(user_notifications, Map.phash, user)) { case (?l) l; case null [] };
     let out = Buffer.Buffer<HistoryItem>(20);
     var i = ids.size();
     while (i > 0 and out.size() < Nat.min(limit, 200)) {
@@ -918,8 +951,9 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   public query func get_config() : async Config { config };
   public query func get_relay_keys() : async [(ChannelKind, Text)] { relay_keys };
   public query func get_admins() : async [Principal] { admins };
-  public query func stats() : async { apps : Nat; users : Nat; notifications : Nat; pending : Nat } {
-    { apps = Map.size(apps); users = Map.size(channels); notifications = Map.size(notifications); pending = Map.size(pending) };
+  /// `last_tick_at`: when the delivery timer last ran (every 30 s); `ticking`: a run in progress.
+  public query func stats() : async { apps : Nat; users : Nat; notifications : Nat; pending : Nat; last_tick_at : Int; ticking : Bool } {
+    { apps = Map.size(apps); users = Map.size(channels); notifications = Map.size(notifications); pending = Map.size(pending); last_tick_at; ticking };
   };
 
   // ---------------------------------------------------------------------------------------------
@@ -1192,8 +1226,21 @@ shared (deployer) persistent actor class SneedNotifications() = this {
   func tick() : async () {
     if (ticking) return;
     ticking := true;
+    // `finally` clears the flag even when a later part of the run traps (e.g. an answer that does
+    // not decode): otherwise every later run would return at once and deliveries would stop
+    try { await* tickBody() } finally { ticking := false };
+  };
+
+  func tickBody() : async* () {
     ticks += 1;
+    last_tick_at := now();
     let t = now();
+    // housekeeping first, so a delivery that traps below cannot hold it up
+    if (ticks % 120 == 0) prune(t);
+    if (t >= fee_next_check) {
+      fee_next_check := t + FEE_CHECK_NS;
+      ignore feeTick(); // its own message: deliveries don't wait for the ledger
+    };
     let due = Buffer.Buffer<Job>(20);
     let lapsed = Buffer.Buffer<Job>(4);
     for (jid in Map.keys(pending)) switch (Map.get(jobs, Map.nhash, jid)) {
@@ -1220,12 +1267,6 @@ shared (deployer) persistent actor class SneedNotifications() = this {
       };
       case null finish(j, #failed({ reason = "message removed" }), #timer);
     };
-    if (ticks % 120 == 0) prune(t);
-    if (t >= fee_next_check) {
-      fee_next_check := t + FEE_CHECK_NS;
-      ignore feeTick(); // its own message: deliveries don't wait for the ledger
-    };
-    ticking := false;
   };
 
   func prune(t : Int) {
@@ -1236,7 +1277,12 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     };
     for (id in old.vals()) switch (Map.get(notifications, Map.nhash, id)) {
       case (?n) {
-        for (j in n.jobs.vals()) { Map.delete(jobs, Map.nhash, j); Map.delete(pending, Map.nhash, j) };
+        for (j in n.jobs.vals()) {
+          // a paid delivery that never became final goes back to whoever paid for it
+          if (Map.has(pending, Map.nhash, j)) switch (Map.get(jobs, Map.nhash, j)) { case (?job) refund(job, #timer); case null {} };
+          Map.delete(jobs, Map.nhash, j);
+          Map.delete(pending, Map.nhash, j);
+        };
         Map.delete(notifications, Map.nhash, id);
         switch (Map.get(user_notifications, Map.phash, n.user)) { case (?l) Map.set(user_notifications, Map.phash, n.user, Array.filter<Nat>(l, func(x) = x != id)); case null {} };
       };
@@ -1300,18 +1346,151 @@ shared (deployer) persistent actor class SneedNotifications() = this {
       case null #err("No such app");
     };
   };
-  /// Remove an abusive app: it can no longer notify anyone.
+  /// Remove an abusive app: it can no longer notify anyone. Its balance stays where it is: the
+  /// owner moves it to their own notification balance with `claim_removed_app_balance`.
   public shared ({ caller }) func admin_remove_app(id : Nat) : async Result {
     if (not isAdmin(caller)) return #err("Admins only");
     switch (Map.get(apps, Map.nhash, id)) {
       case (?a) {
         for (c in a.canisters.vals()) Map.delete(app_of_canister, Map.phash, c);
         Map.delete(apps, Map.nhash, id);
-        block("app_remove", #caller(caller), [("app_id", #Nat(a.id)), ("name", #Text(a.name)), ("owner", pv(a.owner)), ("canisters", principalsV(a.canisters))]);
+        Map.set(removed_apps, Map.nhash, id, a);
+        block("app_remove", #caller(caller), [("app_id", #Nat(a.id)), ("name", #Text(a.name)), ("owner", pv(a.owner)), ("canisters", principalsV(a.canisters)), ("app_balance_e8s", #Nat(appBalanceOf(id)))]);
         #ok("Removed");
       };
       case null #err("No such app");
     };
+  };
+
+  /// A removed app's balance goes to its recorded owner's notification balance (the owner calls,
+  /// or an admin on the owner's behalf; it never goes anywhere else).
+  public shared ({ caller }) func claim_removed_app_balance(id : Nat) : async ResultNat {
+    let a = switch (Map.get(removed_apps, Map.nhash, id)) { case (?a) a; case null return #err("No removed app " # Nat.toText(id)) };
+    if (caller != a.owner and not isAdmin(caller)) return #err("Only the app's owner");
+    let amount = appBalanceOf(id);
+    if (amount == 0) return #err("Nothing to claim");
+    Map.delete(app_balances, Map.nhash, id);
+    let b = balanceOf(a.owner) + amount;
+    Map.set(user_balances, Map.phash, a.owner, b);
+    rearmLowBalance(a.owner);
+    block("app_balance_claim", #caller(caller), [("app_id", #Nat(id)), ("owner", pv(a.owner)), ("amount_e8s", #Nat(amount)), ("balance_e8s", #Nat(b))]);
+    #ok(b);
+  };
+
+  /// Admins look up a removed app (its balance: get_app_balance).
+  public query ({ caller }) func admin_get_removed_app(id : Nat) : async ?App {
+    if (not isAdmin(caller)) trap("Admins only");
+    Map.get(removed_apps, Map.nhash, id);
+  };
+
+  // ---------------------------------------------------------------------------------------------
+  // Support (spec/support_audit.md): top-up records, admin credit, a user's state
+  // ---------------------------------------------------------------------------------------------
+
+  func blockKey(ledger_block : Nat) : Text = Principal.toText(config.icp_ledger) # "/" # Nat.toText(ledger_block);
+
+  func recordTopUp(payer : Principal, t : TopUp) {
+    Map.set(credited_blocks, Map.thash, blockKey(t.ledger_block), payer);
+    let l = switch (Map.get(top_ups, Map.phash, payer)) { case (?l) l; case null [] };
+    let kept = if (l.size() >= MAX_TOP_UPS) Array.subArray(l, l.size() + 1 - MAX_TOP_UPS, MAX_TOP_UPS - 1) else l;
+    Map.set(top_ups, Map.phash, payer, Array.append(kept, [t]));
+  };
+
+  /// Once, on the upgrade that brings the records: every top-up and app top-up this canister's
+  /// ICRC-3 log still holds (the log's blocks name the payer and the ledger block). The records
+  /// then begin with the first block held, or now when the log is empty.
+  func seedTopUpRecords() {
+    if (topup_records_seeded) return;
+    topup_records_seeded := true;
+    var i = icrc3.live.first_index;
+    var first = true;
+    label scan while (i < icrc3.log_length) {
+      let r = Icrc3Log.getBlocks(icrc3, [{ start = i; length = Icrc3Log.MAX_RESPONSE_BLOCKS }]);
+      if (r.blocks.size() == 0) break scan;
+      for (b in r.blocks.vals()) {
+        i := b.id + 1;
+        let ts = switch (logField(b.block, "ts")) { case (#Nat(t)) t; case _ 0 };
+        if (first) { first := false; if (ts < topup_records_since) topup_records_since := ts };
+        let tx = logField(b.block, "tx");
+        let via : ?{ #top_up; #app_top_up } = switch (logField(b.block, "btype")) {
+          case (#Text("sneednotif_top_up")) ?#top_up;
+          case (#Text("sneednotif_app_top_up")) ?#app_top_up;
+          case _ null;
+        };
+        switch (via, logField(tx, "caller"), logField(tx, "ledger_block"), logField(tx, "amount_e8s")) {
+          case (?v, #Blob(payer), #Nat(ledger_block), #Nat(amount_e8s)) {
+            if (not Map.has(credited_blocks, Map.thash, blockKey(ledger_block))) {
+              let app = switch (logField(tx, "app_id")) { case (#Nat(id)) ?id; case _ null };
+              recordTopUp(Principal.fromBlob(payer), { ledger_block; amount_e8s; at = ts; app; via = v });
+            };
+          };
+          case _ {};
+        };
+      };
+    };
+  };
+  func logField(v : T3.Value, name : Text) : T3.Value {
+    switch (v) {
+      case (#Map(entries)) { for ((k, x) in entries.vals()) if (k == name) return x; #Map([]) };
+      case _ #Map([]);
+    };
+  };
+
+  /// Admins credit `user` with a top-up whose outcome the canister never learned (e.g. "The
+  /// ledger did not answer"): block `ledger_block` of the ICP ledger must move exactly
+  /// `amount_e8s` from `user`'s default account to this canister's, and must not be credited
+  /// already. Each block is credited at most once; a block from before the top-up records began
+  /// is refused (it may have been credited without a record).
+  public shared ({ caller }) func admin_credit(user : Principal, amount_e8s : Nat, ledger_block : Nat) : async ResultNat {
+    if (not isAdmin(caller)) return #err("Admins only");
+    if (Principal.isAnonymous(user)) return #err("Not for the anonymous principal");
+    if (amount_e8s == 0) return #err("Nothing to credit");
+    let k = blockKey(ledger_block);
+    if (Map.has(credited_blocks, Map.thash, k)) return #err("Block " # Nat.toText(ledger_block) # " is already credited");
+    if (Map.has(crediting, Map.thash, k)) return #err("Block " # Nat.toText(ledger_block) # " is being credited");
+    Map.set(crediting, Map.thash, k, ());
+    let checked = try {
+      await* LedgerBlock.verifyTransfer(config.icp_ledger, ledger_block, { owner = user; subaccount = null }, { owner = Principal.fromActor(this); subaccount = null });
+    } finally { Map.delete(crediting, Map.thash, k) };
+    let t = switch checked { case (#err(e)) return #err(e); case (#ok(t)) t };
+    if (t.amount != amount_e8s) return #err("Block " # Nat.toText(ledger_block) # " moved " # Nat.toText(t.amount) # " e8s, not " # Nat.toText(amount_e8s));
+    if (t.ts < topup_records_since) return #err("Block " # Nat.toText(ledger_block) # " is older than the top-up records (they begin at " # Int.toText(topup_records_since) # "): it may have been credited already");
+    if (Map.has(credited_blocks, Map.thash, k)) return #err("Block " # Nat.toText(ledger_block) # " is already credited");
+    let b = balanceOf(user) + amount_e8s;
+    Map.set(user_balances, Map.phash, user, b);
+    rearmLowBalance(user);
+    recordTopUp(user, { ledger_block; amount_e8s; at = now(); app = null; via = #admin_credit });
+    block("admin_credit", #caller(caller), [("principal", pv(user)), ("amount_e8s", #Nat(amount_e8s)), ("ledger_block", #Nat(ledger_block)), ("balance_e8s", #Nat(b))]);
+    #ok(b);
+  };
+
+  /// Admins: one user's balance, settings, channels, apps, top-ups and recent history (at most
+  /// `history_limit` notifications, 200 at most), for support.
+  public query ({ caller }) func admin_get_user(user : Principal, history_limit : Nat) : async { #ok : AdminUserView; #err : Text } {
+    if (not isAdmin(caller)) return #err("Admins only");
+    let apps_of = Buffer.Buffer<(App, Permission)>(8);
+    for (a in Map.vals(apps)) switch (Map.get(permissions, Map.thash, key(user, a.id))) { case (?p) apps_of.add((a, p)); case null {} };
+    let reqs = switch (Map.get(requests, Map.phash, user)) { case (?r) r; case null [] };
+    let ups = switch (Map.get(top_ups, Map.phash, user)) { case (?l) l; case null [] };
+    var pendingJobs = 0;
+    var reserved = 0;
+    for (jid in Map.keys(pending)) switch (Map.get(jobs, Map.nhash, jid)) {
+      case (?j) if (j.user == user) { pendingJobs += 1; reserved += j.price_e8s };
+      case null {};
+    };
+    let (threshold, alerted) = lowBalanceSetting(user);
+    #ok({
+      balance_e8s = balanceOf(user);
+      low_balance_alert = { threshold_e8s = threshold; alerted };
+      settings = settingsOf(user);
+      channels = userChannels(user);
+      apps = Buffer.toArray(apps_of);
+      requests = Array.mapFilter<Nat, App>(reqs, func(id) = Map.get(apps, Map.nhash, id));
+      top_ups = Array.reverse(ups);
+      history = historyOf(user, history_limit);
+      pending_jobs = pendingJobs;
+      reserved_e8s = reserved;
+    });
   };
 
   // ---------------------------------------------------------------------------------------------
@@ -1419,13 +1598,18 @@ shared (deployer) persistent actor class SneedNotifications() = this {
     #admin_set_icrc3_settings : Any;
     #admin_icrc3_spill_now : Any;
     #admin_icrc3_repair_archive_controllers : Any;
+    #admin_credit : Any;
+    #admin_get_user : Any;
+    #admin_get_removed_app : Any;
+    #claim_removed_app_balance : Any;
   } }) : Bool {
     switch msg {
       case (#get_api_doc _ or #get_relay_keys _ or #get_admins _ or #get_app _ or #get_app_balance _ or #get_app_of _ or #get_config _ or #get_my_apps _ or #get_my_history _ or #get_my_requests _ or #get_my_settings _ or #get_low_balance_alert _ or #get_receipts _ or #list_apps _ or #stats _ or #get_fee_forwarding _) false;
       case (#icrc3_get_blocks _ or #icrc3_get_archives _ or #icrc3_get_tip_certificate _ or #icrc3_supported_block_types _ or #icrc10_supported_standards _ or #icrc3_log_status _ or #get_log _) false;
+      case (#admin_get_user _ or #admin_get_removed_app _) false;
       // apps call these from their canisters, never by ingress
       case (#notify _ or #notify_batch _ or #request_permission _) false;
-      case (#admin_add_admin _ or #admin_remove_admin _ or #admin_remove_app _ or #admin_set_app_verified _ or #admin_set_fee_destination _ or #admin_set_fee_sweep_threshold _ or #admin_forward_fees_now _ or #admin_set_icrc3_settings _ or #admin_icrc3_spill_now _ or #admin_icrc3_repair_archive_controllers _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
+      case (#admin_add_admin _ or #admin_remove_admin _ or #admin_remove_app _ or #admin_set_app_verified _ or #admin_set_fee_destination _ or #admin_set_fee_sweep_threshold _ or #admin_forward_fees_now _ or #admin_set_icrc3_settings _ or #admin_icrc3_spill_now _ or #admin_icrc3_repair_archive_controllers _ or #admin_credit _) isAdmin(caller) and arg.size() <= IngressGuard.SMALL_ARG;
       case (#admin_set_config _ or #admin_register_app _ or #admin_set_relay_key _) isAdmin(caller) and arg.size() <= IngressGuard.MEDIUM_ARG;
       case (#register_app _ or #update_app _) not Principal.isAnonymous(caller) and arg.size() <= IngressGuard.MEDIUM_ARG;
       case (#relay_ack _) relayKind(caller) != null and arg.size() <= IngressGuard.MEDIUM_ARG;

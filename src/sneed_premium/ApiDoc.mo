@@ -18,13 +18,13 @@ Sneed Premium is the membership registry of Sneed DAO: one record per principal 
 ## Authentication
 
 - Queries answer anyone. Updates that grant membership refuse the anonymous principal (`NotAuthorized`).
-- Membership is public: `checkMembership` answers for any principal and `getActivePremiumMembers` lists every member. Only `getMembershipDetails` is limited to the principal itself or an admin. Purchases, claims and admin changes are public blocks in the activity log; the older claim and payment logs are admin only. Calls are signed by a principal that is public on-chain; nothing here is anonymous.
+- Membership is public: `checkMembership` answers for any principal and `getActivePremiumMembers` lists every member. Only `getMembershipDetails` is limited to the principal itself or an admin. Purchases, claims and admin changes are public blocks in the activity log; the older claim and payment logs are admin only as a whole, and per principal (`getClaimLogFor(p, offset, limit)`, `getIcpPaymentLogFor(p, offset, limit)`) for that principal itself or an admin. Calls are signed by a principal that is public on-chain; nothing here is anonymous.
 - Admin methods (tiers, config, promo codes, logs, set/extend/revoke memberships) are for controllers and listed admins only.
 
 ## Fees, transfers and irreversible actions
 
 - **Buying with ICP moves tokens.** The user sends ICP to their deposit account `getDepositAccount(user)` (`{ owner = sneed_premium; subaccount = principalToSubAccount(user) }`), paying the ledger fee. `purchaseWithIcp()` then matches the **whole** deposit balance against the active ICP tiers; on an exact match it **transfers balance minus the ledger fee to the DAO's payment recipient** (`getConfig().paymentRecipient`) and extends the membership. This payment is final; the canister keeps nothing.
-- A balance that matches no tier returns `InvalidTier` and the ICP stays in the deposit account. `withdrawDeposit()` sends the caller's own deposit balance **minus the ledger fee** to the caller's default account.
+- A balance that matches no tier returns `InvalidTier` and the ICP stays in the deposit account. `withdrawDeposit()` sends the caller's own deposit balance **minus the ledger fee** to the caller's default account. Any other ICRC-1 token sent there by mistake comes back the same way with `withdrawDepositToken(ledger)` (the whole balance minus that ledger's fee, only ever to the caller).
 - ICP purchases and promo codes add time to the remaining membership; voting power claims do not stack (they set `max(current, now + duration)`).
 - Tier amounts and durations are DAO-managed and change: read `getIcpTiers()` / `getVotingPowerTiers()` every time, never hard-code them.
 - Special prices: an admin price (admins who are persons) and partner prices (one principal each, public label, optional expiry), as `icp_tier_price_bps` (a share of every tier's price, 10_000 = regular). The lowest applicable share wins; a tier then costs `amountE8s * bps / 10_000` (rounded down) and a deposit of exactly that buys it (a regular amount still buys it too). `get_icp_tier_prices_for(principal)` gives the amount to deposit per tier; `get_special_prices()` lists everything (public). Purchases record `price_tier` (`regular`, `admin`, `partner`): the block field and `get_icp_payment_price_tier(id)`. Admin setters: `set_admin_prices`, `set_partner_prices`, `remove_partner_prices`.
@@ -39,7 +39,7 @@ Sneed Premium is the membership registry of Sneed DAO: one record per principal 
 
 - Retrying `purchaseWithIcp` after a timeout is safe: if the first call went through the deposit is empty and the retry returns `InvalidTier` or `InsufficientPayment` without charging; check `checkMembership` for the new expiry.
 - One purchase or withdrawal runs at a time per caller: a concurrent one returns `InternalError` (purchase) or `InProgress` (withdrawal) without touching the ledger. Retrying `withdrawDeposit` after a timeout returns `NothingToWithdraw` if it already went through.
-- Admin log queries (`getClaimLog`, `getIcpPaymentLog` and their counts) trap for non-admins.
+- Admin log queries (`getClaimLog`, `getIcpPaymentLog` and their counts) trap for non-admins; `getClaimLogFor` / `getIcpPaymentLogFor` trap for anyone but the principal itself or an admin.
 
 ## Common pitfalls
 
@@ -56,7 +56,8 @@ Sneed Premium is the membership registry of Sneed DAO: one record per principal 
 
 - `checkMembership(principal)`, `getActivePremiumMembers()`, `getMembershipDetails(principal)`
 - `getIcpTiers()`, `getVotingPowerTiers()`, `getConfig()`, `getDepositAccount(user)`, `getPaymentStats()`, `get_icp_tier_prices_for(principal)`, `get_special_prices()`
-- `purchaseWithIcp()`, `claimWithVotingPower()`, `claimPromoCode(code)`, `withdrawDeposit()`
+- `purchaseWithIcp()`, `claimWithVotingPower()`, `claimPromoCode(code)`, `withdrawDeposit()`, `withdrawDepositToken(ledger)`
+- `getClaimLogFor(p, offset, limit)`, `getIcpPaymentLogFor(p, offset, limit)` (your own history)
 
 ## Full reference
 

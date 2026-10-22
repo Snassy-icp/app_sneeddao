@@ -258,7 +258,8 @@ What if a position is transferred to Sneed Lock without a claim? Nobody can act 
 **Lock.** `create_position_lock(pool, dex, position_id, expires_at, token0, token1, dissolve_delay)`:
 - `dex` must be `1` (ICPSwap). No other DEX is supported.
 - The caller must have the claim and the pool must report Sneed Lock as the owner.
-- `token0` and `token1` are **not validated** against the pool. They are stored on the lock and used by `claim_position_fees` and `add_liquidity_to_locked_position` to talk to the right ledgers. Pass the pool's `metadata().token0.address` and `token1.address`, in that order.
+- `token0` and `token1` must be the pool's `metadata().token0.address` and `token1.address`, in that order: the canister asks the pool and refuses anything else (`token0/token1 must be the pool's own, in its order: ...`). They are stored on the lock and used by `claim_position_fees` and `add_liquidity_to_locked_position` to talk to the right ledgers.
+- One lock creation per caller at a time: a second `create_position_lock` (or `create_lock`) of the same caller while one runs answers `A lock creation ... is already in progress`, and after its awaits the call re-checks that the claim is still the caller's, the position is not being withdrawn and nobody locked it meanwhile.
 - Fee handling is the same as for token locks.
 - Calling it for a position that already has a lock behaves like `update_position_lock`.
 
@@ -352,7 +353,7 @@ Creating a lock may cost a fee in ICP, set by Sneed governance and lower for Sne
 
 **Find out the fee.** `getEffectiveLockFee(user, is_position_lock)` returns `{ fee_e8s, is_premium }` and is authoritative (it checks premium status with the premium canister; it is an update call). `get_lock_fees_icp()` is a query with the whole fee table.
 
-**Pay.** The fee is taken from the user's payment subaccount, `getPaymentSubaccount(user)`. Deposit ICP there with an ordinary ICRC-1 transfer from any account; `getPaymentBalance(user)` reads what is there. When a lock is created the canister verifies `balance ≥ fee_e8s` first, records the lock, then transfers the fee out (`fee_e8s − 10_000` plus the 10_000 e8s ICP ledger fee, so exactly `fee_e8s` leaves the subaccount). Any surplus stays for the next lock.
+**Pay.** The fee is taken from the user's payment subaccount, `getPaymentSubaccount(user)`. Deposit ICP there with an ordinary ICRC-1 transfer from any account; `getPaymentBalance(user)` reads what is there. When a lock is created the canister verifies `balance ≥ fee_e8s` first, records the lock, then transfers the fee out (`fee_e8s − 10_000` plus the 10_000 e8s ICP ledger fee, so exactly `fee_e8s` leaves the subaccount). Any surplus stays for the next lock, or comes back with `withdraw_payment_balance()`: it sends the caller's whole payment balance less the 10_000 e8s ICP ledger fee to the caller's own default account (never anywhere else), answers `Ok { amount; icp_tx }`, and is refused while a `create_lock` / `create_position_lock` of the caller runs (and a lock creation is refused while it runs). Logged as `sneedlock_payment_withdraw`. For the rare principal whose payment subaccount is also its Sneed wallet (byte 23 of the wallet subaccount already `0x50`), ICP locked there stays.
 
 **From the Sneed wallet.** If the user keeps ICP in their Sneed wallet, move it with `transfer_tokens(sneed_lock, ?payment_subaccount, icp_ledger, amount)`; the Sneed wallet pays the ledger fee. The Sneed wallet's lock wizard uses ICP from the Sneed wallet first and the frontend wallet for the rest: `computeFeePlan` and `payLockFee` in [LockWizard.jsx](https://github.com/Snassy-icp/app_sneeddao/blob/main/src/app_sneeddao_frontend/src/pages/LockWizard.jsx).
 
@@ -381,7 +382,7 @@ A `create_lock` or `create_position_lock` without enough deposit fails with `ICP
 
 ## 5. Concurrency, errors and retries
 
-**Per-caller token mutex.** `transfer_tokens`, `transfer_token_lock_ownership` and `add_liquidity_to_locked_position` serialise on the caller. A second call during the first returns a `GenericError` with `error_code = 2` (`A token operation is already in progress...`). Retry after the first completes.
+**Per-caller token mutex.** `transfer_tokens`, `transfer_token_lock_ownership`, `add_liquidity_to_locked_position` and `create_lock` serialise on the caller (`create_lock` answers `A token operation or lock creation is already in progress ...` instead of a `GenericError`). Lock creations and `withdraw_payment_balance` also exclude each other per caller. A second call during the first returns a `GenericError` with `error_code = 2` (`A token operation is already in progress...`). Retry after the first completes.
 
 **Per-pool mutex.** `claim_position_fees` and `add_liquidity_to_locked_position` serialise on the pool. The loser gets `Busy: another operation is in progress on this pool; please retry in a few seconds`. `add_liquidity_to_locked_position` additionally refuses with `Busy: a fee delivery from this pool is still in transit...` while a claimed fee delivery is pending in the pool. Both are safe to retry after a few seconds.
 
@@ -466,7 +467,9 @@ See 3.3. `Ok { request_id; amount0; amount1; token0; token1 }` with gross amount
 ### 6.6 Liquidity
 
 **`add_liquidity_to_locked_position(swap_canister_id : principal, position_id : nat, amount0 : nat, amount1 : nat) → AddLiquidityResult`**
-See 3.4. Errors (text) include `Caller does not own position ...`, `Position ... is not locked`, `The lock on this position has expired; ...`, `Nothing to add`, `amount0 must exceed twice the ledger fee (f)`, `Busy: ...`, `Insufficient balance ...`, and messages prefixed `ADMIN ACTION:` when a refund failed after the pool was credited (the DAO can return the funds with an admin call; the pool stays flagged busy for add-liquidity until then).
+See 3.4. Errors (text) include `Caller does not own position ...`, `Position ... is not locked`, `The lock on this position has expired; ...`, `Nothing to add`, `amount0 must exceed twice the ledger fee (f)`, `Busy: ...`, `Insufficient balance ...`, and messages prefixed `ADMIN ACTION:` when a refund failed after the pool was credited (the pool stays flagged busy for add-liquidity until the funds are returned). Every such failure names a `stranded record N`: a public record (`get_stranded`) and an ICRC-3 `sneedlock_stranded` block with the owner, pool, ledger, amount and where it sits (`pool_account`, or `deposit_subaccount` when the pool's deposit failed). An admin pays it with `admin_withdraw_stranded_to_owner(N, amount, outcome_checked)`, to that owner's Sneed wallet and at most that amount, once.
+
+**`get_stranded({ owner : opt principal; unpaid_only : bool; prev : opt nat; take : opt nat }) → vec Stranded`** *query*. Stranded records by ascending id. `Stranded = record { id; owner; pool; ledger; amount; held_in : variant { pool_account; deposit_subaccount }; status : variant { Open; Uncertain; Paid : record { at; by; amount; accepted; correlation_id } }; reason : text; correlation_id; recorded_at }`. `Uncertain` means a pool or ledger call failed with an unknown outcome, or the amount is an upper bound (the leftover could not be measured).
 
 ### 6.7 Fees and payment
 
@@ -478,6 +481,8 @@ See 3.4. Errors (text) include `Caller does not own position ...`, `Position ...
 | `get_lock_fees_icp()` | query | fee table and recipient | `token_lock_fee_icp_e8s`, `position_lock_fee_icp_e8s`, `premium_*`, `fee_recipient_*`, `sneed_premium_canister_id`. |
 | `getPaymentSubaccount(user)` | query | `blob` | The user's payment subaccount on Sneed Lock. |
 | `getPaymentBalance(user)` | update | `nat` | ICP e8s currently deposited (reads the ledger). |
+| `withdraw_payment_balance()` | update | `variant { Ok : record { amount : nat; icp_tx : nat }; Err : text }` | The caller's payment balance less the ICP fee, to the caller's own default account. Refused during a lock creation of the caller. |
+| `get_payment_log_for(p, offset, limit)` | query | `variant { Ok : record { payments : vec PaymentLogEntry; total_count : nat; has_more : bool }; Err : text }` | `p`'s fee payments, newest first (`offset` 0 = newest, at most 1000). For `p` or an admin. |
 | `get_lock_fee_stats()` | query | totals collected | For dashboards. |
 
 ### 6.8 Dissolve delays and gas
@@ -503,7 +508,9 @@ Sneed Lock's `GenericError` codes on transfers: `3` busy (a withdrawal, fee clai
 
 ### 6.10 Logs
 
-`get_info_id_range()`, `get_error_id_range()`, `get_info_entries(start, length)`, `get_error_entries(start, length)` expose the canister's circular text logs (`BufferEntry { id; timestamp; caller; correlation_id; content }`). Every update logs under a `correlation_id`; error messages that mention one can be looked up here. These are update calls, the buffers hold the last 10,000 entries each, and they record failures as well as successes.
+`get_info_id_range()`, `get_error_id_range()`, `get_info_entries(start, length)`, `get_error_entries(start, length)` expose the canister's circular text logs (`BufferEntry { id; timestamp; caller; correlation_id; content }`). Every update logs under a `correlation_id`; error messages that mention one can be looked up here. These are *queries*: an intentional interface change in the support fixes of October 2026 (they were update calls before; the ingress guard now refuses them as update calls, so call them as queries). A range that ends before the oldest kept entry, or a `length` of 0, answers `[]`. The buffers hold the last 10,000 entries each, and they record failures as well as successes.
+
+`get_log_entries_for(p, { errors : bool; before : opt nat; take : opt nat })` answers `variant { Ok : vec BufferEntry; Err : text }`: the entries logged for `p`'s calls in the error (or info) log, newest first, ids below `before`, at most 500 (default 100). For `p` or an admin. *query*
 
 The structured, permanent and verifiable record of what actually happened is the ICRC-3 activity log in [section 8](#8-activity-log-icrc-3); its blocks carry the same `correlation_id` as `cid`, so the two can be joined.
 
@@ -517,6 +524,7 @@ The fee-claim queue of earlier versions is gone; claims are synchronous now. The
 | `get_claim_request_status(request_id)` | `Completed` or `Failed` record for a request id, or null. Never `Active`. |
 | `get_completed_claim_request(id)`, `get_failed_claim_request(id)` | Lookups in the history. |
 | `get_claim_requests_page({ failed; prev; take })` | The completed (or failed) history, paged by request id. |
+| `get_claim_requests_page_for(owner, { failed; prev; take })` | The same, for one owner (the principal that claimed). |
 
 New integrations should use `claim_position_fees`.
 
@@ -542,6 +550,7 @@ Restricted to Sneed governance, the canister's controllers and listed admins (`g
 | `admin_return_token_from_failed_request(ledger, amount, recipient)` | Send `amount` from the canister's main account to `recipient`'s default account. |
 | `admin_rescue_stuck_tokens(ledger, recipient)` | Send the canister main account's balance of a token (stuck outside any user's wallet) to `recipient`. |
 | `admin_get_pool_unused_balance(pool)`, `admin_pool_deposit(pool, ledger, amount)`, `admin_withdraw_pool_balance_to_user(pool, ledger, amount, user)` | Inspect and move the canister's unused balances inside an ICPSwap pool (refunds after a failed add-liquidity). |
+| `admin_withdraw_stranded_to_owner(stranded_id, amount : opt nat, outcome_checked : bool)` | Pay a stranded record (see 6.6) to its recorded owner's Sneed wallet: at most its recorded amount (`amount` may only be lower), once (a paid record answers `Err ... already paid`). A record in the deposit subaccount is deposited into the pool first. An `Uncertain` record is paid only with `outcome_checked = true`, after checking the pool. Answers `variant { Ok : Stranded; Err : text }`. |
 | `admin_clear_completed_claim_requests()`, `admin_clear_failed_claim_requests()` | Clear the fee-claim history. |
 | `admin_set_icrc3_settings(SettingsUpdate)` | Tune the ICRC-3 log (live block cap, spill batch, archive size and cycles). |
 | `admin_icrc3_spill_now()` | Move old blocks to archives now. |
@@ -724,6 +733,8 @@ Fees:
 | `btype` | When | `tx` fields |
 |---|---|---|
 | `sneedlock_fee_pay` | The ICP lock fee was transferred out of the payer's payment subaccount. | `cid`, `caller`, `payer`, `lock_type` (`token` or `position`), `fee_e8s` (fee charged), `amount_e8s` (amount transferred: the fee minus the ICP ledger fee), `to` (account), `icp_tx` (ICP ledger block index), `price_tier` (`regular`, `premium`, `admin` or `partner`; payments since special prices) |
+| `sneedlock_payment_withdraw` | `withdraw_payment_balance` sent the caller's payment balance back. | `cid`, `caller`, `owner`, `amount` (e8s received), `fee` (ICP ledger fee), `to` (the caller's default account), `icp_tx` |
+| `sneedlock_stranded` | A failed step of `add_liquidity_to_locked_position` left the owner's tokens inside the pool (a record in `get_stranded`). | `cid`, `caller`, `owner`, `pool`, `ledger`, `amount`, `held_in` (`pool_account` or `deposit_subaccount`), `outcome` (`known`, or `uncertain`: a call with an unknown outcome or an upper-bound amount), `stranded_id`, `reason` |
 
 Admin and governance (only admins, governance or controllers can trigger these):
 
@@ -733,6 +744,7 @@ Admin and governance (only admins, governance or controllers can trigger these):
 | `sneedlock_admin_token_rescue` | `admin_rescue_stuck_tokens` succeeded. | `cid`, `caller`, `ledger`, `to` (account), `amount`, `ledger_tx` |
 | `sneedlock_admin_pool_deposit` | `admin_pool_deposit` succeeded. | `cid`, `caller`, `pool`, `ledger`, `amount`, `credited` |
 | `sneedlock_admin_pool_withdraw` | `admin_withdraw_pool_balance_to_user` succeeded. | `cid`, `caller`, `pool`, `ledger`, `amount`, `user`, `accepted` |
+| `sneedlock_stranded_settle` | `admin_withdraw_stranded_to_owner` paid a stranded record (a deposit it made first is a `sneedlock_admin_pool_deposit` with `stranded_id`). | `cid`, `caller`, `owner`, `pool`, `ledger`, `stranded_id`, `amount`, `accepted`, `to` (the owner's Sneed wallet account) |
 | `sneedlock_config_update` | A setting changed. | `cid`, `caller`, `key`, `value` (Text or Nat), `old_value` when known |
 
 `sneedlock_config_update` keys: `max_lock_length_ns`, `token_lock_fee_icp_e8s`, `position_lock_fee_icp_e8s`, `premium_token_lock_fee_icp_e8s`, `premium_position_lock_fee_icp_e8s`, `icp_fee_recipient`, `sneed_premium_canister_id`, `admin_added`, `admin_removed`, `claim_history_cleared`, `failed_claim_history_cleared`, `icrc3_proposal_neuron` (the SNS neuron that submits archive registration proposals; value is its 32-byte id as a Blob, or the text `none`), and the log's own settings `icrc3_max_live_blocks`, `icrc3_spill_batch_size`, `icrc3_archive_max_blocks`, `icrc3_archive_initial_cycles`, `icrc3_archive_top_up_threshold`, `icrc3_archive_top_up_amount`; for special prices, `admin_prices` (value and `old_value`: a map of the set overrides) and `partner_prices` (with a `partner` principal field; value `{ label; prices; expires_at? }` or the text `removed`, `old_value` the previous entry).

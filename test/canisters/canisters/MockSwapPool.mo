@@ -21,6 +21,7 @@ import Nat8 "mo:base/Nat8";
 import Nat32 "mo:base/Nat32";
 import Char "mo:base/Char";
 import Principal "mo:base/Principal";
+import Debug "mo:base/Debug";
 
 shared ({ caller = deployer }) persistent actor class MockSwapPool(init : { token0 : Principal; token1 : Principal; fee : Nat }) = this {
 
@@ -38,6 +39,10 @@ shared ({ caller = deployer }) persistent actor class MockSwapPool(init : { toke
   transient let unused = HashMap.HashMap<Principal, (Nat, Nat)>(16, Principal.equal, Principal.hash);
   transient var use_percent : Nat = 100;
   transient var fail_increase : Bool = false;
+  // test switches for the stranded-token paths: deposit / withdrawToSubaccount answer #err, or trap
+  // (a reject the caller cannot tell from a lost reply; the pool state is rolled back)
+  transient var deposit_mode : { #normal; #err; #trap } = #normal;
+  transient var withdraw_mode : { #normal; #err; #trap } = #normal;
 
   func self() : Principal = Principal.fromActor(this);
 
@@ -142,6 +147,7 @@ shared ({ caller = deployer }) persistent actor class MockSwapPool(init : { toke
   };
 
   public shared ({ caller }) func deposit(args : { token : Text; amount : Nat; fee : Nat }) : async { #ok : Nat; #err : Error } {
+    switch (deposit_mode) { case (#err) { return #err(#InternalError("deposit refused by test configuration")) }; case (#trap) { Debug.trap("deposit trapped by test configuration") }; case (#normal) {} };
     let (ledger, side) = switch (ledgerOf(args.token)) { case (?x) x; case null { return #err(#UnsupportedToken(args.token)) } };
     if (args.amount <= args.fee) { return #err(#InsufficientFunds) };
     let from_sub = principalToSubaccount(caller);
@@ -171,6 +177,7 @@ shared ({ caller = deployer }) persistent actor class MockSwapPool(init : { toke
   };
 
   public shared ({ caller }) func withdrawToSubaccount(args : { token : Text; amount : Nat; fee : Nat; subaccount : Blob }) : async { #ok : Nat; #err : Error } {
+    switch (withdraw_mode) { case (#err) { return #err(#InternalError("withdraw refused by test configuration")) }; case (#trap) { Debug.trap("withdraw trapped by test configuration") }; case (#normal) {} };
     let (ledger, side) = switch (ledgerOf(args.token)) { case (?x) x; case null { return #err(#UnsupportedToken(args.token)) } };
     if (args.amount <= args.fee) { return #err(#InsufficientFunds) };
     if (not subUnused(caller, side, args.amount)) { return #err(#InsufficientFunds) };
@@ -200,6 +207,8 @@ shared ({ caller = deployer }) persistent actor class MockSwapPool(init : { toke
   };
   public shared func set_use_percent(p : Nat) : async () { use_percent := p };
   public shared func set_fail_increase(f : Bool) : async () { fail_increase := f };
+  public shared func set_deposit_mode(m : { #normal; #err; #trap }) : async () { deposit_mode := m };
+  public shared func set_withdraw_mode(m : { #normal; #err; #trap }) : async () { withdraw_mode := m };
   public query func position_owner(positionId : Nat) : async ?Principal {
     switch (positions.get(positionId)) { case (?p) ?p.owner; case null null };
   };

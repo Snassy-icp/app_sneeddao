@@ -217,7 +217,7 @@ describe('an auction', () => {
     const mark = await logLength();
     const b1 = await dex.bid(bob, id, E8);
     const b2 = await dex.bid(carol, id, 2n * E8);
-    // carol tops up her escrow and takes the extra back (bid + one fee stay reserved)
+    // carol tops up her escrow and takes the extra back (the bid stays reserved)
     unwrap(await transfer(icpId, carol, account(dexId, await dex.carol.getBidEscrowSubaccount(carol, b2)), 50_000n));
     expect(unwrap(await dex.carol.withdrawBidEscrow(b2, 30_000n))).toEqual(expect.any(BigInt));
     const r = unwrap(await dex.bob.reserveBid(id)); // reserved, never confirmed
@@ -228,7 +228,10 @@ describe('an auction', () => {
     expect(only(blocks, 'sneedex_bid_reserve').map((b) => b.bid_id)).toEqual([b1, b2, r]);
     expect(only(blocks, 'sneedex_bid_confirm').map((b) => [b.bid_id, b.amount])).toEqual([[b1, E8], [b2, 2n * E8]]);
     expect(one(blocks, 'sneedex_bid_lost', (b) => b.bid_id === b1)).toMatchObject({ offer_id: id, bidder: P(bob), amount: E8, escrowed: 1n, reason: 'outbid' });
-    expect(one(blocks, 'sneedex_bid_lost', (b) => b.bid_id === r)).toMatchObject({ bidder: P(bob), amount: 0n, escrowed: 0n, reason: 'offer_completed' });
+    // the unconfirmed reservation becomes Lost with the offer, without a block of its own
+    // (support audit 2026-10-22: one block per free reservation let spam stall completion)
+    expect(only(blocks, 'sneedex_bid_lost').filter((b) => b.bid_id === r)).toEqual([]);
+    expect(Object.keys((await dex.bob.queryBid(r))[0].state)[0]).toBe('Lost');
     expect(one(blocks, 'sneedex_bid_refund')).toMatchObject({ bid_id: b1, offer_id: id, bidder: P(bob), ledger: P(icpId), amount: E8 - ICP_FEE, to: [P(bob)], via: 'timer' });
     expect(one(blocks, 'sneedex_bid_escrow_withdraw')).toMatchObject({ caller: P(carol), bid_id: b2, offer_id: id, ledger: P(icpId), amount: 30_000n, to: [P(carol)] });
     expect(one(blocks, 'sneedex_offer_complete')).toMatchObject({ offer_id: id, bid_id: b2, buyer: P(carol), amount: 2n * E8, reason: 'accept', caller: P(alice) });

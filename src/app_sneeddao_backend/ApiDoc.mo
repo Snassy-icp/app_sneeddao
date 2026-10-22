@@ -24,6 +24,7 @@ General-purpose backend of Sneed Hub (https://app.sneeddao.com): the shared toke
 - **Special prices** (https://app.sneeddao.com/api-docs/app_sneeddao_backend.md#special-prices): next to the regular and premium jailbreak fee there is an admin price (for this canister's admins who are people) and partner prices (per principal, public label, optional expiry). You pay the **lowest applicable** one; `get_my_jailbreak_price()` (update) answers `{ amount_e8s; price_tier }` with `price_tier` = `regular`, `premium`, `admin` or `partner`. `get_special_prices()` and `get_special_prices_for(principal)` are public queries.
 - **Donations**: the donor makes a plain ledger transfer to `get_donation_account()` (irreversible), then `register_donation({ ledger; block_index; from_subaccount; message })` lists it. The wall is public and shows the donor's principal.
 - Admin-only `send_tokens` and `transfer_position` move tokens or ICPSwap positions held by the backend.
+- Support lookups (admin-only queries, paged, newest first): `admin_get_jailbreak_payments_for(principal, offset, limit)` (with each payment's ICP ledger block), `admin_get_jailbreak_configs_for(principal, offset, limit)`, `admin_get_donations_by(donor, start, limit)`.
 - Legacy name writes are frozen: they return `err(\"Names are moving to the new naming service; please try again shortly\")`.
 
 ## Asynchronous lifecycle and polling
@@ -33,7 +34,7 @@ General-purpose backend of Sneed Hub (https://app.sneeddao.com): the shared toke
 
 ## Errors, retries and Busy
 - Registration and settings updates are idempotent and safe to retry.
-- `save_jailbreak_config` charges once per distinct configuration, so a retry with the same arguments is safe.
+- `save_jailbreak_config` charges once per distinct configuration, so a retry with the same arguments is safe; a second call while the first is still running is refused (`A save is already in progress ...`) and charges nothing.
 - `register_donation` refuses a block already listed (`This donation is already on the wall`), so retries are safe.
 - `set_cached_token_meta` fills only empty entries for non-admins and ignores refused writes.
 

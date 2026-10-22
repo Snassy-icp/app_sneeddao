@@ -278,7 +278,7 @@ On delivery the buyer becomes the canister's only controller. On a return the sn
 ```
 
 1. Give Sneedex **full owner permissions** on the neuron (all of permissions 1 to 10: configure dissolve state, manage principals, submit proposal, vote, disburse, split, merge maturity, disburse maturity, stake maturity, manage voting permission) with the SNS governance's `AddNeuronPermissions`.
-2. Call `escrowSNSNeuron(offerId, i)`. Sneedex checks that both the caller and Sneedex hold full owner permissions, removes every other principal's permissions (exactly the ones each had), records the principals in `hotkeys_snapshot` and each principal's permissions internally, and verifies that only Sneedex is left.
+2. Call `escrowSNSNeuron(offerId, i)`. Sneedex checks that both the caller and Sneedex hold full owner permissions, removes every other principal's permissions (exactly the ones each had), records the principals in `hotkeys_snapshot` and each principal's permissions internally, and verifies that only Sneedex is left. If a removal fails part-way, the permissions already removed are added back, the call returns `GovernanceError("Failed to remove permissions: …")`, and the details go to the support log (op `snsNeuron`), as do Sneedex's own failures to remove itself after a hand-over.
 
 Errors (`GovernanceError`): `Caller does not have owner permissions on the neuron`, `Sneedex canister does not have owner permissions. Please add it as a hotkey first.`, `Neuron not found`, `Failed to query neuron`, `Failed to remove permissions: …`, `Failed to remove permissions from hotkey`, `Failed to fully escrow neuron - other principals still have permissions`, or the governance's own error message.
 
@@ -377,7 +377,8 @@ A confirmed bid with `amount ≥ buyout_price` is recorded at exactly `buyout_pr
 
 - **Automatic**: a confirmed bid that becomes `Lost` (outbid, offer completed by another bid, cancelled) is refunded one second later: `amount − fee` to the bidder's default account, then `Refunded`.
 - **`refundBid(bidId)`**: the same by hand, for the bidder, when the automatic refund failed. Requires `Lost` and `tokens_escrowed` (`Can only refund lost bids`, `No tokens escrowed`). Returns `InsufficientFunds` if the amount does not cover the fee.
-- **`withdrawBidEscrow(bidId, amount) → ok(block_index)`**: sends `amount` from the bid escrow to the bidder; the escrow pays the ledger fee on top. Refused for `Won` and `Refunded` bids. Before confirmation everything less the withdrawal's own fee may be withdrawn; after confirmation `bid.amount + fee` must stay after that fee too, so the most is `balance − bid.amount − 2 × fee`. Returns `InsufficientFunds { available; required }` with the most that may be withdrawn. This is how a bidder recovers tokens sent to a reservation that was never confirmed (including after the offer ended): read `getBidEscrowBalance(bidId)` and withdraw `balance − fee`.
+- **`retryRefund(bidId) → ok(block_index)`**: the same refund, callable by **anyone** (support, a bot, the bidder from another device). The money goes only to the bidder the bid records, never to the caller; once paid the bid is `Refunded` and a repeat answers `Can only refund lost bids`. The hourly expiration worker also retries every `Lost` bid that still holds its escrow (section 3.8).
+- **`withdrawBidEscrow(bidId, amount) → ok(block_index)`**: sends `amount` from the bid escrow to the bidder; the escrow pays the ledger fee on top. Refused for `Won` bids (`Cannot withdraw from a won bid`). Before confirmation everything less the withdrawal's own fee may be withdrawn; after confirmation `bid.amount` must stay after that fee (the refund or the seller payout takes exactly `bid.amount`, its own ledger fees included), so the most is `balance − bid.amount − fee`. Once the bid is paid out (`Refunded`, or `ClaimedBySeller`: the seller has its payment) nothing is reserved, so whatever is left or arrives later can be withdrawn. Returns `InsufficientFunds { available; required }` with the most that may be withdrawn. This is how a bidder recovers tokens sent to a reservation that was never confirmed (including after the offer ended): read `getBidEscrowBalance(bidId)` and withdraw `balance − fee`.
 - **`getBidEscrowBalance(bidId) → ok(nat)`** reads the ledger (update call).
 
 ### 3.7 Settlement: delivery and payment
@@ -392,6 +393,8 @@ The manual equivalents:
 - **`claimAssets(offerId)`**, winner only, while `Completed`. While the seller is still owed (`Won`), it first checks the winning escrow still holds what the seller is due, the bid less any marketplace cut already paid (`Winning bid escrow no longer holds the full bid amount; assets cannot be released`). It hands over only the assets not delivered yet; if one fails it returns `TransferFailed("Not every asset could be handed over (asset <i>: <reason>; …). …")`, the offer stays `Completed`, and calling again retries just those. `InvalidState("A hand-over of this offer's assets is already in progress; try again shortly")` while the delivery timer or another call is handing the same offer over. Other states answer with `InvalidState`: `Offer is Active (not yet completed). Seller must accept a bid first.`, `Assets already claimed`, `Assets were reclaimed by seller`, `Offer has expired`, `Offer was cancelled`, `Offer is in Draft state, not completed`, `Offer is in PendingEscrow state, not completed`.
 - **`claimWinningBid(offerId)`**, creator only, while `Completed` or `Claimed`. Errors: `Offer is not completed`, `Bid is not in won state` (already paid), `An escrow operation is already in progress for this bid`, `InsufficientFunds`, `TransferFailed(...)`. If the cut went out but the transfer to the seller failed, the bid stays `Won` and a retry pays only the seller; the cut is never paid twice.
 
+**`settleOffer(offerId) → ok(text)`**, **anyone**: finishes whatever settlement is still undone, paying only the recipients the offer records. `Completed`: the assets to the winner (as `claimAssets`) and the payment to the seller (as `claimWinningBid`); `Claimed` with the seller unpaid: the payment; `Expired` / `Cancelled`: the assets back to the seller (as `reclaimAssets`). The answer says what was done; if a part fails it is `TransferFailed("Offer #<id>: assets: …; seller payment: …")` and calling again retries only that part. Other states, or nothing left to do: `InvalidState("Nothing to settle: …")`. The caller receives nothing; it is for support and for parties who cannot or do not act. The hourly expiration worker does the same for every unsettled offer (section 3.8), so settlement no longer depends on the 2 s / 3 s timers surviving (they do not survive an upgrade).
+
 **A failed hand-over is retried, never repeated.** Delivery (automatic or `claimAssets`) and return (automatic or `reclaimAssets`) record each asset that reached its recipient and set `Claimed` or `Reclaimed` only when all of them have. A failed transfer (an unreachable ledger, a governance or Sneed Lock refusal) leaves the offer `Completed` (or `Expired` / `Cancelled`) with that asset still in escrow, and the automatic attempt is not repeated: the winner calls `claimAssets` (the seller `reclaimAssets`) again, which hands over only what is missing. Assets already delivered are never sent twice, and NFTs (ICRC-7 and EXT) are moved only while they are still in the offer's escrow account. Hand-overs of one offer are serialized, so the timer and a manual call cannot run at once.
 
 Offers settled by earlier versions of Sneedex could be marked `Claimed` or `Reclaimed` although a transfer had failed. For those, `claimAssets` on a `Claimed` offer (winner only) and `reclaimAssets` on a `Reclaimed` offer (creator only) hand over whatever is provably still held for that offer: token balances in its escrow subaccount (to the winner only while the escrow still holds the full listed amount), NFTs (ICRC-7 and EXT) still in its escrow account, and canisters, neurons and locks of which Sneedex is still the sole controller / sole permission holder / owner and that no other offer lists. With nothing left they answer as before (`Assets already claimed`, `Can only reclaim from expired or cancelled offers`). Anything this cannot prove (for example a canister also listed in a later offer) is left to an admin.
@@ -405,9 +408,11 @@ An `Active` offer with an `expiration` in the past is settled by **`processExpir
 
 Errors: `Offer is not active`, `Offer has no expiration`, `Offer has not expired yet`. A recurring timer (every `getExpirationCheckInterval()` seconds, 3,600 on production; `isExpirationTimerRunning()`) does the same for every expired offer, one at a time, so most integrations never need to call it. Until one of them runs, an expired offer stays `Active` but refuses new bids (`OfferExpired`).
 
+The same worker then **sweeps what settlement left undone**: offers `Completed`, `Expired` or `Cancelled`, `Claimed` offers whose seller is unpaid (each as `settleOffer`), and `Lost` bids still holding their escrow (as `retryRefund`). At most 20 offers and 50 bids per run, rotating, so one that keeps failing cannot hold up the rest; a failure is written once to the support log (`getSupportLog`, op `settlementSweep` / `refundSweep`) and retried every run. `isExpirationWorkerRunning()` is true while a run is in progress; a run that dies is restarted by the next tick.
+
 ### 3.9 Cancellation and reclaiming
 
-**`cancelOffer(offerId)`**, creator only, in `Draft`, `PendingEscrow` or `Active`, **also with bids**. Every confirmed `Pending` bid becomes `Lost`, is refunded, and its bidder is told. The escrowed assets are returned after 2 s (`Cancelled → Reclaimed` once all are back). Error: `Offer cannot be cancelled in current state`.
+**`cancelOffer(offerId)`**, creator only, in `Draft`, `PendingEscrow` or `Active`, **also with bids**. Every confirmed `Pending` bid becomes `Lost`, is refunded, and its bidder is told. The escrowed assets are returned after 2 s (`Cancelled → Reclaimed` once all are back). Tokens and NFTs (ICRC-1, ICRC-7, EXT) that reached the offer's escrow account but were never marked escrowed (too little sent, `escrow*` never called) go back to the creator too, best effort: whatever is in the escrow account (ICRC-1 less one fee); a ledger or collection that cannot answer is written to the support log and does not hold up `Reclaimed` (`reclaimAssets` retries it later). The same happens on expiry. Error: `Offer cannot be cancelled in current state`.
 
 **`reclaimAssets(offerId)`**, creator only, in `Expired` or `Cancelled`: returns the escrowed assets not returned yet (canister controllers from the snapshot, neuron permissions as recorded, token balances less one fee, NFTs and locks to the creator; EXT cards also when sent but never marked escrowed, section 3.2) and sets `Reclaimed` once all are back. If one fails: `TransferFailed("Not every asset could be handed over (…)")`, the state stays, and calling again retries the rest (section 3.7). Errors: `Can only reclaim from expired or cancelled offers`, `A hand-over of this offer's assets is already in progress; try again shortly`.
 
@@ -501,11 +506,11 @@ Every change is a `sneedex_config_update` block (`admin_prices` / `partner_price
 
 **`SneedexError`.** `NotAuthorized` (not the creator, bidder or an admin; or not an approved bidder), `OfferNotFound`, `BidNotFound`, `InvalidState(text)`, `InvalidAsset(text)`, `InvalidPrice(text)`, `InvalidInput(text)`, `InvalidExpiration`, `OfferExpired`, `OfferMustHaveBuyoutOrExpiration`, `BidTooLow { minimum }`, `BidIncrementTooSmall { … }`, `InsufficientFunds { available; required }`, `TransferFailed(text)`, `CanisterError(text)`, `GovernanceError(text)`. `AssetTypeNotSupported`, `CannotCancelWithBids` and `EscrowFailed` exist in the type but are not returned by the current code.
 
-**Per-bid escrow lock.** `confirmBid`, `refundBid`, `withdrawBidEscrow`, the automatic refund and the seller payout serialise on the bid. A second call while one runs gets `InvalidState("An escrow operation is already in progress for this bid")`; retry after a few seconds.
+**Per-bid escrow lock.** `confirmBid`, `refundBid`, `retryRefund`, `withdrawBidEscrow`, the automatic refund and the seller payout serialise on the bid. A second call while one runs gets `InvalidState("An escrow operation is already in progress for this bid")`; retry after a few seconds.
 
 **Offers change during awaits.** The escrow methods re-read the offer after their cross-canister calls and refuse with `InvalidState("Offer changed while escrowing")` if it moved on (for example a cancel in between). Settlement checks `Active` and writes the new state without an `await` in between, so concurrent buyouts, `acceptBid` and expiry cannot both win.
 
-**Retrying.** The `escrow*` methods verify the current on-chain situation, so repeating one after a timeout is safe. `createOffer` is not idempotent: two calls make two drafts and charge two fees; after a timeout check `getOffersByCreator(me)` first. `reserveBid` is cheap to repeat but each call makes a new bid id with its own escrow subaccount; send tokens only to the id you are going to confirm. `processExpiration`, `claimAssets`, `reclaimAssets` and `claimWinningBid` refuse a second run once they have succeeded; after a `TransferFailed` they are meant to be called again and only redo what failed.
+**Retrying.** The `escrow*` methods verify the current on-chain situation, so repeating one after a timeout is safe. `createOffer` is not idempotent: two calls make two drafts and charge two fees; after a timeout check `getOffersByCreator(me)` first. `reserveBid` is cheap to repeat but each call makes a new bid id with its own escrow subaccount; send tokens only to the id you are going to confirm. `processExpiration`, `claimAssets`, `reclaimAssets`, `claimWinningBid`, `settleOffer` and `retryRefund` refuse a second run once they have succeeded; after a `TransferFailed` they are meant to be called again and only redo what failed.
 
 **Thrown errors.** A rejected call means nothing changed, except after a cross-canister await. Re-read with `queryOffer` / `queryBid` / `getOfferView` and continue from the state you find.
 
@@ -561,20 +566,24 @@ Creator, `PendingEscrow → Active`. Errors: `All assets must be escrowed before
 
 **`reclaimAssets(offerId) → variant { ok; err }`** Creator. Section 3.9.
 
+**`settleOffer(offerId) → variant { ok : text; err }`** Anyone; pays only the recorded recipients. Section 3.7.
+
 **`getCanisterInfo(offerId, assetIndex) → variant { ok : CanisterInfo; err }`** Update. Section 3.11.
 
 ### 6.3 Bids
 
 | Method | Kind | Returns | Notes |
 |---|---|---|---|
-| `reserveBid(offerId)` | update | `ok(BidId)` | 3.3. Errors: `Offer is not active`, `NotAuthorized`, `OfferExpired`. |
+| `reserveBid(offerId)` | update | `ok(BidId)` | 3.3. Errors: `Offer is not active`, `NotAuthorized`, `OfferExpired`, `InvalidState("Too many unconfirmed bid reservations …")` (at most 10 unconfirmed reservations per principal per open offer, 50 in all: confirm one or reuse one from `getBidsByBidderAll`). |
 | `getBidEscrowSubaccount(bidder, bidId)` | query | `blob` | 1.4. |
 | `confirmBid(bidId, amount)` | update | `ok` | 3.3, 3.4. |
-| `refundBid(bidId)` | update | `ok` | 3.6. |
-| `withdrawBidEscrow(bidId, amount)` | update | `ok(block_index)` | 3.6. Error: `Cannot withdraw from won or refunded bids`. |
+| `refundBid(bidId)` | update | `ok` | 3.6. Bidder. |
+| `retryRefund(bidId)` | update | `ok(block_index)` | 3.6. Anyone; refunds only the bidder. |
+| `withdrawBidEscrow(bidId, amount)` | update | `ok(block_index)` | 3.6. Error: `Cannot withdraw from a won bid`. |
 | `getBidEscrowBalance(bidId)` | update | `ok(nat)` | 3.6. |
 | `queryBid(bidId)` | query | `opt Bid` | Any bid, reservations included. |
 | `getBidsByBidder(bidder)` | query | `vec Bid` | Confirmed bids only (any state). |
+| `getBidsByBidderAll(bidder)` | query | `vec Bid` | Every bid, unconfirmed reservations included (to find a deposit that was never confirmed). |
 | `getNextBidId()` | query | `BidId` | |
 
 ### 6.4 Registries and helpers
@@ -593,6 +602,18 @@ Creator, `PendingEscrow → Active`. Errors: `All assets must be escrowed before
 | `getExpirationCheckInterval()`, `isExpirationTimerRunning()`, `isExpirationWorkerRunning()` | query | `nat` / `bool` | 3.8. |
 | `getSneedLockCanisterId()`, `getSneedPremiumCanisterId()`, `getSneedSmsCanisterId()`, `getBackendCanisterId()`, `getNeuronManagerFactoryCanisterId()` | query | `principal` / `opt principal` | The canisters Sneedex works with. |
 
+### 6.4a Support lookups (queries, anyone)
+
+| Method | Returns | Notes |
+|---|---|---|
+| `getSettlement(offerId)` | `opt record { state; winning_bid : opt Bid; delivered_asset_indices : vec nat; settlement_in_progress : bool }` | Where an offer's settlement stands: the assets already handed over by a settlement still in progress, and whether a hand-over runs now. |
+| `getSupportLog(before : opt nat, limit : nat)` | `vec SupportLogEntry` | Newest first, at most 100; `before` pages back (ids below it). A ring of the last 500 errors swallowed by background work (timers, the sweep, notifications, wallet registration, bot botkey snapshots and restores, failed excess-bid refunds, unescrowed returns) and admin interventions. |
+| `getSupportLogFor(p)` | `vec SupportLogEntry` | The entries that name `p` (as party or admin). |
+| `getCreationFeePaymentsFor(p, before : opt nat, limit : nat)` | `vec CreationFeePaymentLogEntry` | Creation fees `p` paid, newest first, at most 100. |
+| `getCutPaymentsFor(p, before : opt nat, limit : nat)` | `vec CutPaymentLogEntry` | Marketplace cuts of sales `p` took part in (seller or buyer), newest first, at most 100. |
+
+`SupportLogEntry = record { id : nat; time : int; kind : text ("error" or "admin"); op : text; principal : opt principal; offer_id : opt nat; bid_id : opt nat; text : text }`. The text is at most 500 characters. Nothing in it is private: the same principals, ids and amounts are on the ledgers and in the activity log.
+
 ### 6.5 Fees, payment and notifications
 
 `getEffectiveOfferCreationFee`, `getFeeConfig`, `getOfferCreationFee`, `getPremiumOfferCreationFee`, `getPremiumAuctionCutBps`, `getMarketplaceFeeRate`, `getFeeRecipient`, `getLedgerFeeRecipients`, `getOfferCreationPaymentSubaccount`, `getUserOfferCreationBalance`, `withdrawOfferCreationPayment`, `getPaymentStats`: section 4. `get_special_prices`, `get_special_prices_for`, `get_offer_price_tiers`, `set_admin_prices`, `set_partner_prices`, `remove_partner_prices`: section 4.4. `getMyNotificationSettings`, `setMyNotificationSettings`: section 3.10.
@@ -610,10 +631,10 @@ Restricted to the canister's controllers (the Sneed SNS on production) and `conf
 | `setOfferCreationFee(e8s)`, `setPremiumOfferCreationFee(e8s)` | Creation fees: 0 (free) or at least the ICP ledger fee, 10_000 e8s (smaller fees are refused). |
 | `setFeeRecipient(account)`, `setLedgerFeeRecipient(ledger, account)`, `removeLedgerFeeRecipient(ledger)` | Where fees go. |
 | `setSneedPremiumCanisterId`, `setSneedSmsCanisterId`, `setBackendCanisterId`, `setNeuronManagerFactoryCanisterId`, `setSneedLockCanisterId` | Wiring to other Sneed canisters. |
-| `startExpirationTimer()`, `stopExpirationTimer()`, `setExpirationCheckInterval(seconds)`, `triggerExpirationCheck()` | The expiry timer (interval at least 60 s). |
+| `startExpirationTimer()`, `stopExpirationTimer()`, `setExpirationCheckInterval(seconds)`, `triggerExpirationCheck()` | The expiry timer (interval at least 60 s); `triggerExpirationCheck` starts a run now (expired offers and the settlement sweep, 3.8). |
 | `setNeuronInfoCacheStaleness(seconds)`, `clearNeuronInfoCache()`, `clearNeuronInfoCacheFor(canister)` | Staking-bot info cache. |
 | `getCreationFeePaymentLog(offset, limit)`, `getCutPaymentLog(offset, limit)`, `getCreationFeePaymentLogCount()`, `getCutPaymentLogCount()` | Payment logs, newest first, at most 1,000 per page. |
-| `adminReclaimStuckTokens(offerId)` | Retries returning every escrowed asset of an offer to its creator and reports each result as text (ICRC-7 and EXT NFTs: only those still in the offer's escrow account). |
+| `adminReclaimStuckTokens(offerId)`, `adminReclaimStuckTokensWithReason(offerId, reason)` | Retries returning every escrowed asset of an offer to its creator and reports each result as text (ICRC-7 and EXT NFTs: only those still in the offer's escrow account). Only for `PendingEscrow`, `Cancelled`, `Expired` or `Reclaimed` offers without a winning bid. Every call, refused or not, is written to the support log with its reason (at most 500 characters). |
 | `adminReturnMisplacedNft(collection, tokenId, to)` | Returns an NFT a non-compliant collection put in Sneedex's default account. Refused while any open offer has the token escrowed. |
 | `adminReturnMisplacedExtNft(collection, tokenIndex, fromOffer, to)` | Returns an EXT token from Sneedex's default account (`fromOffer` null) or from an offer's escrow account (`opt offerId`) that no offer holds it for, to `to`'s default account. Refused while an offer waiting for its escrow lists the token, or an offer holds it escrowed and has not handed it over. |
 | `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers`, `admin_set_icrc3_proposal_neuron`, `admin_icrc3_register_archives_now`, `admin_icrc3_reset_archive_registration` | The activity log's archives and their SNS registration (section 8). |
@@ -787,7 +808,7 @@ Offers:
 | `sneedex_offer_cancel` | `cancelOffer` | `caller`, `offer_id`, `from_state` (`draft`, `pending_escrow`, `active`) |
 | `sneedex_offer_expire` | An Active offer passed its expiration without bids (`processExpiration` by anyone, or the expiration worker). | `offer_id`; `caller` or `via` |
 | `sneedex_offer_complete` | The offer got its winner (the bid becomes Won). | `offer_id`, `bid_id`, `buyer`, `price_ledger`, `amount`, `reason` (`buyout`, `accept`, `expiry`); `caller` or `via` |
-| `sneedex_asset_deliver` | One asset reached its recipient. | `offer_id`, `asset_index`, `asset`, `to`, `side` (`buyer` or `seller`); for tokens `amount` and `ledger_tx` when a transfer happened; for NFTs (ICRC-7 and EXT) `moved` (tokens moved); `escrowed` = 0 when an EXT asset that was never marked escrowed was returned best effort on cancel or expiry; `recovered` = 1 when handed over from an offer already Claimed / Reclaimed; `caller` or `via` |
+| `sneedex_asset_deliver` | One asset reached its recipient. | `offer_id`, `asset_index`, `asset`, `to`, `side` (`buyer` or `seller`); for tokens `amount` and `ledger_tx` when a transfer happened; for NFTs (ICRC-7 and EXT) `moved` (tokens moved); `escrowed` = 0 when an asset that was never marked escrowed (ICRC-1, ICRC-7 or EXT) was returned best effort on cancel or expiry; `recovered` = 1 when handed over from an offer already Claimed / Reclaimed; `caller` or `via` |
 | `sneedex_offer_settle` | Every asset arrived; the offer is now Claimed or Reclaimed. | `offer_id`, `outcome` (`claimed` or `reclaimed`), `to`; `caller` or `via` |
 
 Bids and payments:
@@ -797,8 +818,8 @@ Bids and payments:
 | `sneedex_bid_reserve` | `reserveBid` | `caller`, `bid_id`, `offer_id` |
 | `sneedex_bid_excess_refund` | `confirmBid` sent back what the escrow held above the effective bid. | `caller`, `bid_id`, `offer_id`, `ledger`, `amount`, `to`, `ledger_tx` |
 | `sneedex_bid_confirm` | `confirmBid` recorded the bid. | `caller`, `bid_id`, `offer_id`, `ledger`, `amount` (effective bid, capped at the buyout) |
-| `sneedex_bid_lost` | A bid became Lost. | `bid_id`, `offer_id`, `bidder`, `amount`, `escrowed` (0 for a reservation never confirmed), `reason` (`outbid`, `offer_completed`, `offer_cancelled`, `offer_closed`: confirmed after the offer closed, `buyout_race`: another buyout won) |
-| `sneedex_bid_refund` | A Lost bid's escrow went back to the bidder (`refundBid` or the auto-refund). | `bid_id`, `offer_id`, `bidder`, `ledger`, `amount`, `to`, `ledger_tx`; `caller` or `via` |
+| `sneedex_bid_lost` | A bid became Lost. A reservation never confirmed becomes Lost with its offer's completion without a block of its own (it held no escrow; the `sneedex_offer_complete` block covers it). | `bid_id`, `offer_id`, `bidder`, `amount`, `escrowed` (0 for a reservation never confirmed, from blocks written before 2026-10-22), `reason` (`outbid`, `offer_completed`, `offer_cancelled`, `offer_closed`: confirmed after the offer closed, `buyout_race`: another buyout won) |
+| `sneedex_bid_refund` | A Lost bid's escrow went back to the bidder (`refundBid`, `retryRefund`, the auto-refund or the sweep). | `bid_id`, `offer_id`, `bidder`, `ledger`, `amount`, `to`, `ledger_tx`; `caller` or `via` |
 | `sneedex_bid_escrow_withdraw` | `withdrawBidEscrow` | `caller`, `bid_id`, `offer_id`, `ledger`, `amount`, `to`, `ledger_tx` |
 | `sneedex_cut_pay` | The marketplace cut left the winning escrow. | `offer_id`, `bid_id`, `ledger`, `cut` (charged), `amount` (transferred: cut less one ledger fee), `fee_rate_bps`, `to`, `ledger_tx`; `caller` or `via`; `price_tier` (tier of the cut, offers created since special prices) |
 | `sneedex_seller_pay` | The seller was paid (the bid becomes ClaimedBySeller). | `offer_id`, `bid_id`, `seller`, `ledger`, `bid_amount`, `cut`, `amount`, `to`, `ledger_tx`; `caller` or `via` |

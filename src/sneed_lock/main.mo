@@ -203,6 +203,16 @@ shared (deployer) persistent actor class SneedLock() = this {
   // meanwhile: the withdrawal clears the withdrawer's claim afterwards, so a recipient would
   // be left holding a claim on a position that has left.
   transient var positions_in_flight = Map.new<Text, ()>();
+  // Callers with a lock creation or a payment-balance withdrawal running: their ICP payment
+  // subaccount is checked before an await and charged after it, so the two exclude each other
+  // (spec/support_audit.md P1-12, P1-14).
+  transient var payment_ops_in_flight = Map.new<Principal, ()>();
+  // Tokens stranded inside a pool by a failed step of add_liquidity_to_locked_position, by id
+  // (spec/support_audit.md P1-14). Each is also an ICRC-3 sneedlock_stranded block, and
+  // admin_withdraw_stranded_to_owner pays one to its recorded owner, once. New stable fields (additive).
+  stable var stranded = Map.new<Nat, T.Stranded>();
+  stable var next_stranded_id : Nat = 0;
+  transient var stranded_in_flight = Map.new<Nat, ()>();
   private func position_key(swap_canister_id : Principal, position_id : T.PositionId) : Text {
     Principal.toText(swap_canister_id) # ":" # Nat.toText(position_id)
   };
@@ -1563,6 +1573,25 @@ shared (deployer) persistent actor class SneedLock() = this {
   /// `dissolve_delay` (v2, optional): with one, the lock period may be zero, the limits apply
   /// to period + delay, and the tokens stay locked until the lock has dissolved.
   public shared ({ caller }) func create_lock(amount : Nat, icrc1_ledger_canister_id : Principal, expires_at : Expiry, dissolve_delay : ?Nat64) : async CreateLockResult {
+      // Serialized with every other token operation of the caller (the balance checked here
+      // must still be there when the lock is recorded after the fee check's awaits) and with
+      // the caller's payment-balance withdrawal (the fee verified must still be there to charge).
+      if (is_token_op_locked(caller) or Map.has(payment_ops_in_flight, phash, caller)) {
+        let error = #Err({ message = "A token operation or lock creation is already in progress for caller: " # debug_show(caller) # "; retry after it completes"; transfer_error = null });
+        log_error(caller, get_next_correlation_id(), debug_show(error));
+        return error;
+      };
+      lock_token_op(caller);
+      Map.set(payment_ops_in_flight, phash, caller, ());
+      try {
+        await* create_lock_locked(caller, amount, icrc1_ledger_canister_id, expires_at, dissolve_delay);
+      } finally {
+        Map.delete(payment_ops_in_flight, phash, caller);
+        unlock_token_op(caller);
+      };
+  };
+
+  private func create_lock_locked(caller : Principal, amount : Nat, icrc1_ledger_canister_id : Principal, expires_at : Expiry, dissolve_delay : ?Nat64) : async* CreateLockResult {
       
       let correlation_id = get_next_correlation_id();
       log_info(caller, correlation_id, " Creating lock for " # debug_show(amount) 
@@ -1662,6 +1691,21 @@ shared (deployer) persistent actor class SneedLock() = this {
       };
       let (fee_to_charge, fee_tier) = fee_and_tier;
 
+      // Re-check after the awaits: the caller's token operations are excluded meanwhile, but
+      // locks can have arrived (a lock transfer to the caller) or expired.
+      clear_expired_locks_for_principal(caller, correlation_id);
+      let locked_now = get_summed_locks_from_principal_and_token(caller, icrc1_ledger_canister_id);
+      if (token_balance < locked_now + amount) {
+          let error = #Err({
+            message = "Insufficient unlocked balance to lock. Has: " # Nat.toText(token_balance)
+              # ", Locked: " # Nat.toText(locked_now)
+              # " Required: " # Nat.toText(locked_now + amount);
+            transfer_error = null;
+          });
+          log_error(caller, correlation_id, debug_show(error));
+          return error;
+      };
+
       // Step 2: Create the lock. With a delay its record carries NEVER until it dissolves.
       let lock = add_new_lock_for_principal(caller, icrc1_ledger_canister_id, amount, if (delay > 0) { D.NEVER } else { expires_at });
       Map.set(lock_created_at, nhash, lock.lock_id, NowAsNat64());
@@ -1693,6 +1737,26 @@ shared (deployer) persistent actor class SneedLock() = this {
       return #Ok(lock.lock_id);
   };
 
+  /// Null when `token0` and `token1` are the pool's token0 and token1 (its metadata), in that
+  /// order; else why not (also when the pool cannot be asked).
+  private func pool_tokens_refusal(pool_id : Principal, token0 : Principal, token1 : Principal) : async* ?Text {
+    let pool = actor (Principal.toText(pool_id)) : actor {
+      metadata : () -> async { #ok : { token0 : { address : Text; standard : Text }; token1 : { address : Text; standard : Text } }; #err : T.SwapCanisterError };
+    };
+    let meta = try { await pool.metadata() } catch (e) {
+      return ?("Could not read the pool's tokens (metadata): " # Error.message(e));
+    };
+    switch (meta) {
+      case (#err(e)) { ?("Could not read the pool's tokens (metadata): " # debug_show(e)) };
+      case (#ok(m)) {
+        if (m.token0.address == Principal.toText(token0) and m.token1.address == Principal.toText(token1)) { null }
+        else {
+          ?("token0/token1 must be the pool's own, in its order: token0 = " # m.token0.address # ", token1 = " # m.token1.address)
+        };
+      };
+    };
+  };
+
   public shared ({ caller }) func create_position_lock(
     swap_canister_id : Principal,
     dex : T.Dex,
@@ -1703,7 +1767,20 @@ shared (deployer) persistent actor class SneedLock() = this {
     dissolve_delay : ?Nat64) : async T.CreateLockResult {
       let correlation_id = get_next_correlation_id();
       log_info(caller, correlation_id, "Creating position lock for " # debug_show(caller) # " on swap canister " # debug_show(swap_canister_id) # " for position " # debug_show(position_id) # " to expire at " # debug_show(expires_at));
-      let result = await create_or_update_position_lock(caller, correlation_id, swap_canister_id, ?dex, position_id, expires_at, ?token0, ?token1, dissolve_delay);
+      // One lock creation (or payment-balance withdrawal) per caller at a time: the lock fee is
+      // verified before awaits and charged after them, so concurrent creates could each pass
+      // the checks and make two locks with two fees.
+      if (Map.has(payment_ops_in_flight, phash, caller)) {
+        let error = #Err({ message = "A lock creation or payment withdrawal is already in progress for caller: " # debug_show(caller) # "; retry after it completes"; transfer_error = null });
+        log_error(caller, correlation_id, debug_show(error));
+        return error;
+      };
+      Map.set(payment_ops_in_flight, phash, caller, ());
+      let result = try {
+        await create_or_update_position_lock(caller, correlation_id, swap_canister_id, ?dex, position_id, expires_at, ?token0, ?token1, dissolve_delay);
+      } finally {
+        Map.delete(payment_ops_in_flight, phash, caller);
+      };
       switch (result) {
         case (#Ok(_)) {
           log_info(caller, correlation_id, "Created position lock for " # debug_show(caller) # " on swap canister " # debug_show(swap_canister_id) # " for position " # debug_show(position_id) # " to expire at " # debug_show(expires_at) # ", result: " # debug_show(result));
@@ -1836,6 +1913,16 @@ shared (deployer) persistent actor class SneedLock() = this {
               case (?token1_value) { token1_value; };
             };
 
+            // The tokens must be the pool's own, in its order: they are stored on the lock and
+            // fee claims and liquidity additions use them to talk to the ledgers.
+            switch (await* pool_tokens_refusal(swap_canister_id, token0_value, token1_value)) {
+              case (?why) {
+                log_error(caller, correlation_id, why);
+                return #Err({ message = why; transfer_error = null });
+              };
+              case null {};
+            };
+
             // Step 1: Verify ICP funds are available (balance check only)
             let icp_verify_result = await* verifyLockFeeIcp(caller, correlation_id, true);
             let fee_and_tier = switch (icp_verify_result) {
@@ -1848,6 +1935,24 @@ shared (deployer) persistent actor class SneedLock() = this {
                 case (#Ok(fee)) { fee };
             };
             let (fee_to_charge, fee_tier) = fee_and_tier;
+
+            // Re-check after the awaits: the claim may have moved, the position may be leaving,
+            // or a lock may exist now.
+            clear_expired_position_locks_for_principal(caller, correlation_id);
+            let changed : ?Text = if (not has_claimed_position_impl(caller, swap_canister_id, position_id)) {
+              ?"Position is no longer claimed by caller."
+            } else if (Map.has(positions_in_flight, thash, position_key(swap_canister_id, position_id))) {
+              ?"A withdrawal of this position is in progress."
+            } else if (get_position_lock(caller, swap_canister_id, position_id) != null or position_has_active_lock(swap_canister_id, position_id)) {
+              ?"This position was locked meanwhile."
+            } else { null };
+            switch (changed) {
+              case (?why) {
+                log_error(caller, correlation_id, why);
+                return #Err({ message = why; transfer_error = null });
+              };
+              case null {};
+            };
 
             // Step 2: Create the position lock. With a delay its record carries NEVER until it dissolves.
             let new_position_lock = add_new_position_lock_for_principal(
@@ -3154,6 +3259,10 @@ shared (deployer) persistent actor class SneedLock() = this {
       "sneedlock_dissolve_delay_increase",
       "sneedlock_token_lock_extend",
       "sneedlock_gas_withdraw",
+      // support fixes (spec/support_audit.md P1-12, P1-14)
+      "sneedlock_payment_withdraw",
+      "sneedlock_stranded",
+      "sneedlock_stranded_settle",
     ];
   };
 
@@ -3403,20 +3512,45 @@ shared (deployer) persistent actor class SneedLock() = this {
   ////////////////
   // logging
   ////////////////
-  public shared func get_info_id_range() : async ?(Nat, Nat) {
+  // Queries since the support fixes (spec/support_audit.md P1-9; an intentional interface change:
+  // they were updates, and the only caller, Sneed Hub, does not use them). The ingress guard
+  // refuses them as update calls.
+  public query func get_info_id_range() : async ?(Nat, Nat) {
     CircularBuffer.CircularBufferLogic.get_id_range(info_log);
   };
 
-  public shared func get_error_id_range() : async ?(Nat, Nat) {
+  public query func get_error_id_range() : async ?(Nat, Nat) {
     CircularBuffer.CircularBufferLogic.get_id_range(error_log);
   };
 
-  public shared func get_info_entries(start: Nat, length: Nat) : async [?BufferEntry] {
+  public query func get_info_entries(start: Nat, length: Nat) : async [?BufferEntry] {
     CircularBuffer.CircularBufferLogic.get_entries_by_id(info_log, start, Nat.min(length, 500)); // capped: a reply must fit
   };
 
-  public shared func get_error_entries(start: Nat, length: Nat) : async [?BufferEntry] {
+  public query func get_error_entries(start: Nat, length: Nat) : async [?BufferEntry] {
     CircularBuffer.CircularBufferLogic.get_entries_by_id(error_log, start, Nat.min(length, 500)); // capped: a reply must fit
+  };
+
+  /// A principal's entries in the info or error log (the entries logged for its calls), newest
+  /// first, ids below `before`. For that principal or an admin.
+  public query ({ caller }) func get_log_entries_for(p : Principal, q : T.LogEntriesQuery) : async { #Ok : [BufferEntry]; #Err : Text } {
+    if (caller != p and not isAdmin(caller)) { return #Err("Only " # Principal.toText(p) # " or an admin can read these entries") };
+    let take = switch (q.take) { case (?t) Nat.min(t, 500); case null 100 };
+    let cb = if (q.errors) error_log else info_log;
+    let out = Buffer.Buffer<BufferEntry>(take);
+    if (take == 0 or cb.count == 0) { return #Ok([]) };
+    var i = cb.count;
+    while (i > 0 and out.size() < take) {
+      i -= 1;
+      switch (cb.buffer[(cb.start + i) % cb.capacity]) {
+        case (?e) {
+          let below = switch (q.before) { case (?b) e.id < b; case null true };
+          if (below and e.caller == p) { out.add(e) };
+        };
+        case null {};
+      };
+    };
+    #Ok(Buffer.toArray(out));
   };
 
   private func log_info(caller : Principal, correlation_id : Nat, message: Text) {
@@ -3797,6 +3931,88 @@ shared (deployer) persistent actor class SneedLock() = this {
   public shared query ({ caller }) func admin_get_payment_log_count() : async Nat {
     assert(isAdmin(caller));
     payment_log.size();
+  };
+
+  /// The fee payments of one payer, newest first (`offset` 0 = the newest), at most 1000 a page.
+  /// For that payer or an admin.
+  public query ({ caller }) func get_payment_log_for(p : Principal, offset : Nat, limit : Nat) : async {
+    #Ok : { payments : [T.PaymentLogEntry]; total_count : Nat; has_more : Bool };
+    #Err : Text;
+  } {
+    if (caller != p and not isAdmin(caller)) { return #Err("Only " # Principal.toText(p) # " or an admin can read these payments") };
+    let mine = Array.filter<T.PaymentLogEntry>(payment_log, func(e) { e.payer == p });
+    let total = mine.size();
+    let lim = Nat.min(limit, 1000);
+    if (offset >= total or lim == 0) { return #Ok({ payments = []; total_count = total; has_more = offset < total and lim == 0 }) };
+    let n = Nat.min(lim, total - offset);
+    // newest first: index total-1-offset downwards
+    let page = Array.tabulate<T.PaymentLogEntry>(n, func(i) { mine[total - 1 - offset - i] });
+    #Ok({ payments = page; total_count = total; has_more = offset + n < total });
+  };
+
+  /// The caller's ICP payment subaccount balance (lock-fee deposits not used by a lock) back to the
+  /// caller's own default account, less the ICP ledger fee. Refused while a lock creation of the
+  /// caller is running (it may be about to charge that balance). Logged as sneedlock_payment_withdraw.
+  public shared ({ caller }) func withdraw_payment_balance() : async { #Ok : { amount : Nat; icp_tx : Nat }; #Err : Text } {
+    if (Principal.isAnonymous(caller)) { return #Err("The anonymous principal has no payment balance") };
+    let correlation_id = get_next_correlation_id();
+    let subaccount = userPaymentSubaccount(caller);
+    // For ~1/256 of principals the payment subaccount is their Sneed wallet subaccount (byte 23
+    // already 0x50): then locked ICP stays and the wallet's token-operation guard applies too.
+    let is_wallet = subaccount == Blob.fromArray(PrincipalToSubaccount(caller));
+    if (Map.has(payment_ops_in_flight, phash, caller) or (is_wallet and is_token_op_locked(caller))) {
+      let msg = "A lock creation or payment withdrawal is in progress for the caller; retry after it completes";
+      log_error(caller, correlation_id, msg);
+      return #Err(msg);
+    };
+    Map.set(payment_ops_in_flight, phash, caller, ());
+    if (is_wallet) { lock_token_op(caller) };
+    let icp = Principal.fromText(ICP_LEDGER_ID);
+    let icpLedger = actor (ICP_LEDGER_ID) : actor {
+      icrc1_balance_of : shared query { owner : Principal; subaccount : ?Blob } -> async Nat;
+      icrc1_transfer : shared TransferArgs -> async T.TransferResult;
+    };
+    try {
+      let balance = try { await icpLedger.icrc1_balance_of({ owner = this_canister_id(); subaccount = ?subaccount }) } catch (e) {
+        let msg = "Reading the payment balance failed: " # Error.message(e);
+        log_error(caller, correlation_id, msg);
+        return #Err(msg);
+      };
+      let locked = if (is_wallet) { clear_expired_locks_for_principal(caller, correlation_id); get_summed_locks_from_principal_and_token(caller, icp) } else { 0 };
+      let fee = Nat64.toNat(ICP_FEE);
+      let free = if (balance > locked) { balance - locked } else { 0 };
+      if (free <= fee) {
+        let msg = "Nothing to withdraw: payment balance " # Nat.toText(balance) # " e8s" # (if (locked > 0) { ", locked " # Nat.toText(locked) } else { "" }) # ", ledger fee " # Nat.toText(fee);
+        log_info(caller, correlation_id, msg);
+        return #Err(msg);
+      };
+      let amount = free - fee;
+      let to : Account = { owner = caller; subaccount = null };
+      let args : TransferArgs = { from_subaccount = ?subaccount; to; amount; fee = ?fee; memo = ?Text.encodeUtf8("SLPW"); created_at_time = ?NowAsNat64() };
+      let result = try { await icpLedger.icrc1_transfer(args) } catch (e) {
+        let msg = "The ICP transfer failed with an unknown outcome: " # Error.message(e) # ". Check getPaymentBalance before retrying (correlation id " # Nat.toText(correlation_id) # ")";
+        log_error(caller, correlation_id, msg);
+        return #Err(msg);
+      };
+      switch (result) {
+        case (#Ok(tx)) {
+          icrc3_add("sneedlock_payment_withdraw", [
+            ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("owner", Icrc3Log.principal(caller)),
+            ("amount", #Nat(amount)), ("fee", #Nat(fee)), ("to", Icrc3Log.account(caller, null)), ("icp_tx", #Nat(tx)),
+          ]);
+          log_info(caller, correlation_id, "Payment balance withdrawn: " # Nat.toText(amount) # " e8s to the caller, ICP block " # Nat.toText(tx));
+          #Ok({ amount; icp_tx = tx });
+        };
+        case (#Err(e)) {
+          let msg = "The ICP transfer failed: " # debug_show(e);
+          log_error(caller, correlation_id, msg);
+          #Err(msg);
+        };
+      };
+    } finally {
+      Map.delete(payment_ops_in_flight, phash, caller);
+      if (is_wallet) { unlock_token_op(caller) };
+    };
   };
 
   // Query: Get payment subaccount for a user
@@ -4250,6 +4466,35 @@ shared (deployer) persistent actor class SneedLock() = this {
   // Adding liquidity to a locked position
   // ---------------------------------------------------------------------------
 
+  // Stranded tokens (spec/support_audit.md P1-14): every path of an addition that leaves a
+  // user's tokens inside the pool records them, with an ICRC-3 block, so an admin pays exactly
+  // that to exactly that user (admin_withdraw_stranded_to_owner), once.
+  private func record_stranded(owner : Principal, correlation_id : Nat, pool_id : Principal, ledger : Principal, amount : Nat,
+    held_in : T.StrandedHeldIn, uncertain : Bool, reason : Text) : Nat {
+    let id = next_stranded_id;
+    next_stranded_id += 1;
+    let rec : T.Stranded = {
+      id; owner; pool = pool_id; ledger; amount; held_in;
+      status = if (uncertain) #Uncertain else #Open;
+      reason; correlation_id; recorded_at = NowAsNat64();
+    };
+    Map.set(stranded, nhash, id, rec);
+    icrc3_add("sneedlock_stranded", [
+      ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(owner)), ("owner", Icrc3Log.principal(owner)),
+      ("pool", Icrc3Log.principal(pool_id)), ("ledger", Icrc3Log.principal(ledger)), ("amount", #Nat(amount)),
+      ("held_in", #Text(stranded_held_in_text(held_in))), ("outcome", #Text(if (uncertain) "uncertain" else "known")),
+      ("stranded_id", #Nat(id)), ("reason", #Text(reason)),
+    ]);
+    log_error(owner, correlation_id, "ADMIN ACTION: stranded record " # Nat.toText(id) # ": " # Nat.toText(amount) # " of " # Principal.toText(ledger)
+      # " for " # Principal.toText(owner) # " in pool " # Principal.toText(pool_id) # " (" # stranded_held_in_text(held_in) # (if (uncertain) ", outcome unknown" else "") # "): " # reason
+      # "; pay with admin_withdraw_stranded_to_owner(" # Nat.toText(id) # ", ...)");
+    id;
+  };
+
+  private func stranded_held_in_text(h : T.StrandedHeldIn) : Text {
+    switch (h) { case (#pool_account) "pool_account"; case (#deposit_subaccount) "deposit_subaccount" };
+  };
+
   // Move `amount` of `token` from the caller's backend wallet into this
   // canister's account in the pool: an ICRC-1 transfer to the pool's deposit
   // subaccount for this canister, then the pool's `deposit`. Returns the
@@ -4280,7 +4525,9 @@ shared (deployer) persistent actor class SneedLock() = this {
     let transfer = try {
       await ledger.icrc1_transfer({ from_subaccount = ?Blob.fromArray(from_subaccount); to; amount; fee = ?fee; memo = null; created_at_time = null });
     } catch (e) {
-      return #Err("Transfer of " # debug_show(amount) # " " # debug_show(token) # " to the pool deposit subaccount failed with unknown outcome: " # Error.message(e));
+      let sid = record_stranded(caller, correlation_id, pool_id, token, amount, #deposit_subaccount, true,
+        "transfer to the pool deposit subaccount failed with unknown outcome: " # Error.message(e) # "; if the wallet still holds it, nothing is stranded");
+      return #Err("Transfer of " # debug_show(amount) # " " # debug_show(token) # " to the pool deposit subaccount failed with unknown outcome: " # Error.message(e) # " (stranded record " # Nat.toText(sid) # ")");
     };
     switch (transfer) {
       case (#Err(e)) { return #Err("Transfer of " # debug_show(amount) # " " # debug_show(token) # " to the pool deposit subaccount failed: " # debug_show(e)) };
@@ -4290,10 +4537,14 @@ shared (deployer) persistent actor class SneedLock() = this {
 
     let stuck = "ADMIN ACTION: " # debug_show(amount) # " " # debug_show(token) # " for " # debug_show(caller) # " sit in pool " # debug_show(pool_id) # "'s deposit subaccount; re-run admin_pool_deposit then admin_withdraw_pool_balance_to_user";
     let deposited = try { await pool.deposit({ token = Principal.toText(token); amount; fee }) } catch (e) {
-      return #Err("Pool deposit call failed with unknown outcome: " # Error.message(e) # ". " # stuck);
+      let sid = record_stranded(caller, correlation_id, pool_id, token, amount, #deposit_subaccount, true, "pool deposit failed with unknown outcome: " # Error.message(e));
+      return #Err("Pool deposit call failed with unknown outcome: " # Error.message(e) # ". " # stuck # " (stranded record " # Nat.toText(sid) # ")");
     };
     switch (deposited) {
-      case (#err(e)) { #Err("Pool deposit failed: " # debug_show(e) # ". " # stuck) };
+      case (#err(e)) {
+        let sid = record_stranded(caller, correlation_id, pool_id, token, amount, #deposit_subaccount, false, "pool deposit failed: " # debug_show(e));
+        #Err("Pool deposit failed: " # debug_show(e) # ". " # stuck # " (stranded record " # Nat.toText(sid) # ")");
+      };
       case (#ok(credited)) {
         log_info(caller, correlation_id, "Pool credited " # debug_show(credited) # " " # debug_show(token));
         #Ok(credited);
@@ -4318,10 +4569,14 @@ shared (deployer) persistent actor class SneedLock() = this {
     let args = { token = Principal.toText(token); amount; fee; subaccount = Blob.fromArray(PrincipalToSubaccount(caller)) };
     let stuck = "ADMIN ACTION: " # debug_show(amount) # " " # debug_show(token) # " for " # debug_show(caller) # " remain in this canister's account in pool " # debug_show(pool_id) # "; use admin_withdraw_pool_balance_to_user";
     let result = try { await pool.withdrawToSubaccount(args) } catch (e) {
-      return #Err("Returning unused tokens failed with unknown outcome: " # Error.message(e) # ". " # stuck);
+      let sid = record_stranded(caller, correlation_id, pool_id, token, amount, #pool_account, true, "returning unused tokens failed with unknown outcome: " # Error.message(e));
+      return #Err("Returning unused tokens failed with unknown outcome: " # Error.message(e) # ". " # stuck # " (stranded record " # Nat.toText(sid) # ")");
     };
     switch (result) {
-      case (#err(e)) { #Err("Returning unused tokens failed: " # debug_show(e) # ". " # stuck) };
+      case (#err(e)) {
+        let sid = record_stranded(caller, correlation_id, pool_id, token, amount, #pool_account, false, "returning unused tokens failed: " # debug_show(e));
+        #Err("Returning unused tokens failed: " # debug_show(e) # ". " # stuck # " (stranded record " # Nat.toText(sid) # ")");
+      };
       case (#ok(_)) {
         log_info(caller, correlation_id, "Returned " # debug_show(amount) # " " # debug_show(token) # " from pool " # debug_show(pool_id) # " to the caller's backend wallet");
         #Ok((amount, 0));
@@ -4405,12 +4660,25 @@ shared (deployer) persistent actor class SneedLock() = this {
       case null { log_info(caller, correlation_id, "Pool accepted liquidity for position " # debug_show(position_id) # " (desired " # debug_show(credited0) # " / " # debug_show(credited1) # ")") };
     };
 
+    // The leftover is unknown when the balance cannot be read: each credited amount is recorded
+    // as an upper bound (uncertain), for an admin to pay what the pool shows.
+    func strand_unmeasured(why : Text) : Text {
+      var ids = "";
+      for ((tok, credited) in [(token0, credited0), (token1, credited1)].vals()) {
+        if (credited > 0) {
+          let sid = record_stranded(caller, correlation_id, pool_id, tok, credited, #pool_account, true,
+            "liquidity step done but the leftover could not be measured (" # why # "); amount is an upper bound: pay what the pool shows unused for this addition");
+          ids := ids # (if (ids == "") "" else ", ") # Nat.toText(sid);
+        };
+      };
+      "Liquidity step done but reading the pool balance failed: " # why # ". ADMIN ACTION: check this canister's balance in pool " # debug_show(pool_id) # " for " # debug_show(caller) # " (stranded records " # ids # ")";
+    };
     let after = try {
       switch (await pool.getUserUnusedBalance(this_canister_id())) {
         case (#ok(b)) { b };
-        case (#err(e)) { return err("Liquidity step done but reading the pool balance failed: " # debug_show(e) # ". ADMIN ACTION: check this canister's balance in pool " # debug_show(pool_id) # " for " # debug_show(caller)) };
+        case (#err(e)) { return err(strand_unmeasured(debug_show(e))) };
       };
-    } catch (e) { return err("Liquidity step done but reading the pool balance failed: " # Error.message(e)) };
+    } catch (e) { return err(strand_unmeasured(Error.message(e))) };
 
     func leftover(live_after : Nat, base : Nat, credited : Nat) : Nat {
       let delta = if (live_after > base) { live_after - base } else { 0 };
@@ -4507,6 +4775,15 @@ shared (deployer) persistent actor class SneedLock() = this {
     let take = switch (q.take) { case (?t) Nat.min(t, 500); case null 100 };
     let src = if (q.failed) failed_claim_requests else completed_claim_requests;
     let after = Array.filter<ClaimRequest>(src, func(r) { switch (q.prev) { case (?p) r.request_id > p; case null true } });
+    let sorted = Array.sort<ClaimRequest>(after, func(a, b) { Nat.compare(a.request_id, b.request_id) });
+    if (sorted.size() <= take) sorted else Array.tabulate<ClaimRequest>(take, func(i) { sorted[i] });
+  };
+
+  /// get_claim_requests_page for one owner (the principal that claimed), same paging.
+  public query func get_claim_requests_page_for(owner : Principal, q : T.ClaimRequestPageQuery) : async [ClaimRequest] {
+    let take = switch (q.take) { case (?t) Nat.min(t, 500); case null 100 };
+    let src = if (q.failed) failed_claim_requests else completed_claim_requests;
+    let after = Array.filter<ClaimRequest>(src, func(r) { r.caller == owner and (switch (q.prev) { case (?p) r.request_id > p; case null true }) });
     let sorted = Array.sort<ClaimRequest>(after, func(a, b) { Nat.compare(a.request_id, b.request_id) });
     if (sorted.size() <= take) sorted else Array.tabulate<ClaimRequest>(take, func(i) { sorted[i] });
   };
@@ -4735,6 +5012,106 @@ shared (deployer) persistent actor class SneedLock() = this {
     };
   };
 
+  /// Stranded records (spec/support_audit.md P1-14), ascending ids after `prev`; public, like
+  /// their sneedlock_stranded blocks.
+  public query func get_stranded(q : T.StrandedQuery) : async [T.Stranded] {
+    let take = switch (q.take) { case (?t) Nat.min(t, 500); case null 100 };
+    let out = Buffer.Buffer<T.Stranded>(take);
+    if (take == 0) { return [] };
+    var id = switch (q.prev) { case (?p) p + 1; case null 0 };
+    while (id < next_stranded_id and out.size() < take) {
+      switch (Map.get(stranded, nhash, id)) {
+        case (?r) {
+          let owner_ok = switch (q.owner) { case (?o) r.owner == o; case null true };
+          let unpaid_ok = (not q.unpaid_only) or (switch (r.status) { case (#Paid(_)) false; case _ true });
+          if (owner_ok and unpaid_ok) { out.add(r) };
+        };
+        case null {};
+      };
+      id += 1;
+    };
+    Buffer.toArray(out);
+  };
+
+  /// Admin: pay a stranded record to its recorded owner's Sneed wallet, at most its recorded
+  /// amount, once. `amount` (null = the recorded amount) may only be lower, for an upper-bound
+  /// record. A record still in the deposit subaccount is deposited into the pool first (that step
+  /// is kept on the record, so a retry does not deposit twice). An #Uncertain record (a call with
+  /// an unknown outcome, or an upper bound) is paid only with `outcome_checked` = true, after the
+  /// admin has checked the pool. A pool call with an unknown outcome here leaves it #Uncertain.
+  /// A paid record answers #Err with its payment. Logged as sneedlock_stranded_settle.
+  public shared ({ caller }) func admin_withdraw_stranded_to_owner(stranded_id : Nat, amount : ?Nat, outcome_checked : Bool) : async { #Ok : T.Stranded; #Err : Text } {
+    if (not isAdmin(caller)) { return #Err("Only admins can pay stranded records") };
+    let correlation_id = get_next_correlation_id();
+    let rec = switch (Map.get(stranded, nhash, stranded_id)) { case (?r) r; case null { return #Err("No stranded record " # Nat.toText(stranded_id)) } };
+    switch (rec.status) {
+      case (#Paid(p)) { return #Err("Stranded record " # Nat.toText(stranded_id) # " was already paid: " # debug_show(p)) };
+      case (#Uncertain) { if (not outcome_checked) { return #Err("Stranded record " # Nat.toText(stranded_id) # " is uncertain (" # rec.reason # "); check the pool, then pass outcome_checked = true") } };
+      case (#Open) {};
+    };
+    let pay = switch (amount) { case (?a) a; case null rec.amount };
+    if (pay > rec.amount) { return #Err("At most the recorded amount " # Nat.toText(rec.amount)) };
+    if (Map.has(stranded_in_flight, nhash, stranded_id)) { return #Err("A payment of this record is in progress") };
+    if (is_pool_op_locked(rec.pool)) { return #Err("Busy: another operation is in progress on this pool; please retry in a few seconds") };
+    Map.set(stranded_in_flight, nhash, stranded_id, ());
+    lock_pool_op(rec.pool);
+    log_info(caller, correlation_id, "Admin paying stranded record " # Nat.toText(stranded_id) # ": " # Nat.toText(pay) # " to " # Principal.toText(rec.owner));
+    let pool : IcpSwapPool = actor (Principal.toText(rec.pool));
+    let ledger : Icrc1Ledger = actor (Principal.toText(rec.ledger));
+    func fail(msg : Text, uncertain : Bool) : { #Ok : T.Stranded; #Err : Text } {
+      if (uncertain) {
+        switch (Map.get(stranded, nhash, stranded_id)) { case (?r) { Map.set(stranded, nhash, stranded_id, { r with status = #Uncertain; reason = r.reason # "; " # msg }) }; case null {} };
+      };
+      log_error(caller, correlation_id, "Stranded record " # Nat.toText(stranded_id) # ": " # msg);
+      #Err(msg);
+    };
+    try {
+      let fee = try { await ledger.icrc1_fee() } catch (e) { return fail("reading the ledger fee failed: " # Error.message(e), false) };
+      var to_withdraw = pay;
+      if (rec.held_in == #deposit_subaccount) {
+        let deposited = try { await pool.deposit({ token = Principal.toText(rec.ledger); amount = pay; fee }) } catch (e) {
+          return fail("pool deposit failed with unknown outcome: " # Error.message(e), true);
+        };
+        switch (deposited) {
+          case (#err(e)) { return fail("pool deposit failed: " # debug_show(e), false) };
+          case (#ok(credited)) {
+            // now credited in the pool: the record says so before anything else can fail
+            Map.set(stranded, nhash, stranded_id, { rec with held_in = #pool_account; amount = credited; status = #Open;
+              reason = rec.reason # "; deposited " # Nat.toText(pay) # " (credited " # Nat.toText(credited) # ") by " # Principal.toText(caller) });
+            icrc3_add("sneedlock_admin_pool_deposit", [
+              ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("pool", Icrc3Log.principal(rec.pool)), ("ledger", Icrc3Log.principal(rec.ledger)),
+              ("amount", #Nat(pay)), ("credited", #Nat(credited)), ("stranded_id", #Nat(stranded_id)),
+            ]);
+            to_withdraw := credited;
+          };
+        };
+      };
+      if (to_withdraw <= fee) { return fail("the amount " # Nat.toText(to_withdraw) # " does not exceed the ledger fee " # Nat.toText(fee), false) };
+      let args = { token = Principal.toText(rec.ledger); amount = to_withdraw; fee; subaccount = Blob.fromArray(PrincipalToSubaccount(rec.owner)) };
+      let result = try { await pool.withdrawToSubaccount(args) } catch (e) {
+        return fail("pool withdrawal failed with unknown outcome: " # Error.message(e), true);
+      };
+      switch (result) {
+        case (#err(e)) { fail("pool withdrawal failed: " # debug_show(e), false) };
+        case (#ok(accepted)) {
+          let cur = switch (Map.get(stranded, nhash, stranded_id)) { case (?r) r; case null rec };
+          let paid : T.Stranded = { cur with status = #Paid({ at = NowAsNat64(); by = caller; amount = to_withdraw; accepted; correlation_id }) };
+          Map.set(stranded, nhash, stranded_id, paid);
+          icrc3_add("sneedlock_stranded_settle", [
+            ("cid", #Nat(correlation_id)), ("caller", Icrc3Log.principal(caller)), ("owner", Icrc3Log.principal(rec.owner)),
+            ("pool", Icrc3Log.principal(rec.pool)), ("ledger", Icrc3Log.principal(rec.ledger)), ("stranded_id", #Nat(stranded_id)),
+            ("amount", #Nat(to_withdraw)), ("accepted", #Nat(accepted)), ("to", Icrc3Log.account(this_canister_id(), ?Blob.fromArray(PrincipalToSubaccount(rec.owner)))),
+          ]);
+          log_info(caller, correlation_id, "Stranded record " # Nat.toText(stranded_id) # " paid: " # Nat.toText(to_withdraw) # " to the Sneed wallet of " # Principal.toText(rec.owner));
+          #Ok(paid);
+        };
+      };
+    } finally {
+      unlock_pool_op(rec.pool);
+      Map.delete(stranded_in_flight, nhash, stranded_id);
+    };
+  };
+
   ////////////////
   // upgrading
   ////////////////
@@ -4902,6 +5279,12 @@ shared (deployer) persistent actor class SneedLock() = this {
   // would go through consensus at our cost, and arguments are capped in size.
   system func inspect({ arg : Blob; msg : {
     #get_api_doc : Any;
+    #get_log_entries_for : Any;
+    #get_payment_log_for : Any;
+    #get_claim_requests_page_for : Any;
+    #get_stranded : Any;
+    #withdraw_payment_balance : Any;
+    #admin_withdraw_stranded_to_owner : Any;
     #reconcile_token_lock : Any;
     #get_uncertain_token_locks : Any;
     #add_liquidity_to_locked_position : Any;
@@ -5025,6 +5408,14 @@ shared (deployer) persistent actor class SneedLock() = this {
     switch (msg) {
       case (
         #get_api_doc _
+        or #get_log_entries_for _
+        or #get_payment_log_for _
+        or #get_claim_requests_page_for _
+        or #get_stranded _
+        or #get_info_id_range _
+        or #get_error_id_range _
+        or #get_info_entries _
+        or #get_error_entries _
         or #admin_get_payment_log _
         or #admin_get_payment_log_count _
         or #admin_get_payment_price_tiers _

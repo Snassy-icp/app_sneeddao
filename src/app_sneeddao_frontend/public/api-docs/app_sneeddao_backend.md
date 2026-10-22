@@ -144,7 +144,7 @@ The [SNS Jailbreak](/help/sns_jailbreak) wizard (`/tools/sns_jailbreak`) produce
 
 1. `get_my_jailbreak_fee()` (update: checks Sneed Premium) or `get_jailbreak_fee_settings()` for both fees.
 2. Deposit `fee + 10_000` e8s to `{ owner = backend; subaccount = get_jailbreak_payment_subaccount() }` (caller-scoped; check with `get_jailbreak_payment_balance()`).
-3. `save_jailbreak_config(sns_root, neuron_id_hex, target_principal)` → `ok(config_id)`. Saving a configuration identical to an existing one returns its id without charging. Errors: `Anonymous users cannot save configurations`, `Insufficient payment balance. Required: ...`, `Payment failed: ...`.
+3. `save_jailbreak_config(sns_root, neuron_id_hex, target_principal)` → `ok(config_id)`. Saving a configuration identical to an existing one returns its id without charging. One save per caller runs at a time: a second call while the first is still in flight is refused (`A save is already in progress for your account; try again when it has finished`) and charges nothing, so two clicks never pay twice. The fee transfer carries the memo `jailbreak` and a `created_at_time`; its ICP ledger block is kept with the payment (admins: `admin_get_jailbreak_payments_for`). Errors: `Anonymous users cannot save configurations`, `A save is already in progress ...`, `Insufficient payment balance. Required: ...`, `Payment failed: ...`.
 4. `get_my_jailbreak_configs()`, `delete_jailbreak_config(id)` (`Configuration not found`, `No configurations found`), `withdraw_jailbreak_payment(amount)` returns unused deposit to the caller's main account (`ok(block_index)`; `Insufficient balance. Available: ...`).
 
 `get_jailbreak_payment_stats()` gives public totals for the revenue page.
@@ -194,7 +194,7 @@ The frozen write methods are `set_principal_name`, `set_principal_name_for`, `se
 
 ## 4. Errors and retries
 
-Result shapes vary: most methods return `variant { ok; err : text }`; some registration methods return nothing and ignore refused calls; `set_wallet_layout` and `delete_canister_groups` throw for anonymous callers; `send_tokens` returns an ICRC-1 `TransferResult`. Registration and settings updates are idempotent and safe to retry. `save_jailbreak_config` charges once per distinct configuration and is safe to retry with the same arguments. `register_donation` refuses a block that is already listed, so retries are safe.
+Result shapes vary: most methods return `variant { ok; err : text }`; some registration methods return nothing and ignore refused calls; `set_wallet_layout` and `delete_canister_groups` throw for anonymous callers; `send_tokens` returns an ICRC-1 `TransferResult`. Registration and settings updates are idempotent and safe to retry. `save_jailbreak_config` charges once per distinct configuration and is safe to retry with the same arguments; a retry sent while the first call is still running is refused, not charged. `register_donation` refuses a block that is already listed, so retries are safe.
 
 ---
 
@@ -263,6 +263,9 @@ Restricted to admins (`get_admins()`), the canister's controllers and the deploy
 | `set_jailbreak_fee_settings`, `get_jailbreak_payment_logs`, `get_all_jailbreak_configs_count` | Jailbreak fees and logs. |
 | `set_admin_prices`, `set_partner_prices`, `remove_partner_prices`, `get_jailbreak_payment_price_tiers` | Special prices (3.6). |
 | `admin_set_donation_account`, `admin_set_donation_hidden`, `admin_get_donations` | Donations. |
+| `admin_get_jailbreak_payments_for(principal, offset, limit)` (query) | Support: one principal's jailbreak payments, newest first (at most 100 a page): `variant { ok : record { payments : vec JailbreakPaymentRecord; total : nat }; err : text }`, each payment log entry plus `block_index : opt nat` (its ICP ledger block; none for payments before the ICRC-3 log) and `price_tier`. |
+| `admin_get_jailbreak_configs_for(principal, offset, limit)` (query) | Support: one principal's saved jailbreak configurations, newest first: `variant { ok : record { configs : vec JailbreakConfig; total : nat }; err : text }`. |
+| `admin_get_donations_by(donor, start, limit)` (query) | Support: one donor's donations, hidden ones included, newest first: `variant { ok : record { total : nat; donations : vec Donation }; err : text }`. |
 | `admin_set_feedback_config` | Feedback topics and recipients. |
 | `send_tokens`, `transfer_position` | Recovery of tokens or ICPSwap positions held by the backend. |
 | `admin_set_icrc3_settings`, `admin_icrc3_spill_now`, `admin_icrc3_repair_archive_controllers` | The activity log's archives (7). |

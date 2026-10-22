@@ -495,14 +495,15 @@ describe('bids', () => {
     unwrap(await dexBob.withdrawBidEscrow(b, E8 / 2n - 2n * ICP_FEE));
     expect(await balance(icp, dexId, sub)).toBe(0n);
     expect(errOf(await dexBob.confirmBid(b, E8))).toHaveProperty('InsufficientFunds');
-    // confirmed: the bid amount plus one fee stays reserved, after the withdrawal's own fee
+    // confirmed: the bid amount stays reserved (its payout's fees come out of it), after the
+    // withdrawal's own fee (support audit 2026-10-22: the reserve was bid + fee, one fee too many)
     const c = await placeBid(dexCarol, carol, id, 2n * E8);
     const subC = await dexAny.getBidEscrowSubaccount(carol, c);
     expect(errOf(await dexCarol.withdrawBidEscrow(c, 1n))).toEqual({ InsufficientFunds: { available: 0n, required: 1n } });
     unwrap(await transfer(icpAs(carol), account(dexId, subC), E8));
-    expect(errOf(await dexCarol.withdrawBidEscrow(c, E8 - ICP_FEE))).toEqual({ InsufficientFunds: { available: E8 - 2n * ICP_FEE, required: E8 - ICP_FEE } });
-    unwrap(await dexCarol.withdrawBidEscrow(c, E8 - 2n * ICP_FEE));
-    expect(await balance(icp, dexId, subC)).toBe(2n * E8 + ICP_FEE); // the bid plus the fee of its payout
+    expect(errOf(await dexCarol.withdrawBidEscrow(c, E8))).toEqual({ InsufficientFunds: { available: E8 - ICP_FEE, required: E8 } });
+    unwrap(await dexCarol.withdrawBidEscrow(c, E8 - ICP_FEE));
+    expect(await balance(icp, dexId, subC)).toBe(2n * E8); // exactly the bid
     unwrap(await dexAlice.cancelOffer(id));
     await settle(3);
   });

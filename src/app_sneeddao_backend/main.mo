@@ -4,6 +4,7 @@ import List "mo:base/List";
 import Iter "mo:base/Iter";
 import Nat "mo:base/Nat";
 import Nat8 "mo:base/Nat8";
+import Nat64 "mo:base/Nat64";
 import Text "mo:base/Text";
 import Array "mo:base/Array";
 import Blob "mo:base/Blob";
@@ -253,6 +254,14 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
   // price tier of each jailbreak payment log entry (by log id) recorded since special prices; older
   // entries are #premium or #regular by their is_premium flag
   var jailbreak_payment_tiers : Map.Map<Nat, SpecialPrices.Tier> = Map.new<Nat, SpecialPrices.Tier>();
+  // ICP ledger block of each jailbreak payment log entry (by log id), recorded since the support
+  // fixes (spec/support_audit.md P0-7); entries paid since the ICRC-3 log are filled in from its
+  // jailbreak_payment blocks on upgrade, older ones have none
+  var jailbreak_payment_blocks : Map.Map<Nat, Nat> = Map.new<Nat, Nat>();
+  var jailbreak_payment_blocks_backfilled : Bool = false;
+  // callers with a save_jailbreak_config in flight: a second save is refused until the first has
+  // finished, so two calls at once can never both charge
+  transient let jailbreak_saving : Map.Map<Principal, ()> = Map.new<Principal, ()>();
   
   // Stable storage for user token registrations (user -> list of ledger IDs)
   var stable_user_tokens : [(Principal, [Principal])] = [];
@@ -3523,6 +3532,24 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
       case null {};
     };
 
+    // one save per caller at a time: the check above and the charge below are separated by awaits
+    if (Map.has(jailbreak_saving, phash, caller)) {
+      return #err("A save is already in progress for your account; try again when it has finished");
+    };
+    Map.set(jailbreak_saving, phash, caller, ());
+    try {
+      await* save_jailbreak_config_locked(caller, sns_root_canister_id, neuron_id_hex, target_principal);
+    } finally {
+      Map.delete(jailbreak_saving, phash, caller);
+    }
+  };
+
+  func save_jailbreak_config_locked(
+    caller : Principal,
+    sns_root_canister_id: Principal,
+    neuron_id_hex: Text,
+    target_principal: Principal
+  ) : async* Result.Result<Nat, Text> {
     // Get the fee for this user (lowest of regular, premium, admin and partner prices)
     let isPremium = await* is_premium_member(caller);
     let (fee, priceTier) = jailbreak_price(caller, isPremium);
@@ -3566,7 +3593,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
         amount = fee;
         fee = ?ICP_LEDGER_FEE;
         memo = ?Blob.fromArray([0x6A, 0x61, 0x69, 0x6C, 0x62, 0x72, 0x65, 0x61, 0x6B]); // "jailbreak"
-        created_at_time = null;
+        created_at_time = ?Nat64.fromNat(Int.abs(Time.now())); // the ledger deduplicates a resent transfer
       });
       
       switch (transferResult) {
@@ -3588,6 +3615,7 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
           };
           jailbreak_payment_logs.add(paymentLog);
           Map.set(jailbreak_payment_tiers, nhash, paymentLog.id, priceTier);
+          Map.set(jailbreak_payment_blocks, nhash, paymentLog.id, icpTx);
           next_jailbreak_payment_log_id += 1;
           // the neuron, its SNS and the target principal are the payer's own data: not logged
           block("jailbreak_payment", caller, [
@@ -3900,6 +3928,51 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
       logs = Buffer.toArray(result);
       total = total;
     })
+  };
+
+  // ---- Support lookups by principal (spec/support_audit.md P1-9): admin-only, paged, newest first ----
+
+  /// A jailbreak payment with its ICP ledger block (none for payments made before blocks were
+  /// recorded) and the price tier it was charged at.
+  public type JailbreakPaymentRecord = {
+    id : Nat;
+    user : Principal;
+    config_id : Nat;
+    sns_root_canister_id : Principal;
+    neuron_id_hex : Text;
+    target_principal : Principal;
+    amount_e8s : Nat;
+    is_premium : Bool;
+    timestamp : Int;
+    block_index : ?Nat;
+    price_tier : SpecialPrices.Tier;
+  };
+
+  transient let MAX_SUPPORT_PAGE : Nat = 100;
+
+  /// `offset`/`limit` over `items` (oldest first), newest first; at most MAX_SUPPORT_PAGE.
+  func newest_page<X>(items : [X], offset : Nat, limit : Nat) : [X] {
+    let n = items.size();
+    if (offset >= n) return [];
+    Array.tabulate<X>(Nat.min(Nat.min(limit, MAX_SUPPORT_PAGE), n - offset), func(i) = items[n - 1 - offset - i]);
+  };
+
+  /// Admins: the jailbreak payments `user` made, newest first, with their ledger blocks.
+  public query ({ caller }) func admin_get_jailbreak_payments_for(user : Principal, offset : Nat, limit : Nat) : async Result.Result<{ payments : [JailbreakPaymentRecord]; total : Nat }, Text> {
+    if (not is_admin(caller)) return #err("Not authorized: admin access required");
+    let mine = Buffer.Buffer<JailbreakPaymentRecord>(8);
+    for (log in jailbreak_payment_logs.vals()) {
+      if (log.user == user) mine.add({ log with block_index = Map.get(jailbreak_payment_blocks, nhash, log.id); price_tier = payment_tier(log) });
+    };
+    let all = Buffer.toArray(mine);
+    #ok({ payments = newest_page(all, offset, limit); total = all.size() });
+  };
+
+  /// Admins: the jailbreak configurations `user` has saved, newest first.
+  public query ({ caller }) func admin_get_jailbreak_configs_for(user : Principal, offset : Nat, limit : Nat) : async Result.Result<{ configs : [JailbreakConfig]; total : Nat }, Text> {
+    if (not is_admin(caller)) return #err("Not authorized: admin access required");
+    let all = switch (jailbreak_configs.get(user)) { case (?c) Buffer.toArray(c); case null [] };
+    #ok({ configs = newest_page(all, offset, limit); total = all.size() });
   };
 
   // Get all jailbreak configs across all users (admin only) for stats
@@ -4495,7 +4568,38 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
       // the ICRC-3 log: republish the certified tip, restart the spill check
       Icrc3Log.certify(icrc3);
       ensure_icrc3_timer<system>();
+      backfill_jailbreak_payment_blocks();
   };
+
+  /// Once: the ledger block of each jailbreak payment paid since the ICRC-3 log, from its
+  /// jailbreak_payment blocks still held by this canister (payment_id -> icp_tx).
+  func backfill_jailbreak_payment_blocks() {
+    if (jailbreak_payment_blocks_backfilled) return;
+    jailbreak_payment_blocks_backfilled := true;
+    var i = icrc3.live.first_index;
+    while (i < icrc3.log_length) {
+      let r = Icrc3Log.getBlocks(icrc3, [{ start = i; length = Icrc3Log.MAX_RESPONSE_BLOCKS }]);
+      if (r.blocks.size() == 0) return;
+      for (b in r.blocks.vals()) {
+        i := b.id + 1;
+        if (logText(logField(b.block, "btype")) == ?"sneedbackend_jailbreak_payment") {
+          let tx = logField(b.block, "tx");
+          switch (logNat(logField(tx, "payment_id")), logNat(logField(tx, "icp_tx"))) {
+            case (?id, ?blk) if (not Map.has(jailbreak_payment_blocks, nhash, id)) Map.set(jailbreak_payment_blocks, nhash, id, blk);
+            case _ {};
+          };
+        };
+      };
+    };
+  };
+  func logField(v : T3.Value, name : Text) : T3.Value {
+    switch (v) {
+      case (#Map(entries)) { for ((k, x) in entries.vals()) if (k == name) return x; #Map([]) };
+      case _ #Map([]);
+    };
+  };
+  func logText(v : T3.Value) : ?Text = switch v { case (#Text(t)) ?t; case _ null };
+  func logNat(v : T3.Value) : ?Nat = switch v { case (#Nat(n)) ?n; case _ null };
 
   // On a fresh install, start the daily token list job and the ICRC-3 spill check.
   ensure_token_refresh_timer<system>();
@@ -4616,6 +4720,12 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     #ok(donations_page(donations, start, limit));
   };
 
+  /// Admins: the donations `donor` made (hidden ones included), newest first.
+  public query ({ caller }) func admin_get_donations_by(donor : Principal, start : Nat, limit : Nat) : async Result.Result<{ total : Nat; donations : [Donations.Donation] }, Text> {
+    if (not is_admin(caller)) return #err("Only admins can look up donations by donor");
+    #ok(donations_page(Array.filter<Donations.Donation>(donations, func(d) = d.donor == donor), start, limit));
+  };
+
   /// Hides a donation from the wall (its message, say) or shows it again; it still counts in the totals.
   public shared ({ caller }) func admin_set_donation_hidden(id : Nat, hidden : Bool) : async Result.Result<(), Text> {
     if (not is_admin(caller)) return #err("Only admins can hide donations");
@@ -4660,6 +4770,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
     #add_whitelisted_token : Any;
     #admin_clear_avatar : Any;
     #admin_get_donations : Any;
+    #admin_get_donations_by : Any;
+    #admin_get_jailbreak_payments_for : Any;
+    #admin_get_jailbreak_configs_for : Any;
     #admin_set_donation_account : Any;
     #admin_set_feedback_config : Any;
     #admin_set_donation_hidden : Any;
@@ -4852,6 +4965,9 @@ shared (deployer) persistent actor class AppSneedDaoBackend() = this {
         or #get_donation_totals _
         or #get_donations _
         or #admin_get_donations _
+        or #admin_get_donations_by _
+        or #admin_get_jailbreak_payments_for _
+        or #admin_get_jailbreak_configs_for _
         or #icrc3_get_blocks _
         or #icrc3_get_archives _
         or #icrc3_get_tip_certificate _

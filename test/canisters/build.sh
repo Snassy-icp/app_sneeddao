@@ -29,6 +29,19 @@ MOC="$(dfx +"$DFX_VERSION" cache show)/moc"
 rm -rf "$PREV_SRC"
 test -s "$OUT/sneed_lock_v2a.wasm"
 
+# sneed_lock as production runs it (proposal #451; `dfx +0.28.0 build --network ic sneed_lock` of this
+# code at /home/snassy/app_sneeddao gives the production module hash f5919527…), before the support
+# fixes of spec/support_audit.md P1-9/12/14: for their fail-before runs
+# (SNEED_LOCK_WASM=sneed_lock_preaudit) and the upgrade test from production
+LOCK_PREAUDIT_COMMIT=c860d472
+echo "== sneed_lock at $LOCK_PREAUDIT_COMMIT (moc, sneed_lock_preaudit)"
+PREV_SRC="$(mktemp -d)"
+git archive "$LOCK_PREAUDIT_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2046
+"$MOC" $(mops sources) "$PREV_SRC/src/sneed_lock/main.mo" -o "$OUT/sneed_lock_preaudit.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneed_lock_preaudit.wasm"
+
 # backend, sms and forum as production ran them from April to October 2026 ("persistent actors",
 # enhanced orthogonal persistence), for the tests that rehearse upgrading production from there
 LIVE_COMMIT=92eefd18
@@ -98,8 +111,10 @@ test -s "$OUT/sneedex_prod.wasm"
 # sneedex before the 2026-10-21 support fixes (stake caching and escrow writing back a stale offer,
 # adminReclaimStuckTokens without a state guard), for the fail-before runs of
 # sneedex-support.test.js (SNEEDEX_WASM=sneedex_prefix); and as production runs it now (EXT assets,
-# no special prices; proposal #442), for the upgrade test there
-for pair in 9415d517:prefix ab7da0ad:prod442; do
+# no special prices; proposal #442), for the upgrade test there; and before the support-audit fixes
+# (aab11a93, what production runs since #449, wasm 2cd4eb78), for the fail-before runs and the
+# upgrade test of sneedex-support-audit.test.js (SNEEDEX_WASM=sneedex_preaudit)
+for pair in 9415d517:prefix ab7da0ad:prod442 aab11a93:preaudit; do
   commit="${pair%%:*}"; tag="${pair##*:}"
   echo "== sneedex at $commit (moc, sneedex_$tag)"
   PREV_SRC="$(mktemp -d)"
@@ -123,6 +138,21 @@ for pair in 0532de6d:prewallet e6e01c4e:prev; do
   rm -rf "$PREV_SRC"
   test -s "$OUT/sneedapp_$tag.wasm"
 done
+# sneed_premium and sneedapp before the support-audit self-service fixes (spec/support_audit.md P1-9,
+# P1-12, P2-17): src/sneed_premium and src/sneedapp at d20ab1bf are what production runs (premium
+# #452, a17b23d2…, source d4eed88c; sneedapp #450, f0121a0f…, source c860d472; unchanged since), for
+# the fail-before runs of premium-support.test.js / sneedapp-support.test.js
+# (PREMIUM_WASM=sneed_premium_preaudit, SNEEDAPP_WASM=sneedapp_preaudit) and their upgrade tests
+SUPPORT_PREAUDIT_COMMIT=d20ab1bf
+echo "== sneed_premium, sneedapp at $SUPPORT_PREAUDIT_COMMIT (moc, *_preaudit)"
+PREV_SRC="$(mktemp -d)"
+git archive "$SUPPORT_PREAUDIT_COMMIT" src | tar -x -C "$PREV_SRC"
+for c in sneed_premium sneedapp; do
+  # shellcheck disable=SC2086
+  "$MOC" $PKGS "$PREV_SRC/src/$c/main.mo" -o "$OUT/${c}_preaudit.wasm" 2>&1 | grep -i "error" | head -5 || true
+  test -s "$OUT/${c}_preaudit.wasm"
+done
+rm -rf "$PREV_SRC"
 # sneed_pid_names as production runs it (ICRC-7 NFT avatars only), for the test that upgrades
 # from it to EXT avatars (enhanced orthogonal persistence, as dfx.json builds it)
 PID_NAMES_PROD_COMMIT=75cef0a7
@@ -133,6 +163,17 @@ git archive "$PID_NAMES_PROD_COMMIT" src | tar -x -C "$PREV_SRC"
 "$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_pid_names/main.mo" -o "$OUT/sneed_pid_names_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
 rm -rf "$PREV_SRC"
 test -s "$OUT/sneed_pid_names_prod.wasm"
+# sneed_pid_nicknames as production runs it (`dfx +0.28.0 build --network ic sneed_pid_nicknames` of
+# this code at /home/snassy/app_sneeddao gives the live module hash 1d48a9e5…), for the test that
+# upgrades from it with keep to account nicknames and pockets (EOP, as dfx.json builds it)
+NICK_PROD_COMMIT=25b88246
+echo "== sneed_pid_nicknames at $NICK_PROD_COMMIT (moc, EOP, for the account-nicknames upgrade test)"
+PREV_SRC="$(mktemp -d)"
+git archive "$NICK_PROD_COMMIT" src | tar -x -C "$PREV_SRC"
+# shellcheck disable=SC2086
+"$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/sneed_pid_nicknames/main.mo" -o "$OUT/sneed_pid_nicknames_prod.wasm" 2>&1 | grep -i "error" | head -5 || true
+rm -rf "$PREV_SRC"
+test -s "$OUT/sneed_pid_nicknames_prod.wasm"
 # sneed_sns_forum as production and staging run it (upgrade proposal #423: tips checked on the ledger,
 # no ICRC-3 log; `dfx build --network ic sneed_sns_forum` of this code gives their module hash
 # 89d0f0e7…), for the test that upgrades from it and starts an empty log (enhanced orthogonal
@@ -300,6 +341,26 @@ for c in MockLedger MockLedgerV2 MockLedgerFaulty MockRejectLedger MockSwapPool 
   "$MOC" -c $PKGS -o "$OUT/$c.wasm" "$HERE/canisters/$c.mo" 2>&1 | grep -i "error" -A5 || true
   test -s "$OUT/$c.wasm"
 done
+# app_sneeddao_backend and sneed_notifications before the support-audit fixes (spec/support_audit.md
+# P0-7, P0-8, P1-9, P2-19): their source at d20ab1bf is what production runs (`dfx +0.28.0 build
+# --network ic` of it at /home/snassy/app_sneeddao gives the module hashes 3d2a5468… and e78123ff…),
+# for the fail-before runs of backend-support.test.js / notifications-support.test.js
+# (BACKEND_WASM=app_sneeddao_backend_preaudit, NOTIF_WASM=sneed_notifications_preaudit) and their
+# upgrades with keep (EOP, as dfx.json builds them); and an SMS stand-in whose answer does not decode
+HUB_PREAUDIT_COMMIT=d20ab1bf
+echo "== app_sneeddao_backend, sneed_notifications at $HUB_PREAUDIT_COMMIT (moc, EOP, *_preaudit)"
+PREV_SRC="$(mktemp -d)"
+git archive "$HUB_PREAUDIT_COMMIT" src | tar -x -C "$PREV_SRC"
+for c in app_sneeddao_backend sneed_notifications; do
+  # shellcheck disable=SC2086
+  "$MOC" $PKGS --enhanced-orthogonal-persistence "$PREV_SRC/src/$c/main.mo" -o "$OUT/${c}_preaudit.wasm" 2>&1 | grep -i "error" | head -5 || true
+  test -s "$OUT/${c}_preaudit.wasm"
+done
+rm -rf "$PREV_SRC"
+echo "== MockSmsBadReply"
+# shellcheck disable=SC2086
+"$MOC" -c $PKGS -o "$OUT/MockSmsBadReply.wasm" "$HERE/canisters/MockSmsBadReply.mo" 2>&1 | grep -i "error" -A5 || true
+test -s "$OUT/MockSmsBadReply.wasm"
 # the archive actor class on its own, as a DAO proposal would upgrade it
 echo "== icrc7_demo"
 "$MOC" -c $PKGS -o "$OUT/Icrc7Demo.wasm" "$ROOT/src/icrc7_demo/main.mo" 2>&1 | grep -i "error" -A5 || true

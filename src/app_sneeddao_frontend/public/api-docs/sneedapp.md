@@ -190,6 +190,7 @@ When an admin has switched payment off (`getPaymentConfig().paymentRequired = fa
 - `getPaymentSubaccount(user)` (query) — the subaccount blob.
 - `getUserPaymentBalance(user)` (update; reads the ledger) — the current balance in e8s.
 - `withdrawUserPayment()` — sends the whole balance minus one ledger fee to the caller's default account `{ owner = caller; subaccount = null }`. Returns the ICRC-1 `TransferResult`: `Ok(block_index)`, `Err(InsufficientFunds { balance })` when the balance is at most one ledger fee, or `Err(TemporarilyUnavailable)` while a mint or another withdrawal of the caller is in flight.
+- `withdrawUserToken(ledger)` — any ICRC-1 token sent by mistake to the caller's own payment subaccount: the caller's whole balance on `ledger` minus that ledger's `icrc1_fee`, to the caller's default account only. For the ICP ledger it is `withdrawUserPayment`. Same `TransferResult`; `Err(GenericError)` when `ledger` cannot be reached or is not a ledger (calls to it wait at most 60 seconds; after a timeout the outcome may be unknown, so check the balance first; the transfer carries `created_at_time`, so the ledger deduplicates a retry), `Err(TemporarilyUnavailable)` while another token withdrawal of the caller runs. Logged as `sneedapp_deposit_token_withdraw`.
 
 ### 3.3 One payment operation per user at a time
 
@@ -354,6 +355,7 @@ Every `sneedapp_mint` and `sneedapp_mint_refund` block carries `price_tier`: `re
 | `wasMintedByUs(canisterId)` | `bool` | |
 | `getMintLogCount()` | `nat` | |
 | `getMintLogCountForApp(appId)` | `nat` | |
+| `lookupLedgerTx(icpTx)` | `record { hits : vec record { block_id; btype; field; block : opt Value }; indexedFrom : nat }` | The activity-log blocks (7) that name ICP ledger block `icpTx` in a ledger-block field (`icp_tx`, `cycles_tx`, `publisher_share_tx`, `dao_cut_tx`, `top_up_tx`, `payment_txs`, `refund_txs`), with `field` saying which; `block` while it is still in the canister (otherwise `icrc3_get_blocks` names its archive). Blocks below `indexedFrom` had been archived before the index existed and are not covered. The user's own deposit transfer is not known to the factory; look up the blocks the factory made. |
 
 Each `MintLogEntry` records `icpPaidE8s`, `wasPremium`, `daoCutE8s` and `publisherRevenueE8s` along with the version minted.
 
@@ -440,6 +442,7 @@ Restricted to Sneedapp admins (`getAdmins()`); those marked † also accept the 
 | `getOrphanCanisters` | Canisters of failed mints the factory could not clean up. |
 | `getCreationLog`, `getCreationLogCount`, `getRecentCreations`, `getFinancialLog`, `getFinancialLogCount`, `getMergedLog`, `getFactoryAggregates` | Internal audit logs of creations and their ICP and cycles accounting. |
 | `adminTopUpCycles`, `adminWithdrawIcp` | Convert or move ICP held in the factory's main account. |
+| `adminReturnStuckIcp(user, amountE8s, reason)` | Return ICP a user is owed from aborted mints when `claim_refund_credit` cannot (the leg's source no longer holds it): from the main account, **only** to `user`'s payment subaccount, at most the user's open refund credits (`get_refund_credits_for(user)`), which shrink by `amountE8s` oldest first; the user receives `amountE8s` minus the ledger fee. A non-empty `reason` is required. Returns `Ok { blockIndex; returnedE8s; remainingE8s; creditsClosed }` or `Err(text)`. The restricted form of `adminWithdrawIcp` for this case. |
 
 Publisher owners also manage their own publisher and apps (5.5); admins can do the same on any publisher, except withdrawing its revenue.
 
@@ -623,9 +626,15 @@ Mints and money:
 | `sneedapp_mint` | `mintCanister` or the legacy `createNeuronManager` completed | `caller` (the minter, now the canister's only controller), `canister_id`, `app_id`, `numeric_app_id`, `publisher_id`, `ver`, `wasm_sha256` and `wasm_size` (the module installed), `price_e8s` (0 when payment is off), `premium`, `price_tier` (`regular`, `premium`, `admin` or `partner`: which price applied, 5.2.1); when paid: `cycles_icp_e8s` and `cycles_tx` (to the factory's main account, converted to cycles), `publisher_share_e8s` (with `publisher_share_to` and `publisher_share_tx` when above 0), `dao_cut_e8s` (with `dao_cut_to` and `dao_cut_tx` when above 0), `fees_e8s` (every ledger fee of the mint); `cycles_received` when the cycles minting canister answered; `method` = `createNeuronManager` for the legacy flow |
 | `sneedapp_mint_refund` | a paid mint aborted after ICP had left the payment subaccount, and the moved ICP was sent back to it | `caller`, `app_id`, `ver`, `price_e8s`, `price_tier`, `reason`, `payment_txs` (ledger blocks of the legs that had moved), `moved_e8s`, `returned_e8s` (arrived back), `stuck_e8s` (could not be returned; held by the factory for a manual return), `refund_txs`; `canister_id` when a canister had been created and was deleted |
 | `sneedapp_orphan_canister` | a canister of a failed mint stays with the factory (deleting it or handing it over failed); `getOrphanCanisters` | `caller` (the minter), `canister_id`, `app_id`, `reason`; after a full payment whose hand-over failed also `ver`, `price_e8s` and the payment fields of `sneedapp_mint` |
-| `sneedapp_deposit_withdraw` | `withdrawUserPayment` | `caller`, `amount_e8s`, `fee_e8s`, `to`, `icp_tx` |
+| `sneedapp_orphan_settled` | an orphaned canister was settled: `retry_handover` or `adminSettleOrphan(#HandOver)` gave it to its recorded minter (then its `sneedapp_mint` block follows, with `settled_by`, when the mint had been paid), or `adminSettleOrphan(#Delete)` deleted it | `caller`, `canister_id`, `minter`, `app_id`, `action` (`hand_over` or `delete`), `reason` (the admin's reason, or `retried by the minter` / `retried by an admin`), `mint_recorded` (1 when the paid mint is recorded now) |
+| `sneedapp_top_up_retry` | `retry_top_up` finished a pending cycles purchase of a mint (`get_pending_top_ups`) | `caller`, `pending_id`, `canister_id` (the minted canister), `amount_e8s`, `top_up_tx` (ICP block of the transfer to the CMC), `outcome` (`ok` with `cycles`, or `refunded` with `reason`: the CMC sent the ICP back to the main account); a retry that fails again appends nothing |
+| `sneedapp_refund_credit_claim` | `claim_refund_credit` returned at least one leg of a refund credit to the payer's payment subaccount | `caller`, `payer`, `credit_id`, `returned_e8s` (arrived), `refund_txs`, `remaining_e8s` (legs still owed; the credit stays open while above 0), `to` (the payer's payment subaccount) |
+| `sneedapp_refund_credit_closed` | `adminCloseRefundCredit` closed a credit settled another way | `caller`, `payer`, `credit_id`, `amount_e8s` (what the credit still held), `reason` |
+| `sneedapp_deposit_withdraw` | `withdrawUserPayment` (or `withdrawUserToken` for ICP) | `caller`, `amount_e8s`, `fee_e8s`, `to`, `icp_tx` |
+| `sneedapp_deposit_token_withdraw` | `withdrawUserToken` sent a token other than ICP from the caller's payment subaccount back to the caller | `caller`, `ledger`, `amount` (transferred, the token's smallest unit), `fee`, `to`, `ledger_tx` (block on that ledger) |
 | `sneedapp_publisher_withdraw` | `withdrawPublisherFunds`, `withdrawAppFunds` | `caller`, `publisher_id`, `numeric_app_id` (app funds), `amount_e8s`, `fee_e8s`, `to`, `icp_tx` |
 | `sneedapp_admin_withdraw` | `adminWithdrawIcp` | `caller`, `amount_e8s`, `fee_e8s`, `to`, `icp_tx` |
+| `sneedapp_admin_stuck_return` | `adminReturnStuckIcp` returned ICP a user was owed from aborted mints to that user's payment subaccount | `caller` (the admin), `user`, `amount_e8s` (transferred), `fee_e8s`, `to` (the user's payment subaccount), `icp_tx`, `reason`, `credit_ids` (refund credits reduced), `credits_closed`, `remaining_e8s` (still owed) |
 | `sneedapp_admin_top_up` | `adminTopUpCycles` | `caller`, `amount_e8s`, `cycles` |
 
 Wallet: bookmarks are not ownership, so **a user's own bookmarks are not logged** (`registerCanister`, `deregisterCanister`, `registerManager`, `deregisterManager`): they carry no trust and would publish every canister each user tracks. Logged are the writes that hand an entry to someone else or act on someone else's list:

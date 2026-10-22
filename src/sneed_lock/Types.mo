@@ -335,6 +335,50 @@ module {
     public type StableArchivedTokenLocks = [(LockId, ArchivedTokenLock)];
     public type StableArchivedPositionLocks = [(LockId, ArchivedPositionLock)];
     
+    // Support (spec/support_audit.md P1-9, P1-14)
+
+    /// Paging of a principal's entries in a text log (get_log_entries_for): newest first.
+    public type LogEntriesQuery = {
+        errors : Bool;                     // the error log, else the info log
+        before : ?Nat;                     // entry ids below this one (null = from the newest)
+        take : ?Nat;                       // default 100, at most 500
+    };
+
+    /// Where stranded tokens of a liquidity addition sit inside an ICPSwap pool.
+    public type StrandedHeldIn = {
+        #pool_account;                     // credited to this canister's unused balance in the pool
+        #deposit_subaccount;               // on the ledger, in the pool's deposit subaccount for this canister (not credited)
+    };
+
+    /// #Open: known to be there; #Uncertain: a call failed with an unknown outcome, or the amount is
+    /// an upper bound, so an admin checks the pool before paying; #Paid: delivered to the owner.
+    public type StrandedStatus = {
+        #Open;
+        #Uncertain;
+        #Paid : { at : Timestamp; by : Principal; amount : Nat; accepted : Nat; correlation_id : Nat };
+    };
+
+    /// Tokens of a user left inside a pool by a failed step of add_liquidity_to_locked_position.
+    public type Stranded = {
+        id : Nat;
+        owner : Principal;                 // the user they belong to (paid only to their Sneed wallet)
+        pool : Principal;
+        ledger : Principal;
+        amount : Nat;                      // base units (an upper bound when #Uncertain says so in reason)
+        held_in : StrandedHeldIn;
+        status : StrandedStatus;
+        reason : Text;
+        correlation_id : Nat;              // of the add-liquidity call
+        recorded_at : Timestamp;
+    };
+
+    public type StrandedQuery = {
+        owner : ?Principal;
+        unpaid_only : Bool;
+        prev : ?Nat;                       // ascending ids after this one
+        take : ?Nat;                       // default 100, at most 500
+    };
+
     // Payment log entry type
     public type PaymentLogEntry = {
         id : Nat;                          // Sequential payment ID

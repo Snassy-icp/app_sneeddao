@@ -174,6 +174,31 @@ module {
     events : [(Int, Text)]; // newest last, at most 20
   };
 
+  /// One ICP payment into the canister, credited to a user's or an app's balance: a top-up
+  /// (`top_up`, `top_up_app`) or a credit an admin made after checking the ledger block
+  /// (`admin_credit`: a top-up whose outcome was unknown). Kept per payer.
+  public type TopUp = {
+    ledger_block : Nat;
+    amount_e8s : Nat;
+    at : Int;
+    app : ?AppId; // an app top-up: the app it funded
+    via : { #top_up; #app_top_up; #admin_credit };
+  };
+
+  /// What support sees of one user (admin_get_user).
+  public type AdminUserView = {
+    balance_e8s : Nat;
+    low_balance_alert : { threshold_e8s : Nat; alerted : Bool };
+    settings : Settings;
+    channels : [Channel];
+    apps : [(App, Permission)];
+    requests : [App];
+    top_ups : [TopUp]; // newest first, at most 100
+    history : [HistoryItem]; // newest first
+    pending_jobs : Nat; // deliveries to this user not final yet
+    reserved_e8s : Nat; // their prices (refunded to the payer if they fail)
+  };
+
   public type Result = { #ok : Text; #err : Text };
   public type ResultNat = { #ok : Nat; #err : Text };
 };

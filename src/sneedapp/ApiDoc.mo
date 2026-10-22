@@ -25,7 +25,7 @@ Sneedapp is Sneed DAO's app factory: a catalogue of apps (canister programs such
 - **Minting costs ICP and moves it.** Fee: `getAppMintPrice(appId, user).applicable`: the lowest applicable of the regular price, the premium price (Sneed Premium members) and, for Sneed DAO apps (publisher 0) and `createNeuronManager` only, the admin price (people on the admin list) and the caller's partner price (until its expiry). Special prices are public: `get_special_prices()`, `get_special_prices_for(principal)` (field `mint_fee_e8s`); admins set them with `set_admin_prices`, `set_partner_prices`, `remove_partner_prices`. Every `sneedapp_mint` block says which applied in `price_tier` (`regular`, `premium`, `admin`, `partner`). The user first transfers ICP to their payment subaccount `{ owner = sneedapp; subaccount = getPaymentSubaccount(user) }`, then calls `mintCanister`. From that subaccount ICP is converted to cycles for the factory, a third-party publisher's share goes to its revenue subaccount, and the DAO's share goes to the DAO's fee destination (`getPaymentConfig().feeDestination`). A successful mint is final: the fee is spent and the canister exists.
 - **A mint is not idempotent**: two successful calls mint two canisters and charge twice.
 - **Control is handed over**: after install the controller list is replaced by `[minter]`; Sneedapp can no longer upgrade, stop or delete it. Upgrades are the owner's job (via `install_code`), stepping through every published version in between.
-- `withdrawUserPayment()` sends the whole payment-subaccount balance minus one ledger fee to the caller's default account. Publisher owners withdraw revenue with `withdrawPublisherFunds` / `withdrawAppFunds` (balance minus one ledger fee).
+- `withdrawUserPayment()` sends the whole payment-subaccount balance minus one ledger fee to the caller's default account. Any other ICRC-1 token sent there by mistake comes back the same way with `withdrawUserToken(ledger)` (the whole balance minus that ledger's fee, only ever to the caller). Publisher owners withdraw revenue with `withdrawPublisherFunds` / `withdrawAppFunds` (balance minus one ledger fee).
 - Bookmarks are not ownership: anyone can `registerCanister` any canister; `transferManager` moves only the bookmark, not the controllers. Ask the IC who controls a canister.
 
 ## Asynchronous lifecycle and polling
@@ -33,6 +33,7 @@ Sneedapp is Sneed DAO's app factory: a catalogue of apps (canister programs such
 - Mint flow: `getAppMintPrice` (update) -> fund the payment subaccount (ICP ledger transfer) -> `mintCanister`. A deposit larger than the fee stays for the next mint or withdrawal.
 - If a mint step fails, the new canister is deleted and the moved ICP is returned to the payment subaccount, less ledger fees; the error text says so. ICP whose return failed becomes a refund credit: `get_refund_credits_for(user)`, `claim_refund_credit(id)`.
 - If only the hand-over failed, the canister waits for you: `get_orphans_for(user)`, then `retry_handover(canisterId)` (to the minter only). A failed cycles purchase after a mint is the factory's own (`get_pending_top_ups`, `retry_top_up`); the mint still succeeds.
+- From an ICP ledger block the factory made (a mint's payment legs, refunds, withdrawals, top-ups) to what happened: `lookupLedgerTx(block)` lists the activity-log blocks that name it.
 - Verify a minted canister with `lookupMintedCanister` / `wasMintedByUs`, and compare its IC module hash with the version's `wasmHash`. Poll only after user actions; nothing here needs fast polling.
 
 ## Errors, retries and Busy
@@ -56,7 +57,7 @@ Sneedapp is Sneed DAO's app factory: a catalogue of apps (canister programs such
 ## Start with these methods
 
 - `getApps()`, `getApp(appId)`, `getVerifiedPublishers()`, `getAppVersions(appId)`, `getLatestAppVersion(appId)`
-- `getAppMintPrice(appId, user)`, `getPaymentSubaccount(user)`, `getUserPaymentBalance(user)`, `mintCanister(appId, major, minor, patch)`, `withdrawUserPayment()`
+- `getAppMintPrice(appId, user)`, `getPaymentSubaccount(user)`, `getUserPaymentBalance(user)`, `mintCanister(appId, major, minor, patch)`, `withdrawUserPayment()`, `withdrawUserToken(ledger)`, `lookupLedgerTx(block)`
 - `getMyWallet()`, `getMyWalletForApp(appId)`, `registerCanister(canisterId, appId)`, `lookupMintedCanister(canisterId)`, `getMintLog(query)`
 
 ## Full reference

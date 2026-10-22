@@ -26,6 +26,7 @@ const BLOCK_TYPES_URL = 'https://app.sneeddao.com/api/sneed_notifications#block-
 const CATALOGUE = [
   'top_up', 'app_top_up', 'refund', 'fee_forward', 'fee_backlog', 'fee_remeasure',
   'app_register', 'app_update', 'app_remove', 'app_verify', 'admin_add', 'admin_remove', 'config_update',
+  'admin_credit', 'app_balance_claim',
 ].map((t) => `sneednotif_${t}`);
 const KEEP = { skip_pre_upgrade: [], wasm_memory_persistence: [{ keep: null }] };
 const SPLITTER = Principal.fromText('6jvpj-sqaaa-aaaaj-azwnq-cai');
@@ -56,6 +57,8 @@ const fullIdl = ({ IDL: I }) => I.Service({
   ...icrc3Service(I),
   get_log: I.Func([I.Nat, I.Nat], [I.Vec(LogEntry)], ['query']),
 });
+// stats() as production answers it (before last_tick_at and ticking), for the snapshots taken before an upgrade
+const statsV1Idl = ({ IDL: I }) => I.Service({ stats: I.Func([], [I.Record({ apps: I.Nat, users: I.Nat, notifications: I.Nat, pending: I.Nat })], ['query']) });
 const senderIdl = ({ IDL: I }) => I.Service({ forward: I.Func([I.Principal, I.Text, I.Vec(I.Nat8)], [I.Vec(I.Nat8)], []) });
 
 let pic, rootKey, appSubnet, notifId, icpId, senderId, sender2Id, icp, appId;
@@ -224,7 +227,7 @@ describe('apps', () => {
       { t: 'app_verify', caller: P(admin), app_id: appId, name: 'Icrc3 App', verified: 1n },
       { t: 'app_verify', caller: P(admin), app_id: appId, name: 'Icrc3 App', verified: 0n },
       { t: 'app_verify', caller: P(admin), app_id: appId, name: 'Icrc3 App', verified: 1n },
-      { t: 'app_remove', caller: P(admin), app_id: dao, name: 'DAO App', owner: P(SNEED_SNS_ROOT), canisters: [P(sender2Id)] },
+      { t: 'app_remove', caller: P(admin), app_id: dao, name: 'DAO App', owner: P(SNEED_SNS_ROOT), canisters: [P(sender2Id)], app_balance_e8s: 0n },
     ]);
     expect(ser(await verifiedLog())).not.toContain('longer description');
   });
@@ -421,7 +424,7 @@ describe('upgrades', () => {
     await settle();
     const snapshot = async () => ser({
       app: await o(admin).get_app(app), apps: await o(admin).list_apps(0n, 10n), admins: await o(admin).get_admins(), config: await o(admin).get_config(),
-      bob: await o(bob).get_my_settings(), appBalance: await o(admin).get_app_balance(app), stats: await o(admin).stats(),
+      bob: await o(bob).get_my_settings(), appBalance: await o(admin).get_app_balance(app), stats: await actorAs(pic, statsV1Idl, oldId, admin).stats(),
       fees: { ...(await o(admin).get_fee_forwarding()), last_check: 0n, events: [] },
     });
     const before = await snapshot();

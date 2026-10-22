@@ -17,7 +17,7 @@ Sneedex is Sneed DAO's escrow marketplace. A seller bundles assets into an offer
 
 ## Authentication
 
-Calls are authorised by the signing principal. The creator manages an offer; the bidder manages a bid; the winner claims assets; anyone may call `processExpiration`. Nothing is anonymous or hidden: offers, bids, bidders, amounts and `approved_bidders` are public. Private offers restrict who may bid, they do not hide the offer. Only `note_to_buyer` is withheld (shown to the creator and, after completion, the winner); it is stored unencrypted, so no secrets. Admin methods are for controllers and `config.admins`.
+Calls are authorised by the signing principal. The creator manages an offer; the bidder manages a bid; the winner claims assets; anyone may call `processExpiration`, `settleOffer` and `retryRefund` (they pay only the recorded recipients). Nothing is anonymous or hidden: offers, bids, bidders, amounts and `approved_bidders` are public. Private offers restrict who may bid, they do not hide the offer. Only `note_to_buyer` is withheld (shown to the creator and, after completion, the winner); it is stored unencrypted, so no secrets. Admin methods are for controllers and `config.admins`.
 
 ## Fees, transfers and irreversible actions
 
@@ -25,13 +25,13 @@ Calls are authorised by the signing principal. The creator manages an offer; the
 - **Marketplace cut:** each offer records `fee_rate_bps` at creation (`getMarketplaceFeeRate`, `getFeeConfig`; the lowest of regular, premium, admin and partner `auction_cut_bps`, see `get_special_prices_for(principal)`; `get_offer_price_tiers(offerId)` says which tier applied); at payout the cut goes to the fee recipient and the seller gets `bid - cut - ledger fee`.
 - **Ledger fees** come out of escrows: ICRC-1 assets are delivered as balance minus one fee (deposit `amount + fee`), refunds are `amount - fee`, `withdrawBidEscrow` pays the fee on top.
 - **Escrow is a real hand-over:** `escrowCanister` makes Sneedex the canister's only controller (staking/trading bots also lose their botkeys and hotkeys during the sale); `escrowSNSNeuron` removes every other principal's neuron permissions; tokens, NFTs and locks move to Sneedex.
-- **Irreversible:** settlement (`confirmBid` at the buyout price, `acceptBid`, `processExpiration` with bids) gives every asset to the winner and the payment to the seller; after a bid is confirmed, `withdrawBidEscrow` can only take the excess above `bid.amount + fee`, and never from a `Won` bid. `createOffer` is not idempotent (two calls = two drafts, two fees).
+- **Irreversible:** settlement (`confirmBid` at the buyout price, `acceptBid`, `processExpiration` with bids) gives every asset to the winner and the payment to the seller; after a bid is confirmed, `withdrawBidEscrow` can only take the excess above `bid.amount`, and never from a `Won` bid. `createOffer` is not idempotent (two calls = two drafts, two fees).
 
 ## Asynchronous lifecycle and polling
 
 - Offer: `createOffer` (Draft) -> `addAsset` per asset -> `finalizeAssets` (PendingEscrow) -> deposit/approve/transfer each asset and call its `escrow*` method -> `activateOffer` (Active) -> Completed -> Claimed; or Expired / Cancelled -> Reclaimed.
 - Bid: `reserveBid` -> send the price token to the bid escrow subaccount -> `confirmBid(bidId, amount)`. Outbid bids are refunded automatically about a second later.
-- After completion, timers deliver assets (about 2 s) and pay the seller (about 3 s). Poll `getOfferView` / `queryOffer` for `Claimed` and `queryBid` for `ClaimedBySeller`; if they do not come within a minute, call `claimAssets` / `claimWinningBid`. A recurring timer settles expired offers (hourly on production).
+- After completion, timers deliver assets (about 2 s) and pay the seller (about 3 s). Poll `getOfferView` / `queryOffer` for `Claimed` and `queryBid` for `ClaimedBySeller`; if they do not come within a minute, call `claimAssets` / `claimWinningBid`, or `settleOffer(offerId)` (anyone). A recurring timer (hourly on production) settles expired offers, unfinished settlements and unrefunded lost bids.
 
 ## Errors, retries and Busy
 
@@ -43,14 +43,14 @@ Calls are authorised by the signing principal. The creator manages an offer; the
 
 - Query methods only answer query calls: the ingress guard refuses a query sent as an update call.
 - Arguments are capped: 4 KiB for most methods; `createOffer` at most 200 approved bidders and 4,000-character notes; `addAsset` at most 50 NFT ids, 100-character title, 4,000-character description.
-- Each `reserveBid` creates a new bid id with its own escrow subaccount: send tokens only to the one you confirm. Recover unconfirmed deposits with `withdrawBidEscrow`.
+- Each `reserveBid` creates a new bid id with its own escrow subaccount (at most 10 unconfirmed per offer, 50 in all): send tokens only to the one you confirm. Recover unconfirmed deposits with `withdrawBidEscrow`.
 - `getBidEscrowBalance`, `getUserOfferCreationBalance` and `getEffectiveOfferCreationFee` are update calls.
 - EXT NFTs (asset `EXTNFT { collection_canister_id; token_indices : vec nat32 }`): you can only list cards your default account holds. After `finalizeAssets`, send each card with the collection's `transfer` to `to = variant { address = getOfferEscrowAccountId(...) }` (the account id, not Sneedex's principal, which would be its default account), then call `escrowEXTNFTs(offerId, assetIndex)`. Sneedex sends cards on with `from = address(escrow account id)` and `subaccount = escrow subaccount`, and records a delivery only once `bearer` shows the recipient.
 - Locks listed must stay locked past the offer's `expiration`; token locks need gas to be delivered.
 
 ## Activity log (ICRC-3)
 
-Every market action is a block in a hash-chained, certified ICRC-3 log: offers, escrow, bids, each asset handed over, cuts and seller payments, refunds, creation fees and admin changes (block types `sneedex_*`, documented at https://app.sneeddao.com/api/sneedex#block-types). Read `icrc3_get_blocks` (follow `archived_blocks` callbacks into the archives) and verify `icrc3_get_tip_certificate`. Transfers name their ledger block (`ledger_tx`); automatic steps carry `via = \"timer\"` instead of `caller`. The log starts with the release that added it. Support lookups: `getBidsByBidderAll(p)` (reservations included), `getSettlement(offerId)`, and `getSupportLog(before, limit)` / `getSupportLogFor(p)` for background errors and admin interventions.
+Every market action is a block in a hash-chained, certified ICRC-3 log: offers, escrow, bids, each asset handed over, cuts and seller payments, refunds, creation fees and admin changes (block types `sneedex_*`, documented at https://app.sneeddao.com/api/sneedex#block-types). Read `icrc3_get_blocks` (follow `archived_blocks` callbacks into the archives) and verify `icrc3_get_tip_certificate`. Transfers name their ledger block (`ledger_tx`); automatic steps carry `via = \"timer\"` instead of `caller`. The log starts with the release that added it. Support lookups: `getBidsByBidderAll(p)` (reservations included), `getSettlement(offerId)`, `getCreationFeePaymentsFor(p, before, limit)`, `getCutPaymentsFor(p, before, limit)`, and `getSupportLog(before, limit)` / `getSupportLogFor(p)` for background errors and admin interventions.
 
 ## Start with these methods
 

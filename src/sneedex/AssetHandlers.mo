@@ -1,6 +1,7 @@
 import Principal "mo:base/Principal";
 import Blob "mo:base/Blob";
 import Buffer "mo:base/Buffer";
+import Error "mo:base/Error";
 
 import T "Types";
 import Utils "Utils";
@@ -187,17 +188,50 @@ module {
     };
     
     /// Remove all hotkeys from a neuron except sneedex
-    /// Takes the actual permissions for each principal so we only remove what they have
+    /// Takes the actual permissions for each principal so we only remove what they have.
+    /// If a removal fails part-way, the permissions already removed are added back (best effort)
+    /// so the neuron is not left partly stripped and unescrowed; `note` receives what failed,
+    /// what was removed and what could not be put back (Sneedex writes it to its support log).
     public func escrowNeuron(
         governanceCanisterId : Principal,
         neuronId : T.NeuronId,
         sneedex : Principal,
-        allPermissions : [T.NeuronPermission]
+        allPermissions : [T.NeuronPermission],
+        note : Text -> ()
     ) : async* T.Result<[Principal]> {
         let governance = getSNSGovernance(governanceCanisterId);
         
         // Build snapshot of principals to restore (excluding sneedex)
         let snapshotBuffer = Buffer.Buffer<Principal>(4);
+        // what has been removed so far, to put back if a later removal fails
+        let removed = Buffer.Buffer<(Principal, [Int32])>(4);
+
+        func rollBack(why : Text) : T.Result<[Principal]> {
+            #err(#GovernanceError(why));
+        };
+        func putBack() : async* Text {
+            var notBack = "";
+            for ((p, perms) in removed.vals()) {
+                try {
+                    let r = await governance.manage_neuron({
+                        subaccount = neuronId.id;
+                        command = ?#AddNeuronPermissions({ permissions_to_add = ?{ permissions = perms }; principal_id = ?p });
+                    });
+                    switch (r.command) {
+                        case (?#Error(e)) { notBack #= " " # Principal.toText(p) # " " # debug_show (perms) # " (" # e.error_message # ")" };
+                        case _ {};
+                    };
+                } catch (e) { notBack #= " " # Principal.toText(p) # " " # debug_show (perms) # " (" # Error.message(e) # ")" };
+            };
+            notBack;
+        };
+        func failed(p : Principal, why : Text) : async* T.Result<[Principal]> {
+            let removedText = debug_show (Buffer.toArray(removed));
+            let notBack = await* putBack();
+            note("escrow of neuron " # debug_show (neuronId.id) # ": removing " # Principal.toText(p) # " failed (" # why # "); removed before: " # removedText #
+                (if (notBack == "") { "; all put back" } else { "; NOT put back:" # notBack }));
+            rollBack("Failed to remove permissions: " # why # (if (notBack == "") { "" } else { "; some permissions already removed could not be restored, see the support log" }));
+        };
         
         // Remove permissions from all principals except sneedex
         // Use their ACTUAL permissions to avoid "missing permission" errors
@@ -210,24 +244,23 @@ module {
                         
                         // Only remove if they have permissions
                         if (perm.permission_type.size() > 0) {
-            try {
+                            let outcome : ?Text = try {
                                 let response = await governance.manage_neuron({
-                    subaccount = neuronId.id;
-                    command = ?#RemoveNeuronPermissions({
+                                    subaccount = neuronId.id;
+                                    command = ?#RemoveNeuronPermissions({
                                         // Use the ACTUAL permissions this principal has
                                         permissions_to_remove = ?{ permissions = perm.permission_type };
                                         principal_id = ?p;
-                    });
-                });
-                                // Check for errors in the response
+                                    });
+                                });
                                 switch (response.command) {
-                                    case (?#Error(e)) {
-                                        return #err(#GovernanceError("Failed to remove permissions: " # e.error_message));
-                                    };
-                                    case _ {}; // Success or other response
+                                    case (?#Error(e)) { ?e.error_message };
+                                    case _ { null }; // Success or other response
                                 };
-            } catch (_e) {
-                return #err(#GovernanceError("Failed to remove permissions from hotkey"));
+                            } catch (e) { ?("call failed: " # Error.message(e)) };
+                            switch (outcome) {
+                                case (?why) { return await* failed(p, why) };
+                                case null { removed.add((p, perm.permission_type)) };
                             };
                         };
                     };
@@ -247,14 +280,15 @@ module {
                     // Check that only sneedex has permissions
                     for (p in remainingPrincipals.vals()) {
                         if (not Principal.equal(p, sneedex)) {
-                            return #err(#GovernanceError("Failed to fully escrow neuron - other principals still have permissions"));
+                            return await* failed(p, "still holds permissions after the removals");
                         };
                     };
                 };
                 case _ {};
             };
-        } catch (_e) {
+        } catch (e) {
             // Verification failed but removal might have succeeded
+            note("escrow of neuron " # debug_show (neuronId.id) # ": the check that only Sneedex is left failed: " # Error.message(e));
         };
         
         #ok(snapshot);
@@ -267,6 +301,8 @@ module {
         neuronId : T.NeuronId,
         sneedex : Principal,
         restore : [(Principal, [Int32])]
+        ,
+        note : Text -> ()
     ) : async* T.Result<()> {
         let governance = getSNSGovernance(governanceCanisterId);
         
@@ -314,12 +350,12 @@ module {
                                         });
                                         // Check for errors but don't fail - original owners have control
                                         switch (response.command) {
-                                            case (?#Error(_e)) {
+                                            case (?#Error(e)) { note("Sneedex could not remove itself from neuron " # debug_show (neuronId.id) # " (releaseNeuron): " # e.error_message);
                                                 // If removal fails, original owners still have control
                                             };
                                             case _ {};
                                         };
-                                    } catch (_e) {
+                                    } catch (e) { note("Sneedex could not remove itself from neuron " # debug_show (neuronId.id) # " (releaseNeuron): " # Error.message(e));
                                         // If removal fails, original owners still have control
                                     };
                                 };
@@ -339,13 +375,13 @@ module {
                             });
                         });
                         switch (response.command) {
-                            case (?#Error(_e)) {};
+                            case (?#Error(e)) { note("Sneedex could not remove itself from neuron " # debug_show (neuronId.id) # " (releaseNeuron): " # e.error_message);};
                             case _ {};
                         };
-                    } catch (_e) {};
+                    } catch (e) { note("Sneedex could not remove itself from neuron " # debug_show (neuronId.id) # " (releaseNeuron): " # Error.message(e));};
                 };
             };
-        } catch (_e) {
+        } catch (e) { note("Sneedex could not remove itself from neuron " # debug_show (neuronId.id) # " (releaseNeuron): " # Error.message(e));
             // Fallback to removing FULL_OWNER_PERMISSIONS if we can't query neuron
             try {
                 let response = await governance.manage_neuron({
@@ -356,10 +392,10 @@ module {
                     });
                 });
                 switch (response.command) {
-                    case (?#Error(_e)) {};
+                    case (?#Error(e)) { note("Sneedex could not remove itself from neuron " # debug_show (neuronId.id) # " (releaseNeuron): " # e.error_message);};
                     case _ {};
                 };
-            } catch (_e) {};
+            } catch (e) { note("Sneedex could not remove itself from neuron " # debug_show (neuronId.id) # " (releaseNeuron): " # Error.message(e));};
         };
         
         #ok();
@@ -371,6 +407,8 @@ module {
         neuronId : T.NeuronId,
         sneedex : Principal,
         newOwners : [Principal]
+        ,
+        note : Text -> ()
     ) : async* T.Result<()> {
         let governance = getSNSGovernance(governanceCanisterId);
         
@@ -418,12 +456,12 @@ module {
                                         });
                                         // Check for errors but don't fail - new owners have control
                                         switch (response.command) {
-                                            case (?#Error(_e)) {
+                                            case (?#Error(e)) { note("Sneedex could not remove itself from neuron " # debug_show (neuronId.id) # " (transferNeuron): " # e.error_message);
                                                 // Continue even if sneedex removal fails - new owners have control
                                             };
                                             case _ {};
                                         };
-                                    } catch (_e) {
+                                    } catch (e) { note("Sneedex could not remove itself from neuron " # debug_show (neuronId.id) # " (transferNeuron): " # Error.message(e));
                                         // Continue even if sneedex removal fails
                                     };
                                 };
@@ -443,13 +481,13 @@ module {
                             });
                         });
                         switch (response.command) {
-                            case (?#Error(_e)) {};
+                            case (?#Error(e)) { note("Sneedex could not remove itself from neuron " # debug_show (neuronId.id) # " (transferNeuron): " # e.error_message);};
                             case _ {};
                         };
-                    } catch (_e) {};
+                    } catch (e) { note("Sneedex could not remove itself from neuron " # debug_show (neuronId.id) # " (transferNeuron): " # Error.message(e));};
                 };
             };
-        } catch (_e) {
+        } catch (e) { note("Sneedex could not remove itself from neuron " # debug_show (neuronId.id) # " (transferNeuron): " # Error.message(e));
             // Fallback to removing FULL_OWNER_PERMISSIONS if we can't query neuron
             try {
                 let response = await governance.manage_neuron({
@@ -460,10 +498,10 @@ module {
                     });
                 });
                 switch (response.command) {
-                    case (?#Error(_e)) {};
+                    case (?#Error(e)) { note("Sneedex could not remove itself from neuron " # debug_show (neuronId.id) # " (transferNeuron): " # e.error_message);};
                     case _ {};
                 };
-            } catch (_e) {};
+            } catch (e) { note("Sneedex could not remove itself from neuron " # debug_show (neuronId.id) # " (transferNeuron): " # Error.message(e));};
         };
         
         #ok();
