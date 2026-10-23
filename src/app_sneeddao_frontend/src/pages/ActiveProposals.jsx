@@ -483,6 +483,9 @@ function ActiveProposals() {
             const elig = proposalEligibility[key];
             return elig && elig.eligibleCount > 0;
         });
+        // oldest first, in case order matters (it shouldn't)
+        const pid = (p) => BigInt(p.id?.[0]?.id ?? 0);
+        votableProposals.sort((a, b) => (pid(a) < pid(b) ? -1 : pid(a) > pid(b) ? 1 : 0));
 
         if (votableProposals.length === 0) return;
 
