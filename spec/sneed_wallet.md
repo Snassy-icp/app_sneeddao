@@ -571,12 +571,10 @@ post (topic 899).
 - **Q2. Third-party scripts. Decided:** keep analytics on normal pages, off `sign.html` and
   `btc.html` (§3 above). Still open: who owns the GA property (if nobody active, a new
   property or a small on-chain page counter), and whether `'unsafe-eval'` can go app-wide.
-- **Q3. One "Bitcoin" card** (native + ckBTC as pockets) or two cards (BTC and ckBTC)?
+- **Q3. Decided (2026-10-23):** one "Bitcoin" card, with native BTC and ckBTC as pockets.
 - **Q4. Fee-rate source.** Add a cached percentile query to the Sneed backend (a proposal, a few
   B cycles a day), or start with mempool.space only?
-- **Q5. Who pays signing cycles.** Users only, or should the DAO sponsor (e.g. the first N
-  sends per user through `PatronPaysIcrc2Cycles`)? That would be a motion, and it needs abuse
-  limits.
+- **Q5. Decided (2026-10-23):** users always pay signing cycles; no DAO sponsorship.
 - **Q6. Speed-up.** Is full-RBF replacement through the IC's Bitcoin adapter acceptable as the
   only speed-up, or do we also ship CPFP in A4? Both depend on testnet results.
 - **Q7. Signer scope at launch.** Ledger-only (ICRC-1/2/7/37 plus ICRC-21-capable canisters),
